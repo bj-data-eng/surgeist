@@ -1201,7 +1201,7 @@ fn the_257th_actual_component_opener_preserves_resource_precedence() {
 }
 
 #[test]
-fn real_counter_rule_owns_names_combination_checks_and_sibling_recovery() {
+fn real_counter_rule_owns_names_and_grammar_recovery_with_separate_definition_inspection() {
     let source = "@counter-style demo{system:cyclic;symbols:x;prefix:1;suffix:\"!\"}";
     let report = parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
@@ -1247,7 +1247,7 @@ fn real_counter_rule_owns_names_combination_checks_and_sibling_recovery() {
         "1",
     );
 
-    // The direct value owns no system/symbol combination policy. An actual rule does.
+    // Selected current grammar retains the rule; definition admission owns the conflict.
     let direct = parse_counter_style_descriptor_value("extends decimal", CounterKind::System);
     assert!(direct.is_clean());
     counter_semantics(
@@ -1255,12 +1255,18 @@ fn real_counter_rule_owns_names_combination_checks_and_sibling_recovery() {
         &Expected::Extends("decimal"),
     );
     let report = parse_sheet("@counter-style demo{system:extends decimal;symbols:x}");
-    assert!(report.syntax().rules().is_empty());
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .any(|d| matches!(d.error().kind(), ErrorKind::InvalidDescriptorCombination(_)))
+    assert!(report.is_clean());
+    let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
+        panic!("retained authored rule")
+    };
+    assert_eq!(
+        rule.descriptors()
+            .prospective()
+            .unwrap()
+            .definition_status(),
+        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        )
     );
 }
 

@@ -449,17 +449,11 @@ fn counter_effective_system_coupling_and_neighbor_recovery_remain_checked() {
     ] {
         let source = format!("@counter-style bad {{ {body} }} .after {{ color: red; }}");
         let report = parse_sheet(&source);
-        assert!(!report.is_clean(), "{source}");
-        assert!(
-            matches!(report.syntax().rules(), [CssRule::Style(_)]),
-            "{source}"
-        );
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|value| value.action() == CssRecoveryAction::DropAtRule)
-        );
+        assert!(report.is_clean());
+        assert!(matches!(
+            report.syntax().rules(),
+            [CssRule::CounterStyle(_), CssRule::Style(_)]
+        ));
     }
     let source = "@counter-style valid { symbols: \"x\"; range: 2147483649 2147483648; pad: -1 \"_\"; suffix: \".\"; } .after { color: red; }";
     let report = parse_sheet(source);

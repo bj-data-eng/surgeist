@@ -779,14 +779,26 @@ fn parsed_body_values_keep_actual_name_windows_and_later_pending_effective_occur
 }
 
 #[test]
-fn pending_system_does_not_invent_an_ordinary_system_and_extends_still_forbids_symbols() {
+fn pending_system_does_not_invent_algorithm_and_extends_conflict_stays_authored() {
     let accepted = parse_counter_style_block("{system:env(x);symbols:a b}");
     assert!(accepted.is_clean(), "{accepted:?}");
     let system = accepted.syntax().as_ref().unwrap().body().system().unwrap();
     assert!(matches!(system.value().view(), CounterView::Pending(_)));
-    let rejected = parse_counter_style_block("{system:extends decimal;symbols:env(x)}");
-    assert!(!rejected.is_clean());
-    assert!(rejected.syntax().is_none());
+    let conflict = parse_counter_style_block("{system:extends decimal;symbols:env(x)}");
+    assert!(conflict.is_clean());
+    assert_eq!(
+        conflict
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .body()
+            .prospective()
+            .unwrap()
+            .definition_status(),
+        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        )
+    );
 }
 
 #[test]

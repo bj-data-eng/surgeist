@@ -419,24 +419,31 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
 fn ordinary_size_is_not_the_page_size_descriptor_and_normalization_keeps_order() {
     accepted("size", "10px 20px");
     let report = parse_sheet("@page{margin-top:1px;size:10px 20px;margin-bottom:2px}");
-    let [diagnostic] = report.diagnostics() else {
-        panic!(
-            "one page-size-context diagnostic: {:?}",
-            report.diagnostics()
-        )
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+    assert!(report.is_clean());
     let [CssRule::Page(page)] = report.syntax().rules() else {
-        panic!("one recovered page rule")
+        panic!("one retained page rule")
     };
-    assert_eq!(page.declarations().len(), 2);
+    assert!(matches!(
+        page.declarations()
+            .effective_descriptor(CssPageDescriptorKind::Size)
+            .unwrap()
+            .value()
+            .view(),
+        CssPageDescriptorValueRef::Size(CssPageSizeValue::Dimensions(_, Some(_)))
+    ));
+    assert_eq!(page.declarations().properties().len(), 2);
     assert_eq!(
-        page.declarations()[0].known().unwrap().property(),
+        page.declarations().properties()[0]
+            .known()
+            .unwrap()
+            .property(),
         grammar("margin-top").target_property()
     );
     assert_eq!(
-        page.declarations()[1].known().unwrap().property(),
+        page.declarations().properties()[1]
+            .known()
+            .unwrap()
+            .property(),
         grammar("margin-bottom").target_property()
     );
 

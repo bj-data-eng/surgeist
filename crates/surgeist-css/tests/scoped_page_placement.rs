@@ -26,7 +26,7 @@ fn assert_admitted(group: &str, expected_diagnostics: usize) {
     let bad = if expected_diagnostics == 0 {
         ""
     } else {
-        "color:red;"
+        "opacity:0.5;"
     };
     let source =
         format!("@scope (.root){{{group}{{before{{}}@page :left{{{bad}margin:1px}}after{{}}}}}}");
@@ -41,7 +41,7 @@ fn assert_admitted(group: &str, expected_diagnostics: usize) {
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_eq!(
             diagnostic.span().start().byte_offset().value(),
-            source.find("color:").unwrap()
+            source.find("opacity:").unwrap()
         );
     }
     let normalized = normalize_sheet(report.syntax()).unwrap();
@@ -74,14 +74,14 @@ fn assert_admitted(group: &str, expected_diagnostics: usize) {
     let CssRuleContextKindRef::Page(page) = rules[3].kind() else {
         panic!("retained page payload")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::Left));
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Left));
     assert_eq!(
         page.position().byte_offset().value(),
         source.find("@page").unwrap()
     );
-    assert_eq!(page.declarations().len(), 1);
+    assert_eq!(page.declarations().properties().len(), 1);
     assert_eq!(
-        page.declarations().as_slice()[0]
+        page.declarations().properties().as_slice()[0]
             .known()
             .unwrap()
             .property()
@@ -239,8 +239,8 @@ fn assert_chunked_admission(group: &str) {
         let CssRuleContextKindRef::Page(page) = page_context.kind() else {
             unreachable!()
         };
-        assert_eq!(page.selector(), Some(CssPageSelector::Left));
-        assert_eq!(page.declarations().len(), 1);
+        assert_eq!(page_pseudo(page), Some(CssPagePseudo::Left));
+        assert_eq!(page.declarations().properties().len(), 1);
         assert_eq!(page.position().byte_offset().value(), offset);
         let parent = page_context.parent().unwrap();
         let mut ancestor = Some(parent);
@@ -428,4 +428,11 @@ fn isolated_style_block_preserves_style_ancestry() {
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropAtRule
     );
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
 }

@@ -290,7 +290,7 @@ fn invalid_counter_style_descriptor_values_drop_only_the_descriptor_and_keep_eff
 }
 
 #[test]
-fn invalid_effective_counter_style_combinations_drop_only_the_at_rule() {
+fn grammar_valid_undefined_counter_styles_retain_their_authored_rules() {
     let source = concat!(
         ".before {} ",
         "@counter-style inherited-symbols { system: extends decimal; symbols: x; } ",
@@ -308,26 +308,23 @@ fn invalid_effective_counter_style_combinations_drop_only_the_at_rule() {
             CssRule::CounterStyle(_),
             CssRule::CounterStyle(_),
             CssRule::CounterStyle(_),
+            CssRule::CounterStyle(_),
+            CssRule::CounterStyle(_),
             CssRule::Style(_)
         ]
     ));
-    // Missing symbols make no counter-style definition but do not invalidate
-    // the authored at-rule. Only the two forbidden extends combinations drop.
-    let CssRule::CounterStyle(missing_additive) = &report.syntax().rules()[1] else {
+    // Missing symbols and extends conflicts do not invalidate authored grammar.
+    let CssRule::CounterStyle(missing_additive) = &report.syntax().rules()[3] else {
         unreachable!()
     };
     assert_eq!(missing_additive.name().as_str(), "missing-additive");
     assert!(missing_additive.descriptors().additive_symbols().is_none());
-    let CssRule::CounterStyle(missing_symbols) = &report.syntax().rules()[2] else {
+    let CssRule::CounterStyle(missing_symbols) = &report.syntax().rules()[4] else {
         unreachable!()
     };
     assert_eq!(missing_symbols.name().as_str(), "missing-symbols");
     assert!(missing_symbols.descriptors().symbols().is_none());
-    assert_eq!(report.diagnostics().len(), 2);
-    assert!(report.diagnostics().iter().all(|diagnostic| {
-        diagnostic.error().code() == CssErrorCode::InvalidDescriptorCombination
-            && diagnostic.action() == CssRecoveryAction::DropAtRule
-    }));
+    assert!(report.is_clean());
 }
 
 #[test]
@@ -381,6 +378,7 @@ fn counter_style_descriptor_recovery_keeps_valid_occurrences_and_siblings() {
             CssRule::CounterStyle(_),
             CssRule::CounterStyle(_),
             CssRule::CounterStyle(_),
+            CssRule::CounterStyle(_),
             CssRule::Style(_)
         ]
     ));
@@ -406,10 +404,6 @@ fn counter_style_descriptor_recovery_keeps_valid_occurrences_and_siblings() {
             (
                 CssErrorCode::UnknownDescriptor,
                 CssRecoveryAction::DropDescriptor
-            ),
-            (
-                CssErrorCode::InvalidDescriptorCombination,
-                CssRecoveryAction::DropAtRule
             ),
         ]
     );
@@ -575,7 +569,7 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
     let CssRule::Page(page) = &report.syntax().rules()[1] else {
         panic!("expected recovered page")
     };
-    assert_eq!(page.declarations().len(), 1);
+    assert_eq!(page.declarations().properties().len(), 1);
     let CssRule::Media(media) = &report.syntax().rules()[2] else {
         panic!("expected recovered media parent")
     };
@@ -610,10 +604,10 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
         source.find("@counter-style scope-child").unwrap()
     );
     assert_eq!(
-        nested_page.selector(),
-        Some(surgeist_css::CssPageSelector::Right)
+        page_pseudo(nested_page),
+        Some(surgeist_css::CssPagePseudo::Right)
     );
-    assert_eq!(nested_page.declarations().len(), 1);
+    assert_eq!(nested_page.declarations().properties().len(), 1);
     assert_eq!(
         nested_page.position().byte_offset().value(),
         source.find("@page :right").unwrap()
@@ -772,4 +766,11 @@ fn later_counter_style_rule_metadata_matches_retained_public_behavior() {
         report.syntax().rules(),
         [CssRule::CounterStyle(_)]
     ));
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
 }

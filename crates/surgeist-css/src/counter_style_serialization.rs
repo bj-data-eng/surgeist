@@ -444,8 +444,7 @@ mod tests {
                     .unwrap(),
                     position,
                 )),
-            ])
-            .unwrap(),
+            ]),
             position,
         );
         let before = rule.clone();

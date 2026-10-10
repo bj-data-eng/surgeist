@@ -587,13 +587,11 @@ pub(crate) fn parse_keyframe_declaration_block_with_context(
 
 /// Parses exactly one genuine curly body in the composed authored Page domain.
 ///
-/// Empty bodies, ordered physical margin declarations and Page-local custom
-/// declarations with ordinary priority are retained. Shared CSS-wide values,
-/// lengths and calculations remain symbolic; ordinary margins exclude `em`/`ex`.
-/// Pending margins retain Page context for strict caller-replacement reentry.
-/// Unsupported properties/values and structural children, including
-/// margin boxes, are recovered locally while admitted neighbors survive. No page
-/// selector, at-keyword or pagination context is fabricated.
+/// Retains the ordered Page descriptor/property inventory and canonical margin-box
+/// children. Applicable represented properties use their shared intrinsic grammar;
+/// custom and substitution-dependent values stay symbolic. Invalid declarations and
+/// unsupported structural children recover locally. No selector or at-keyword is
+/// fabricated. A margin child admits properties/custom values, excluding Page descriptors.
 ///
 /// Optional outer whitespace/comments lie outside the original brace origin.
 /// Missing braces or trailing nontrivia reject the whole fragment. The brace
@@ -604,14 +602,14 @@ pub(crate) fn parse_keyframe_declaration_block_with_context(
 #[must_use]
 pub fn parse_page_block(
     source: &str,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssDeclarationList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssPageBody>>> {
     parse_page_block_with_context(source, crate::CssParserContext::default())
 }
 
 pub(crate) fn parse_page_block_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssDeclarationList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssPageBody>>> {
     real_brace_block(
         source,
         "later.rule.page",
@@ -1013,6 +1011,53 @@ pub fn parse_font_face_descriptor_value(
         };
         crate::CssParseReport::new(syntax, diagnostics)
     })
+}
+
+/// Parses the complete raw Page prelude, including empty, named, compound and comma-list forms.
+/// All source coordinates belong to the original input; no at-rule wrapper is synthesized.
+#[must_use]
+pub fn parse_page_selector_list(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssPageSelectorList>> {
+    descriptor_value_fragment(source, None, |input, state| {
+        page::parse_page_selector(input, state.source_snapshot())
+    })
+}
+/// Parses one complete raw Page descriptor value without a descriptor-name origin or priority.
+#[must_use]
+pub fn parse_page_descriptor_value(
+    source: &str,
+    kind: crate::CssPageDescriptorKind,
+) -> crate::CssParseReport<Option<crate::CssPageDescriptorValue>> {
+    descriptor_value_fragment(source, Some(("page", kind.css_name())), |input, state| {
+        let (value, components, origin) =
+            collect_declaration_value(input, state.source_snapshot(), |input| {
+                page::parse_descriptor_value(input, kind, state.source_snapshot())
+            })?;
+        Ok(crate::CssPageDescriptorValue::from_parsed(
+            kind, value, components, origin,
+        ))
+    })
+}
+/// Parses one genuine margin descriptor block; Page-only descriptors and structural children recover locally.
+#[must_use]
+pub fn parse_margin_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssMarginDeclarationBlock>>> {
+    parse_margin_block_with_context(source, crate::CssParserContext::default())
+}
+pub(crate) fn parse_margin_block_with_context(
+    source: &str,
+    context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssMarginDeclarationBlock>>> {
+    real_brace_block(
+        source,
+        "later.rule.page",
+        context,
+        |source, input, diagnostics, state| {
+            Ok(page::parse_margin_body(source, input, diagnostics, state))
+        },
+    )
 }
 
 // These name-free fronts share whole-source rejection, descriptor annotation

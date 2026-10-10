@@ -238,20 +238,25 @@ valid_rule!(
 );
 
 #[test]
-fn extends_with_valid_symbols_still_invalidates_the_complete_rule() {
+fn extends_with_valid_symbols_retains_rule_without_defining_style() {
     for descriptor in ["symbols:a;", "additive-symbols:0 N;"] {
         let source =
             format!("@counter-style Invalid {{ system:extends Missing; {descriptor} }} .after{{}}");
         let report = parse_sheet(&source);
-        assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one invalid extends combination");
+        assert!(report.is_clean());
+        let [CssRule::CounterStyle(counter), CssRule::Style(_)] = report.syntax().rules() else {
+            panic!("retained grammar-valid rule")
         };
         assert_eq!(
-            diagnostic.error().code(),
-            CssErrorCode::InvalidDescriptorCombination
+            counter
+                .descriptors()
+                .prospective()
+                .unwrap()
+                .definition_status(),
+            surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
+                surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+            )
         );
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     }
 }
 

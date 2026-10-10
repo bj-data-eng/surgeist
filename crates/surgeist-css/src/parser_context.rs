@@ -177,16 +177,24 @@ impl CssParserContext {
     ) -> CssParseReport<Option<CssBlockFragment<CssKeyframeDeclarationList>>> {
         crate::parser::parse_keyframe_declaration_block_with_context(source, self)
     }
-    /// Parses a genuine Page body with this context before CSS2 value filtering.
+    /// Parses a genuine Page body with this context and the selected Page domain.
     ///
-    /// The physical-margin whitelist and literal value domain remain those of
-    /// [`parse_page_block`]; document mode does not bypass the Page filter.
+    /// Descriptor/property admission and ordered margin children follow
+    /// [`parse_page_block`]; document mode does not bypass domain checks.
     #[must_use]
     pub fn parse_page_block(
         self,
         source: &str,
-    ) -> CssParseReport<Option<CssBlockFragment<CssDeclarationList>>> {
+    ) -> CssParseReport<Option<CssBlockFragment<crate::CssPageBody>>> {
         crate::parser::parse_page_block_with_context(source, self)
+    }
+    /// Parses one genuine margin declaration block using this property context.
+    #[must_use]
+    pub fn parse_margin_block(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<CssBlockFragment<CssMarginDeclarationBlock>>> {
+        crate::parser::parse_margin_block_with_context(source, self)
     }
     /// Parses an ordinary inner rule block with this declaration grammar context.
     ///

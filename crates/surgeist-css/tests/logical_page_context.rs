@@ -35,10 +35,10 @@ fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides
             let [CssRule::Page(page)] = report.syntax().rules() else {
                 panic!("logical page retained")
             };
-            assert!(page.selector().is_some());
-            assert_eq!(page.declarations().len(), 1);
+            assert!(!page.selectors().is_empty());
+            assert_eq!(page.declarations().properties().len(), 1);
             assert_eq!(
-                page.declarations()[0].importance(),
+                page.declarations().properties()[0].importance(),
                 CssImportance::Important
             );
             let expected = format!("@page :{canonical} {{ margin-left: -1px !important; }}");
@@ -74,7 +74,7 @@ fn logical_page_pairs_preserve_neighbors_origins_margin_order_and_normalized_pay
     else {
         panic!("two pages and style neighbor")
     };
-    assert_ne!(recto.selector(), verso.selector());
+    assert_ne!(recto.selectors(), verso.selectors());
     assert_eq!(
         recto.position().byte_offset().value(),
         source.find("@page :recto").unwrap()
@@ -86,9 +86,9 @@ fn logical_page_pairs_preserve_neighbors_origins_margin_order_and_normalized_pay
         source.find("@page :verso").unwrap()
     );
     for (declaration, marker) in [
-        (&recto.declarations()[0], "margin-left:1px"),
-        (&recto.declarations()[1], "margin-right:2%"),
-        (&verso.declarations()[0], "margin-left:3px"),
+        (&recto.declarations().properties()[0], "margin-left:1px"),
+        (&recto.declarations().properties()[1], "margin-right:2%"),
+        (&verso.declarations().properties()[0], "margin-left:3px"),
     ] {
         let offset = source.find(marker).unwrap();
         assert_eq!(
@@ -152,7 +152,7 @@ fn logical_pages_compose_in_ordinary_and_scoped_groups_without_element_mapping()
 #[test]
 fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
     let source =
-        ".before{}@page:recto{margin-left:1px;margin-right:bogus;color:red;margin-top:2%} .after{}";
+        ".before{}@page:recto{margin-left:1px;margin-right:bogus;noise:red;margin-top:2%} .after{}";
     let report = parse_sheet(source);
     let [CssRule::Style(_), CssRule::Page(page), CssRule::Style(_)] = report.syntax().rules()
     else {
@@ -165,13 +165,19 @@ fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
             .iter()
             .all(|d| d.action() == CssRecoveryAction::DropDeclaration)
     );
-    assert_eq!(page.declarations().len(), 2);
+    assert_eq!(page.declarations().properties().len(), 2);
     assert_eq!(
-        page.declarations()[0].known().unwrap().property(),
+        page.declarations().properties()[0]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginLeft
     );
     assert_eq!(
-        page.declarations()[1].known().unwrap().property(),
+        page.declarations().properties()[1]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginTop
     );
     assert_eq!(
@@ -194,10 +200,10 @@ fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
 #[test]
 fn malformed_page_pseudos_drop_each_rule_atomically_and_ordinary_pages_are_controls() {
     for prelude in [
-        ":recto:verso",
-        ":verso:left",
+        ":recto:unknown",
+        ":verso:unknown",
         ":recto extra",
-        "named:recto",
+        "named:unknown",
         ":recto()",
         "::verso",
         ":unknown",
@@ -374,12 +380,12 @@ fn logical_page_output_and_normalization_share_atomic_cumulative_limits() {
     assert!(report.is_clean());
     let before = report.clone();
     let expected = "@page :recto { margin-left: 1px; }\n@page :verso { margin-left: 2px; }";
-    // Page rule + pseudo + declaration-list + declaration + name + numeric leaf.
+    // Page rule + selector-list + selector + pseudo + declaration + name + numeric leaf.
     for rule in report.syntax().rules() {
         assert!(
             rule.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                6,
-                6,
+                7,
+                7,
                 expected.len()
             ))
             .is_ok()

@@ -81,9 +81,9 @@ fn actual_page_retains_inherit_for_shorthand_and_all_physical_longhands_cleanly(
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("one actual page")
     };
-    assert_eq!(page.selector(), None);
+    assert_eq!(page_pseudo(page), None);
     assert_eq!(page.position().byte_offset().value(), 0);
-    five_margins(page.declarations());
+    five_margins(page.declarations().properties());
 }
 
 #[test]
@@ -94,8 +94,8 @@ fn exact_one_page_retains_decoded_keyword_spelling_duplicates_and_priority() {
     let Some(CssRule::Page(page)) = report.syntax() else {
         panic!("actual isolated page")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::Left));
-    let [first, second, third] = page.declarations().as_slice() else {
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Left));
+    let [first, second, third] = page.declarations().properties().as_slice() else {
         panic!("all occurrences retained")
     };
     inherit(
@@ -116,7 +116,7 @@ fn exact_one_page_retains_decoded_keyword_spelling_duplicates_and_priority() {
         CssImportance::Important,
         "margin-top: inherit !important;",
     );
-    for declaration in page.declarations().as_slice() {
+    for declaration in page.declarations().properties().as_slice() {
         assert_eq!(
             declaration.parsed_value().unwrap().source().as_str(),
             source
@@ -131,13 +131,29 @@ fn genuine_page_body_and_both_context_modes_retain_the_same_five_symbolic_margin
     clean(&free);
     let fragment = free.syntax().as_ref().unwrap();
     span(fragment.origin(), source, 0, source.len());
-    five_margins(fragment.body());
+    five_margins(fragment.body().declarations().properties());
     for mode in [CssParserMode::Standards, CssParserMode::Quirks] {
         let context = CssParserContext::new(mode);
         let report = context.parse_page_block(source);
         clean(&report);
-        five_margins(report.syntax().as_ref().unwrap().body());
-        for declaration in report.syntax().as_ref().unwrap().body().as_slice() {
+        five_margins(
+            report
+                .syntax()
+                .as_ref()
+                .unwrap()
+                .body()
+                .declarations()
+                .properties(),
+        );
+        for declaration in report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .body()
+            .declarations()
+            .properties()
+            .as_slice()
+        {
             assert_eq!(declaration.parser_context(), context);
             assert!(
                 declaration
@@ -160,7 +176,7 @@ fn inherit_occurrences_and_real_body_envelopes_share_original_unicode_source_coo
     clean(&body_report);
     let fragment = body_report.syntax().as_ref().unwrap();
     span(fragment.origin(), body_source, 9, 30);
-    let [declaration] = fragment.body().as_slice() else {
+    let [declaration] = fragment.body().declarations().properties().as_slice() else {
         panic!("one actual inherit")
     };
     inherit(
@@ -216,7 +232,7 @@ fn inherit_occurrences_and_real_body_envelopes_share_original_unicode_source_coo
         ),
         (1, 0)
     );
-    let [declaration] = page.declarations().as_slice() else {
+    let [declaration] = page.declarations().properties().as_slice() else {
         panic!("actual page margin")
     };
     let name = declaration.parsed_name().unwrap();
@@ -252,9 +268,9 @@ fn ordinary_and_scoped_ordinary_group_callers_keep_actual_nested_page_inherit() 
     let [CssRule::Page(page)] = media.rules() else {
         panic!("actual nested page")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::Right));
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Right));
     assert_eq!(page.position().byte_offset().value(), 13);
-    let [declaration] = page.declarations().as_slice() else {
+    let [declaration] = page.declarations().properties().as_slice() else {
         panic!("nested inherit")
     };
     inherit(
@@ -280,7 +296,7 @@ fn ordinary_and_scoped_ordinary_group_callers_keep_actual_nested_page_inherit() 
     let [CssScopedRule::Page(page)] = media.rules().rules() else {
         panic!("page in scoped ordinary group")
     };
-    let [declaration] = page.declarations().as_slice() else {
+    let [declaration] = page.declarations().properties().as_slice() else {
         panic!("scoped page inherit")
     };
     inherit(
@@ -301,7 +317,7 @@ fn ordinary_and_scoped_ordinary_group_callers_keep_actual_nested_page_inherit() 
         panic!("direct ordinary group page")
     };
     inherit(
-        &page.declarations()[0],
+        &page.declarations().properties()[0],
         CssKnownProperty::MarginRight,
         CssImportance::Normal,
         "margin-right: inherit;",
@@ -312,7 +328,7 @@ fn ordinary_and_scoped_ordinary_group_callers_keep_actual_nested_page_inherit() 
         panic!("direct scoped ordinary group page")
     };
     inherit(
-        &page.declarations()[0],
+        &page.declarations().properties()[0],
         CssKnownProperty::MarginRight,
         CssImportance::Normal,
         "margin-right: inherit;",
@@ -345,10 +361,18 @@ fn inherit_admission_does_not_lift_scope_body_or_style_ancestor_page_placement_r
 }
 
 #[test]
-fn page_local_recovery_retains_inherit_and_literal_siblings_without_widening_units_or_children() {
-    let source = "{margin-top:inherit;margin-right:1em;color:red;@top-left{content:'x'}margin-bottom:-2px;margin-left:inherit!important}";
+fn page_local_recovery_retains_inherit_and_literal_siblings_around_invalid_units_and_children() {
+    let source = "{margin-top:inherit;margin-right:1zz;noise:red;@bad-left{content:'x'}margin-bottom:-2px;margin-left:inherit!important}";
     let report = parse_page_block(source);
-    let [top, bottom, left] = report.syntax().as_ref().unwrap().body().as_slice() else {
+    let [top, bottom, left] = report
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .body()
+        .declarations()
+        .properties()
+        .as_slice()
+    else {
         panic!("inherit, literal, inherit around three invalid units")
     };
     inherit(
@@ -389,7 +413,15 @@ fn page_local_recovery_retains_inherit_and_literal_siblings_without_widening_uni
     for mode in [CssParserMode::Standards, CssParserMode::Quirks] {
         let report = CssParserContext::new(mode)
             .parse_page_block("{margin:inherit;margin-left:7;margin-top:0}");
-        let [margin, top] = report.syntax().as_ref().unwrap().body().as_slice() else {
+        let [margin, top] = report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .body()
+            .declarations()
+            .properties()
+            .as_slice()
+        else {
             panic!("inherit and literal zero survive forbidden bare nonzero length")
         };
         inherit(
@@ -421,7 +453,15 @@ fn inherit_is_a_complete_global_alternative_not_a_mixed_margin_component() {
     ] {
         let source = format!("{{margin-left:inherit;margin:{invalid};margin-bottom:2px}}");
         let report = parse_page_block(&source);
-        let [left, bottom] = report.syntax().as_ref().unwrap().body().as_slice() else {
+        let [left, bottom] = report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .body()
+            .declarations()
+            .properties()
+            .as_slice()
+        else {
             panic!("valid surrounding siblings")
         };
         inherit(
@@ -488,7 +528,7 @@ fn retained_page_shorthand_expands_symbolically_and_normalization_preserves_the_
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("actual selected page")
     };
-    let [declaration] = page.declarations().as_slice() else {
+    let [declaration] = page.declarations().properties().as_slice() else {
         panic!("one shorthand occurrence")
     };
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -520,11 +560,18 @@ fn retained_page_shorthand_expands_symbolically_and_normalization_preserves_the_
     let CssRuleContextKindRef::Page(page) = context.kind() else {
         panic!("page payload retained")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::First));
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
     inherit(
-        &page.declarations()[0],
+        &page.declarations().properties()[0],
         CssKnownProperty::Margin,
         CssImportance::Important,
         "margin: inherit !important;",
     );
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
 }

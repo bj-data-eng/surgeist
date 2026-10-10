@@ -143,11 +143,11 @@ pub(crate) fn parse_property_value_with_context(
 
 /// Checks detached components as one authored Page declaration.
 ///
-/// Admits custom properties and `margin`/its four physical longhands. Shared
+/// Admits represented Page/margin-applicable shared properties and custom values.
 /// CSS-wide, calculation, length-percentage and substitution grammar remains
-/// symbolic; CSS2's explicit Page `em`/`ex` exclusion applies to ordinary values
-/// and complete replacements, including every math operand. Custom token values
-/// are retained without margin restrictions or variable lookup.
+/// symbolic, including font-relative operands. Page physical margins exclude the
+/// crate's logical-margin extension and nonzero unitless values. Custom tokens are
+/// retained without margin restrictions or variable lookup.
 ///
 /// The occurrence retains Page semantic context independently of document mode,
 /// so strict pending reentry cannot silently use ordinary element grammar.
@@ -167,7 +167,7 @@ pub(crate) fn parse_property_value_with_context(
 /// let CssExpansion::Pending(pending) = expand_declaration(&margin).unwrap() else {
 ///     panic!("pending authored Page margin");
 /// };
-/// assert!(pending.reenter(parse_component_values("1em").unwrap()).is_err());
+/// assert!(pending.reenter(parse_component_values("1em").unwrap()).is_ok());
 /// assert!(pending.reenter(parse_component_values("calc(1Q + 2%)").unwrap()).is_ok());
 /// ```
 pub fn parse_page_property_value(
@@ -375,4 +375,15 @@ pub(crate) fn checked_grammar_value_body(
         parser_context,
     )
     .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+}
+
+/// Constructs one checked margin-context property value with genuine supplied component origins.
+/// Page-only descriptors are parsed by `parse_page_descriptor_value`; ordinary property grammar
+/// and applicability share the Page producer boundary without fabricated rule/name coordinates.
+pub fn parse_margin_property_value(
+    property: CssPropertyNameRef<'_>,
+    value: CssComponentValues,
+    importance: CssImportance,
+) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    parse_page_property_value(property, value, importance)
 }

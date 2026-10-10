@@ -268,7 +268,7 @@ fn page_body_retains_five_physical_margin_properties_priority_and_duplicates() {
         "{margin:-1px 2% auto 3cm;margin-top:-4mm!important;margin-right:5in;margin-bottom:6pc;margin-left:7pt;margin-top:0}",
     );
     clean(&report);
-    let declarations = body(&report).body();
+    let declarations = body(&report).body().declarations().properties();
     assert_eq!(
         page_keys(declarations),
         [
@@ -295,20 +295,20 @@ fn page_body_retains_five_physical_margin_properties_priority_and_duplicates() {
 }
 
 #[test]
-fn page_restrictions_reject_other_properties_logical_sides_and_em_ex_locally() {
+fn page_restrictions_reject_inapplicable_properties_logical_sides_and_invalid_units_locally() {
     for invalid in [
-        "color:red",
-        "width:1px",
+        "opacity:.5",
+        "transform:none",
         "margin-inline-start:1px",
-        "margin-top:1em",
-        "margin-top:1ex",
+        "margin-top:1foo",
+        "margin-top:1bar",
         "margin:logical 1px",
         "margin-top:7",
     ] {
         let source = format!("{{margin-top:1px;{invalid};margin-bottom:auto}}");
         let report = parse_page_block(&source);
         assert_eq!(
-            page_keys(body(&report).body()),
+            page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
         );
         recovered(&report, CssRecoveryAction::DropDeclaration);
@@ -316,16 +316,16 @@ fn page_restrictions_reject_other_properties_logical_sides_and_em_ex_locally() {
 }
 
 #[test]
-fn page_css2_excludes_margin_boxes_and_nested_rules_but_retains_later_margin() {
+fn page_excludes_invalid_margin_preludes_and_nested_rules_but_retains_later_margin() {
     for child in [
-        "@top-left{content:\"title\"}",
+        "@top-left invalid{content:\"title\"}",
         "@media all{margin-top:9px}",
         ".nested{color:blue}",
     ] {
         let source = format!("{{margin-top:1px;{child}margin-bottom:2px}}");
         let report = parse_page_block(&source);
         assert_eq!(
-            page_keys(body(&report).body()),
+            page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
         );
         recovered(&report, CssRecoveryAction::DropAtRule);
@@ -342,15 +342,15 @@ fn real_empty_bodies_and_recovered_empty_bodies_remain_distinct() {
     assert!(body(&child).body().is_empty());
     let page = parse_page_block("{}");
     clean(&page);
-    assert!(body(&page).body().is_empty());
+    assert!(body(&page).body().declarations().is_empty());
     let outer = parse_keyframes_block("{.bad{opacity:.5}}");
     assert!(body(&outer).body().is_empty());
     recovered(&outer, CssRecoveryAction::DropKeyframeBlock);
     let child = parse_keyframe_declaration_block("{bogus:1}");
     assert!(body(&child).body().is_empty());
     recovered(&child, CssRecoveryAction::DropDeclaration);
-    let page = parse_page_block("{color:red}");
-    assert!(body(&page).body().is_empty());
+    let page = parse_page_block("{opacity:.5}");
+    assert!(body(&page).body().declarations().is_empty());
     recovered(&page, CssRecoveryAction::DropDeclaration);
 }
 
@@ -407,7 +407,7 @@ fn trailing_value_token_drops_the_whole_declaration_and_keeps_its_neighbor() {
     recovered(&outer, CssRecoveryAction::DropDeclaration);
     let page = parse_page_block("{margin-top:1px extra;margin-bottom:2px}");
     assert_eq!(
-        page_keys(body(&page).body()),
+        page_keys(body(&page).body().declarations().properties()),
         [CssKnownProperty::MarginBottom]
     );
     recovered(&page, CssRecoveryAction::DropDeclaration);
@@ -492,7 +492,7 @@ fn genuine_source_envelopes_and_child_occurrences_retain_utf8_utf16_ranges() {
     origin(fragment.origin(), source, 9, 25);
     point(fragment.origin().span().start(), 9, 1, 0);
     point(fragment.origin().span().end(), 25, 1, 16);
-    let declaration = &fragment.body()[0];
+    let declaration = &fragment.body().declarations().properties()[0];
     point(declaration.position().unwrap(), 10, 1, 1);
     origin(declaration.parsed_name().unwrap(), source, 10, 20);
     origin(declaration.parsed_value().unwrap(), source, 21, 24);
@@ -557,7 +557,10 @@ fn implicit_braces_retain_real_empty_or_nonempty_bodies_at_original_eof() {
     let source = "{margin-top:1px";
     let page = parse_page_block(source);
     implicit(&page, source);
-    assert_eq!(page_keys(body(&page).body()), [CssKnownProperty::MarginTop]);
+    assert_eq!(
+        page_keys(body(&page).body().declarations().properties()),
+        [CssKnownProperty::MarginTop]
+    );
 }
 
 #[test]
@@ -590,9 +593,15 @@ fn retained_keyframe_and_page_math_functions_keep_original_implicit_eof() {
     let source = "{margin-top:calc(1px";
     let page = parse_page_block(source);
     implicit(&page, source);
-    assert_eq!(page_keys(body(&page).body()), [CssKnownProperty::MarginTop]);
-    let CssComponentValueRef::Function(function) =
-        body(&page).body()[0].value_components().items()[0].view()
+    assert_eq!(
+        page_keys(body(&page).body().declarations().properties()),
+        [CssKnownProperty::MarginTop]
+    );
+    let CssComponentValueRef::Function(function) = body(&page).body().declarations().properties()
+        [0]
+    .value_components()
+    .items()[0]
+        .view()
     else {
         panic!("Page calc function")
     };
@@ -631,7 +640,7 @@ fn comment_eof_recovery_is_independent_of_retained_body_grammar() {
     let source = "{margin-top:1px;/* unfinished";
     let page = parse_page_block(source);
     implicit(&page, source);
-    assert_eq!(body(&page).body().len(), 1);
+    assert_eq!(body(&page).body().declarations().properties().len(), 1);
     recovered(&page, CssRecoveryAction::IgnoreUnterminatedComment);
 }
 
@@ -696,30 +705,36 @@ fn mode_methods_admit_quirky_keyframe_lengths_and_preserve_the_original_number()
 }
 
 #[test]
-fn page_mode_method_preserves_context_without_bypassing_the_css2_value_filter() {
+fn page_mode_method_preserves_context_without_bypassing_the_page_unitless_constraint() {
     let source = "{margin-top:7;margin-bottom:0}";
     let standards = STANDARDS.parse_page_block(source);
     assert_eq!(standards, parse_page_block(source));
     assert_eq!(
-        page_keys(body(&standards).body()),
+        page_keys(body(&standards).body().declarations().properties()),
         [CssKnownProperty::MarginBottom]
     );
     recovered(&standards, CssRecoveryAction::DropDeclaration);
     let quirks = QUIRKS.parse_page_block(source);
     assert_eq!(
-        page_keys(body(&quirks).body()),
+        page_keys(body(&quirks).body().declarations().properties()),
         [CssKnownProperty::MarginBottom]
     );
     recovered(&quirks, CssRecoveryAction::DropDeclaration);
-    assert_eq!(body(&quirks).body()[0].parser_context(), QUIRKS);
+    assert_eq!(
+        body(&quirks).body().declarations().properties()[0].parser_context(),
+        QUIRKS
+    );
     for context in [STANDARDS, QUIRKS] {
         let report = context.parse_page_block("{margin-top:7px}");
         clean(&report);
         assert_eq!(
-            page_keys(body(&report).body()),
+            page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop]
         );
-        assert_eq!(body(&report).body()[0].parser_context(), context);
+        assert_eq!(
+            body(&report).body().declarations().properties()[0].parser_context(),
+            context
+        );
     }
 }
 
@@ -826,7 +841,7 @@ fn page_descriptor_unit_depth_preserves_native_limit_identity_and_later_margin()
         let source = format!("{prefix}{value};margin-bottom:2px}}");
         let report = parse_page_block(&source);
         assert_eq!(
-            page_keys(body(&report).body()),
+            page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
         );
         if functions == 255 {
@@ -921,7 +936,7 @@ fn genuine_whole_rules_keep_native_top_level_siblings_after_resource_recovery() 
         panic!("real Page rule and following style")
     };
     assert_eq!(
-        page_keys(rule.declarations()),
+        page_keys(rule.declarations().properties()),
         [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
     );
     assert!(

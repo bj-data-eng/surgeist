@@ -1074,28 +1074,27 @@
 //! valid descriptor occurrence in authored order, the effective last valid occurrence of each
 //! descriptor, and the rule position. The typed descriptor values cover Counter Styles 3
 //! `system`, `negative`, `prefix`, `suffix`, `range`, `pad`, `fallback`, `symbols`,
-//! `additive-symbols`, and `speak-as`. Definitions with an invalid effective descriptor
-//! combination are dropped as one at-rule; an invalid or unknown individual descriptor is
-//! dropped while valid descriptor and rule siblings remain eligible.
+//! `additive-symbols`, and `speak-as`. Invalid individual descriptors recover locally.
+//! A grammar-valid collection can still fail to define a counter style; the separate
+//! [`CssCounterStyleDefinitionStatus`] records that distinction. Prospective descriptor
+//! entries retain real named occurrences or honestly source-free programmatic values.
 //!
-//! [`CssRule::Page`] retains the CSS2 default page form or one [`CssPageSelector`] plus valid
-//! page-context declarations in authored order. The Page body admits `margin`, its
-//! four physical longhands and Page-local custom declarations. Shared CSS-wide,
-//! signed length-percentage and calculation grammar remains symbolic; CSS2's
-//! explicit `em`/`ex` exclusion applies to every ordinary margin operand.
-//! [`parse_page_property_value`] checks detached Page components through the same
-//! boundary. Pending margins retain Page context for strict complete replacement
-//! reentry. Variable lookup, fallback selection and Page cascade remain downstream.
-//! Logical 1 adds symbolic `:recto` and `:verso` alongside `:left`, `:right`, and `:first`.
-//! [`CssPageRule::specificity`] and [`CssPageSelector::specificity`] expose the comparable
-//! [`CssPageSpecificity`] ranks for this unnamed, single-pseudo grammar:
-//! `Unqualified < Side < First`, with both logical classifications in `Side`.
-//! Invalid or unknown declarations are dropped individually. Both rule families are top-level,
-//! block-form authored syntax; pagination, page matching, cascade, counter registration,
-//! inheritance resolution, generated-marker rendering, and margin-box rules are excluded.
+//! [`CssRule::Page`] retains an empty prelude or a complete named and compound
+//! [`CssPageSelectorList`], including comma lists and logical `:recto`/`:verso`.
+//! Selectors expose the Page-specific three-component specificity. Page declarations
+//! preserve a distinct typed descriptor domain (`size`, `page-orientation`, `marks`,
+//! `bleed`) alongside applicable shared properties and custom values. Sixteen canonical
+//! margin-box rule names retain ordered children. Shared property grammars and symbolic
+//! values are reused, including font-relative lengths; no layout or variable lookup runs.
+//! [`parse_page_property_value`], [`parse_page_descriptor_value`], and [`parse_margin_block`]
+//! check detached inputs with genuine origins. Checked selected blocks and borrowed
+//! [`CssPageRuleView`] support immutable edits without re-expanding authored shorthands.
+//! Page and margin CSSOM output follows the adopted Blink whole-rule wrapper under one
+//! cumulative atomic budget. Page matching, pagination, cascade, counter registration,
+//! inheritance resolution, and generated-marker execution remain downstream.
 //!
 //! ```
-//! use surgeist_css::{CssCounterStyleSystem, CssPageSelector, CssRule, parse_sheet};
+//! use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, parse_sheet};
 //!
 //! let report = parse_sheet(concat!(
 //!     "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; suffix: \".\"; } ",
@@ -1111,8 +1110,8 @@
 //!     Some(surgeist_css::CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
 //! ));
 //! assert_eq!(counter.descriptors().occurrences().count(), 3);
-//! assert_eq!(page.selector(), Some(CssPageSelector::Left));
-//! assert_eq!(page.declarations().len(), 2);
+//! assert_eq!(page.selectors().selectors()[0].pseudos(), &[CssPagePseudo::Left]);
+//! assert_eq!(page.declarations().properties().len(), 2);
 //! ```
 //!
 //! # Residual official properties and legacy orientation
@@ -1672,7 +1671,12 @@ mod content_serialization;
 mod content_values;
 mod counter_changes;
 mod counter_changes_serialization;
+mod counter_definition;
 mod counter_style_serialization;
+pub use counter_definition::{
+    CssCounterStyleAlgorithm, CssCounterStyleDefinitionIssue, CssCounterStyleDefinitionStatus,
+    CssCounterStyleDescriptorCollection, CssCounterStyleDescriptorEntry,
+};
 mod descriptor_values;
 pub use block_fragments::{CssBlockFragment, CssRuleList, CssStyleAncestor};
 mod stylesheet_input;
@@ -1742,6 +1746,12 @@ pub use keyframe_serialization::{CssKeyframeRuleView, CssKeyframeRuleViewError};
 mod media;
 mod named_supports_serialization;
 mod page_keyframe_serialization;
+mod page_projection;
+mod page_serialization;
+pub use page_projection::{
+    CssMarginRuleView, CssPageProjectionError, CssPageRuleView, CssSpecifiedPageDeclarationBlock,
+    CssSpecifiedPageDeclarationEntry,
+};
 mod query_rule_serialization;
 mod rule_construction;
 mod selector_serialization;
@@ -2039,16 +2049,17 @@ pub use parser::{
     parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_value_block,
     parse_font_feature_values_block, parse_font_palette_descriptor_value,
     parse_font_palette_values_block, parse_group_block, parse_keyframe_declaration_block,
-    parse_keyframe_rule, parse_keyframe_selector_list, parse_keyframes_block, parse_media_query,
-    parse_media_query_list, parse_page_block, parse_property_value_text,
-    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
-    parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list, parse_sheet,
-    parse_style_attribute, parse_style_block, parse_supports_test_block,
+    parse_keyframe_rule, parse_keyframe_selector_list, parse_keyframes_block, parse_margin_block,
+    parse_media_query, parse_media_query_list, parse_page_block, parse_page_descriptor_value,
+    parse_page_selector_list, parse_property_value_text, parse_property_value_text_for_grammar,
+    parse_relative_selector_list, parse_rule, parse_scope_block, parse_scoped_group_block,
+    parse_selector, parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
+    parse_supports_test_block,
 };
 pub use properties::*;
 pub use property_value::{
-    CssPropertyValueErrorKind, CssPropertyValueParseError, parse_page_property_value,
-    parse_property_value, parse_property_value_for_grammar,
+    CssPropertyValueErrorKind, CssPropertyValueParseError, parse_margin_property_value,
+    parse_page_property_value, parse_property_value, parse_property_value_for_grammar,
 };
 pub use rectangular_color_conversion::{
     CssRectangularColorConversionError, CssRectangularColorCoordinates, CssRectangularColorSpace,

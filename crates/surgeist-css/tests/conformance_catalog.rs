@@ -1399,8 +1399,8 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "later.rule.page",
         kind: CssFeatureKind::Rule,
         spelling: "@page",
-        source: ExpectedSource::Id("O-CSS2"),
-        production: "page.html#page-box",
+        source: ExpectedSource::Id("L-PAGE3-20181018"),
+        production: "#syntax-page-selector",
         status: CssSupportStatus::Complete,
         supported_subset: None,
         unsupported_remainder: None,
@@ -1411,9 +1411,9 @@ const EXPECTED: &[ExpectedFeature] = &[
     ExpectedFeature {
         id: "official.selector.page-pseudo",
         kind: CssFeatureKind::Selector,
-        spelling: ":left|:right|:first",
-        source: ExpectedSource::Id("O-CSS2"),
-        production: "page.html#page-selectors",
+        spelling: ":left|:right|:first|:blank",
+        source: ExpectedSource::Id("L-PAGE3-20181018"),
+        production: "#page-selectors",
         status: CssSupportStatus::Complete,
         supported_subset: None,
         unsupported_remainder: None,
@@ -3778,13 +3778,13 @@ fn counter_styles_and_page_metadata_are_truthful() {
             "later.rule.page",
             CssFeatureKind::Rule,
             "@page",
-            "page.html#page-box",
+            "#syntax-page-selector",
         ),
         (
             "official.selector.page-pseudo",
             CssFeatureKind::Selector,
-            ":left|:right|:first",
-            "page.html#page-selectors",
+            ":left|:right|:first|:blank",
+            "#page-selectors",
         ),
     ];
 
@@ -3815,7 +3815,11 @@ fn counter_styles_and_page_metadata_are_truthful() {
         assert_eq!(metadata.id().as_str(), id, "{id} identity");
         assert_eq!(metadata.kind(), kind, "{id} kind");
         assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-        assert_eq!(metadata.source().id().as_str(), "O-CSS2", "{id} source");
+        assert_eq!(
+            metadata.source().id().as_str(),
+            "L-PAGE3-20181018",
+            "{id} source"
+        );
         assert_eq!(metadata.production(), production, "{id} production");
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
         assert_eq!(metadata.supported_subset(), None, "{id} subset");

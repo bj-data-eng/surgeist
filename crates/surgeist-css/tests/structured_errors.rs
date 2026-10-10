@@ -76,37 +76,21 @@ fn counter_style_descriptor_value_and_combination_errors_preserve_typed_context(
     let combination_source =
         "@counter-style inherited { system: extends decimal; symbols: x; } .after {}";
     let combination_report = parse_sheet(combination_source);
-    assert!(matches!(
-        combination_report.syntax().rules(),
-        [CssRule::Style(_)]
-    ));
-    let [combination_diagnostic] = combination_report.diagnostics() else {
-        panic!("expected one invalid effective-combination diagnostic")
-    };
-    assert_eq!(
-        combination_diagnostic.error().code(),
-        CssErrorCode::InvalidDescriptorCombination
-    );
-    assert_eq!(
-        combination_diagnostic.action(),
-        CssRecoveryAction::DropAtRule
-    );
-    assert_eq!(
-        combination_diagnostic
-            .error()
-            .position()
-            .byte_offset()
-            .value(),
-        combination_source.find("system").unwrap()
-    );
-    let ErrorKind::InvalidDescriptorCombination(combination) =
-        combination_diagnostic.error().kind()
+    assert!(combination_report.is_clean());
+    let [CssRule::CounterStyle(counter), CssRule::Style(_)] = combination_report.syntax().rules()
     else {
-        panic!("expected typed descriptor-combination error")
+        panic!("grammar-valid undefined definition")
     };
-    assert_eq!(combination.at_rule().as_str(), "counter-style");
-    assert_eq!(combination.responsible().as_str(), "system");
-    assert_eq!(combination.conflicting()[0].as_str(), "symbols");
+    assert_eq!(
+        counter
+            .descriptors()
+            .prospective()
+            .unwrap()
+            .definition_status(),
+        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        )
+    );
 }
 
 #[test]

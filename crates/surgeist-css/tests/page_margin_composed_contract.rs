@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Selected CSS2 Page restrictions compose with Cascade5 globals and Values3/4
+//! Selected Page3 property applicability composes with Cascade5 globals and Values3/4
 //! authored lengths. Page-local custom declarations use the approved bounded
 //! WebKit witness; variable lookup, fallback selection and cascade stay downstream.
 use surgeist_css::*;
@@ -25,8 +25,8 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
             let [CssRule::Page(page)] = report.syntax().rules() else {
                 panic!("one actual Page rule")
             };
-            assert_eq!(page.selector(), Some(CssPageSelector::Left));
-            page.declarations().clone()
+            assert_eq!(page_pseudo(page), Some(CssPagePseudo::Left));
+            page.declarations().properties().clone()
         }
         1 => {
             let report = parse_rule(
@@ -37,8 +37,8 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
             let Some(CssRule::Page(page)) = report.syntax() else {
                 panic!("one isolated Page rule")
             };
-            assert_eq!(page.selector(), Some(CssPageSelector::Right));
-            page.declarations().clone()
+            assert_eq!(page_pseudo(page), Some(CssPagePseudo::Right));
+            page.declarations().properties().clone()
         }
         2 | 3 => {
             let context = CssParserContext::new(if front == 2 {
@@ -49,10 +49,10 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
             let report = context.parse_page_block(&format!("{{{body}}}"));
             clean(&report);
             let fragment = report.syntax().as_ref().expect("genuine Page body");
-            for declaration in fragment.body().as_slice() {
+            for declaration in fragment.body().declarations().properties().as_slice() {
                 assert_eq!(declaration.parser_context(), context);
             }
-            fragment.body().clone()
+            fragment.body().declarations().properties().clone()
         }
         _ => unreachable!(),
     }
@@ -182,11 +182,11 @@ fn pending(name: &str) {
                     "1deg",
                     "1px bogus",
                     "inherit 1px",
-                    "1em",
-                    "1ex",
-                    "calc(1px + 2em)",
-                    "calc(1px + 2ex)",
-                    "calc(0 * 1em)",
+                    "1zz",
+                    "1yy",
+                    "calc(1px + 2zz)",
+                    "calc(1px + 2yy)",
+                    "calc(0 * 1zz)",
                 ] {
                     let replacement = parse_component_values(invalid).unwrap();
                     let before = replacement.clone();
@@ -341,7 +341,7 @@ fn container_length(unit: &str) {
             assert!(
                 handle
                     .reenter(parse_component_values("1em").unwrap())
-                    .is_err()
+                    .is_ok()
             );
         }
     }
@@ -482,9 +482,9 @@ fn strict_shorthand_reentry_checks_every_assigned_side_and_whole_arity() {
     };
     for invalid in [
         "1px 2px 3px 4px 5px",
-        "1px 2em",
-        "1px 2px 3ex",
-        "1px 2px 3px calc(1em + 2px)",
+        "1px 2zz",
+        "1px 2px 3yy",
+        "1px 2px 3px calc(1zz + 2px)",
         "logical 1px",
         "1px initial",
     ] {
@@ -556,27 +556,40 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
         panic!("separate authored scopes")
     };
     assert_eq!(root.declarations().len(), 1);
-    assert_eq!(left.declarations().len(), 2);
-    assert_eq!(right.declarations().len(), 1);
+    assert_eq!(left.declarations().properties().len(), 2);
+    assert_eq!(right.declarations().properties().len(), 1);
     assert!(matches!(
-        expand_declaration(&right.declarations()[0]).unwrap(),
+        expand_declaration(&right.declarations().properties()[0]).unwrap(),
         CssExpansion::Pending(_)
     ));
 }
 
 #[test]
-fn defined_em_replacement_fails_without_parser_time_fallback_retry() {
+fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_selection() {
     let list = page_list("--m:1em;margin:var(--m,1px)", 2);
     let CssExpansion::Pending(handle) = expand_declaration(&list[1]).unwrap() else {
         panic!("pending margin")
     };
-    // The caller supplies the defined variable's replacement. CSS never selects
-    // or retries fallback after Page grammar rejection.
+    // The caller supplies the defined variable's replacement. The Page3 domain
+    // retains font-relative syntax without selecting a variable or fallback.
     let replacement = list[0].value_components().clone();
-    assert!(matches!(
-        handle.reenter(replacement).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    let CssContributions::Longhands(values) = handle.reenter(replacement).unwrap() else {
+        panic!("four physical margins")
+    };
+    assert_eq!(values.items().len(), 4);
+    for value in values.items() {
+        let CssContributionValueRef::Ordinary(value) = value.value() else {
+            panic!("ordinary retained length")
+        };
+        let margin = match value {
+            CssLonghandValueRef::MarginTop(v)
+            | CssLonghandValueRef::MarginRight(v)
+            | CssLonghandValueRef::MarginBottom(v)
+            | CssLonghandValueRef::MarginLeft(v) => v,
+            _ => panic!("physical margin terminal"),
+        };
+        assert_eq!(margin.serialize_specified().unwrap(), "1em");
+    }
     assert_eq!(
         handle
             .source()
@@ -603,12 +616,20 @@ fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("actual Page")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::First));
-    assert_eq!(page.declarations().len(), 3);
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
+    assert_eq!(page.declarations().properties().len(), 3);
     for (declaration, name, value) in [
-        (&page.declarations()[0], "--M", "2Q"),
-        (&page.declarations()[1], "margin-left", "calc(1px + 2%)"),
-        (&page.declarations()[2], "margin-left", "var(--M)"),
+        (&page.declarations().properties()[0], "--M", "2Q"),
+        (
+            &page.declarations().properties()[1],
+            "margin-left",
+            "calc(1px + 2%)",
+        ),
+        (
+            &page.declarations().properties()[2],
+            "margin-left",
+            "var(--M)",
+        ),
     ] {
         let origin = declaration.parsed_value().unwrap();
         assert_eq!(origin.source().as_str(), input);
@@ -630,19 +651,28 @@ fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
         );
     }
     assert_eq!(
-        page.declarations()[1].importance(),
+        page.declarations().properties()[1].importance(),
         CssImportance::Important
     );
-    assert_eq!(page.declarations()[2].importance(), CssImportance::Normal);
+    assert_eq!(
+        page.declarations().properties()[2].importance(),
+        CssImportance::Normal
+    );
 }
 
 #[test]
-fn recovery_drops_restricted_units_other_properties_and_children_in_source_order() {
-    let input = "{margin-top:initial;margin-right:1em;--m:2Q;color:red;@top-left{content:'x'}margin-left:var(--m);margin-bottom:calc(1px + 2ex);margin:1Q 2ch 3rem auto}";
+fn recovery_drops_invalid_units_unknown_properties_and_children_in_source_order() {
+    let input = "{margin-top:initial;margin-right:1zz;--m:2Q;noise:red;@bad-left{content:'x'}margin-left:var(--m);margin-bottom:calc(1px + 2yy);margin:1Q 2ch 3rem auto}";
     let report = parse_page_block(input);
     assert!(!report.is_clean());
     assert!(report.clone().into_validation_result().is_err());
-    let list = report.syntax().as_ref().unwrap().body();
+    let list = report
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .body()
+        .declarations()
+        .properties();
     assert_eq!(list.len(), 4, "{:?}", report.diagnostics());
     assert_eq!(
         list[0].known().unwrap().global(),
@@ -681,12 +711,23 @@ fn malformed_margin_types_and_global_mixtures_recover_only_the_bad_occurrence() 
         "1px initial",
         "1px 2px 3px 4px 5px",
         "logical 1px",
-        "1em",
-        "1ex",
-        "calc(1em + 2px)",
+        "1zz",
+        "1yy",
+        "calc(1zz + 2px)",
     ] {
         let report = parse_page_block(&format!("{{margin-top:0;margin:{value};margin-left:auto}}"));
-        assert_eq!(report.syntax().as_ref().unwrap().body().len(), 2, "{value}");
+        assert_eq!(
+            report
+                .syntax()
+                .as_ref()
+                .unwrap()
+                .body()
+                .declarations()
+                .properties()
+                .len(),
+            2,
+            "{value}"
+        );
         assert_eq!(report.diagnostics().len(), 1, "{value}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -713,16 +754,18 @@ fn page_payload_normalization_retains_pending_custom_and_composed_occurrences() 
     let CssRuleContextKindRef::Page(page) = context.kind() else {
         panic!("Page payload")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::First));
-    assert_eq!(page.declarations().len(), 4);
-    assert!(page.declarations()[0].custom().is_some());
-    let CssExpansion::Pending(handle) = expand_declaration(&page.declarations()[1]).unwrap() else {
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
+    assert_eq!(page.declarations().properties().len(), 4);
+    assert!(page.declarations().properties()[0].custom().is_some());
+    let CssExpansion::Pending(handle) =
+        expand_declaration(&page.declarations().properties()[1]).unwrap()
+    else {
         panic!("pending survived normalization")
     };
     assert!(
         handle
             .reenter(parse_component_values("1em").unwrap())
-            .is_err()
+            .is_ok()
     );
     assert!(
         handle
@@ -795,7 +838,7 @@ fn specified_output_and_checked_list_assembly_share_atomic_cumulative_limits() {
     assert!(
         handle
             .reenter(parse_component_values("1ex").unwrap())
-            .is_err()
+            .is_ok()
     );
     assert!(
         handle
@@ -816,14 +859,14 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
     let [CssRule::Page(page)] = media.rules() else {
         panic!("Page in ordinary media")
     };
-    assert_eq!(page.declarations().len(), 2);
+    assert_eq!(page.declarations().properties().len(), 2);
     let [CssScopedRule::Media(media)] = scope.rules().rules() else {
         panic!("scoped ordinary media")
     };
     let [CssScopedRule::Page(page)] = media.rules().rules() else {
         panic!("scoped ordinary Page")
     };
-    assert_eq!(page.declarations().len(), 1);
+    assert_eq!(page.declarations().properties().len(), 1);
     let ns = CssNamespaceContext::default();
     let input = "{@page{--m:2Q;margin:var(--m)}.after{color:red}}";
     for report in [
@@ -839,4 +882,11 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
             "color: red;"
         );
     }
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
 }

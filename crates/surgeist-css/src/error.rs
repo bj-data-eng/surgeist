@@ -1689,33 +1689,6 @@ pub(crate) fn descriptor_name_error<'i>(
     )
 }
 
-pub(crate) fn invalid_descriptor_combination<'i, 't>(
-    input: &Parser<'i, 't>,
-    position: Option<CssSourcePosition>,
-    at_rule: &str,
-    responsible: &str,
-    conflicting: &[&str],
-) -> ParseError<'i, Error> {
-    let kind = ErrorKind::InvalidDescriptorCombination(CssDescriptorCombinationError {
-        at_rule: CssAtRuleName::new(at_rule),
-        responsible: CssDescriptorName::new(responsible),
-        conflicting: conflicting
-            .iter()
-            .map(|name| CssDescriptorName::new(*name))
-            .collect(),
-    });
-    let error =
-        if let Some(position) = position.filter(|position| position.byte_offset().value() != 0) {
-            Error::at_exact_nonzero_byte_offset(position, kind)
-        } else {
-            Error::at(input.current_source_location(), kind)
-        };
-    ParseError {
-        kind: ParseErrorKind::Custom(error),
-        location: input.current_source_location(),
-    }
-}
-
 pub(crate) fn invalid_color<'i>(
     location: cssparser::SourceLocation,
     component: Option<&str>,

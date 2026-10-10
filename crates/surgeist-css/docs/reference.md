@@ -1615,9 +1615,10 @@ while a bang inside a nested function is retained as nested content.
 `CssFontFeatureValue::view` expose the ordinary or pending phase. Direct raw
 fronts and actual body declarations use the same providers. Counter effective
 getters select a later pending occurrence as the owning slot. An ordinary
-`system: extends` still conflicts with any authored symbols/additive-symbols
-occurrence, including a pending one; a pending system makes no ordinary system
-claim. Font definitions join a decoded name to a checked value of their actual
+`system: extends` with symbols/additive-symbols remains a grammar-valid authored
+rule that does not define a counter style, including a pending symbol value.
+`CssCounterStyleDefinitionStatus` exposes this separate definition phase; a pending
+system makes no ordinary algorithm claim. Font definitions join a decoded name to a checked value of their actual
 subsidiary kind, and blocks reject mismatched kinds.
 
 The three value carriers accept `try_from_components[_with_limits]` and
@@ -5363,14 +5364,17 @@ reuses these retained values.
 
 An invalid or unknown counter-style descriptor is dropped individually with a
 typed `DropDescriptor` diagnostic, preserving valid neighboring descriptors.
-An invalid effective combination, such as `system: extends` with an authored
-`symbols` definition, drops the complete at-rule. Missing symbols, missing
-additive tuples, or a numeric/alphabetic list with only one symbol instead leave
-a syntactically valid retained at-rule. Under
-[Counter Styles 3 system requirements](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#counter-style-system)
-and [symbol requirements](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#counter-style-symbols),
-such a rule defines no counter style; downstream definition selection applies
-that condition. Parsing and clean-report validation preserve the valid syntax.
+Grammar-valid missing symbols, missing additive tuples, insufficient numeric or
+alphabetic symbols, and `extends` conflicts remain inspectable authored at-rules.
+The [selected current Counter Styles witness](../../../references/css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md#extends-system)
+requires the extends conflict to define no counter style, rather than invalidate
+the rule. `CssCounterStyleDescriptorCollection` reconstructs prospective ordered
+checked values from genuine named occurrences and edited raw values.
+`definition_status` distinguishes `Defined`, `Undefined`, `SubstitutionDependent`
+and `RequiresResolution`; symbolic additive weight ordering stays unresolved.
+`CssCounterStyleSystem::algorithm` identifies the system independently of fixed
+start values or extends target names. No counter representation or registration
+is performed, and authored name grammar remains unchanged.
 Evidence is in
 [`counter_style_rule_validity.rs`](../tests/counter_style_rule_validity.rs).
 Counter-style rules are
@@ -5393,53 +5397,69 @@ placement contracts follow the selected
 and [Nesting 1](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#conditionals)
 editions.
 
-`CssRule::Page` retains the default page form or one of the finite
-`CssPageSelector::{Left, Right, First, Recto, Verso}` choices, valid declarations in authored
-order, and the parser-produced position. Page bodies accept `margin`, its four
-physical longhands, and Page-local custom-property declarations. Physical margins
-compose all five CSS-wide values with the shared signed length-percentage grammar:
-`auto`, unitless zero, absolute units including `Q`, calculations, and selected
-font-, viewport- and container-relative lengths remain symbolic. The explicit
-[CSS2 Page `em`/`ex` exclusion](https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html#page-margins)
-still applies, including every operand inside math and zero-multiplied operands.
-Logical-side shorthand syntax and bare nonzero lengths remain invalid, including
-in Quirks mode. Known non-margin, unknown, and
-invalid margin declarations receive their existing typed declaration
-diagnostics and are dropped individually.
+`CssRule::Page` retains an empty prelude or a complete `CssPageSelectorList`.
+The selected [Paged Media 3 grammar](../../../references/css-page-3--WD-css-page-3-20181018--0c654ec792d0.md#page-selectors)
+admits named pages, repeated compound pseudos and comma selector lists. A compound
+has no whitespace between its name and pseudos. `CssPagePseudo` includes `left`,
+`right`, `first`, `blank`, and the selected Logical 1 `recto`/`verso` additions.
+`parse_page_selector_list` consumes the whole raw input, preserving original
+UTF-8/UTF-16 coordinates; it never fabricates an enclosing `@page` rule.
+`CssPageSelector::specificity()` returns the lexicographic Page vector
+(named selectors, first/blank pseudos, side pseudos). Matching and contradictory
+pseudo combinations belong downstream.
 
-`parse_page_property_value` and `CssParserContext::parse_page_property_value`
-check detached components through the same Page boundary and preserve each
-component's origin without fabricating an enclosing rule or name span. Page
-semantic context follows immutable declaration occurrences through clones,
-priority changes and list assembly, independently of Standards/Quirks mode.
-Pending margins retain their whole authored `var()` value. Expansion's `reenter`
-checks a caller-supplied complete replacement with the same Page grammar;
-residual substitutions fail before grammar checking. Failure publishes no
-partial contribution set and leaves the handle reusable. A supplied defined
-`--m: 1em` fails in `var(--m, 1px)`; CSS does not select or retry its fallback.
-Page-local custom values retain case-sensitive names, token streams, order,
-importance and their Page selector's scope. This syntax owner performs no Page
-cascade, variable lookup, fallback selection, cycles, invalid-at-computed-value
-handling or inheritance of the document root's custom environment.
+`CssPageDeclarationBlock` separates Page descriptors from applicable shared
+property occurrences. The descriptor domain contains `size`, `page-orientation`,
+`marks` and `bleed`; ordinary Surgeist's `Size` property is a different domain.
+`parse_page_descriptor_value` consumes a single complete value, including CSS-wide
+and qualifying substitution-dependent values. `size` retains nonnegative one/two
+lengths or a named sheet size and/or orientation; output orientation follows the bounded
+[Page3 §7.1.2 clause witness](../../../references/css-page-3-page-orientation--editor-capture-20261010--48ec99cd3a58.md#page-orientation-prop):
+`upright | rotate-left | rotate-right`; `marks` is `none | [crop || cross]`;
+`bleed` retains `auto` or a signed length. Invalid units, mixtures and incomplete
+values recover at their actual descriptor boundary.
 
-Page-local variable admission follows the approved bounded
-[WebKit declaration-dispatch witness](https://github.com/WebKit/WebKit/blob/68900c1e2adc8b79d928f39468a55183dcdf4878/Source/WebCore/css/parser/CSSParser.cpp#L1854-L1867)
-and [initial Page construction](https://github.com/WebKit/WebKit/blob/68900c1e2adc8b79d928f39468a55183dcdf4878/Source/WebCore/style/StyleResolver.cpp#L678-L699).
-This is a product disposition backed by static source inspection, not a browser
-printing claim or a settled specification inheritance rule.
-[Cascade's Page3 2018 referral is informative](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#informative)
-and does not select a replacement Page font model. Selected
-[Values3](https://www.w3.org/TR/2024/CRD-css-values-3-20240322/#font-relative-lengths)
-and [Values4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#font-relative-lengths)
-assign initial font/line-height metrics to non-element contexts; this crate
-retains the units without substituting actual root metrics. Their separate
-Page3 2023 dependency is bounded to paged viewport/page-area definitions.
-[CSSWG #5437](https://github.com/w3c/csswg-drafts/issues/5437) still qualifies
-paged viewport interactions. The six
-[Conditional5 container lengths](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-lengths)
-also remain authored; query-container selection and small-viewport fallback
-are downstream computed behavior. The fallback basis for non-element Page
-context remains qualified separately from this authored admission.
+Page and margin-box property admission follows the represented members of
+[Paged Media 3 Appendix A](../../../references/css-page-3--WD-css-page-3-20181018--0c654ec792d0.md#page-properties).
+Page context also admits margin-box properties under §6's inheritance rule.
+Each admitted property reuses the crate's single shared schema and intrinsic
+value grammar. Font-relative lengths, calculations and custom values remain
+symbolic. The physical `margin` extension with `logical` and bare nonzero margin
+lengths remain invalid, including Quirks mode. The earlier CSS2-only Page margin
+profile and its `em`/`ex` exclusion are historical admission evidence; they do not
+restrict this selected Page3 consumer domain.
+
+`parse_page_property_value`, `parse_margin_property_value` and context variants
+check detached components with honest component origins. Pending property reentry
+uses the same selected domain; the caller supplies a complete replacement and
+owns variable lookup. `parse_page_block` returns `CssPageBody`, retaining the
+ordered descriptor/property inventory and a separate ordered sequence of
+`CssMarginRule` children. `parse_margin_block` admits applicable properties and
+custom values, excluding Page-only descriptors and nested margin children.
+`CssMarginBox` supplies all sixteen canonical names without arbitrary IDL members.
+Checked authored reconstruction preserves genuine occurrences or raw value
+origins. Programmatic rule children carry no invented source position.
+
+`try_specified` exposes an ordered immutable `CssSpecifiedPageDeclarationBlock`.
+Selected property terminals use the common declaration scheduler, while descriptor
+identity stays in the Page domain. `try_from_entries` permits independent terminal
+priority, ordering and descriptor edits without re-expanding retained shorthands.
+Duplicate selected terminal or descriptor identities fail atomically. Page/margin
+property reconstruction uses explicit domain constructors; a borrowed
+`CssPageRuleView` composes selectors, a selected block and ordered
+`CssMarginRuleView` children. Pending source identity and original provenance
+survive edits. A shared unresolved mode-switch footprint remains a typed failure
+until a completed replacement establishes it.
+
+Whole Page and margin CSSOM output follows the adopted bounded
+[Blink wrapper witness](../../../references/blink-cssom-page-rules--7984f9d11800.md).
+One cumulative context accounts for selectors, all source occurrences, property
+projection, descriptors, ordered children and emitted bytes. A child failure
+retains its actual margin index; failed operations publish no prefix and allow an
+unchanged retry. This is immutable getter state, with live CSSOM identity,
+mutation guards, pagination, matching and cascade owned downstream. The earlier
+[WebKit Page-local custom-value witness](https://github.com/WebKit/WebKit/blob/68900c1e2adc8b79d928f39468a55183dcdf4878/Source/WebCore/css/parser/CSSParser.cpp#L1854-L1867)
+remains historical syntax evidence; no variable lookup or printing claim is made.
 
 Block-form page rules are accepted at
 the stylesheet top level and inside ordinary conditional and layer rule lists.
@@ -5450,20 +5470,12 @@ Cascade 6 content-category interpretation. Entering another scope restores that
 body restriction. Pages remain invalid in style-rule bodies, including all group
 chains with a style ancestor. Normalization retains a page leaf and its authored
 parent without emitting its margin declarations as element-style declarations.
-Margin-box nested at-rules remain unsupported.
+Only the sixteen canonical margin-box children are admitted; other nested at-rules remain unsupported.
 
 The [selected Logical 1 page classifications](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#page)
-add `:recto` and `:verso` to the unnamed, single-pseudo page grammar. The parser
-retains those classifications without converting them to `:left` or `:right`;
-page progression and matching belong downstream. Named pages, multiple pseudos,
-and functional page selectors are rejected as one rule. Specified serialization
-uses the canonical lowercase pseudo spelling and the existing shared rule budget.
-`CssPageSelector::specificity()` and `CssPageRule::specificity()` return
-`CssPageSpecificity`: `Unqualified < Side < First`. All four side selectors
-have equal specificity. The `:first` ordering follows the
-[CSS2 page foundation](https://www.w3.org/TR/CSS2/page.html#page-selectors).
-This comparison describes the supported page grammar; it does not apply cascade,
-importance, element-selector specificity, or writing-mode mapping.
+retain `:recto` and `:verso` symbolically in the complete Page grammar. Their
+specificity contribution equals a physical side pseudo; neither is converted to
+`:left` or `:right`. Page progression and writing-mode mapping stay downstream.
 
 Directional keyword admission follows each selected property definition.
 `float` and `clear` retain `inline-start | inline-end`; `text-align` retains
@@ -5482,7 +5494,7 @@ a qualified rule. For example, `@media all { a {} ;b {} c {} }` retains `a` and
 declaration grammar, where extra semicolons are valid separators.
 
 ```rust
-use surgeist_css::{CssCounterStyleSystem, CssPageSelector, CssRule, parse_sheet};
+use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, parse_sheet};
 
 let report = parse_sheet(concat!(
     "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; suffix: \".\"; } ",
@@ -5498,12 +5510,12 @@ assert!(matches!(
     Some(surgeist_css::CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
 ));
 assert_eq!(counter.descriptors().occurrences().count(), 3);
-assert_eq!(page.selector(), Some(CssPageSelector::Left));
-assert_eq!(page.declarations().len(), 2);
+assert_eq!(page.selectors().selectors()[0].pseudos(), &[CssPagePseudo::Left]);
+assert_eq!(page.declarations().properties().len(), 2);
 ```
 
-All sixteen Counter Styles 3 non-property rows and the two CSS2 page rows are
-public `Complete` atomic metadata with their dated official source fragments.
+The Counter Styles 3 non-property rows remain public atomic metadata. The current
+Page rule and physical/first/blank pseudo rows identify their bounded Page3 source.
 The separate `official.selector.logical-page-pseudo` record identifies the
 selected Logical 1 addition and its `#page` source fragment.
 They have no partial remainder, recognized-unsupported code, or aggregate-alias
@@ -9024,9 +9036,10 @@ therefore provides the selected safe canonicalization, rather than a general
 shortest-selector search. Standalone selector and compact rule output preserve
 the authored explicit universals.
 
-The pinned CSSOM source has no Page rule format. The adopted When/Else profile
-also has no selected literal algorithm. Ordinary literal output for these kinds
-reports `SourceUndefined` at its actual rule path. A scoped When/Else inside the
+The pinned CSSOM source has no normative Page wrapper; the selected Page/margin
+consumer uses the bounded adopted Blink format described above. The adopted
+When/Else profile has no selected literal algorithm and reports `SourceUndefined`
+at its actual rule path. A scoped When/Else inside the
 current Scope front encounters `FormatUnavailable(Scope)` before descendants. Other represented modern wrappers
 without a selected literal byte format report `FormatUnavailable`; their defined
 name/value providers and compact authored output remain usable. These limits

@@ -121,6 +121,7 @@ impl SpecifiedRuleWriter {
     ) -> std::result::Result<(), GraphFailure> {
         let mut work = Vec::new();
         let mut keyframe_block_index = None;
+        let mut margin_rule_index = None;
         let result =
             (|| -> Result<()> {
                 push(&mut work, first)?;
@@ -399,11 +400,10 @@ impl SpecifiedRuleWriter {
                                 CssRule::Page(rule) => {
                                     self.node()?;
                                     if format == Format::Cssom {
-                                        return Err(RuleCssomSource::SourceUndefined(
-                                            CssRuleCssomKind::Page,
-                                        ));
+                                        self.append_page_cssom(rule, &mut margin_rule_index)?;
+                                    } else {
+                                        self.page(rule)?;
                                     }
-                                    self.page(rule)?;
                                 }
                                 CssRule::Keyframes(rule) => {
                                     self.node()?;
@@ -641,11 +641,10 @@ impl SpecifiedRuleWriter {
                                 CssScopedRule::Page(rule) => {
                                     self.node()?;
                                     if format == Format::Cssom {
-                                        return Err(RuleCssomSource::SourceUndefined(
-                                            CssRuleCssomKind::Page,
-                                        ));
+                                        self.append_page_cssom(rule, &mut margin_rule_index)?;
+                                    } else {
+                                        self.page(rule)?;
                                     }
-                                    self.page(rule)?;
                                 }
                                 CssScopedRule::Keyframes(rule) => {
                                     self.node()?;
@@ -812,10 +811,22 @@ impl SpecifiedRuleWriter {
                 }
                 Ok(())
             })();
-        result.map_err(|source| GraphFailure {
-            source,
-            path,
-            keyframe_block_index,
+        result.map_err(|mut source| {
+            if let Some(index) = margin_rule_index {
+                if path.try_reserve(1).is_err() {
+                    source = crate::CssSpecifiedValueSerializationError::new(
+                        crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                    )
+                    .into();
+                } else {
+                    path.push(index);
+                }
+            }
+            GraphFailure {
+                source,
+                path,
+                keyframe_block_index,
+            }
         })
     }
 

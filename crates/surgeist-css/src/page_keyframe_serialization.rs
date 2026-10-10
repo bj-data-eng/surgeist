@@ -11,8 +11,7 @@
 
 use crate::{
     CssImportance, CssKeyframeBlock, CssKeyframeSelector, CssKeyframesName, CssKeyframesRule,
-    CssPageRule, CssPageSelector, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind,
+    CssPageRule, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
     declaration_serialization::append_authored_declaration,
     numeric_formatting::format_projected_number, specified_rule_serialization::SpecifiedRuleWriter,
 };
@@ -22,23 +21,7 @@ type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 impl SpecifiedRuleWriter {
     /// Appends one page payload after the graph has charged its logical rule.
     pub(crate) fn page(&mut self, rule: &CssPageRule) -> Result<()> {
-        self.append("@page")?;
-        if let Some(selector) = rule.selector() {
-            self.node()?;
-            self.append(match selector {
-                CssPageSelector::Left => " :left",
-                CssPageSelector::Right => " :right",
-                CssPageSelector::First => " :first",
-                CssPageSelector::Recto => " :recto",
-                CssPageSelector::Verso => " :verso",
-            })?;
-        }
-        self.append(" { ")?;
-        self.append_authored_declaration_list(rule.declarations())?;
-        if !rule.declarations().is_empty() {
-            self.append(" ")?;
-        }
-        self.append("}")
+        self.append_page_compact(rule)
     }
 
     /// Appends one keyframes payload after the graph charges its logical rule.
@@ -223,24 +206,24 @@ mod tests {
 
     #[test]
     fn empty_page_and_each_optional_selector_have_exact_independent_costs() {
-        // Logical rule 1 + declaration-list aggregate 1; present selector 1.
+        // Logical rule 1 + selector-list aggregate 1; present compound/pseudo 2.
         exact_budget("@page{}", "@page { }", 2);
         for (source, expected) in [
             ("@page :LEFT{}", "@page :left { }"),
             ("@page :right{}", "@page :right { }"),
             ("@page :first{}", "@page :first { }"),
         ] {
-            exact_budget(source, expected, 3);
+            exact_budget(source, expected, 4);
         }
     }
 
     #[test]
     fn page_duplicates_reuse_margin_keyword_and_importance_costs() {
-        // Rule/selector/list 3 + two (occurrence/name/margin keyword) triples.
+        // Rule/list/compound/pseudo 4 + two (occurrence/name/margin keyword) triples.
         exact_budget(
             "@page :left{margin-top:auto!important;margin-top:auto}",
             "@page :left { margin-top: auto !important; margin-top: auto; }",
-            9,
+            10,
         );
     }
 

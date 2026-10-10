@@ -336,7 +336,11 @@ fn scope_role_and_scoped_group_role_keep_the_defined_page_permission_distinct() 
     else {
         panic!("group keeps page then style")
     };
-    property(page.declarations(), CssKnownProperty::MarginTop, "1px");
+    property(
+        page.declarations().properties(),
+        CssKnownProperty::MarginTop,
+        "1px",
+    );
     assert_eq!(page.position().byte_offset().value(), 1);
     property(
         scoped_style(child, "a").declarations(),

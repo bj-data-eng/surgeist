@@ -381,24 +381,21 @@ fn extends_omission_and_explicit_range_auto_remain_distinct() {
 }
 
 #[test]
-fn forbidden_extends_symbol_descriptors_drop_the_rule_but_invalid_descriptors_do_not() {
+fn extends_symbol_conflicts_keep_authored_rules_and_invalid_descriptors_recover_locally() {
     for descriptor in ["symbols:a;", "additive-symbols:1 I;"] {
         let source = format!(
             ".before{{}} @counter-style Custom {{ system:extends Missing; {descriptor} }} .after{{}}"
         );
         let report = parse_sheet(&source);
+        assert!(report.is_clean());
         assert!(matches!(
             report.syntax().rules(),
-            [CssRule::Style(_), CssRule::Style(_)]
+            [
+                CssRule::Style(_),
+                CssRule::CounterStyle(_),
+                CssRule::Style(_)
+            ]
         ));
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one genuinely invalid extends combination");
-        };
-        assert_eq!(
-            diagnostic.error().code(),
-            CssErrorCode::InvalidDescriptorCombination
-        );
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     }
     let source = "@counter-style Custom { system:extends Missing; symbols:; additive-symbols:1 I, 1 X; suffix:'.'; }";
     let report = parse_sheet(source);

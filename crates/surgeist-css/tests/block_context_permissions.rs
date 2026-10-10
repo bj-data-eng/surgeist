@@ -243,29 +243,31 @@ fn keyframe_rule_list_rejects_at_rules_and_arbitrary_qualified_children_between_
 }
 
 #[test]
-fn selected_page_consumer_removes_child_rules_without_losing_margin_priority_or_later_siblings() {
-    // CSS2 §13.2 allows generic at-rule candidates but defines no child at-rule.
-    // Page3 margin-box semantics are not selected by this repository's catalog.
+fn selected_page_consumer_retains_margin_children_and_removes_invalid_qualified_children() {
+    // Current Page3 admission retains its canonical margin children separately.
     let source = "@page{margin-top:1px!important; @top-left{content:'title'} .nested{color:red} margin-bottom:2px} a{width:3px}";
     let report = parse_sheet(source);
     let [CssRule::Page(page), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("page and later style")
     };
     assert_eq!(
-        properties(page.declarations()),
+        properties(page.declarations().properties()),
         [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
     );
     assert_eq!(
-        page.declarations()[0].importance(),
+        page.declarations().properties()[0].importance(),
         CssImportance::Important
     );
     assert_eq!(properties(after.declarations()), [CssKnownProperty::Width]);
-    let [margin_child, nested_style] = report.diagnostics() else {
-        panic!("two disallowed children")
+    assert_eq!(page.margin_rules().len(), 1);
+    assert_eq!(
+        page.margin_rules()[0].serialize_cssom().unwrap(),
+        "@top-left { content: \"title\"; }"
+    );
+    let [nested_style] = report.diagnostics() else {
+        panic!("one disallowed qualified child")
     };
-    assert_eq!(margin_child.error().code(), CssErrorCode::UnsupportedAtRule);
     assert_eq!(nested_style.error().code(), CssErrorCode::InvalidAtRuleBody);
-    assert_eq!(margin_child.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(nested_style.action(), CssRecoveryAction::DropAtRule);
 }
 

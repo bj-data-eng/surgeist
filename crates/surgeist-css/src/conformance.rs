@@ -641,6 +641,14 @@ macro_rules! dated_source {
     };
 }
 
+// Bounded Page grammar/property domain selected by the Page consumer contract.
+const L_PAGE3_20181018: CssSpecificationSource = dated_source!(
+    "L-PAGE3-20181018",
+    "CSS Paged Media",
+    "3",
+    CssSpecificationTier::LaterStandard,
+    "https://www.w3.org/TR/2018/WD-css-page-3-20181018/"
+);
 const O_CSS2: CssSpecificationSource = dated_source!(
     "O-CSS2",
     "CSS",
@@ -1364,6 +1372,7 @@ profile_source!(
 );
 
 static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
+    L_PAGE3_20181018,
     O_CSS2,
     O_SYNTAX3,
     O_STYLE_ATTR,
@@ -4382,15 +4391,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         "later.rule.page",
         CssFeatureKind::Rule,
         "@page",
-        O_CSS2,
-        "page.html#page-box",
+        L_PAGE3_20181018,
+        "#syntax-page-selector",
     ),
     CssFeatureMetadata::complete(
         "official.selector.page-pseudo",
         CssFeatureKind::Selector,
-        ":left|:right|:first",
-        O_CSS2,
-        "page.html#page-selectors",
+        ":left|:right|:first|:blank",
+        L_PAGE3_20181018,
+        "#page-selectors",
     ),
     CssFeatureMetadata::complete(
         "official.selector.logical-page-pseudo",

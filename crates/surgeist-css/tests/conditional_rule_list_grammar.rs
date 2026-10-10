@@ -7,7 +7,7 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssErrorCode, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssMarginValue, CssPageSelector, CssRecoveryAction, CssRule,
+    CssKnownPropertyValueRef, CssMarginValue, CssPagePseudo, CssRecoveryAction, CssRule,
     CssSelector, CssValueTokenRef, parse_sheet,
 };
 
@@ -31,8 +31,8 @@ fn empty_page_rule_is_valid_inside_media_rule_list() {
     let [CssRule::Page(page)] = media.rules() else {
         panic!("one page child: {media:?}")
     };
-    assert_eq!(page.selector(), None);
-    assert!(page.declarations().is_empty());
+    assert_eq!(page_pseudo(page), None);
+    assert!(page.declarations().properties().is_empty());
 }
 
 #[test]
@@ -47,8 +47,8 @@ fn nested_page_retains_selector_typed_margin_and_importance() {
     };
     assert_tag(a, "a");
     assert_tag(b, "b");
-    assert_eq!(page.selector(), Some(CssPageSelector::Left));
-    let [declaration] = page.declarations().as_slice() else {
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Left));
+    let [declaration] = page.declarations().properties().as_slice() else {
         panic!("one margin")
     };
     assert_eq!(declaration.importance(), CssImportance::Important);
@@ -79,8 +79,8 @@ fn original_nested_page_recovers_its_declaration_without_dropping_page() {
     let [CssRule::Page(page)] = media.rules() else {
         panic!("retained page")
     };
-    assert_eq!(page.selector(), None);
-    assert!(page.declarations().is_empty());
+    assert_eq!(page_pseudo(page), None);
+    assert!(page.declarations().properties().is_empty());
     let actions: Vec<_> = report.diagnostics().iter().map(|d| d.action()).collect();
     assert_eq!(actions, [CssRecoveryAction::DropDeclaration]);
     assert!(!report.is_clean());
@@ -170,8 +170,8 @@ fn original_page_between_style_children_preserves_all_rule_and_recovery_order() 
     };
     assert_tag(a, "a");
     assert_tag(b, "b");
-    assert_eq!(page.selector(), None);
-    assert!(page.declarations().is_empty());
+    assert_eq!(page_pseudo(page), None);
+    assert!(page.declarations().properties().is_empty());
     assert_eq!(report.diagnostics().len(), 5);
     for diagnostic in report.diagnostics() {
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
@@ -199,8 +199,8 @@ fn page_is_retained_through_nested_media_and_supports_rule_lists() {
     let [CssRule::Page(page)] = supports.rules() else {
         panic!("one page: {supports:?}")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::Right));
-    assert!(page.declarations().is_empty());
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Right));
+    assert!(page.declarations().properties().is_empty());
     assert!(report.into_validation_result().is_ok());
 }
 
@@ -245,7 +245,7 @@ fn nested_page_and_declaration_preserve_authored_unicode_coordinates() {
     let [CssRule::Page(page)] = media.rules() else {
         panic!("one page: {media:?}")
     };
-    let [declaration] = page.declarations().as_slice() else {
+    let [declaration] = page.declarations().properties().as_slice() else {
         panic!("one declaration: {page:?}")
     };
     for (position, token) in [
@@ -380,7 +380,7 @@ fn layer_and_container_rule_lists_retain_pages_and_recover_semicolon_preludes() 
         };
         assert_tag(a, "a");
         assert_tag(c, "c");
-        assert_eq!(page.selector(), Some(CssPageSelector::First));
+        assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
         let [diagnostic] = report.diagnostics() else {
             panic!("one semicolon recovery: {report:?}")
         };
@@ -395,4 +395,11 @@ fn layer_and_container_rule_lists_retain_pages_and_recover_semicolon_preludes() 
         );
         assert!(report.into_validation_result().is_err());
     }
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
 }

@@ -8,11 +8,11 @@ use surgeist_css::*;
 #[test]
 fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
     for (pseudo, canonical, selector) in [
-        ("left", "left", CssPageSelector::Left),
-        ("right", "right", CssPageSelector::Right),
-        ("first", "first", CssPageSelector::First),
-        ("RECTO", "recto", CssPageSelector::Recto),
-        (r"\76 erso", "verso", CssPageSelector::Verso),
+        ("left", "left", CssPagePseudo::Left),
+        ("right", "right", CssPagePseudo::Right),
+        ("first", "first", CssPagePseudo::First),
+        ("RECTO", "recto", CssPagePseudo::Recto),
+        (r"\76 erso", "verso", CssPagePseudo::Verso),
     ] {
         for mode in [CssParserMode::Standards, CssParserMode::Quirks] {
             let context = CssParserContext::new(mode);
@@ -22,10 +22,10 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
             let Some(CssRule::Page(page)) = report.syntax() else {
                 panic!("one typed page rule")
             };
-            assert_eq!(page.selector(), Some(selector));
-            assert_eq!(page.specificity(), selector.specificity());
+            assert_eq!(page_pseudo(page), Some(selector));
+            assert_eq!(page_specificity(page), selector.specificity());
             assert_eq!(
-                page.declarations()[0].importance(),
+                page.declarations().properties()[0].importance(),
                 CssImportance::Important
             );
             let canonical = format!("@page :{canonical} {{ margin-left: 2cm !important; }}");
@@ -43,15 +43,15 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
             let [CssRule::Page(reparsed)] = reparsed.syntax().rules() else {
                 panic!("one reparsed page")
             };
-            assert_eq!(reparsed.selector(), Some(selector));
-            assert_eq!(reparsed.specificity(), selector.specificity());
+            assert_eq!(page_pseudo(reparsed), Some(selector));
+            assert_eq!(page_specificity(reparsed), selector.specificity());
         }
     }
-    assert_ne!(CssPageSelector::Recto, CssPageSelector::Left);
-    assert_ne!(CssPageSelector::Recto, CssPageSelector::Right);
-    assert_ne!(CssPageSelector::Verso, CssPageSelector::Left);
-    assert_ne!(CssPageSelector::Verso, CssPageSelector::Right);
-    assert_ne!(CssPageSelector::Recto, CssPageSelector::Verso);
+    assert_ne!(CssPagePseudo::Recto, CssPagePseudo::Left);
+    assert_ne!(CssPagePseudo::Recto, CssPagePseudo::Right);
+    assert_ne!(CssPagePseudo::Verso, CssPagePseudo::Left);
+    assert_ne!(CssPagePseudo::Verso, CssPagePseudo::Right);
+    assert_ne!(CssPagePseudo::Recto, CssPagePseudo::Verso);
 }
 
 #[test]
@@ -76,24 +76,27 @@ fn page_specificity_compares_default_side_and_first_without_mapping_or_importanc
     else {
         panic!("default, four sides, and first page")
     };
-    assert_eq!(default.selector(), None);
-    assert_eq!(default.specificity(), CssPageSpecificity::Unqualified);
-    assert_eq!(first.specificity(), CssPageSpecificity::First);
+    assert_eq!(page_pseudo(default), None);
+    assert_eq!(page_specificity(default), CssPageSpecificity::new(0, 0, 0));
+    assert_eq!(page_specificity(first), CssPageSpecificity::new(0, 1, 0));
     for page in [left, right, recto, verso] {
-        assert_eq!(page.specificity(), CssPageSpecificity::Side);
-        assert_eq!(page.specificity(), page.selector().unwrap().specificity());
-        assert!(default.specificity() < page.specificity());
-        assert!(page.specificity() < first.specificity());
+        assert_eq!(page_specificity(page), CssPageSpecificity::new(0, 0, 1));
+        assert_eq!(
+            page_specificity(page),
+            page_pseudo(page).unwrap().specificity()
+        );
+        assert!(page_specificity(default) < page_specificity(page));
+        assert!(page_specificity(page) < page_specificity(first));
     }
     assert_eq!(
-        recto.specificity().cmp(&verso.specificity()),
+        page_specificity(recto).cmp(&page_specificity(verso)),
         std::cmp::Ordering::Equal
     );
-    assert_eq!(left.specificity(), right.specificity());
-    assert_eq!(recto.specificity(), left.specificity());
-    assert_eq!(verso.specificity(), right.specificity());
-    assert!(default.specificity() < first.specificity());
-    assert_eq!(CssPageSelector::First.specificity(), first.specificity());
+    assert_eq!(page_specificity(left), page_specificity(right));
+    assert_eq!(page_specificity(recto), page_specificity(left));
+    assert_eq!(page_specificity(verso), page_specificity(right));
+    assert!(page_specificity(default) < page_specificity(first));
+    assert_eq!(CssPagePseudo::First.specificity(), page_specificity(first));
 }
 
 #[test]
@@ -124,36 +127,36 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
     for (page, selector, specificity, importance, marker) in [
         (
             pages[0],
-            Some(CssPageSelector::Recto),
-            CssPageSpecificity::Side,
+            Some(CssPagePseudo::Recto),
+            CssPageSpecificity::new(0, 0, 1),
             CssImportance::Normal,
             "@page :recto",
         ),
         (
             pages[1],
-            Some(CssPageSelector::Verso),
-            CssPageSpecificity::Side,
+            Some(CssPagePseudo::Verso),
+            CssPageSpecificity::new(0, 0, 1),
             CssImportance::Important,
             "@page :verso",
         ),
         (
             pages[2],
-            Some(CssPageSelector::First),
-            CssPageSpecificity::First,
+            Some(CssPagePseudo::First),
+            CssPageSpecificity::new(0, 1, 0),
             CssImportance::Normal,
             "@page :first",
         ),
         (
             pages[3],
             None,
-            CssPageSpecificity::Unqualified,
+            CssPageSpecificity::new(0, 0, 0),
             CssImportance::Normal,
             "@page{",
         ),
     ] {
-        assert_eq!(page.selector(), selector);
-        assert_eq!(page.specificity(), specificity);
-        assert_eq!(page.declarations()[0].importance(), importance);
+        assert_eq!(page_pseudo(page), selector);
+        assert_eq!(page_specificity(page), specificity);
+        assert_eq!(page.declarations().properties()[0].importance(), importance);
         assert_eq!(
             page.position().byte_offset().value(),
             source.find(marker).unwrap()
@@ -169,4 +172,19 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
         report.syntax().to_specified_css().unwrap(),
         "@scope (.root) { @media print { @page :recto { margin-top: 1px; } @page :verso { margin-top: 2px !important; } @page :first { margin-top: 3px; } @page { margin-top: 4px; } } }"
     );
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
+}
+
+fn page_specificity(page: &surgeist_css::CssPageRule) -> CssPageSpecificity {
+    page.selectors()
+        .selectors()
+        .first()
+        .map(|s| s.specificity())
+        .unwrap_or(CssPageSpecificity::new(0, 0, 0))
 }

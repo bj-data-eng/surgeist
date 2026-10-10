@@ -93,9 +93,7 @@ pub struct CssCounterStyleDescriptors {
 }
 
 impl CssCounterStyleDescriptors {
-    pub(crate) fn from_occurrences(
-        occurrences: Vec<CssCounterStyleDescriptor>,
-    ) -> Result<Self, CssCounterStyleCombinationIssue> {
+    pub(crate) fn from_occurrences(occurrences: Vec<CssCounterStyleDescriptor>) -> Self {
         let mut system = None;
         let mut negative = None;
         let mut symbols = None;
@@ -124,33 +122,7 @@ impl CssCounterStyleDescriptors {
             }
         }
 
-        // Counter Styles 3 §§3.1 and 3.8 distinguish a syntactically valid
-        // rule from a rule that defines a usable counter style. Missing or
-        // insufficient symbols remain authored syntax; definition selection
-        // and integer-to-representation execution belong downstream. §3.1.7
-        // alone invalidates a rule that combines extends with symbol descriptors.
-        if let Some(system) = &system
-            && matches!(
-                system.value().view(),
-                crate::CssCounterStyleDescriptorValueRef::System(CssCounterStyleSystem::Extends(_))
-            )
-            && (symbols.is_some() || additive_symbols.is_some())
-        {
-            let mut conflicting = Vec::new();
-            if symbols.is_some() {
-                conflicting.push("symbols");
-            }
-            if additive_symbols.is_some() {
-                conflicting.push("additive-symbols");
-            }
-            return Err(CssCounterStyleCombinationIssue::new(
-                system.position(),
-                "system",
-                conflicting,
-            ));
-        }
-
-        Ok(Self {
+        Self {
             system,
             negative,
             symbols,
@@ -162,7 +134,7 @@ impl CssCounterStyleDescriptors {
             additive_symbols,
             speak_as,
             occurrences,
-        })
+        }
     }
 
     /// Returns the effective last valid authored `system` occurrence.
@@ -587,47 +559,6 @@ impl CssCounterSymbolIdent {
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.value.as_str()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct CssCounterStyleCombinationIssue {
-    position: Option<CssSourcePosition>,
-    responsible: &'static str,
-    conflicting: Vec<&'static str>,
-}
-
-impl CssCounterStyleCombinationIssue {
-    fn new(
-        position: CssSourcePosition,
-        responsible: &'static str,
-        conflicting: Vec<&'static str>,
-    ) -> Self {
-        Self::new_optional(Some(position), responsible, conflicting)
-    }
-
-    fn new_optional(
-        position: Option<CssSourcePosition>,
-        responsible: &'static str,
-        conflicting: Vec<&'static str>,
-    ) -> Self {
-        Self {
-            position,
-            responsible,
-            conflicting,
-        }
-    }
-
-    pub(crate) const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
-    }
-
-    pub(crate) const fn responsible(&self) -> &'static str {
-        self.responsible
-    }
-
-    pub(crate) fn conflicting(&self) -> &[&'static str] {
-        &self.conflicting
     }
 }
 

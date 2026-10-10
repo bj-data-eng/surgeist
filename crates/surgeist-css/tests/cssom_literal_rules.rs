@@ -4,7 +4,7 @@ use std::error::Error;
 use surgeist_css::{
     CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssImportance, CssKnownProperty,
     CssNamespaceContext, CssParserContext, CssParserMode, CssRecoveryAction, CssRule,
-    CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationError,
+    CssRuleCssomFormat, CssRuleCssomSerializationError,
     CssRuleCssomSerializationErrorKind as RuleError,
     CssSpecifiedValueSerializationErrorKind as Resource,
     CssSpecifiedValueSerializationLimits as Limits, parse_rule, parse_selector, parse_sheet,
@@ -493,45 +493,28 @@ fn pending_nested_run_and_keyframe_errors_retain_original_source_and_actual_path
 }
 
 #[test]
-fn page_source_undefined_is_typed_at_ordinary_nested_and_sheet_paths() {
-    for (source, expected_path, compact) in [
+fn page_cssom_is_available_at_ordinary_nested_and_sheet_paths() {
+    for (source, expected) in [
         (
             "@page :recto{margin-left:1px}",
-            vec![],
             "@page :recto { margin-left: 1px; }",
         ),
         (
             "@media print{.a{}@page :left{margin:1px}}",
-            vec![1],
-            "@media print { .a { } @page :left { margin: 1px; } }",
+            "@media print {\n  .a { }\n  @page :left { margin: 1px; }\n}",
         ),
     ] {
         let value = rule(source);
         let before = value.clone();
-        let error = value.serialize_cssom().unwrap_err();
-        assert_eq!(
-            error.kind(),
-            RuleError::SourceUndefined(CssRuleCssomKind::Page)
-        );
-        assert_eq!(error.rule_path(), expected_path);
-        assert!(error.source().is_none());
-        assert_eq!(value.to_specified_css().unwrap(), compact);
+        assert_eq!(value.serialize_cssom().unwrap(), expected);
         assert_eq!(value, before);
     }
     let report = parse_sheet(".a{}@page{} .b{}");
     assert!(report.is_clean());
-    let before = report.clone();
-    let error = report.syntax().serialize_cssom().unwrap_err();
     assert_eq!(
-        error.kind(),
-        RuleError::SourceUndefined(CssRuleCssomKind::Page)
-    );
-    assert_eq!(error.rule_path(), &[1]);
-    assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report.syntax().serialize_cssom().unwrap(),
         ".a { }\n@page { }\n.b { }"
     );
-    assert_eq!(report, before);
 }
 
 #[test]

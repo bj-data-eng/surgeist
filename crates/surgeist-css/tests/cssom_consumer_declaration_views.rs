@@ -521,9 +521,10 @@ fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() 
         panic!("Page");
     };
     let original =
-        CssSpecifiedDeclarationBlock::try_from_declarations(page.declarations()).unwrap();
+        CssSpecifiedDeclarationBlock::try_from_declarations(page.declarations().properties())
+            .unwrap();
     let selected =
-        CssSpecifiedDeclarationBlock::try_from_entries(&original.entries()[1..]).unwrap();
+        CssSpecifiedDeclarationBlock::try_from_page_entries(&original.entries()[1..]).unwrap();
     assert_eq!(
         selected.serialize_cssom().unwrap(),
         "margin-right: 2px; margin-bottom: 3px; margin-left: 4px; --note: paper;"
@@ -531,7 +532,7 @@ fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() 
     assert!(
         selected.entries()[0]
             .source()
-            .same_occurrence(&page.declarations()[0])
+            .same_occurrence(&page.declarations().properties()[0])
     );
     assert_eq!(
         selected

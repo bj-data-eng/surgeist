@@ -168,6 +168,21 @@ impl CssSpecifiedDeclarationBlock {
         Ok(None)
     }
 
+    /// Already-selected entries from this block, bounded and preserving its own domain.
+    pub(crate) fn append_cssom_entries(
+        &self,
+        entries: &[crate::CssSpecifiedDeclarationEntry],
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<()> {
+        let mut selected = Vec::new();
+        reserve(&mut selected, entries.len())?;
+        selected.extend_from_slice(entries);
+        Self {
+            entries: selected,
+            domain: self.domain,
+        }
+        .append_cssom(writer)
+    }
     pub(crate) fn append_cssom(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let mut serialized = Vec::new();

@@ -16,7 +16,6 @@ pub enum CssRuleCssomKind {
     When,
     /// No selected literal CSSOM algorithm defines this adopted authored profile.
     Else,
-    Page,
 }
 
 /// A modern rule with selected subformat providers but no adopted complete literal wrapper.

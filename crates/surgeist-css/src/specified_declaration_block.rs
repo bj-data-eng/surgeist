@@ -34,6 +34,8 @@ pub enum CssDeclarationBlockErrorKind {
     Expansion(CssExpansionError),
     /// A selected state must contain each terminal identity at most once.
     DuplicateTerminal,
+    /// A selected source or terminal is outside Page/margin property grammar.
+    InvalidPageSource,
     /// Exactly the eight substitution-dependent Logical 1 mode-switch families.
     PendingFootprintUndetermined {
         property: CssKnownProperty,
@@ -105,6 +107,9 @@ impl From<CssExpansionError> for CssDeclarationBlockError {
 impl fmt::Display for CssDeclarationBlockError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            CssDeclarationBlockErrorKind::InvalidPageSource => {
+                f.write_str("property is not admitted in Page/margin domain")
+            }
             CssDeclarationBlockErrorKind::DuplicateTerminal => {
                 f.write_str("duplicate selected terminal")
             }
@@ -140,15 +145,56 @@ impl std::error::Error for CssDeclarationBlockError {
 enum Domain {
     Ordinary,
     Keyframe,
+    Page,
+    Margin,
 }
 impl Domain {
     fn admits(self, property: CssKnownProperty) -> bool {
-        self == Self::Ordinary || crate::parser::keyframe_property_admitted(property)
+        match self {
+            Self::Ordinary => true,
+            Self::Keyframe => crate::parser::keyframe_property_admitted(property),
+            Self::Page | Self::Margin => crate::parser::is_page_margin_property(property),
+        }
     }
     fn admits_terminal(self, property: Terminal) -> bool {
         match property {
+            Terminal::Known(property) if matches!(self, Self::Page | Self::Margin) => {
+                static TERMINALS: OnceLock<Vec<CssLonghandProperty>> = OnceLock::new();
+                TERMINALS
+                    .get_or_init(|| {
+                        let mut terminals = Vec::new();
+                        for &property in CssKnownProperty::all() {
+                            if !crate::parser::is_page_margin_property(property) {
+                                continue;
+                            }
+                            match property.metadata().expect("shared schema metadata").kind() {
+                                CssPropertyKindRef::Longhand(meta) => {
+                                    terminals.push(meta.property())
+                                }
+                                CssPropertyKindRef::Shorthand(meta) => {
+                                    terminals.extend_from_slice(meta.members())
+                                }
+                                CssPropertyKindRef::FourSideShorthand(meta) => {
+                                    terminals.extend_from_slice(
+                                        meta.members(crate::CssBoxSideKind::Physical),
+                                    );
+                                    terminals.extend_from_slice(
+                                        meta.members(crate::CssBoxSideKind::Logical),
+                                    );
+                                }
+                                CssPropertyKindRef::UniversalReset(_) => {}
+                            }
+                        }
+                        terminals.sort_by_key(|p| p.known_property().canonical_name());
+                        terminals.dedup();
+                        terminals
+                    })
+                    .contains(&property)
+            }
             Terminal::Known(property) => self.admits(property.known_property()),
-            Terminal::SvgGlyphOrientationVertical => true,
+            Terminal::SvgGlyphOrientationVertical => {
+                matches!(self, Self::Ordinary | Self::Keyframe)
+            }
         }
     }
     fn admit_source(self, source: &CssDeclaration, writer: &mut SpecifiedRuleWriter) -> Result<()> {
@@ -665,6 +711,25 @@ impl CssSpecifiedDeclarationBlock {
                         ));
                     }
                 }
+                if matches!(domain, Domain::Page | Domain::Margin) {
+                    writer.context.charge_projection(1)?;
+                    let source = entry.source();
+                    if entry.property.is_some_and(|p| !domain.admits_terminal(p))
+                        || source
+                            .known()
+                            .is_some_and(|v| !crate::parser::is_page_margin_property(v.property()))
+                        || source.svg_glyph_orientation_vertical().is_some()
+                        || crate::parser::page_declaration_violation(
+                            source.body(),
+                            source.value_components(),
+                        )
+                        .is_some()
+                    {
+                        return Err(CssDeclarationBlockError::new(
+                            CssDeclarationBlockErrorKind::InvalidPageSource,
+                        ));
+                    }
+                }
                 identities.try_reserve(1).map_err(|_| capacity())?;
                 if identities.insert(Key::from_entry(entry), ()).is_some() {
                     return Err(CssDeclarationBlockError::new(
@@ -703,6 +768,50 @@ impl CssSpecifiedDeclarationBlock {
             domain,
         })
     }
+    pub fn try_from_page_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
+        Self::try_from_page_entries_with_limits(
+            entries,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn try_from_page_entries_with_limits(
+        entries: &[CssSpecifiedDeclarationEntry],
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self> {
+        Self::from_page_entries(entries, &mut SpecifiedRuleWriter::new(limits))
+    }
+    pub(crate) fn from_page_entries(
+        entries: &[CssSpecifiedDeclarationEntry],
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<Self> {
+        Self::from_entries(entries, Domain::Page, writer)
+    }
+    pub fn try_from_margin_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
+        Self::try_from_margin_entries_with_limits(
+            entries,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn try_from_margin_entries_with_limits(
+        entries: &[CssSpecifiedDeclarationEntry],
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self> {
+        Self::from_margin_entries(entries, &mut SpecifiedRuleWriter::new(limits))
+    }
+    pub(crate) fn from_margin_entries(
+        entries: &[CssSpecifiedDeclarationEntry],
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<Self> {
+        Self::from_entries(entries, Domain::Margin, writer)
+    }
+    #[must_use]
+    pub fn is_page(&self) -> bool {
+        self.domain == Domain::Page
+    }
+    #[must_use]
+    pub fn is_margin(&self) -> bool {
+        self.domain == Domain::Margin
+    }
     /// Whether this snapshot was checked in the keyframe declaration domain.
     #[must_use]
     pub fn is_keyframe(&self) -> bool {
@@ -724,6 +833,18 @@ impl CssSpecifiedDeclarationBlock {
         writer.context.charge_input(2)?; // Occurrence and semantic name.
         visit_components(source.value_components(), writer)?;
         domain.admit_source(source, writer)
+    }
+    pub(crate) fn from_page_sources<'a>(
+        sources: impl Iterator<Item = &'a CssDeclaration> + Clone,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<Self> {
+        Self::from_sources(sources, Domain::Page, writer)
+    }
+    pub(crate) fn from_margin_sources<'a>(
+        sources: impl Iterator<Item = &'a CssDeclaration> + Clone,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<Self> {
+        Self::from_sources(sources, Domain::Margin, writer)
     }
     fn from_sources<'a>(
         sources: impl Iterator<Item = &'a CssDeclaration> + Clone,
@@ -800,7 +921,7 @@ impl CssSpecifiedDeclarationBlock {
         let source = expansion_source(expansion);
         let mut append =
             |property: Option<Terminal>, member_ordinal: usize, value: EntryValue| -> Result<()> {
-                if domain == Domain::Keyframe {
+                if domain != Domain::Ordinary {
                     writer.context.charge_projection(1).map_err(|e| {
                         CssDeclarationBlockError::from(e).at(source, ordinal, Some(member_ordinal))
                     })?;

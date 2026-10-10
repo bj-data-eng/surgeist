@@ -67,18 +67,18 @@ pub use fragments::{
     parse_font_face_block, parse_font_face_descriptor_value, parse_font_feature_display_value,
     parse_font_feature_value, parse_font_feature_value_block, parse_font_feature_values_block,
     parse_font_palette_descriptor_value, parse_font_palette_values_block, parse_group_block,
-    parse_keyframe_declaration_block, parse_keyframes_block, parse_media_query,
-    parse_media_query_list, parse_page_block, parse_property_value_text,
-    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
-    parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list,
-    parse_style_block, parse_supports_test_block,
+    parse_keyframe_declaration_block, parse_keyframes_block, parse_margin_block, parse_media_query,
+    parse_media_query_list, parse_page_block, parse_page_descriptor_value,
+    parse_page_selector_list, parse_property_value_text, parse_property_value_text_for_grammar,
+    parse_relative_selector_list, parse_rule, parse_scope_block, parse_scoped_group_block,
+    parse_selector, parse_selector_list, parse_style_block, parse_supports_test_block,
 };
 pub(crate) use fragments::{
     parse_declaration_with_context, parse_group_block_with_context,
     parse_keyframe_declaration_block_with_context, parse_keyframes_block_with_context,
-    parse_page_block_with_context, parse_property_value_text_for_grammar_with_context,
-    parse_property_value_text_with_context, parse_rule_with_context,
-    parse_scope_block_with_context, parse_scoped_group_block_with_context,
+    parse_margin_block_with_context, parse_page_block_with_context,
+    parse_property_value_text_for_grammar_with_context, parse_property_value_text_with_context,
+    parse_rule_with_context, parse_scope_block_with_context, parse_scoped_group_block_with_context,
     parse_style_block_with_context,
 };
 mod color;
@@ -1309,7 +1309,7 @@ enum StrictAtRulePrelude {
     Import(Box<CssImportPrelude>),
     Namespace(CssNamespacePrelude),
     CounterStyle(CounterStylePrelude),
-    Page(Option<CssPageSelector>),
+    Page(CssPageSelectorList),
     Layer(Vec<CssLayerName>),
     FontFace,
     Keyframes(CssKeyframesName),
@@ -1427,7 +1427,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             "counter-style" => Ok(StrictAtRulePrelude::CounterStyle(
                 parse_counter_style_prelude(self.source, input, self.recovery.source_snapshot())?,
             )),
-            "page" => Ok(StrictAtRulePrelude::Page(parse_page_prelude(self.source, input)?)),
+            "page" => Ok(StrictAtRulePrelude::Page(parse_page_prelude(self.source, input, self.recovery.source_snapshot())?)),
             "custom-media" => Ok(StrictAtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(self.source, input, &self.recovery)?))),
             "font-feature-values" => Ok(StrictAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?)),
             "font-palette-values" => Ok(StrictAtRulePrelude::FontPaletteValues(font_palette_values::parse_name(self.source, input, &self.recovery)?)),
@@ -1973,13 +1973,14 @@ fn parse_nested_group_rules<'i, 't>(
 fn parse_page_prelude<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<Option<CssPageSelector>, ParseError<'i, Error>> {
-    let selector = parse_page_selector(input).map_err(|error| {
+    snapshot: &CssSourceSnapshot,
+) -> std::result::Result<CssPageSelectorList, ParseError<'i, Error>> {
+    let selector = parse_page_selector(input, snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
             "page",
             "later.rule.page",
-            "an empty prelude or one of :left, :right, :first, :recto, or :verso",
+            "an empty prelude or a complete named/pseudo Page selector list",
         )
     })?;
     let following = source
@@ -2375,7 +2376,7 @@ impl<'s> ScopedRuleParser<'s> {
 }
 
 enum ScopedAtRulePrelude {
-    Page(Option<CssPageSelector>),
+    Page(CssPageSelectorList),
     CounterStyle(CounterStylePrelude),
     FontFace,
     Keyframes(CssKeyframesName),
@@ -2557,7 +2558,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 if self.has_style_ancestor || matches!(self.body, ScopedBodyKind::Scope) {
                     return Err(invalid_at_rule_placement(input.current_source_location(), "page", "an ordinary group body without a style-rule ancestor"));
                 }
-                Ok(ScopedAtRulePrelude::Page(parse_page_prelude(self.source, input)?))
+                Ok(ScopedAtRulePrelude::Page(parse_page_prelude(self.source, input, self.recovery.source_snapshot())?))
             },
             _ => Err(input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name))),
         }

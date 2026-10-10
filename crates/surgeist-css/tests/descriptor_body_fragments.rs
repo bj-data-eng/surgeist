@@ -270,19 +270,22 @@ fn real_empty_bodies_do_not_fabricate_defaults_or_required_descriptors() {
 }
 
 #[test]
-fn counter_extends_symbol_combination_rejects_the_complete_body() {
+fn counter_extends_symbol_combination_retains_authored_body_with_undefined_definition() {
     for source in [
         "{system:extends decimal;symbols:x}",
         "{system:extends decimal;additive-symbols:1 x}",
     ] {
         let report = parse_counter_style_block(source);
-        rejected(&report, source);
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.error().code()
-                    == CssErrorCode::InvalidDescriptorCombination)
+        clean(&report);
+        assert_eq!(
+            body(&report)
+                .body()
+                .prospective()
+                .unwrap()
+                .definition_status(),
+            surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
+                surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+            )
         );
     }
 }

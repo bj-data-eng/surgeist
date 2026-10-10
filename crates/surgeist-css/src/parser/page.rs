@@ -23,28 +23,64 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
 
 pub(super) fn parse_page_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<Option<CssPageSelector>, ParseError<'i, Error>> {
-    if input.is_exhausted() {
-        return Ok(None);
-    }
-
-    input.expect_colon().map_err(basic)?;
-    let pseudo = input.expect_ident_cloned().map_err(basic)?;
-    let selector = match_ignore_ascii_case! { &pseudo,
-        "left" => CssPageSelector::Left,
-        "right" => CssPageSelector::Right,
-        "first" => CssPageSelector::First,
-        "recto" => CssPageSelector::Recto,
-        "verso" => CssPageSelector::Verso,
-        _ => return Err(unexpected_at(input.current_source_location())),
+    snapshot: &crate::CssSourceSnapshot,
+) -> Result<CssPageSelectorList, ParseError<'i, Error>> {
+    let start = input.position().byte_index();
+    let selectors = if input.is_exhausted() {
+        Vec::new()
+    } else {
+        input.parse_comma_separated(|input| {
+            input.skip_whitespace();
+            let start = input.position().byte_index();
+            let name = input
+                .try_parse(|input| input.expect_ident_cloned())
+                .ok()
+                .map(|name| {
+                    crate::CssIdent::try_new(name.to_string()).expect("decoded parser identifier")
+                });
+            let mut pseudos = Vec::new();
+            while !input.is_exhausted() {
+                let location = input.current_source_location();
+                match input.next_including_whitespace().cloned().map_err(basic)? {
+                    cssparser::Token::WhiteSpace(_) => {
+                        input.skip_whitespace();
+                        input.expect_exhausted().map_err(basic)?;
+                        break;
+                    }
+                    cssparser::Token::Colon => {}
+                    _ => return Err(unexpected_at(location)),
+                }
+                let location = input.current_source_location();
+                let cssparser::Token::Ident(name) =
+                    input.next_including_whitespace().cloned().map_err(basic)?
+                else {
+                    return Err(unexpected_at(location));
+                };
+                let pseudo = match_ignore_ascii_case! { &name,
+                    "left" => CssPagePseudo::Left, "right" => CssPagePseudo::Right,
+                    "first" => CssPagePseudo::First, "blank" => CssPagePseudo::Blank,
+                    "recto" => CssPagePseudo::Recto, "verso" => CssPagePseudo::Verso,
+                    _ => return Err(unexpected_at(location)),
+                };
+                pseudos.push(pseudo);
+            }
+            if name.is_none() && pseudos.is_empty() {
+                return Err(unexpected_at(input.current_source_location()));
+            }
+            let origin =
+                crate::CssParsedOrigin::from_range(snapshot, start..input.position().byte_index())
+                    .expect("genuine Page selector");
+            Ok(CssPageSelector::from_parsed(name, pseudos, origin))
+        })?
     };
-    input.expect_exhausted().map_err(basic)?;
-    Ok(Some(selector))
+    let origin = crate::CssParsedOrigin::from_range(snapshot, start..input.position().byte_index())
+        .expect("genuine Page selector list");
+    Ok(CssPageSelectorList::from_parsed(selectors, origin))
 }
 
 pub(super) fn parse_page_rule<'i, 't>(
     source: &'i str,
-    selector: Option<CssPageSelector>,
+    selector: CssPageSelectorList,
     input: &mut Parser<'i, 't>,
     start: &ParserState,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
@@ -63,9 +99,33 @@ pub(super) fn parse_body<'i>(
     input: &mut Parser<'i, '_>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> CssDeclarationList {
+) -> CssPageBody {
+    parse_body_inner(source, input, diagnostics, recovery, false)
+}
+pub(super) fn parse_margin_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> CssMarginDeclarationBlock {
+    let body = parse_body_inner(source, input, diagnostics, recovery, true);
+    CssMarginDeclarationBlock::from_parsed(body.declarations().properties().clone())
+}
+fn parse_body_inner<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+    margin: bool,
+) -> CssPageBody {
     let mut declarations = Vec::new();
-    let mut parser = PageBodyParser { source, recovery };
+    let mut margin_rules = Vec::new();
+    let mut parser = PageBodyParser {
+        source,
+        recovery,
+        diagnostics: Vec::new(),
+        margin,
+    };
     let mut items = RuleBodyParser::new(input, &mut parser);
     loop {
         let progress = RecoveryProgress::record(items.input);
@@ -76,7 +136,8 @@ pub(super) fn parse_body<'i>(
         let progress_outcome = progress.finish(items.input, retained);
         let unit_end = items.input.position().byte_index();
         match item {
-            Ok(declaration) => declarations.push(declaration),
+            Ok(PageBodyItem::Declaration(declaration)) => declarations.push(declaration),
+            Ok(PageBodyItem::Margin(rule)) => margin_rules.push(rule),
             Err((error, failed_unit)) => {
                 let action = if is_declaration_recovery_unit(failed_unit) {
                     crate::CssRecoveryAction::DropDeclaration
@@ -95,23 +156,34 @@ pub(super) fn parse_body<'i>(
         }
     }
 
-    CssDeclarationList::new(declarations)
+    diagnostics.append(&mut items.parser.diagnostics);
+    CssPageBody::new(
+        CssPageDeclarationBlock::from_parsed(declarations),
+        margin_rules,
+    )
 }
 
 struct PageBodyParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
+    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+    margin: bool,
+}
+
+enum PageBodyItem {
+    Declaration(CssPageDeclaration),
+    Margin(CssMarginRule),
 }
 
 enum PageBodyAtRulePrelude<'i> {
-    MarginBox(CowRcStr<'i>),
+    MarginBox(CssMarginBox),
     TopLevelOnly(CowRcStr<'i>, cssparser::SourceLocation),
     Other,
 }
 
 impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
     type Prelude = PageBodyAtRulePrelude<'i>;
-    type AtRule = CssDeclaration;
+    type AtRule = PageBodyItem;
     type Error = Error;
 
     fn parse_prelude<'t>(
@@ -120,12 +192,15 @@ impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
         let location = input.current_source_location();
+        if let Some(margin) = CssMarginBox::from_name(name.as_ref()) {
+            input.expect_exhausted().map_err(basic)?;
+            if !self.margin {
+                return Ok(PageBodyAtRulePrelude::MarginBox(margin));
+            }
+        }
         while input.next_including_whitespace_and_comments().is_ok() {}
         if name.eq_ignore_ascii_case("counter-style") || name.eq_ignore_ascii_case("page") {
             return Ok(PageBodyAtRulePrelude::TopLevelOnly(name, location));
-        }
-        if is_page_margin_box(name.as_ref()) {
-            return Ok(PageBodyAtRulePrelude::MarginBox(name));
         }
         Ok(PageBodyAtRulePrelude::Other)
     }
@@ -141,12 +216,29 @@ impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
     fn parse_block<'t>(
         &mut self,
         prelude: Self::Prelude,
-        _start: &ParserState,
+        start: &ParserState,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::AtRule, ParseError<'i, Self::Error>> {
         match prelude {
             PageBodyAtRulePrelude::MarginBox(name) => {
-                Err(input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name)))
+                let mut depth =
+                    self.recovery
+                        .enter_rule_block(self.source, input, "later.rule.page")?;
+                let declarations = parse_margin_body(
+                    self.source,
+                    input,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                );
+                depth.retain();
+                Ok(PageBodyItem::Margin(CssMarginRule::from_parsed(
+                    name,
+                    declarations,
+                    crate::CssSourcePosition::from_cssparser(
+                        start.position(),
+                        start.source_location(),
+                    ),
+                )))
             }
             PageBodyAtRulePrelude::TopLevelOnly(name, location) => {
                 Err(top_level_only_at_rule_placement(location, name.as_ref()))
@@ -163,7 +255,7 @@ impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
 
 impl<'i> QualifiedRuleParser<'i> for PageBodyParser<'i> {
     type Prelude = ();
-    type QualifiedRule = CssDeclaration;
+    type QualifiedRule = PageBodyItem;
     type Error = Error;
 
     fn parse_prelude<'t>(
@@ -179,7 +271,7 @@ impl<'i> QualifiedRuleParser<'i> for PageBodyParser<'i> {
     }
 }
 
-impl<'i> RuleBodyItemParser<'i, CssDeclaration, Error> for PageBodyParser<'i> {
+impl<'i> RuleBodyItemParser<'i, PageBodyItem, Error> for PageBodyParser<'i> {
     fn parse_declarations(&self) -> bool {
         true
     }
@@ -190,7 +282,7 @@ impl<'i> RuleBodyItemParser<'i, CssDeclaration, Error> for PageBodyParser<'i> {
 }
 
 impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
-    type Declaration = CssDeclaration;
+    type Declaration = PageBodyItem;
     type Error = Error;
 
     fn parse_value<'t>(
@@ -202,6 +294,54 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
         let implicit_closures =
             self.recovery
                 .check_component_values(self.source, input, "css.declaration")?;
+        if let Some(kind) = CssPageDescriptorKind::from_name(name.as_ref()) {
+            if self.margin {
+                return Err(property_name_error(
+                    declaration_start.source_location(),
+                    name.as_ref(),
+                ));
+            }
+            let value_start = input.state();
+            input.reset(declaration_start);
+            input.expect_ident().map_err(basic)?;
+            let name_origin = crate::CssParsedOrigin::from_range(
+                self.recovery.source_snapshot(),
+                declaration_start.position().byte_index()..input.position().byte_index(),
+            )
+            .expect("real descriptor name");
+            input.reset(&value_start);
+            let (value, importance) = input
+                .parse_until_before(cssparser::Delimiter::Bang, |input| {
+                    super::collect_declaration_value(
+                        input,
+                        self.recovery.source_snapshot(),
+                        |input| {
+                            parse_descriptor_value(input, kind, self.recovery.source_snapshot())
+                        },
+                    )
+                })
+                .and_then(|(data, components, origin)| {
+                    let importance = if input.is_exhausted() {
+                        crate::CssImportance::Normal
+                    } else {
+                        input.expect_delim('!').map_err(basic)?;
+                        input.expect_ident_matching("important").map_err(basic)?;
+                        input.expect_exhausted().map_err(basic)?;
+                        crate::CssImportance::Important
+                    };
+                    Ok((
+                        CssPageDescriptorValue::from_parsed(kind, data, components, origin),
+                        importance,
+                    ))
+                })
+                .map_err(|error| {
+                    crate::error::with_descriptor_context(error, "page", kind.css_name())
+                })?;
+            self.recovery.retain_component_closures(implicit_closures);
+            return Ok(PageBodyItem::Declaration(CssPageDeclaration::Descriptor(
+                CssPageDescriptor::from_parsed(value, importance, name_origin),
+            )));
+        }
         let property = CssKnownProperty::from_name(name.as_ref());
         if property.is_none() && !name.starts_with("--") {
             return Err(property_name_error(
@@ -240,25 +380,93 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
             return Err(with_property_context(error, name.as_ref()));
         }
         self.recovery.retain_component_closures(implicit_closures);
-        Ok(parsed.into_declaration_in_context(DeclarationContext::Page))
+        Ok(PageBodyItem::Declaration(CssPageDeclaration::Property(
+            parsed.into_declaration_in_context(DeclarationContext::Page),
+        )))
     }
 }
 
+/// Paged Media 3 Appendix A membership only. Shared property metadata/grammar stays authoritative.
 pub(crate) const fn is_page_margin_property(property: CssKnownProperty) -> bool {
     matches!(
         property,
-        CssKnownProperty::Margin
+        CssKnownProperty::Quotes
+            | CssKnownProperty::Overflow
+            | CssKnownProperty::BorderStyle
+            | CssKnownProperty::WordSpacing
+            | CssKnownProperty::Direction
+            | CssKnownProperty::Visibility
+            | CssKnownProperty::Content
+            | CssKnownProperty::CounterReset
+            | CssKnownProperty::CounterIncrement
+            | CssKnownProperty::Width
+            | CssKnownProperty::Height
+            | CssKnownProperty::MinWidth
+            | CssKnownProperty::MinHeight
+            | CssKnownProperty::MaxWidth
+            | CssKnownProperty::MaxHeight
+            | CssKnownProperty::FontSize
+            | CssKnownProperty::LineHeight
+            | CssKnownProperty::UnicodeBidi
+            | CssKnownProperty::TextAlign
+            | CssKnownProperty::TextIndent
+            | CssKnownProperty::VerticalAlign
+            | CssKnownProperty::FontFamily
+            | CssKnownProperty::Font
+            | CssKnownProperty::FontWeight
+            | CssKnownProperty::FontStyle
+            | CssKnownProperty::FontVariant
+            | CssKnownProperty::LetterSpacing
+            | CssKnownProperty::WhiteSpace
+            | CssKnownProperty::TextDecoration
+            | CssKnownProperty::TextTransform
+            | CssKnownProperty::ZIndex
+            | CssKnownProperty::Margin
             | CssKnownProperty::MarginTop
             | CssKnownProperty::MarginRight
             | CssKnownProperty::MarginBottom
             | CssKnownProperty::MarginLeft
+            | CssKnownProperty::Padding
+            | CssKnownProperty::PaddingTop
+            | CssKnownProperty::PaddingRight
+            | CssKnownProperty::PaddingBottom
+            | CssKnownProperty::PaddingLeft
+            | CssKnownProperty::Border
+            | CssKnownProperty::BorderTop
+            | CssKnownProperty::BorderRight
+            | CssKnownProperty::BorderBottom
+            | CssKnownProperty::BorderLeft
+            | CssKnownProperty::BorderWidth
+            | CssKnownProperty::BorderTopWidth
+            | CssKnownProperty::BorderRightWidth
+            | CssKnownProperty::BorderBottomWidth
+            | CssKnownProperty::BorderLeftWidth
+            | CssKnownProperty::Color
+            | CssKnownProperty::Background
+            | CssKnownProperty::BackgroundColor
+            | CssKnownProperty::BorderColor
+            | CssKnownProperty::BorderTopColor
+            | CssKnownProperty::BorderRightColor
+            | CssKnownProperty::BorderBottomColor
+            | CssKnownProperty::BorderLeftColor
+            | CssKnownProperty::BackgroundImage
+            | CssKnownProperty::BackgroundPosition
+            | CssKnownProperty::BackgroundRepeat
+            | CssKnownProperty::BackgroundAttachment
+            | CssKnownProperty::BorderTopStyle
+            | CssKnownProperty::BorderRightStyle
+            | CssKnownProperty::BorderBottomStyle
+            | CssKnownProperty::BorderLeftStyle
+            | CssKnownProperty::Outline
+            | CssKnownProperty::OutlineColor
+            | CssKnownProperty::OutlineStyle
+            | CssKnownProperty::OutlineWidth
     )
 }
 
 pub(crate) enum PageDeclarationViolation<'a> {
     LogicalMargin,
     NonzeroUnitlessLength(&'a crate::CssComponentValue),
-    FontRelativeUnit(&'a crate::CssComponentValue),
 }
 
 pub(crate) fn first_page_component(
@@ -277,7 +485,7 @@ impl<'a> PageDeclarationViolation<'a> {
     pub(crate) fn component(&self) -> Option<&'a crate::CssComponentValue> {
         match self {
             Self::LogicalMargin => None,
-            Self::NonzeroUnitlessLength(value) | Self::FontRelativeUnit(value) => Some(value),
+            Self::NonzeroUnitlessLength(value) => Some(value),
         }
     }
 }
@@ -287,7 +495,7 @@ impl<'a> PageDeclarationViolation<'a> {
 /// caller supplies a complete replacement. Custom tokens never use margin grammar.
 pub(crate) fn page_declaration_violation<'a>(
     body: &'a CssDeclarationBody,
-    components: &'a crate::CssComponentValues,
+    _components: &'a crate::CssComponentValues,
 ) -> Option<PageDeclarationViolation<'a>> {
     let CssDeclarationBody::Known(known) = body else {
         return None;
@@ -323,27 +531,7 @@ pub(crate) fn page_declaration_violation<'a>(
     if let Some(value) = unitless {
         return Some(PageDeclarationViolation::NonzeroUnitlessLength(value));
     }
-    // Inspect original components before any numeric projection can eliminate a
-    // zero operand. The CSS2 Page exclusion remains lexical even inside math.
-    let mut stack = vec![components.items().iter()];
-    while let Some(iter) = stack.last_mut() {
-        let Some(value) = iter.next() else {
-            stack.pop();
-            continue;
-        };
-        match value.view() {
-            CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. })
-                if unit.eq_ignore_ascii_case("em") || unit.eq_ignore_ascii_case("ex") =>
-            {
-                return Some(PageDeclarationViolation::FontRelativeUnit(value));
-            }
-            CssComponentValueRef::Function(function) => {
-                stack.push(function.values().items().iter())
-            }
-            CssComponentValueRef::Block(block) => stack.push(block.values().items().iter()),
-            _ => {}
-        }
-    }
+
     None
 }
 
@@ -361,24 +549,121 @@ fn nonzero_unitless_page_length(value: &CssMarginValue) -> Option<&crate::CssCom
     }
 }
 
-fn is_page_margin_box(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "top-left-corner"
-            | "top-left"
-            | "top-center"
-            | "top-right"
-            | "top-right-corner"
-            | "bottom-left-corner"
-            | "bottom-left"
-            | "bottom-center"
-            | "bottom-right"
-            | "bottom-right-corner"
-            | "left-top"
-            | "left-middle"
-            | "left-bottom"
-            | "right-top"
-            | "right-middle"
-            | "right-bottom"
-    )
+pub(super) fn parse_descriptor_value<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssPageDescriptorKind,
+    snapshot: &crate::CssSourceSnapshot,
+) -> Result<crate::syntax::PageValueData, ParseError<'i, Error>> {
+    use crate::syntax::PageValueData as V;
+    let start = input.state();
+    let components =
+        crate::CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
+            crate::error::invalid_component_value(input.current_source_location(), error)
+        })?;
+    input.reset(&start);
+    let numeric = crate::numeric::NumericInputContext::parsed(snapshot);
+    if super::variables::descriptor_substitution_qualifies(components.items(), &numeric).map_err(
+        |error| crate::error::invalid_component_value(input.current_source_location(), error),
+    )? {
+        let start = input.position();
+        super::descriptor_values::consume_remaining_components(input)?;
+        return Ok(V::Pending(crate::CssSubstitutionDependentValue::new(
+            crate::CssAuthoredDeclarationValue::new(input.slice_from(start)),
+        )));
+    }
+    if let Ok(global) = input.try_parse(|input| {
+        let ident = input.expect_ident_cloned().map_err(basic)?;
+        let global = crate::validation::parse_global_keyword(&ident)
+            .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+        input.expect_exhausted().map_err(basic)?;
+        Ok::<_, ParseError<'i, Error>>(global)
+    }) {
+        return Ok(V::Global(global));
+    }
+    let value = match kind {
+        CssPageDescriptorKind::Size => V::Size(parse_size(input, &numeric)?),
+        CssPageDescriptorKind::PageOrientation => {
+            let location = input.current_source_location();
+            let name = input.expect_ident_cloned().map_err(basic)?;
+            V::PageOrientation(
+                match_ignore_ascii_case! {&name,"upright"=>CssPageOutputOrientation::Upright,"rotate-left"=>CssPageOutputOrientation::RotateLeft,"rotate-right"=>CssPageOutputOrientation::RotateRight,_=>return Err(unexpected_at(location))},
+            )
+        }
+        CssPageDescriptorKind::Marks => {
+            let location = input.current_source_location();
+            let name = input.expect_ident_cloned().map_err(basic)?;
+            let (crop, cross) = if name.eq_ignore_ascii_case("none") {
+                (false, false)
+            } else {
+                let mut crop = false;
+                let mut cross = false;
+                for name in std::iter::once(name)
+                    .chain(input.try_parse(|input| input.expect_ident_cloned()).ok())
+                {
+                    match_ignore_ascii_case! {&name,"crop"=>{if crop{return Err(unexpected_at(location));}crop=true;},"cross"=>{if cross{return Err(unexpected_at(location));}cross=true;},_=>return Err(unexpected_at(location))}
+                }
+                (crop, cross)
+            };
+            V::Marks(CssPageMarks::new(crop, cross))
+        }
+        CssPageDescriptorKind::Bleed => V::Bleed(
+            if input
+                .try_parse(|input| input.expect_ident_matching("auto"))
+                .is_ok()
+            {
+                CssPageBleed::Auto
+            } else {
+                CssPageBleed::Length(super::values::parse_length(input, &numeric)?)
+            },
+        ),
+    };
+    input.expect_exhausted().map_err(basic)?;
+    Ok(value)
+}
+fn parse_size<'i>(
+    input: &mut Parser<'i, '_>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssPageSizeValue, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssPageSizeValue::Auto);
+    }
+    if let Ok(first) =
+        input.try_parse(|input| super::values::parse_nonnegative_length(input, numeric))
+    {
+        let second = if input.is_exhausted() {
+            None
+        } else {
+            Some(super::values::parse_nonnegative_length(input, numeric)?)
+        };
+        return Ok(CssPageSizeValue::Dimensions(first, second));
+    }
+    let mut size = None;
+    let mut orientation = None;
+    for _ in 0..2 {
+        if input.is_exhausted() {
+            break;
+        }
+        let location = input.current_source_location();
+        let name = input.expect_ident_cloned().map_err(basic)?;
+        if let Some(value) = match_ignore_ascii_case! {&name,"portrait"=>Some(CssPageOrientation::Portrait),"landscape"=>Some(CssPageOrientation::Landscape),_=>None}
+        {
+            if orientation.replace(value).is_some() {
+                return Err(unexpected_at(location));
+            }
+        } else {
+            let value = match_ignore_ascii_case! {&name,"a5"=>CssPageSize::A5,"a4"=>CssPageSize::A4,"a3"=>CssPageSize::A3,"b5"=>CssPageSize::B5,"b4"=>CssPageSize::B4,"jis-b5"=>CssPageSize::JisB5,"jis-b4"=>CssPageSize::JisB4,"letter"=>CssPageSize::Letter,"legal"=>CssPageSize::Legal,"ledger"=>CssPageSize::Ledger,_=>return Err(unexpected_at(location))};
+            if size.replace(value).is_some() {
+                return Err(unexpected_at(location));
+            }
+        }
+    }
+    if size.is_none() && orientation.is_none() {
+        return Err(unexpected_at(input.current_source_location()));
+    }
+    Ok(CssPageSizeValue::Named(
+        CssPageNamedSize::try_new(size, orientation).expect("parsed nonempty Page size"),
+    ))
 }

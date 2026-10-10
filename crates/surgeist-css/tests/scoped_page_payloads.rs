@@ -19,8 +19,8 @@ fn page_rules(sheet: &CssNormalizedSheet) -> Vec<&CssPageRule> {
 }
 
 fn assert_margin(page: &CssPageRule) {
-    assert_eq!(page.declarations().len(), 1);
-    let declaration = &page.declarations()[0];
+    assert_eq!(page.declarations().properties().len(), 1);
+    let declaration = &page.declarations().properties()[0];
     assert_eq!(declaration.importance(), CssImportance::Important);
     let CssKnownPropertyValueRef::Margin(value) =
         declaration.known().unwrap().property_value().unwrap()
@@ -54,9 +54,9 @@ fn assert_margin(page: &CssPageRule) {
 fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
     for (prelude, selector) in [
         ("", None),
-        (":left", Some(CssPageSelector::Left)),
-        (":right", Some(CssPageSelector::Right)),
-        (":first", Some(CssPageSelector::First)),
+        (":left", Some(CssPagePseudo::Left)),
+        (":right", Some(CssPagePseudo::Right)),
+        (":first", Some(CssPagePseudo::First)),
     ] {
         let source = format!(
             "@scope(.host){{@media print{{@page {prelude}{{margin:-1px 2% auto 3cm!important}}}}}}"
@@ -72,7 +72,7 @@ fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
         let [CssScopedRule::Page(page)] = media.rules().rules() else {
             panic!("typed scoped page")
         };
-        assert_eq!(page.selector(), selector);
+        assert_eq!(page_pseudo(page), selector);
         assert_eq!(
             page.position().byte_offset().value(),
             source.find("@page").unwrap()
@@ -89,14 +89,17 @@ fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
         let pages = page_rules(&normalized);
         assert_eq!(pages.len(), 1);
         assert_eq!(*pages[0], detached);
-        assert!(pages[0].declarations()[0].same_occurrence(&page.declarations()[0]));
+        assert!(
+            pages[0].declarations().properties()[0]
+                .same_occurrence(&page.declarations().properties()[0])
+        );
         drop(report);
         drop(normalized);
         let CssRule::Page(ordinary) = CssRule::Page(detached) else {
             unreachable!()
         };
         assert_margin(&ordinary);
-        assert_eq!(ordinary.selector(), selector);
+        assert_eq!(page_pseudo(&ordinary), selector);
     }
 }
 
@@ -133,9 +136,12 @@ fn scoped_page_prelude_errors_keep_neighbors_and_valid_page() {
         after.position().byte_offset().value(),
         source.find("after{}").unwrap()
     );
-    assert_eq!(page.selector(), Some(CssPageSelector::Right));
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Right));
     assert_eq!(
-        page.declarations()[0].known().unwrap().property(),
+        page.declarations().properties()[0]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginRight
     );
 }
@@ -161,13 +167,13 @@ fn scoped_page_retains_payload_and_original_positions_at_eof() {
         panic!("page")
     };
     assert_margin(page);
-    assert_eq!(page.selector(), Some(CssPageSelector::First));
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
     assert_eq!(
         page.position().byte_offset().value(),
         source.find("@page").unwrap()
     );
     assert_eq!(
-        page.declarations()[0]
+        page.declarations().properties()[0]
             .position()
             .unwrap()
             .byte_offset()
@@ -204,7 +210,7 @@ fn page_leaf_does_not_change_namespace_resolution_of_scoped_neighbors() {
     else {
         panic!("neighbors and page")
     };
-    assert_eq!(page.declarations().len(), 1);
+    assert_eq!(page.declarations().properties().len(), 1);
     for (style, local_name) in [(before, "before"), (after, "after")] {
         let [CssScopedStyleSelector::Selector(CssSelector::Compound(selector))] =
             style.selectors().selectors()
@@ -327,4 +333,11 @@ fn excess_scoped_page_preserves_statement_in_its_same_parent() {
         .unwrap()
         .join()
         .unwrap();
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
 }

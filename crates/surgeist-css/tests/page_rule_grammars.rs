@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue,
-    CssPageSelector, CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind, feature_metadata,
+    CssPagePseudo, CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind, feature_metadata,
     parse_sheet,
 };
 
@@ -37,20 +37,23 @@ fn page_rules_and_pseudos_retain_valid_authored_structure() {
     else {
         panic!("expected the import and four page rules")
     };
-    assert_eq!(default.selector(), None);
-    assert_eq!(left.selector(), Some(CssPageSelector::Left));
-    assert_eq!(right.selector(), Some(CssPageSelector::Right));
-    assert_eq!(first.selector(), Some(CssPageSelector::First));
-    assert_eq!(left.declarations().len(), 1);
+    assert_eq!(page_pseudo(default), None);
+    assert_eq!(page_pseudo(left), Some(CssPagePseudo::Left));
+    assert_eq!(page_pseudo(right), Some(CssPagePseudo::Right));
+    assert_eq!(page_pseudo(first), Some(CssPagePseudo::First));
+    assert_eq!(left.declarations().properties().len(), 1);
     assert_eq!(
-        left.declarations()[0].known().unwrap().property(),
+        left.declarations().properties()[0]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginLeft
     );
     assert_eq!(
-        left.declarations()[0].importance(),
+        left.declarations().properties()[0].importance(),
         CssImportance::Important
     );
-    assert_eq!(first.declarations().len(), 2);
+    assert_eq!(first.declarations().properties().len(), 2);
     assert_eq!(default.position().byte_offset().value(), 21);
 }
 
@@ -63,8 +66,8 @@ fn page_margin_composition_keeps_exact_literals_and_math_but_rejects_logical_sid
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("one page rule")
     };
-    assert_eq!(page.declarations().len(), 4);
-    let Some(CssKnownPropertyValueRef::MarginLeft(left)) = page.declarations()[0]
+    assert_eq!(page.declarations().properties().len(), 4);
+    let Some(CssKnownPropertyValueRef::MarginLeft(left)) = page.declarations().properties()[0]
         .known()
         .and_then(|known| known.property_value())
     else {
@@ -86,17 +89,26 @@ fn page_margin_composition_keeps_exact_literals_and_math_but_rejects_logical_sid
     let [CssRule::Page(page)] = invalid.syntax().rules() else {
         panic!("one recovered page rule")
     };
-    assert_eq!(page.declarations().len(), 3);
+    assert_eq!(page.declarations().properties().len(), 3);
     assert_eq!(
-        page.declarations()[0].known().unwrap().property(),
+        page.declarations().properties()[0]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginTop
     );
     assert_eq!(
-        page.declarations()[1].known().unwrap().property(),
+        page.declarations().properties()[1]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginRight
     );
     assert_eq!(
-        page.declarations()[2].known().unwrap().property(),
+        page.declarations().properties()[2]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginBottom
     );
 }
@@ -114,9 +126,9 @@ fn page_margin_declarations_preserve_css2_physical_literal_semantics() {
     let [CssRule::Page(rule)] = report.syntax().rules() else {
         panic!("expected one page rule")
     };
-    assert_eq!(rule.declarations().len(), 5);
+    assert_eq!(rule.declarations().properties().len(), 5);
 
-    let margin = rule.declarations()[0]
+    let margin = rule.declarations().properties()[0]
         .known()
         .unwrap()
         .property_value()
@@ -132,7 +144,7 @@ fn page_margin_declarations_preserve_css2_physical_literal_semantics() {
 }
 
 #[test]
-fn page_context_composes_later_values_while_preserving_em_ex_exclusion() {
+fn page_context_composes_shared_values_including_font_relative_lengths() {
     let source = concat!(
         "@page { ",
         "margin-top: 1em; margin-right: 2ex; margin-bottom: 3rem; ",
@@ -144,38 +156,43 @@ fn page_context_composes_later_values_while_preserving_em_ex_exclusion() {
     let [CssRule::Page(rule)] = report.syntax().rules() else {
         panic!("expected recovered page rule")
     };
-    assert_eq!(rule.declarations().len(), 6);
+    assert_eq!(rule.declarations().properties().len(), 8);
     assert_eq!(
-        rule.declarations()[0].known().unwrap().property(),
-        CssKnownProperty::MarginBottom
+        rule.declarations().properties()[0]
+            .known()
+            .unwrap()
+            .property(),
+        CssKnownProperty::MarginTop
     );
     assert_eq!(
-        rule.declarations()[3].known().unwrap().global(),
+        rule.declarations().properties()[5]
+            .known()
+            .unwrap()
+            .global(),
         Some(surgeist_css::CssGlobalKeyword::Inherit)
     );
     assert_eq!(
-        rule.declarations()[5].known().unwrap().property(),
+        rule.declarations().properties()[7]
+            .known()
+            .unwrap()
+            .property(),
         CssKnownProperty::MarginBottom
     );
-    assert_eq!(report.diagnostics().len(), 2);
-    assert!(report.diagnostics().iter().all(|diagnostic| {
-        diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
-            && diagnostic.action() == CssRecoveryAction::DropDeclaration
-    }));
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
 }
 
 #[test]
 fn page_context_distinguishes_known_non_margin_unknown_and_invalid_margin_declarations() {
     let report = parse_sheet(concat!(
         "@page { ",
-        "color: red; mystery: 1; margin-top: bogus; ",
+        "opacity: .5; mystery: 1; margin-top: bogus; ",
         "margin-left: 1cm !important; margin-right: 2%; ",
         "}"
     ));
     let [CssRule::Page(rule)] = report.syntax().rules() else {
         panic!("expected recovered page rule")
     };
-    assert_eq!(rule.declarations().len(), 2);
+    assert_eq!(rule.declarations().properties().len(), 2);
     assert_eq!(
         report
             .diagnostics()
@@ -199,7 +216,7 @@ fn page_context_distinguishes_known_non_margin_unknown_and_invalid_margin_declar
     );
     assert!(matches!(
         report.diagnostics()[0].error().kind(),
-        ErrorKind::InvalidPropertyValue(detail) if detail.property() == CssKnownProperty::Color
+        ErrorKind::InvalidPropertyValue(detail) if detail.property() == CssKnownProperty::Opacity
     ));
     assert!(matches!(
         report.diagnostics()[1].error().kind(),
@@ -260,17 +277,17 @@ fn page_rules_preserve_import_phase_and_distinguish_group_from_style_context() {
     let [CssRule::Page(page), CssRule::Style(_)] = media.rules() else {
         panic!("expected retained page and following style child")
     };
-    assert_eq!(page.selector(), Some(CssPageSelector::Left));
-    assert_eq!(page.declarations().len(), 1);
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Left));
+    assert_eq!(page.declarations().properties().len(), 1);
 }
 
 #[test]
 fn malformed_page_preludes_and_statement_forms_drop_only_each_rule() {
     let source = concat!(
         ".before {} ",
-        "@page named { margin: 1cm; } ",
+        "@page named:unknown { margin: 1cm; } ",
         "@page :unknown { margin: 1cm; } ",
-        "@page :left:right { margin: 1cm; } ",
+        "@page :left:unknown { margin: 1cm; } ",
         "@page :left extra { margin: 1cm; } ",
         "@page :first; ",
         "@page :right { margin: 2cm; } ",
@@ -293,11 +310,11 @@ fn malformed_page_preludes_and_statement_forms_drop_only_each_rule() {
 }
 
 #[test]
-fn page_body_recovery_rejects_margin_boxes_nested_rules_and_repeated_failures() {
+fn page_body_recovery_rejects_invalid_margin_boxes_nested_rules_and_repeated_failures() {
     let report = parse_sheet(concat!(
         "@page { ",
         "margin-top: bogus; ",
-        "@top-left { content: \"title\"; } ",
+        "@bad-left { content: \"title\"; } ",
         "@mystery { color: red; } ",
         ".nested { color: blue; } ",
         "margin-left: 1cm; mystery: 1; margin-right: 2cm; ",
@@ -310,7 +327,7 @@ fn page_body_recovery_rejects_margin_boxes_nested_rules_and_repeated_failures() 
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("expected retained page")
     };
-    assert_eq!(page.declarations().len(), 2);
+    assert_eq!(page.declarations().properties().len(), 2);
     assert_eq!(
         report
             .diagnostics()
@@ -323,7 +340,7 @@ fn page_body_recovery_rejects_margin_boxes_nested_rules_and_repeated_failures() 
                 CssRecoveryAction::DropDeclaration
             ),
             (
-                CssErrorCode::UnsupportedAtRule,
+                CssErrorCode::InvalidAtRuleBody,
                 CssRecoveryAction::DropAtRule
             ),
             (
@@ -368,19 +385,19 @@ fn page_rule_and_selector_named_metadata_match_retained_behavior() {
             "later.rule.page",
             surgeist_css::CssFeatureKind::Rule,
             "@page",
-            "page.html#page-box",
+            "#syntax-page-selector",
         ),
         (
             "official.selector.page-pseudo",
             surgeist_css::CssFeatureKind::Selector,
-            ":left|:right|:first",
-            "page.html#page-selectors",
+            ":left|:right|:first|:blank",
+            "#page-selectors",
         ),
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing {id}"));
         assert_eq!(metadata.kind(), kind);
         assert_eq!(metadata.spelling(), spelling);
-        assert_eq!(metadata.source().id().as_str(), "O-CSS2");
+        assert_eq!(metadata.source().id().as_str(), "L-PAGE3-20181018");
         assert_eq!(metadata.production(), production);
         assert_eq!(metadata.status(), CssSupportStatus::Complete);
         assert_eq!(metadata.recognized_unsupported_code(), None);
@@ -400,7 +417,7 @@ fn page_rules_preserve_non_bmp_source_coordinates_for_rules_and_declarations() {
     assert_eq!(rule.position().line().value(), 1);
     assert_eq!(rule.position().column().value(), 0);
 
-    let declaration = &rule.declarations()[0];
+    let declaration = &rule.declarations().properties()[0];
     let declaration_offset = source.find("margin-left").unwrap();
     let position = declaration.position().expect("parsed declaration position");
     assert_eq!(position.byte_offset().value(), declaration_offset);
@@ -411,4 +428,11 @@ fn page_rules_preserve_non_bmp_source_coordinates_for_rules_and_declarations() {
             .encode_utf16()
             .count()
     );
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
 }

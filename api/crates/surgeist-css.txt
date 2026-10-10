@@ -984,6 +984,25 @@ pub fn surgeist_css::CssCoordBox::try_from(value: surgeist_css::CssBoxEdgeKeywor
 pub surgeist_css::CssCounterProperty::Increment
 pub surgeist_css::CssCounterProperty::Reset
 pub surgeist_css::CssCounterProperty::Set
+#[non_exhaustive] pub enum surgeist_css::CssCounterStyleAlgorithm
+pub surgeist_css::CssCounterStyleAlgorithm::Additive
+pub surgeist_css::CssCounterStyleAlgorithm::Alphabetic
+pub surgeist_css::CssCounterStyleAlgorithm::Cyclic
+pub surgeist_css::CssCounterStyleAlgorithm::Extends
+pub surgeist_css::CssCounterStyleAlgorithm::Fixed
+pub surgeist_css::CssCounterStyleAlgorithm::Numeric
+pub surgeist_css::CssCounterStyleAlgorithm::Symbolic
+#[non_exhaustive] pub enum surgeist_css::CssCounterStyleDefinitionIssue
+pub surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+pub surgeist_css::CssCounterStyleDefinitionIssue::InsufficientSymbols
+pub surgeist_css::CssCounterStyleDefinitionIssue::InsufficientSymbols::actual: usize
+pub surgeist_css::CssCounterStyleDefinitionIssue::InsufficientSymbols::required: usize
+pub surgeist_css::CssCounterStyleDefinitionIssue::MissingAdditiveSymbols
+#[non_exhaustive] pub enum surgeist_css::CssCounterStyleDefinitionStatus
+pub surgeist_css::CssCounterStyleDefinitionStatus::Defined
+pub surgeist_css::CssCounterStyleDefinitionStatus::RequiresResolution
+pub surgeist_css::CssCounterStyleDefinitionStatus::SubstitutionDependent
+pub surgeist_css::CssCounterStyleDefinitionStatus::Undefined(surgeist_css::CssCounterStyleDefinitionIssue)
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleDescriptorKind
 pub surgeist_css::CssCounterStyleDescriptorKind::AdditiveSymbols
 pub surgeist_css::CssCounterStyleDescriptorKind::Fallback
@@ -1008,6 +1027,8 @@ pub surgeist_css::CssCounterStyleDescriptorRef::SpeakAs(&'a surgeist_css::CssDes
 pub surgeist_css::CssCounterStyleDescriptorRef::Suffix(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
 pub surgeist_css::CssCounterStyleDescriptorRef::Symbols(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
 pub surgeist_css::CssCounterStyleDescriptorRef::System(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+impl<'a> core::convert::From<surgeist_css::CssCounterStyleDescriptorRef<'a>> for surgeist_css::CssCounterStyleDescriptorEntry<'a>
+pub fn surgeist_css::CssCounterStyleDescriptorEntry<'a>::from(value: surgeist_css::CssCounterStyleDescriptorRef<'a>) -> Self
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleDescriptorValueRef<'a>
 pub surgeist_css::CssCounterStyleDescriptorValueRef::AdditiveSymbols(&'a surgeist_css::CssCounterAdditiveSymbols)
 pub surgeist_css::CssCounterStyleDescriptorValueRef::Fallback(&'a surgeist_css::CssCounterStyleName)
@@ -1041,6 +1062,8 @@ pub surgeist_css::CssCounterStyleSystem::Extends(surgeist_css::CssCounterStyleNa
 pub surgeist_css::CssCounterStyleSystem::Fixed(surgeist_css::CssCounterStyleFixedSystem)
 pub surgeist_css::CssCounterStyleSystem::Numeric
 pub surgeist_css::CssCounterStyleSystem::Symbolic
+impl surgeist_css::CssCounterStyleSystem
+pub const fn surgeist_css::CssCounterStyleSystem::algorithm(&self) -> surgeist_css::CssCounterStyleAlgorithm
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleValue
 pub surgeist_css::CssCounterStyleValue::Named(surgeist_css::CssCounterStyleReference)
 pub surgeist_css::CssCounterStyleValue::Symbols(surgeist_css::CssSymbolsStyleValue)
@@ -1172,6 +1195,7 @@ pub surgeist_css::CssDeclarationBlockErrorKind::DuplicateTerminal
 pub surgeist_css::CssDeclarationBlockErrorKind::Expansion(surgeist_css::CssExpansionError)
 pub surgeist_css::CssDeclarationBlockErrorKind::InvalidKeyframeSource
 pub surgeist_css::CssDeclarationBlockErrorKind::InvalidKeyframeSource::reason: surgeist_css::CssInvalidKeyframeSourceReason
+pub surgeist_css::CssDeclarationBlockErrorKind::InvalidPageSource
 pub surgeist_css::CssDeclarationBlockErrorKind::PendingFootprintUndetermined
 pub surgeist_css::CssDeclarationBlockErrorKind::PendingFootprintUndetermined::property: surgeist_css::CssKnownProperty
 pub surgeist_css::CssDeclarationBlockErrorKind::Serialization(surgeist_css::CssSpecifiedValueSerializationError)
@@ -3705,6 +3729,25 @@ pub surgeist_css::CssLonghandValueRef::WrapBefore(&'a surgeist_css::CssWrapBound
 pub surgeist_css::CssLonghandValueRef::WrapInside(&'a surgeist_css::CssWrapInside)
 pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
 pub surgeist_css::CssLonghandValueRef::ZIndex(&'a surgeist_css::CssZIndexValue)
+#[non_exhaustive] pub enum surgeist_css::CssMarginBox
+pub surgeist_css::CssMarginBox::BottomCenter
+pub surgeist_css::CssMarginBox::BottomLeft
+pub surgeist_css::CssMarginBox::BottomLeftCorner
+pub surgeist_css::CssMarginBox::BottomRight
+pub surgeist_css::CssMarginBox::BottomRightCorner
+pub surgeist_css::CssMarginBox::LeftBottom
+pub surgeist_css::CssMarginBox::LeftMiddle
+pub surgeist_css::CssMarginBox::LeftTop
+pub surgeist_css::CssMarginBox::RightBottom
+pub surgeist_css::CssMarginBox::RightMiddle
+pub surgeist_css::CssMarginBox::RightTop
+pub surgeist_css::CssMarginBox::TopCenter
+pub surgeist_css::CssMarginBox::TopLeft
+pub surgeist_css::CssMarginBox::TopLeftCorner
+pub surgeist_css::CssMarginBox::TopRight
+pub surgeist_css::CssMarginBox::TopRightCorner
+impl surgeist_css::CssMarginBox
+pub const fn surgeist_css::CssMarginBox::css_name(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_css::CssMarginValue
 pub surgeist_css::CssMarginValue::Auto
 pub surgeist_css::CssMarginValue::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
@@ -4264,18 +4307,75 @@ pub surgeist_css::CssOverflowWrap::Normal
 impl surgeist_css::CssOverflowWrap
 pub fn surgeist_css::CssOverflowWrap::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssOverflowWrap::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssPageSelector
-pub surgeist_css::CssPageSelector::First
-pub surgeist_css::CssPageSelector::Left
-pub surgeist_css::CssPageSelector::Recto
-pub surgeist_css::CssPageSelector::Right
-pub surgeist_css::CssPageSelector::Verso
-impl surgeist_css::CssPageSelector
-pub const fn surgeist_css::CssPageSelector::specificity(self) -> surgeist_css::CssPageSpecificity
-#[non_exhaustive] pub enum surgeist_css::CssPageSpecificity
-pub surgeist_css::CssPageSpecificity::First
-pub surgeist_css::CssPageSpecificity::Side
-pub surgeist_css::CssPageSpecificity::Unqualified
+#[non_exhaustive] pub enum surgeist_css::CssPageBleed
+pub surgeist_css::CssPageBleed::Auto
+pub surgeist_css::CssPageBleed::Length(surgeist_css::CssSpecifiedLength)
+#[non_exhaustive] pub enum surgeist_css::CssPageBlockErrorKind
+pub surgeist_css::CssPageBlockErrorKind::InvalidPropertyValue
+pub surgeist_css::CssPageBlockErrorKind::PropertyNotApplicable
+pub surgeist_css::CssPageBlockErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationError)
+#[non_exhaustive] pub enum surgeist_css::CssPageDeclaration
+pub surgeist_css::CssPageDeclaration::Descriptor(surgeist_css::CssPageDescriptor)
+pub surgeist_css::CssPageDeclaration::Property(surgeist_css::CssDeclaration)
+#[non_exhaustive] pub enum surgeist_css::CssPageDescriptorKind
+pub surgeist_css::CssPageDescriptorKind::Bleed
+pub surgeist_css::CssPageDescriptorKind::Marks
+pub surgeist_css::CssPageDescriptorKind::PageOrientation
+pub surgeist_css::CssPageDescriptorKind::Size
+impl surgeist_css::CssPageDescriptorKind
+pub const fn surgeist_css::CssPageDescriptorKind::css_name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssPageDescriptorValueRef<'a>
+pub surgeist_css::CssPageDescriptorValueRef::Bleed(&'a surgeist_css::CssPageBleed)
+pub surgeist_css::CssPageDescriptorValueRef::Global(surgeist_css::CssGlobalKeyword)
+pub surgeist_css::CssPageDescriptorValueRef::Marks(surgeist_css::CssPageMarks)
+pub surgeist_css::CssPageDescriptorValueRef::PageOrientation(surgeist_css::CssPageOutputOrientation)
+pub surgeist_css::CssPageDescriptorValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
+pub surgeist_css::CssPageDescriptorValueRef::Size(&'a surgeist_css::CssPageSizeValue)
+#[non_exhaustive] pub enum surgeist_css::CssPageOrientation
+pub surgeist_css::CssPageOrientation::Landscape
+pub surgeist_css::CssPageOrientation::Portrait
+#[non_exhaustive] pub enum surgeist_css::CssPageOutputOrientation
+pub surgeist_css::CssPageOutputOrientation::RotateLeft
+pub surgeist_css::CssPageOutputOrientation::RotateRight
+pub surgeist_css::CssPageOutputOrientation::Upright
+#[non_exhaustive] pub enum surgeist_css::CssPageProjectionError
+pub surgeist_css::CssPageProjectionError::DuplicateDescriptor
+pub surgeist_css::CssPageProjectionError::DuplicateDescriptor::kind: surgeist_css::CssPageDescriptorKind
+pub surgeist_css::CssPageProjectionError::Properties(surgeist_css::CssDeclarationBlockError)
+pub surgeist_css::CssPageProjectionError::Resource(surgeist_css::CssSpecifiedValueSerializationError)
+impl core::convert::From<surgeist_css::CssDeclarationBlockError> for surgeist_css::CssPageProjectionError
+pub fn surgeist_css::CssPageProjectionError::from(v: surgeist_css::CssDeclarationBlockError) -> Self
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssPageProjectionError
+pub fn surgeist_css::CssPageProjectionError::from(v: surgeist_css::CssSpecifiedValueSerializationError) -> Self
+impl core::error::Error for surgeist_css::CssPageProjectionError
+pub fn surgeist_css::CssPageProjectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssPageProjectionError
+pub fn surgeist_css::CssPageProjectionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssPagePseudo
+pub surgeist_css::CssPagePseudo::Blank
+pub surgeist_css::CssPagePseudo::First
+pub surgeist_css::CssPagePseudo::Left
+pub surgeist_css::CssPagePseudo::Recto
+pub surgeist_css::CssPagePseudo::Right
+pub surgeist_css::CssPagePseudo::Verso
+impl surgeist_css::CssPagePseudo
+pub const fn surgeist_css::CssPagePseudo::css_name(self) -> &'static str
+pub const fn surgeist_css::CssPagePseudo::specificity(self) -> surgeist_css::CssPageSpecificity
+#[non_exhaustive] pub enum surgeist_css::CssPageSize
+pub surgeist_css::CssPageSize::A3
+pub surgeist_css::CssPageSize::A4
+pub surgeist_css::CssPageSize::A5
+pub surgeist_css::CssPageSize::B4
+pub surgeist_css::CssPageSize::B5
+pub surgeist_css::CssPageSize::JisB4
+pub surgeist_css::CssPageSize::JisB5
+pub surgeist_css::CssPageSize::Ledger
+pub surgeist_css::CssPageSize::Legal
+pub surgeist_css::CssPageSize::Letter
+#[non_exhaustive] pub enum surgeist_css::CssPageSizeValue
+pub surgeist_css::CssPageSizeValue::Auto
+pub surgeist_css::CssPageSizeValue::Dimensions(surgeist_css::CssSpecifiedNonNegativeLength, core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>)
+pub surgeist_css::CssPageSizeValue::Named(surgeist_css::CssPageNamedSize)
 #[non_exhaustive] pub enum surgeist_css::CssParsedColorAlphaRef<'a>
 pub surgeist_css::CssParsedColorAlphaRef::HintedNumberCalculation(&'a surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssParsedColorAlphaRef::Missing
@@ -4737,7 +4837,6 @@ pub surgeist_css::CssRuleCssomFormat::Supports
 pub surgeist_css::CssRuleCssomFormat::SupportsCondition
 #[non_exhaustive] pub enum surgeist_css::CssRuleCssomKind
 pub surgeist_css::CssRuleCssomKind::Else
-pub surgeist_css::CssRuleCssomKind::Page
 pub surgeist_css::CssRuleCssomKind::When
 #[non_exhaustive] pub enum surgeist_css::CssRuleCssomSerializationErrorKind
 pub surgeist_css::CssRuleCssomSerializationErrorKind::DeclarationBlock
@@ -5024,6 +5123,9 @@ pub surgeist_css::CssSpecifiedDeclarationValueRef::Custom(&'a surgeist_css::CssC
 pub surgeist_css::CssSpecifiedDeclarationValueRef::PendingShorthand(&'a surgeist_css::CssDeclaration)
 pub surgeist_css::CssSpecifiedDeclarationValueRef::SvgGlyphOrientationVertical(&'a surgeist_css::CssSvgGlyphOrientationVerticalContribution)
 pub surgeist_css::CssSpecifiedDeclarationValueRef::UnresolvedLonghand(&'a surgeist_css::CssComponentValues)
+#[non_exhaustive] pub enum surgeist_css::CssSpecifiedPageDeclarationEntry
+pub surgeist_css::CssSpecifiedPageDeclarationEntry::Descriptor(surgeist_css::CssPageDescriptor)
+pub surgeist_css::CssSpecifiedPageDeclarationEntry::Property(surgeist_css::CssSpecifiedDeclarationEntry)
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedRuleSerializationErrorKind
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationErrorKind)
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Value(surgeist_css::CssSpecifiedValueSerializationErrorKind)
@@ -7608,6 +7710,21 @@ pub struct surgeist_css::CssCounterSetPropertyValue
 impl surgeist_css::CssCounterSetPropertyValue
 pub fn surgeist_css::CssCounterSetPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssCounterSetPropertyValue::value(&self) -> &surgeist_css::CssCounterChangesValue
+pub struct surgeist_css::CssCounterStyleDescriptorCollection<'a>
+impl<'a> surgeist_css::CssCounterStyleDescriptorCollection<'a>
+pub fn surgeist_css::CssCounterStyleDescriptorCollection<'a>::algorithm(&self) -> core::option::Option<surgeist_css::CssCounterStyleAlgorithm>
+pub fn surgeist_css::CssCounterStyleDescriptorCollection<'a>::definition_status(&self) -> surgeist_css::CssCounterStyleDefinitionStatus
+pub fn surgeist_css::CssCounterStyleDescriptorCollection<'a>::effective(&self, kind: surgeist_css::CssCounterStyleDescriptorKind) -> core::option::Option<surgeist_css::CssCounterStyleDescriptorEntry<'a>>
+pub fn surgeist_css::CssCounterStyleDescriptorCollection<'a>::entries(&self) -> &[surgeist_css::CssCounterStyleDescriptorEntry<'a>]
+pub fn surgeist_css::CssCounterStyleDescriptorCollection<'a>::try_new(entries: alloc::vec::Vec<surgeist_css::CssCounterStyleDescriptorEntry<'a>>) -> core::result::Result<Self, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleDescriptorCollection<'a>::try_new_with_limits(entries: alloc::vec::Vec<surgeist_css::CssCounterStyleDescriptorEntry<'a>>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssCounterStyleDescriptorEntry<'a>
+impl<'a> surgeist_css::CssCounterStyleDescriptorEntry<'a>
+pub const fn surgeist_css::CssCounterStyleDescriptorEntry<'a>::from_value(value: &'a surgeist_css::CssCounterStyleDescriptorValue) -> Self
+pub const fn surgeist_css::CssCounterStyleDescriptorEntry<'a>::occurrence(self) -> core::option::Option<&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptorEntry<'a>::value(self) -> &'a surgeist_css::CssCounterStyleDescriptorValue
+impl<'a> core::convert::From<surgeist_css::CssCounterStyleDescriptorRef<'a>> for surgeist_css::CssCounterStyleDescriptorEntry<'a>
+pub fn surgeist_css::CssCounterStyleDescriptorEntry<'a>::from(value: surgeist_css::CssCounterStyleDescriptorRef<'a>) -> Self
 pub struct surgeist_css::CssCounterStyleDescriptorValue
 impl surgeist_css::CssCounterStyleDescriptorValue
 pub const fn surgeist_css::CssCounterStyleDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -7635,6 +7752,9 @@ pub const fn surgeist_css::CssCounterStyleDescriptors::speak_as(&self) -> core::
 pub const fn surgeist_css::CssCounterStyleDescriptors::suffix(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
 pub const fn surgeist_css::CssCounterStyleDescriptors::symbols(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
 pub const fn surgeist_css::CssCounterStyleDescriptors::system(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+impl surgeist_css::CssCounterStyleDescriptors
+pub fn surgeist_css::CssCounterStyleDescriptors::entries(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css::CssCounterStyleDescriptorEntry<'_>>
+pub fn surgeist_css::CssCounterStyleDescriptors::prospective(&self) -> core::result::Result<surgeist_css::CssCounterStyleDescriptorCollection<'_>, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssCounterStyleFixedSystem
 impl surgeist_css::CssCounterStyleFixedSystem
 pub const fn surgeist_css::CssCounterStyleFixedSystem::first_symbol_value(&self) -> core::option::Option<&surgeist_css::CssIntegerValue>
@@ -7862,6 +7982,8 @@ pub const fn surgeist_css::CssDeclarationBlockError::authored_ordinal(&self) -> 
 pub const fn surgeist_css::CssDeclarationBlockError::declaration(&self) -> core::option::Option<&surgeist_css::CssDeclaration>
 pub const fn surgeist_css::CssDeclarationBlockError::kind(&self) -> &surgeist_css::CssDeclarationBlockErrorKind
 pub const fn surgeist_css::CssDeclarationBlockError::member_ordinal(&self) -> core::option::Option<usize>
+impl core::convert::From<surgeist_css::CssDeclarationBlockError> for surgeist_css::CssPageProjectionError
+pub fn surgeist_css::CssPageProjectionError::from(v: surgeist_css::CssDeclarationBlockError) -> Self
 impl core::convert::From<surgeist_css::CssExpansionError> for surgeist_css::CssDeclarationBlockError
 pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssExpansionError) -> Self
 impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssDeclarationBlockError
@@ -7916,6 +8038,7 @@ impl<T> surgeist_css::CssDescriptorOccurrence<T>
 pub fn surgeist_css::CssDescriptorOccurrence<T>::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub fn surgeist_css::CssDescriptorOccurrence<T>::parsed_value(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssDescriptorOccurrence<T>::position(&self) -> surgeist_css::CssSourcePosition
+pub fn surgeist_css::CssDescriptorOccurrence<T>::same_occurrence(&self, other: &Self) -> bool
 pub const fn surgeist_css::CssDescriptorOccurrence<T>::value(&self) -> &T
 pub fn surgeist_css::CssDescriptorOccurrence<T>::value_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
 impl<T> core::ops::deref::Deref for surgeist_css::CssDescriptorOccurrence<T>
@@ -9660,6 +9783,17 @@ pub struct surgeist_css::CssMarginBottomPropertyValue
 impl surgeist_css::CssMarginBottomPropertyValue
 pub fn surgeist_css::CssMarginBottomPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMarginBottomPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarginDeclarationBlock
+impl surgeist_css::CssMarginDeclarationBlock
+pub fn surgeist_css::CssMarginDeclarationBlock::is_empty(&self) -> bool
+pub const fn surgeist_css::CssMarginDeclarationBlock::properties(&self) -> &surgeist_css::CssDeclarationList
+impl surgeist_css::CssMarginDeclarationBlock
+pub fn surgeist_css::CssMarginDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssMarginDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssMarginDeclarationBlock::try_new(properties: alloc::vec::Vec<surgeist_css::CssDeclaration>) -> core::result::Result<Self, surgeist_css::CssPageBlockError>
+pub fn surgeist_css::CssMarginDeclarationBlock::try_new_with_limits(properties: alloc::vec::Vec<surgeist_css::CssDeclaration>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssPageBlockError>
+pub fn surgeist_css::CssMarginDeclarationBlock::try_specified_properties(&self) -> core::result::Result<surgeist_css::CssSpecifiedDeclarationBlock, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssMarginDeclarationBlock::try_specified_properties_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSpecifiedDeclarationBlock, surgeist_css::CssDeclarationBlockError>
 pub struct surgeist_css::CssMarginInlineEndPropertyValue
 impl surgeist_css::CssMarginInlineEndPropertyValue
 pub fn surgeist_css::CssMarginInlineEndPropertyValue::as_css(&self) -> &str
@@ -9692,6 +9826,22 @@ pub struct surgeist_css::CssMarginRightPropertyValue
 impl surgeist_css::CssMarginRightPropertyValue
 pub fn surgeist_css::CssMarginRightPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMarginRightPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarginRule
+impl surgeist_css::CssMarginRule
+pub const fn surgeist_css::CssMarginRule::declarations(&self) -> &surgeist_css::CssMarginDeclarationBlock
+pub const fn surgeist_css::CssMarginRule::name(&self) -> surgeist_css::CssMarginBox
+pub const fn surgeist_css::CssMarginRule::new(name: surgeist_css::CssMarginBox, declarations: surgeist_css::CssMarginDeclarationBlock) -> Self
+pub const fn surgeist_css::CssMarginRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssMarginRule
+pub fn surgeist_css::CssMarginRule::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssMarginRule::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub struct surgeist_css::CssMarginRuleView<'a>
+impl<'a> surgeist_css::CssMarginRuleView<'a>
+pub const fn surgeist_css::CssMarginRuleView<'a>::declarations(self) -> &'a surgeist_css::CssSpecifiedDeclarationBlock
+pub const fn surgeist_css::CssMarginRuleView<'a>::name(self) -> surgeist_css::CssMarginBox
+pub fn surgeist_css::CssMarginRuleView<'a>::serialize_cssom(self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssMarginRuleView<'a>::serialize_cssom_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssMarginRuleView<'a>::try_new(name: surgeist_css::CssMarginBox, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> core::option::Option<Self>
 pub struct surgeist_css::CssMarginShorthand(_)
 impl surgeist_css::CssMarginShorthand
 pub fn surgeist_css::CssMarginShorthand::assigned_values(&self) -> [&surgeist_css::CssMarginValue; 4]
@@ -10384,6 +10534,55 @@ pub fn surgeist_css::CssPaddingValue::serialize_specified_with_limits(&self, lim
 impl core::cmp::Eq for surgeist_css::CssPaddingValue
 impl core::cmp::PartialEq for surgeist_css::CssPaddingValue
 pub fn surgeist_css::CssPaddingValue::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssPageBlockError
+impl surgeist_css::CssPageBlockError
+pub const fn surgeist_css::CssPageBlockError::declaration(&self) -> core::option::Option<&surgeist_css::CssDeclaration>
+pub const fn surgeist_css::CssPageBlockError::kind(&self) -> &surgeist_css::CssPageBlockErrorKind
+pub const fn surgeist_css::CssPageBlockError::ordinal(&self) -> core::option::Option<usize>
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssPageBlockError
+pub fn surgeist_css::CssPageBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
+impl core::error::Error for surgeist_css::CssPageBlockError
+pub fn surgeist_css::CssPageBlockError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssPageBlockError
+pub fn surgeist_css::CssPageBlockError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssPageBody
+impl surgeist_css::CssPageBody
+pub const fn surgeist_css::CssPageBody::declarations(&self) -> &surgeist_css::CssPageDeclarationBlock
+pub fn surgeist_css::CssPageBody::margin_rules(&self) -> &[surgeist_css::CssMarginRule]
+pub const fn surgeist_css::CssPageBody::new(declarations: surgeist_css::CssPageDeclarationBlock, margin_rules: alloc::vec::Vec<surgeist_css::CssMarginRule>) -> Self
+pub struct surgeist_css::CssPageDeclarationBlock
+impl surgeist_css::CssPageDeclarationBlock
+pub fn surgeist_css::CssPageDeclarationBlock::effective_descriptor(&self, kind: surgeist_css::CssPageDescriptorKind) -> core::option::Option<&surgeist_css::CssPageDescriptor>
+pub fn surgeist_css::CssPageDeclarationBlock::is_empty(&self) -> bool
+pub fn surgeist_css::CssPageDeclarationBlock::occurrences(&self) -> &[surgeist_css::CssPageDeclaration]
+pub const fn surgeist_css::CssPageDeclarationBlock::properties(&self) -> &surgeist_css::CssDeclarationList
+impl surgeist_css::CssPageDeclarationBlock
+pub fn surgeist_css::CssPageDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssPageDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssPageDeclarationBlock::try_specified_properties(&self) -> core::result::Result<surgeist_css::CssSpecifiedDeclarationBlock, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssPageDeclarationBlock::try_specified_properties_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSpecifiedDeclarationBlock, surgeist_css::CssDeclarationBlockError>
+impl surgeist_css::CssPageDeclarationBlock
+pub fn surgeist_css::CssPageDeclarationBlock::try_new(occurrences: alloc::vec::Vec<surgeist_css::CssPageDeclaration>) -> core::result::Result<Self, surgeist_css::CssPageBlockError>
+pub fn surgeist_css::CssPageDeclarationBlock::try_new_with_limits(occurrences: alloc::vec::Vec<surgeist_css::CssPageDeclaration>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssPageBlockError>
+impl surgeist_css::CssPageDeclarationBlock
+pub fn surgeist_css::CssPageDeclarationBlock::try_specified(&self) -> core::result::Result<surgeist_css::CssSpecifiedPageDeclarationBlock, surgeist_css::CssPageProjectionError>
+pub fn surgeist_css::CssPageDeclarationBlock::try_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSpecifiedPageDeclarationBlock, surgeist_css::CssPageProjectionError>
+pub struct surgeist_css::CssPageDescriptor
+impl surgeist_css::CssPageDescriptor
+pub fn surgeist_css::CssPageDescriptor::importance(&self) -> surgeist_css::CssImportance
+pub fn surgeist_css::CssPageDescriptor::new(value: surgeist_css::CssPageDescriptorValue, importance: surgeist_css::CssImportance) -> Self
+pub fn surgeist_css::CssPageDescriptor::occurrence(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssPageDescriptorValue>>
+pub fn surgeist_css::CssPageDescriptor::value(&self) -> &surgeist_css::CssPageDescriptorValue
+pub fn surgeist_css::CssPageDescriptor::with_importance(&self, importance: surgeist_css::CssImportance) -> Self
+pub struct surgeist_css::CssPageDescriptorValue
+impl surgeist_css::CssPageDescriptorValue
+pub const fn surgeist_css::CssPageDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssPageDescriptorValue::kind(&self) -> surgeist_css::CssPageDescriptorKind
+pub const fn surgeist_css::CssPageDescriptorValue::origin(&self) -> &surgeist_css::CssParsedOrigin
+pub const fn surgeist_css::CssPageDescriptorValue::view(&self) -> surgeist_css::CssPageDescriptorValueRef<'_>
+impl surgeist_css::CssPageDescriptorValue
+pub fn surgeist_css::CssPageDescriptorValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPageDescriptorValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPageLineMinimum
 impl surgeist_css::CssPageLineMinimum
 pub fn surgeist_css::CssPageLineMinimum::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
@@ -10398,12 +10597,53 @@ pub fn surgeist_css::CssPageLineMinimum::try_from_component(component: surgeist_
 pub fn surgeist_css::CssPageLineMinimum::try_literal(value: i32) -> core::option::Option<Self>
 impl core::cmp::PartialEq for surgeist_css::CssPageLineMinimum
 pub fn surgeist_css::CssPageLineMinimum::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssPageMarks
+impl surgeist_css::CssPageMarks
+pub const fn surgeist_css::CssPageMarks::crop(self) -> bool
+pub const fn surgeist_css::CssPageMarks::cross(self) -> bool
+pub struct surgeist_css::CssPageNamedSize
+impl surgeist_css::CssPageNamedSize
+pub const fn surgeist_css::CssPageNamedSize::orientation(&self) -> core::option::Option<surgeist_css::CssPageOrientation>
+pub const fn surgeist_css::CssPageNamedSize::size(&self) -> core::option::Option<surgeist_css::CssPageSize>
+pub fn surgeist_css::CssPageNamedSize::try_new(size: core::option::Option<surgeist_css::CssPageSize>, orientation: core::option::Option<surgeist_css::CssPageOrientation>) -> core::option::Option<Self>
 pub struct surgeist_css::CssPageRule
 impl surgeist_css::CssPageRule
-pub const fn surgeist_css::CssPageRule::declarations(&self) -> &surgeist_css::CssDeclarationList
+pub const fn surgeist_css::CssPageRule::declarations(&self) -> &surgeist_css::CssPageDeclarationBlock
+pub fn surgeist_css::CssPageRule::margin_rules(&self) -> &[surgeist_css::CssMarginRule]
 pub const fn surgeist_css::CssPageRule::position(&self) -> surgeist_css::CssSourcePosition
-pub const fn surgeist_css::CssPageRule::selector(&self) -> core::option::Option<surgeist_css::CssPageSelector>
-pub const fn surgeist_css::CssPageRule::specificity(&self) -> surgeist_css::CssPageSpecificity
+pub const fn surgeist_css::CssPageRule::selectors(&self) -> &surgeist_css::CssPageSelectorList
+pub fn surgeist_css::CssPageRule::with_body(&self, body: surgeist_css::CssPageBody) -> Self
+pub fn surgeist_css::CssPageRule::with_selectors(&self, selectors: surgeist_css::CssPageSelectorList) -> Self
+pub struct surgeist_css::CssPageRuleView<'a>
+impl<'a> surgeist_css::CssPageRuleView<'a>
+pub const fn surgeist_css::CssPageRuleView<'a>::declarations(self) -> &'a surgeist_css::CssSpecifiedPageDeclarationBlock
+pub const fn surgeist_css::CssPageRuleView<'a>::margin_rules(self) -> &'a [surgeist_css::CssMarginRuleView<'a>]
+pub const fn surgeist_css::CssPageRuleView<'a>::new(selectors: &'a surgeist_css::CssPageSelectorList, declarations: &'a surgeist_css::CssSpecifiedPageDeclarationBlock, margins: &'a [surgeist_css::CssMarginRuleView<'a>]) -> Self
+pub const fn surgeist_css::CssPageRuleView<'a>::selectors(self) -> &'a surgeist_css::CssPageSelectorList
+pub fn surgeist_css::CssPageRuleView<'a>::serialize_cssom(self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssPageRuleView<'a>::serialize_cssom_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub struct surgeist_css::CssPageSelector
+impl surgeist_css::CssPageSelector
+pub const fn surgeist_css::CssPageSelector::name(&self) -> core::option::Option<&surgeist_css::CssIdent>
+pub const fn surgeist_css::CssPageSelector::origin(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub fn surgeist_css::CssPageSelector::pseudos(&self) -> &[surgeist_css::CssPagePseudo]
+pub fn surgeist_css::CssPageSelector::specificity(&self) -> surgeist_css::CssPageSpecificity
+pub fn surgeist_css::CssPageSelector::try_new(name: core::option::Option<surgeist_css::CssIdent>, pseudos: alloc::vec::Vec<surgeist_css::CssPagePseudo>) -> core::option::Option<Self>
+pub struct surgeist_css::CssPageSelectorList
+impl surgeist_css::CssPageSelectorList
+pub fn surgeist_css::CssPageSelectorList::is_empty(&self) -> bool
+pub fn surgeist_css::CssPageSelectorList::new(selectors: alloc::vec::Vec<surgeist_css::CssPageSelector>) -> Self
+pub const fn surgeist_css::CssPageSelectorList::origin(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub fn surgeist_css::CssPageSelectorList::selectors(&self) -> &[surgeist_css::CssPageSelector]
+impl surgeist_css::CssPageSelectorList
+pub fn surgeist_css::CssPageSelectorList::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPageSelectorList::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssPageSpecificity
+impl surgeist_css::CssPageSpecificity
+pub const fn surgeist_css::CssPageSpecificity::first_or_blank(self) -> usize
+pub const fn surgeist_css::CssPageSpecificity::named(self) -> usize
+pub const fn surgeist_css::CssPageSpecificity::new(named: usize, first_or_blank: usize, side: usize) -> Self
+pub const fn surgeist_css::CssPageSpecificity::side(self) -> usize
 pub struct surgeist_css::CssParseReport<T>
 impl<T> surgeist_css::CssParseReport<T>
 pub fn surgeist_css::CssParseReport<T>::diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic]
@@ -10436,7 +10676,8 @@ pub fn surgeist_css::CssParserContext::parse_declaration_list_text(self, source:
 pub fn surgeist_css::CssParserContext::parse_group_block(self, source: &str, namespaces: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssRuleList>>>
 pub fn surgeist_css::CssParserContext::parse_keyframe_declaration_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssKeyframeDeclarationList>>>
 pub fn surgeist_css::CssParserContext::parse_keyframes_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssKeyframeBlock>>>>
-pub fn surgeist_css::CssParserContext::parse_page_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssDeclarationList>>>
+pub fn surgeist_css::CssParserContext::parse_margin_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssMarginDeclarationBlock>>>
+pub fn surgeist_css::CssParserContext::parse_page_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssPageBody>>>
 pub fn surgeist_css::CssParserContext::parse_page_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value_for_grammar(self, grammar: surgeist_css::CssPropertyGrammar, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
@@ -11457,6 +11698,8 @@ pub struct surgeist_css::CssSpecifiedDeclarationBlock
 impl surgeist_css::CssSpecifiedDeclarationBlock
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::entries(&self) -> &[surgeist_css::CssSpecifiedDeclarationEntry]
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::is_keyframe(&self) -> bool
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::is_margin(&self) -> bool
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::is_page(&self) -> bool
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations(declarations: &surgeist_css::CssDeclarationList) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(declarations: &surgeist_css::CssDeclarationList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_entries(entries: &[surgeist_css::CssSpecifiedDeclarationEntry]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
@@ -11469,6 +11712,10 @@ pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_entries(ent
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_entries_with_limits(entries: &[surgeist_css::CssSpecifiedDeclarationEntry], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(expansions: &[surgeist_css::CssExpansion]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions_with_limits(expansions: &[surgeist_css::CssExpansion], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_margin_entries(entries: &[surgeist_css::CssSpecifiedDeclarationEntry]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_margin_entries_with_limits(entries: &[surgeist_css::CssSpecifiedDeclarationEntry], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_page_entries(entries: &[surgeist_css::CssSpecifiedDeclarationEntry]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_page_entries_with_limits(entries: &[surgeist_css::CssSpecifiedDeclarationEntry], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 impl surgeist_css::CssSpecifiedDeclarationBlock
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value(&self, name: surgeist_css::CssPropertyNameRef<'_>) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value_with_limits(&self, name: surgeist_css::CssPropertyNameRef<'_>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
@@ -11575,6 +11822,13 @@ pub fn surgeist_css::CssSpecifiedNumber::serialize_specified(&self) -> core::res
 pub fn surgeist_css::CssSpecifiedNumber::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSpecifiedNumber::try_from_calculation(calculation: surgeist_css::CssNumberCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedNumber::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssSpecifiedPageDeclarationBlock
+impl surgeist_css::CssSpecifiedPageDeclarationBlock
+pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::entries(&self) -> &[surgeist_css::CssSpecifiedPageDeclarationEntry]
+pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::try_from_entries(entries: &[surgeist_css::CssSpecifiedPageDeclarationEntry]) -> core::result::Result<Self, surgeist_css::CssPageProjectionError>
+pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::try_from_entries_with_limits(entries: &[surgeist_css::CssSpecifiedPageDeclarationEntry], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssPageProjectionError>
 pub struct surgeist_css::CssSpecifiedPercentage
 impl surgeist_css::CssSpecifiedPercentage
 pub fn surgeist_css::CssSpecifiedPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssPercentageCalculation>
@@ -11604,6 +11858,10 @@ impl surgeist_css::CssSpecifiedValueSerializationError
 pub const fn surgeist_css::CssSpecifiedValueSerializationError::kind(&self) -> surgeist_css::CssSpecifiedValueSerializationErrorKind
 impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssDeclarationBlockError
 pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssPageBlockError
+pub fn surgeist_css::CssPageBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssPageProjectionError
+pub fn surgeist_css::CssPageProjectionError::from(v: surgeist_css::CssSpecifiedValueSerializationError) -> Self
 impl core::error::Error for surgeist_css::CssSpecifiedValueSerializationError
 impl core::fmt::Display for surgeist_css::CssSpecifiedValueSerializationError
 pub fn surgeist_css::CssSpecifiedValueSerializationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -12793,10 +13051,14 @@ pub fn surgeist_css::parse_keyframe_declaration_block(source: &str) -> surgeist_
 pub fn surgeist_css::parse_keyframe_rule(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeRule>>
 pub fn surgeist_css::parse_keyframe_selector_list(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeSelectors>>
 pub fn surgeist_css::parse_keyframes_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssKeyframeBlock>>>>
+pub fn surgeist_css::parse_margin_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssMarginDeclarationBlock>>>
+pub fn surgeist_css::parse_margin_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
 pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>
-pub fn surgeist_css::parse_page_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssDeclarationList>>>
+pub fn surgeist_css::parse_page_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssPageBody>>>
+pub fn surgeist_css::parse_page_descriptor_value(source: &str, kind: surgeist_css::CssPageDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDescriptorValue>>
 pub fn surgeist_css::parse_page_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
+pub fn surgeist_css::parse_page_selector_list(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageSelectorList>>
 pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_property_value_for_grammar(grammar: surgeist_css::CssPropertyGrammar, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_property_value_text(source: &str, property: surgeist_css::CssPropertyNameRef<'_>, importance: surgeist_css::CssImportance) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>

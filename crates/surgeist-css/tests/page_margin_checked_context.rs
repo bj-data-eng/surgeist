@@ -76,7 +76,7 @@ fn checked_page_restrictions_preserve_original_offending_component() {
     for mode in [CssParserMode::Standards, CssParserMode::Quirks] {
         let context = CssParserContext::new(mode);
         for property in MARGINS {
-            for value in ["1em", "1ex", "0em", "0ex", r"1\65 m", "7"] {
+            for value in ["1zz", "1yy", "0zz", "0yy", r"1\7a z", "7"] {
                 let components = parse_component_values(value).unwrap();
                 let origin = components.items()[0].origin().clone();
                 let original = components.clone();
@@ -99,7 +99,7 @@ fn checked_page_restrictions_preserve_original_offending_component() {
 }
 
 #[test]
-fn page_reentry_maps_nested_restricted_unit_and_matches_direct_checked_grammar() {
+fn page_reentry_maps_nested_invalid_unit_and_matches_direct_checked_grammar() {
     let source = checked(
         CssKnownProperty::MarginLeft,
         "var(--m)",
@@ -108,7 +108,7 @@ fn page_reentry_maps_nested_restricted_unit_and_matches_direct_checked_grammar()
     let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
         panic!("Page pending")
     };
-    for value in ["calc(1px + 2em)", "calc(0 * 1ex)", "calc(1px + (0 * 1em))"] {
+    for value in ["calc(1px + 2zz)", "calc(0 * 1yy)", "calc(1px + (0 * 1zz))"] {
         let replacement = parse_component_values(&format!("/*😀*/{value}")).unwrap();
         let before = replacement.clone();
         let direct = parse_page_property_value(
@@ -129,7 +129,7 @@ fn page_reentry_maps_nested_restricted_unit_and_matches_direct_checked_grammar()
         assert!(matches!(
             &origin.source().as_str()[origin.span().start().byte_offset().value()
                 ..origin.span().end().byte_offset().value()],
-            "2em" | "1ex" | "1em"
+            "2zz" | "1yy" | "1zz"
         ));
         assert_eq!(replacement, before);
     }
@@ -171,9 +171,9 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
         for _ in 0..2 {
             for invalid in [
                 "7",
-                "1px 2em",
-                "1px 2px 3ex",
-                "1px 2px 3px calc(0 * 1em)",
+                "1px 2zz",
+                "1px 2px 3yy",
+                "1px 2px 3px calc(0 * 1zz)",
                 "1px 2px 3px 4px 5px",
             ] {
                 assert!(
@@ -225,8 +225,8 @@ fn checked_page_custom_values_retain_own_tokens_without_margin_restrictions() {
         ));
     }
     for (property, value) in [
-        (CssKnownProperty::Color, "red"),
-        (CssKnownProperty::Width, "1px"),
+        (CssKnownProperty::Opacity, ".5"),
+        (CssKnownProperty::Display, "block"),
         (CssKnownProperty::MarginInlineStart, "1px"),
         (CssKnownProperty::All, "initial"),
     ] {

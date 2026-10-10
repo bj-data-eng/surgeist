@@ -13,10 +13,7 @@ use super::{
 };
 use crate::CssCounterStyleDescriptorKind;
 use crate::descriptor_values::CounterStyleValueData;
-use crate::error::{
-    Error, basic, descriptor_name_error, invalid_descriptor_combination, unexpected_at,
-    with_descriptor_context,
-};
+use crate::error::{Error, basic, descriptor_name_error, unexpected_at, with_descriptor_context};
 use crate::syntax::*;
 
 pub(super) struct CounterStylePrelude {
@@ -106,16 +103,7 @@ pub(super) fn parse_body<'i>(
         }
     }
 
-    let descriptors =
-        CssCounterStyleDescriptors::from_occurrences(occurrences).map_err(|issue| {
-            invalid_descriptor_combination(
-                input,
-                issue.position(),
-                "counter-style",
-                issue.responsible(),
-                issue.conflicting(),
-            )
-        })?;
+    let descriptors = CssCounterStyleDescriptors::from_occurrences(occurrences);
 
     Ok(descriptors)
 }

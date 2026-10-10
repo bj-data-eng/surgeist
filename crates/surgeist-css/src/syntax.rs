@@ -146,109 +146,8 @@ pub enum CssRule {
     Scope(CssScopeRule),
 }
 
-/// One valid parser-produced rule in the composed authored Page profile.
-///
-/// The private fields retain the optional authored page pseudo selector, the
-/// ordered page-context physical margins and custom declarations, and the at-keyword position.
-/// This authored model does not paginate, cascade, match pages, or resolve
-/// lengths and percentages.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssPageRule {
-    selector: Option<CssPageSelector>,
-    declarations: CssDeclarationList,
-    position: CssSourcePosition,
-}
-
-impl CssPageRule {
-    #[must_use]
-    pub(crate) const fn new(
-        selector: Option<CssPageSelector>,
-        declarations: CssDeclarationList,
-        position: CssSourcePosition,
-    ) -> Self {
-        Self {
-            selector,
-            declarations,
-            position,
-        }
-    }
-
-    /// Returns the authored page pseudo selector, or `None` for the default
-    /// page form with an empty prelude.
-    #[must_use]
-    pub const fn selector(&self) -> Option<CssPageSelector> {
-        self.selector
-    }
-
-    /// Returns the page selector's specificity within the supported unnamed,
-    /// single-pseudo page grammar, without matching or cascading pages.
-    #[must_use]
-    pub const fn specificity(&self) -> CssPageSpecificity {
-        match self.selector {
-            Some(selector) => selector.specificity(),
-            None => CssPageSpecificity::Unqualified,
-        }
-    }
-
-    /// Returns valid page-context physical margins and custom declarations in authored order.
-    #[must_use]
-    pub const fn declarations(&self) -> &CssDeclarationList {
-        &self.declarations
-    }
-
-    /// Returns the semantic source position of the rule's at-keyword.
-    #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
-    }
-}
-
-/// The finite CSS2 and Logical 1 pseudo-page selector set accepted by `@page`.
-///
-/// The default page form is represented by `None` from
-/// [`CssPageRule::selector`], keeping absence distinct from every authored
-/// pseudo selector. Logical classifications remain symbolic until downstream
-/// page progression is known.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum CssPageSelector {
-    Left,
-    Right,
-    First,
-    /// The later side of a spread in its page progression.
-    Recto,
-    /// The earlier side of a spread in its page progression.
-    Verso,
-}
-
-impl CssPageSelector {
-    /// Returns the selector's page specificity, independent of page progression.
-    /// Logical 1 assigns `:recto` and `:verso` the specificity of `:left` and
-    /// `:right`; CSS2 places `:first` above those side selectors.
-    #[must_use]
-    pub const fn specificity(self) -> CssPageSpecificity {
-        match self {
-            Self::Left | Self::Right | Self::Recto | Self::Verso => CssPageSpecificity::Side,
-            Self::First => CssPageSpecificity::First,
-        }
-    }
-}
-
-/// Comparable specificity for the supported unnamed, single-pseudo page grammar.
-///
-/// The ordering is `Unqualified < Side < First`, following CSS2 §13.2.2 and
-/// Logical 1 §3. It does not represent element-selector specificity, named or
-/// compound page selectors, declaration importance, or cascade evaluation.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum CssPageSpecificity {
-    /// An `@page` rule with an empty prelude.
-    Unqualified,
-    /// `:left`, `:right`, `:recto`, or `:verso`.
-    Side,
-    /// `:first`.
-    First,
-}
+mod page;
+pub use page::*;
 
 mod counter_style;
 pub(crate) use counter_style::CssCounterStyleDescriptor;
@@ -795,6 +694,15 @@ impl<T> CssDescriptorOccurrence<T> {
                 value: value_origin,
                 components,
             })),
+        }
+    }
+
+    /// Reports identity of the genuine parsed occurrence, including across projection clones.
+    #[must_use]
+    pub fn same_occurrence(&self, other: &Self) -> bool {
+        match (&self.parsed, &other.parsed) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            _ => std::ptr::eq(self, other),
         }
     }
 
@@ -3360,7 +3268,7 @@ struct DeclarationOccurrence {
     importance: CssImportance,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct DeclarationPayload {
     parser_context: crate::CssParserContext,
     declaration_context: DeclarationContext,
@@ -3376,7 +3284,7 @@ pub(crate) enum DeclarationContext {
     Page,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum DeclarationProvenance {
     Parsed {
         name: CssParsedOrigin,
@@ -3496,6 +3404,20 @@ impl CssDeclaration {
         self.occurrence.payload.parser_context
     }
 
+    /// Changes only the checked domain, retaining genuine original token provenance.
+    pub(crate) fn into_page_context(self) -> Self {
+        if self.declaration_context() == DeclarationContext::Page {
+            return self;
+        }
+        let mut payload = (*self.occurrence.payload).clone();
+        payload.declaration_context = DeclarationContext::Page;
+        Self {
+            occurrence: Arc::new(DeclarationOccurrence {
+                payload: Arc::new(payload),
+                importance: self.importance(),
+            }),
+        }
+    }
     pub(crate) fn declaration_context(&self) -> DeclarationContext {
         self.occurrence.payload.declaration_context
     }

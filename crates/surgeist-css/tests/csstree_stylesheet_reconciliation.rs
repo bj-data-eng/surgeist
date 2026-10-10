@@ -82,8 +82,8 @@ fn rules(actual: &[CssRule]) -> Value {
             json!({"kind": "media", "condition": condition, "rules": rules(media.rules())})
         }
         CssRule::Page(page) => {
-            assert!(page.selector().is_none());
-            json!({"kind": "page", "selector": null, "declarations": declarations(page.declarations())})
+            assert!(page.selectors().is_empty());
+            json!({"kind": "page", "selector": null, "declarations": declarations(page.declarations().properties())})
         }
         other => panic!("unexpected retained rule: {other:?}"),
     }).collect())
