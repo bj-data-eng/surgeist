@@ -270,8 +270,8 @@ impl CssomCommit {
 pub struct CssomBatch {
     token: Arc<()>,
     base: Arc<State>,
-    staged: State,
-    limits: CssomLimits,
+    pub(crate) staged: State,
+    pub(crate) limits: CssomLimits,
     poisoned: bool,
     categories: BTreeSet<CssomChange>,
     affected: Vec<CssomObjectId>,
@@ -279,7 +279,7 @@ pub struct CssomBatch {
     full_recompute: bool,
 }
 impl CssomBatch {
-    fn apply<T>(
+    pub(crate) fn apply<T>(
         &mut self,
         operation: impl FnOnce(&mut Self) -> Result<T, CssomError>,
     ) -> Result<T, CssomError> {

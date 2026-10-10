@@ -6,11 +6,13 @@
 
 mod css_adapter;
 mod identity;
+mod media_operations;
 mod model;
 mod publication;
 mod store;
 
 pub use identity::*;
+pub use media_operations::CssomMediaEdit;
 pub use model::*;
 pub use publication::*;
 pub use store::*;

@@ -670,6 +670,7 @@ pub enum CssomError {
     Page(CssPageProjectionError),
     ParseResource(Box<CssRecoveryDiagnostic>),
     Component(CssComponentValueError),
+    Media(CssMediaCssomSerializationError),
     AuthoredFeatureConversion,
     Format(CssRuleCssomSerializationError),
 }
@@ -685,6 +686,7 @@ impl std::error::Error for CssomError {
             Self::Page(e) => Some(e),
             Self::Format(e) => Some(e),
             Self::Component(e) => Some(e),
+            Self::Media(e) => Some(e),
             _ => None,
         }
     }

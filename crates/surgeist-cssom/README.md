@@ -48,7 +48,15 @@ without deleting those objects or weakening authored CSS construction.
 The foundation edit surface provides parsed/typed creation, constructed recovered
 replacement, guarded sheet/group deletion, direct selected-terminal removal,
 disabled/media/context updates, raw counter-name/map edits and explicit import
-association. Complete #1049 text/selector/property/MediaList operations and async
+association. MediaList snapshots expose canonical text, length and nullable
+indexed items. Text replacement, single-query append and delete use CSS-owned
+recovery and canonical byte equality; delete removes all matches. A null single
+parse is a no-op and an absent non-null delete is `NotFound`. Mutation preserves
+the associated collection's identity and earlier snapshots, without applying
+sheet guards or writing owner attributes. Recovered parser diagnostics and typed
+resource failures remain observable. Append/delete charge the candidate and
+all current members through one cumulative CSS input, projection and output
+budget. Complete #1049 text/selector/property operations and async
 replacement are separate implementation work. No stub methods stand in for them.
 The CSSRule cssText setter is implemented as its standards-defined no-op.
 

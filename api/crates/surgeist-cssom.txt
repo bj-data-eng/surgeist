@@ -57,6 +57,7 @@ pub surgeist_cssom::CssomError::InvalidInput(&'static str)
 pub surgeist_cssom::CssomError::Limit
 pub surgeist_cssom::CssomError::Limit::maximum: usize
 pub surgeist_cssom::CssomError::Limit::resource: &'static str
+pub surgeist_cssom::CssomError::Media(surgeist_css::media::CssMediaCssomSerializationError)
 pub surgeist_cssom::CssomError::MissingObject
 pub surgeist_cssom::CssomError::Page(surgeist_css::page_projection::CssPageProjectionError)
 pub surgeist_cssom::CssomError::ParseResource(alloc::boxed::Box<surgeist_css::report::CssRecoveryDiagnostic>)
@@ -217,6 +218,10 @@ pub surgeist_cssom::CssomSelectors::Ordinary(surgeist_css::syntax::CssStyleSelec
 pub surgeist_cssom::CssomSelectors::Scoped(surgeist_css::syntax::CssScopedStyleSelectorList)
 pub struct surgeist_cssom::CssomBatch
 impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::append_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::delete_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::set_media_text(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::associate_import(&mut self, rule: &surgeist_cssom::CssomRuleId, sheet: &surgeist_cssom::CssomSheetId, input: surgeist_cssom::CssomInputVersion, resolved_location: core::option::Option<alloc::string::String>) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_declarations(&mut self, declarations: surgeist_css::syntax::CssDeclarationList, computed: bool, readonly: bool, owner: core::option::Option<surgeist_cssom::CssomInputVersion>) -> core::result::Result<surgeist_cssom::CssomBlockTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_parsed_sheet(&mut self, source: &str, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
@@ -314,6 +319,10 @@ pub surgeist_cssom::CssomLinkedInput::version: surgeist_cssom::CssomInputVersion
 impl core::cmp::Eq for surgeist_cssom::CssomLinkedInput
 impl core::cmp::PartialEq for surgeist_cssom::CssomLinkedInput
 pub fn surgeist_cssom::CssomLinkedInput::eq(&self, other: &Self) -> bool
+pub struct surgeist_cssom::CssomMediaEdit
+impl surgeist_cssom::CssomMediaEdit
+pub const fn surgeist_cssom::CssomMediaEdit::changed(&self) -> bool
+pub fn surgeist_cssom::CssomMediaEdit::diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
 pub struct surgeist_cssom::CssomMediaListId
 impl surgeist_cssom::CssomMediaListId
 pub fn surgeist_cssom::CssomMediaListId::owner(&self) -> &surgeist_cssom::CssomOwnerId
@@ -393,6 +402,10 @@ pub fn surgeist_cssom::CssomSnapshot::sheets(&self) -> &[surgeist_cssom::CssomSh
 pub fn surgeist_cssom::CssomSnapshot::specified_property_css_text(&self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::inputs(&self) -> surgeist_cssom::CssomInputManifest
+impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::media_item(&self, id: &surgeist_cssom::CssomMediaListId, index: usize, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::media_length(&self, id: &surgeist_cssom::CssomMediaListId) -> core::result::Result<usize, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::media_text(&self, id: &surgeist_cssom::CssomMediaListId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomStore
 impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::batch(&self, guard: surgeist_cssom::CssomEditGuard) -> core::result::Result<surgeist_cssom::CssomBatch, surgeist_cssom::CssomError>
