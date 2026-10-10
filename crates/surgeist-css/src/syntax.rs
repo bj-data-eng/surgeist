@@ -4383,10 +4383,9 @@ impl CssContentString {
 }
 
 pub(crate) fn is_css_wide_keyword(value: &str) -> bool {
-    matches!(
-        value.to_ascii_lowercase().as_str(),
-        "inherit" | "initial" | "unset" | "revert" | "revert-layer"
-    )
+    ["inherit", "initial", "unset", "revert", "revert-layer"]
+        .iter()
+        .any(|keyword| value.eq_ignore_ascii_case(keyword))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -372,22 +372,22 @@ fn font_face_uses_effective_modern_order_alias_ranges_and_present_only_values() 
 }
 
 #[test]
-fn repaired_keyframes_wrapper_keytext_and_normal_blocks_use_shared_inverse() {
+fn selected_keyframes_wrapper_keytext_and_normal_blocks_use_shared_inverse() {
     for (source, expected, compact) in [
-        ("@keyframes k{}", "@keyframes k {\n\n}", "@keyframes k { }"),
+        ("@keyframes k{}", "@keyframes k { \n}", "@keyframes k { }"),
         (
             "@keyframes fade{from{opacity:0}to{opacity:1}}",
-            "@keyframes fade {\n  0% { opacity: 0; }\n  100% { opacity: 1; }\n}",
+            "@keyframes fade {   0% { opacity: 0; }\n  100% { opacity: 1; }\n}",
             "@keyframes fade { 0% { opacity: 0; } 100% { opacity: 1; } }",
         ),
         (
             "@keyframes k{from,0%,to{}from{opacity:0;opacity:1;margin:1px 2px 3px 4px;margin-left:7px}}",
-            "@keyframes k {\n  0%, 0%, 100% { }\n  0% { opacity: 1; margin: 1px 2px 3px 7px; }\n}",
+            "@keyframes k {   0%, 0%, 100% { }\n  0% { opacity: 1; margin: 1px 2px 3px 7px; }\n}",
             "@keyframes k { 0%, 0%, 100% { } 0% { opacity: 0; opacity: 1; margin: 1px 2px 3px 4px; margin-left: 7px; } }",
         ),
         (
             "@keyframes k{from{pause:var(--P)}}",
-            "@keyframes k {\n  0% { pause: var(--P); }\n}",
+            "@keyframes k {   0% { pause: var(--P); }\n}",
             "@keyframes k { 0% { pause: var(--P); } }",
         ),
     ] {
@@ -414,7 +414,7 @@ fn repaired_keyframes_wrapper_keytext_and_normal_blocks_use_shared_inverse() {
     );
     assert_eq!(
         report.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
-        "@keyframes k {\n  0% { animation-timing-function: linear; opacity: 1; }\n}"
+        "@keyframes k {   0% { animation-timing-function: linear; opacity: 1; }\n}"
     );
 }
 
@@ -621,17 +621,17 @@ fn exact_rule_tariffs_include_shared_projection_and_retained_losing_occurrences(
     // Keyframes: rule/name2 + block/selector-list/From3. Empty build/output2.
     // Keyframe All probe: attempt1 +363 admitted member presence checks=P364.
     // Keyframe opacity build I5/P5 + output I4/P368 => I14/P378; duplicate I18/P382.
-    limits("@keyframes k{}", "@keyframes k {\n\n}", 2, 2);
-    limits("@keyframes k{from{}}", "@keyframes k {\n  0% { }\n}", 7, 7);
+    limits("@keyframes k{}", "@keyframes k { \n}", 2, 2);
+    limits("@keyframes k{from{}}", "@keyframes k {   0% { }\n}", 7, 7);
     limits(
         "@keyframes k{from{opacity:0}}",
-        "@keyframes k {\n  0% { opacity: 0; }\n}",
+        "@keyframes k {   0% { opacity: 0; }\n}",
         14,
         378,
     );
     limits(
         "@keyframes k{from{opacity:0;opacity:1}}",
-        "@keyframes k {\n  0% { opacity: 1; }\n}",
+        "@keyframes k {   0% { opacity: 1; }\n}",
         18,
         382,
     );
@@ -748,7 +748,7 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
         panic!("keyframes")
     };
     let original = frames.blocks()[0].declarations()[1].source();
-    let expected = "@keyframes k {\n  0% { opacity: 1; }\n}";
+    let expected = "@keyframes k {   0% { opacity: 1; }\n}";
     let failure = value
         .serialize_cssom_with_limits(Limits::new(18, 13, expected.len()))
         .unwrap_err();

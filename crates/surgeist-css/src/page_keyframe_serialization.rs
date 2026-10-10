@@ -64,7 +64,7 @@ impl SpecifiedRuleWriter {
         self.append("}")
     }
 
-    /// Selected valid wrapper repair: literal LF and one two-space prefix per block.
+    /// Literal CSSOM uses decoded-name classification and the selected wrapper space.
     /// The declaration bridge retains the parser's genuine Normal-only sources.
     pub(crate) fn keyframes_cssom(
         &mut self,
@@ -73,11 +73,19 @@ impl SpecifiedRuleWriter {
     ) -> std::result::Result<(), crate::cssom_rule_serialization::RuleCssomSource> {
         self.append("@keyframes ")?;
         self.node()?;
-        match rule.name() {
-            CssKeyframesName::Ident(name) => self.append_identifier(name.as_str())?,
-            CssKeyframesName::String(name) => self.append_string(name.as_str())?,
+        let name = match rule.name() {
+            CssKeyframesName::Ident(name) => name.as_str(),
+            CssKeyframesName::String(name) => name.as_str(),
+        };
+        if crate::syntax::is_css_wide_keyword(name)
+            || name.eq_ignore_ascii_case("default")
+            || name.eq_ignore_ascii_case("none")
+        {
+            self.append_string(name)?;
+        } else {
+            self.append_identifier(name)?;
         }
-        self.append(" {\n")?;
+        self.append(" { ")?;
         for (index, block) in rule.blocks().iter().enumerate() {
             *block_index = Some(index);
             if index != 0 {
