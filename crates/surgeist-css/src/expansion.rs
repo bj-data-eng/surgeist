@@ -1469,6 +1469,16 @@ mod metadata_initial_tests;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct CssLonghandProperty(Longhand);
 impl CssLonghandProperty {
+    /// Whether CSSOM ordering must distinguish these terminals because they
+    /// share a logical-property group but use different mapping logic. Symbolic
+    /// axes stay unresolved; the property schema is the sole relation authority.
+    #[must_use]
+    pub fn has_mapping_order_conflict(self, other: Self) -> bool {
+        let (group, mapping) = self.mapping();
+        let (other_group, other_mapping) = other.mapping();
+        group.is_some() && group == other_group && mapping != other_mapping
+    }
+
     pub(crate) fn mapping(self) -> (Option<&'static str>, MappingLogic) {
         self.0.mapping()
     }

@@ -32,6 +32,8 @@ pub enum CssInvalidKeyframeSourceReason {
 pub enum CssDeclarationBlockErrorKind {
     Serialization(CssSpecifiedValueSerializationError),
     Expansion(CssExpansionError),
+    /// A selected state must contain each terminal identity at most once.
+    DuplicateTerminal,
     /// Exactly the eight substitution-dependent Logical 1 mode-switch families.
     PendingFootprintUndetermined {
         property: CssKnownProperty,
@@ -103,6 +105,9 @@ impl From<CssExpansionError> for CssDeclarationBlockError {
 impl fmt::Display for CssDeclarationBlockError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            CssDeclarationBlockErrorKind::DuplicateTerminal => {
+                f.write_str("duplicate selected terminal")
+            }
             CssDeclarationBlockErrorKind::Serialization(e) => e.fmt(f),
             CssDeclarationBlockErrorKind::Expansion(e) => e.fmt(f),
             CssDeclarationBlockErrorKind::PendingFootprintUndetermined { property } => write!(
@@ -274,6 +279,7 @@ pub enum CssSpecifiedDeclarationValueRef<'a> {
 pub struct CssSpecifiedDeclarationEntry {
     property: Option<Terminal>,
     source: CssDeclaration,
+    importance: CssImportance,
     authored_ordinal: usize,
     member_ordinal: usize,
     value: EntryValue,
@@ -288,7 +294,15 @@ impl CssSpecifiedDeclarationEntry {
     }
     #[must_use]
     pub fn importance(&self) -> CssImportance {
-        self.source.importance()
+        self.importance
+    }
+    /// Selects this terminal's priority without changing sibling terminals or the
+    /// original authored occurrence used for provenance and pending identity.
+    #[must_use]
+    pub fn with_importance(&self, importance: CssImportance) -> Self {
+        let mut entry = self.clone();
+        entry.importance = importance;
+        entry
     }
     #[must_use]
     pub const fn source(&self) -> &CssDeclaration {
@@ -587,6 +601,116 @@ impl CssSpecifiedDeclarationBlock {
         let mut writer = SpecifiedRuleWriter::new(limits);
         Self::from_expansions(expansions, Domain::Keyframe, &mut writer)
     }
+    /// Rebuilds the exact ordered selected terminal state without expanding its
+    /// original shorthand sources. Duplicate identities are rejected atomically.
+    /// Empty selection is valid; pending occurrence identity and source attribution
+    /// remain the originals, independently of selected priority and order.
+    pub fn try_from_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
+        Self::try_from_entries_with_limits(entries, CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Validates all selected input and projection work under one cumulative
+    /// budget. No CSS bytes are emitted or values serialized and reparsed.
+    pub fn try_from_entries_with_limits(
+        entries: &[CssSpecifiedDeclarationEntry],
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self> {
+        Self::from_selected_entries(entries, &mut SpecifiedRuleWriter::new(limits))
+    }
+    pub fn try_from_keyframe_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
+        Self::try_from_keyframe_entries_with_limits(
+            entries,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    /// Rejects terminal identities or selected priorities outside keyframe grammar.
+    pub fn try_from_keyframe_entries_with_limits(
+        entries: &[CssSpecifiedDeclarationEntry],
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self> {
+        Self::from_entries(
+            entries,
+            Domain::Keyframe,
+            &mut SpecifiedRuleWriter::new(limits),
+        )
+    }
+    pub(crate) fn from_selected_entries(
+        entries: &[CssSpecifiedDeclarationEntry],
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<Self> {
+        Self::from_entries(entries, Domain::Ordinary, writer)
+    }
+    fn from_entries(
+        entries: &[CssSpecifiedDeclarationEntry],
+        domain: Domain,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<Self> {
+        writer.node()?;
+        let mut identities = HashMap::new();
+        for entry in entries {
+            let mut work = || -> Result<()> {
+                Self::visit_source(entry.source(), Domain::Ordinary, writer)?;
+                writer.context.charge_projection(1)?;
+                if domain == Domain::Keyframe {
+                    writer.context.charge_projection(1)?;
+                    let reason = if entry.importance() != CssImportance::Normal {
+                        Some(CssInvalidKeyframeSourceReason::Importance)
+                    } else if entry.property.is_some_and(|p| !domain.admits_terminal(p)) {
+                        Some(CssInvalidKeyframeSourceReason::Property)
+                    } else {
+                        None
+                    };
+                    if let Some(reason) = reason {
+                        return Err(CssDeclarationBlockError::new(
+                            CssDeclarationBlockErrorKind::InvalidKeyframeSource { reason },
+                        ));
+                    }
+                }
+                identities.try_reserve(1).map_err(|_| capacity())?;
+                if identities.insert(Key::from_entry(entry), ()).is_some() {
+                    return Err(CssDeclarationBlockError::new(
+                        CssDeclarationBlockErrorKind::DuplicateTerminal,
+                    ));
+                }
+                // Traverse the retained completed replacement, never the source
+                // shorthand expansion, under the same semantic projection budget.
+                writer.visit_semantic(|writer| match &entry.value {
+                    EntryValue::Completed(c) => match c.value() {
+                        CssContributionValueRef::Ordinary(value) => {
+                            super::specified_inverse::append_longhand(value, writer)
+                        }
+                        CssContributionValueRef::Global(keyword) => append_global(keyword, writer),
+                        _ => Ok(()),
+                    },
+                    EntryValue::SvgGlyphOrientationVertical(c) => match c.global() {
+                        Some(keyword) => append_global(keyword, writer),
+                        None => c
+                            .ordinary_value()
+                            .expect("completed SVG")
+                            .append_to_rule_writer(writer),
+                    },
+                    EntryValue::Universal(reset) => append_global(reset.keyword(), writer),
+                    EntryValue::Custom | EntryValue::Pending { .. } => Ok(()),
+                })?;
+                Ok(())
+            };
+            work().map_err(|error| entry.at(error))?;
+        }
+        let mut selected = Vec::new();
+        reserve(&mut selected, entries.len())?;
+        selected.extend_from_slice(entries);
+        Ok(Self {
+            entries: selected,
+            domain,
+        })
+    }
+    /// Whether this snapshot was checked in the keyframe declaration domain.
+    #[must_use]
+    pub fn is_keyframe(&self) -> bool {
+        self.domain == Domain::Keyframe
+    }
+    pub(crate) fn is_ordinary(&self) -> bool {
+        self.domain == Domain::Ordinary
+    }
     #[must_use]
     pub fn entries(&self) -> &[CssSpecifiedDeclarationEntry] {
         &self.entries
@@ -687,6 +811,7 @@ impl CssSpecifiedDeclarationBlock {
                 entries.push(CssSpecifiedDeclarationEntry {
                     property,
                     source: source.clone(),
+                    importance: source.importance(),
                     authored_ordinal: ordinal,
                     member_ordinal,
                     value,

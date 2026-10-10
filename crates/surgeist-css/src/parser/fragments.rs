@@ -1,7 +1,7 @@
 //! Context-specific parsing over the caller's unmodified source.
 use super::*;
 
-fn bounded<T: Send>(
+pub(super) fn bounded<T: Send>(
     source: &str,
     parse: impl FnOnce() -> crate::CssParseReport<T> + Send,
 ) -> crate::CssParseReport<T> {
@@ -27,7 +27,7 @@ pub(super) fn bounded_execution<T: Send>(source: &str, parse: impl FnOnce() -> T
     })
 }
 
-fn reject(
+pub(super) fn reject(
     source: &str,
     error: ParseError<'_, Error>,
     action: crate::CssRecoveryAction,

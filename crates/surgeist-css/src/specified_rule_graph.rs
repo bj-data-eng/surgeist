@@ -9,6 +9,9 @@
 use crate::cssom_rule_serialization::{
     CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationError, RuleCssomSource,
 };
+use crate::edited_rule::{
+    CssEditedGroupPreludeRef, CssEditedRuleView, EditedRuleKind, EditedStyleSelectorsRef,
+};
 use crate::specified_rule_serialization::{SpecifiedRuleSerializationSource, SpecifiedRuleWriter};
 use crate::{
     CssDeclarationList, CssLayerName, CssLayerNameList, CssMediaQueryList, CssRule, CssScopeRule,
@@ -30,7 +33,15 @@ struct GraphFailure {
 }
 type ValueResult<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
+#[derive(Clone, Copy)]
+enum EditedChildStart {
+    NewLine,
+    ExistingLine,
+}
+
 enum Event<'a> {
+    Edited(CssEditedRuleView<'a>, Option<usize>),
+    EditedChildren(&'a [CssEditedRuleView<'a>], usize, bool, EditedChildStart),
     Ordinary(&'a CssRule, Option<usize>),
     Scoped(&'a CssScopedRule, Option<usize>),
     OrdinaryChildren(&'a [CssRule], usize, bool),
@@ -57,7 +68,7 @@ impl SpecifiedRuleWriter {
         &mut self,
         rule: &CssRule,
     ) -> std::result::Result<(), SpecifiedRuleSerializationSource> {
-        self.append_graph(rule, Format::Compact, Vec::new())
+        self.append_graph(Event::Ordinary(rule, None), Format::Compact, Vec::new())
             .map_err(|error| match error.source {
                 RuleCssomSource::Provider(source) => source,
                 _ => unreachable!("compact traversal uses only compact providers"),
@@ -69,7 +80,7 @@ impl SpecifiedRuleWriter {
         rule: &CssRule,
         path: Vec<usize>,
     ) -> std::result::Result<(), CssRuleCssomSerializationError> {
-        self.append_graph(rule, Format::Cssom, path)
+        self.append_graph(Event::Ordinary(rule, None), Format::Cssom, path)
             .map_err(|failure| {
                 CssRuleCssomSerializationError::new(
                     failure.source,
@@ -79,9 +90,32 @@ impl SpecifiedRuleWriter {
             })
     }
 
+    pub(crate) fn append_edited_rule_graph(
+        &mut self,
+        rule: CssEditedRuleView<'_>,
+        cssom: bool,
+    ) -> std::result::Result<(), CssRuleCssomSerializationError> {
+        self.append_graph(
+            Event::Edited(rule, None),
+            if cssom {
+                Format::Cssom
+            } else {
+                Format::Compact
+            },
+            Vec::new(),
+        )
+        .map_err(|failure| {
+            CssRuleCssomSerializationError::new(
+                failure.source,
+                failure.path,
+                failure.keyframe_block_index,
+            )
+        })
+    }
+
     fn append_graph(
         &mut self,
-        rule: &CssRule,
+        first: Event<'_>,
         format: Format,
         mut path: Vec<usize>,
     ) -> std::result::Result<(), GraphFailure> {
@@ -89,9 +123,178 @@ impl SpecifiedRuleWriter {
         let mut keyframe_block_index = None;
         let result =
             (|| -> Result<()> {
-                push(&mut work, Event::Ordinary(rule, None))?;
+                push(&mut work, first)?;
                 while let Some(event) = work.pop() {
                     match event {
+                        Event::EditedChildren(rules, index, separator, start) => {
+                            if let Some((first, rest)) = rules.split_first() {
+                                if let EditedRuleKind::NestedDeclarations(block) = first.kind
+                                    && block.entries().is_empty()
+                                {
+                                    // Visit the omitted child with its normal provider
+                                    // work and exact error path, without a separator.
+                                    push(
+                                        &mut work,
+                                        Event::EditedChildren(rest, index + 1, separator, start),
+                                    )?;
+                                    push(&mut work, Event::Edited(*first, Some(index)))?;
+                                    continue;
+                                }
+                                push(
+                                    &mut work,
+                                    Event::EditedChildren(
+                                        rest,
+                                        index + 1,
+                                        true,
+                                        EditedChildStart::NewLine,
+                                    ),
+                                )?;
+                                if format == Format::Cssom {
+                                    if matches!(start, EditedChildStart::NewLine) {
+                                        self.append("\n")?;
+                                    }
+                                    self.append("  ")?;
+                                } else if separator {
+                                    self.append(" ")?;
+                                }
+                                push(&mut work, Event::Edited(*first, Some(index)))?;
+                            }
+                        }
+                        Event::Edited(view, index) => {
+                            if let EditedRuleKind::Parsed(rule) = view.kind {
+                                push(&mut work, Event::Ordinary(rule, index))?;
+                                continue;
+                            }
+                            if let EditedRuleKind::ParsedScoped(rule) = view.kind {
+                                push(&mut work, Event::Scoped(rule, index))?;
+                                continue;
+                            }
+                            if format == Format::Cssom
+                                && let Some(index) = index
+                            {
+                                path.try_reserve(1).map_err(|_| {
+                                    CssSpecifiedValueSerializationError::new(
+                                        CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                                    )
+                                })?;
+                                path.push(index);
+                            }
+                            if format == Format::Cssom {
+                                push(&mut work, Event::EndRule(index.is_some()))?;
+                            }
+                            self.node()?;
+                            match view.kind {
+                                EditedRuleKind::Parsed(_) | EditedRuleKind::ParsedScoped(_) => {
+                                    unreachable!("parsed event forwarded")
+                                }
+                                EditedRuleKind::NestedDeclarations(block) => {
+                                    block.append_cssom(self)?
+                                }
+                                EditedRuleKind::Style(selectors, declarations, children) => {
+                                    match selectors {
+                                        EditedStyleSelectorsRef::Ordinary(selectors) => {
+                                            if format == Format::Cssom {
+                                                self.cssom_style_selectors(selectors)?;
+                                            } else {
+                                                self.style_selectors(selectors)?;
+                                            }
+                                        }
+                                        EditedStyleSelectorsRef::Scoped(selectors) => {
+                                            if format == Format::Cssom {
+                                                self.cssom_scoped_style_selectors(selectors)?;
+                                            } else {
+                                                self.scoped_style_selectors(selectors)?;
+                                            }
+                                        }
+                                    }
+                                    self.style_payload_block(
+                                        &mut work,
+                                        declarations.entries().is_empty(),
+                                        (!children.is_empty()).then_some(Event::EditedChildren(
+                                            children,
+                                            0,
+                                            true,
+                                            EditedChildStart::NewLine,
+                                        )),
+                                        format,
+                                        true,
+                                        |writer| {
+                                            declarations.append_cssom(writer).map_err(Into::into)
+                                        },
+                                    )?;
+                                }
+                                EditedRuleKind::Group(prelude, children) => {
+                                    match prelude {
+                                        CssEditedGroupPreludeRef::Media(list) => {
+                                            self.media_prelude(list, format)?
+                                        }
+                                        CssEditedGroupPreludeRef::Supports(condition) => {
+                                            if format == Format::Cssom {
+                                                return Err(RuleCssomSource::FormatUnavailable(
+                                                    CssRuleCssomFormat::Supports,
+                                                ));
+                                            }
+                                            self.append("@supports ")?;
+                                            condition.append_specified(
+                                                &mut self.context,
+                                                &mut self.css,
+                                            )?;
+                                        }
+                                        CssEditedGroupPreludeRef::Container(prelude) => {
+                                            if format == Format::Cssom {
+                                                return Err(RuleCssomSource::FormatUnavailable(
+                                                    CssRuleCssomFormat::Container,
+                                                ));
+                                            }
+                                            self.append("@container ")?;
+                                            prelude.append_specified(
+                                                &mut self.context,
+                                                &mut self.css,
+                                            )?;
+                                        }
+                                        CssEditedGroupPreludeRef::Layer(name) => {
+                                            if format == Format::Cssom {
+                                                return Err(RuleCssomSource::FormatUnavailable(
+                                                    CssRuleCssomFormat::LayerBlock,
+                                                ));
+                                            }
+                                            self.layer_prelude(name)?;
+                                        }
+                                    }
+                                    if format == Format::Cssom {
+                                        // Media requires an initial and final LF even when
+                                        // its retained children all serialize to empty text.
+                                        self.append(" {\n")?;
+                                        push(&mut work, Event::Text("\n}"))?;
+                                        if !children.is_empty() {
+                                            push(
+                                                &mut work,
+                                                Event::EditedChildren(
+                                                    children,
+                                                    0,
+                                                    false,
+                                                    EditedChildStart::ExistingLine,
+                                                ),
+                                            )?;
+                                        }
+                                    } else {
+                                        self.append(" {")?;
+                                        push(&mut work, Event::Text(" }"))?;
+                                        if !children.is_empty() {
+                                            push(
+                                                &mut work,
+                                                Event::EditedChildren(
+                                                    children,
+                                                    0,
+                                                    true,
+                                                    EditedChildStart::NewLine,
+                                                ),
+                                            )?;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Event::Text(text) => self.append(text)?,
                         Event::EndRule(pop) => {
                             if pop {
@@ -647,36 +850,61 @@ impl SpecifiedRuleWriter {
         children: &'a [CssRule],
         format: Format,
     ) -> Result<()> {
-        if format == Format::Cssom {
-            self.append(" {")?;
-            if children.is_empty() {
-                if !declarations.is_empty() {
-                    self.append(" ")?;
+        self.style_payload_block(
+            work,
+            declarations.is_empty(),
+            (!children.is_empty()).then_some(Event::OrdinaryChildren(
+                children,
+                0,
+                !declarations.is_empty(),
+            )),
+            format,
+            false,
+            |writer| {
+                if format == Format::Cssom {
+                    writer
+                        .append_cssom_declaration_list(declarations)
+                        .map_err(Into::into)
+                } else {
+                    writer
+                        .append_authored_declaration_list(declarations)
+                        .map_err(Into::into)
                 }
-                self.append_cssom_declaration_list(declarations)?;
-                self.append(" }")?;
-            } else {
-                if !declarations.is_empty() {
-                    self.append("\n  ")?;
-                }
-                self.append_cssom_declaration_list(declarations)?;
-                push(work, Event::Text("\n}"))?;
-                push(work, Event::OrdinaryChildren(children, 0, false))?;
-            }
-            return Ok(());
-        }
+            },
+        )
+    }
+
+    fn style_payload_block<'a>(
+        &mut self,
+        work: &mut Vec<Event<'a>>,
+        empty: bool,
+        child: Option<Event<'a>>,
+        format: Format,
+        child_starts_compact_body: bool,
+        append_declarations: impl FnOnce(&mut Self) -> Result<()>,
+    ) -> Result<()> {
         self.append(" {")?;
-        push(work, Event::Text(" }"))?;
-        if !declarations.is_empty() || !children.is_empty() {
-            self.append(" ")?;
+        if format == Format::Cssom {
+            if !empty {
+                self.append(if child.is_some() { "\n  " } else { " " })?;
+            }
+            append_declarations(self)?;
+            if let Some(child) = child {
+                push(work, Event::Text("\n}"))?;
+                push(work, child)?;
+            } else {
+                self.append(" }")?;
+            }
+        } else {
+            if !empty || (child.is_some() && !child_starts_compact_body) {
+                self.append(" ")?;
+            }
+            append_declarations(self)?;
+            push(work, Event::Text(" }"))?;
+            if let Some(child) = child {
+                push(work, child)?;
+            }
         }
-        if !children.is_empty() {
-            push(
-                work,
-                Event::OrdinaryChildren(children, 0, !declarations.is_empty()),
-            )?;
-        }
-        push(work, Event::Declarations(declarations))?;
         Ok(())
     }
 

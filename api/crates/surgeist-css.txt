@@ -1165,6 +1165,7 @@ impl surgeist_css::CssCustomPropertyDeclaredValue
 pub const fn surgeist_css::CssCustomPropertyDeclaredValue::global(&self) -> core::option::Option<surgeist_css::CssGlobalKeyword>
 pub const fn surgeist_css::CssCustomPropertyDeclaredValue::value(&self) -> core::option::Option<&surgeist_css::CssCustomPropertyValue>
 #[non_exhaustive] pub enum surgeist_css::CssDeclarationBlockErrorKind
+pub surgeist_css::CssDeclarationBlockErrorKind::DuplicateTerminal
 pub surgeist_css::CssDeclarationBlockErrorKind::Expansion(surgeist_css::CssExpansionError)
 pub surgeist_css::CssDeclarationBlockErrorKind::InvalidKeyframeSource
 pub surgeist_css::CssDeclarationBlockErrorKind::InvalidKeyframeSource::reason: surgeist_css::CssInvalidKeyframeSourceReason
@@ -1267,6 +1268,11 @@ pub surgeist_css::CssEasingKeyword::EaseOut
 pub surgeist_css::CssEasingKeyword::Linear
 pub surgeist_css::CssEasingKeyword::StepEnd
 pub surgeist_css::CssEasingKeyword::StepStart
+#[non_exhaustive] pub enum surgeist_css::CssEditedGroupPreludeRef<'a>
+pub surgeist_css::CssEditedGroupPreludeRef::Container(&'a surgeist_css::CssContainerPrelude)
+pub surgeist_css::CssEditedGroupPreludeRef::Layer(core::option::Option<&'a surgeist_css::CssLayerName>)
+pub surgeist_css::CssEditedGroupPreludeRef::Media(&'a surgeist_css::CssMediaQueryList)
+pub surgeist_css::CssEditedGroupPreludeRef::Supports(&'a surgeist_css::CssSupportsCondition)
 #[non_exhaustive] pub enum surgeist_css::CssEllipseRadius
 pub surgeist_css::CssEllipseRadius::Extent(surgeist_css::CssRadialExtent)
 pub surgeist_css::CssEllipseRadius::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
@@ -2271,6 +2277,14 @@ pub surgeist_css::CssItemWrapMode::Wrap
 #[non_exhaustive] pub enum surgeist_css::CssItemWrapOrder
 pub surgeist_css::CssItemWrapOrder::Normal
 pub surgeist_css::CssItemWrapOrder::Reverse
+#[non_exhaustive] pub enum surgeist_css::CssKeyframeRuleViewError
+pub surgeist_css::CssKeyframeRuleViewError::Declaration(surgeist_css::CssDeclarationBlockError)
+pub surgeist_css::CssKeyframeRuleViewError::NonKeyframeDeclarations
+pub surgeist_css::CssKeyframeRuleViewError::Serialization(surgeist_css::CssSpecifiedValueSerializationError)
+impl core::error::Error for surgeist_css::CssKeyframeRuleViewError
+pub fn surgeist_css::CssKeyframeRuleViewError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssKeyframeRuleViewError
+pub fn surgeist_css::CssKeyframeRuleViewError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssKeyframeSelector
 pub surgeist_css::CssKeyframeSelector::From
 pub surgeist_css::CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent)
@@ -7957,6 +7971,24 @@ pub fn surgeist_css::CssEasingList::serialize_specified_with_limits(&self, limit
 impl surgeist_css::CssEasingList
 pub fn surgeist_css::CssEasingList::try_new(values: alloc::vec::Vec<surgeist_css::CssEasing>) -> core::option::Option<Self>
 pub fn surgeist_css::CssEasingList::values(&self) -> &[surgeist_css::CssEasing]
+pub struct surgeist_css::CssEditedRuleView<'a>
+impl<'a> surgeist_css::CssEditedRuleView<'a>
+pub const fn surgeist_css::CssEditedRuleView<'a>::from_rule(rule: &'a surgeist_css::CssRule) -> Self
+pub const fn surgeist_css::CssEditedRuleView<'a>::from_scoped_rule(rule: &'a surgeist_css::CssScopedRule) -> Self
+pub const fn surgeist_css::CssEditedRuleView<'a>::parsed_rule(self) -> core::option::Option<&'a surgeist_css::CssRule>
+pub const fn surgeist_css::CssEditedRuleView<'a>::parsed_scoped_rule(self) -> core::option::Option<&'a surgeist_css::CssScopedRule>
+pub fn surgeist_css::CssEditedRuleView<'a>::serialize_cssom(self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::serialize_cssom_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::to_specified_css(self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::to_specified_css_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_group(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_group_with_limits(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_nested_declarations(declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_nested_declarations_with_limits(declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_scoped_style(selectors: &'a surgeist_css::CssScopedStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_scoped_style_with_limits(selectors: &'a surgeist_css::CssScopedStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_style(selectors: &'a surgeist_css::CssStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_style_with_limits(selectors: &'a surgeist_css::CssStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub struct surgeist_css::CssEllipseRadii
 impl surgeist_css::CssEllipseRadii
 pub const fn surgeist_css::CssEllipseRadii::horizontal(&self) -> &surgeist_css::CssEllipseRadius
@@ -9363,7 +9395,18 @@ pub fn surgeist_css::CssKeyframePercent::calculation(&self) -> core::option::Opt
 pub const fn surgeist_css::CssKeyframePercent::literal_value(&self) -> core::option::Option<f64>
 pub fn surgeist_css::CssKeyframePercent::try_from_calculation(calculation: surgeist_css::CssPercentageCalculation) -> core::option::Option<Self>
 pub fn surgeist_css::CssKeyframePercent::try_new(value: f64) -> core::option::Option<Self>
+pub struct surgeist_css::CssKeyframeRuleView<'a>
+impl<'a> surgeist_css::CssKeyframeRuleView<'a>
+pub const fn surgeist_css::CssKeyframeRuleView<'a>::declarations(&self) -> &'a surgeist_css::CssSpecifiedDeclarationBlock
+pub const fn surgeist_css::CssKeyframeRuleView<'a>::selectors(&self) -> &'a surgeist_css::CssKeyframeSelectorList
+pub fn surgeist_css::CssKeyframeRuleView<'a>::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssKeyframeRuleViewError>
+pub fn surgeist_css::CssKeyframeRuleView<'a>::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssKeyframeRuleViewError>
+pub fn surgeist_css::CssKeyframeRuleView<'a>::try_new(selectors: &'a surgeist_css::CssKeyframeSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> core::result::Result<Self, surgeist_css::CssKeyframeRuleViewError>
 pub struct surgeist_css::CssKeyframeSelectorList
+impl surgeist_css::CssKeyframeSelectorList
+pub fn surgeist_css::CssKeyframeSelectorList::offsets(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css::CssKeyframePercent> + '_
+pub fn surgeist_css::CssKeyframeSelectorList::serialize_key_text(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssKeyframeSelectorList::serialize_key_text_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssKeyframeSelectorList
 pub fn surgeist_css::CssKeyframeSelectorList::selectors(&self) -> &[surgeist_css::CssKeyframeSelector]
 pub fn surgeist_css::CssKeyframeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssKeyframeSelector>) -> core::option::Option<Self>
@@ -9582,6 +9625,7 @@ pub fn surgeist_css::CssLonghandMetadata::initial_value(&self) -> surgeist_css::
 pub const fn surgeist_css::CssLonghandMetadata::property(&self) -> surgeist_css::CssLonghandProperty
 pub struct surgeist_css::CssLonghandProperty(_)
 impl surgeist_css::CssLonghandProperty
+pub fn surgeist_css::CssLonghandProperty::has_mapping_order_conflict(self, other: Self) -> bool
 pub const fn surgeist_css::CssLonghandProperty::known_property(self) -> surgeist_css::CssKnownProperty
 pub struct surgeist_css::CssLonghandValue
 impl surgeist_css::CssLonghandValue
@@ -10354,6 +10398,14 @@ pub fn surgeist_css::CssParseReport<T>::into_parts(self) -> (T, alloc::vec::Vec<
 pub fn surgeist_css::CssParseReport<T>::into_validation_result(self) -> core::result::Result<T, surgeist_css::CssValidationFailure>
 pub fn surgeist_css::CssParseReport<T>::is_clean(&self) -> bool
 pub const fn surgeist_css::CssParseReport<T>::syntax(&self) -> &T
+pub struct surgeist_css::CssParsedKeyframeRule
+impl surgeist_css::CssParsedKeyframeRule
+pub const fn surgeist_css::CssParsedKeyframeRule::block(&self) -> &surgeist_css::CssKeyframeBlock
+pub const fn surgeist_css::CssParsedKeyframeRule::origin(&self) -> &surgeist_css::CssParsedOrigin
+pub struct surgeist_css::CssParsedKeyframeSelectors
+impl surgeist_css::CssParsedKeyframeSelectors
+pub const fn surgeist_css::CssParsedKeyframeSelectors::origin(&self) -> &surgeist_css::CssParsedOrigin
+pub const fn surgeist_css::CssParsedKeyframeSelectors::selectors(&self) -> &surgeist_css::CssKeyframeSelectorList
 pub struct surgeist_css::CssParsedOrigin
 impl surgeist_css::CssParsedOrigin
 pub const fn surgeist_css::CssParsedOrigin::source(&self) -> &surgeist_css::CssSourceSnapshot
@@ -10386,6 +10438,8 @@ pub fn surgeist_css::CssParserContext::parse_supports_condition_with_limits(self
 pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attribute_components(self, values: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attribute_value(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
 pub const fn surgeist_css::CssParserContext::with_svg_glyph_orientation_vertical(self) -> Self
+impl surgeist_css::CssParserContext
+pub fn surgeist_css::CssParserContext::parse_keyframe_rule(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeRule>>
 impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_when_condition(self, source: &str) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::CssParserContext::parse_when_condition_with_limits(self, source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
@@ -11377,12 +11431,17 @@ pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static st
 pub struct surgeist_css::CssSpecifiedDeclarationBlock
 impl surgeist_css::CssSpecifiedDeclarationBlock
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::entries(&self) -> &[surgeist_css::CssSpecifiedDeclarationEntry]
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::is_keyframe(&self) -> bool
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations(declarations: &surgeist_css::CssDeclarationList) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(declarations: &surgeist_css::CssDeclarationList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_entries(entries: &[surgeist_css::CssSpecifiedDeclarationEntry]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_entries_with_limits(entries: &[surgeist_css::CssSpecifiedDeclarationEntry], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_expansions(expansions: &[surgeist_css::CssExpansion]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_expansions_with_limits(expansions: &[surgeist_css::CssExpansion], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(declarations: &surgeist_css::CssKeyframeDeclarationList) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(declarations: &surgeist_css::CssKeyframeDeclarationList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_entries(entries: &[surgeist_css::CssSpecifiedDeclarationEntry]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_entries_with_limits(entries: &[surgeist_css::CssSpecifiedDeclarationEntry], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(expansions: &[surgeist_css::CssExpansion]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions_with_limits(expansions: &[surgeist_css::CssExpansion], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 impl surgeist_css::CssSpecifiedDeclarationBlock
@@ -11398,6 +11457,7 @@ pub const fn surgeist_css::CssSpecifiedDeclarationEntry::member_ordinal(&self) -
 pub fn surgeist_css::CssSpecifiedDeclarationEntry::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
 pub const fn surgeist_css::CssSpecifiedDeclarationEntry::source(&self) -> &surgeist_css::CssDeclaration
 pub fn surgeist_css::CssSpecifiedDeclarationEntry::value(&self) -> surgeist_css::CssSpecifiedDeclarationValueRef<'_>
+pub fn surgeist_css::CssSpecifiedDeclarationEntry::with_importance(&self, importance: surgeist_css::CssImportance) -> Self
 pub struct surgeist_css::CssSpecifiedFlex
 impl surgeist_css::CssSpecifiedFlex
 pub fn surgeist_css::CssSpecifiedFlex::calculation(&self) -> core::option::Option<&surgeist_css::CssFlexCalculation>
@@ -12701,6 +12761,8 @@ pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descripto
 pub fn surgeist_css::parse_font_palette_values_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssFontPaletteDescriptor>>>>
 pub fn surgeist_css::parse_group_block(source: &str, namespaces: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssRuleList>>>
 pub fn surgeist_css::parse_keyframe_declaration_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssKeyframeDeclarationList>>>
+pub fn surgeist_css::parse_keyframe_rule(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeRule>>
+pub fn surgeist_css::parse_keyframe_selector_list(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeSelectors>>
 pub fn surgeist_css::parse_keyframes_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssKeyframeBlock>>>>
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
 pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>

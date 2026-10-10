@@ -282,7 +282,7 @@ fn complete_quad_reconstructs_over_unrelated_intervening_members() {
 }
 
 #[test]
-fn mixed_importance_and_intervening_logical_groups_disqualify_quad_reconstruction() {
+fn mixed_importance_blocks_getter_and_logical_interference_blocks_coalescing() {
     let block = specified_block(
         "margin-top:1px!important;margin-right:2px;margin-bottom:3px;margin-left:4px",
     );
@@ -294,7 +294,10 @@ fn mixed_importance_and_intervening_logical_groups_disqualify_quad_reconstructio
     let block = specified_block(
         "margin-top:1px;margin-inline-start:7px;margin-right:2px;margin-bottom:3px;margin-left:4px",
     );
-    assert_eq!(read(&block, CssKnownProperty::Margin), None);
+    assert_eq!(
+        read(&block, CssKnownProperty::Margin).as_deref(),
+        Some("1px 2px 3px 4px")
+    );
     assert_eq!(
         block.serialize_cssom().unwrap(),
         "margin-top: 1px; margin-inline-start: 7px; margin-right: 2px; margin-bottom: 3px; margin-left: 4px;"

@@ -1735,6 +1735,10 @@ pub use when::*;
 mod supports;
 pub use supports::{CssSupportsAtRule, CssSupportsConstructionError};
 mod cssom_rule_serialization;
+mod edited_rule;
+pub use edited_rule::{CssEditedGroupPreludeRef, CssEditedRuleView};
+mod keyframe_serialization;
+pub use keyframe_serialization::{CssKeyframeRuleView, CssKeyframeRuleViewError};
 mod media;
 mod named_supports_serialization;
 mod page_keyframe_serialization;
@@ -2025,13 +2029,14 @@ pub use normalization::{
     normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssNamespaceContext, parse_color_profile_block, parse_color_profile_descriptor_value,
-    parse_counter_style_block, parse_counter_style_descriptor_value, parse_cssom_media_query,
-    parse_declaration, parse_declaration_list_text, parse_font_face_block,
-    parse_font_face_descriptor_value, parse_font_feature_display_value, parse_font_feature_value,
-    parse_font_feature_value_block, parse_font_feature_values_block,
-    parse_font_palette_descriptor_value, parse_font_palette_values_block, parse_group_block,
-    parse_keyframe_declaration_block, parse_keyframes_block, parse_media_query,
+    CssNamespaceContext, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+    parse_color_profile_block, parse_color_profile_descriptor_value, parse_counter_style_block,
+    parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
+    parse_declaration_list_text, parse_font_face_block, parse_font_face_descriptor_value,
+    parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_value_block,
+    parse_font_feature_values_block, parse_font_palette_descriptor_value,
+    parse_font_palette_values_block, parse_group_block, parse_keyframe_declaration_block,
+    parse_keyframe_rule, parse_keyframe_selector_list, parse_keyframes_block, parse_media_query,
     parse_media_query_list, parse_page_block, parse_property_value_text,
     parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
     parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list, parse_sheet,

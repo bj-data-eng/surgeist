@@ -83,7 +83,12 @@ mod grid;
 mod grid_placement;
 mod inset;
 mod item_flow;
+mod keyframe_fragments;
 mod keyframes;
+pub use keyframe_fragments::{
+    CssParsedKeyframeRule, CssParsedKeyframeSelectors, parse_keyframe_rule,
+    parse_keyframe_selector_list,
+};
 mod layout;
 mod list_styles;
 mod motion;

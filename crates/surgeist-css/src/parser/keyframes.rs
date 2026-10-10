@@ -157,6 +157,20 @@ pub(super) fn parse_declarations<'i>(
     Ok(CssKeyframeDeclarationList::new(declarations))
 }
 
+pub(super) fn parse_detached_rule<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    recovery: RecoveryState,
+) -> Result<(CssKeyframeBlock, Vec<crate::CssRecoveryDiagnostic>), ParseError<'i, Error>> {
+    let mut parser = KeyframeBlockParser {
+        source,
+        diagnostics: Vec::new(),
+        recovery: recovery.clone(),
+    };
+    let block = super::syntax_bridge::one(source, input, &mut parser, &recovery)?;
+    Ok((block, parser.diagnostics))
+}
+
 struct KeyframeBlockParser<'s> {
     source: &'s str,
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
@@ -228,7 +242,7 @@ impl<'i> RuleBodyItemParser<'i, CssKeyframeBlock, Error> for KeyframeBlockParser
     }
 }
 
-fn parse_keyframe_selector_list<'i, 't>(
+pub(super) fn parse_keyframe_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, Error>> {

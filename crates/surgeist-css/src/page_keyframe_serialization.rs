@@ -140,7 +140,7 @@ impl SpecifiedRuleWriter {
         self.append("}")
     }
 
-    fn keyframe_selector(&mut self, selector: &CssKeyframeSelector) -> Result<()> {
+    pub(crate) fn keyframe_selector(&mut self, selector: &CssKeyframeSelector) -> Result<()> {
         self.node()?;
         match selector {
             CssKeyframeSelector::From => self.append("0%"),

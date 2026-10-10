@@ -20,6 +20,12 @@ struct Candidate {
     mode: Option<crate::CssBoxSideKind>,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum InversePurpose {
+    Getter,
+    Block,
+}
+
 fn candidates() -> &'static [Candidate] {
     static CANDIDATES: OnceLock<Vec<Candidate>> = OnceLock::new();
     CANDIDATES.get_or_init(|| {
@@ -132,16 +138,18 @@ impl CssSpecifiedDeclarationBlock {
             reserve(&mut serialized, self.entries.len())?;
             serialized.resize(self.entries.len(), false);
             for &candidate in candidates_for_name(property) {
-                let inverse = self.inverse(candidate, &serialized, &mut writer).map_err(
-                    |error| match self.entries.iter().find(|entry| {
-                        entry
-                            .property
-                            .is_some_and(|p| candidate.members.contains(&p))
-                    }) {
-                        Some(entry) => entry.at(error),
-                        None => error,
-                    },
-                )?;
+                let inverse = self
+                    .inverse(candidate, &serialized, &mut writer, InversePurpose::Getter)
+                    .map_err(|error| {
+                        match self.entries.iter().find(|entry| {
+                            entry
+                                .property
+                                .is_some_and(|p| candidate.members.contains(&p))
+                        }) {
+                            Some(entry) => entry.at(error),
+                            None => error,
+                        }
+                    })?;
                 if let Some(value) = inverse {
                     value.append(&mut writer).map_err(|error| {
                         match self.entries.iter().find(|entry| {
@@ -174,7 +182,9 @@ impl CssSpecifiedDeclarationBlock {
                 let mut found = None;
                 if let Some(property) = entry.property {
                     for &candidate in candidates_for_member(property) {
-                        if let Some(value) = self.inverse(candidate, &serialized, writer)? {
+                        if let Some(value) =
+                            self.inverse(candidate, &serialized, writer, InversePurpose::Block)?
+                        {
                             found = Some((candidate, value));
                             break;
                         }
@@ -230,6 +240,7 @@ impl CssSpecifiedDeclarationBlock {
         candidate: &Candidate,
         serialized: &[bool],
         writer: &mut SpecifiedRuleWriter,
+        purpose: InversePurpose,
     ) -> Result<Option<Inverse>> {
         writer.context.charge_projection(1)?;
         if !self.domain.admits(candidate.property) {
@@ -289,7 +300,8 @@ impl CssSpecifiedDeclarationBlock {
                 .context
                 .charge_projection(1)
                 .map_err(|error| entry.at(error.into()))?;
-            if let Some(property) = entry.property
+            if purpose == InversePurpose::Block
+                && let Some(property) = entry.property
                 && !candidate.members.contains(&property)
             {
                 let (group, mapping) = property.mapping();
@@ -301,7 +313,7 @@ impl CssSpecifiedDeclarationBlock {
                     });
             }
         }
-        if interference {
+        if purpose == InversePurpose::Block && interference {
             return Ok(None);
         }
         writer.context.charge_projection(1)?; // Enter representability probe.
@@ -492,7 +504,12 @@ mod tests {
         let mut writer =
             SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(2, 20, 4));
         let Some(Inverse::Ordinary(value)) = full
-            .inverse(candidate, &[false, false], &mut writer)
+            .inverse(
+                candidate,
+                &[false, false],
+                &mut writer,
+                InversePurpose::Block,
+            )
             .unwrap()
         else {
             panic!("finite inverse")
@@ -516,9 +533,14 @@ mod tests {
             let mut writer = SpecifiedRuleWriter::new(limits);
             assert_eq!(
                 kind(
-                    full.inverse(candidate, &[false, false], &mut writer)
-                        .err()
-                        .unwrap()
+                    full.inverse(
+                        candidate,
+                        &[false, false],
+                        &mut writer,
+                        InversePurpose::Block
+                    )
+                    .err()
+                    .unwrap()
                 ),
                 expected
             );
@@ -537,7 +559,7 @@ mod tests {
                 SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(0, tariff, 0));
             assert!(
                 value
-                    .inverse(candidate, &serialized, &mut writer)
+                    .inverse(candidate, &serialized, &mut writer, InversePurpose::Block)
                     .unwrap()
                     .is_none()
             );
@@ -549,7 +571,7 @@ mod tests {
             assert_eq!(
                 kind(
                     value
-                        .inverse(candidate, &serialized, &mut writer)
+                        .inverse(candidate, &serialized, &mut writer, InversePurpose::Block)
                         .err()
                         .unwrap()
                 ),
@@ -571,7 +593,12 @@ mod tests {
         let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
         assert!(
             value
-                .inverse(candidate, &[false, false], &mut writer)
+                .inverse(
+                    candidate,
+                    &[false, false],
+                    &mut writer,
+                    InversePurpose::Block
+                )
                 .unwrap()
                 .is_none()
         );
@@ -593,7 +620,12 @@ mod tests {
         let mut writer =
             SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 70, 8));
         let Some(Inverse::Ordinary(css)) = value
-            .inverse(candidate, &[false, false], &mut writer)
+            .inverse(
+                candidate,
+                &[false, false],
+                &mut writer,
+                InversePurpose::Block,
+            )
             .unwrap()
         else {
             panic!("finite math inverse")
@@ -604,7 +636,12 @@ mod tests {
         assert_eq!(
             kind(
                 value
-                    .inverse(candidate, &[false, false], &mut writer)
+                    .inverse(
+                        candidate,
+                        &[false, false],
+                        &mut writer,
+                        InversePurpose::Block
+                    )
                     .err()
                     .unwrap()
             ),
@@ -631,7 +668,12 @@ mod tests {
         let mut writer =
             SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 70, 8));
         let Some(Inverse::Ordinary(css)) = value
-            .inverse(candidate, &[false, false], &mut writer)
+            .inverse(
+                candidate,
+                &[false, false],
+                &mut writer,
+                InversePurpose::Block,
+            )
             .unwrap()
         else {
             panic!("finite math inverse")
@@ -643,7 +685,12 @@ mod tests {
         assert_eq!(
             kind(
                 value
-                    .inverse(candidate, &[false, false], &mut writer)
+                    .inverse(
+                        candidate,
+                        &[false, false],
+                        &mut writer,
+                        InversePurpose::Block
+                    )
                     .err()
                     .unwrap()
             ),
@@ -653,7 +700,12 @@ mod tests {
         let mut retry =
             SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 70, 8));
         let Some(Inverse::Ordinary(css)) = value
-            .inverse(candidate, &[false, false], &mut retry)
+            .inverse(
+                candidate,
+                &[false, false],
+                &mut retry,
+                InversePurpose::Block,
+            )
             .unwrap()
         else {
             panic!("adequate retry")
@@ -685,8 +737,9 @@ mod tests {
         // P12+29+24+5+76+12 = P158.
         let exact = CssSpecifiedValueSerializationLimits::new(16, 158, 37);
         let mut writer = SpecifiedRuleWriter::new(exact);
-        let Some(Inverse::Ordinary(css)) =
-            value.inverse(candidate, &[false; 4], &mut writer).unwrap()
+        let Some(Inverse::Ordinary(css)) = value
+            .inverse(candidate, &[false; 4], &mut writer, InversePurpose::Block)
+            .unwrap()
         else {
             panic!("four explicit grid lines")
         };
@@ -710,7 +763,7 @@ mod tests {
             assert_eq!(
                 kind(
                     value
-                        .inverse(candidate, &[false; 4], &mut writer)
+                        .inverse(candidate, &[false; 4], &mut writer, InversePurpose::Block)
                         .err()
                         .unwrap()
                 ),
@@ -718,8 +771,9 @@ mod tests {
             );
             assert!(writer.css.is_empty());
             let mut retry = SpecifiedRuleWriter::new(exact);
-            let Some(Inverse::Ordinary(css)) =
-                value.inverse(candidate, &[false; 4], &mut retry).unwrap()
+            let Some(Inverse::Ordinary(css)) = value
+                .inverse(candidate, &[false; 4], &mut retry, InversePurpose::Block)
+                .unwrap()
             else {
                 panic!("adequate grid retry")
             };
@@ -752,8 +806,9 @@ mod tests {
             let value = block(source);
             let mut writer =
                 SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
-            let Some(Inverse::Ordinary(css)) =
-                value.inverse(candidate, &[false; 4], &mut writer).unwrap()
+            let Some(Inverse::Ordinary(css)) = value
+                .inverse(candidate, &[false; 4], &mut writer, InversePurpose::Block)
+                .unwrap()
             else {
                 panic!("borrowed grid partner: {source}")
             };
@@ -776,7 +831,7 @@ mod tests {
                 0,
             ));
             let error = value
-                .inverse(candidate, &[false; 4], &mut writer)
+                .inverse(candidate, &[false; 4], &mut writer, InversePurpose::Block)
                 .err()
                 .unwrap();
             assert!(error.declaration().unwrap().same_occurrence(&list[ordinal]));
@@ -822,8 +877,9 @@ mod tests {
                 .collect();
             let candidate = candidates_for_name(property)[0];
             let mut writer = SpecifiedRuleWriter::new(exact);
-            let Some(Inverse::Ordinary(css)) =
-                value.inverse(candidate, &[false; 2], &mut writer).unwrap()
+            let Some(Inverse::Ordinary(css)) = value
+                .inverse(candidate, &[false; 2], &mut writer, InversePurpose::Block)
+                .unwrap()
             else {
                 panic!("retained second time value: {source}")
             };
@@ -831,7 +887,7 @@ mod tests {
             assert!(writer.css.is_empty());
             let mut writer =
                 SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(9, 76, 17));
-            match value.inverse(candidate, &[false; 2], &mut writer) {
+            match value.inverse(candidate, &[false; 2], &mut writer, InversePurpose::Block) {
                 Err(error) => {
                     if kind(error) != CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit {
                         failures.push(format!(
@@ -845,8 +901,9 @@ mod tests {
             }
             assert!(writer.css.is_empty());
             let mut retry = SpecifiedRuleWriter::new(exact);
-            let Some(Inverse::Ordinary(css)) =
-                value.inverse(candidate, &[false; 2], &mut retry).unwrap()
+            let Some(Inverse::Ordinary(css)) = value
+                .inverse(candidate, &[false; 2], &mut retry, InversePurpose::Block)
+                .unwrap()
             else {
                 panic!("adequate retained-pair retry")
             };
