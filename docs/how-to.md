@@ -3,8 +3,8 @@
 These procedures assume the [first-success check](getting-started.md) passes.
 Run commands from the repository root with the required tooling and dependencies
 already installed. [AGENTS.md](../AGENTS.md#command-inventory) owns command
-selection and serial execution policy. Select each applicable package, feature,
-target, and suite deliberately, then run commands one at a time.
+selection, concurrency and host-monitoring policy. Select each applicable
+package, feature, target, and suite deliberately under that inventory.
 
 ## Check A Forwarded Feature
 

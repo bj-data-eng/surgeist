@@ -89,7 +89,7 @@ packages keep their default profile. The CSS profile appears as
 
 ## Verification Scope
 
-The [root command inventory](../AGENTS.md#command-inventory) selects serial
+The [root command inventory](../AGENTS.md#command-inventory) selects focused
 package check/test/Clippy commands, formatting, and explicit API auditing.
 Unqualified root Cargo commands select the facade by default; `--workspace`
 would explicitly expand selection to all 15 product packages. Broad workspace

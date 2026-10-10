@@ -148,9 +148,12 @@ and `$pisct:attribution` for bundled-material provenance.
 
 ## Command Inventory
 
-Run one top-level Cargo check, build, or test command at a time, with one Cargo
-build job. Use default test-harness parallelism unless `pisct host status`
-advises a limit, following `$pisct:coordination` for resource-pressure handling.
+Targeted Cargo check, build, or test commands may run in parallel, with one
+Cargo build job per command. Monitor `pisct host status` and follow
+`$pisct:coordination` for resource-pressure handling. Use separate Cargo target
+directories for concurrent worktrees changing the same packages; reuse the
+existing target when the source and verification context permit. Use default
+test-harness parallelism unless host status advises a limit.
 Do not use blanket workspace test runs. Select focused verification through
 `$pisct:testing` and the affected crate's supplement; execute commands through
 `$pisct:process`.
