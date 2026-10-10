@@ -29,6 +29,8 @@ subset; it does not establish complete support for all CSS syntax.
 | `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
 | `parse_media_query_list(&str)` | Default features | `CssParseReport<CssMediaQueryList>` |
 | `parse_font_face_descriptor_value(&str, CssFontFaceDescriptorKind)` | Default features | `CssParseReport<Option<CssFontFaceDescriptorValue>>` |
+| `parse_page_declaration_block_contents(&str)` / `_with_limits` | Default features | `CssParseReport<Option<CssPageDeclarationBlock>>` with raw block-contents recovery |
+| `parse_font_face_declaration_block_contents(&str)` / `_with_limits` | Default features | `CssParseReport<Option<CssFontFaceDescriptors>>` with raw block-contents recovery |
 | `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
 | `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 | `validate_declaration_list_text(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
@@ -114,6 +116,40 @@ clean; discarded input is nonclean even if nothing survives.
 `validate_declaration_list_text` accepts exactly the same clean report and preserves
 all diagnostics on failure. A context-selected report has the same clean conversion
 through `into_validation_result()`.
+
+## Raw Page and FontFace declaration contents
+
+`parse_page_declaration_block_contents` and
+`parse_font_face_declaration_block_contents` admit the exact supplied unbraced
+input for the selected [CSSOM declaration cssText setter](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md)
+and [Fonts4 descriptor interface](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md).
+They share the existing CSS Syntax block-contents traversal and the actual
+Page/FontFace declaration callbacks. A root `}` stops consumption; at-rules
+and qualified rules are dropped as complete units. Invalid declarations recover
+locally, retaining valid neighbors, duplicate order and original source origins.
+No containing punctuation or rule is generated. The historical raw declaration
+list and the real-brace fragment policies remain distinct.
+
+Page contents keep Page descriptors, applicable ordinary properties and custom
+declarations as separate typed occurrences. `CssParserContext` provides the Page
+counterparts for document mode. Declaration replacement supplies no margin child
+rules. `CssPageDeclarationBlock::try_specified` composes the admitted block with
+the existing selected-block formatter. FontFace uses its descriptor grammar,
+rejects importance and recovers valid `src` members; its real-brace fragment
+continues to reject structural children. `CssFontFaceDescriptors::effective`
+and existing font-rule specified formatting select admitted descriptors without
+reparsing authored text.
+
+The optional report payload is the completion decision: `Some(empty)` denotes
+successful empty or wholly invalid recovered contents, while `None` with typed
+resource diagnostics denotes failed preparation. CSSOM must reject a failed
+preparation before publishing replacement; it must never treat it as clearing.
+Nonclean reports with `Some` are ordinary recovered input. Limited variants charge
+the complete original input, including trivia, descendants and text after the
+root stop token. Input and grammar resource failures discard the whole preparation,
+retain their typed causes, and permit an unchanged larger-budget retry. Parsed
+occurrences keep the owning input snapshot after the caller drops its string.
+Live identity, child preservation, host guards and mutation remain with CSSOM.
 
 ## Authored CSSOM declaration blocks
 

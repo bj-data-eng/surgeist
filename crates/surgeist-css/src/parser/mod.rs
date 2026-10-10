@@ -20,9 +20,16 @@ mod contain_intrinsic_size;
 pub(crate) mod counter_style;
 mod declaration_block;
 mod declaration_list;
+mod domain_declaration_contents;
 pub(crate) use declaration_block::parse_with_context as parse_declaration_block_contents_with_context;
 pub use declaration_block::{
     parse_declaration_block_contents, parse_declaration_block_contents_with_limits,
+};
+pub(crate) use domain_declaration_contents::parse_page_with_context as parse_page_declaration_block_contents_with_context;
+pub use domain_declaration_contents::{
+    parse_font_face_declaration_block_contents,
+    parse_font_face_declaration_block_contents_with_limits, parse_page_declaration_block_contents,
+    parse_page_declaration_block_contents_with_limits,
 };
 mod descriptor_body;
 mod descriptor_values;

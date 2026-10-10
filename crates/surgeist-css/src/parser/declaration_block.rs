@@ -42,14 +42,96 @@ pub(crate) fn parse_with_context(
     limits: CssComponentValueLimits,
     parser_context: CssParserContext,
 ) -> CssParseReport<CssDeclarationList> {
+    let (declarations, diagnostics) = parse_contents(source, limits, parser_context, |_| {
+        OrdinaryReceiver { parser_context }
+    })
+    .into_parts();
+    CssParseReport::new(
+        CssDeclarationList::new(declarations.unwrap_or_default()),
+        diagnostics,
+    )
+}
+
+/// Domain callbacks supply only name/value admission. Syntax unit selection,
+/// source observations, synchronization and diagnostic spans have one owner.
+pub(super) trait Receiver {
+    type Declaration: Send;
+    /// Ordinary raw admission retains its established resource recovery policy.
+    /// Domain replacement must reject preparation rather than publish a prefix.
+    const ABORT_ON_RESOURCE: bool = true;
+    fn check_name<'i>(
+        &self,
+        name: &str,
+        location: cssparser::SourceLocation,
+    ) -> Result<(), ParseError<'i, Error>>;
+    fn parse_value<'i>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, '_>,
+        start: &ParserState,
+        recovery: &RecoveryState,
+    ) -> Result<Self::Declaration, ParseError<'i, Error>>
+    where
+        Self: 'i;
+    fn retained(&self, _declaration: &Self::Declaration, _recovery: &RecoveryState) {}
+    fn take_diagnostics(&mut self) -> Vec<crate::CssRecoveryDiagnostic> {
+        Vec::new()
+    }
+}
+
+struct OrdinaryReceiver {
+    parser_context: CssParserContext,
+}
+impl Receiver for OrdinaryReceiver {
+    type Declaration = CssDeclaration;
+    const ABORT_ON_RESOURCE: bool = false;
+    fn check_name<'i>(
+        &self,
+        name: &str,
+        location: cssparser::SourceLocation,
+    ) -> Result<(), ParseError<'i, Error>> {
+        if !self.parser_context.selects_svg_glyph(name) && resolve_property_name(name).is_none() {
+            Err(property_name_error(location, name))
+        } else {
+            Ok(())
+        }
+    }
+    fn parse_value<'i>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, '_>,
+        start: &ParserState,
+        recovery: &RecoveryState,
+    ) -> Result<CssDeclaration, ParseError<'i, Error>>
+    where
+        Self: 'i,
+    {
+        parse_declaration_core(
+            DeclarationMode::Ordinary,
+            name,
+            input,
+            start,
+            recovery.source_snapshot(),
+            self.parser_context,
+        )
+        .map(|parsed| parsed.into_declaration())
+    }
+    fn retained(&self, declaration: &CssDeclaration, recovery: &RecoveryState) {
+        recovery.retain_navigation_diagnostic(declaration.body());
+    }
+}
+
+pub(super) fn parse_contents<R: Receiver>(
+    source: &str,
+    limits: CssComponentValueLimits,
+    parser_context: CssParserContext,
+    make_receiver: impl FnOnce(RecoveryState) -> R + Send,
+) -> CssParseReport<Option<Vec<R::Declaration>>> {
     fragments::bounded_execution(source, || {
         let document = match syntax::source_document_with_limits(source, limits) {
             Ok(document) => document,
             Err(error) => {
-                return CssParseReport::new(
-                    CssDeclarationList::new(Vec::new()),
-                    vec![syntax_bridge::arena_error(source, error)],
-                );
+                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
             }
         };
         let snapshot = document
@@ -65,6 +147,7 @@ pub(crate) fn parse_with_context(
             snapshot,
         )
         .with_parser_context(parser_context);
+        let mut receiver = make_receiver(recovery.clone());
         let working_source = crate::tokenization::prepare(source);
         let stop = document.lists[document.root]
             .iter()
@@ -79,6 +162,7 @@ pub(crate) fn parse_with_context(
         let mut cursor = document.cursor(document.root);
         let mut declarations = Vec::new();
         let mut diagnostics = Vec::new();
+        let mut resource_failure = false;
         let consumed_end = loop {
             cursor.skip_trivia();
             if syntax::block_contents_end(&cursor) {
@@ -122,11 +206,8 @@ pub(crate) fn parse_with_context(
             let header = input.try_parse(|unit| {
                 let name = unit.expect_ident_cloned()?;
                 unit.expect_colon()?;
-                if !name.starts_with("--")
-                    && !parser_context.selects_svg_glyph(name.as_ref())
-                    && resolve_property_name(name.as_ref()).is_none()
-                {
-                    return Err(property_name_error(location, name.as_ref()));
+                if !name.starts_with("--") {
+                    receiver.check_name(name.as_ref(), location)?;
                 }
                 Ok(())
             });
@@ -155,14 +236,7 @@ pub(crate) fn parse_with_context(
                 if generic.is_err() {
                     return Err(invalid_syntax(unit.current_source_location()));
                 }
-                let declaration = parse_declaration_core(
-                    DeclarationMode::Ordinary,
-                    name,
-                    unit,
-                    &start,
-                    recovery.source_snapshot(),
-                    parser_context,
-                )?;
+                let declaration = receiver.parse_value(name, unit, &start, &recovery)?;
                 unit.expect_exhausted()?;
                 Ok(declaration)
             });
@@ -175,8 +249,8 @@ pub(crate) fn parse_with_context(
                     recovery.retain_component_closures(
                         recovery.component_openings_in(start_byte..end_byte),
                     );
-                    recovery.retain_navigation_diagnostic(&declaration.body);
-                    declarations.push(declaration.into_declaration());
+                    receiver.retained(&declaration, &recovery);
+                    declarations.push(declaration);
                     continue;
                 }
                 Err(error) => error,
@@ -192,18 +266,36 @@ pub(crate) fn parse_with_context(
             };
             let end_byte = offset(&cursor);
             advance_to(&mut input, end_byte);
+            let resource = crate::error::is_resource_parse_error(&error);
             if let Some(diagnostic) =
                 block_item_diagnostic_from_start(source, error, start_byte, end_byte, action)
             {
                 diagnostics.push(diagnostic);
             }
+            if resource && R::ABORT_ON_RESOURCE {
+                resource_failure = true;
+                break end_byte;
+            }
         };
+        diagnostics.extend(receiver.take_diagnostics());
+        if R::ABORT_ON_RESOURCE {
+            resource_failure |=
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| match diagnostic.error().kind() {
+                        crate::ErrorKind::NestingLimit(_) => true,
+                        crate::ErrorKind::InvalidComponentValue(error) => {
+                            crate::error::is_component_resource_error(error)
+                        }
+                        _ => false,
+                    });
+        }
         diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
         // Tokenizer recovery belongs to consumed contents, not text after `}`.
         // The source snapshot still retains the complete original input.
         recovery::finish_report(
             &source[..consumed_end],
-            CssParseReport::new(CssDeclarationList::new(declarations), diagnostics),
+            CssParseReport::new((!resource_failure).then_some(declarations), diagnostics),
         )
     })
 }

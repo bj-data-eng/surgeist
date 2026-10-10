@@ -132,6 +132,27 @@ impl CssParserContext {
     ) -> CssParseReport<CssDeclarationList> {
         crate::parser::parse_declaration_block_contents_with_context(source, limits, self)
     }
+    /// Parses raw Page declaration contents with this document-mode context.
+    /// Resource failure is `None`; recovered empty contents are `Some(empty)`.
+    #[must_use]
+    pub fn parse_page_declaration_block_contents(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<crate::CssPageDeclarationBlock>> {
+        self.parse_page_declaration_block_contents_with_limits(
+            source,
+            CssComponentValueLimits::default(),
+        )
+    }
+    /// Parses raw Page contents with cumulative original-input limits.
+    #[must_use]
+    pub fn parse_page_declaration_block_contents_with_limits(
+        self,
+        source: &str,
+        limits: CssComponentValueLimits,
+    ) -> CssParseReport<Option<crate::CssPageDeclarationBlock>> {
+        crate::parser::parse_page_declaration_block_contents_with_context(source, limits, self)
+    }
     /// Parses one complete declaration occurrence.
     #[must_use]
     pub fn parse_declaration(self, source: &str) -> CssParseReport<Option<CssDeclaration>> {

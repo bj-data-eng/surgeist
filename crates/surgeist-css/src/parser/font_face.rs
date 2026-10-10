@@ -124,6 +124,58 @@ struct FontFaceDescriptorParser<'s> {
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
 }
 
+pub(super) fn parse_contents(
+    source: &str,
+    limits: crate::CssComponentValueLimits,
+) -> crate::CssParseReport<Option<CssFontFaceDescriptors>> {
+    let (descriptors, diagnostics) = super::declaration_block::parse_contents(
+        source,
+        limits,
+        crate::CssParserContext::default(),
+        |recovery| FontFaceDescriptorParser {
+            source,
+            recovery,
+            diagnostics: Vec::new(),
+        },
+    )
+    .into_parts();
+    crate::CssParseReport::new(descriptors.map(CssFontFaceDescriptors::new), diagnostics)
+}
+
+impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
+    type Declaration = CssFontFaceDescriptor;
+    fn check_name<'i>(
+        &self,
+        name: &str,
+        location: cssparser::SourceLocation,
+    ) -> Result<(), ParseError<'i, Error>> {
+        descriptor_kind(name, location).map(|_| ())
+    }
+    fn parse_value<'i>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, '_>,
+        start: &ParserState,
+        _recovery: &RecoveryState,
+    ) -> Result<CssFontFaceDescriptor, ParseError<'i, Error>>
+    where
+        Self: 'i,
+    {
+        DeclarationParser::parse_value(self, name, input, start)
+    }
+    fn take_diagnostics(&mut self) -> Vec<crate::CssRecoveryDiagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+}
+
+fn descriptor_kind<'i>(
+    name: &str,
+    location: cssparser::SourceLocation,
+) -> Result<CssFontFaceDescriptorKind, ParseError<'i, Error>> {
+    CssFontFaceDescriptorKind::from_css_name(name)
+        .ok_or_else(|| descriptor_name_error(location, "font-face", name))
+}
+
 impl<'i> AtRuleParser<'i> for FontFaceDescriptorParser<'i> {
     type Prelude = ();
     type AtRule = CssFontFaceDescriptor;
@@ -146,7 +198,7 @@ impl<'i> RuleBodyItemParser<'i, CssFontFaceDescriptor, Error> for FontFaceDescri
     }
 }
 
-impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
+impl<'i, 's: 'i> DeclarationParser<'i> for FontFaceDescriptorParser<'s> {
     type Declaration = CssFontFaceDescriptor;
     type Error = Error;
 
@@ -163,13 +215,7 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
             declaration_start.position(),
             declaration_start.source_location(),
         );
-        let kind = CssFontFaceDescriptorKind::from_css_name(&name).ok_or_else(|| {
-            descriptor_name_error(
-                declaration_start.source_location(),
-                "font-face",
-                name.as_ref(),
-            )
-        })?;
+        let kind = descriptor_kind(name.as_ref(), declaration_start.source_location())?;
         let mut member_diagnostics = Vec::new();
         let numeric = crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot());
         let value = parse_authored_font_face_value(

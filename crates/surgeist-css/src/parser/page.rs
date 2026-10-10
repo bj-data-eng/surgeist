@@ -170,6 +170,74 @@ struct PageBodyParser<'s> {
     margin: bool,
 }
 
+pub(super) fn parse_contents(
+    source: &str,
+    limits: crate::CssComponentValueLimits,
+    context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<CssPageDeclarationBlock>> {
+    let (declarations, diagnostics) =
+        super::declaration_block::parse_contents(source, limits, context, |recovery| {
+            PageBodyParser {
+                source,
+                recovery,
+                diagnostics: Vec::new(),
+                margin: false,
+            }
+        })
+        .into_parts();
+    crate::CssParseReport::new(
+        declarations.map(CssPageDeclarationBlock::from_parsed),
+        diagnostics,
+    )
+}
+
+impl super::declaration_block::Receiver for PageBodyParser<'_> {
+    type Declaration = CssPageDeclaration;
+    fn check_name<'i>(
+        &self,
+        name: &str,
+        location: cssparser::SourceLocation,
+    ) -> Result<(), ParseError<'i, Error>> {
+        if CssPageDescriptorKind::from_name(name).is_some() {
+            Ok(())
+        } else {
+            page_property_name(name, location).map(|_| ())
+        }
+    }
+    fn parse_value<'i>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, '_>,
+        start: &ParserState,
+        _recovery: &RecoveryState,
+    ) -> Result<CssPageDeclaration, ParseError<'i, Error>>
+    where
+        Self: 'i,
+    {
+        DeclarationParser::parse_value(self, name, input, start).map(|item| match item {
+            PageBodyItem::Declaration(declaration) => declaration,
+            PageBodyItem::Margin(_) => {
+                unreachable!("declaration callback cannot emit a margin rule")
+            }
+        })
+    }
+    fn take_diagnostics(&mut self) -> Vec<crate::CssRecoveryDiagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+}
+
+fn page_property_name<'i>(
+    name: &str,
+    location: cssparser::SourceLocation,
+) -> Result<Option<CssKnownProperty>, ParseError<'i, Error>> {
+    let property = CssKnownProperty::from_name(name);
+    if property.is_none() && !name.starts_with("--") {
+        Err(property_name_error(location, name))
+    } else {
+        Ok(property)
+    }
+}
+
 enum PageBodyItem {
     Declaration(CssPageDeclaration),
     Margin(CssMarginRule),
@@ -281,7 +349,7 @@ impl<'i> RuleBodyItemParser<'i, PageBodyItem, Error> for PageBodyParser<'i> {
     }
 }
 
-impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
+impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
     type Declaration = PageBodyItem;
     type Error = Error;
 
@@ -342,13 +410,7 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
                 CssPageDescriptor::from_parsed(value, importance, name_origin),
             )));
         }
-        let property = CssKnownProperty::from_name(name.as_ref());
-        if property.is_none() && !name.starts_with("--") {
-            return Err(property_name_error(
-                declaration_start.source_location(),
-                name.as_ref(),
-            ));
-        }
+        let property = page_property_name(name.as_ref(), declaration_start.source_location())?;
         if property.is_some_and(|property| !is_page_margin_property(property)) {
             return Err(with_property_context(
                 unexpected_at(input.current_source_location()),

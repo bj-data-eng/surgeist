@@ -10702,6 +10702,8 @@ pub fn surgeist_css::CssParserContext::parse_keyframe_declaration_block(self, so
 pub fn surgeist_css::CssParserContext::parse_keyframes_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssKeyframeBlock>>>>
 pub fn surgeist_css::CssParserContext::parse_margin_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssMarginDeclarationBlock>>>
 pub fn surgeist_css::CssParserContext::parse_page_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssPageBody>>>
+pub fn surgeist_css::CssParserContext::parse_page_declaration_block_contents(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
+pub fn surgeist_css::CssParserContext::parse_page_declaration_block_contents_with_limits(self, source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
 pub fn surgeist_css::CssParserContext::parse_page_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value_for_grammar(self, grammar: surgeist_css::CssPropertyGrammar, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
@@ -13063,6 +13065,8 @@ pub fn surgeist_css::parse_declaration_block_contents_with_limits(source: &str, 
 pub fn surgeist_css::parse_declaration_list_text(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::parse_decoded_stylesheet(input: &surgeist_css::CssDecodedStylesheetInput, location: core::option::Option<surgeist_css::CssStylesheetLocation>) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_font_face_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssFontFaceDescriptors>>>
+pub fn surgeist_css::parse_font_face_declaration_block_contents(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFaceDescriptors>>
+pub fn surgeist_css::parse_font_face_declaration_block_contents_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFaceDescriptors>>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAuthoredFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_font_feature_display_value(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureDisplayValue>>
 pub fn surgeist_css::parse_font_feature_value(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValue>>
@@ -13080,6 +13084,8 @@ pub fn surgeist_css::parse_margin_property_value(property: surgeist_css::CssProp
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
 pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>
 pub fn surgeist_css::parse_page_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssPageBody>>>
+pub fn surgeist_css::parse_page_declaration_block_contents(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
+pub fn surgeist_css::parse_page_declaration_block_contents_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
 pub fn surgeist_css::parse_page_descriptor_value(source: &str, kind: surgeist_css::CssPageDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDescriptorValue>>
 pub fn surgeist_css::parse_page_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_page_selector_list(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageSelectorList>>
