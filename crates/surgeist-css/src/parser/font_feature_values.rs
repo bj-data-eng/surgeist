@@ -1,7 +1,5 @@
-use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::{
-    Recovered, consume_failed_rule_block, parse_descriptor_boundary, structural_rule_diagnostic,
-};
+use super::recovery::RecoveryState;
+use super::{Recovered, parse_descriptor_boundary};
 use crate::descriptor_values::{FontFeatureDisplayData, FontFeatureValueData};
 use crate::error::{
     Error, basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
@@ -11,7 +9,7 @@ use crate::numeric::NumericInputContext;
 use crate::*;
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
+    QualifiedRuleParser, RuleBodyItemParser,
 };
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -120,53 +118,18 @@ struct BodyParser<'i> {
     diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 fn parse_body<'i>(input: &mut Parser<'i, '_>, parser: &mut BodyParser<'i>) -> Vec<Member> {
-    let mut result = Vec::new();
-    let mut previous_end = input.position().byte_index();
-    let mut items = RuleBodyParser::new(input, parser);
-    loop {
-        let progress = RecoveryProgress::record(items.input);
-        let Some(item) = items.next() else {
-            break;
-        };
-        let failed_error = item.as_ref().err().and_then(|_| {
-            consume_failed_rule_block(
-                items.parser.source,
-                items.input,
-                true,
-                &items.parser.recovery,
-                "later.rule.font-feature-values",
-            )
-            .1
-        });
-        let outcome = progress.finish(items.input, item.is_ok());
-        let end = items.input.position().byte_index();
-        match item {
-            Ok(member) => result.push(member),
-            Err((error, unit)) => {
-                let action = if unit.trim_start().starts_with('@') {
-                    CssRecoveryAction::DropAtRule
-                } else {
-                    CssRecoveryAction::DropDescriptor
-                };
-                if let Some(diagnostic) = structural_rule_diagnostic(
-                    items.parser.source,
-                    failed_error.unwrap_or(error),
-                    unit,
-                    previous_end,
-                    end,
-                    action,
-                ) {
-                    items.parser.diagnostics.push(diagnostic);
-                }
-            }
-        }
-        previous_end = end;
-        if outcome == RecoveryLoopOutcome::Terminated {
-            break;
+    super::descriptor_body::parse(input, parser, "later.rule.font-feature-values")
+}
+impl<'i> super::descriptor_body::Receiver<'i, Member> for BodyParser<'i> {
+    fn recovery_context(&mut self) -> super::descriptor_body::RecoveryContext<'_, 'i> {
+        super::descriptor_body::RecoveryContext {
+            source: self.source,
+            recovery: &self.recovery,
+            diagnostics: &mut self.diagnostics,
         }
     }
-    result
 }
+
 impl<'i> AtRuleParser<'i> for BodyParser<'i> {
     type Prelude = CssFontFeatureValueKind;
     type AtRule = Member;

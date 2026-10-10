@@ -19,6 +19,7 @@ pub(crate) mod color_profile;
 mod contain_intrinsic_size;
 pub(crate) mod counter_style;
 mod declaration_list;
+mod descriptor_body;
 mod descriptor_values;
 mod effects;
 mod flex;

@@ -1,10 +1,10 @@
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
+    QualifiedRuleParser, RuleBodyItemParser, Token,
 };
 
-use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::{consume_failed_rule_block, parse_descriptor_boundary, structural_rule_diagnostic};
+use super::parse_descriptor_boundary;
+use super::recovery::RecoveryState;
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, invalid_component_value,
     invalid_syntax, unsupported_value_at, with_at_rule_prelude_context, with_descriptor_context,
@@ -15,8 +15,8 @@ use crate::{
     CssAuthoredDeclarationValue, CssComponentValues, CssFontFaceFamily, CssFontPaletteBase,
     CssFontPaletteConstructionError, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind,
     CssFontPaletteDescriptorValue, CssFontPaletteIndex, CssFontPaletteName, CssFontPaletteOverride,
-    CssFontPaletteValuesRule, CssIntegerCalculation, CssIntegerValue, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue,
+    CssFontPaletteValuesRule, CssIntegerCalculation, CssIntegerValue, CssRecoveryDiagnostic,
+    CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue,
 };
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -75,51 +75,8 @@ pub(super) fn parse_body<'i>(
         recovery,
         diagnostics: Vec::new(),
     };
-    let mut descriptors = Vec::new();
-    let mut previous_end = input.position().byte_index();
-    let mut items = RuleBodyParser::new(input, &mut parser);
-    loop {
-        let progress = RecoveryProgress::record(items.input);
-        let Some(item) = items.next() else {
-            break;
-        };
-        let failed_error = item.as_ref().err().and_then(|_| {
-            consume_failed_rule_block(
-                items.parser.source,
-                items.input,
-                true,
-                &items.parser.recovery,
-                "later.rule.font-palette-values",
-            )
-            .1
-        });
-        let outcome = progress.finish(items.input, item.is_ok());
-        let end = items.input.position().byte_index();
-        match item {
-            Ok(descriptor) => descriptors.push(descriptor),
-            Err((error, unit)) => {
-                let action = if unit.trim_start().starts_with('@') {
-                    CssRecoveryAction::DropAtRule
-                } else {
-                    CssRecoveryAction::DropDescriptor
-                };
-                if let Some(diagnostic) = structural_rule_diagnostic(
-                    items.parser.source,
-                    failed_error.unwrap_or(error),
-                    unit,
-                    previous_end,
-                    end,
-                    action,
-                ) {
-                    items.parser.diagnostics.push(diagnostic);
-                }
-            }
-        }
-        previous_end = end;
-        if outcome == RecoveryLoopOutcome::Terminated {
-            break;
-        }
-    }
+    let descriptors =
+        super::descriptor_body::parse(input, &mut parser, "later.rule.font-palette-values");
     diagnostics.extend(parser.diagnostics);
     descriptors
 }
@@ -132,6 +89,16 @@ struct BodyParser<'i> {
     source: &'i str,
     recovery: RecoveryState,
     diagnostics: Vec<CssRecoveryDiagnostic>,
+}
+
+impl<'i> super::descriptor_body::Receiver<'i, CssFontPaletteDescriptor> for BodyParser<'i> {
+    fn recovery_context(&mut self) -> super::descriptor_body::RecoveryContext<'_, 'i> {
+        super::descriptor_body::RecoveryContext {
+            source: self.source,
+            recovery: &self.recovery,
+            diagnostics: &mut self.diagnostics,
+        }
+    }
 }
 
 impl<'i> AtRuleParser<'i> for BodyParser<'i> {
@@ -184,7 +151,7 @@ pub(super) fn parse_descriptor_value_from_parser<'i>(
     kind: CssFontPaletteDescriptorKind,
     recovery: &RecoveryState,
 ) -> Result<CssFontPaletteDescriptorValue, ParseError<'i, Error>> {
-    validate_descriptor_root(input, kind)?;
+    super::descriptor_values::validate_root(input, "font-palette-values", kind.css_name())?;
     let numeric = NumericInputContext::parsed(recovery.source_snapshot());
     parse_descriptor_boundary(input, "font-palette-values", kind.css_name(), |input| {
         let beginning = input.state();
@@ -208,7 +175,7 @@ pub(crate) fn construct_descriptor_value(
     let working_source = crate::tokenization::prepare(serialized.as_css());
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
-    validate_descriptor_root(&mut input, kind)
+    super::descriptor_values::validate_root(&mut input, "font-palette-values", kind.css_name())
         .map_err(|error| from_parse_error(serialized.as_css(), error))?;
     let numeric = NumericInputContext::components(components, serialized);
     parse_descriptor_boundary(
@@ -224,42 +191,6 @@ pub(crate) fn construct_descriptor_value(
     .map_err(|error| from_parse_error(serialized.as_css(), error))
 }
 
-// All descriptor front doors apply the same root grammar before substitution
-// classification. Nested blocks remain data, including var()/env() fallbacks.
-fn validate_descriptor_root<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssFontPaletteDescriptorKind,
-) -> Result<(), ParseError<'i, Error>> {
-    let start = input.state();
-    loop {
-        let token_start = input.position();
-        let location = input.current_source_location();
-        let token = match input.next_including_whitespace_and_comments() {
-            Ok(token) => token.clone(),
-            Err(error) if matches!(error.kind, cssparser::BasicParseErrorKind::EndOfInput) => break,
-            Err(error) => return Err(basic(error)),
-        };
-        if matches!(
-            token,
-            Token::Semicolon
-                | Token::CloseCurlyBracket
-                | Token::CloseParenthesis
-                | Token::CloseSquareBracket
-        ) {
-            return Err(crate::error::invalid_descriptor_token_at(
-                location,
-                "font-palette-values",
-                kind.css_name(),
-                &token,
-                input.slice_from(token_start),
-            ));
-        }
-        super::fragments::finish_nested_component(input, &token)?;
-    }
-    input.reset(&start);
-    Ok(())
-}
-
 fn parse_value_data<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssFontPaletteDescriptorKind,
@@ -271,7 +202,7 @@ fn parse_value_data<'i>(
             .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
     if qualifying {
         let start = input.position();
-        consume_remaining_components(input)?;
+        super::descriptor_values::consume_remaining_components(input)?;
         return Ok(CssFontPaletteDescriptorData::Pending(
             CssSubstitutionDependentValue::new(CssAuthoredDeclarationValue::new(
                 input.slice_from(start),
@@ -289,28 +220,6 @@ fn parse_value_data<'i>(
             CssFontPaletteDescriptorData::OverrideColors(parse_overrides(input, numeric)?)
         }
     })
-}
-
-fn consume_remaining_components<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<(), ParseError<'i, Error>> {
-    loop {
-        let token = match input.next_including_whitespace_and_comments() {
-            Ok(token) => token.clone(),
-            Err(error) if matches!(error.kind, cssparser::BasicParseErrorKind::EndOfInput) => break,
-            Err(error) => return Err(basic(error)),
-        };
-        if matches!(
-            token,
-            Token::Function(_)
-                | Token::ParenthesisBlock
-                | Token::SquareBracketBlock
-                | Token::CurlyBracketBlock
-        ) {
-            input.parse_nested_block(consume_remaining_components)?;
-        }
-    }
-    Ok(())
 }
 
 fn parse_families<'i>(

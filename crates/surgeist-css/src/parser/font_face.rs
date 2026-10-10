@@ -217,7 +217,7 @@ pub(super) fn parse_authored_font_face_value<'i, 't>(
     member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
 ) -> Result<CssAuthoredFontFaceDescriptorValue, ParseError<'i, Error>> {
-    validate_font_face_descriptor_root(input, kind)?;
+    super::descriptor_values::validate_root(input, "font-face", kind.css_name())?;
     let start = input.state();
     let components = match crate::CssComponentValues::collect_from_parser(input, snapshot) {
         Ok(components) => components,
@@ -276,7 +276,7 @@ fn parse_font_face_value_with_components<'i, 't>(
     })?;
     if pending {
         return parse_descriptor_boundary(input, "font-face", kind.css_name(), |input| {
-            consume_remaining_components(input)?;
+            super::descriptor_values::consume_remaining_components(input)?;
             Ok(CssAuthoredFontFaceDescriptorValue::pending(
                 kind, components,
             ))
@@ -303,7 +303,7 @@ pub(crate) fn construct_font_face_descriptor_value(
     let working_source = crate::tokenization::prepare(source);
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
-    validate_font_face_descriptor_root(&mut input, kind)
+    super::descriptor_values::validate_root(&mut input, "font-face", kind.css_name())
         .map_err(|error| crate::error::from_parse_error(source, error))?;
     let numeric = crate::numeric::NumericInputContext::components(components, serialized);
     let mut member_diagnostics = Vec::new();
@@ -325,62 +325,6 @@ pub(crate) fn construct_font_face_descriptor_value(
         .first()
         .map(|diagnostic| diagnostic.error().clone());
     Ok((value, recovered))
-}
-
-pub(super) fn validate_font_face_descriptor_root<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssFontFaceDescriptorKind,
-) -> Result<(), ParseError<'i, Error>> {
-    let start = input.state();
-    loop {
-        let token_start = input.position();
-        let location = input.current_source_location();
-        let token = match input.next_including_whitespace_and_comments() {
-            Ok(token) => token.clone(),
-            Err(error) if matches!(error.kind, cssparser::BasicParseErrorKind::EndOfInput) => break,
-            Err(error) => return Err(basic(error)),
-        };
-        if matches!(
-            token,
-            Token::Semicolon
-                | Token::CloseCurlyBracket
-                | Token::CloseParenthesis
-                | Token::CloseSquareBracket
-        ) {
-            return Err(crate::error::invalid_descriptor_token_at(
-                location,
-                "font-face",
-                kind.css_name(),
-                &token,
-                input.slice_from(token_start),
-            ));
-        }
-        super::fragments::finish_nested_component(input, &token)?;
-    }
-    input.reset(&start);
-    Ok(())
-}
-
-fn consume_remaining_components<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<(), ParseError<'i, Error>> {
-    loop {
-        let token = match input.next_including_whitespace_and_comments() {
-            Ok(token) => token.clone(),
-            Err(error) if matches!(error.kind, cssparser::BasicParseErrorKind::EndOfInput) => break,
-            Err(error) => return Err(basic(error)),
-        };
-        if matches!(
-            token,
-            Token::Function(_)
-                | Token::ParenthesisBlock
-                | Token::SquareBracketBlock
-                | Token::CurlyBracketBlock
-        ) {
-            input.parse_nested_block(consume_remaining_components)?;
-        }
-    }
-    Ok(())
 }
 
 /// Shared value grammar; callers commit recovery only after their complete boundary succeeds.
