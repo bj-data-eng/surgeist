@@ -727,6 +727,12 @@ impl CssomBatch {
         index: usize,
     ) -> Result<CssomRuleId, CssomError> {
         self.apply(|this| {
+            if matches!(
+                this.staged.rule(id)?.data,
+                CssomRuleData::NamedSupports { .. }
+            ) {
+                return this.delete_named_supports_child(id, index);
+            }
             let list = match &this.staged.rule(id)?.data {
                 CssomRuleData::Style { children, .. }
                 | CssomRuleData::Group { children, .. }
@@ -1310,6 +1316,34 @@ impl State {
                 add(&mut strings, origin.source().as_str().len());
             }
             match &rule.data {
+                CssomRuleData::NamedSupports { name, body, .. } => {
+                    add(&mut strings, name.as_str().len());
+                    add(
+                        &mut strings,
+                        crate::named_supports_operations::retained_test_input_bytes(
+                            name.origin(),
+                            limits,
+                        )?,
+                    );
+                    add(&mut entries, body.local_recovery_origins().len());
+                    for child in body.children() {
+                        let (count, bytes) =
+                            crate::named_supports_operations::test_child_storage(child, limits)?;
+                        add(&mut entries, count);
+                        add(&mut strings, bytes);
+                    }
+                }
+                CssomRuleData::SupportsTestChild(child) => {
+                    let (count, bytes) = crate::named_supports_operations::test_child_storage(
+                        child.as_ref(),
+                        limits,
+                    )?;
+                    add(&mut entries, count);
+                    add(&mut strings, bytes);
+                    // Current and historical checked payloads are retained separately.
+                    add(&mut entries, count);
+                    add(&mut strings, bytes);
+                }
                 CssomRuleData::CounterStyle { name, .. } => add(&mut strings, name.len()),
                 CssomRuleData::CustomMedia { name, .. } => add(&mut strings, name.as_str().len()),
                 CssomRuleData::FontFeatureValues {

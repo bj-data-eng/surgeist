@@ -12,6 +12,7 @@ mod font_operations;
 mod identity;
 mod media_operations;
 mod model;
+mod named_supports_operations;
 mod owner_effect;
 mod publication;
 mod readonly_extensions;

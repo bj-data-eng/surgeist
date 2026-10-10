@@ -180,10 +180,14 @@ fn omitted_scope_bounds_and_defined_named_support_name_do_not_require_whole_wrap
         snapshot.named_support_condition_name(&rules[1]).unwrap(),
         "--feature"
     );
-    assert!(matches!(
-        snapshot.child_rules(&rules[1]),
-        Err(CssomError::WrongKind)
-    ));
+    let named_list = snapshot.child_rules(&rules[1]).unwrap();
+    let tests = snapshot.rules(named_list).unwrap();
+    assert_eq!(tests.len(), 2);
+    assert_ne!(tests[0], tests[1]);
+    assert_eq!(snapshot.child_rules(&rules[1]).unwrap(), named_list);
+    for child in tests {
+        assert_eq!(snapshot.rule_type(child).unwrap(), 0);
+    }
     assert!(matches!(
         snapshot.named_support_condition_name(&rules[0]),
         Err(CssomError::WrongKind)

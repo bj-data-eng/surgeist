@@ -310,16 +310,10 @@ impl CssomSnapshot {
         serialize_css_comma_separated_list_with_limits(&items, text_limits(max_bytes))
             .map_err(CssomError::Serialization)
     }
-    /// The defined readonly name is independent of the unresolved non-rendering
-    /// test body's child projection, insertion context and whole wrapper.
+    /// Readonly decoded name under Surgeist's inert named-support grouping policy.
     pub fn named_support_condition_name(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match &self.rule(id)?.data {
-            CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::SupportsCondition(rule)),
-            }
-            | CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Scoped(CssScopedRule::SupportsCondition(rule)),
-            } => Ok(rule.name().as_str()),
+            CssomRuleData::NamedSupports { name, .. } => Ok(name.as_str()),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -485,6 +479,12 @@ impl CssomBatch {
         index: usize,
     ) -> Result<CssomRuleTicket, CssomError> {
         self.apply(|this| {
+            if matches!(
+                this.staged.rule(id)?.data,
+                CssomRuleData::NamedSupports { .. }
+            ) {
+                return this.insert_named_supports_child(id, source, index);
+            }
             let list = match &this.staged.rule(id)?.data {
                 CssomRuleData::Style { children, .. }
                 | CssomRuleData::Group { children, .. }
@@ -1225,7 +1225,8 @@ impl CssomSnapshot {
             CssomRuleData::Style { children, .. }
             | CssomRuleData::Group { children, .. }
             | CssomRuleData::Page { children, .. }
-            | CssomRuleData::Keyframes { children, .. } => Ok(children),
+            | CssomRuleData::Keyframes { children, .. }
+            | CssomRuleData::NamedSupports { children, .. } => Ok(children),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -1315,7 +1316,7 @@ fn format_reserve<T>(items: &mut Vec<T>, additional: usize) -> Result<(), CssomE
             maximum: additional,
         })
 }
-impl CssomSnapshot {
+impl State {
     fn current_properties(
         &self,
         id: &CssomBlockId,
@@ -1379,7 +1380,7 @@ impl CssomSnapshot {
     /// Formats actual current checked payloads/membership with one native CSS
     /// graph writer. Request-local preparation is independently metered by actual
     /// ancestry, traversal, edge and view-buffer work, not private CSS tariffs.
-    pub fn rule_css_text(
+    pub(crate) fn format_rule_text(
         &self,
         id: &CssomRuleId,
         limits: &CssomRuleFormatLimits,
@@ -1434,7 +1435,7 @@ impl CssomSnapshot {
         let mut nodes = Vec::<(&CssomRuleId, Vec<usize>)>::new();
         let mut pending = Vec::new();
         format_reserve(&mut pending, 1)?;
-        pending.push((id, None::<usize>, 1usize));
+        pending.push((id, None::<usize>, depth));
         while let Some((id, parent, depth)) = pending.pop() {
             work.step()?;
             work.depth(depth)?;
@@ -1458,6 +1459,7 @@ impl CssomSnapshot {
             let children = match &rule.data {
                 CssomRuleData::Style { children, .. }
                 | CssomRuleData::Page { children, .. }
+                | CssomRuleData::NamedSupports { children, .. }
                 | CssomRuleData::Keyframes { children, .. } => Some(children),
                 CssomRuleData::Group {
                     prelude: CssomGroupPrelude::Media(_) | CssomGroupPrelude::Supports(_),
@@ -1466,7 +1468,13 @@ impl CssomSnapshot {
                 _ => None,
             };
             if let Some(children) = children {
-                for child in self.rules(children)?.iter().rev() {
+                for child in self
+                    .lists
+                    .get(children)
+                    .ok_or(CssomError::MissingObject)?
+                    .iter()
+                    .rev()
+                {
                     work.step()?;
                     if nodes.len().saturating_add(pending.len()) >= limits.max_nodes {
                         return Err(CssomError::Limit {
@@ -1552,6 +1560,12 @@ impl CssomSnapshot {
                         _ => unreachable!(),
                     }
                 }
+                CssomRuleData::NamedSupports { name, body, .. } => {
+                    CssRuleGraphInput::named_supports(name, body)
+                }
+                CssomRuleData::SupportsTestChild(child) => {
+                    CssRuleGraphInput::supports_test_child(child.as_ref())
+                }
                 CssomRuleData::NestedDeclarations { block } => {
                     CssRuleGraphInput::nested_declarations(self.current_properties(block)?)
                 }
@@ -1615,7 +1629,14 @@ impl CssomSnapshot {
         views[0]
             .get()
             .expect("root initialized")
-            .serialize_cssom_with_limits(namespaces, ancestor, limits.css)
+            .serialize_cssom_with_graph_limits(
+                namespaces,
+                ancestor,
+                CssRuleGraphSerializationLimits {
+                    values: limits.css,
+                    max_depth: limits.max_depth.saturating_sub(depth),
+                },
+            )
             .map_err(CssomError::Format)
     }
 }
@@ -1774,5 +1795,32 @@ impl CssomBatch {
                 .clone();
             this.delete(&list, index).map(Some)
         })
+    }
+}
+
+impl CssomSnapshot {
+    /// Formats committed current payloads under one bounded native CSS operation.
+    pub fn rule_css_text(
+        &self,
+        id: &CssomRuleId,
+        limits: &CssomRuleFormatLimits,
+    ) -> Result<String, CssomError> {
+        self.state.format_rule_text(id, limits)
+    }
+}
+impl CssomBatch {
+    /// Formats staged current payloads for an existing committed ID, without
+    /// publishing state or exposing tentative identities. A poisoned batch
+    /// returns BatchAborted. The same bounded writer serves committed captures.
+    pub fn rule_css_text(
+        &self,
+        id: &CssomRuleId,
+        limits: &CssomRuleFormatLimits,
+    ) -> Result<String, CssomError> {
+        if self.poisoned {
+            return Err(CssomError::BatchAborted);
+        }
+        self.base.rule(id)?;
+        self.staged.format_rule_text(id, limits)
     }
 }

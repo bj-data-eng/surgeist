@@ -185,9 +185,49 @@ return empty strings for multiple entries. Their explicit byte allowance covers
 aggregate emitted fields or final composed text; existing checked CSS payload
 constraints remain independent. CSS owns identifier escaping and lexical query
 serialization. The specified plural composition uses its public list joiners
-without evaluation or logical simplification. The defined named-support name
-getter is readable independently of its unresolved non-rendering body-to-child
-projection and whole-wrapper contract; ordinary grouping is not inferred for it.
+without evaluation or logical simplification.
+
+Named-support definitions use an explicitly selected **Surgeist product policy**
+where the connecting CSSOM algorithms remain unspecified. Their decoded name is
+readonly and their stable grouping list contains one inert leaf per declaration,
+qualified candidate or at-rule candidate. Duplicate and unsupported tests remain
+ordered. `named_supports_test_child` exposes the three CSS-owned checked variants;
+nested candidate bodies are immutable inspectable payloads, with no descendant
+CSSOM identities, declaration objects, fetching, registration or evaluation.
+Recognized at-rule spellings are equally inert within this test context.
+
+Inherited group insertion admits the complete genuine input through CSS's
+strict one-test-child front door, after handle/security/modification/index checks.
+Trivia and empty semicolon statements are ignored recursively; multiple children,
+discarded syntax and recovered input return Syntax. Deletion detaches exactly one
+leaf. CSS recomposes maximal adjacent declaration runs without reparsing unchanged
+payloads, preserving individual declaration identities across run splits/merges.
+The new list and checked current body publish atomically, with membership/order,
+ancestry/provenance and owning-rule `Modification` facts. A failed operation or
+publication preserves live contents, identities, captures, revision and effects.
+The inherited outer/leaf cssText setters remain no-ops.
+
+`named_supports_body` exposes current CSS recovery metadata. Original occurrences
+and sheet diagnostics remain historical evidence. Recomposition preserves the
+outer body's local recovery and recomputes the surviving child union; deleting a
+candidate removes its descendant recovery. The summary origin is the first local
+origin, otherwise the first recovered surviving child. This does not promise
+source-byte or recovery round-tripping.
+
+The product cssText policy selects CSS's canonical specified named-support bytes:
+`@supports-condition --x { color: red; & { } @future x; }`, including an explicit
+space before the closing brace of an empty body. A single native graph operation
+serializes current outer/leaf payloads and ordinary ancestors, including opaque
+nested candidates, components, work and output. CSSOM preparation separately
+counts actual live views/edges and ancestry. Native root depth is zero; CSSOM
+counts a live root as one and passes the actual remaining ancestor allowance.
+`CssomBatch::rule_css_text` reads bounded staged text for existing committed IDs
+without publication or tentative-ID exposure; poisoned batches return BatchAborted.
+The staged `named_supports_body` view likewise exposes checked payloads only.
+The ordinary parsed CSS SupportsCondition CSSOM writer retains its standards-
+qualified unavailable result; the product path explicitly opts into this policy.
+This does not implement named-condition evaluation or certify other whole-rule
+wrappers or root Window/IDL bindings.
 
 `replace_sheet_sync` delegates the recovered replacement algorithm. Asynchronous
 replacement is a finite core lifecycle: `begin_replace_sheet` publishes the

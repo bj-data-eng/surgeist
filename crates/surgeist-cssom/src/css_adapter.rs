@@ -189,6 +189,7 @@ impl State {
                 let block = self.ordinary_block(v, &id, limits)?;
                 CssomRuleData::NestedDeclarations { block }
             }
+            CssomAuthoredRule::SupportsTestChild(v) => CssomRuleData::SupportsTestChild(v.clone()),
             CssomAuthoredRule::Margin(v) => {
                 check_declarations(v.declarations().properties().iter(), limits)?;
                 let selected = projection(
@@ -417,6 +418,9 @@ impl State {
         limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         Ok(match v {
+            CssRule::SupportsCondition(v) => {
+                self.named_supports_data(v.name(), v.body(), id, depth, limits)?
+            }
             CssRule::Style(v) => CssomRuleData::Style {
                 selectors: CssomSelectors::Ordinary(v.selectors().clone()),
                 block: self.ordinary_block(v.declarations(), id, limits)?,
@@ -490,6 +494,9 @@ impl State {
         limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         Ok(match v {
+            CssScopedRule::SupportsCondition(v) => {
+                self.named_supports_data(v.name(), v.body(), id, depth, limits)?
+            }
             CssScopedRule::Style(v) => CssomRuleData::Style {
                 selectors: CssomSelectors::Scoped(v.selectors().clone()),
                 block: self.ordinary_block(v.declarations(), id, limits)?,

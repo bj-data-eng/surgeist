@@ -211,6 +211,8 @@ pub enum CssomAuthoredRule {
     Margin(CssMarginRule),
     /// Genuine raw declaration input retained without manufacturing a rule position.
     RawNestedDeclarations(CssDeclarationList),
+    /// Genuine inert named-support test occurrence, never a rendering rule.
+    SupportsTestChild(CssSupportsTestChild),
 }
 #[derive(Clone, Debug)]
 pub enum CssomSelectors {
@@ -259,6 +261,16 @@ impl CssomGroupPrelude {
 /// original occurrences remain separately available through `CssomRule::authored`.
 #[derive(Clone, Debug)]
 pub enum CssomRuleData {
+    /// Surgeist's named-support grouping policy. The checked current body and
+    /// live direct-child list are reconstructed and published together.
+    NamedSupports {
+        name: CssSupportsConditionName,
+        body: CssSupportsTestBody,
+        children: CssomRuleListId,
+    },
+    /// Opaque inert leaf. Nested candidate bodies remain immutable CSS payloads;
+    /// they have no descendant CSSOM identities or rendering capabilities.
+    SupportsTestChild(CssSupportsTestChild),
     Style {
         selectors: CssomSelectors,
         block: CssomBlockId,
@@ -326,6 +338,7 @@ impl CssomRuleData {
             Self::Style { children, .. }
             | Self::Group { children, .. }
             | Self::Page { children, .. }
+            | Self::NamedSupports { children, .. }
             | Self::Keyframes { children, .. } => Some(children),
             _ => None,
         }
@@ -758,6 +771,7 @@ pub enum CssomError {
     QueryMatch(CssomQueryMatchError),
     Keyframe(CssKeyframeRuleViewError),
     KeyframeComparison(CssKeyframeSelectorComparisonError),
+    NamedSupports(CssNamedSupportsConstructionError),
 }
 impl fmt::Display for CssomError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -781,6 +795,7 @@ impl std::error::Error for CssomError {
             Self::Keyframe(e) => Some(e),
             Self::KeyframeComparison(e) => Some(e),
             Self::Component(e) => Some(e),
+            Self::NamedSupports(e) => Some(e),
             _ => None,
         }
     }

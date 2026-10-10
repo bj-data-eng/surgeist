@@ -8,6 +8,7 @@ pub surgeist_cssom::CssomAuthoredRule::Margin(surgeist_css::syntax::page::CssMar
 pub surgeist_cssom::CssomAuthoredRule::Ordinary(surgeist_css::syntax::CssRule)
 pub surgeist_cssom::CssomAuthoredRule::RawNestedDeclarations(surgeist_css::syntax::CssDeclarationList)
 pub surgeist_cssom::CssomAuthoredRule::Scoped(surgeist_css::syntax::CssScopedRule)
+pub surgeist_cssom::CssomAuthoredRule::SupportsTestChild(surgeist_css::named_supports::CssSupportsTestChild)
 pub enum surgeist_cssom::CssomBlockData
 pub surgeist_cssom::CssomBlockData::CounterStyle(alloc::boxed::Box<surgeist_css::syntax::counter_style::CssCounterStyleDescriptors>)
 pub surgeist_cssom::CssomBlockData::FontFace(surgeist_css::syntax::font_face::CssFontFaceDescriptors)
@@ -84,6 +85,7 @@ pub surgeist_cssom::CssomError::Limit::resource: &'static str
 pub surgeist_cssom::CssomError::Media(surgeist_css::media::CssMediaCssomSerializationError)
 pub surgeist_cssom::CssomError::Metadata(surgeist_css::expansion::CssPropertyMetadataError)
 pub surgeist_cssom::CssomError::MissingObject
+pub surgeist_cssom::CssomError::NamedSupports(surgeist_css::named_supports::CssNamedSupportsConstructionError)
 pub surgeist_cssom::CssomError::Page(surgeist_css::page_projection::CssPageProjectionError)
 pub surgeist_cssom::CssomError::PageBlock(surgeist_css::syntax::page::CssPageBlockError)
 pub surgeist_cssom::CssomError::ParseResource(alloc::boxed::Box<surgeist_css::report::CssRecoveryDiagnostic>)
@@ -293,6 +295,10 @@ pub surgeist_cssom::CssomRuleData::Leaf::current: surgeist_cssom::CssomAuthoredR
 pub surgeist_cssom::CssomRuleData::Margin
 pub surgeist_cssom::CssomRuleData::Margin::block: surgeist_cssom::CssomBlockId
 pub surgeist_cssom::CssomRuleData::Margin::name: surgeist_css::syntax::page::CssMarginBox
+pub surgeist_cssom::CssomRuleData::NamedSupports
+pub surgeist_cssom::CssomRuleData::NamedSupports::body: surgeist_css::named_supports::CssSupportsTestBody
+pub surgeist_cssom::CssomRuleData::NamedSupports::children: surgeist_cssom::CssomRuleListId
+pub surgeist_cssom::CssomRuleData::NamedSupports::name: surgeist_css::named_supports::CssSupportsConditionName
 pub surgeist_cssom::CssomRuleData::NestedDeclarations
 pub surgeist_cssom::CssomRuleData::NestedDeclarations::block: surgeist_cssom::CssomBlockId
 pub surgeist_cssom::CssomRuleData::Page
@@ -303,6 +309,7 @@ pub surgeist_cssom::CssomRuleData::Style
 pub surgeist_cssom::CssomRuleData::Style::block: surgeist_cssom::CssomBlockId
 pub surgeist_cssom::CssomRuleData::Style::children: surgeist_cssom::CssomRuleListId
 pub surgeist_cssom::CssomRuleData::Style::selectors: surgeist_cssom::CssomSelectors
+pub surgeist_cssom::CssomRuleData::SupportsTestChild(surgeist_css::named_supports::CssSupportsTestChild)
 impl surgeist_cssom::CssomRuleData
 pub fn surgeist_cssom::CssomRuleData::block(&self) -> core::option::Option<&surgeist_cssom::CssomBlockId>
 pub fn surgeist_cssom::CssomRuleData::children(&self) -> core::option::Option<&surgeist_cssom::CssomRuleListId>
@@ -363,8 +370,12 @@ impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::insert_group_rule(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::insert_sheet_rule(&mut self, id: &surgeist_cssom::CssomSheetId, source: &str, index: usize) -> core::result::Result<(usize, surgeist_cssom::CssomRuleTicket), surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::named_supports_body(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&surgeist_css::named_supports::CssSupportsTestBody, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::prepare_font_face_css_text(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::prepare_font_face_descriptor(&mut self, id: &surgeist_cssom::CssomRuleId, kind: surgeist_css::syntax::font_face::CssFontFaceDescriptorKind, value: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::rule_css_text(&self, id: &surgeist_cssom::CssomRuleId, limits: &surgeist_cssom::CssomRuleFormatLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::set_counter_descriptor(&mut self, id: &surgeist_cssom::CssomRuleId, kind: surgeist_css::syntax::counter_style::CssCounterStyleDescriptorKind, source: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<bool, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
@@ -788,6 +799,9 @@ impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::media_item(&self, id: &surgeist_cssom::CssomMediaListId, index: usize, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomSnapshot::media_length(&self, id: &surgeist_cssom::CssomMediaListId) -> core::result::Result<usize, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomSnapshot::media_text(&self, id: &surgeist_cssom::CssomMediaListId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::named_supports_body(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&surgeist_css::named_supports::CssSupportsTestBody, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::named_supports_test_child(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&surgeist_css::named_supports::CssSupportsTestChild, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::rule_css_text(&self, id: &surgeist_cssom::CssomRuleId, limits: &surgeist_cssom::CssomRuleFormatLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
