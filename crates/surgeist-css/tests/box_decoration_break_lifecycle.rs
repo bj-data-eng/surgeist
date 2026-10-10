@@ -6,6 +6,9 @@
 
 use surgeist_css::*;
 
+#[path = "common/authored_property.rs"]
+mod authored_property;
+
 type PropertyCase = (
     &'static str,
     &'static str,
@@ -205,112 +208,15 @@ fn css_wide_values_contribute_symbolic_keywords() {
 #[test]
 fn pending_reentry_is_strict_repeatable_and_retains_replacement_provenance() {
     for &(name, _, _, valid, invalid) in CASES {
-        let source = declaration(name, "var(--value)");
-        assert!(source.known().unwrap().substitution_dependent().is_some());
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
-            panic!("whole-value substitution remains pending")
-        };
-        assert!(handle.source().same_occurrence(&source));
-        for &text in invalid {
-            assert!(matches!(
-                handle
-                    .reenter(parse_component_values(text).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-        }
-        for text in ["var(--again)", "env(value)", "attr(data-value)"] {
-            assert_eq!(
-                handle
-                    .reenter(parse_component_values(text).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
-            );
-        }
-        for text in [valid[0], "inherit"] {
-            let replacement = parse_component_values(text).unwrap();
-            for _ in 0..2 {
-                let CssContributions::Longhands(values) =
-                    handle.reenter(replacement.clone()).unwrap()
-                else {
-                    panic!("one reentered terminal")
-                };
-                let [item] = values.items() else {
-                    panic!("one replacement contribution")
-                };
-                assert_eq!(item.property(), source.known().unwrap().property());
-                assert!(item.source().same_occurrence(&source));
-                assert_eq!(item.source().importance(), CssImportance::Important);
-                assert_eq!(item.replacement_components(), Some(&replacement));
-            }
-        }
+        let terminal = name;
+        authored_property::pending_longhand_reentry(name, valid, invalid, terminal, declaration);
     }
 }
 
 #[test]
 fn normalization_retains_order_and_importance_with_an_exact_contribution_limit() {
     for &(name, _, _, valid, _) in CASES {
-        let text = format!(
-            ".a{{{name}:{}!important;color:red;{name}:{}}}",
-            valid[0], valid[1]
-        );
-        let report = parse_sheet(&text);
-        assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
-        let declarations: Vec<_> = normalized
-            .items()
-            .iter()
-            .filter_map(|item| match item {
-                CssNormalizedItem::Declaration(value) => Some(value),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(declarations.len(), 3);
-        for (order, expected) in [name, "color", name].into_iter().enumerate() {
-            let item = declarations[order];
-            assert_eq!(item.order(), order);
-            assert_eq!(
-                item.source().known().unwrap().property().canonical_name(),
-                expected
-            );
-            let CssExpansion::Contributions(CssContributions::Longhands(values)) = item.expansion()
-            else {
-                panic!("one normalized terminal")
-            };
-            assert_eq!(values.items().len(), 1);
-            assert!(values.items()[0].source().same_occurrence(item.source()));
-        }
-        assert_eq!(
-            declarations[0].source().importance(),
-            CssImportance::Important
-        );
-        assert_eq!(declarations[2].source().importance(), CssImportance::Normal);
-        let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 2,
-            }
-        );
-        assert_eq!(error.declaration_order(), Some(2));
-        assert_eq!(
-            error
-                .declaration()
-                .unwrap()
-                .known()
-                .unwrap()
-                .property()
-                .canonical_name(),
-            name
-        );
-        assert_eq!(
-            normalize_sheet(report.syntax()).unwrap().items().len(),
-            normalized.items().len()
-        );
+        authored_property::normalized_longhand_order_and_limit(name, valid);
     }
 }
 

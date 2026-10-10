@@ -17,6 +17,10 @@
 
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
+
+#[path = "common/authored_property.rs"]
+mod authored_property;
+use authored_property::assert_source;
 const FAMILY: [&str; 2] = ["word-space-transform", "tab-size"];
 const WORD: [&str; 5] = [
     "none",
@@ -60,87 +64,20 @@ fn property(name: &str) -> P {
     P::from_name(name).unwrap_or_else(|| panic!("authored property unavailable: {name}"))
 }
 fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{}:{value}!important", name.to_ascii_uppercase());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
-    assert_eq!(source.known().unwrap().property().canonical_name(), name);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_some());
-    assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-    assert_eq!(source.parsed_value().unwrap().source().as_str(), css);
-    source.clone()
+    authored_property::parsed(property(name), value)
 }
 fn checked_components(
     name: &str,
     value: CssComponentValues,
     grammar: bool,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let p = property(name);
-    if grammar {
-        parse_property_value_for_grammar(p.grammar(), value, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            value,
-            CssImportance::Important,
-        )
-    }
+    authored_property::checked_components(property(name), value, grammar, CssImportance::Important)
 }
 fn checked(name: &str, value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = checked_components(name, components.clone(), grammar).unwrap();
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert_eq!(source.known().unwrap().grammar(), property(name).grammar());
-    source
-}
-fn text_front(name: &str, text: &str, grammar: bool) -> CssDeclaration {
-    let p = property(name);
-    let report = if grammar {
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Important)
-    } else {
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Important)
-    };
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let source = report.syntax().as_ref().unwrap().clone();
-    assert_eq!(source.known().unwrap().grammar(), p.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert_eq!(source.parsed_value().unwrap().source().as_str(), text);
-    source
+    authored_property::checked(property(name), value, grammar)
 }
 fn fronts(name: &str, text: &str) -> [CssDeclaration; 5] {
-    [
-        parsed(name, text),
-        checked(name, text, false),
-        checked(name, text, true),
-        text_front(name, text, false),
-        text_front(name, text, true),
-    ]
-}
-fn assert_source(item: &CssLonghandContribution, source: &CssDeclaration) {
-    assert!(item.source().same_occurrence(source));
-    assert_eq!(item.source().importance(), source.importance());
-    assert_eq!(item.source().position(), source.position());
-    assert_eq!(item.source().value_components(), source.value_components());
-    assert_eq!(
-        item.source().known().unwrap().grammar(),
-        source.known().unwrap().grammar()
-    );
+    authored_property::fronts(property(name), text)
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

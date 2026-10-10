@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 //! The supported component depth also applies to public owned-value operations,
 //! even when every function contains both a sum and a product expression node.
+#[path = "support/isolated_stack.rs"]
+mod isolated_stack;
+
 use surgeist_css::{
     CssComponentValueError, CssComponentValueErrorKind, CssComponentValueLimits,
     CssLengthPercentageCalculation, CssNumberCalculation, CssNumericConstructionErrorKind,
@@ -112,34 +115,11 @@ fn tighter_limits_reject_and_release_deep_inputs_without_aborting_the_caller() {
 }
 
 fn isolated(test: &str, operation: fn()) {
-    const CHILD: &str = "SURGEIST_NUMERIC_LIFECYCLE_STACK_CHILD";
-    if std::env::var(CHILD).as_deref() == Ok(test) {
-        let worker = std::thread::Builder::new()
-            .stack_size(2 * 1024 * 1024)
-            .spawn(operation)
-            .unwrap();
-        if let Err(panic) = worker.join() {
-            std::panic::resume_unwind(panic);
-        }
-        println!("numeric owned lifecycle and destruction completed");
-        return;
-    }
-    let output = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", test, "--nocapture", "--test-threads=1"])
-        .env(CHILD, test)
-        .env_remove("RUST_MIN_STACK")
-        .stdin(std::process::Stdio::null())
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}\n{}\n{}",
-        output.status,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .contains("numeric owned lifecycle and destruction completed")
+    isolated_stack::run(
+        test,
+        "SURGEIST_NUMERIC_LIFECYCLE_STACK_CHILD",
+        "numeric owned lifecycle and destruction completed",
+        None,
+        operation,
     );
 }

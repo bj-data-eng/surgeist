@@ -1,5 +1,8 @@
 //! The public depth budget applies to complete mathematical expressions,
 //! including operator nodes between nested function components.
+#[path = "support/isolated_stack.rs"]
+mod isolated_stack;
+
 use surgeist_css::{CssLengthPercentageCalculation, CssNumberCalculation, parse_component_values};
 
 #[test]
@@ -34,34 +37,11 @@ fn mixed_operator_length_fragments_serialize_at_the_supported_depth() {
 }
 
 fn isolated(test: &str, operation: fn()) {
-    const CHILD: &str = "SURGEIST_NUMERIC_SERIALIZATION_STACK_CHILD";
-    if std::env::var(CHILD).as_deref() == Ok(test) {
-        let worker = std::thread::Builder::new()
-            .stack_size(2 * 1024 * 1024)
-            .spawn(operation)
-            .unwrap();
-        if let Err(panic) = worker.join() {
-            std::panic::resume_unwind(panic);
-        }
-        println!("mixed numeric serialization and destruction completed");
-        return;
-    }
-    let output = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", test, "--nocapture", "--test-threads=1"])
-        .env(CHILD, test)
-        .env_remove("RUST_MIN_STACK")
-        .stdin(std::process::Stdio::null())
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}\n{}\n{}",
-        output.status,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .contains("mixed numeric serialization and destruction completed")
+    isolated_stack::run(
+        test,
+        "SURGEIST_NUMERIC_SERIALIZATION_STACK_CHILD",
+        "mixed numeric serialization and destruction completed",
+        None,
+        operation,
     );
 }

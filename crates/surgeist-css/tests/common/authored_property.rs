@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
+#![expect(
+    dead_code,
+    reason = "each integration target uses a different assertion subset"
+)]
 //! Shared execution and assertions for authored-property tests. Grammar cases,
 //! expected serializations, expansion payloads, and resource costs stay with
 //! their owning suites and are never inferred from production metadata.
@@ -100,6 +104,7 @@ fn parsed_name(property: CssKnownProperty, name: &str, value: &str) -> CssDeclar
     assert_eq!(source.importance(), CssImportance::Important);
     assert!(source.position().is_some());
     assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
+    assert_eq!(source.parsed_value().unwrap().source().as_str(), css);
     source.clone()
 }
 
@@ -230,4 +235,129 @@ pub fn assert_source(item: &CssLonghandContribution, source: &CssDeclaration) {
     );
     assert_eq!(item.source().position(), source.position());
     assert_eq!(item.source().value_components(), source.value_components());
+}
+
+/// Execute every authored admission front; family values remain with callers.
+pub fn fronts(property: CssKnownProperty, text: &str) -> [CssDeclaration; 5] {
+    [
+        ParserFront::StyleAttribute,
+        ParserFront::CheckedName,
+        ParserFront::CheckedGrammar,
+        ParserFront::TextName,
+        ParserFront::TextGrammar,
+    ]
+    .map(|front| front.parse(property, text))
+}
+
+#[track_caller]
+pub fn pending_longhand_reentry(
+    name: &str,
+    valid: &[&str],
+    invalid: &[&str],
+    terminal: &str,
+    declaration: fn(&str, &str) -> CssDeclaration,
+) {
+    let source = declaration(name, "var(--value)");
+    assert!(source.known().unwrap().substitution_dependent().is_some());
+    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        panic!("whole-value substitution remains pending")
+    };
+    assert!(handle.source().same_occurrence(&source));
+    for &text in invalid {
+        assert!(matches!(
+            handle
+                .reenter(parse_component_values(text).unwrap())
+                .unwrap_err()
+                .kind(),
+            CssExpansionErrorKind::InvalidReplacement(_)
+        ));
+    }
+    for text in ["var(--again)", "env(value)", "attr(data-value)"] {
+        assert_eq!(
+            handle
+                .reenter(parse_component_values(text).unwrap())
+                .unwrap_err()
+                .kind(),
+            &CssExpansionErrorKind::ResidualSubstitution
+        );
+    }
+    for text in [valid[0], "inherit"] {
+        let replacement = parse_component_values(text).unwrap();
+        for _ in 0..2 {
+            let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
+            else {
+                panic!("one reentered terminal")
+            };
+            let [item] = values.items() else {
+                panic!("one replacement contribution")
+            };
+            assert_eq!(item.property().canonical_name(), terminal);
+            assert!(item.source().same_occurrence(&source));
+            assert_eq!(item.source().importance(), CssImportance::Important);
+            assert_eq!(item.replacement_components(), Some(&replacement));
+        }
+    }
+}
+
+#[track_caller]
+pub fn normalized_longhand_order_and_limit(name: &str, valid: &[&str]) {
+    let text = format!(
+        ".a{{{name}:{}!important;color:red;{name}:{}}}",
+        valid[0], valid[1]
+    );
+    let report = parse_sheet(&text);
+    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
+    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let declarations: Vec<_> = normalized
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            CssNormalizedItem::Declaration(value) => Some(value),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(declarations.len(), 3);
+    for (order, expected) in [name, "color", name].into_iter().enumerate() {
+        let item = declarations[order];
+        assert_eq!(item.order(), order);
+        assert_eq!(
+            item.source().known().unwrap().property().canonical_name(),
+            expected
+        );
+        let CssExpansion::Contributions(CssContributions::Longhands(values)) = item.expansion()
+        else {
+            panic!("one normalized terminal")
+        };
+        assert_eq!(values.items().len(), 1);
+        assert!(values.items()[0].source().same_occurrence(item.source()));
+    }
+    assert_eq!(
+        declarations[0].source().importance(),
+        CssImportance::Important
+    );
+    assert_eq!(declarations[2].source().importance(), CssImportance::Normal);
+    let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
+    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    assert_eq!(
+        error.kind(),
+        &CssNormalizationErrorKind::LimitExceeded {
+            resource: CssNormalizationResource::Contributions,
+            limit: 2,
+        }
+    );
+    assert_eq!(error.declaration_order(), Some(2));
+    assert_eq!(
+        error
+            .declaration()
+            .unwrap()
+            .known()
+            .unwrap()
+            .property()
+            .canonical_name(),
+        name
+    );
+    assert_eq!(
+        normalize_sheet(report.syntax()).unwrap().items().len(),
+        normalized.items().len()
+    );
 }

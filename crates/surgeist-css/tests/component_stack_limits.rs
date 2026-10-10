@@ -4,46 +4,20 @@
 //! Run through the repository's bounded process wrapper: an abort stays in the
 //! child, and the wrapper's deadline covers its inherited process group.
 
-use std::process::{Command, Stdio};
+#[path = "support/isolated_stack.rs"]
+mod isolated_stack;
 
 use surgeist_css::{
     CssComponentValueErrorKind, CssComponentValueRef, CssValueOrigin, parse_component_values,
 };
 
-const CHILD_CASE: &str = "SURGEIST_CSS_COMPONENT_STACK_LIMIT_CHILD";
-const COMPLETED: &str = "component stack assertions and resource destruction completed";
-
-fn isolated(test_name: &str, check: fn()) {
-    if std::env::var(CHILD_CASE).as_deref() == Ok(test_name) {
-        let worker = std::thread::Builder::new()
-            .name("component-stack-contract".into())
-            .stack_size(2 * 1024 * 1024)
-            .spawn(check)
-            .expect("start the explicitly sized component parser thread");
-        if let Err(panic) = worker.join() {
-            std::panic::resume_unwind(panic);
-        }
-        println!("{COMPLETED}");
-        return;
-    }
-
-    let output = Command::new(std::env::current_exe().expect("locate this integration test"))
-        .args(["--exact", test_name, "--nocapture", "--test-threads=1"])
-        .env(CHILD_CASE, test_name)
-        .env_remove("RUST_MIN_STACK")
-        .stdin(Stdio::null())
-        .output()
-        .expect("run and reap the isolated component parser child");
-    assert!(
-        output.status.success(),
-        "component parser child failed: {}\nstdout:\n{}\nstderr:\n{}",
-        output.status,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains(COMPLETED),
-        "the selected child must execute its assertions and join its worker"
+fn isolated(test: &str, operation: fn()) {
+    isolated_stack::run(
+        test,
+        "SURGEIST_CSS_COMPONENT_STACK_LIMIT_CHILD",
+        "component stack assertions and resource destruction completed",
+        Some("component-stack-contract"),
+        operation,
     );
 }
 
