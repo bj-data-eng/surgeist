@@ -43,7 +43,27 @@ These documents support reachable definitions, not new whole-module selections. 
 
 Other existing bounded imports are recorded by the [catalog](../crates/surgeist-css/specs/catalog.json) and [implemented reference](../crates/surgeist-css/docs/reference.md): UI 4 cursor→Images 4 image-set; Shapes→SVG 1.1 path grammar/parsing and Values 5 position; selector categories→Pseudo/Scoping/Shadow/Shadow Parts; Nesting/Conditional→pinned Syntax block-contents and Scope definitions; Values 4→Typed OM numeric typing; Content→Values 5 attr(); Conditional→Values 5 tree-counting and extension-name; Sizing→Values 5 calc-size(); Overflow/Position→Box 4 visual-box/four-side rules; Color 5→pinned Values 5 mix normalization. Preserve their named fragments and immutable witnesses. None selects every property in its defining document. Repeating-conic is not added merely because conic/interpolation definitions are selected.
 
+## CSSOM planning sources
+
+The new CSSOM work selects the following complete captures as its operative editions. Each contribution has one selected edition, rather than a historical edition plus correction excerpts. Retrieval hashes identify the exact captured HTML; the pages declare revision `4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c`. These are captured current drafts, not immutable dated publications or regenerated source pins.
+
+| Contribution | Operative planning edition | Retrieval identity |
+| --- | --- | --- |
+| CSS Object Model (CSSOM) Module Level 1 | [Editor’s Draft, 31 August 2026](cssom-1--editor-capture-20261009--d42e145ec395.md) | 2026-10-09; SHA-256 `d42e145ec395103f592001e5683cbeb63084ea530b76ec2923ecbcf80c7e74f9` |
+| CSS Counter Styles Module Level 3 | [Editor’s Draft,
+    8 October 2026](css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md) | 2026-10-09; SHA-256 `ef29d0a06a13683cbb3244bebc6f36d359f62fa107c17f1250111c9b0e4b0f43` |
+| CSS Conditional Rules Module Level 5 | [W3C Working Draft,
+    8 October 2026](css-conditional-5--editor-capture-20261009--75e15be8c8b4.md) | 2026-10-09; SHA-256 `75e15be8c8b41c6c34de2fa861801dbc6b77a06e6aba79d397bad82608e0aac1` |
+
+The Conditional 5 page advertises a dated 8 October 2026 Working Draft. That dated TR URL returned HTTP 404 during acquisition, so the retained reference identifies the full drafts URL capture rather than claiming dated-publication bytes.
+
+The [CSSOM 2021](cssom-1--WD-cssom-1-20210826--24d77393e4ea.md), [Counter Styles 2021](css-counter-styles-3--CR-css-counter-styles-3-20210727--7d697581c3eb.md), and [Conditional 5 2025](css-conditional-5--WD-css-conditional-5-20251030--272548f04685.md) copies remain historical sources for completed CSS work. The [implemented CSS reference](../crates/surgeist-css/docs/reference.md) and [source conformance records](../crates/surgeist-css/src/conformance.rs) still consume those editions. Planning selection does not rewrite completed implementation provenance or assert implementation conformance to the newer editions.
+
+The [WebKit container-query source witness](webkit-cssom-container-query--73aa6c89e2cb.md) supplies separate, bounded implementation evidence for omitted-query serialization where the selected Conditional 5 prose lacks the complete rule. Its four complete files are identified by immutable revision and per-file hashes. This browser-source evidence is explicitly distinct from the operative normative edition.
+
 ## Retained registry history and representation limits
+
+### Existing registry witnesses
 
 At this revision, `R_MEDIA4`, `R_GRID1`, `S_TEXTDECOR3`, `I_SIZING3`, `X_SIZING4`, `X_CONTAIN3`, `X_BORDERS4_20251216`, and `X_FULLSCREEN` occur only in their source declaration and registry. They retain source history; where they are Snapshot members, membership also remains intact. They do not establish live consumption. [The declaration/registry evidence](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs#L831-L1408) is separate from current feature records and catalog supersession.
 

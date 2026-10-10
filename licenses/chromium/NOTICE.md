@@ -1,0 +1,9 @@
+# Chromium and Blink reference attribution
+
+Upstream projects: [Chromium](https://www.chromium.org/) and [Blink](https://www.chromium.org/blink/).
+
+The [Page and margin CSSOM source witness](../../references/blink-cssom-page-rules--7984f9d11800.md) retains six complete files at immutable Chromium revision `7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2`, acquired from official Gitiles TEXT responses on 2026-10-09. Every path and exact source hash is retained in that reference, together with all original file headers. Added headings and evidence-map formatting do not change source bytes. The source is documentation material, not compiled or linked product code.
+
+The four Chromium-authored files css_margin_rule.cc, css_margin_rule.idl, css_parser.cc and css_parser_impl.cc carry BSD-style project-license declarations. Their copyright notices (2024 or 2014 The Chromium Authors) remain in full. The exact root [Chromium LICENSE](LICENSE.txt), copyright 2015 The Chromium Authors, is retained from that same immutable revision and contains the BSD redistribution conditions and disclaimer.
+
+The other two files, css_page_rule.cc and css_selector.cc, explicitly carry GNU Library General Public License version 2 or later notices. Their complete copyright notices remain in the source blocks, including Lars Knoll, Waldo Bastian, Andreas Schlapbach, Dirk Mueller, Apple Inc., David Smith and Google Inc. The exact [Blink LICENSE_FOR_ABOUT_CREDITS](blink-LICENSE_FOR_ABOUT_CREDITS.txt) is retained from `third_party/blink/LICENSE_FOR_ABOUT_CREDITS` at this same revision. It includes the full GNU Library General Public License version 2 and GNU Lesser General Public License version 2.1, together with the source-derived upstream credit statement. The Chromium BSD license is not substituted for the file-specific LGPL notices.

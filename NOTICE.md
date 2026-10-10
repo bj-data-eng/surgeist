@@ -35,8 +35,8 @@ complete source checkout; a separately packaged subset needs its own valid
 notice and license layout.
 
 The checkout also includes the bounded [reference collection](references/README.md):
-150 retained source identities, represented by 148 full document/source witnesses
-and two URL/hash-only exceptions, plus 81 passive SVG figures, an
+the retained documents, source witnesses and metadata-only exceptions listed in
+its [source catalog](references/SOURCE-CATALOG.md), plus 81 passive SVG figures, an
 informative Unicode rule-data companion, and navigation/index material. The
 reference entries below cover this added collection only; they do not expand
 or re-audit the dependency inventories above. Source notices remain in the
@@ -61,6 +61,16 @@ Both crates carry byte-identical `COPYING` declarations, shared here. Layout's
 identifies the declaration's Kozea revision; render's
 [fixture provenance](https://github.com/bj-data-eng/surgeist-render/blob/e44860e7df530795fef2d423024723d5fa5dc447/tests/fixtures/fonts/ahem/PROVENANCE.md)
 records its font and notice hashes. These fonts are test assets.
+
+### Chromium Blink implementation references
+
+The reference collection retains selected Blink source files as readable
+implementation evidence for Page and margin-rule CSSOM requirements. Each file
+preserves its original copyright and license notice; the accompanying legal
+material identifies the exact retained source scope.
+
+* Licenses and exact covered files: [Chromium reference attribution](licenses/chromium/NOTICE.md)
+* Homepage: [Chromium](https://www.chromium.org/)
 
 ### CSSTree
 
@@ -251,7 +261,7 @@ and normative citations remain upstream.
 
 The checkout includes reformatted W3C documents and readable generated renderings
 of six pinned CSSWG sources as software implementation support, distributed by the World Wide Web
-Consortium and the contributors identified in the exact originals. The 146
+Consortium and the contributors identified in the exact originals. These
 source-based references and 81 passive SVG figures are bounded by the
 [source catalog](references/SOURCE-CATALOG.md). The collection also preserves a
 factual GitHub source-history metadata capture as a supporting provenance
@@ -271,6 +281,16 @@ Their reformatted copies accompany software under its implementation-support
 exception and retain the required derived-material notices. They are not
 published for use as new technical specifications. Original copyright statements,
 authorship and status remain intact; no endorsement is implied.
+
+### WebKit implementation references
+
+The reference collection retains selected WebKit source files as readable
+implementation evidence for CSSOM requirements. These are documentation copies,
+not compiled or linked dependencies. Each retained file preserves its original
+copyright, redistribution conditions and disclaimer.
+
+* Licenses and exact covered files: [WebKit reference attribution](licenses/webkit/NOTICE.md)
+* Homepage: [WebKit](https://webkit.org/)
 
 ### Web Platform Tests
 

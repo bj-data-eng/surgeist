@@ -1,12 +1,14 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 150 retained source snapshots and states their representations: 148 full documents/source witnesses and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 168 retained source identities and states their representations: 166 full documents/source witnesses and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
 ## Source editions
 
 [Source editions and bounded imports](SOURCE-EDITIONS.md) separates the pinned Snapshot bibliography from later implementation-selected editions and importer-specific witnesses. No implementation behavior or source-selection decision is changed by adding these documents.
+
+The [CSSOM planning sources](SOURCE-EDITIONS.md#cssom-planning-sources) select complete current CSSOM, Counter Styles 3, and Conditional 5 captures for the new CSSOM work. Historical editions remain available for completed CSS consumers; each planning contribution uses one operative edition.
 
 ## Coverage exceptions
 
@@ -15,6 +17,10 @@ Unicode Text Segmentation revision 47 is represented by a URL/hash/licensing ent
 The separate [Unicode 17 grapheme implementation companion](unicode-17-grapheme-implementation-companion.md) includes licensed rule data, exact provenance and the complete Unicode License v3. Its engine-dependent notation and implicit start/end/default rules are explained in the companion. The official UAX 29 revision 47 remains the normative authority.
 
 The [WebKit CSSProperties witness](webkit-cssproperties--73aa6c89e2cb--848d6e24bbd4.md) is also metadata-only because its file-specific redistribution terms were not established. Its pinned URL/hash are retained without redistributing its source.
+
+The [WebKit container-query source witness](webkit-cssom-container-query--73aa6c89e2cb.md) retains four complete files with their original two-clause license notices. Its bounded implementation evidence is distinct from normative specification selections and from the earlier metadata-only CSSProperties witness.
+
+The [WebKit core CSSOM witness](webkit-cssom-core-rules--73aa6c89e2cb.md) and [Blink Page/margin witness](blink-cssom-page-rules--7984f9d11800.md) retain the eleven additional complete files used for bounded planning evidence, with their file-specific LGPL or BSD legal material.
 
 ## Supporting resources
 

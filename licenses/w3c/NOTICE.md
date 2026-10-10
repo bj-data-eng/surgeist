@@ -1220,3 +1220,27 @@ Copyright © 2022 W3C® (MIT, ERCIM, Keio, Beihang). W3C liability, trademark an
 CSSWG repository declaration at the pinned source commit; no copyright year supplied.
 
 The CSSWG declaration is also verified byte-identical at `720ea2863696971ea6a6744e0f23acbb3e6936bd`; the new rendering retains source-authored configuration and test references. No WebKit source text is redistributed.
+
+### CSS Object Model (CSSOM) Module Level 1 — editor capture retrieved 2026-10-09
+
+* Bundled copy: [cssom-1--editor-capture-20261009--d42e145ec395.md](../../references/cssom-1--editor-capture-20261009--d42e145ec395.md)
+* Original: [CSS Object Model (CSSOM) Module Level 1](https://drafts.csswg.org/cssom/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. The captured source’s complete notice is retained in the bundled copy. Original HTML SHA-256: `d42e145ec395103f592001e5683cbeb63084ea530b76ec2923ecbcf80c7e74f9`.
+
+### CSS Counter Styles Module Level 3 — editor capture retrieved 2026-10-09
+
+* Bundled copy: [css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md](../../references/css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md)
+* Original: [CSS Counter Styles Module Level 3](https://drafts.csswg.org/css-counter-styles-3/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. The captured source’s complete notice is retained in the bundled copy. Original HTML SHA-256: `ef29d0a06a13683cbb3244bebc6f36d359f62fa107c17f1250111c9b0e4b0f43`.
+
+### CSS Conditional Rules Module Level 5 — editor capture retrieved 2026-10-09
+
+* Bundled copy: [css-conditional-5--editor-capture-20261009--75e15be8c8b4.md](../../references/css-conditional-5--editor-capture-20261009--75e15be8c8b4.md)
+* Original: [CSS Conditional Rules Module Level 5](https://drafts.csswg.org/css-conditional-5/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. The captured source’s complete notice is retained in the bundled copy. Original HTML SHA-256: `75e15be8c8b41c6c34de2fa861801dbc6b77a06e6aba79d397bad82608e0aac1`.

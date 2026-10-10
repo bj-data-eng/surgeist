@@ -1,6 +1,6 @@
 # Exact source catalog
 
-150 retained source snapshots. Public full text is included for 148; Unicode revision 47 is metadata-only under its report-specific terms, and the pinned WebKit witness is metadata-only because file-specific redistribution terms remain unverified. Source hashes identify original snapshots, not converted Markdown hashes.
+168 retained source identities. Public full text is included for 166. Unicode revision 47 is metadata-only under its report-specific terms, and the pinned WebKit witness is metadata-only because file-specific redistribution terms remain unverified. Source hashes identify original snapshots, not converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -118,6 +118,7 @@ Six pinned Bikeshed sources are rendered as readable Markdown using an offline c
 | [Visual formatting model](css2--visuren.html--3f334c530cf4.md) | [upstream](https://www.w3.org/TR/2011/REC-CSS2-20110607/visuren.html) | 3f334c530cf450f6964062e5badccc3e9f4fed9589917a0e62c6be10dabc72a4 | readable HTML conversion |
 | [Elaborate description of Stacking Contexts](css2--zindex.html--b486aef70d4d.md) | [upstream](https://www.w3.org/TR/2011/REC-CSS2-20110607/zindex.html) | b486aef70d4d44e7f9cbf4376da33b5f31e8d0dcb15d400aa496bf4cb2d04f13 | readable HTML conversion |
 | [CSS Object Model (CSSOM)](cssom-1--WD-cssom-1-20210826--24d77393e4ea.md) | [upstream](https://www.w3.org/TR/2021/WD-cssom-1-20210826/) | 24d77393e4ea56b04570066701d42c9ff6546a6d5e97d433a18cc1deaf6c9cd4 | readable HTML conversion |
+| [CSS Object Model (CSSOM), editor capture retrieved 2026-10-09](cssom-1--editor-capture-20261009--d42e145ec395.md) | [upstream](https://drafts.csswg.org/cssom/) | d42e145ec395103f592001e5683cbeb63084ea530b76ec2923ecbcf80c7e74f9 | full readable captured-HTML conversion; undated URL, exact retrieval hash; selected CSSOM planning edition; historical CSS consumers retain 2021 |
 | [CSSOM View Module](cssom-view-1--WD-cssom-view-1-20250916--693b1c1fe7f7.md) | [upstream](https://www.w3.org/TR/2025/WD-cssom-view-1-20250916/) | 693b1c1fe7f72274217cc5c690bd15fe290adc78f080578fb6718e830c4c83b6 | readable HTML conversion |
 | [Filter Effects Module Level 1](filter-effects-1--WD-filter-effects-1-20181218--b73408da4068.md) | [upstream](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/) | b73408da406802d4aa405c8ab1c0591732ff1403bae74f7267d53dc74b0dfb3d | readable HTML conversion |
 | [Fullscreen API Standard Commit 7c38d773117aa1e6bfa13754afe77483f40c908f Snapshot](fullscreen--7c38d773117aa1e6bfa13754afe77483f40c908f--7d8cd68e63c0.md) | [upstream](https://fullscreen.spec.whatwg.org/commit-snapshots/7c38d773117aa1e6bfa13754afe77483f40c908f/) | 7d8cd68e63c06f2ac1a8caad1804ad48e6000af1dcf20943139f06c8fbfef6d1 | readable HTML conversion |
@@ -181,3 +182,39 @@ These entries supplement the preserved collection. Baseline membership, implemen
 | [CSS Values and Units Module Level 4](css-values-4--WD-css-values-4-20221019--b7ccf53eec03.md) | [upstream](https://www.w3.org/TR/2022/WD-css-values-4-20221019/) | b7ccf53eec03d519297dc42d7c6fe154dd4734834c29a6e25e67222290b528ea | readable HTML conversion |
 | [CSS Values and Units Module Level 4](css-values-4--720ea2863696971ea6a6744e0f23acbb3e6936bd--Overview.bs--593d3bb00def.md) | [upstream](https://raw.githubusercontent.com/w3c/csswg-drafts/720ea2863696971ea6a6744e0f23acbb3e6936bd/css-values-4/Overview.bs) | 593d3bb00defc9ed6d02a97a4f3e2dc0486fec9e20dde853ece69baa10c004c3 | readable pinned Bikeshed rendering |
 | [WebKit CSSProperties source witness](webkit-cssproperties--73aa6c89e2cb--848d6e24bbd4.md) | [upstream](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json) | 848d6e24bbd4421ced9e8e840d718a5da012703f9c95851d60f7c1d1364ebaac | metadata-only; file-specific redistribution terms unverified |
+
+## Current extension captures selected for CSSOM planning
+
+| Source | Exact snapshot | Source SHA-256 | Representation |
+|---|---|---|---|
+| [CSS Counter Styles Module Level 3](css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md) | [upstream](https://drafts.csswg.org/css-counter-styles-3/) | ef29d0a06a13683cbb3244bebc6f36d359f62fa107c17f1250111c9b0e4b0f43 | full readable captured-HTML conversion; undated URL, exact retrieval hash; selected CSSOM planning edition |
+| [CSS Conditional Rules Module Level 5](css-conditional-5--editor-capture-20261009--75e15be8c8b4.md) | [upstream](https://drafts.csswg.org/css-conditional-5/) | 75e15be8c8b41c6c34de2fa861801dbc6b77a06e6aba79d397bad82608e0aac1 | full readable captured-HTML conversion; undated URL, exact retrieval hash; selected CSSOM planning edition |
+
+## WebKit container-query implementation witnesses
+
+These four complete licensed files support bounded CSSOM planning evidence; they do not select a normative specification edition.
+
+| Source | Exact snapshot | Source SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [CSSContainerRule.cpp](webkit-cssom-container-query--73aa6c89e2cb.md#csscontainerrule-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSContainerRule.cpp) | 3ad862beb77c30a5639d94e25aa612cd2cb00920a49285cb117191f55905b50f | complete readable source file with original copyright, two-clause license and disclaimer |
+| [ContainerQueryParser.cpp](webkit-cssom-container-query--73aa6c89e2cb.md#containerqueryparser-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/query/ContainerQueryParser.cpp) | 1ff6c3d31b4bf81450193837c10cc8a5c014f8ca3bfb713908da17450aba855e | complete readable source file with original copyright, two-clause license and disclaimer |
+| [GenericMediaQuerySerialization.cpp](webkit-cssom-container-query--73aa6c89e2cb.md#genericmediaqueryserialization-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/query/GenericMediaQuerySerialization.cpp) | 7906a6e01157bd14ba9d77f1a5367e322777361b25848aaa116706b5eb09f1d8 | complete readable source file with original copyright, two-clause license and disclaimer |
+| [ContainerQuery.cpp](webkit-cssom-container-query--73aa6c89e2cb.md#containerquery-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/query/ContainerQuery.cpp) | b5e5fdabff4dd45105c8fea2761bedfb8ac9e51061fc27dcddd21164589e2477 | complete readable source file with original copyright, two-clause license and disclaimer |
+
+## Core CSSOM browser implementation witnesses
+
+These eleven complete licensed files supply bounded implementation evidence for selected CSSOM planning clauses, independently of normative specification selection.
+
+| Source | Exact snapshot | Source SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [CSSImportRule.cpp](webkit-cssom-core-rules--73aa6c89e2cb.md#cssimportrule-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSImportRule.cpp) | f03cd5006f1c7ebaa2eb24d91eecba8a96da66d109d1a6364f6b71e1163e61ba | complete source file; copyright and file-specific license retained |
+| [MediaList.cpp](webkit-cssom-core-rules--73aa6c89e2cb.md#medialist-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/MediaList.cpp) | 252b1c23d9082a5966661a1bb0132a300599bd6da8dd5f61f58e3ca047fa8233 | complete source file; copyright and file-specific license retained |
+| [CSSRule.h](webkit-cssom-core-rules--73aa6c89e2cb.md#cssrule-h) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSRule.h) | 48a242cca9b1f8b9803bed92adfad95b6e4f9b6c63c73591b7abde1b3736cdfa | complete source file; copyright and file-specific license retained |
+| [CSSStyleSheet.cpp](webkit-cssom-core-rules--73aa6c89e2cb.md#cssstylesheet-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSStyleSheet.cpp) | e2f98fed847f3b407c7aa21756917bf3867aaf6b004de6a1c0e3de769f2614e8 | complete source file; copyright and file-specific license retained |
+| [CSSGroupingRule.cpp](webkit-cssom-core-rules--73aa6c89e2cb.md#cssgroupingrule-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSGroupingRule.cpp) | 960e383b8ba17bf09f21ae42fca77cb21bb44594786f304b8f1d4c7a2561970c | complete source file; copyright and file-specific license retained |
+| [css_page_rule.cc](blink-cssom-page-rules--7984f9d11800.md#css-page-rule-cc) | [upstream](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_page_rule.cc) | 3eb0b099f52529d16a8fd0972b641cf93bb8a1b1d28bac2d51889e2ccfe6aeda | complete source file; copyright and file-specific license retained |
+| [css_margin_rule.cc](blink-cssom-page-rules--7984f9d11800.md#css-margin-rule-cc) | [upstream](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_margin_rule.cc) | c6e0f32d36201ba01569cacd29feeb65e00fbe2343696801398217d16f007ba2 | complete source file; copyright and file-specific license retained |
+| [css_margin_rule.idl](blink-cssom-page-rules--7984f9d11800.md#css-margin-rule-idl) | [upstream](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_margin_rule.idl) | b88df00da153c30bff57628e349943fd8fed035c274292bdbcb03bc707975380 | complete source file; copyright and file-specific license retained |
+| [css_parser.cc](blink-cssom-page-rules--7984f9d11800.md#css-parser-cc) | [upstream](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/parser/css_parser.cc) | d85601be5dd8c1f8cce59e3886126823cbe31d0fe0a673a0b02965972854a556 | complete source file; copyright and file-specific license retained |
+| [css_parser_impl.cc](blink-cssom-page-rules--7984f9d11800.md#css-parser-impl-cc) | [upstream](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/parser/css_parser_impl.cc) | 3f9ca3b42eb1bada314a3d832bc6ea91a285aaeee039ced016e2b0d665fda674 | complete source file; copyright and file-specific license retained |
+| [css_selector.cc](blink-cssom-page-rules--7984f9d11800.md#css-selector-cc) | [upstream](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_selector.cc) | 0836181aebb7b9138734aab0ea9990197acbd3cc8ecd0871c739ebc3c0842f56 | complete source file; copyright and file-specific license retained |
