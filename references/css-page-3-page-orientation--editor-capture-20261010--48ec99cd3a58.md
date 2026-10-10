@@ -50,13 +50,16 @@ However, handling content flowing across pages of differing widths is a relative
 
 Its values are defined as:
 
-<a id="valdef-page-orientation-upright"></a>upright  
+<a id="valdef-page-orientation-upright"></a>upright
+
 No special orientation is applied; the page is laid out and formatted as normal.
 
-<a id="valdef-page-orientation-rotate-left"></a>rotate-left  
+<a id="valdef-page-orientation-rotate-left"></a>rotate-left
+
 After the page has been laid out, if the output medium supports rotation, this value indicates that the page must be displayed rotated a quarter turn to the left (counter-clockwise) of how it was laid out.
 
-<a id="valdef-page-orientation-rotate-right"></a>rotate-right  
+<a id="valdef-page-orientation-rotate-right"></a>rotate-right
+
 Same as <a id="ref-for-valdef-page-orientation-rotate-left"></a>[rotate-left](#valdef-page-orientation-rotate-left), except the page must be displayed rotated a quarter turn to the right (clockwise) of how it was laid out.
 
 > Note: Margin boxes and other positional things have no special interaction with this property; they’ll be laid out as normal in the unrotated page, then rotated along with everything else.
