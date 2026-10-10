@@ -996,6 +996,18 @@ impl CssomBatch {
                 a.parent != b.parent
                     || match (&a.data, &b.data) {
                         (
+                            CssomRuleData::FontFeatureValues {
+                                families: a,
+                                family_input: ai,
+                                ..
+                            },
+                            CssomRuleData::FontFeatureValues {
+                                families: b,
+                                family_input: bi,
+                                ..
+                            },
+                        ) => a != b || ai != bi,
+                        (
                             CssomRuleData::CounterStyle { name: a, .. },
                             CssomRuleData::CounterStyle { name: b, .. },
                         ) => a != b,
@@ -1254,10 +1266,22 @@ impl State {
             match &rule.data {
                 CssomRuleData::CounterStyle { name, .. } => add(&mut strings, name.len()),
                 CssomRuleData::CustomMedia { name, .. } => add(&mut strings, name.as_str().len()),
-                CssomRuleData::FontFeatureValues { families, .. } => {
+                CssomRuleData::FontFeatureValues {
+                    families,
+                    family_input,
+                    ..
+                } => {
                     add(&mut entries, families.len());
                     for family in families {
                         add(&mut strings, family.as_str().len());
+                    }
+                    if let Some(input) = family_input {
+                        add(&mut strings, input.source_bytes());
+                        add(&mut entries, input.diagnostics().len());
+                        add(&mut entries, input.inputs().len());
+                        for input in input.inputs() {
+                            version(&mut strings, input);
+                        }
                     }
                 }
                 CssomRuleData::Import {

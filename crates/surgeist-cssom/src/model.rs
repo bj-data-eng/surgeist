@@ -301,6 +301,7 @@ pub enum CssomRuleData {
     },
     FontFeatureValues {
         families: Vec<CssFontFaceFamily>,
+        family_input: Option<CssomFontFamilyInput>,
         maps: Vec<CssomFeatureMapId>,
         font_display: Vec<CssFontFeatureDisplayOccurrence>,
     },

@@ -112,6 +112,11 @@ pub surgeist_cssom::CssomException::Syntax
 pub enum surgeist_cssom::CssomFeatureValue
 pub surgeist_cssom::CssomFeatureValue::Authored(surgeist_css::descriptor_values::CssFontFeatureValue)
 pub surgeist_cssom::CssomFeatureValue::Unsigned(alloc::vec::Vec<u32>)
+pub enum surgeist_cssom::CssomFeatureValues
+pub surgeist_cssom::CssomFeatureValues::Scalar(u32)
+pub surgeist_cssom::CssomFeatureValues::Sequence(alloc::vec::Vec<u32>)
+impl surgeist_cssom::CssomFeatureValues
+pub fn surgeist_cssom::CssomFeatureValues::as_sequence(&self) -> &[u32]
 pub enum surgeist_cssom::CssomGroupKind
 pub surgeist_cssom::CssomGroupKind::Container
 pub surgeist_cssom::CssomGroupKind::Else
@@ -226,6 +231,7 @@ pub surgeist_cssom::CssomRuleData::FontFace
 pub surgeist_cssom::CssomRuleData::FontFace::block: surgeist_cssom::CssomBlockId
 pub surgeist_cssom::CssomRuleData::FontFeatureValues
 pub surgeist_cssom::CssomRuleData::FontFeatureValues::families: alloc::vec::Vec<surgeist_css::syntax::font_face::CssFontFaceFamily>
+pub surgeist_cssom::CssomRuleData::FontFeatureValues::family_input: core::option::Option<surgeist_cssom::CssomFontFamilyInput>
 pub surgeist_cssom::CssomRuleData::FontFeatureValues::font_display: alloc::vec::Vec<surgeist_css::font_feature_values::CssFontFeatureDisplayOccurrence>
 pub surgeist_cssom::CssomRuleData::FontFeatureValues::maps: alloc::vec::Vec<surgeist_cssom::CssomFeatureMapId>
 pub surgeist_cssom::CssomRuleData::Group
@@ -305,12 +311,19 @@ pub fn surgeist_cssom::CssomBatch::set_media(&mut self, id: &surgeist_cssom::Css
 pub fn surgeist_cssom::CssomBatch::set_rule_css_text(&mut self, id: &surgeist_cssom::CssomRuleId, _text: &str) -> core::result::Result<(), surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::update_context(&mut self, context: surgeist_cssom::CssomContext) -> core::result::Result<bool, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::clear_feature_map(&mut self, id: &surgeist_cssom::CssomFeatureMapId) -> core::result::Result<bool, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::set_font_feature_families(&mut self, id: &surgeist_cssom::CssomRuleId, value: surgeist_css::font_feature_values::CssFontFeatureValuesFamilyList) -> core::result::Result<bool, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::set_font_feature_family_text(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str) -> core::result::Result<bool, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::construct_sheet(&mut self, document: surgeist_cssom::CssomConstructorDocument, init: surgeist_cssom::CssomSheetInit<'_>) -> core::result::Result<surgeist_cssom::CssomSheetConstruction, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_sheet_list_membership(&mut self, id: &surgeist_cssom::CssomSheetListId, members: &[surgeist_cssom::CssomSheetId]) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::update_sheet_owner_attributes(&mut self, id: &surgeist_cssom::CssomSheetId, attributes: surgeist_cssom::CssomSheetOwnerAttributes<'_>) -> core::result::Result<surgeist_cssom::CssomSheetAttributeEdit, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::insert_group_rule(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::insert_sheet_rule(&mut self, id: &surgeist_cssom::CssomSheetId, source: &str, index: usize) -> core::result::Result<(usize, surgeist_cssom::CssomRuleTicket), surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::prepare_font_face_css_text(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::prepare_font_face_descriptor(&mut self, id: &surgeist_cssom::CssomRuleId, kind: surgeist_css::syntax::font_face::CssFontFaceDescriptorKind, value: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomBlock
 impl surgeist_cssom::CssomBlock
 pub fn surgeist_cssom::CssomBlock::admission_inputs(&self) -> &[surgeist_cssom::CssomInputVersion]
@@ -405,9 +418,59 @@ pub fn surgeist_cssom::CssomFeatureMap::authored(&self) -> &[surgeist_css::font_
 pub fn surgeist_cssom::CssomFeatureMap::entries(&self) -> &[surgeist_cssom::CssomFeatureEntry]
 pub fn surgeist_cssom::CssomFeatureMap::get(&self, key: &str) -> core::result::Result<core::option::Option<&[u32]>, surgeist_cssom::CssomError>
 pub const fn surgeist_cssom::CssomFeatureMap::kind(&self) -> surgeist_css::font_feature_values::CssFontFeatureValueKind
+impl surgeist_cssom::CssomFeatureMap
+pub fn surgeist_cssom::CssomFeatureMap::has(&self, key: &str) -> bool
+pub fn surgeist_cssom::CssomFeatureMap::keys(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &str>
+pub fn surgeist_cssom::CssomFeatureMap::size(&self) -> usize
+pub fn surgeist_cssom::CssomFeatureMap::values(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = core::result::Result<&[u32], surgeist_cssom::CssomError>>
 pub struct surgeist_cssom::CssomFeatureMapId
 impl surgeist_cssom::CssomFeatureMapId
 pub fn surgeist_cssom::CssomFeatureMapId::owner(&self) -> &surgeist_cssom::CssomOwnerId
+pub struct surgeist_cssom::CssomFontFaceView<'a>
+impl<'a> surgeist_cssom::CssomFontFaceView<'a>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::ascent_override(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::descent_override(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_display(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_family(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_feature_settings(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_language_override(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_named_instance(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_stretch(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_style(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_variation_settings(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_weight(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::font_width(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::line_gap_override(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::src(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::style(&self) -> &surgeist_cssom::CssomDeclarationView<'a>
+pub fn surgeist_cssom::CssomFontFaceView<'a>::style_id(&self) -> &'a surgeist_cssom::CssomBlockId
+pub fn surgeist_cssom::CssomFontFaceView<'a>::unicode_range(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub struct surgeist_cssom::CssomFontFamilyInput
+impl surgeist_cssom::CssomFontFamilyInput
+pub fn surgeist_cssom::CssomFontFamilyInput::diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
+pub fn surgeist_cssom::CssomFontFamilyInput::inputs(&self) -> &[surgeist_cssom::CssomInputVersion]
+pub fn surgeist_cssom::CssomFontFamilyInput::parser_context(&self) -> surgeist_css::parser_context::CssParserContext
+pub fn surgeist_cssom::CssomFontFamilyInput::value(&self) -> &surgeist_css::font_feature_values::CssFontFeatureValuesFamilyList
+pub struct surgeist_cssom::CssomFontFeatureValuesView<'a>
+impl<'a> surgeist_cssom::CssomFontFeatureValuesView<'a>
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::annotation(&self) -> &'a surgeist_cssom::CssomFeatureMapId
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::character_variant(&self) -> &'a surgeist_cssom::CssomFeatureMapId
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::families(&self) -> &'a [surgeist_css::syntax::font_face::CssFontFaceFamily]
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::family_input(&self) -> core::option::Option<&'a surgeist_cssom::CssomFontFamilyInput>
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::font_display(&self) -> &'a [surgeist_css::font_feature_values::CssFontFeatureDisplayOccurrence]
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::font_family(&self, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::historical_forms(&self) -> &'a surgeist_cssom::CssomFeatureMapId
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::map(&self, kind: surgeist_css::font_feature_values::CssFontFeatureValueKind) -> &'a surgeist_cssom::CssomFeatureMapId
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::ornaments(&self) -> &'a surgeist_cssom::CssomFeatureMapId
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::styleset(&self) -> &'a surgeist_cssom::CssomFeatureMapId
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::stylistic(&self) -> &'a surgeist_cssom::CssomFeatureMapId
+pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::swash(&self) -> &'a surgeist_cssom::CssomFeatureMapId
+pub struct surgeist_cssom::CssomFontPaletteValuesView<'a>
+impl surgeist_cssom::CssomFontPaletteValuesView<'_>
+pub fn surgeist_cssom::CssomFontPaletteValuesView<'_>::base_palette(&self, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontPaletteValuesView<'_>::font_family(&self, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomFontPaletteValuesView<'_>::name(&self) -> &str
+pub fn surgeist_cssom::CssomFontPaletteValuesView<'_>::override_colors(&self, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomInput
 pub surgeist_cssom::CssomInput::data: surgeist_cssom::CssomInputData
 pub surgeist_cssom::CssomInput::version: surgeist_cssom::CssomInputVersion
@@ -415,6 +478,7 @@ pub struct surgeist_cssom::CssomInputManifest
 pub surgeist_cssom::CssomInputManifest::blocks: alloc::vec::Vec<(surgeist_cssom::CssomBlockId, surgeist_cssom::CssomInputVersion)>
 pub surgeist_cssom::CssomInputManifest::context: surgeist_cssom::CssomContext
 pub surgeist_cssom::CssomInputManifest::declaration_admissions: alloc::vec::Vec<(surgeist_cssom::CssomBlockId, alloc::vec::Vec<surgeist_cssom::CssomInputVersion>)>
+pub surgeist_cssom::CssomInputManifest::font_family_admissions: alloc::vec::Vec<(surgeist_cssom::CssomRuleId, alloc::vec::Vec<surgeist_cssom::CssomInputVersion>)>
 pub surgeist_cssom::CssomInputManifest::imports: alloc::vec::Vec<(surgeist_cssom::CssomRuleId, surgeist_cssom::CssomInputVersion)>
 pub surgeist_cssom::CssomInputManifest::sheets: alloc::vec::Vec<(surgeist_cssom::CssomSheetId, surgeist_cssom::CssomInputVersion)>
 pub struct surgeist_cssom::CssomInputVersion
@@ -595,6 +659,11 @@ pub fn surgeist_cssom::CssomSnapshot::custom_media_name(&self, id: &surgeist_css
 pub fn surgeist_cssom::CssomSnapshot::custom_media_query(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&surgeist_cssom::CssomCustomMediaQuery, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::declarations(&self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomDeclarationView<'_>, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::font_face(&self, id: &surgeist_cssom::CssomRuleId, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomFontFaceView<'_>, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::font_feature_values(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<surgeist_cssom::CssomFontFeatureValuesView<'_>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::font_palette_values(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<surgeist_cssom::CssomFontPaletteValuesView<'_>, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::inputs(&self) -> surgeist_cssom::CssomInputManifest
 impl surgeist_cssom::CssomSnapshot

@@ -202,3 +202,45 @@ the owning state and exceptional live cases;
 domain dispatch, supplied support, atomic failures, effects and provenance.
 [Stylesheet tests](tests/sheet_operations.rs) cover source construction,
 replacement reservations and bounded terminal cleanup.
+
+Fonts views expose the font-face rule's stable declaration identity and its named
+descriptor reflections, including the fontStretch/fontWidth alias. Reflected
+setters and style's PutForwards cssText prepare through the same checked declaration
+owner, support profile, source guards, candidate decisions and atomic publication.
+Font loading and host IDL conversion remain separate binding work.
+
+Font feature views expose all seven maps, including historical forms. Map setters
+reuse the existing ordered live map owner. `CssomFeatureValues` converts a scalar
+to one unsigned-long value; empty sequences remain present entries, and map
+cardinality checks do not apply the authored descriptor's integer grammar.
+The maps retain raw decoded keys, including empty strings and punctuation. Stable
+map identities are a product guarantee; the selected source IDL has no SameObject
+annotation for these attributes. Clear/delete retain original authored definitions
+and prior owning captures. Exact authored values outside u32 remain present and
+report a typed conversion limitation instead of narrowing or disappearing.
+
+The feature rule's `font_family` getter formats the actual current literal list
+with one cumulative CSS writer. `set_font_feature_family_text` consumes the native
+nongeneric family prelude using current staged parser facts: invalid syntax is a
+successful no-op, valid EOF recovery remains admitted, and typed resource failure
+aborts the batch. `set_font_feature_families` accepts the CSS checked list carrier
+without reparsing its values. Equal decoded lists preserve the existing input,
+identity and revision. Successful changes retain the carrier's actual whole/member
+origins, admission parser context, input versions and recovery diagnostics in
+`family_input`; initial authored rules retain their original occurrence separately.
+The admission context records current supplied facts, independently of any origin
+already carried by typed input. Family admission versions also appear in snapshot
+and publication input manifests. Current/detached family entries, decoded UTF-8
+bytes and retained new admission data share the store's global product allowance.
+
+Palette views expose readonly name and specified descriptor strings through their
+CSS owner. Pending values retain their literal substitution text; missing
+optional descriptors return empty. Complete feature-rule wrapper formatting is
+not fabricated when the selected source leaves historical-forms or font-display
+placement unresolved.
+
+The [font consumer](examples/font_consumer.rs), [font tests](tests/font_operations.rs)
+and [family attribute tests](tests/font_family_operations.rs) exercise these public
+owners, including stable identities, raw keys, independent map cardinality,
+exact authored conversion limitations, source no-ops/recovery, cumulative budgets,
+support decisions, atomic failures and owning captures after store drop.

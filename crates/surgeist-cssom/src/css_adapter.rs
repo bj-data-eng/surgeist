@@ -375,6 +375,7 @@ impl State {
         }
         Ok(CssomRuleData::FontFeatureValues {
             families: v.families().to_vec(),
+            family_input: None,
             maps,
             font_display: v
                 .items()

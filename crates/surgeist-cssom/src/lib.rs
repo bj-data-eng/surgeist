@@ -7,6 +7,7 @@
 mod css_adapter;
 mod declaration;
 mod declaration_support;
+mod font_operations;
 mod identity;
 mod media_operations;
 mod model;
@@ -19,6 +20,7 @@ mod store;
 
 pub use declaration::*;
 pub use declaration_support::*;
+pub use font_operations::*;
 pub use identity::*;
 pub use media_operations::CssomMediaEdit;
 pub use model::*;
