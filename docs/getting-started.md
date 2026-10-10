@@ -27,7 +27,7 @@ optional audit tools have additional prerequisites described in their sources.
    cd surgeist
    ```
 
-   All 15 crates under `crates/` are ordinary tracked source directories in this
+   All 14 crates under `crates/` are ordinary tracked source directories in this
    repository. No separate crate checkout initialization is required.
 
 2. From the root directory, run the serial library check:
@@ -42,7 +42,7 @@ The test output includes `tests::exposes_crate_identity ... ok` and one passing
 test. The [implementation](../src/lib.rs) checks that
 `surgeist::crate_name()` returns `"surgeist"`.
 
-This verifies the current facade entry point. The workspace has 16 product
+This verifies the current facade entry point. The workspace has 15 product
 members, but its default member is only root. The command above does not run
 the other members' tests, a root example application, or a development harness.
 Continue with the [how-to guide](how-to.md) to select an affected package or API

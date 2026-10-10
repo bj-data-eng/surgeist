@@ -26,7 +26,8 @@
   },
   "owners": {
     "css": "surgeist-css: authored semantic models, intrinsic grammar/recovery, specified-value facts, checked construction, expansion, context-preserving normalization, and canonical serialization.",
-    "style": "surgeist-style: selector/query evaluation, live CSSOM state, cascade/inheritance, custom-property environments, contextual validation, computed values, and invalidation.",
+    "cssom": "surgeist-cssom: mutable authored sheets, rules, declarations and media collections, live identity, revisions, immutable snapshots and atomic editing; crate introduction is tracked by #1050.",
+    "style": "Future greenfield surgeist-style: selector/query evaluation, cascade/inheritance, custom-property environments, contextual validation, computed values, and invalidation; the previous implementation is removed.",
     "layout": "surgeist-layout: formatting, sizing, positioning, fragmentation, and geometry requiring a layout tree or available space.",
     "render": "surgeist-render: paint, compositing, filters, masks, and backend-facing drawing data.",
     "text": "surgeist-text: fonts, shaping, line breaking, text measurement, and text layout.",
@@ -2386,9 +2387,11 @@
       },
       "authored_scope": "complete-applicable-grammar",
       "downstream_owners": [
-        "style"
+        "cssom",
+        "style",
+        "root"
       ],
-      "scope_note": "CSS owns context-independent parsing and serialization algorithms. Live CSSOM identity, mutation, declaration-block operations, and cascade-dependent computed-style APIs belong to style and root integration."
+      "scope_note": "CSS owns context-independent parsing and serialization algorithms. Live CSSOM identity, mutation and declaration-block operations belong to CSSOM. Cascade-dependent computed-style data belongs to future style; host and binding composition belongs to root. This owner split does not change the historical selected source edition."
     },
     {
       "id": "css-color-5",

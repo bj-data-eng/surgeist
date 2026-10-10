@@ -33,9 +33,6 @@ pub mod runtime {
 pub mod shape {
     pub use surgeist_shape::*;
 }
-pub mod style {
-    pub use surgeist_style::*;
-}
 pub mod task {
     pub use surgeist_task::*;
 }

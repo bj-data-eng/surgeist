@@ -2,12 +2,12 @@
 
 [Surgeist](https://github.com/bj-data-eng/surgeist) is licensed under its own
 [MIT License](LICENSE). This notice records attribution for the repository source
-checkout: the 13 facade production path dependencies in [Cargo.toml](Cargo.toml),
+checkout: the 12 facade production path dependencies in [Cargo.toml](Cargo.toml),
 the `surgeist-test` support crate, the shared `surgeist-generator` corpus tooling,
 and the two direct dependencies of the
 [API generator](https://github.com/bj-data-eng/surgeist/blob/0b0c6338c20f77f9dfe743c47914afaf6b98792d/api/generator/Cargo.toml).
-All 15 crates under `crates/` are source owned in this repository. They were
-imported from the 14 revisions selected by root
+All 14 retained crates under `crates/` are source owned in this repository. The
+original consolidation imported the 14 revisions selected by root
 [`e0303b14ccd6a81cf3d092105201daf7797ef6aa`](https://github.com/bj-data-eng/surgeist/tree/e0303b14ccd6a81cf3d092105201daf7797ef6aa/crates)
 and `surgeist-generator`
 [`17f6159a4adb18f0d03cab58f81ad635660e2054`](https://github.com/bj-data-eng/surgeist-generator/tree/17f6159a4adb18f0d03cab58f81ad635660e2054).
@@ -16,9 +16,9 @@ source origins; current package facts come from this checkout's manifests.
 
 The checkout also retains attribution for adapted source and bundled test assets
 carried by the CSS, layout, and render crates. The copies linked below preserve
-their upstream legal text and modification notices. All 15 imported `LICENSE` files contain
-identical text and share one copy here; the root project's own license remains
-separate.
+their upstream legal text and modification notices. All 14 retained imported
+`LICENSE` files contain identical text and share one copy here; the root
+project's own license remains separate.
 
 This source checkout does not contain a linked application. The summary below
 does not enumerate every crate's transitive, optional, platform, or compiled
@@ -198,13 +198,6 @@ The root facade depends on surgeist-shape, distributed by bj-data-eng.
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-shape](https://github.com/bj-data-eng/surgeist-shape)
 
-### surgeist-style 0.1.0
-
-The root facade depends on surgeist-style, distributed by bj-data-eng.
-
-* License: [MIT](licenses/surgeist/LICENSE)
-* Homepage: [surgeist-style](https://github.com/bj-data-eng/surgeist-style)
-
 ### surgeist-task 0.1.0
 
 The root facade depends on surgeist-task, distributed by bj-data-eng.
@@ -347,7 +340,6 @@ transitive binary-release inventory.
 | surgeist-retained | [NOTICE.md](crates/surgeist-retained/NOTICE.md) |
 | surgeist-runtime | [NOTICE.md](crates/surgeist-runtime/NOTICE.md) |
 | surgeist-shape | [NOTICE.md](crates/surgeist-shape/NOTICE.md) |
-| surgeist-style | [NOTICE.md](crates/surgeist-style/NOTICE.md) |
 | surgeist-task | [NOTICE.md](crates/surgeist-task/NOTICE.md) |
 | surgeist-template | [NOTICE.md](crates/surgeist-template/NOTICE.md) |
 | surgeist-test | [NOTICE.md](crates/surgeist-test/NOTICE.md) |

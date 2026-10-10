@@ -7,7 +7,8 @@ easing evaluation, transition timing, keyframe timing, iteration, direction,
 fill-mode, play-state, interpolation contracts, sampled animation values, and
 animation-specific diagnostics.
 
-- `surgeist-style` owns authored CSS animation and transition declarations.
+- `surgeist-css` owns authored CSS animation and transition syntax and values;
+  CSSOM owns live authored editing.
 - `surgeist-animation` owns executable animation timing and sampling contracts.
 - `surgeist-runtime` owns clocks, scheduling, lifecycle, and invalidation.
 - Root `surgeist` owns cross-crate lowering and integration.

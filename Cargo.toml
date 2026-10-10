@@ -22,7 +22,6 @@ surgeist-render = { path = "crates/surgeist-render", version = "=0.1.0" }
 surgeist-retained = { path = "crates/surgeist-retained", version = "=0.1.0" }
 surgeist-runtime = { path = "crates/surgeist-runtime", version = "=0.1.0" }
 surgeist-shape = { path = "crates/surgeist-shape", version = "=0.1.0" }
-surgeist-style = { path = "crates/surgeist-style", version = "=0.1.0" }
 surgeist-task = { path = "crates/surgeist-task", version = "=0.1.0" }
 surgeist-template = { path = "crates/surgeist-template", version = "=0.1.0" }
 surgeist-text = { path = "crates/surgeist-text", version = "=0.1.0" }
@@ -56,7 +55,6 @@ members = [
     "crates/surgeist-retained",
     "crates/surgeist-runtime",
     "crates/surgeist-shape",
-    "crates/surgeist-style",
     "crates/surgeist-task",
     "crates/surgeist-template",
     "crates/surgeist-test",

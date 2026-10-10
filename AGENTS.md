@@ -87,7 +87,6 @@ implemented dependency graph and behavior.
 | `surgeist-retained` | Retained identity and state, tree identity, and stable handles |
 | `surgeist-runtime` | App orchestration, events/effects, lifecycle, invalidation, frame scheduling, and provenance |
 | `surgeist-shape` | Shape, geometry, and primitive path data |
-| `surgeist-style` | Style model, cascade, resolution, validation, and invalidation |
 | `surgeist-task` | Task scheduling, cancellation, progress, admission, and executor-facing policy |
 | `surgeist-template` | Typed template and future DSL-facing authoring contracts |
 | `surgeist-test` | Shared test schemas, harnesses, fixtures, and integration verification support |
@@ -95,7 +94,8 @@ implemented dependency graph and behavior.
 | `surgeist-window` | Window, app-host, event-loop, and platform-host contracts |
 
 - Update this table with authorized ownership changes.
-- Surgeist-to-Surgeist lowering belongs in root or a root-owned tool;
+- `surgeist-cssom` owns its integration adapter with `surgeist-css`. Other
+  Surgeist-to-Surgeist lowering belongs in root or a root-owned tool;
   backend-local adapters remain in their domain crate.
 - `surgeist-test` may depend on production crates for shared verification. The
   facade must not production-depend on it or on corpus-generation tooling.
@@ -105,6 +105,13 @@ implemented dependency graph and behavior.
 
 The separate original source checkouts are outside this repository's
 implementation scope.
+
+The previous `surgeist-style` implementation is removed. Establish
+`surgeist-cssom` through #1050 and complete its live authored operations through
+#1049 before greenfielding style. Future style consumes CSSOM snapshots and owns
+matching, cascade, inheritance, substitution, computed values, and invalidation;
+CSSOM does not depend on style. Manifests and source establish when the new
+crate becomes part of the implemented workspace.
 
 ## Backward Compatibility
 

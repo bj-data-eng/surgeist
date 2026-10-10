@@ -8,7 +8,8 @@ the facade, domain implementations, shared tooling, and integration. A change
 to several participating crates can therefore share a source revision, review,
 and dependency resolution without publishing intermediate crate candidates.
 
-Domain ownership still matters. Root owns Surgeist-to-Surgeist adapters:
+Domain ownership still matters. CSSOM owns its integration adapter with CSS.
+Root owns the other Surgeist-to-Surgeist adapters:
 conversions from one crate's public model into another crate's public inputs.
 Domain crates own their algorithms, models, and backend-local adapters, such as
 text shaping, rendering backends, and platform hosting. `surgeist-test` owns
@@ -21,6 +22,13 @@ Models remain typed and composable, production dependencies remain directional
 and acyclic, and symbolic values remain unresolved until their owning layer has
 the necessary context. A shared repository does not resolve mismatched models,
 feature incompatibilities, or missing integration behavior by itself.
+
+The previous style crate and facade module are removed. CSSOM is the next crate
+being established: it consumes the public CSS producers and owns their adapter
+into live authored state. Style will be rebuilt after CSSOM is complete, using
+its immutable snapshots for matching, cascade, inheritance, substitution, and
+computed values. The current manifests distinguish established crates from this
+implementation sequence.
 
 ## Facade And Integration
 
@@ -37,7 +45,7 @@ the GitHub Project record current work under the
 
 ## Workspace Membership And Verification Are Separate
 
-All 16 product packages share one committed root lockfile. The facade is the
+All 15 product packages share one committed root lockfile. The facade is the
 sole default member, keeping unqualified root commands focused. Explicit package
 selection exposes the rest of the workspace without automatically running its
 CPU-heavy layout suites, GPU tests, platform hosts, or browser tooling.

@@ -2,8 +2,9 @@
 //!
 //! This crate owns executable animation sampling contracts: typed elapsed time,
 //! timing phases, easing, interpolation, sampled values, and diagnostics. Keep
-//! authored CSS declarations in `surgeist-style`, runtime clocks in
-//! `surgeist-runtime`, and cross-crate lowering in the root `surgeist` facade.
+//! authored CSS syntax in `surgeist-css`, live authored editing in CSSOM,
+//! runtime clocks in `surgeist-runtime`, and cross-crate lowering in the root
+//! `surgeist` facade.
 //!
 //! Callers pass effective [`ElapsedTime`] values that already account for the
 //! runtime clock and track start time. Paused sampling is explicit through
