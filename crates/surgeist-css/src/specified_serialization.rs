@@ -190,6 +190,16 @@ impl SpecifiedSerializationContext {
         self.limits.max_css_bytes() - self.css_bytes - self.temporary_css_bytes.unwrap_or(0)
     }
 
+    /// Charges a distinct owned capture without concatenating its text.
+    pub(crate) fn charge_captured_bytes(&mut self, bytes: usize) -> Result<()> {
+        Self::charge(
+            &mut self.css_bytes,
+            bytes,
+            self.limits.max_css_bytes(),
+            Kind::ByteLimit,
+        )
+    }
+
     pub(crate) const fn output_suppressed(&self) -> bool {
         self.output_suppressed
     }

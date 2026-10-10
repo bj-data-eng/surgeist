@@ -10108,6 +10108,8 @@ pub fn surgeist_css::CssMediaQueryList::queries(&self) -> &[surgeist_css::CssMed
 impl surgeist_css::CssMediaQueryList
 pub fn surgeist_css::CssMediaQueryList::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
 pub fn surgeist_css::CssMediaQueryList::serialize_cssom(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaCssomSerializationError>
+pub fn surgeist_css::CssMediaQueryList::serialize_cssom_members(&self) -> core::result::Result<alloc::vec::Vec<surgeist_css::CssSerializedValue>, surgeist_css::CssMediaCssomSerializationError>
+pub fn surgeist_css::CssMediaQueryList::serialize_cssom_members_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::vec::Vec<surgeist_css::CssSerializedValue>, surgeist_css::CssMediaCssomSerializationError>
 pub fn surgeist_css::CssMediaQueryList::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaCssomSerializationError>
 pub struct surgeist_css::CssMediaRange<T>
 impl<T> surgeist_css::CssMediaRange<T>

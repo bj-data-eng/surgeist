@@ -7835,6 +7835,20 @@ explicit programmatic origin, and no partial output is returned. The crate-owned
 capture boundary accepts the same cumulative context used by enclosing rule
 writers; final emitted bytes are charged once by that writer.
 
+`CssMediaQueryList::serialize_cssom_members_with_limits` returns a distinct
+owned capture for each member, preserving order, duplicates and origins.
+It uses the same query writer with one collection-wide input, projection and
+output allowance. Output bytes include every member's text without list
+separators. The empty collection returns no captures; its aggregate still
+consumes one input and one projection node. Failure returns no partial vector,
+and retry uses an independent context. This pure provider supports a caller's
+complete canonical-byte comparison scan without exposing mutable writer state.
+The operation consumes the selected
+[CSSOM MediaList algorithms](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#the-medialist-interface),
+without changing the historical feature-value formatting policy below.
+Public evidence is in
+[`cssom_media_member_capture.rs`](../tests/cssom_media_member_capture.rs).
+
 The [pinned CSSOM1 feature table](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-media-feature-values)
 defines orientation and scan value spellings and leaves eleven cells as explicit
 ellipses: width, height, device-width, device-height, aspect-ratio,

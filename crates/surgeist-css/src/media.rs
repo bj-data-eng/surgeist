@@ -329,6 +329,41 @@ impl CssMediaQueryList {
         self.capture_cssom(&mut SpecifiedSerializationContext::new(limits))
     }
 
+    /// Returns separate canonical member captures in list order under one budget.
+    /// Duplicates and recovered members remain present; no separators are emitted.
+    pub fn serialize_cssom_members(
+        &self,
+    ) -> Result<Vec<CssSerializedValue>, CssMediaCssomSerializationError> {
+        self.serialize_cssom_members_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Charges the collection aggregate, every query projection and all captured
+    /// bytes cumulatively. Failure returns no partial collection.
+    pub fn serialize_cssom_members_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Vec<CssSerializedValue>, CssMediaCssomSerializationError> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        charge_node(&mut context, &CssValueOrigin::Programmatic)?;
+        let mut captures = Vec::new();
+        for query in self.queries() {
+            let capture = query.capture_cssom(&mut context)?;
+            context
+                .charge_captured_bytes(capture.as_css().len())
+                .map_err(|error| resource(error, query.origin()))?;
+            captures.try_reserve(1).map_err(|_| {
+                resource(
+                    CssSpecifiedValueSerializationError::new(
+                        CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                    ),
+                    query.origin(),
+                )
+            })?;
+            captures.push(capture);
+        }
+        Ok(captures)
+    }
+
     /// Owns the list aggregate and selected member projections without allocating text.
     pub(crate) fn charge_cssom(
         &self,
