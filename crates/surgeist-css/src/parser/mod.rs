@@ -216,7 +216,7 @@ use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,
 };
 
-use crate::component_values::{CssComponentValues, CssParsedOrigin, CssSourceSnapshot};
+use crate::component_values::CssComponentValues;
 use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, from_rule_parse_error, invalid_at_rule_block,
     invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
@@ -225,6 +225,7 @@ use crate::error::{
     with_property_context,
 };
 use crate::properties::*;
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax::*;
 use crate::validation::parse_global_keyword;
 

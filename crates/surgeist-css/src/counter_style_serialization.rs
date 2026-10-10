@@ -1,49 +1,17 @@
 //! Bounded specified text for represented Counter Styles 3 rules.
 
 use crate::{
-    CssCounterStyleDescriptorRef as Descriptor, CssCounterStyleDescriptorValue,
-    CssCounterStyleDescriptorValueRef as Value, CssCounterStyleRange, CssCounterStyleRangeBound,
-    CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorRef as Descriptor,
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef as Value,
+    CssCounterStyleRange, CssCounterStyleRangeBound, CssCounterStyleRule, CssCounterStyleSpeakAs,
+    CssCounterStyleSystem, CssCounterSymbol, CssSpecifiedValueSerializationError as Error,
+    CssSpecifiedValueSerializationLimits as Limits,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 type Result<T> = std::result::Result<T, Error>;
 
-/// One of the ten represented Counter Styles 3 descriptor fields.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssCounterStyleDescriptorKind {
-    System,
-    Negative,
-    Prefix,
-    Suffix,
-    Range,
-    Pad,
-    Fallback,
-    Symbols,
-    AdditiveSymbols,
-    SpeakAs,
-}
-
 impl CssCounterStyleDescriptorKind {
-    /// Returns the literal CSS descriptor name for this grammar.
-    #[must_use]
-    pub const fn css_name(self) -> &'static str {
-        match self {
-            Self::System => "system",
-            Self::Negative => "negative",
-            Self::Prefix => "prefix",
-            Self::Suffix => "suffix",
-            Self::Range => "range",
-            Self::Pad => "pad",
-            Self::Fallback => "fallback",
-            Self::Symbols => "symbols",
-            Self::AdditiveSymbols => "additive-symbols",
-            Self::SpeakAs => "speak-as",
-        }
-    }
-
     const fn index(self) -> usize {
         match self {
             Self::System => 0,

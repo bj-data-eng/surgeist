@@ -1677,7 +1677,6 @@ mod descriptor_values;
 pub use block_fragments::{CssBlockFragment, CssRuleList, CssStyleAncestor};
 mod stylesheet_input;
 mod syntax_consumption;
-pub use counter_style_serialization::CssCounterStyleDescriptorKind;
 pub use descriptor_values::{
     CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef, CssCounterStyleValueError,
     CssCounterStyleValueErrorKind, CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef,
@@ -1973,9 +1972,9 @@ pub use common_serialization::{
 pub use component_values::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFunctionValue,
-    CssHashFlag, CssNumericTokenKind, CssNumericTokenRef, CssParsedOrigin, CssSerializedOrigin,
-    CssSerializedOriginSegment, CssSerializedValue, CssSimpleBlock, CssSourceSnapshot,
-    CssValueOrigin, CssValueTokenRef, parse_comma_separated_component_values,
+    CssHashFlag, CssNumericTokenKind, CssNumericTokenRef, CssSerializedOrigin,
+    CssSerializedOriginSegment, CssSerializedValue, CssSimpleBlock, CssValueOrigin,
+    CssValueTokenRef, parse_comma_separated_component_values,
     parse_comma_separated_component_values_with_limits, parse_component_value,
     parse_component_value_with_limits, parse_component_values, parse_component_values_with_limits,
 };
