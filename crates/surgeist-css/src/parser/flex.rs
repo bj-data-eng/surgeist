@@ -4,9 +4,8 @@ use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::sizing::parse_size_value;
 use super::values::{CalculationRoot, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
-use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssCalcSize, CssComponentValueLimits, CssFlexBasisValue, CssFlexComponents, CssFlexDirection,
     CssFlexFlow, CssFlexValue, CssFlexWrap, CssNumberCalculation, CssSpecifiedNonNegativeNumber,
@@ -21,11 +20,7 @@ pub(super) fn parse_flex_direction<'i, 't>(
         "column" => Ok(CssFlexDirection::Column),
         "row-reverse" => Ok(CssFlexDirection::RowReverse),
         "column-reverse" => Ok(CssFlexDirection::ColumnReverse),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("flex-direction", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -39,62 +34,19 @@ pub(super) fn parse_flex_flow<'i, 't>(
         let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         match_ignore_ascii_case! { &ident,
-            "row" => set_flex_flow_direction(
-                &mut direction,
-                CssFlexDirection::Row,
-                location,
-                ident.as_ref(),
-            )?,
-            "column" => set_flex_flow_direction(
-                &mut direction,
-                CssFlexDirection::Column,
-                location,
-                ident.as_ref(),
-            )?,
-            "row-reverse" => set_flex_flow_direction(
-                &mut direction,
-                CssFlexDirection::RowReverse,
-                location,
-                ident.as_ref(),
-            )?,
-            "column-reverse" => set_flex_flow_direction(
-                &mut direction,
-                CssFlexDirection::ColumnReverse,
-                location,
-                ident.as_ref(),
-            )?,
-            "nowrap" => set_flex_flow_wrap(
-                &mut wrap,
-                CssFlexWrap::NoWrap,
-                location,
-                ident.as_ref(),
-            )?,
-            "wrap" => set_flex_flow_wrap(
-                &mut wrap,
-                CssFlexWrap::Wrap,
-                location,
-                ident.as_ref(),
-            )?,
-            "wrap-reverse" => set_flex_flow_wrap(
-                &mut wrap,
-                CssFlexWrap::WrapReverse,
-                location,
-                ident.as_ref(),
-            )?,
-            _ => return Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("flex-flow", ident.as_ref()),
-            )),
+            "row" => set_flex_flow_direction(&mut direction, CssFlexDirection::Row, location)?,
+            "column" => set_flex_flow_direction(&mut direction, CssFlexDirection::Column, location)?,
+            "row-reverse" => set_flex_flow_direction(&mut direction, CssFlexDirection::RowReverse, location)?,
+            "column-reverse" => set_flex_flow_direction(&mut direction, CssFlexDirection::ColumnReverse, location)?,
+            "nowrap" => set_flex_flow_wrap(&mut wrap, CssFlexWrap::NoWrap, location)?,
+            "wrap" => set_flex_flow_wrap(&mut wrap, CssFlexWrap::Wrap, location)?,
+            "wrap-reverse" => set_flex_flow_wrap(&mut wrap, CssFlexWrap::WrapReverse, location)?,
+            _ => return Err(unexpected_at(location)),
         }
     }
 
     if direction.is_none() && wrap.is_none() {
-        return Err(unsupported_value(
-            input,
-            None,
-            "flex-flow requires a direction or wrapping component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     Ok(CssFlexFlow::new(
@@ -107,14 +59,9 @@ fn set_flex_flow_direction<'i>(
     slot: &mut Option<CssFlexDirection>,
     value: CssFlexDirection,
     location: cssparser::SourceLocation,
-    ident: &str,
 ) -> std::result::Result<(), ParseError<'i, Error>> {
     if slot.replace(value).is_some() {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("flex-flow direction", ident),
-        ));
+        return Err(unexpected_at(location));
     }
     Ok(())
 }
@@ -123,14 +70,9 @@ fn set_flex_flow_wrap<'i>(
     slot: &mut Option<CssFlexWrap>,
     value: CssFlexWrap,
     location: cssparser::SourceLocation,
-    ident: &str,
 ) -> std::result::Result<(), ParseError<'i, Error>> {
     if slot.replace(value).is_some() {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("flex-flow wrap", ident),
-        ));
+        return Err(unexpected_at(location));
     }
     Ok(())
 }
@@ -143,18 +85,13 @@ pub(super) fn parse_flex_wrap<'i, 't>(
         "nowrap" => Ok(CssFlexWrap::NoWrap),
         "wrap" => Ok(CssFlexWrap::Wrap),
         "wrap-reverse" => Ok(CssFlexWrap::WrapReverse),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("flex-wrap", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
 pub(super) fn parse_flex_factor<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-    context: &str,
 ) -> Result<CssSpecifiedNonNegativeNumber, ParseError<'i, Error>> {
     input.skip_whitespace();
     let state = input.state();
@@ -163,15 +100,11 @@ pub(super) fn parse_flex_factor<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, format!("invalid {context} number"))
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeNumber::try_from_component(component).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    format!("{context} requires a nonnegative number"),
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -180,13 +113,7 @@ pub(super) fn parse_flex_factor<'i, 't>(
             CssSpecifiedNonNegativeNumber::try_from_calculation(
                 CssNumberCalculation::from_expression(expression),
             )
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    format!("invalid {context} math"),
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -206,22 +133,16 @@ pub(super) fn parse_flex_basis<'i, 't>(
         }
         Token::Function(value) if value.eq_ignore_ascii_case("calc-size") => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid flex-basis calc-size component")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssCalcSize::from_component_with_policy(
                 component,
                 CssComponentValueLimits::default(),
                 matches!(numeric.ordinary(), NumericInputContext::Parsed(_)),
             )
             .map(CssFlexBasisValue::from)
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "invalid flex-basis calc-size",
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         _ => {
             input.reset(&state);
@@ -251,14 +172,14 @@ pub(super) fn parse_flex<'i, 't>(
     input.reset(&start);
 
     let grow = input
-        .try_parse(|input| parse_flex_factor(input, numeric, "flex-grow"))
+        .try_parse(|input| parse_flex_factor(input, numeric))
         .ok();
     let (shrink, basis) = if grow.is_some() {
         let shrink = if input.is_exhausted() {
             None
         } else {
             input
-                .try_parse(|input| parse_flex_factor(input, numeric, "flex-shrink"))
+                .try_parse(|input| parse_flex_factor(input, numeric))
                 .ok()
         };
         let basis = if input.is_exhausted() {
@@ -273,12 +194,12 @@ pub(super) fn parse_flex<'i, 't>(
             None
         } else {
             input
-                .try_parse(|input| parse_flex_factor(input, numeric, "flex-grow"))
+                .try_parse(|input| parse_flex_factor(input, numeric))
                 .ok()
         };
         let shrink = if grow.is_some() && !input.is_exhausted() {
             input
-                .try_parse(|input| parse_flex_factor(input, numeric, "flex-shrink"))
+                .try_parse(|input| parse_flex_factor(input, numeric))
                 .ok()
         } else {
             None

@@ -2,9 +2,8 @@ use super::color::parse_color;
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
 use super::values::{parse_shadow_length, parse_shadow_nonnegative_length};
-use crate::error::{CssFeatureId, Error, basic, unsupported_value};
+use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.box-edge-keywords")];
@@ -16,11 +15,7 @@ pub(super) fn parse_box_decoration_break<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "slice" => Ok(CssBoxDecorationBreak::Slice),
         "clone" => Ok(CssBoxDecorationBreak::Clone),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("box-decoration-break", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -44,11 +39,7 @@ pub(super) fn parse_box_shadow<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "box-shadow list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
 
@@ -75,23 +66,19 @@ pub(super) fn parse_shadow<'i, 't>(
             .is_ok()
         {
             if inset {
-                return Err(unsupported_value(input, None, "duplicate box-shadow inset"));
+                return Err(unexpected_at(input.current_source_location()));
             }
             inset = true;
             continue;
         }
         if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
             if color.replace(parsed).is_some() {
-                return Err(unsupported_value(input, None, "duplicate box-shadow color"));
+                return Err(unexpected_at(input.current_source_location()));
             }
             continue;
         }
         if lengths.is_some() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "unsupported box-shadow component",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         // The && grammar reorders whole groups, never the lengths within one.
         let x = parse_shadow_length(input, numeric)?;
@@ -109,11 +96,7 @@ pub(super) fn parse_shadow<'i, 't>(
         lengths = Some((x, y, blur, spread));
     }
     let Some((x, y, blur, spread)) = lengths else {
-        return Err(unsupported_value(
-            input,
-            None,
-            "box-shadow requires two offsets",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     };
     Ok(CssShadow::try_new(inset, x, y, blur, spread, color)
         .expect("parser requires blur before spread"))
@@ -128,20 +111,12 @@ pub(super) fn parse_drop_shadow<'i, 't>(
     while !input.is_exhausted() {
         if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
             if color.replace(parsed).is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "duplicate drop-shadow color",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             continue;
         }
         if lengths.is_some() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "unsupported drop-shadow component",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         let x = parse_shadow_length(input, numeric)?;
         let y = parse_shadow_length(input, numeric)?;
@@ -151,11 +126,7 @@ pub(super) fn parse_drop_shadow<'i, 't>(
         lengths = Some((x, y, standard_deviation));
     }
     let Some((x, y, standard_deviation)) = lengths else {
-        return Err(unsupported_value(
-            input,
-            None,
-            "drop-shadow requires two offsets",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     };
     Ok(CssDropShadow::new(x, y, standard_deviation, color))
 }

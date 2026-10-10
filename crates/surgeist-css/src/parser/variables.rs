@@ -146,7 +146,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                     }
                     return invalid_component_value(location, detail.clone());
                 }
-                invalid_syntax(location, "invalid substitution component")
+                invalid_syntax(location)
             })?;
             let local = summarize(
                 std::slice::from_ref(&component),
@@ -174,9 +174,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                 );
                 invalid_var_error = Some(match issue.reason {
                     VarMismatch::MissingName => location.new_error(BasicParseErrorKind::EndOfInput),
-                    VarMismatch::InvalidName(_) => {
-                        invalid_syntax(location, "invalid custom property name")
-                    }
+                    VarMismatch::InvalidName(_) => invalid_syntax(location),
                     VarMismatch::Unexpected(_) => {
                         token_error(numeric, &issue.origin, &issue.path, false, offset, location)
                     }

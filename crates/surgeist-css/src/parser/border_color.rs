@@ -4,7 +4,7 @@ use cssparser::{ParseError, Parser};
 
 use super::color::parse_color;
 use crate::border_color::CssBorderColorShorthand;
-use crate::error::{Error, unsupported_value};
+use crate::error::{Error, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{CssBorderColorPair, CssBoxSideKind};
 
@@ -37,13 +37,9 @@ pub(super) fn parse_border_colors<'i, 't>(
     while !input.is_exhausted() {
         colors.push(parse_color(input, numeric)?);
         if colors.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "border-color accepts at most four colors",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssBorderColorShorthand::try_new(kind, colors)
-        .ok_or_else(|| unsupported_value(input, None, "border-color requires one to four colors"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

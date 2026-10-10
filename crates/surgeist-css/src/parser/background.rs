@@ -12,9 +12,8 @@ use super::values::{
     CalculationRoot, next_is_comma, parse_hinted_number_calculation, parse_nonnegative_number,
     parse_nonnegative_percentage,
 };
-use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.position"),
@@ -57,15 +56,10 @@ pub(super) fn parse_image_layer_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "image layer list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
-    CssImageValueList::try_new(images)
-        .ok_or_else(|| unsupported_value(input, None, "image list is empty"))
+    CssImageValueList::try_new(images).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_background<'i, 't>(
@@ -78,27 +72,18 @@ pub(super) fn parse_background<'i, 't>(
         let (layer, color_location) = parse_background_layer(input, numeric)?;
         let has_comma = input.try_parse(Parser::expect_comma).is_ok();
         if has_comma && let Some(location) = color_location {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                "background color is allowed only in the final layer",
-            ));
+            return Err(unexpected_at(location));
         }
         layers.push(layer);
         if !has_comma {
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "background layer list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
 
-    CssBackground::try_new(layers)
-        .map_err(|_| unsupported_value(input, None, "background layer list is empty"))
+    CssBackground::try_new(layers).map_err(|_| unexpected_at(input.current_source_location()))
 }
 
 fn parse_background_layer<'i, 't>(
@@ -164,11 +149,7 @@ fn parse_background_layer<'i, 't>(
                 Err(_) => {}
             }
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported or duplicate background layer component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     if image.is_none()
@@ -178,7 +159,7 @@ fn parse_background_layer<'i, 't>(
         && boxes.is_empty()
         && color.is_none()
     {
-        return Err(unsupported_value(input, None, "background layer is empty"));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     let boxes = match boxes.as_slice() {
@@ -192,7 +173,7 @@ fn parse_background_layer<'i, 't>(
     };
     Ok((
         CssBackgroundLayer::try_new(image, position, size, repeat, attachment, boxes, color)
-            .map_err(|_| unsupported_value(input, None, "background layer is empty"))?,
+            .map_err(|_| unexpected_at(input.current_source_location()))?,
         color_location,
     ))
 }
@@ -271,11 +252,7 @@ pub(super) fn parse_background_size_prefix<'i, 't>(
                     height,
                 })
             },
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("background-size", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
 
@@ -309,7 +286,7 @@ fn image_construction_error<'i>(
 ) -> ParseError<'i, Error> {
     let kind = match error {
         CssImageConstructionError::NotImage => {
-            return unsupported_value_at(location, None, "none is not an image");
+            return unexpected_at(location);
         }
         CssImageConstructionError::NestingLimit => crate::CssComponentValueErrorKind::NestingLimit,
         CssImageConstructionError::CapacityOverflow => {
@@ -350,7 +327,7 @@ pub(super) fn parse_image_value<'i, 't>(
                 let component = numeric.collect(input).map_err(|error| {
                     let location = numeric.error_location(&error, string_location, string_start);
                     error.component_error().map_or_else(
-                        || unsupported_value_at(location, None, "invalid filter image String"),
+                        || unexpected_at(location),
                         |detail| crate::error::invalid_component_value(location, detail.clone()),
                     )
                 })?;
@@ -435,7 +412,7 @@ pub(super) fn parse_border_image_slice<'i, 't>(
         fill = true;
     }
     CssBorderImageSlice::try_new(values, fill)
-        .ok_or_else(|| unsupported_value(input, None, "border-image-slice is missing a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_border_image_slice_component<'i, 't>(
@@ -449,13 +426,10 @@ pub(super) fn parse_border_image_slice_component<'i, 't>(
             calculation,
         ));
     }
-    if let Ok(number) =
-        input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-slice"))
-    {
+    if let Ok(number) = input.try_parse(|input| parse_nonnegative_number(input, numeric)) {
         return Ok(CssBorderImageSliceComponent::Number(number));
     }
-    parse_nonnegative_percentage(input, numeric, "border-image-slice")
-        .map(CssBorderImageSliceComponent::Percentage)
+    parse_nonnegative_percentage(input, numeric).map(CssBorderImageSliceComponent::Percentage)
 }
 
 pub(super) fn parse_border_image_width<'i, 't>(
@@ -467,7 +441,7 @@ pub(super) fn parse_border_image_width<'i, 't>(
         values.push(parse_border_image_width_component(input, numeric)?);
     }
     CssBorderImageWidth::try_new(values)
-        .ok_or_else(|| unsupported_value(input, None, "border-image-width is missing a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_border_image_width_component<'i, 't>(
@@ -487,12 +461,10 @@ fn parse_border_image_width_component<'i, 't>(
             calculation,
         ));
     }
-    if let Ok(number) =
-        input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-width"))
-    {
+    if let Ok(number) = input.try_parse(|input| parse_nonnegative_number(input, numeric)) {
         return Ok(CssBorderImageWidthComponent::Number(number));
     }
-    parse_nonnegative_length_percentage(input, numeric, "border-image-width")
+    parse_nonnegative_length_percentage(input, numeric)
         .map(CssBorderImageWidthComponent::LengthPercentage)
 }
 
@@ -505,20 +477,17 @@ pub(super) fn parse_border_image_outset<'i, 't>(
         values.push(parse_border_image_outset_component(input, numeric)?);
     }
     CssBorderImageOutset::try_new(values)
-        .ok_or_else(|| unsupported_value(input, None, "border-image-outset is missing a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_border_image_outset_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutsetComponent, ParseError<'i, Error>> {
-    if let Ok(number) =
-        input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-outset"))
-    {
+    if let Ok(number) = input.try_parse(|input| parse_nonnegative_number(input, numeric)) {
         return Ok(CssBorderImageOutsetComponent::Number(number));
     }
-    parse_nonnegative_length(input, numeric, "border-image-outset")
-        .map(CssBorderImageOutsetComponent::Length)
+    parse_nonnegative_length(input, numeric).map(CssBorderImageOutsetComponent::Length)
 }
 
 pub(super) fn parse_border_image_repeat<'i, 't>(
@@ -542,11 +511,7 @@ fn parse_border_image_repeat_keyword<'i, 't>(
         "repeat" => Ok(CssBorderImageRepeatKeyword::Repeat),
         "round" => Ok(CssBorderImageRepeatKeyword::Round),
         "space" => Ok(CssBorderImageRepeatKeyword::Space),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("border-image-repeat", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -609,16 +574,11 @@ pub(super) fn parse_border_image<'i, 't>(
             repeat = Some(parse_border_image_repeat_prefix(input)?);
             continue;
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported or duplicate border-image component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
-    CssBorderImage::try_new(source, slice, width, outset, repeat).ok_or_else(|| {
-        unsupported_value(input, None, "border-image shorthand is missing a component")
-    })
+    CssBorderImage::try_new(source, slice, width, outset, repeat)
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_border_image_width_prefix<'i, 't>(
@@ -633,7 +593,7 @@ pub(super) fn parse_border_image_width_prefix<'i, 't>(
         }
     }
     CssBorderImageWidth::try_new(values)
-        .ok_or_else(|| unsupported_value(input, None, "border-image-width is missing a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_border_image_outset_prefix<'i, 't>(
@@ -648,7 +608,7 @@ pub(super) fn parse_border_image_outset_prefix<'i, 't>(
         }
     }
     CssBorderImageOutset::try_new(values)
-        .ok_or_else(|| unsupported_value(input, None, "border-image-outset is missing a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_border_image_repeat_prefix<'i, 't>(
@@ -684,19 +644,11 @@ pub(super) fn parse_image_orientation<'i, 't>(
         let angle = if input.is_exhausted() {
             None
         } else {
-            Some(super::values::parse_angle_value(
-                input,
-                numeric,
-                super::values::AngleParserContext::ImageOrientation,
-            )?)
+            Some(super::values::parse_angle_value(input, numeric)?)
         };
         return Ok(CssImageOrientation::Flip(angle));
     }
-    let angle = super::values::parse_angle_value(
-        input,
-        numeric,
-        super::values::AngleParserContext::ImageOrientation,
-    )?;
+    let angle = super::values::parse_angle_value(input, numeric)?;
     if input
         .try_parse(|input| input.expect_ident_matching("flip"))
         .is_ok()
@@ -719,11 +671,7 @@ pub(super) fn parse_image_rendering<'i, 't>(
         "pixelated" => Ok(CssImageRendering::Pixelated),
         "optimizespeed" => Ok(CssImageRendering::OptimizeSpeed),
         "optimizequality" => Ok(CssImageRendering::OptimizeQuality),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("image-rendering", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -737,11 +685,7 @@ pub(super) fn parse_object_fit<'i, 't>(
         "cover" => Ok(CssObjectFit::Cover),
         "none" => Ok(CssObjectFit::None),
         "scale-down" => Ok(CssObjectFit::ScaleDown),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("object-fit", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -785,11 +729,7 @@ fn parse_gradient<'i, 't>(
         "conic-gradient" => input
             .parse_nested_block(|input| parse_conic_gradient(input, numeric))
             .map(CssGradient::Conic),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported image function `{name}`"),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -846,8 +786,7 @@ fn parse_linear_gradient_direction<'i, 't>(
     {
         return parse_side_or_corner(input).map(CssLinearGradientDirection::SideOrCorner);
     }
-    super::values::parse_angle_or_zero(input, numeric, super::values::AngleParserContext::Gradient)
-        .map(CssLinearGradientDirection::Angle)
+    super::values::parse_angle_or_zero(input, numeric).map(CssLinearGradientDirection::Angle)
 }
 
 fn parse_side_or_corner<'i, 't>(
@@ -877,15 +816,10 @@ fn parse_side_or_corner<'i, 't>(
             "bottom" if vertical.is_none() => {
                 vertical = Some(CssVerticalGradientSide::Bottom);
             },
-            _ => return Err(unsupported_value_at(
-                location,
-                None,
-                format!("invalid gradient side or corner `{ident}`"),
-            )),
+            _ => return Err(unexpected_at(location)),
         }
     }
-    CssSideOrCorner::try_new(horizontal, vertical)
-        .ok_or_else(|| unsupported_value_at(start, None, "gradient direction is empty"))
+    CssSideOrCorner::try_new(horizontal, vertical).ok_or_else(|| unexpected_at(start))
 }
 
 fn parse_color_stop_list<'i, 't>(
@@ -897,11 +831,7 @@ fn parse_color_stop_list<'i, 't>(
     ))];
     while input.try_parse(Parser::expect_comma).is_ok() {
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "color-stop list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         if let Ok(hint) =
             input.try_parse(|input| -> std::result::Result<_, ParseError<'i, Error>> {
@@ -916,13 +846,7 @@ fn parse_color_stop_list<'i, 't>(
             parse_gradient_color_stop(input, numeric)?,
         )));
     }
-    CssColorStopList::try_new(items).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "gradient requires a nonempty ordered color-stop list",
-        )
-    })
+    CssColorStopList::try_new(items).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_gradient_color_stop<'i, 't>(
@@ -947,7 +871,7 @@ fn parse_gradient_line_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
-    parse_length_percentage(input, numeric, "gradient stop")
+    parse_length_percentage(input, numeric)
 }
 
 #[derive(Clone, Debug)]
@@ -980,13 +904,7 @@ fn parse_radial_gradient<'i, 't>(
     let stops = parse_color_stop_list(input, numeric)?;
     CssRadialGradient::try_new(shape, size, position, stops)
         .map(|gradient| gradient.with_interpolation(interpolation))
-        .ok_or_else(|| {
-            unsupported_value(
-                input,
-                None,
-                "radial-gradient shape and size are incompatible",
-            )
-        })
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -1055,18 +973,10 @@ fn parse_radial_gradient_prelude<'i, 't>(
             consumed = true;
             continue;
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported radial-gradient prelude component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     if !consumed {
-        return Err(unsupported_value_at(
-            start,
-            None,
-            "radial-gradient prelude is empty",
-        ));
+        return Err(unexpected_at(start));
     }
 
     let size = size
@@ -1084,11 +994,7 @@ fn parse_conic_gradient<'i, 't>(
         .try_parse(|input| input.expect_ident_matching("from"))
         .is_ok()
     {
-        Some(super::values::parse_angle_or_zero(
-            input,
-            numeric,
-            super::values::AngleParserContext::Gradient,
-        )?)
+        Some(super::values::parse_angle_or_zero(input, numeric)?)
     } else {
         None
     };
@@ -1111,11 +1017,7 @@ fn parse_conic_gradient<'i, 't>(
     ))];
     while input.try_parse(Parser::expect_comma).is_ok() {
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "angular stop list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         if let Ok(hint) = input.try_parse(|input| -> Result<_, ParseError<'i, Error>> {
             let hint = parse_angular_position(input, numeric)?;
@@ -1157,12 +1059,11 @@ fn parse_angular_position<'i, 't>(
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position().byte_index();
-    let context = super::values::AngleParserContext::Gradient;
     let component = numeric
         .collect(input)
-        .map_err(|error| super::values::angle_error(numeric, &error, location, offset, context))?;
+        .map_err(|error| super::values::angle_error(numeric, &error, location, offset))?;
     CssAngularColorStopPosition::from_parser_component(component, numeric)
-        .map_err(|error| super::values::angle_error(numeric, &error, location, offset, context))
+        .map_err(|error| super::values::angle_error(numeric, &error, location, offset))
 }
 
 fn parse_radial_shape<'i, 't>(
@@ -1173,11 +1074,7 @@ fn parse_radial_shape<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "circle" => Ok(CssRadialShape::Circle),
         "ellipse" => Ok(CssRadialShape::Ellipse),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported radial-gradient shape `{ident}`"),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -1213,7 +1110,7 @@ fn parse_radial_size_component<'i, 't>(
     numeric
         .collect(input)
         .map(|component| (component, location))
-        .map_err(|_| unsupported_value_at(location, None, "invalid radial-gradient size"))
+        .map_err(|_| unexpected_at(location))
 }
 
 fn parse_radial_extent<'i, 't>(
@@ -1226,11 +1123,7 @@ fn parse_radial_extent<'i, 't>(
         "farthest-side" => Ok(CssRadialExtent::FarthestSide),
         "closest-corner" => Ok(CssRadialExtent::ClosestCorner),
         "farthest-corner" => Ok(CssRadialExtent::FarthestCorner),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported radial-gradient extent `{ident}`"),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -1251,26 +1144,14 @@ fn validate_radial_size<'i>(
                                     .expect("one radial operand");
                             let expression = numeric
                                 .admit(components, CalculationRoot::Length)
-                                .map_err(|_| {
-                                    unsupported_value_at(
-                                        *radius_location,
-                                        None,
-                                        "invalid radial circle calculation",
-                                    )
-                                })?;
+                                .map_err(|_| unexpected_at(*radius_location))?;
                             CssSpecifiedNonNegativeLength::try_from_calculation(
                                 crate::CssLengthCalculation::from_expression(expression),
                             )
                         } else {
                             CssSpecifiedNonNegativeLength::try_from_component(radius.clone())
                         };
-                    CssRadialSize::Circle(radius.map_err(|_| {
-                        unsupported_value_at(
-                            *radius_location,
-                            None,
-                            "radial circle requires a nonnegative length",
-                        )
-                    })?)
+                    CssRadialSize::Circle(radius.map_err(|_| unexpected_at(*radius_location))?)
                 }
                 [horizontal, vertical] => {
                     let admit = |(component, component_location): &(
@@ -1285,13 +1166,7 @@ fn validate_radial_size<'i>(
                                         .expect("one radial operand");
                                 let expression = numeric
                                     .admit(components, CalculationRoot::LengthPercentage)
-                                    .map_err(|_| {
-                                        unsupported_value_at(
-                                            *component_location,
-                                            None,
-                                            "invalid radial ellipse calculation",
-                                        )
-                                    })?;
+                                    .map_err(|_| unexpected_at(*component_location))?;
                                 CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
                                     crate::CssLengthPercentageCalculation::from_expression(
                                         expression,
@@ -1302,13 +1177,7 @@ fn validate_radial_size<'i>(
                                     component.clone(),
                                 )
                             };
-                        value.map_err(|_| {
-                            unsupported_value_at(
-                                *component_location,
-                                None,
-                                "radial ellipse requires nonnegative length-percentages",
-                            )
-                        })
+                        value.map_err(|_| unexpected_at(*component_location))
                     };
                     CssRadialSize::Ellipse(CssRadialEllipseSize::new(
                         admit(horizontal)?,
@@ -1316,18 +1185,12 @@ fn validate_radial_size<'i>(
                     ))
                 }
                 _ => {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "invalid radial-gradient size arity",
-                    ));
+                    return Err(unexpected_at(location));
                 }
             };
             CssRadialGradient::allows_shape_size(shape, Some(&value))
                 .then_some(value)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "radial shape and explicit size disagree")
-                })
+                .ok_or_else(|| unexpected_at(location))
         }
     }
 }
@@ -1343,15 +1206,11 @@ pub(super) fn parse_background_size_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "background-size list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssBackgroundSizeList::try_new(sizes)
-        .ok_or_else(|| unsupported_value(input, None, "background-size list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_background_size<'i, 't>(
@@ -1373,11 +1232,7 @@ pub(super) fn parse_background_size<'i, 't>(
                     height,
                 })
             },
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("background-size", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
 
@@ -1400,8 +1255,7 @@ pub(super) fn parse_background_size_component<'i, 't>(
     {
         Ok(CssBackgroundSizeComponent::Auto)
     } else {
-        parse_nonnegative_length_percentage(input, numeric, "background-size")
-            .map(CssBackgroundSizeComponent::Length)
+        parse_nonnegative_length_percentage(input, numeric).map(CssBackgroundSizeComponent::Length)
     }
 }
 
@@ -1415,15 +1269,11 @@ pub(super) fn parse_background_repeat_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "background-repeat list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssBackgroundRepeatList::try_new(repeats)
-        .ok_or_else(|| unsupported_value(input, None, "background-repeat list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_background_repeat<'i, 't>(
@@ -1455,11 +1305,7 @@ pub(super) fn parse_background_repeat_style_from_ident<'i, 't>(
         "space" => Ok(CssBackgroundRepeatStyle::Space),
         "round" => Ok(CssBackgroundRepeatStyle::Round),
         "no-repeat" => Ok(CssBackgroundRepeatStyle::NoRepeat),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("background-repeat", ident),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -1471,11 +1317,7 @@ pub(super) fn parse_background_box<'i, 't>(
         "border-box" => Ok(CssBackgroundBox::BorderBox),
         "padding-box" => Ok(CssBackgroundBox::PaddingBox),
         "content-box" => Ok(CssBackgroundBox::ContentBox),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("background box", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -1489,15 +1331,11 @@ pub(super) fn parse_background_box_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "background box list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssBackgroundBoxList::try_new(boxes)
-        .ok_or_else(|| unsupported_value(input, None, "background box list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_background_attachment_list<'i, 't>(
@@ -1510,15 +1348,11 @@ pub(super) fn parse_background_attachment_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "background-attachment list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssBackgroundAttachmentList::try_new(attachments)
-        .ok_or_else(|| unsupported_value(input, None, "background-attachment list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_background_attachment<'i, 't>(
@@ -1529,11 +1363,7 @@ pub(super) fn parse_background_attachment<'i, 't>(
         "scroll" => Ok(CssBackgroundAttachment::Scroll),
         "fixed" => Ok(CssBackgroundAttachment::Fixed),
         "local" => Ok(CssBackgroundAttachment::Local),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("background-attachment", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 

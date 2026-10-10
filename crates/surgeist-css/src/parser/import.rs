@@ -379,12 +379,8 @@ fn select_import_clauses<'i>(
             let (layer, layer_component) = if layer_present {
                 input.skip_whitespace();
                 let at = input.state();
-                let layer = parse_import_layer(input)?.ok_or_else(|| {
-                    invalid_syntax(
-                        input.current_source_location(),
-                        "expected import layer clause",
-                    )
-                })?;
+                let layer = parse_import_layer(input)?
+                    .ok_or_else(|| invalid_syntax(input.current_source_location()))?;
                 (
                     Some(layer),
                     Some(import_clause_component(input, &at, &probe)?),
@@ -396,12 +392,7 @@ fn select_import_clauses<'i>(
                 input.skip_whitespace();
                 let at = input.state();
                 let supports = parse_import_supports(source, input, &mut diagnostics, &probe)?
-                    .ok_or_else(|| {
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "expected import supports clause",
-                        )
-                    })?;
+                    .ok_or_else(|| invalid_syntax(input.current_source_location()))?;
                 (
                     Some(supports),
                     Some(import_clause_component(input, &at, &probe)?),
@@ -569,10 +560,10 @@ fn parse_import_supports<'i, 't>(
                 .filter(|value| !crate::supports::trivia(value))
                 .collect::<Vec<_>>();
             let [component] = meaningful.as_slice() else {
-                return Err(invalid_syntax(at, "one named supports reference"));
+                return Err(invalid_syntax(at));
             };
             let name = CssSupportsConditionName::try_from_component((*component).clone())
-                .map_err(|_| invalid_syntax(at, "one named supports reference"))?;
+                .map_err(|_| invalid_syntax(at))?;
             Ok::<_, ParseError<'i, Error>>(CssSupportsCondition::new(
                 CssSupportsConditionKind::Named(name),
                 crate::supports::SupportsLexical::root(values),
@@ -604,10 +595,7 @@ fn parse_import_target<'i, 't>(
         return Ok(CssImportTarget::Url(CssImportUrl::new(value)));
     }
 
-    Err(invalid_syntax(
-        location,
-        "expected string or URL import target",
-    ))
+    Err(invalid_syntax(location))
 }
 
 fn parse_import_layer<'i, 't>(
@@ -636,10 +624,7 @@ fn parse_import_layer_name<'i, 't>(
 ) -> std::result::Result<CssLayerName, ParseError<'i, Error>> {
     let name = parse_layer_name(input)?;
     if !input.is_exhausted() {
-        return Err(invalid_syntax(
-            input.current_source_location(),
-            "unexpected token in import layer name",
-        ));
+        return Err(invalid_syntax(input.current_source_location()));
     }
     Ok(name)
 }

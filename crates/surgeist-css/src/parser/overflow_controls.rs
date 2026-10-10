@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssBoxEdgeKeyword, CssLengthCalculation, CssOverflowClipMargin, CssScrollBehavior,
@@ -22,19 +22,10 @@ pub(super) fn parse_overflow_clip_margin<'i, 't>(
         let location = input.current_source_location();
         match input.next().map_err(basic)? {
             Token::Ident(ident) => {
-                let edge = CssBoxEdgeKeyword::from_keyword(ident).ok_or_else(|| {
-                    unsupported_value_at(
-                        location,
-                        None,
-                        "expected a visual box or nonnegative length",
-                    )
-                })?;
+                let edge = CssBoxEdgeKeyword::from_keyword(ident)
+                    .ok_or_else(|| unexpected_at(location))?;
                 if box_edge.replace(edge).is_some() {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "duplicate clip-margin box edge",
-                    ));
+                    return Err(unexpected_at(location));
                 }
             }
             Token::Number { .. }
@@ -42,11 +33,7 @@ pub(super) fn parse_overflow_clip_margin<'i, 't>(
             | Token::Percentage { .. }
             | Token::Function(_) => {
                 if offset.is_some() {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "duplicate clip-margin offset",
-                    ));
+                    return Err(unexpected_at(location));
                 }
                 input.reset(&state);
                 offset = Some(parse_nonnegative_length(input, numeric)?);
@@ -54,13 +41,8 @@ pub(super) fn parse_overflow_clip_margin<'i, 't>(
             token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
         }
     }
-    CssOverflowClipMargin::try_new(box_edge, offset).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "clip margin requires a visual box or nonnegative length",
-        )
-    })
+    CssOverflowClipMargin::try_new(box_edge, offset)
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_nonnegative_length<'i, 't>(
@@ -76,13 +58,9 @@ fn parse_nonnegative_length<'i, 't>(
             input.reset(&state);
             let component = numeric
                 .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid clip-margin offset"))?;
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLength::try_from_component(component).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "clip margin requires a nonnegative length",
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })
         }
         Token::Function(name) if is_math_function(name) => {
@@ -91,13 +69,7 @@ fn parse_nonnegative_length<'i, 't>(
             CssSpecifiedNonNegativeLength::try_from_calculation(
                 CssLengthCalculation::from_expression(expression),
             )
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "invalid clip-margin offset math",
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -110,7 +82,7 @@ pub(super) fn parse_scroll_behavior<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssScrollBehavior::Auto),
         "smooth" => Ok(CssScrollBehavior::Smooth),
-        _ => Err(unsupported_value(input, None, "expected auto or smooth")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -134,11 +106,7 @@ pub(super) fn parse_scrollbar_gutter<'i, 't>(
         input.expect_ident_matching("stable").map_err(basic)?;
         return Ok(CssScrollbarGutter::StableBothEdges);
     }
-    Err(unsupported_value(
-        input,
-        None,
-        "expected auto or stable with optional both-edges",
-    ))
+    Err(unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_overflow_anchor<'i, 't>(
@@ -148,6 +116,6 @@ pub(super) fn parse_overflow_anchor<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(crate::CssOverflowAnchor::Auto),
         "none" => Ok(crate::CssOverflowAnchor::None),
-        _ => Err(unsupported_value(input, None, "expected auto or none")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }

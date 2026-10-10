@@ -6,11 +6,10 @@ use crate::cursor_values::{
     CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorUrlSet,
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
 };
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::*;
 use crate::ui::*;
-use crate::validation::unsupported_keyword_reason;
 use crate::{CssCaretColor, CssComponentValueRef, CssValueTokenRef};
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
@@ -20,7 +19,7 @@ macro_rules! keyword_parser {
             let location = input.current_source_location();
             let ident = input.expect_ident_cloned().map_err(basic)?;
             match_ignore_ascii_case! { &ident, $($text => Ok($ty::$variant),)+
-                _ => Err(unsupported_value_at(location, None, concat!("unsupported ", stringify!($ty), " keyword"))), }
+                _ => Err(unexpected_at(location)), }
         }
     };
 }
@@ -82,11 +81,7 @@ pub(super) fn parse_caret<'i, 't>(
                 Err(_) => {}
             }
         }
-        return Err(unsupported_value_at(
-            location,
-            None,
-            "duplicate or unsupported caret role",
-        ));
+        return Err(unexpected_at(location));
     }
     // Ambiguous auto fills vacant roles in canonical order after explicit roles.
     for _ in 0..autos {
@@ -97,20 +92,11 @@ pub(super) fn parse_caret<'i, 't>(
         } else if shape.is_none() {
             shape = Some(CssCaretShape::Auto);
         } else {
-            return Err(unsupported_value_at(
-                input.current_source_location(),
-                None,
-                "too many caret components",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
-    CssCaret::try_new(color, animation, shape).ok_or_else(|| {
-        unsupported_value_at(
-            input.current_source_location(),
-            None,
-            "caret requires a component",
-        )
-    })
+    CssCaret::try_new(color, animation, shape)
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_interest_delay_value<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -151,8 +137,7 @@ pub(super) fn parse_navigation<'i, 't>(
     let component = numeric
         .collect(input)
         .map_err(|error| numeric_error(numeric, &error, location))?;
-    let id = CssNavigationId::try_from_component(component)
-        .map_err(|_| unsupported_value_at(location, None, "navigation requires an ID selector"))?;
+    let id = CssNavigationId::try_from_component(component).map_err(|_| unexpected_at(location))?;
     let target = if input.is_exhausted() {
         None
     } else {
@@ -176,11 +161,7 @@ pub(super) fn parse_navigation<'i, 't>(
                 if value.starts_with('_') =>
             {
                 if matches!(numeric.ordinary(), NumericInputContext::Components(..)) {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "navigation target must not begin with underscore",
-                    ));
+                    return Err(unexpected_at(location));
                 }
                 CssNavigationTarget::LegacyName(CssLegacyNavigationTargetName::from_parser(
                     component,
@@ -190,11 +171,7 @@ pub(super) fn parse_navigation<'i, 't>(
                 CssNavigationTarget::Name(CssNavigationTargetName::from_parser(component))
             }
             _ => {
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    "invalid navigation target",
-                ));
+                return Err(unexpected_at(location));
             }
         })
     };
@@ -216,11 +193,7 @@ fn numeric_error<'i>(
         Some(crate::CssValueOrigin::Parsed(value)) => value.span().start().byte_offset().value(),
         _ => 0,
     };
-    unsupported_value_at(
-        numeric.error_location(error, location, offset),
-        None,
-        "invalid navigation component",
-    )
+    unexpected_at(numeric.error_location(error, location, offset))
 }
 
 pub(super) fn parse_cursor<'i, 't>(
@@ -229,10 +202,10 @@ pub(super) fn parse_cursor<'i, 't>(
 ) -> std::result::Result<CssCursor, ParseError<'i, Error>> {
     let mut images = Vec::new();
     while let Ok(source) = input.try_parse(|input| parse_cursor_image_source(input, numeric)) {
-        let hotspot = if let Ok(x) = input.try_parse(|input| {
-            super::values::parse_specified_number(input, numeric, "cursor hotspot")
-        }) {
-            let y = super::values::parse_specified_number(input, numeric, "cursor hotspot")?;
+        let hotspot = if let Ok(x) =
+            input.try_parse(|input| super::values::parse_specified_number(input, numeric))
+        {
+            let y = super::values::parse_specified_number(input, numeric)?;
             Some([x, y])
         } else {
             None
@@ -259,11 +232,7 @@ fn parse_cursor_image_source<'i, 't>(
     }
     let name = input.expect_function().map_err(basic)?.clone();
     if !name.eq_ignore_ascii_case("image-set") && !name.eq_ignore_ascii_case("-webkit-image-set") {
-        return Err(unsupported_value(
-            input,
-            None,
-            "cursor requires a URL or URL image set",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     let options = input.parse_nested_block(|input| {
         let mut options = Vec::new();
@@ -273,20 +242,16 @@ fn parse_cursor_image_source<'i, 't>(
             } else {
                 let string = input.expect_string_cloned().map_err(basic)?;
                 let string = CssContentString::try_new(string.to_string())
-                    .ok_or_else(|| unsupported_value(input, None, "invalid cursor URL string"))?;
+                    .ok_or_else(|| unexpected_at(input.current_source_location()))?;
                 CssCursorUrlSetReference::String(string)
             };
             let mut descriptors = Vec::new();
             // Only two descriptor kinds exist. A third token is rejected by the
             // required comma/end boundary; duplicate kinds cross the same checked constructor.
             for _ in 0..2 {
-                if let Ok(value) = input.try_parse(|input| {
-                    super::values::parse_ordinary_resolution(
-                        input,
-                        numeric,
-                        "cursor image resolution",
-                    )
-                }) {
+                if let Ok(value) = input
+                    .try_parse(|input| super::values::parse_ordinary_resolution(input, numeric))
+                {
                     descriptors.push(CssCursorUrlSetDescriptor::Resolution(value));
                 } else if let Ok(value) = input.try_parse(parse_cursor_image_type) {
                     descriptors.push(CssCursorUrlSetDescriptor::Type(value));
@@ -294,10 +259,8 @@ fn parse_cursor_image_source<'i, 't>(
                     break;
                 }
             }
-            let option =
-                CssCursorUrlSetOption::try_new(reference, descriptors).ok_or_else(|| {
-                    unsupported_value(input, None, "duplicate cursor image-set descriptor")
-                })?;
+            let option = CssCursorUrlSetOption::try_new(reference, descriptors)
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
             options.push(option);
             if input.is_exhausted() {
                 break;
@@ -316,16 +279,12 @@ fn parse_cursor_image_type<'i, 't>(
 ) -> Result<CssContentString, ParseError<'i, Error>> {
     let name = input.expect_function().map_err(basic)?.clone();
     if !name.eq_ignore_ascii_case("type") {
-        return Err(unsupported_value(
-            input,
-            None,
-            "cursor image-set type requires type()",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     input.parse_nested_block(|input| {
         let value = input.expect_string_cloned().map_err(basic)?;
         let value = CssContentString::try_new(value.to_string())
-            .ok_or_else(|| unsupported_value(input, None, "invalid cursor image type string"))?;
+            .ok_or_else(|| unexpected_at(input.current_source_location()))?;
         input.expect_exhausted().map_err(basic)?;
         Ok(value)
     })
@@ -372,11 +331,7 @@ pub(super) fn parse_cursor_keyword<'i, 't>(
         "nwse-resize" => Ok(CssCursorKeyword::NwseResize),
         "zoom-in" => Ok(CssCursorKeyword::ZoomIn),
         "zoom-out" => Ok(CssCursorKeyword::ZoomOut),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("cursor", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -387,11 +342,7 @@ pub(super) fn parse_pointer_events<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssPointerEvents::Auto),
         "none" => Ok(CssPointerEvents::None),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("pointer-events", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -405,11 +356,7 @@ pub(super) fn parse_user_select<'i, 't>(
         "none" => Ok(CssUserSelect::None),
         "all" => Ok(CssUserSelect::All),
         "contain" => Ok(CssUserSelect::Contain),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("user-select", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -429,11 +376,7 @@ pub(super) fn parse_outline<'i, 't>(
         {
             autos += 1;
             if autos > 2 {
-                return Err(crate::error::unsupported_value_at(
-                    location,
-                    None,
-                    "outline has too many auto components",
-                ));
+                return Err(crate::error::unexpected_at(location));
             }
             continue;
         }
@@ -463,11 +406,7 @@ pub(super) fn parse_outline<'i, 't>(
                 Err(_) => {}
             }
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported outline component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     // Resolve auto only after the unordered explicit slots are known. One lone
     // auto (with optional width) sets both semantic slots under selected UI4 §3.1.
@@ -486,11 +425,7 @@ pub(super) fn parse_outline<'i, 't>(
             color = Some(CssOutlineColor::Auto);
         }
         _ => {
-            return Err(unsupported_value(
-                input,
-                None,
-                "outline auto duplicates an explicit component",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     if width.is_none() && style.is_none() && color.is_none() {
@@ -498,7 +433,7 @@ pub(super) fn parse_outline<'i, 't>(
     } else {
         Some(CssOutline::try_new(width, style, color).expect("nonempty parsed outline"))
     }
-    .ok_or_else(|| unsupported_value(input, None, "outline shorthand is empty"))
+    .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_outline_style<'i, 't>(
@@ -517,7 +452,7 @@ pub(super) fn parse_outline_style<'i, 't>(
         "ridge" => Ok(CssOutlineStyle::Ridge),
         "inset" => Ok(CssOutlineStyle::Inset),
         "outset" => Ok(CssOutlineStyle::Outset),
-        _ => Err(crate::error::unsupported_value_at(location, None, unsupported_keyword_reason("outline-style", ident.as_ref()))),
+        _ => Err(crate::error::unexpected_at(location)),
     }
 }
 
@@ -551,19 +486,15 @@ pub(super) fn parse_outline_width<'i, 't>(
             "thin" => Ok(CssOutlineWidth::Thin),
             "medium" => Ok(CssOutlineWidth::Medium),
             "thick" => Ok(CssOutlineWidth::Thick),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("outline-width", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
-    parse_nonnegative_length(input, numeric, "outline-width").map(CssOutlineWidth::Length)
+    parse_nonnegative_length(input, numeric).map(CssOutlineWidth::Length)
 }
 
 pub(super) fn parse_outline_offset<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
-    parse_length(input, numeric, "outline-offset")
+    parse_length(input, numeric)
 }

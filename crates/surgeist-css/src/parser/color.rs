@@ -1,7 +1,7 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{calculation_error, parse_numeric_function};
-use crate::error::{Error, basic, invalid_color, unsupported_value_at, with_color_context};
+use crate::error::{Error, basic, invalid_color, unexpected_at, with_color_context};
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::syntax::*;
 
@@ -777,13 +777,8 @@ fn parse_relative_predefined_color_space<'i, 't>(
 ) -> std::result::Result<CssPredefinedColorSpace, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    let color_space = crate::syntax::color::predefined_color_space(&ident).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            format!("unsupported relative color space `{ident}`"),
-        )
-    })?;
+    let color_space = crate::syntax::color::predefined_color_space(&ident)
+        .ok_or_else(|| unexpected_at(location))?;
     Ok(color_space)
 }
 
@@ -952,11 +947,7 @@ fn parse_color_interpolation_space<'i, 't>(
             "lch" => CssColorInterpolationSpace::Lch,
             "oklab" => CssColorInterpolationSpace::Oklab,
             "oklch" => CssColorInterpolationSpace::Oklch,
-            _ => return Err(unsupported_value_at(
-                location,
-                None,
-                format!("unsupported color interpolation space `{ident}`"),
-            )),
+            _ => return Err(unexpected_at(location)),
         }
     };
     Ok(space)
@@ -972,11 +963,7 @@ fn parse_hue_interpolation<'i, 't>(
         "longer" => CssHueInterpolationMethod::Longer,
         "increasing" => CssHueInterpolationMethod::Increasing,
         "decreasing" => CssHueInterpolationMethod::Decreasing,
-        _ => return Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported color-mix hue interpolation method `{ident}`"),
-        )),
+        _ => return Err(unexpected_at(location)),
     };
     input.expect_ident_matching("hue").map_err(basic)?;
     Ok(hue)

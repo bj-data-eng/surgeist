@@ -7,7 +7,7 @@ use super::parse_descriptor_boundary;
 use super::recovery::RecoveryState;
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, invalid_component_value,
-    invalid_syntax, unsupported_value_at, with_at_rule_prelude_context, with_descriptor_context,
+    invalid_syntax, unexpected_at, with_at_rule_prelude_context, with_descriptor_context,
 };
 use crate::font_palette_values::CssFontPaletteDescriptorData;
 use crate::numeric::{CalculationRoot, NumericInputContext};
@@ -37,8 +37,7 @@ pub(super) fn parse_name<'i>(
         let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         input.expect_exhausted().map_err(basic)?;
-        CssFontPaletteName::try_new(&ident)
-            .map_err(|error| invalid_syntax(location, error.to_string()))
+        CssFontPaletteName::try_new(&ident).map_err(|_| invalid_syntax(location))
     })()
     .map_err(|error| {
         with_at_rule_prelude_context(
@@ -61,7 +60,7 @@ pub(super) fn parse_rule<'i>(
     let descriptors = parse_body(source, input, diagnostics, recovery);
     CssFontPaletteValuesRule::try_new(name, descriptors)
         .map(|rule| rule.with_position(position(start)))
-        .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))
+        .map_err(|_| invalid_syntax(start.source_location()))
 }
 
 pub(super) fn parse_body<'i>(
@@ -228,12 +227,8 @@ fn parse_families<'i>(
     input.parse_comma_separated(|input| {
         let family = super::typography::parse_non_generic_font_family_name(input)?;
         input.expect_exhausted().map_err(basic)?;
-        CssFontFaceFamily::try_new(family.as_str()).ok_or_else(|| {
-            invalid_syntax(
-                input.current_source_location(),
-                "invalid decoded font family",
-            )
-        })
+        CssFontFaceFamily::try_new(family.as_str())
+            .ok_or_else(|| invalid_syntax(input.current_source_location()))
     })
 }
 
@@ -263,10 +258,8 @@ fn parse_overrides<'i>(
         let location = input.current_source_location();
         let color = super::color::parse_color(input, numeric)?;
         let pair = CssFontPaletteOverride::try_new(index, color).map_err(|error| match error {
-            CssFontPaletteConstructionError::ContextualColor(_) => {
-                unsupported_value_at(location, None, "override color must be absolute")
-            }
-            _ => invalid_syntax(location, error.to_string()),
+            CssFontPaletteConstructionError::ContextualColor(_) => unexpected_at(location),
+            _ => invalid_syntax(location),
         })?;
         input.expect_exhausted().map_err(basic)?;
         Ok(pair)
@@ -295,6 +288,5 @@ fn parse_index<'i>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    CssFontPaletteIndex::try_new(value)
-        .map_err(|error| unsupported_value_at(location, None, error.to_string()))
+    CssFontPaletteIndex::try_new(value).map_err(|_| unexpected_at(location))
 }

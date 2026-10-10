@@ -1,4 +1,4 @@
-use crate::error::{Error, basic, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::{
     CssColor, CssComponentValueRef, CssComponentValues, CssFlexCalculation, CssImage1D,
@@ -106,28 +106,16 @@ pub(super) fn parse_image_1d<'i, 't>(
                     thickness = Some(parse_thickness(input, numeric)?);
                     continue;
                 }
-                return Err(unsupported_value_at(
-                    input.current_source_location(),
-                    None,
-                    "duplicate stripe component",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             let (Some(color), Some(color_component)) = (color, color_component) else {
-                return Err(unsupported_value_at(
-                    input.current_source_location(),
-                    None,
-                    "stripe requires a color",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             };
             Ok(CssStripe::from_parser(color, color_component, thickness))
         })
     })?;
     if stripes.is_empty() {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            "stripes requires a nonempty list",
-        ));
+        return Err(unexpected_at(location));
     }
     Ok(CssImage1D::Stripes(CssStripes::from_parser(
         stripes, original,
@@ -145,7 +133,7 @@ fn numeric_error<'i>(
     {
         return crate::error::invalid_component_value(location, component.clone());
     }
-    unsupported_value_at(location, None, "invalid stripe thickness")
+    unexpected_at(location)
 }
 fn parse_thickness<'i, 't>(
     input: &mut Parser<'i, 't>,

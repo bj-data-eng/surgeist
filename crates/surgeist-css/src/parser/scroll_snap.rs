@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssLengthCalculation, CssLengthPercentageCalculation, CssScrollMarginPair,
@@ -24,7 +24,7 @@ pub(super) fn parse_scroll_snap_type<'i, 't>(
         "block" => CssScrollSnapAxis::Block,
         "inline" => CssScrollSnapAxis::Inline,
         "both" => CssScrollSnapAxis::Both,
-        _ => return Err(unsupported_value(input, None, "scroll-snap-type requires an axis before optional strictness")),
+        _ => return Err(unexpected_at(input.current_source_location())),
     };
     let strictness = if input.is_exhausted() {
         None
@@ -33,7 +33,7 @@ pub(super) fn parse_scroll_snap_type<'i, 't>(
         Some(match_ignore_ascii_case! { &strictness,
             "mandatory" => CssScrollSnapStrictness::Mandatory,
             "proximity" => CssScrollSnapStrictness::Proximity,
-            _ => return Err(unsupported_value(input, None, "invalid scroll-snap-type strictness")),
+            _ => return Err(unexpected_at(input.current_source_location())),
         })
     };
     Ok(CssScrollSnapType::axis(axis, strictness))
@@ -48,7 +48,7 @@ fn parse_alignment<'i, 't>(
         "start" => Ok(CssScrollSnapAlignment::Start),
         "end" => Ok(CssScrollSnapAlignment::End),
         "center" => Ok(CssScrollSnapAlignment::Center),
-        _ => Err(unsupported_value(input, None, "invalid scroll-snap-align keyword")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -71,7 +71,7 @@ pub(super) fn parse_scroll_snap_stop<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssScrollSnapStop::Normal),
         "always" => Ok(CssScrollSnapStop::Always),
-        _ => Err(unsupported_value(input, None, "invalid scroll-snap-stop keyword")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -84,12 +84,10 @@ pub(super) fn parse_scroll_margin_length<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid scroll-margin length component")
-            })?;
-            CssSpecifiedLength::try_from_component(component).map_err(|_| {
-                unsupported_value_at(location, None, "scroll-margin requires a pure length")
-            })
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
+            CssSpecifiedLength::try_from_component(component).map_err(|_| unexpected_at(location))
         }
         Token::Function(name) if is_math_function(name) => {
             let expression =
@@ -97,7 +95,7 @@ pub(super) fn parse_scroll_margin_length<'i, 't>(
             CssSpecifiedLength::try_from_calculation(CssLengthCalculation::from_expression(
                 expression,
             ))
-            .map_err(|_| unsupported_value_at(location, None, "invalid scroll-margin length math"))
+            .map_err(|_| unexpected_at(location))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -115,18 +113,12 @@ pub(super) fn parse_scroll_padding_value<'i, 't>(
         }
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid scroll-padding component")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
                 .map(CssScrollPaddingValue::LengthPercentage)
-                .map_err(|_| {
-                    unsupported_value_at(
-                        location,
-                        None,
-                        "scroll-padding requires a nonnegative length-percentage or auto",
-                    )
-                })
+                .map_err(|_| unexpected_at(location))
         }
         Token::Function(name) if is_math_function(name) => {
             let expression =
@@ -135,7 +127,7 @@ pub(super) fn parse_scroll_padding_value<'i, 't>(
                 CssLengthPercentageCalculation::from_expression(expression),
             )
             .map(CssScrollPaddingValue::LengthPercentage)
-            .map_err(|_| unsupported_value_at(location, None, "invalid scroll-padding math"))
+            .map_err(|_| unexpected_at(location))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -187,15 +179,11 @@ pub(super) fn parse_scroll_margin_shorthand<'i, 't>(
     while !input.is_exhausted() {
         authored.push(parse_scroll_margin_length(input, numeric)?);
         if authored.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "scroll-margin accepts at most four values",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssScrollMarginShorthand::try_new(kind, authored)
-        .ok_or_else(|| unsupported_value(input, None, "scroll-margin requires one to four lengths"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_scroll_padding_shorthand<'i, 't>(
@@ -207,13 +195,9 @@ pub(super) fn parse_scroll_padding_shorthand<'i, 't>(
     while !input.is_exhausted() {
         authored.push(parse_scroll_padding_value(input, numeric)?);
         if authored.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "scroll-padding accepts at most four values",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssScrollPaddingShorthand::try_new(kind, authored)
-        .ok_or_else(|| unsupported_value(input, None, "scroll-padding requires one to four values"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

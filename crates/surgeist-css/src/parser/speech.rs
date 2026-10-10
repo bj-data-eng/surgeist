@@ -207,7 +207,7 @@ fn parse_voice_entry<'i, 't>(
     if let Ok(value) = input.try_parse(Parser::expect_string_cloned) {
         return CssVoiceFamilyName::try_quoted(value.to_string())
             .map(CssVoiceFamilyEntry::Name)
-            .map_err(|_| crate::error::unsupported_value_at(location, None, "invalid voice name"));
+            .map_err(|_| crate::error::unexpected_at(location));
     }
     let start = input.state();
     let first = input.expect_ident_cloned().map_err(basic)?;
@@ -227,17 +227,11 @@ fn parse_voice_entry<'i, 't>(
         let variant = if input.is_exhausted() || super::values::next_is_comma(input) {
             None
         } else {
-            Some(super::values::parse_positive_integer_value(
-                input,
-                numeric,
-                "voice-family variant",
-            )?)
+            Some(super::values::parse_positive_integer_value(input, numeric)?)
         };
         return CssGenericVoice::from_parser(age, gender, variant)
             .map(CssVoiceFamilyEntry::Generic)
-            .map_err(|_| {
-                crate::error::unsupported_value_at(location, None, "invalid voice variant")
-            });
+            .map_err(|_| crate::error::unexpected_at(location));
     }
     input.reset(&start);
     let mut identifiers = Vec::new();
@@ -248,9 +242,10 @@ fn parse_voice_entry<'i, 't>(
         if crate::speech::reserved_voice_identifier(&ident) {
             return Err(location.new_unexpected_token_error(Token::Ident(ident)));
         }
-        identifiers.push(crate::CssIdent::try_new(ident.to_string()).map_err(|_| {
-            crate::error::unsupported_value_at(location, None, "invalid voice identifier")
-        })?);
+        identifiers.push(
+            crate::CssIdent::try_new(ident.to_string())
+                .map_err(|_| crate::error::unexpected_at(location))?,
+        );
     }
     CssVoiceFamilyName::try_identifiers(identifiers)
         .map(CssVoiceFamilyEntry::Name)
@@ -295,11 +290,7 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
             }
         } else {
             if offset.is_some() {
-                return Err(crate::error::unsupported_value_at(
-                    location,
-                    None,
-                    "only one voice offset is allowed",
-                ));
+                return Err(crate::error::unexpected_at(location));
             }
             let component = numeric
                 .collect(input)
@@ -309,18 +300,10 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
     }
     if let Some(location) = absolute {
         if level.is_some() {
-            return Err(crate::error::unsupported_value_at(
-                location,
-                None,
-                "absolute frequency cannot carry a voice level",
-            ));
+            return Err(crate::error::unexpected_at(location));
         }
         let Some((component, location, byte_offset)) = offset else {
-            return Err(crate::error::unsupported_value_at(
-                location,
-                None,
-                "absolute requires a frequency",
-            ));
+            return Err(crate::error::unexpected_at(location));
         };
         let frequency = crate::CssFrequencyValue::from_parser_component(component, numeric)
             .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
@@ -360,11 +343,7 @@ pub(super) fn parse_voice_rate<'i, 't>(
             }
         } else {
             if percentage.is_some() {
-                return Err(crate::error::unsupported_value_at(
-                    location,
-                    None,
-                    "only one voice-rate percentage is allowed",
-                ));
+                return Err(crate::error::unexpected_at(location));
             }
             let component = numeric
                 .collect(input)
@@ -401,7 +380,7 @@ fn speech_numeric_error<'i>(
     {
         return crate::error::invalid_component_value(location, component.clone());
     }
-    crate::error::unsupported_value_at(location, None, "invalid authored speech numeric value")
+    crate::error::unexpected_at(location)
 }
 
 fn parse_decibel<'i, 't>(
@@ -435,7 +414,7 @@ pub(super) fn parse_voice_balance<'i, 't>(
         };
         return Ok(crate::CssVoiceBalance::from_keyword(keyword));
     }
-    super::values::parse_specified_number(input, numeric, "voice-balance")
+    super::values::parse_specified_number(input, numeric)
         .map(crate::CssVoiceBalance::from_parser_number)
 }
 

@@ -21,10 +21,9 @@ use super::values::parse_nonnegative_percentage;
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, incomplete_descriptor_at,
-    unsupported_value, unsupported_value_at, with_descriptor_context,
+    unexpected_at, with_descriptor_context,
 };
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth,
     CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
@@ -387,23 +386,17 @@ pub(super) fn parse_font_face_value<'i, 't>(
             }
             CssFontFaceDescriptorKind::AscentOverride => {
                 CssFontFaceDescriptorValue::AscentOverride(parse_font_metric_override(
-                    input,
-                    numeric,
-                    kind.css_name(),
+                    input, numeric,
                 )?)
             }
             CssFontFaceDescriptorKind::DescentOverride => {
                 CssFontFaceDescriptorValue::DescentOverride(parse_font_metric_override(
-                    input,
-                    numeric,
-                    kind.css_name(),
+                    input, numeric,
                 )?)
             }
             CssFontFaceDescriptorKind::LineGapOverride => {
                 CssFontFaceDescriptorValue::LineGapOverride(parse_font_metric_override(
-                    input,
-                    numeric,
-                    kind.css_name(),
+                    input, numeric,
                 )?)
             }
         })
@@ -425,16 +418,15 @@ fn parse_font_named_instance<'i, 't>(
     let location = input.current_source_location();
     let component = numeric
         .collect(input)
-        .map_err(|_| unsupported_value_at(location, None, "invalid font-named-instance string"))?;
+        .map_err(|_| unexpected_at(location))?;
     CssFontNamedInstanceString::try_from_component(component)
         .map(CssFontNamedInstance::String)
-        .map_err(|_| unsupported_value_at(location, None, "font-named-instance requires a string"))
+        .map_err(|_| unexpected_at(location))
 }
 
 fn parse_font_metric_override<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    name: &str,
 ) -> Result<CssFontMetricOverride, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
@@ -442,16 +434,15 @@ fn parse_font_metric_override<'i, 't>(
     {
         return Ok(CssFontMetricOverride::Normal);
     }
-    parse_nonnegative_percentage(input, numeric, name).map(CssFontMetricOverride::Percentage)
+    parse_nonnegative_percentage(input, numeric).map(CssFontMetricOverride::Percentage)
 }
 
 fn parse_font_face_family<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontFaceFamily, ParseError<'i, Error>> {
     let family = parse_non_generic_font_family_name(input)?;
-    CssFontFaceFamily::try_new(family.as_str()).ok_or_else(|| {
-        unsupported_value(input, None, "invalid decoded font-family descriptor name")
-    })
+    CssFontFaceFamily::try_new(family.as_str())
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_font_face_source_list<'i, 't>(
@@ -476,11 +467,7 @@ fn parse_font_face_source_list<'i, 't>(
             Ok(Token::Comma) => Some((member_end, input.position().byte_index())),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => None,
             Ok(_) => {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "invalid font-face src list delimiter",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             Err(error) => return Err(basic(error)),
         };
@@ -520,7 +507,7 @@ fn parse_font_face_source_list<'i, 't>(
     }
 
     CssFontFaceSourceList::try_new(sources).ok_or_else(|| {
-        first_error.unwrap_or_else(|| unsupported_value(input, None, "font-face src list is empty"))
+        first_error.unwrap_or_else(|| unexpected_at(input.current_source_location()))
     })
 }
 
@@ -535,7 +522,7 @@ fn parse_font_face_source<'i, 't>(
         let name = input.parse_nested_block(parse_local_name)?;
         return CssFontLocalName::try_new(name.as_str())
             .map(CssFontFaceSource::Local)
-            .ok_or_else(|| unsupported_value(input, None, "invalid decoded local font name"));
+            .ok_or_else(|| unexpected_at(input.current_source_location()));
     }
 
     let url = parse_font_source_url(input, numeric)?;
@@ -549,18 +536,10 @@ fn parse_font_face_source<'i, 't>(
             .is_ok()
         {
             if saw_tech {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "font source format hint must precede tech hint",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             if format.is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "font source has duplicate format hint",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             format = Some(input.parse_nested_block(parse_font_format)?);
         } else if input
@@ -568,20 +547,12 @@ fn parse_font_face_source<'i, 't>(
             .is_ok()
         {
             if saw_tech {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "font source has duplicate tech hint",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             tech = input.parse_nested_block(parse_font_tech_hints)?;
             saw_tech = true;
         } else {
-            return Err(unsupported_value(
-                input,
-                None,
-                "expected font source format() or tech() hint",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
 
@@ -610,13 +581,8 @@ fn parse_font_format<'i, 't>(
 ) -> std::result::Result<CssFontFormat, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let format = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let hint = CssFontFormatHint::from_ascii_name(ident.as_bytes()).ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                format!("unsupported font format hint `{ident}`"),
-            )
-        })?;
+        let hint = CssFontFormatHint::from_ascii_name(ident.as_bytes())
+            .ok_or_else(|| unexpected_at(location))?;
         CssFontFormat::Keyword(hint)
     } else {
         let value = input.expect_string_cloned().map_err(basic)?;
@@ -635,13 +601,8 @@ fn parse_font_tech_hints<'i, 't>(
         let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         hints.push(
-            CssFontTechHint::from_ascii_name(ident.as_bytes()).ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    format!("unsupported font technology hint `{ident}`"),
-                )
-            })?,
+            CssFontTechHint::from_ascii_name(ident.as_bytes())
+                .ok_or_else(|| unexpected_at(location))?,
         );
 
         if input.is_exhausted() {
@@ -649,20 +610,12 @@ fn parse_font_tech_hints<'i, 't>(
         }
         input.expect_comma().map_err(basic)?;
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "font technology hint list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
 
     if hints.is_empty() {
-        Err(unsupported_value(
-            input,
-            None,
-            "font technology hint list is empty",
-        ))
+        Err(unexpected_at(input.current_source_location()))
     } else {
         Ok(hints)
     }
@@ -711,13 +664,7 @@ fn parse_font_face_style<'i, 't>(
     }
     common_font_style_keyword(&ident)
         .map(CssFontFaceStyle::Keyword)
-        .ok_or_else(|| {
-            unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("font-style descriptor", ident.as_ref()),
-            )
-        })
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_font_face_width<'i, 't>(
@@ -750,11 +697,7 @@ pub(super) fn parse_font_display<'i, 't>(
         "swap" => Ok(CssFontDisplay::Swap),
         "fallback" => Ok(CssFontDisplay::Fallback),
         "optional" => Ok(CssFontDisplay::Optional),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("font-display", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -777,7 +720,7 @@ fn parse_unicode_range_list<'i, 't>(
     }
 
     CssUnicodeRangeList::try_new(ranges)
-        .ok_or_else(|| unsupported_value(input, None, "unicode-range list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn next_is_comma<'i, 't>(input: &mut Parser<'i, 't>) -> bool {

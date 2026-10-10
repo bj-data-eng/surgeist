@@ -1,8 +1,7 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
-use crate::validation::unsupported_keyword_reason;
+use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssFontKerning, CssFontLanguageOverride, CssFontLanguageString, CssFontOpticalSizing,
     CssFontSizeAdjust, CssNumberCalculation, CssSpecifiedNonNegativeNumber,
@@ -16,7 +15,7 @@ pub(super) fn parse_font_kerning<'i, 't>(
         "auto" => Ok(CssFontKerning::Auto),
         "normal" => Ok(CssFontKerning::Normal),
         "none" => Ok(CssFontKerning::None),
-        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-kerning", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -37,9 +36,9 @@ pub(super) fn parse_font_size_adjust<'i, 't>(
     let value = match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&start);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid font-size-adjust number")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeNumber::try_from_component(component)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -51,13 +50,9 @@ pub(super) fn parse_font_size_adjust<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    value.map(CssFontSizeAdjust::Number).map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            "font-size-adjust requires a nonnegative number",
-        )
-    })
+    value
+        .map(CssFontSizeAdjust::Number)
+        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
 }
 
 pub(super) fn parse_font_language_override<'i, 't>(
@@ -72,14 +67,12 @@ pub(super) fn parse_font_language_override<'i, 't>(
     }
     input.skip_whitespace();
     let location = input.current_source_location();
-    let component = numeric.collect(input).map_err(|_| {
-        unsupported_value_at(location, None, "invalid font-language-override string")
-    })?;
+    let component = numeric
+        .collect(input)
+        .map_err(|_| unexpected_at(location))?;
     CssFontLanguageString::try_from_component(component)
         .map(CssFontLanguageOverride::String)
-        .map_err(|_| {
-            unsupported_value_at(location, None, "font-language-override requires a string")
-        })
+        .map_err(|_| unexpected_at(location))
 }
 
 pub(super) fn parse_font_optical_sizing<'i, 't>(
@@ -89,6 +82,6 @@ pub(super) fn parse_font_optical_sizing<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontOpticalSizing::Auto),
         "none" => Ok(CssFontOpticalSizing::None),
-        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-optical-sizing", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }

@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser};
 
 use crate::alignment::*;
-use crate::error::{Error, basic, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 
 fn keyword<'i, 't>(input: &mut Parser<'i, 't>) -> Result<String, ParseError<'i, Error>> {
     Ok(input
@@ -91,11 +91,7 @@ fn parse_value<'i, 't>(
         }
         word => {
             let Some(position) = position(word) else {
-                return Err(unsupported_value_at(
-                    input.current_source_location(),
-                    None,
-                    "invalid alignment keyword",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             };
             if justify_items
                 && overflow.is_none()
@@ -118,13 +114,7 @@ macro_rules! longhand {
         ) -> Result<$type, ParseError<'i, Error>> {
             let location = input.current_source_location();
             let value = parse_value(input, $legacy)?;
-            $type::try_new(value).ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    "alignment keyword is invalid for this property",
-                )
-            })
+            $type::try_new(value).ok_or_else(|| unexpected_at(location))
         }
     };
 }

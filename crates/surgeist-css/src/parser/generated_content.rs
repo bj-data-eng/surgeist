@@ -1,6 +1,6 @@
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(super) fn parse_quotes<'i, 't>(
@@ -18,11 +18,7 @@ pub(super) fn parse_quotes<'i, 't>(
             return if input.is_exhausted() {
                 Ok(keyword)
             } else {
-                Err(unsupported_value(
-                    input,
-                    None,
-                    "a `quotes` keyword cannot be combined with quotation pairs",
-                ))
+                Err(unexpected_at(input.current_source_location()))
             };
         }
     }
@@ -36,7 +32,7 @@ pub(super) fn parse_quotes<'i, 't>(
     }
     CssQuotePairList::try_new(pairs)
         .map(CssQuotes::Pairs)
-        .ok_or_else(|| unsupported_value(input, None, "quotes requires a keyword or string pairs"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_content<'i, 't>(
@@ -57,11 +53,7 @@ pub(super) fn parse_counter_changes<'i, 't>(
         if input.is_exhausted() {
             return Ok(crate::CssCounterChangesValue::none());
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "`none` cannot be combined with counter changes",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     let mut changes = Vec::new();
@@ -74,7 +66,7 @@ pub(super) fn parse_counter_changes<'i, 't>(
     }
 
     crate::CssCounterChangesValue::try_changes(changes)
-        .ok_or_else(|| unsupported_value(input, None, "counter change list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_content_string<'i, 't>(
@@ -82,8 +74,7 @@ pub(super) fn parse_content_string<'i, 't>(
 ) -> std::result::Result<CssContentString, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let value = input.expect_string_cloned().map_err(basic)?;
-    CssContentString::try_new(value.to_string())
-        .ok_or_else(|| unsupported_value_at(location, None, "content string contains null"))
+    CssContentString::try_new(value.to_string()).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn parse_string_set<'i, 't>(
@@ -125,7 +116,7 @@ pub(super) fn parse_bookmark_level<'i, 't>(
     {
         return Ok(crate::CssBookmarkLevel::none());
     }
-    let level = super::values::parse_positive_integer_value(input, numeric, "bookmark-level")?;
+    let level = super::values::parse_positive_integer_value(input, numeric)?;
     Ok(crate::CssBookmarkLevel::try_new(level).expect("checked positive integer root"))
 }
 
@@ -143,6 +134,6 @@ pub(super) fn parse_bookmark_state<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "open" => Ok(crate::CssBookmarkState::Open),
         "closed" => Ok(crate::CssBookmarkState::Closed),
-        _ => Err(unsupported_value(input, None, "unsupported bookmark state")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }

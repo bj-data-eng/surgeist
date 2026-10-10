@@ -100,7 +100,7 @@ fn palette_mix_error<'i>(error: ParseError<'i, Error>) -> ParseError<'i, Error> 
     if matches!(&error.kind, ParseErrorKind::Custom(detail)
         if matches!(detail.kind(), crate::ErrorKind::InvalidColorSyntax(_)))
     {
-        crate::error::unsupported_value_at(error.location, None, "invalid palette-mix argument")
+        crate::error::unexpected_at(error.location)
     } else {
         error
     }

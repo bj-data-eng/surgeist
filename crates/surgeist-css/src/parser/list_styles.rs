@@ -5,7 +5,7 @@ use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 use super::background::parse_image_value;
 use super::content_values::parse_style;
 use super::generated_content::parse_content_string;
-use crate::error::{Error, basic, unsupported_value};
+use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide,
 };
@@ -17,7 +17,7 @@ pub(super) fn parse_marker_side<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "match-self" => Ok(CssMarkerSide::MatchSelf),
         "match-parent" => Ok(CssMarkerSide::MatchParent),
-        _ => Err(unsupported_value(input, None, "expected match-self or match-parent")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -44,7 +44,7 @@ pub(super) fn parse_list_style_position<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "inside" => Ok(CssListStylePosition::Inside),
         "outside" => Ok(CssListStylePosition::Outside),
-        _ => Err(unsupported_value(input, None, "expected inside or outside")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -92,20 +92,12 @@ pub(super) fn parse_list_style<'i, 't>(
             style_type = Some(parse_list_style_type(input, numeric)?);
             continue;
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "list-style has more than one component of a kind",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     let free = usize::from(style_type.is_none()) + usize::from(image.is_none());
     if none_count > free {
-        return Err(unsupported_value(
-            input,
-            None,
-            "list-style has too many none components",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     if none_count != 0 {
         if style_type.is_none() {
@@ -116,5 +108,5 @@ pub(super) fn parse_list_style<'i, 't>(
         }
     }
     CssListStyleValue::try_new(style_type, position, image)
-        .ok_or_else(|| unsupported_value(input, None, "list-style shorthand is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

@@ -1,5 +1,5 @@
 use cssparser::{
-    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserState, ToCss, Token,
+    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserState, Token,
     match_ignore_ascii_case, parse_nth,
 };
 
@@ -188,8 +188,7 @@ pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
         }
     }
     input.expect_exhausted().map_err(selector_basic)?;
-    CssScopeSelectorList::try_new(selectors)
-        .ok_or_else(|| invalid_selector(input, "scope selector list must not be empty"))
+    CssScopeSelectorList::try_new(selectors).ok_or_else(|| invalid_selector(input))
 }
 
 pub(super) fn parse_scoped_style_selector_list<'i, 't>(
@@ -205,8 +204,7 @@ pub(super) fn parse_scoped_style_selector_list<'i, 't>(
         }
     }
     input.expect_exhausted().map_err(selector_basic)?;
-    CssScopedStyleSelectorList::try_new(selectors)
-        .ok_or_else(|| invalid_selector(input, "scoped selector list must not be empty"))
+    CssScopedStyleSelectorList::try_new(selectors).ok_or_else(|| invalid_selector(input))
 }
 
 fn parse_scoped_style_selector<'i, 't>(
@@ -290,7 +288,7 @@ fn parse_style_selector_with_options<'i, 't>(
         }
         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
             input.reset(&state);
-            Err(invalid_selector(input, "selector is missing"))
+            Err(invalid_selector(input))
         }
         Err(error) => Err(selector_basic(error)),
     }
@@ -393,18 +391,12 @@ fn parse_rule_selector_with_options<'i, 't>(
     let first = parse_compound_selector_model_with_options(input, options, recovery)?;
     let selector = parse_selector_after_first_compound(input, first, options, recovery)?;
     if options.compound_only && matches!(selector, CssSelector::Complex(_)) {
-        return Err(invalid_selector(
-            input,
-            "this argument requires a compound selector",
-        ));
+        return Err(invalid_selector(input));
     }
     if options.pseudo_suffix.is_some_and(|suffix| {
         !selector_is_valid_pseudo_suffix(&selector, suffix, options.allow_has)
     }) {
-        return Err(invalid_selector(
-            input,
-            "invalid pseudo-element suffix argument",
-        ));
+        return Err(invalid_selector(input));
     }
     Ok(selector)
 }
@@ -486,10 +478,7 @@ fn parse_selector_after_first_compound<'i, 't>(
     if rest.is_empty() {
         Ok(compound_selector_to_selector(first))
     } else if crate::syntax::complex_selector_has_non_terminal_pseudo_elements(&first, &rest) {
-        Err(invalid_selector(
-            input,
-            "pseudo-element selector must be terminal",
-        ))
+        Err(invalid_selector(input))
     } else {
         // The parser has proved each compound under its own grammar/recovery
         // budget. Public construction's separate specified-output limit is not
@@ -551,10 +540,7 @@ fn parse_type_selector<'i, 't>(
                 let local_name = parse_qualified_local_name(input)?;
                 let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
                     input.reset(&local_start);
-                    return Err(invalid_selector(
-                        input,
-                        format!("undeclared selector namespace prefix `{prefix_or_name}`"),
-                    ));
+                    return Err(invalid_selector(input));
                 };
                 (
                     CssNamespaceConstraint::Named(prefix.clone()),
@@ -608,18 +594,10 @@ fn parse_qualified_local_name<'i, 't>(
     match input.next_including_whitespace() {
         Ok(Token::Ident(name)) => Ok(Some(name.to_string())),
         Ok(Token::Delim('*')) => Ok(None),
-        Ok(token) => {
-            let authored = token.to_css_string();
-            Err(invalid_selector(
-                input,
-                format!(
-                    "selector namespace separator must be followed by a local name or `*`, found `{authored}`"
-                ),
-            ))
+        Ok(_) => Err(invalid_selector(input)),
+        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+            Err(invalid_selector(input))
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => Err(
-            invalid_selector(input, "selector namespace is missing a local name"),
-        ),
         Err(error) => Err(selector_basic(error)),
     }
 }
@@ -667,10 +645,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         }
 
         if pseudo_elements.is_some() {
-            return Err(invalid_selector(
-                input,
-                "pseudo-element selector must be terminal",
-            ));
+            return Err(invalid_selector(input));
         }
 
         if input.try_parse(|input| input.expect_delim('&')).is_ok() {
@@ -696,19 +671,13 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         if input.try_parse(Parser::expect_colon).is_ok() {
             if input.try_parse(expect_adjacent_colon).is_ok() {
                 if !options.allow_pseudo_elements {
-                    return Err(invalid_selector(
-                        input,
-                        "pseudo-elements are not supported in this selector context",
-                    ));
+                    return Err(invalid_selector(input));
                 }
                 let sequence = parse_pseudo_element_sequence(input, options, recovery)?;
                 pseudo_elements = Some(sequence);
             } else if let Ok(first) = input.try_parse(parse_legacy_pseudo_element) {
                 if !options.allow_pseudo_elements {
-                    return Err(invalid_selector(
-                        input,
-                        "pseudo-elements are not supported in this selector context",
-                    ));
+                    return Err(invalid_selector(input));
                 }
                 pseudo_elements = Some(parse_pseudo_element_sequence_from_first(
                     input, first, options, recovery,
@@ -731,7 +700,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                     input.reset(&state);
                     break;
                 }
-                return Err(invalid_selector(input, "unsupported selector namespace"));
+                return Err(invalid_selector(input));
             }
             Ok(token) => {
                 let token = token.clone();
@@ -767,10 +736,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         && pseudo_classes.is_empty()
         && pseudo_elements.is_none()
     {
-        return Err(invalid_selector(
-            input,
-            "selector is missing a simple selector",
-        ));
+        return Err(invalid_selector(input));
     }
     Ok(
         CssCompoundSelector::new_with_qualified_type_and_pseudo_elements(
@@ -937,8 +903,7 @@ fn parse_pseudo_element_sequence_from_first<'i, 't>(
             segments.push(CssPseudoElementSegment::PseudoClass(pseudo));
         }
     }
-    CssPseudoElementSequence::try_from_segments(segments)
-        .ok_or_else(|| invalid_selector(input, "unsupported pseudo-element sequence"))
+    CssPseudoElementSequence::try_from_segments(segments).ok_or_else(|| invalid_selector(input))
 }
 
 fn parse_legacy_pseudo_element<'i, 't>(
@@ -990,9 +955,8 @@ fn parse_pseudo_element<'i, 't>(
                 if let Ok(name) = CssUnknownWebkitPseudoElement::try_new(name.to_string()) {
                     return Ok(CssPseudoElement::UnknownWebkit(name));
                 }
-                let message = format!("unsupported pseudo-element `::{name}`");
                 input.reset(&state);
-                Err(invalid_selector(input, message))
+                Err(invalid_selector(input))
             }
         },
         Ok(Token::Function(name))
@@ -1033,14 +997,13 @@ fn parse_pseudo_element<'i, 't>(
             }
             result
         }
-        Ok(token) => {
-            let message = format!("unsupported pseudo-element `::{}`", token.to_css_string());
+        Ok(_) => {
             input.reset(&state);
-            Err(invalid_selector(input, message))
+            Err(invalid_selector(input))
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => Err(
-            invalid_selector(input, "selector pseudo-element is missing a name"),
-        ),
+        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+            Err(invalid_selector(input))
+        }
         Err(error) => Err(selector_basic(error)),
     }
 }
@@ -1114,12 +1077,8 @@ fn parse_attribute_selector<'i, 't>(
             expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
             CssAttributeMatcher::Substring(parse_attribute_selector_value(input)?)
         }
-        Ok(token) => {
-            let message = format!(
-                "unsupported attribute selector token `{}`",
-                token.to_css_string()
-            );
-            return Err(invalid_selector(input, message));
+        Ok(_) => {
+            return Err(invalid_selector(input));
         }
     };
 
@@ -1156,29 +1115,17 @@ fn parse_attribute_selector_name<'i, 't>(
                     let local_name = input.next_including_whitespace();
                     let local_name = match local_name {
                         Ok(Token::Ident(name)) => name.to_string(),
-                        Ok(token) => {
-                            let authored = token.to_css_string();
-                            return Err(invalid_selector(
-                                input,
-                                format!(
-                                    "attribute namespace separator must be followed by a local name, found `{authored}`"
-                                ),
-                            ));
+                        Ok(_) => {
+                            return Err(invalid_selector(input));
                         }
                         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                            return Err(invalid_selector(
-                                input,
-                                "attribute namespace is missing a local name",
-                            ));
+                            return Err(invalid_selector(input));
                         }
                         Err(error) => return Err(selector_basic(error)),
                     };
                     let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
                         input.reset(&local_start);
-                        return Err(invalid_selector(
-                            input,
-                            format!("undeclared selector namespace prefix `{prefix_or_name}`"),
-                        ));
+                        return Err(invalid_selector(input));
                     };
                     Ok(CssQualifiedAttributeName::new(
                         CssNamespaceConstraint::Named(prefix.clone()),
@@ -1208,20 +1155,11 @@ fn parse_attribute_selector_name<'i, 't>(
         Ok(Token::Delim('*')) => {
             match input.next_including_whitespace() {
                 Ok(Token::Delim('|')) => {}
-                Ok(token) => {
-                    let authored = token.to_css_string();
-                    return Err(invalid_selector(
-                        input,
-                        format!(
-                            "attribute universal namespace must be followed by `|`, found `{authored}`"
-                        ),
-                    ));
+                Ok(_) => {
+                    return Err(invalid_selector(input));
                 }
                 Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                    return Err(invalid_selector(
-                        input,
-                        "attribute universal namespace is missing `|` and a local name",
-                    ));
+                    return Err(invalid_selector(input));
                 }
                 Err(error) => return Err(selector_basic(error)),
             }
@@ -1232,18 +1170,10 @@ fn parse_attribute_selector_name<'i, 't>(
                     CssQualifiedNamePrefix::Any,
                     CssAttributeName::new(name.to_string()),
                 )),
-                Ok(token) => {
-                    let authored = token.to_css_string();
-                    Err(invalid_selector(
-                        input,
-                        format!(
-                            "attribute namespace separator must be followed by a local name, found `{authored}`"
-                        ),
-                    ))
+                Ok(_) => Err(invalid_selector(input)),
+                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+                    Err(invalid_selector(input))
                 }
-                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => Err(
-                    invalid_selector(input, "attribute namespace is missing a local name"),
-                ),
                 Err(error) => Err(selector_basic(error)),
             }
         }
@@ -1253,30 +1183,16 @@ fn parse_attribute_selector_name<'i, 't>(
                 CssQualifiedNamePrefix::ExplicitNone,
                 CssAttributeName::new(name.to_string()),
             )),
-            Ok(token) => {
-                let authored = token.to_css_string();
-                Err(invalid_selector(
-                    input,
-                    format!(
-                        "attribute namespace separator must be followed by a local name, found `{authored}`"
-                    ),
-                ))
+            Ok(_) => Err(invalid_selector(input)),
+            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+                Err(invalid_selector(input))
             }
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => Err(
-                invalid_selector(input, "attribute namespace is missing a local name"),
-            ),
             Err(error) => Err(selector_basic(error)),
         },
-        Ok(token) => {
-            let authored = token.to_css_string();
-            Err(invalid_selector(
-                input,
-                format!("attribute selector is missing a name before `{authored}`"),
-            ))
+        Ok(_) => Err(invalid_selector(input)),
+        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+            Err(invalid_selector(input))
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => Err(
-            invalid_selector(input, "attribute selector is missing a name"),
-        ),
         Err(error) => Err(selector_basic(error)),
     }
 }
@@ -1307,13 +1223,7 @@ fn parse_attribute_case_sensitivity<'i, 't>(
         Ok(Token::Ident(modifier)) if modifier.eq_ignore_ascii_case("s") => {
             Ok(CssAttributeCaseSensitivity::ExplicitSensitive)
         }
-        Ok(token) => {
-            let message = format!(
-                "unsupported attribute selector case modifier `{}`",
-                token.to_css_string()
-            );
-            Err(invalid_selector(input, message))
-        }
+        Ok(_) => Err(invalid_selector(input)),
     }
 }
 
@@ -1331,10 +1241,7 @@ fn parse_pseudo_class_with_options<'i, 't>(
                 Ok(pseudo)
             } else {
                 input.reset(&state);
-                Err(invalid_selector(
-                    input,
-                    format!("unsupported pseudo-class `:{name}` in this receiving context"),
-                ))
+                Err(invalid_selector(input))
             }
         }
         Ok(Token::Function(name)) => {
@@ -1358,14 +1265,13 @@ fn parse_pseudo_class_with_options<'i, 't>(
             }
             result
         }
-        Ok(token) => {
-            let message = format!("unsupported pseudo-class `:{}`", token.to_css_string());
+        Ok(_) => {
             input.reset(&state);
-            Err(invalid_selector(input, message))
+            Err(invalid_selector(input))
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => Err(
-            invalid_selector(input, "selector pseudo-class is missing a name"),
-        ),
+        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+            Err(invalid_selector(input))
+        }
         Err(error) => Err(selector_basic(error)),
     }
 }
@@ -1430,7 +1336,7 @@ fn parse_named_pseudo_class<'i>(
         "out-of-range" => Ok(CssPseudoClass::OutOfRange),
         _ => {
             input.reset(name_start);
-            Err(invalid_selector(input, format!("unsupported pseudo-class `:{name}`")))
+            Err(invalid_selector(input))
         },
     }
 }
@@ -1457,8 +1363,8 @@ fn parse_function_pseudo_class<'i, 't>(
         "is" => CssPseudoClass::Is(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "where" => CssPseudoClass::Where(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "has" if options.allow_has => CssPseudoClass::Has(parse_has_relative_selector_list(input, arguments, recovery)?),
-        "has" => return Err(invalid_selector(input, "nested `:has()` is unsupported")),
-        _ => return Err(invalid_selector_at(name_start, format!("unsupported pseudo-class `:{name}(`"))),
+        "has" => return Err(invalid_selector(input)),
+        _ => return Err(invalid_selector_at(name_start)),
     };
     input.expect_exhausted().map_err(selector_basic)?;
     Ok(pseudo_class)
@@ -1476,8 +1382,7 @@ fn parse_compound_argument<'i, 't>(
     };
     let selector = parse_rule_selector_with_options(input, options, recovery)?;
     input.expect_exhausted().map_err(selector_basic)?;
-    CssCompoundSelectorArgument::try_new(selector)
-        .ok_or_else(|| invalid_selector(input, "invalid compound selector argument"))
+    CssCompoundSelectorArgument::try_new(selector).ok_or_else(|| invalid_selector(input))
 }
 
 fn parse_part_names<'i, 't>(
@@ -1499,8 +1404,7 @@ fn parse_part_names<'i, 't>(
                 .map_err(|error| selector_component_error(start.source_location(), error))?;
         names.push(name);
     }
-    CssPartNameList::try_new(names)
-        .ok_or_else(|| invalid_selector(input, "part requires at least one identifier"))
+    CssPartNameList::try_new(names).ok_or_else(|| invalid_selector(input))
 }
 
 fn parse_view_transition_name_selector<'i>(
@@ -1511,12 +1415,8 @@ fn parse_view_transition_name_selector<'i>(
     let argument = match input.next().map_err(selector_basic)? {
         Token::Delim('*') => CssViewTransitionNameSelector::Wildcard,
         Token::Ident(name) => CssViewTransitionNameSelector::Name(
-            CssCustomIdent::try_new(name.to_string()).ok_or_else(|| {
-                invalid_selector_at(
-                    start.source_location(),
-                    "view transition requires a custom identifier or wildcard",
-                )
-            })?,
+            CssCustomIdent::try_new(name.to_string())
+                .ok_or_else(|| invalid_selector_at(start.source_location()))?,
         ),
         token => {
             return Err(start
@@ -1535,12 +1435,8 @@ fn parse_highlight_name<'i>(
     input.skip_whitespace();
     let start = input.state();
     let name = input.expect_ident().map_err(selector_basic)?.to_string();
-    let name = CssCustomIdent::try_new(name).ok_or_else(|| {
-        invalid_selector_at(
-            start.source_location(),
-            "highlight requires a custom identifier",
-        )
-    })?;
+    let name = CssCustomIdent::try_new(name)
+        .ok_or_else(|| invalid_selector_at(start.source_location()))?;
     input.expect_exhausted().map_err(selector_basic)?;
     Ok(name)
 }
@@ -1577,8 +1473,7 @@ fn parse_language_ranges<'i, 't>(
             break;
         }
     }
-    CssLanguageRangeList::try_new(ranges)
-        .map_err(|_| invalid_selector(input, "`:lang()` requires at least one range"))
+    CssLanguageRangeList::try_new(ranges).map_err(|_| invalid_selector(input))
 }
 
 fn parse_pseudo_selector_list_with_options<'i, 't>(
@@ -1659,7 +1554,7 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
         let following_comma = match input.next() {
             Ok(Token::Comma) => Some((comma_start, input.position().byte_index())),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => None,
-            Ok(_) => return Err(invalid_selector(input, "invalid selector-list delimiter")),
+            Ok(_) => return Err(invalid_selector(input)),
             Err(error) => return Err(selector_basic(error)),
         };
 

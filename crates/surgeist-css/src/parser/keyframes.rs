@@ -13,9 +13,7 @@ use super::{
     is_declaration_recovery_unit, parse_declaration_core, structural_recovery_production,
     structural_rule_diagnostic,
 };
-use crate::error::{
-    CssFeatureId, Error, basic, invalid_at_rule_placement, unsupported_value, unsupported_value_at,
-};
+use crate::error::{CssFeatureId, Error, basic, invalid_at_rule_placement, unexpected_at};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -26,11 +24,9 @@ pub(super) fn parse_keyframes_name<'i, 't>(
 ) -> std::result::Result<CssKeyframesName, ParseError<'i, Error>> {
     let location = input.current_source_location();
     if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
-        return parse_custom_ident_from_str_at("keyframes name", name.as_ref(), location)
+        return parse_custom_ident_from_str_at(name.as_ref(), location)
             .and_then(|name| {
-                CssKeyframesIdent::try_new(name).ok_or_else(|| {
-                    unsupported_value_at(location, None, "reserved keyframes identifier")
-                })
+                CssKeyframesIdent::try_new(name).ok_or_else(|| unexpected_at(location))
             })
             .map(CssKeyframesName::Ident);
     }
@@ -243,16 +239,12 @@ fn parse_keyframe_selector_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "keyframe selector list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
 
     CssKeyframeSelectorList::try_new(selectors)
-        .ok_or_else(|| unsupported_value(input, None, "invalid keyframe selector list"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_keyframe_selector<'i, 't>(
@@ -267,33 +259,15 @@ fn parse_keyframe_selector<'i, 't>(
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "from" => Ok(CssKeyframeSelector::From),
             "to" => Ok(CssKeyframeSelector::To),
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                format!("unsupported keyframe selector `{ident}`"),
-            )),
+            _ => Err(unexpected_at(location)),
         },
         Token::Percentage { .. } => {
-            let value = checked_percentage_value(
-                location,
-                input.slice_from(token_start),
-                "keyframe selector must be 0% through 100%",
-            )?;
+            let value = checked_percentage_value(location, input.slice_from(token_start))?;
             CssKeyframePercent::try_new(value)
                 .map(CssKeyframeSelector::Percent)
-                .ok_or_else(|| {
-                    unsupported_value_at(
-                        location,
-                        None,
-                        "keyframe selector must be 0% through 100%",
-                    )
-                })
+                .ok_or_else(|| unexpected_at(location))
         }
-        Token::Number { .. } => Err(unsupported_value_at(
-            location,
-            None,
-            "keyframe selector percentages must include `%`",
-        )),
+        Token::Number { .. } => Err(unexpected_at(location)),
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             let expression =
                 parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)?;
@@ -301,9 +275,7 @@ fn parse_keyframe_selector<'i, 't>(
                 expression,
             ))
             .map(CssKeyframeSelector::Percent)
-            .ok_or_else(|| {
-                unsupported_value_at(location, None, "invalid keyframe percentage calculation")
-            })
+            .ok_or_else(|| unexpected_at(location))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

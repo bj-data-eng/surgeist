@@ -14,8 +14,8 @@ use super::{
 use crate::CssCounterStyleDescriptorKind;
 use crate::descriptor_values::CounterStyleValueData;
 use crate::error::{
-    Error, basic, descriptor_name_error, invalid_descriptor_combination, unsupported_value,
-    unsupported_value_at, with_descriptor_context,
+    Error, basic, descriptor_name_error, invalid_descriptor_combination, unexpected_at,
+    with_descriptor_context,
 };
 use crate::syntax::*;
 
@@ -37,13 +37,8 @@ pub(super) fn parse_counter_style_name<'i, 't>(
         token_start.byte_index()..input.position().byte_index(),
     )
     .expect("counter name token belongs to the original source");
-    let name = CssCounterStyleName::try_new(name.to_string()).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            "counter-style names exclude CSS-wide keywords, `default` and `none`",
-        )
-    })?;
+    let name =
+        CssCounterStyleName::try_new(name.to_string()).ok_or_else(|| unexpected_at(location))?;
     input.expect_exhausted().map_err(basic)?;
     // Counter Styles 3 §3 excludes these names only from rule definitions.
     // They remain valid references in extends, fallback and speak-as.
@@ -51,11 +46,7 @@ pub(super) fn parse_counter_style_name<'i, 't>(
         name.as_str(),
         "decimal" | "disc" | "square" | "circle" | "disclosure-open" | "disclosure-closed"
     ) {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            "counter-style definitions cannot use protected predefined names",
-        ));
+        return Err(unexpected_at(location));
     }
     Ok(CounterStylePrelude { name, origin })
 }
@@ -332,11 +323,11 @@ fn parse_system<'i, 't>(
             let location = input.current_source_location();
             let name = input.expect_ident_cloned().map_err(basic)?;
             let name = CssCounterStyleName::try_new(name.to_string()).ok_or_else(|| {
-                unsupported_value_at(location, None, "invalid extended counter-style name")
+                unexpected_at(location)
             })?;
             CssCounterStyleSystem::Extends(name)
         },
-        _ => return Err(unsupported_value(input, None, "unsupported counter-style system")),
+        _ => return Err(unexpected_at(input.current_source_location())),
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(system)
@@ -351,7 +342,7 @@ fn parse_symbols<'i, 't>(
         symbols.push(parse_symbol_component(input, numeric)?);
     }
     if symbols.is_empty() {
-        Err(unsupported_value(input, None, "symbols must not be empty"))
+        Err(unexpected_at(input.current_source_location()))
     } else {
         Ok(CssCounterSymbols::new(symbols))
     }
@@ -388,13 +379,8 @@ fn parse_range<'i, 't>(
         let lower_location = input.current_source_location();
         let lower = parse_range_bound(input, numeric)?;
         let upper = parse_range_bound(input, numeric)?;
-        let interval = CssCounterStyleRangeInterval::try_new(lower, upper).ok_or_else(|| {
-            unsupported_value_at(
-                lower_location,
-                None,
-                "counter-style range lower bound exceeds its upper bound",
-            )
-        })?;
+        let interval = CssCounterStyleRangeInterval::try_new(lower, upper)
+            .ok_or_else(|| unexpected_at(lower_location))?;
         ranges.push(interval);
         if input.is_exhausted() {
             break;
@@ -458,11 +444,7 @@ fn parse_additive_symbols<'i, 't>(
         if !CssCounterAdditiveSymbols::weights_strictly_descend(
             &tuples[tuples.len().saturating_sub(2)..],
         ) {
-            return Err(unsupported_value_at(
-                weight_location,
-                None,
-                "additive-symbol weights must be strictly descending",
-            ));
+            return Err(unexpected_at(weight_location));
         }
         if input.is_exhausted() {
             break;
@@ -513,7 +495,7 @@ fn parse_speak_as<'i, 't>(
         "spell-out" => CssCounterStyleSpeakAs::SpellOut,
         _ => CssCounterStyleName::try_new(ident.to_string())
             .map(CssCounterStyleSpeakAs::CounterStyle)
-            .ok_or_else(|| unsupported_value_at(location, None, "invalid spoken counter-style name"))?,
+            .ok_or_else(|| unexpected_at(location))?,
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(value)
@@ -526,11 +508,7 @@ fn parse_nonnegative_integer<'i, 't>(
     let location = input.current_source_location();
     let value = parse_integer_value(input, numeric)?;
     if matches!(&value, CssIntegerValue::Literal(literal) if literal.is_negative()) {
-        Err(unsupported_value_at(
-            location,
-            None,
-            "counter-style integer must be nonnegative",
-        ))
+        Err(unexpected_at(location))
     } else {
         Ok(value)
     }
@@ -541,8 +519,7 @@ fn parse_counter_style_name_component<'i, 't>(
 ) -> Result<CssCounterStyleName, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let name = input.expect_ident_cloned().map_err(basic)?;
-    CssCounterStyleName::try_new(name.to_string())
-        .ok_or_else(|| unsupported_value_at(location, None, "invalid counter-style name"))
+    CssCounterStyleName::try_new(name.to_string()).ok_or_else(|| unexpected_at(location))
 }
 
 fn parse_symbol<'i, 't>(
@@ -561,15 +538,13 @@ fn parse_symbol_component<'i, 't>(
     if let Ok(value) = input.try_parse(Parser::expect_string_cloned) {
         return CssContentString::try_new(value.to_string())
             .map(CssCounterSymbol::String)
-            .ok_or_else(|| unsupported_value(input, None, "counter symbol contains null"));
+            .ok_or_else(|| unexpected_at(input.current_source_location()));
     }
     let location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return CssCounterSymbolIdent::try_new(ident.to_string())
             .map(CssCounterSymbol::Ident)
-            .ok_or_else(|| {
-                unsupported_value_at(location, None, "invalid custom-ident counter symbol")
-            });
+            .ok_or_else(|| unexpected_at(location));
     }
     // An image is selected only after the string/custom-ident alternatives.
     // In particular, `none` is a symbol identifier, not property-level no image.

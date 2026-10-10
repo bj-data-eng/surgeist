@@ -3,10 +3,9 @@ use super::values::{parse_hinted_number_calculation, parse_length_percentage};
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, next_is_comma, parse_numeric_function};
-use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::font_variant::CssFontVariant;
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStyle, CssFontStyleKeyword,
     CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
@@ -53,11 +52,7 @@ pub(super) fn parse_font_size<'i, 't>(
             "larger" => Ok(CssFontSize::Larger),
             "smaller" => Ok(CssFontSize::Smaller),
             "math" => Ok(CssFontSize::Math),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("font-size", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
 
@@ -70,7 +65,7 @@ pub(super) fn parse_font_size<'i, 't>(
             input.reset(&state);
             let component = numeric
                 .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid font-size component"))?;
+                .map_err(|_| unexpected_at(location))?;
             crate::CssSpecifiedNonNegativeLengthPercentage::from_property_component(
                 component, numeric,
             )
@@ -84,13 +79,9 @@ pub(super) fn parse_font_size<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    checked.map(CssFontSize::LengthPercentage).map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            "font-size requires a nonnegative length-percentage or size keyword",
-        )
-    })
+    checked
+        .map(CssFontSize::LengthPercentage)
+        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
 }
 
 pub(super) fn parse_line_height<'i, 't>(
@@ -122,9 +113,9 @@ pub(super) fn parse_line_height<'i, 't>(
     let checked = match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid line-height component")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -138,13 +129,7 @@ pub(super) fn parse_line_height<'i, 't>(
     };
     checked
         .map(CssLineHeight::LengthPercentage)
-        .map_err(|error| {
-            unsupported_value_at(
-                numeric.error_location(&error, location, root_offset),
-                None,
-                "line-height requires a nonnegative number or length-percentage",
-            )
-        })
+        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
 }
 
 fn parse_line_height_number<'i, 't>(
@@ -160,13 +145,9 @@ fn parse_line_height_number<'i, 't>(
             input.reset(&numeric_start);
             let component = numeric
                 .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid line-height number"))?;
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeNumber::try_from_component(component).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "line-height must be non-negative",
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -175,11 +156,7 @@ fn parse_line_height_number<'i, 't>(
                 .and_then(|calculation| {
                     CssSpecifiedNonNegativeNumber::try_from_calculation(calculation).map_err(
                         |error| {
-                            unsupported_value_at(
-                                numeric.error_location(&error, location, root_offset),
-                                None,
-                                "line-height must be non-negative",
-                            )
+                            unexpected_at(numeric.error_location(&error, location, root_offset))
                         },
                     )
                 })
@@ -198,11 +175,7 @@ pub(super) fn parse_writing_mode<'i, 't>(
         "vertical-lr" => Ok(CssWritingMode::VerticalLr),
         "sideways-rl" => Ok(CssWritingMode::SidewaysRl),
         "sideways-lr" => Ok(CssWritingMode::SidewaysLr),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("writing-mode", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -226,8 +199,7 @@ pub(super) fn parse_text_combine_upright<'i, 't>(
                     let value = super::values::parse_integer_literal(input, numeric)?;
                     let count = crate::integer_value::exact_i32(value.numeric().representation())
                         .and_then(CssTextCombineDigitCount::try_literal);
-                    count.ok_or_else(|| unsupported_value_at(location, None,
-                        "text-combine-upright literal count must be between two and four"))?
+                    count.ok_or_else(|| unexpected_at(location))?
                 }
                 Token::Function(name) if crate::numeric::is_math_function(name) => {
                     let expression = parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
@@ -237,11 +209,7 @@ pub(super) fn parse_text_combine_upright<'i, 't>(
             };
             Ok(CssTextCombineUpright::Digits(Some(count)))
         },
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-combine-upright", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -253,11 +221,7 @@ pub(super) fn parse_text_orientation<'i, 't>(
         "mixed" => Ok(CssTextOrientation::Mixed),
         "upright" => Ok(CssTextOrientation::Upright),
         "sideways" => Ok(CssTextOrientation::Sideways),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-orientation", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -272,11 +236,7 @@ pub(super) fn parse_unicode_bidi<'i, 't>(
         "bidi-override" => Ok(CssUnicodeBidi::BidiOverride),
         "isolate-override" => Ok(CssUnicodeBidi::IsolateOverride),
         "plaintext" => Ok(CssUnicodeBidi::Plaintext),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("unicode-bidi", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -301,13 +261,9 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
             input.reset(&start);
             input.skip_whitespace();
             let offset = input.position().byte_index();
-            let component = numeric.collect(input).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, offset),
-                    None,
-                    "invalid glyph orientation dimension",
-                )
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|error| unexpected_at(numeric.error_location(&error, location, offset)))?;
             match component.view() {
                 crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
                     number,
@@ -322,13 +278,7 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
         }
         _ => None,
     };
-    value.ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            "glyph-orientation-vertical accepts only auto, 0deg, 90deg, 0, or 90",
-        )
-    })
+    value.ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn parse_text_indent<'i, 't>(
@@ -344,27 +294,17 @@ pub(super) fn parse_text_indent<'i, 't>(
             match_ignore_ascii_case! { &ident,
                 "hanging" if !hanging => hanging = true,
                 "each-line" if !each_line => each_line = true,
-                _ => return Err(unsupported_value(
-                    input,
-                    None,
-                    unsupported_keyword_reason("text-indent", ident.as_ref()),
-                )),
+                _ => return Err(unexpected_at(input.current_source_location())),
             }
             continue;
         }
         if length.is_some() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "text-indent has more than one length-percentage",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
-        length = Some(parse_length_percentage(input, numeric, "text-indent")?);
+        length = Some(parse_length_percentage(input, numeric)?);
     }
 
-    let length = length.ok_or_else(|| {
-        unsupported_value(input, None, "text-indent requires one length-percentage")
-    })?;
+    let length = length.ok_or_else(|| unexpected_at(input.current_source_location()))?;
     Ok(CssTextIndent::new(length, hanging, each_line))
 }
 
@@ -382,15 +322,11 @@ pub(super) fn parse_vertical_align<'i, 't>(
             "middle" => Ok(CssVerticalAlign::Middle),
             "top" => Ok(CssVerticalAlign::Top),
             "bottom" => Ok(CssVerticalAlign::Bottom),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("vertical-align", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
 
-    parse_length_percentage(input, numeric, "vertical-align").map(CssVerticalAlign::Length)
+    parse_length_percentage(input, numeric).map(CssVerticalAlign::Length)
 }
 
 pub(super) fn parse_font_family_list<'i, 't>(
@@ -403,16 +339,12 @@ pub(super) fn parse_font_family_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "font-family list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
 
     CssFontFamilyList::try_new(families)
-        .ok_or_else(|| unsupported_value(input, None, "font-family list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_font_family_name<'i, 't>(
@@ -433,7 +365,7 @@ fn parse_font_family_name_with_generics<'i, 't>(
 ) -> std::result::Result<CssFontFamilyName, ParseError<'i, Error>> {
     if let Ok(name) = input.try_parse(Parser::expect_string_cloned) {
         return CssFontFamilyName::try_quoted(name.to_string())
-            .ok_or_else(|| unsupported_value(input, None, "invalid decoded font family string"));
+            .ok_or_else(|| unexpected_at(input.current_source_location()));
     }
 
     if allow_generic
@@ -444,7 +376,7 @@ fn parse_font_family_name_with_generics<'i, 't>(
         return input.parse_nested_block(|input| {
             let keyword = input.expect_ident_cloned().map_err(basic)?;
             let generic = CssGenericFontFamily::from_script_keyword(&keyword)
-                .ok_or_else(|| unsupported_value(input, None, "unknown generic font family"))?;
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
             input.expect_exhausted().map_err(basic)?;
             Ok(CssFontFamilyName::generic(generic))
         });
@@ -466,13 +398,8 @@ fn parse_font_family_name_with_generics<'i, 't>(
         return Ok(CssFontFamilyName::generic(generic));
     }
 
-    CssFontFamilyName::try_ident_sequence(parts).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "font family names require nonempty identifier tokens without reserved keywords",
-        )
-    })
+    CssFontFamilyName::try_ident_sequence(parts)
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_font<'i, 't>(
@@ -492,11 +419,7 @@ pub(super) fn parse_font<'i, 't>(
 
     loop {
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "font shorthand is missing a size",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
 
         if let Ok(parsed_size) = input.try_parse(|input| parse_font_size(input, numeric)) {
@@ -507,11 +430,7 @@ pub(super) fn parse_font<'i, 't>(
         if let Ok(()) = input.try_parse(|input| {
             input.expect_ident_matching("normal").map_err(basic)?;
             if normal_count == 4 {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "duplicate font normal component",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             normal_count += 1;
             Ok(())
@@ -544,11 +463,7 @@ pub(super) fn parse_font<'i, 't>(
             continue;
         }
 
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported font shorthand component before size",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     for _ in 0..normal_count {
@@ -561,11 +476,7 @@ pub(super) fn parse_font<'i, 't>(
         } else if stretch.is_none() {
             stretch = Some(CssFontWidthKeyword::Normal);
         } else {
-            return Err(unsupported_value(
-                input,
-                None,
-                "duplicate font normal component",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
 
@@ -578,7 +489,7 @@ pub(super) fn parse_font<'i, 't>(
 
     CssExplicitFont::try_new(style, variant, weight, stretch, size, line_height, families)
         .map(CssFontValue::Explicit)
-        .ok_or_else(|| unsupported_value(input, None, "invalid font shorthand"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_system_font<'i, 't>(
@@ -593,11 +504,7 @@ fn parse_system_font<'i, 't>(
         "message-box" => Ok(CssSystemFont::MessageBox),
         "small-caption" => Ok(CssSystemFont::SmallCaption),
         "status-bar" => Ok(CssSystemFont::StatusBar),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("font", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -629,25 +536,17 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "normal" => Ok(CssAbsoluteFontWeight::Normal),
             "bold" => Ok(CssAbsoluteFontWeight::Bold),
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("absolute font-weight", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(location)),
         },
         Token::Number { .. } | Token::Percentage { .. } | Token::Dimension { .. } => {
             input.reset(&state);
             let component = numeric
                 .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid font-weight number"))?;
+                .map_err(|_| unexpected_at(location))?;
             CssFontWeightNumber::try_from_component(component)
                 .map(CssAbsoluteFontWeight::Number)
                 .map_err(|error| {
-                    unsupported_value_at(
-                        numeric.error_location(&error, location, root_offset),
-                        None,
-                        "font-weight requires a number between 1 and 1000",
-                    )
+                    unexpected_at(numeric.error_location(&error, location, root_offset))
                 })
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -657,13 +556,7 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
                 expression,
             ))
             .map(CssAbsoluteFontWeight::Number)
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "font-weight requires number math",
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -682,13 +575,7 @@ pub(super) fn parse_font_style<'i, 't>(
     }
     common_font_style_keyword(&ident)
         .map(CssFontStyle::Keyword)
-        .ok_or_else(|| {
-            unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("font-style", ident.as_ref()),
-            )
-        })
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn common_font_style_keyword(name: &str) -> Option<CssFontStyleKeyword> {
@@ -716,9 +603,9 @@ pub(super) fn parse_font_oblique_angle<'i, 't>(
     let result = match input.next().map_err(basic)? {
         Token::Dimension { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid font-style angle component")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssFontObliqueAngle::try_from_component(component)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -730,13 +617,7 @@ pub(super) fn parse_font_oblique_angle<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    result.map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            "font-style requires an oblique angle between -90deg and 90deg",
-        )
-    })
+    result.map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
 }
 
 pub(super) fn parse_font_stretch<'i, 't>(
@@ -753,11 +634,7 @@ pub(super) fn parse_font_stretch<'i, 't>(
         "expanded" => Ok(CssFontWidthKeyword::Expanded),
         "extra-expanded" => Ok(CssFontWidthKeyword::ExtraExpanded),
         "ultra-expanded" => Ok(CssFontWidthKeyword::UltraExpanded),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("font-stretch", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -775,9 +652,9 @@ pub(super) fn parse_font_width<'i, 't>(
     let percentage = match input.next().map_err(basic)? {
         Token::Percentage { .. } | Token::Number { .. } | Token::Dimension { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid font-width percentage")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             crate::CssSpecifiedNonNegativePercentage::try_from_component(component)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -789,13 +666,7 @@ pub(super) fn parse_font_width<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
-    .map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            "font-width requires a nonnegative percentage or width keyword",
-        )
-    })?;
+    .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))?;
     Ok(CssFontWidth::Percentage(percentage))
 }
 
@@ -806,11 +677,7 @@ fn parse_css2_font_variant<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssFontVariant::Normal),
         "small-caps" => Ok(CssFontVariant::SmallCaps),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("font-variant", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -854,7 +721,7 @@ pub(super) fn parse_font_synthesis<'i, 't>(
 
     CssFontSynthesisValues::try_new(weight, style, small_caps, position)
         .map(CssFontSynthesis::Values)
-        .ok_or_else(|| unsupported_value(input, None, "font-synthesis requires a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_font_synthesis_weight<'i, 't>(
@@ -864,7 +731,7 @@ pub(super) fn parse_font_synthesis_weight<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontSynthesisWeight::Auto),
         "none" => Ok(CssFontSynthesisWeight::None),
-        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-weight", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -876,7 +743,7 @@ pub(super) fn parse_font_synthesis_style<'i, 't>(
         "auto" => Ok(CssFontSynthesisStyle::Auto),
         "none" => Ok(CssFontSynthesisStyle::None),
         "oblique-only" => Ok(CssFontSynthesisStyle::ObliqueOnly),
-        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-style", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -887,7 +754,7 @@ pub(super) fn parse_font_synthesis_small_caps<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontSynthesisSmallCaps::Auto),
         "none" => Ok(CssFontSynthesisSmallCaps::None),
-        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-small-caps", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -898,7 +765,7 @@ pub(super) fn parse_font_synthesis_position<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontSynthesisPosition::Auto),
         "none" => Ok(CssFontSynthesisPosition::None),
-        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-position", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -906,20 +773,19 @@ pub(super) fn parse_letter_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
-    parse_text_spacing_adjustment(input, numeric, "letter-spacing")
+    parse_text_spacing_adjustment(input, numeric)
 }
 
 pub(super) fn parse_word_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
-    parse_text_spacing_adjustment(input, numeric, "word-spacing")
+    parse_text_spacing_adjustment(input, numeric)
 }
 
 fn parse_text_spacing_adjustment<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    property: &str,
 ) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
@@ -934,9 +800,9 @@ fn parse_text_spacing_adjustment<'i, 't>(
     let value = match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, format!("invalid {property} component"))
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedLengthPercentage::from_property_component(component, numeric)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -948,13 +814,7 @@ fn parse_text_spacing_adjustment<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
-    .map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            format!("{property} requires normal or a length-percentage"),
-        )
-    })?;
+    .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))?;
     Ok(CssTextSpacingAdjustment::LengthPercentage(value))
 }
 
@@ -972,18 +832,10 @@ pub(super) fn parse_text_decoration<'i, 't>(
     while !input.is_exhausted() {
         if let Ok(component) = input.try_parse(parse_text_decoration_line_component) {
             if line_none || line_error.is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "text-decoration line mixes none with line components",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             if line_components.contains(&component) {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "duplicate text-decoration-line component",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             line_components.push(component);
             continue;
@@ -993,18 +845,14 @@ pub(super) fn parse_text_decoration<'i, 't>(
             .is_ok()
         {
             if line_none || line_error.is_some() || !line_components.is_empty() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "duplicate text-decoration-line none",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             line_none = true;
             continue;
         }
         if let Ok(error) = input.try_parse(super::text_decoration::parse_decoration_error) {
             if line_none || line_error.is_some() || !line_components.is_empty() {
-                return Err(unsupported_value(input, None, "exclusive error line"));
+                return Err(unexpected_at(input.current_source_location()));
             }
             line_error = Some(error);
             continue;
@@ -1029,11 +877,7 @@ pub(super) fn parse_text_decoration<'i, 't>(
             continue;
         }
 
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported text-decoration component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     let line = if let Some(error) = line_error {
@@ -1051,7 +895,7 @@ pub(super) fn parse_text_decoration<'i, 't>(
     } else {
         Some(CssTextDecoration::new(line, color, style, thickness))
     }
-    .ok_or_else(|| unsupported_value(input, None, "text-decoration shorthand is empty"))
+    .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_text_decoration_line<'i, 't>(
@@ -1071,17 +915,13 @@ pub(super) fn parse_text_decoration_line<'i, 't>(
     while !input.is_exhausted() {
         let component = parse_text_decoration_line_component(input)?;
         if components.contains(&component) {
-            return Err(unsupported_value(
-                input,
-                None,
-                "duplicate text-decoration-line component",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         components.push(component);
     }
 
     CssTextDecorationLine::try_new(components)
-        .ok_or_else(|| unsupported_value(input, None, "text-decoration-line is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_text_decoration_line_component<'i, 't>(
@@ -1093,11 +933,7 @@ pub(super) fn parse_text_decoration_line_component<'i, 't>(
         "overline" => Ok(CssTextDecorationLineComponent::Overline),
         "line-through" => Ok(CssTextDecorationLineComponent::LineThrough),
         "blink" => Ok(CssTextDecorationLineComponent::Blink),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-decoration-line", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -1111,11 +947,7 @@ pub(super) fn parse_text_decoration_style<'i, 't>(
         "dotted" => Ok(CssTextDecorationStyle::Dotted),
         "dashed" => Ok(CssTextDecorationStyle::Dashed),
         "wavy" => Ok(CssTextDecorationStyle::Wavy),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-decoration-style", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -1127,16 +959,11 @@ pub(super) fn parse_text_decoration_thickness<'i, 't>(
         return match_ignore_ascii_case! { &ident,
             "auto" => Ok(CssTextDecorationThickness::Auto),
             "from-font" => Ok(CssTextDecorationThickness::FromFont),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("text-decoration-thickness", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
 
-    parse_length_percentage(input, numeric, "text-decoration-thickness")
-        .map(CssTextDecorationThickness::Length)
+    parse_length_percentage(input, numeric).map(CssTextDecorationThickness::Length)
 }
 
 pub(super) fn parse_text_transform<'i, 't>(
@@ -1168,13 +995,7 @@ pub(super) fn parse_text_transform<'i, 't>(
     }
     CssTextTransformSet::try_new(case, full_width, full_size_kana)
         .map(CssTextTransform::Transforms)
-        .ok_or_else(|| {
-            unsupported_value(
-                input,
-                None,
-                "text-transform requires a nonempty transform set",
-            )
-        })
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_wrap_inside<'i, 't>(
@@ -1236,11 +1057,7 @@ pub(super) fn parse_word_space_transform<'i, 't>(
     match ideographic {
         Some(false) => Ok(CssWordSpaceTransform::Space { auto_phrase }),
         Some(true) => Ok(CssWordSpaceTransform::IdeographicSpace { auto_phrase }),
-        None => Err(unsupported_value(
-            input,
-            None,
-            "word-space-transform requires a separator base",
-        )),
+        None => Err(unexpected_at(input.current_source_location())),
     }
 }
 pub(super) fn parse_tab_size<'i, 't>(
@@ -1250,11 +1067,11 @@ pub(super) fn parse_tab_size<'i, 't>(
     // Number-first preserves the authored bare-zero choice. Typed math tries
     // pure roots through the shared original numeric context, never a reparse.
     if let Ok(number) =
-        input.try_parse(|input| super::values::parse_nonnegative_number(input, numeric, "tab-size"))
+        input.try_parse(|input| super::values::parse_nonnegative_number(input, numeric))
     {
         return Ok(CssTabSize::Number(number));
     }
-    super::values::parse_nonnegative_length(input, numeric, "tab-size").map(CssTabSize::Length)
+    super::values::parse_nonnegative_length(input, numeric).map(CssTabSize::Length)
 }
 
 // Text4's remaining authored families share finite role models and the existing
@@ -1265,7 +1082,7 @@ macro_rules! text_keyword_parser {
             let ident = input.expect_ident_cloned().map_err(basic)?;
             match_ignore_ascii_case! { &ident,
                 $($text => Ok($ty::$variant),)+
-                _ => Err(unsupported_value(input, None, "invalid Text keyword")),
+                _ => Err(unexpected_at(input.current_source_location())),
             }
         }
     };
@@ -1297,10 +1114,10 @@ pub(super) fn parse_hyphenate_character<'i, 't>(
     let location = input.current_source_location();
     let component = numeric
         .collect(input)
-        .map_err(|_| unsupported_value_at(location, None, "expected hyphenation string"))?;
+        .map_err(|_| unexpected_at(location))?;
     CssHyphenateString::try_from_component(component)
         .map(CssHyphenateCharacter::String)
-        .ok_or_else(|| unsupported_value_at(location, None, "expected hyphenation string or auto"))
+        .ok_or_else(|| unexpected_at(location))
 }
 fn parse_hyphenate_integer<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1308,13 +1125,7 @@ fn parse_hyphenate_integer<'i, 't>(
 ) -> std::result::Result<CssHyphenateLimitInteger, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let integer = super::values::parse_integer_value(input, numeric)?;
-    CssHyphenateLimitInteger::try_new(integer).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            "expected nonnegative integer or Integer-root function",
-        )
-    })
+    CssHyphenateLimitInteger::try_new(integer).ok_or_else(|| unexpected_at(location))
 }
 fn parse_hyphenate_chars_component<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1361,13 +1172,13 @@ pub(super) fn parse_hyphenate_limit_zone<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
-    parse_length_percentage(input, numeric, "hyphenate-limit-zone")
+    parse_length_percentage(input, numeric)
 }
 pub(super) fn parse_line_padding<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssSpecifiedLength, ParseError<'i, Error>> {
-    super::values::parse_length(input, numeric, "line-padding")
+    super::values::parse_length(input, numeric)
 }
 pub(super) fn parse_text_justify<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1380,22 +1191,18 @@ pub(super) fn parse_text_justify<'i, 't>(
             .is_ok()
         {
             if no_compress {
-                return Err(unsupported_value(input, None, "duplicate no-compress"));
+                return Err(unexpected_at(input.current_source_location()));
             }
             no_compress = true;
         } else {
             let value = parse_text_justify_base(input)?;
             if base.replace(value).is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "duplicate justification base",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         }
     }
     CssTextJustify::try_new(base, no_compress)
-        .ok_or_else(|| unsupported_value(input, None, "empty justification value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 fn parse_autospace_flags<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1417,7 +1224,7 @@ fn parse_autospace_flags<'i, 't>(
             break;
         };
         if std::mem::replace(&mut flags[index], true) {
-            return Err(unsupported_value(input, None, "duplicate autospace flag"));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     Ok(flags)
@@ -1440,7 +1247,7 @@ fn parse_autospace<'i, 't>(
     };
     CssAutospaceValues::try_new(flags[0], flags[1], flags[2], mode)
         .map(CssAutospace::Spacing)
-        .ok_or_else(|| unsupported_value(input, None, "empty autospace constituent"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_text_autospace<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1468,7 +1275,7 @@ pub(super) fn parse_text_box_trim<'i, 't>(
         "trim-start" => Ok(CssTextBoxTrim::TrimStart),
         "trim-end" => Ok(CssTextBoxTrim::TrimEnd),
         "trim-both" => Ok(CssTextBoxTrim::TrimBoth),
-        _ => Err(unsupported_value(input, None, "a text-box-trim keyword")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 fn parse_text_under_edge<'i, 't>(
@@ -1480,7 +1287,7 @@ fn parse_text_under_edge<'i, 't>(
         "ideographic" => Ok(CssTextUnderEdge::Ideographic),
         "ideographic-ink" => Ok(CssTextUnderEdge::IdeographicInk),
         "alphabetic" => Ok(CssTextUnderEdge::Alphabetic),
-        _ => Err(unsupported_value(input, None, "an under text edge")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 pub(super) fn parse_text_box_edge<'i, 't>(
@@ -1496,16 +1303,14 @@ pub(super) fn parse_text_box_edge<'i, 't>(
         "ideographic-ink" => (CssTextOverEdge::IdeographicInk, Some(CssTextEdgeMetric::IdeographicInk)),
         "cap" => (CssTextOverEdge::Cap, None),
         "ex" => (CssTextOverEdge::Ex, None),
-        _ => return Err(unsupported_value(input, None, "an over text edge or auto")),
+        _ => return Err(unexpected_at(input.current_source_location())),
     };
     if let Ok(under) = input.try_parse(parse_text_under_edge) {
         return Ok(CssTextBoxEdge::Edge(CssTextEdge::Pair { over, under }));
     }
     single
         .map(|metric| CssTextBoxEdge::Edge(CssTextEdge::Single(metric)))
-        .ok_or_else(|| {
-            unsupported_value(input, None, "an explicit under text edge after cap or ex")
-        })
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_text_box<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1523,7 +1328,7 @@ pub(super) fn parse_text_box<'i, 't>(
     }
     CssTextBoxValues::try_new(trim, edge)
         .map(CssTextBox::Components)
-        .ok_or_else(|| unsupported_value(input, None, "a nonempty text-box value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_text_spacing_trim<'i, 't>(
@@ -1559,7 +1364,7 @@ pub(super) fn parse_text_spacing<'i, 't>(
     }
     CssTextSpacingValues::try_new(trim, autospace)
         .map(CssTextSpacing::Components)
-        .ok_or_else(|| unsupported_value(input, None, "empty text-spacing value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_hanging_punctuation<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1580,10 +1385,10 @@ pub(super) fn parse_hanging_punctuation<'i, 't>(
             "last" if !last => last = true,
             "force-end" if end.is_none() => end = Some(CssHangingPunctuationEnd::ForceEnd),
             "allow-end" if end.is_none() => end = Some(CssHangingPunctuationEnd::AllowEnd),
-            _ => return Err(unsupported_value(input, None, "duplicate, conflicting or unknown hanging role")),
+            _ => return Err(unexpected_at(input.current_source_location())),
         };
     }
     CssHangingPunctuationValues::try_new(first, end, last)
         .map(CssHangingPunctuation::Hang)
-        .ok_or_else(|| unsupported_value(input, None, "empty hanging-punctuation value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

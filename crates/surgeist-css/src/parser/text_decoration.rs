@@ -1,7 +1,7 @@
 //! Selected Decoration 4 intrinsic grammars.
 use super::color::parse_color;
 use super::values::parse_length_percentage;
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::*;
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
@@ -9,7 +9,7 @@ macro_rules! keyword {
     ($parser:ident, $ty:ident, $($text:literal => $variant:ident),+ $(,)?) => {
         pub(super) fn $parser<'i, 't>(input: &mut Parser<'i, 't>) -> std::result::Result<$ty, ParseError<'i, Error>> {
             let ident = input.expect_ident_cloned().map_err(basic)?;
-            match_ignore_ascii_case! { &ident, $($text => Ok($ty::$variant),)+ _ => Err(unsupported_value(input, None, "invalid decoration keyword")) }
+            match_ignore_ascii_case! { &ident, $($text => Ok($ty::$variant),)+ _ => Err(unexpected_at(input.current_source_location())) }
         }
     };
 }
@@ -38,22 +38,18 @@ pub(super) fn parse_text_underline_position<'i, 't>(
     while !input.is_exhausted() {
         if let Ok(value) = input.try_parse(parse_underline_vertical) {
             if vertical.replace(value).is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "duplicate underline vertical",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         } else {
             let value = parse_text_side(input)?;
             if side.replace(value).is_some() {
-                return Err(unsupported_value(input, None, "duplicate underline side"));
+                return Err(unexpected_at(input.current_source_location()));
             }
         }
     }
     CssUnderlinePosition::try_new(vertical, side)
         .map(CssTextUnderlinePosition::Position)
-        .ok_or_else(|| unsupported_value(input, None, "empty underline position"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_text_underline_offset<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -65,7 +61,7 @@ pub(super) fn parse_text_underline_offset<'i, 't>(
     {
         return Ok(CssTextUnderlineOffset::Auto);
     }
-    parse_length_percentage(input, numeric, "text-underline-offset").map(|value| {
+    parse_length_percentage(input, numeric).map(|value| {
         CssTextUnderlineOffset::Length(CssTextUnderlineOffsetLength::from_parsed(value))
     })
 }
@@ -82,7 +78,7 @@ pub(super) fn parse_text_decoration_skip_spaces<'i, 't>(
     let start = ident.eq_ignore_ascii_case("start");
     let end = ident.eq_ignore_ascii_case("end");
     if !start && !end {
-        return Err(unsupported_value(input, None, "invalid skip spaces"));
+        return Err(unexpected_at(input.current_source_location()));
     }
     if input.is_exhausted() {
         return Ok(if start {
@@ -115,7 +111,7 @@ fn parse_emphasis_mark<'i, 't>(
         fill_origin = fill.and(origin);
     }
     CssTextEmphasisMark::from_parsed(fill, shape, fill_origin, shape_origin)
-        .ok_or_else(|| unsupported_value(input, None, "empty emphasis mark"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_text_emphasis_style<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -134,10 +130,10 @@ pub(super) fn parse_text_emphasis_style<'i, 't>(
     let location = input.current_source_location();
     let component = numeric
         .collect(input)
-        .map_err(|_| unsupported_value_at(location, None, "expected emphasis string"))?;
+        .map_err(|_| unexpected_at(location))?;
     CssTextEmphasisString::from_parsed(component)
         .map(CssTextEmphasisStyle::String)
-        .ok_or_else(|| unsupported_value_at(location, None, "invalid emphasis style"))
+        .ok_or_else(|| unexpected_at(location))
 }
 pub(super) fn parse_text_emphasis<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -158,14 +154,10 @@ pub(super) fn parse_text_emphasis<'i, 't>(
             color = Some(value);
             continue;
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "invalid emphasis shorthand component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     if style.is_none() && color.is_none() {
-        return Err(unsupported_value(input, None, "empty emphasis"));
+        return Err(unexpected_at(input.current_source_location()));
     }
     Ok(CssTextEmphasis::new(style, color))
 }
@@ -202,13 +194,13 @@ pub(super) fn parse_text_emphasis_skip<'i, 't>(
     let mut flags = [false; 4];
     while !input.is_exhausted() {
         let ident = input.expect_ident_cloned().map_err(basic)?;
-        let index = match_ignore_ascii_case! { &ident, "spaces" => 0, "punctuation" => 1, "symbols" => 2, "narrow" => 3, _ => return Err(unsupported_value(input, None, "invalid emphasis skip")) };
+        let index = match_ignore_ascii_case! { &ident, "spaces" => 0, "punctuation" => 1, "symbols" => 2, "narrow" => 3, _ => return Err(unexpected_at(input.current_source_location())) };
         if std::mem::replace(&mut flags[index], true) {
-            return Err(unsupported_value(input, None, "duplicate emphasis skip"));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssTextEmphasisSkip::try_new(flags[0], flags[1], flags[2], flags[3])
-        .ok_or_else(|| unsupported_value(input, None, "empty emphasis skip"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_text_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -225,16 +217,16 @@ pub(super) fn parse_text_shadow<'i, 't>(
         let shadow = super::box_model::parse_shadow(input, numeric)?;
         shadows.push(
             CssTextShadowLayer::from_parsed(shadow)
-                .ok_or_else(|| unsupported_value(input, None, "negative text-shadow spread"))?,
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?,
         );
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(input, None, "empty text-shadow layer"));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssTextShadowList::from_parsed(shadows)
         .map(CssTextShadow::Shadows)
-        .ok_or_else(|| unsupported_value(input, None, "empty text-shadow list"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

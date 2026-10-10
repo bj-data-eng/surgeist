@@ -48,13 +48,7 @@ pub(super) fn parse_url<'i, 't>(
                                     modifier_start.position().byte_index(),
                                 );
                                 error.component_error().map_or_else(
-                                    || {
-                                        crate::error::unsupported_value(
-                                            input,
-                                            None,
-                                            "invalid URL modifier component",
-                                        )
-                                    },
+                                    || crate::error::unexpected_at(input.current_source_location()),
                                     |detail| {
                                         crate::error::invalid_component_value(
                                             location,
@@ -65,10 +59,8 @@ pub(super) fn parse_url<'i, 't>(
                             })?;
                             input.reset(&modifier_end);
                             let CssComponentValueRef::Function(function) = collected.view() else {
-                                return Err(crate::error::unsupported_value(
-                                    input,
-                                    None,
-                                    "URL modifier is not a function",
+                                return Err(crate::error::unexpected_at(
+                                    input.current_source_location(),
                                 ));
                             };
                             modifiers.push(CssUrlModifier::Function(

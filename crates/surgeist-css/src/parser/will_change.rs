@@ -1,6 +1,6 @@
 //! CSS Will Change 1 §2 authored grammar.
 
-use crate::error::{Error, basic, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssWillChange, CssWillChangeFeature, CssWillChangeFeatures, CssWillChangePropertyName,
 };
@@ -26,7 +26,7 @@ pub(super) fn parse_will_change<'i, 't>(
         }
         CssWillChangePropertyName::try_new(ident.to_string())
             .map(CssWillChangeFeature::Property)
-            .ok_or_else(|| unsupported_value_at(location, None, "excluded will-change identifier"))
+            .ok_or_else(|| unexpected_at(location))
     })?;
     Ok(CssWillChange::Features(
         CssWillChangeFeatures::try_new(features).expect("parser requires a nonempty list"),

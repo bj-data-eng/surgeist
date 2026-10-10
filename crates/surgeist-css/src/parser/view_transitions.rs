@@ -1,6 +1,6 @@
 //! CSS View Transitions 1 authored property grammar.
 
-use crate::error::{Error, basic, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::{CssCustomIdent, CssViewTransitionIdent, CssViewTransitionName};
 use cssparser::{ParseError, Parser};
 
@@ -15,7 +15,5 @@ pub(super) fn parse_view_transition_name<'i, 't>(
     CssCustomIdent::try_new(name.to_string())
         .and_then(CssViewTransitionIdent::try_new)
         .map(CssViewTransitionName::Custom)
-        .ok_or_else(|| {
-            unsupported_value_at(location, None, "excluded view-transition-name identifier")
-        })
+        .ok_or_else(|| unexpected_at(location))
 }

@@ -100,10 +100,7 @@ fn parser_error<'i>(
         CssSupportsConstructionError::Component(e) => {
             crate::error::invalid_component_value(location, e)
         }
-        _ => invalid_syntax(
-            location,
-            "expected a valid supports condition or declaration",
-        ),
+        _ => invalid_syntax(location),
     }
 }
 fn validate(

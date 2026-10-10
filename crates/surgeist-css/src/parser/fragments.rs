@@ -426,9 +426,8 @@ pub fn parse_font_palette_values_block(
         crate::CssParserContext::default(),
         |source, input, diagnostics, state| {
             let descriptors = font_palette_values::parse_body(source, input, diagnostics, state);
-            crate::font_palette_values::validate_descriptors(&descriptors).map_err(|error| {
-                crate::error::invalid_syntax(input.current_source_location(), error.to_string())
-            })?;
+            crate::font_palette_values::validate_descriptors(&descriptors)
+                .map_err(|_| crate::error::invalid_syntax(input.current_source_location()))?;
             Ok(descriptors)
         },
     )
@@ -510,11 +509,8 @@ pub fn parse_font_feature_value_block(
         crate::CssParserContext::default(),
         move |source, input, diagnostics, state| {
             let recovered = font_feature_values::parse_definition_body(source, input, kind, state);
-            let block = crate::CssFontFeatureValueBlock::try_new(kind, recovered.syntax).map_err(
-                |error| {
-                    crate::error::invalid_syntax(input.current_source_location(), error.to_string())
-                },
-            )?;
+            let block = crate::CssFontFeatureValueBlock::try_new(kind, recovered.syntax)
+                .map_err(|_| crate::error::invalid_syntax(input.current_source_location()))?;
             diagnostics.extend(recovered.diagnostics);
             Ok(block)
         },

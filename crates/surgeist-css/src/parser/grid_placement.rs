@@ -1,7 +1,7 @@
 use cssparser::{ParseError, Parser, Token};
 
 use super::values::{next_is_delim, parse_integer_value};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::{
     CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange, CssIdent, CssIntegerValue,
@@ -21,45 +21,32 @@ pub(super) fn parse_grid_line<'i, 't>(
         match input.next().map_err(basic)? {
             Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => {
                 if span || name.is_some() || integer.is_some() {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "auto must stand alone",
-                    ));
+                    return Err(unexpected_at(location));
                 }
                 if !input.is_exhausted() && !next_is_delim(input, '/') {
-                    return Err(unsupported_value(input, None, "auto must stand alone"));
+                    return Err(unexpected_at(input.current_source_location()));
                 }
                 return Ok(CssGridLine::Auto);
             }
             Token::Ident(ident) if ident.eq_ignore_ascii_case("span") => {
                 if span {
-                    return Err(unsupported_value_at(location, None, "duplicate grid span"));
+                    return Err(unexpected_at(location));
                 }
                 span = true;
             }
             Token::Ident(ident) => {
                 if name.is_some() {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "duplicate grid line name",
-                    ));
+                    return Err(unexpected_at(location));
                 }
                 name = Some(
-                    CssGridLineName::try_new(CssIdent::new(ident.as_ref())).ok_or_else(|| {
-                        unsupported_value_at(location, None, "reserved grid line name")
-                    })?,
+                    CssGridLineName::try_new(CssIdent::new(ident.as_ref()))
+                        .ok_or_else(|| unexpected_at(location))?,
                 );
             }
             Token::Number { .. } | Token::Function(_) => {
                 input.reset(&state);
                 if integer.is_some() {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "duplicate grid line integer",
-                    ));
+                    return Err(unexpected_at(location));
                 }
                 integer = Some(parse_integer_value(input, numeric)?);
             }
@@ -69,9 +56,8 @@ pub(super) fn parse_grid_line<'i, 't>(
     if span {
         let positive = match integer {
             Some(CssIntegerValue::Literal(value)) => Some(CssPositiveIntegerValue::Literal(
-                CssPositiveIntegerLiteral::try_new(value).ok_or_else(|| {
-                    unsupported_value(input, None, "grid span requires a positive integer")
-                })?,
+                CssPositiveIntegerLiteral::try_new(value)
+                    .ok_or_else(|| unexpected_at(input.current_source_location()))?,
             )),
             Some(CssIntegerValue::Calculation(value)) => {
                 Some(CssPositiveIntegerValue::Calculation(value))
@@ -79,13 +65,13 @@ pub(super) fn parse_grid_line<'i, 't>(
             None => None,
         };
         CssGridLine::try_span(positive, name)
-            .ok_or_else(|| unsupported_value(input, None, "grid span needs an integer or name"))
+            .ok_or_else(|| unexpected_at(input.current_source_location()))
     } else if let Some(integer) = integer {
         CssGridLine::try_indexed(integer, name)
-            .ok_or_else(|| unsupported_value(input, None, "grid line index must not be zero"))
+            .ok_or_else(|| unexpected_at(input.current_source_location()))
     } else {
         name.map(CssGridLine::Name)
-            .ok_or_else(|| unsupported_value(input, None, "missing grid line"))
+            .ok_or_else(|| unexpected_at(input.current_source_location()))
     }
 }
 
@@ -123,5 +109,5 @@ pub(super) fn parse_grid_area<'i, 't>(
         None
     };
     CssGridArea::try_new(row_start, column_start, row_end, column_end)
-        .ok_or_else(|| unsupported_value(input, None, "grid-area members must be contiguous"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

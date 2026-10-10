@@ -7,7 +7,7 @@ use super::background::{
 };
 use super::position::parse_physical_position_prefix;
 use super::values::next_is_comma;
-use crate::error::{Error, basic, unsupported_value};
+use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
 use cssparser::{ParseError, Parser};
 
@@ -17,7 +17,7 @@ macro_rules! keyword_parser {
             let ident = input.expect_ident_cloned().map_err(basic)?;
             match ident.to_ascii_lowercase().as_str() {
                 $($keyword => Ok($ty::$variant),)+
-                _ => Err(unsupported_value(input, None, concat!("invalid ", stringify!($ty), " keyword"))),
+                _ => Err(unexpected_at(input.current_source_location())),
             }
         }
     };
@@ -33,7 +33,7 @@ pub(super) fn parse_mask_box<'i, 't>(
     let ident = input.expect_ident_cloned().map_err(basic)?;
     CssBoxEdgeKeyword::from_keyword(&ident)
         .and_then(CssMaskBox::try_new)
-        .ok_or_else(|| unsupported_value(input, None, "invalid mask geometry box"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_mask_clip<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -53,7 +53,7 @@ macro_rules! list_parser {
             input: &mut Parser<'i, 't>,
         ) -> Result<$list, ParseError<'i, Error>> {
             let values = input.parse_comma_separated($parse)?;
-            $list::try_new(values).ok_or_else(|| unsupported_value(input, None, "empty mask list"))
+            $list::try_new(values).ok_or_else(|| unexpected_at(input.current_source_location()))
         }
     };
 }
@@ -121,14 +121,10 @@ pub(super) fn parse_mask_border<'i, 't>(
             mode = Some(value);
             continue;
         }
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported or duplicate mask-border component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     CssMaskBorder::try_new(source, slice, width, outset, repeat, mode)
-        .ok_or_else(|| unsupported_value(input, None, "empty mask-border shorthand"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_mask_list<'i, 't>(
@@ -142,15 +138,11 @@ pub(super) fn parse_mask_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "mask list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     if layers.is_empty() {
-        Err(unsupported_value(input, None, "mask list is empty"))
+        Err(unexpected_at(input.current_source_location()))
     } else {
         Ok(CssMaskList::new(layers))
     }
@@ -216,19 +208,15 @@ pub(super) fn parse_mask_layer<'i, 't>(
                 CssMaskClip::Box(value) => boxes.push(value),
                 CssMaskClip::NoClip if !no_clip => no_clip = true,
                 CssMaskClip::NoClip => {
-                    return Err(unsupported_value(input, None, "duplicate no-clip"));
+                    return Err(unexpected_at(input.current_source_location()));
                 }
             }
             if boxes.len() > 2 || no_clip && boxes.len() > 1 {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "too many mask geometry slots",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             continue;
         }
-        return Err(unsupported_value(input, None, "unsupported mask component"));
+        return Err(unexpected_at(input.current_source_location()));
     }
     let boxes = match (boxes.as_slice(), no_clip) {
         ([], false) => None,
@@ -243,13 +231,9 @@ pub(super) fn parse_mask_layer<'i, 't>(
             clip: CssMaskClip::Box(*clip),
         }),
         _ => {
-            return Err(unsupported_value(
-                input,
-                None,
-                "invalid mask geometry slots",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     };
     CssMaskLayer::try_new(image, position, size, repeat, boxes, composite, mode)
-        .ok_or_else(|| unsupported_value(input, None, "mask layer is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

@@ -2,8 +2,7 @@
 
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use crate::error::{Error, basic, unsupported_value};
-use crate::validation::unsupported_keyword_reason;
+use crate::error::{Error, basic, unexpected_at};
 use crate::{CssBorderStyle, CssBorderStylePair, CssBorderStyleShorthand, CssBoxSideKind};
 
 pub(super) fn parse_border_style<'i, 't>(
@@ -21,11 +20,7 @@ pub(super) fn parse_border_style<'i, 't>(
         "ridge" => Ok(CssBorderStyle::Ridge),
         "inset" => Ok(CssBorderStyle::Inset),
         "outset" => Ok(CssBorderStyle::Outset),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("border-style", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -56,13 +51,9 @@ pub(super) fn parse_border_style_shorthand<'i, 't>(
     while !input.is_exhausted() {
         values.push(parse_border_style(input)?);
         if values.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "border-style accepts at most four values",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssBorderStyleShorthand::try_new(kind, values)
-        .ok_or_else(|| unsupported_value(input, None, "border-style requires one to four values"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

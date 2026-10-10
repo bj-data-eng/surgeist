@@ -8,14 +8,13 @@ use super::box_model::parse_drop_shadow;
 use super::position::parse_full_position;
 use super::url::parse_url;
 use super::values::{
-    AngleParserContext, next_is_delim, next_is_ident, parse_angle_or_zero, parse_angle_value,
+    next_is_delim, next_is_ident, parse_angle_or_zero, parse_angle_value,
     parse_hinted_number_calculation, parse_nonnegative_number, parse_nonnegative_percentage,
     parse_specified_number, parse_specified_percentage,
 };
 use crate::CssValueOrigin;
-use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 
 pub(super) fn parse_color_interpolation_filters<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -26,7 +25,7 @@ pub(super) fn parse_color_interpolation_filters<'i, 't>(
         "auto" => Ok(CssColorInterpolationFilters::Auto),
         "srgb" => Ok(CssColorInterpolationFilters::Srgb),
         "linearrgb" => Ok(CssColorInterpolationFilters::LinearRgb),
-        _ => Err(unsupported_value_at(location, None, unsupported_keyword_reason("color-interpolation-filters", ident.as_ref()))),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -44,11 +43,7 @@ pub(super) fn parse_clip<'i, 't>(
     let location = input.current_source_location();
     let name = input.expect_function().map_err(basic)?;
     if !name.eq_ignore_ascii_case("rect") {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported clip function `{name}`"),
-        ));
+        return Err(unexpected_at(location));
     }
     input
         .parse_nested_block(|input| parse_clip_rect(input, numeric))
@@ -62,13 +57,7 @@ pub(super) fn parse_transform_box<'i, 't>(
     let ident = input.expect_ident_cloned().map_err(basic)?;
     CssBoxEdgeKeyword::from_keyword(ident.as_ref())
         .and_then(CssTransformBox::try_new)
-        .ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("transform-box", ident.as_ref()),
-            )
-        })
+        .ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn parse_perspective<'i, 't>(
@@ -81,7 +70,7 @@ pub(super) fn parse_perspective<'i, 't>(
     {
         Ok(CssPerspective::None)
     } else {
-        parse_nonnegative_length(input, numeric, "perspective").map(CssPerspective::Length)
+        parse_nonnegative_length(input, numeric).map(CssPerspective::Length)
     }
 }
 pub(super) fn parse_transform_style<'i, 't>(
@@ -92,7 +81,7 @@ pub(super) fn parse_transform_style<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "flat" => Ok(CssTransformStyle::Flat),
         "preserve-3d" => Ok(CssTransformStyle::Preserve3d),
-        _ => Err(unsupported_value_at(location, None, unsupported_keyword_reason("transform-style", ident.as_ref()))),
+        _ => Err(unexpected_at(location)),
     }
 }
 pub(super) fn parse_backface_visibility<'i, 't>(
@@ -103,7 +92,7 @@ pub(super) fn parse_backface_visibility<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "visible" => Ok(CssBackfaceVisibility::Visible),
         "hidden" => Ok(CssBackfaceVisibility::Hidden),
-        _ => Err(unsupported_value_at(location, None, unsupported_keyword_reason("backface-visibility", ident.as_ref()))),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -112,13 +101,7 @@ pub(super) fn parse_blend_mode<'i, 't>(
 ) -> std::result::Result<CssBlendMode, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    CssBlendMode::from_keyword(ident.as_ref()).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("blend-mode", ident.as_ref()),
-        )
-    })
+    CssBlendMode::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn parse_blend_mode_list<'i, 't>(
@@ -129,8 +112,7 @@ pub(super) fn parse_blend_mode_list<'i, 't>(
         input.expect_comma().map_err(basic)?;
         modes.push(parse_blend_mode(input)?);
     }
-    CssBlendModeList::try_new(modes)
-        .ok_or_else(|| unsupported_value(input, None, "blend-mode list is empty"))
+    CssBlendModeList::try_new(modes).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_isolation<'i, 't>(
@@ -140,11 +122,7 @@ pub(super) fn parse_isolation<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssIsolation::Auto),
         "isolate" => Ok(CssIsolation::Isolate),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("isolation", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -177,7 +155,7 @@ fn parse_clip_edge<'i, 't>(
     {
         return Ok(CssClipEdge::Auto);
     }
-    let value = parse_length(input, numeric, "clip")?;
+    let value = parse_length(input, numeric)?;
     Ok(CssClipEdge::Length(value))
 }
 
@@ -242,7 +220,7 @@ pub(super) fn parse_transform<'i, 't>(
     }
     CssTransformFunctionList::try_new(functions)
         .map(CssTransform::Functions)
-        .ok_or_else(|| unsupported_value(input, None, "transform function list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_transform_function<'i, 't>(
@@ -284,11 +262,7 @@ pub(super) fn parse_transform_function_kind<'i, 't>(
         "translatex" => Ok(CssTransformFunctionKind::TranslateX),
         "translatey" => Ok(CssTransformFunctionKind::TranslateY),
         "translatez" => Ok(CssTransformFunctionKind::TranslateZ),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            format!("unsupported transform function `{name}`"),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -299,21 +273,19 @@ fn parse_transform_function_value<'i, 't>(
 ) -> std::result::Result<CssTransformFunction, ParseError<'i, Error>> {
     let value = match kind {
         CssTransformFunctionKind::Matrix => {
-            let components = parse_exact_comma_list(input, 6, |input| {
-                parse_specified_number(input, numeric, "transform")
-            })?;
-            let components = components.try_into().map_err(|_| {
-                unsupported_value(input, None, "matrix() requires exactly six numbers")
-            })?;
+            let components =
+                parse_exact_comma_list(input, 6, |input| parse_specified_number(input, numeric))?;
+            let components = components
+                .try_into()
+                .map_err(|_| unexpected_at(input.current_source_location()))?;
             CssTransformFunction::Matrix(CssTransformMatrix::new(components))
         }
         CssTransformFunctionKind::Matrix3d => {
-            let components = parse_exact_comma_list(input, 16, |input| {
-                parse_specified_number(input, numeric, "transform")
-            })?;
-            let components = components.try_into().map_err(|_| {
-                unsupported_value(input, None, "matrix3d() requires exactly sixteen numbers")
-            })?;
+            let components =
+                parse_exact_comma_list(input, 16, |input| parse_specified_number(input, numeric))?;
+            let components = components
+                .try_into()
+                .map_err(|_| unexpected_at(input.current_source_location()))?;
             CssTransformFunction::Matrix3d(Box::new(CssTransformMatrix3d::new(components)))
         }
         CssTransformFunctionKind::Perspective => {
@@ -323,7 +295,7 @@ fn parse_transform_function_value<'i, 't>(
             {
                 CssTransformPerspective::None
             } else {
-                let length = parse_nonnegative_length(input, numeric, "perspective")?;
+                let length = parse_nonnegative_length(input, numeric)?;
                 CssTransformPerspective::Length(length)
             };
             input.expect_exhausted().map_err(basic)?;
@@ -331,33 +303,33 @@ fn parse_transform_function_value<'i, 't>(
         }
         CssTransformFunctionKind::Rotate => {
             CssTransformFunction::Rotate(parse_one(input, |input| {
-                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric)
             })?)
         }
         CssTransformFunctionKind::Rotate3d => {
-            let x = parse_specified_number(input, numeric, "transform")?;
+            let x = parse_specified_number(input, numeric)?;
             input.expect_comma().map_err(basic)?;
-            let y = parse_specified_number(input, numeric, "transform")?;
+            let y = parse_specified_number(input, numeric)?;
             input.expect_comma().map_err(basic)?;
-            let z = parse_specified_number(input, numeric, "transform")?;
+            let z = parse_specified_number(input, numeric)?;
             input.expect_comma().map_err(basic)?;
-            let angle = parse_angle_or_zero(input, numeric, AngleParserContext::Transform)?;
+            let angle = parse_angle_or_zero(input, numeric)?;
             input.expect_exhausted().map_err(basic)?;
             CssTransformFunction::Rotate3d(CssTransformRotate3d::new(x, y, z, angle))
         }
         CssTransformFunctionKind::RotateX => {
             CssTransformFunction::RotateX(parse_one(input, |input| {
-                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric)
             })?)
         }
         CssTransformFunctionKind::RotateY => {
             CssTransformFunction::RotateY(parse_one(input, |input| {
-                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric)
             })?)
         }
         CssTransformFunctionKind::RotateZ => {
             CssTransformFunction::RotateZ(parse_one(input, |input| {
-                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric)
             })?)
         }
         CssTransformFunctionKind::Scale => {
@@ -370,15 +342,15 @@ fn parse_transform_function_value<'i, 't>(
             let mut components = parse_exact_comma_list(input, 3, |input| {
                 parse_transform_scale_component(input, numeric)
             })?;
-            let z = components.pop().ok_or_else(|| {
-                unsupported_value(input, None, "scale3d() requires exactly three operands")
-            })?;
-            let y = components.pop().ok_or_else(|| {
-                unsupported_value(input, None, "scale3d() requires exactly three operands")
-            })?;
-            let x = components.pop().ok_or_else(|| {
-                unsupported_value(input, None, "scale3d() requires exactly three operands")
-            })?;
+            let z = components
+                .pop()
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            let y = components
+                .pop()
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            let x = components
+                .pop()
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
             CssTransformFunction::Scale3d(CssTransformScale3d::new(x, y, z))
         }
         CssTransformFunctionKind::ScaleX => {
@@ -397,19 +369,17 @@ fn parse_transform_function_value<'i, 't>(
             })?)
         }
         CssTransformFunctionKind::Skew => {
-            let (x, y) = parse_one_or_two(input, |input| {
-                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
-            })?;
+            let (x, y) = parse_one_or_two(input, |input| parse_angle_or_zero(input, numeric))?;
             CssTransformFunction::Skew(CssTransformSkew::new(x, y))
         }
         CssTransformFunctionKind::SkewX => {
             CssTransformFunction::SkewX(parse_one(input, |input| {
-                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric)
             })?)
         }
         CssTransformFunctionKind::SkewY => {
             CssTransformFunction::SkewY(parse_one(input, |input| {
-                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric)
             })?)
         }
         CssTransformFunctionKind::Translate => {
@@ -498,27 +468,25 @@ fn parse_transform_scale_component<'i, 't>(
         ));
     }
     let state = input.state();
-    if let Ok(number) = input.try_parse(|input| parse_specified_number(input, numeric, "transform"))
-    {
+    if let Ok(number) = input.try_parse(|input| parse_specified_number(input, numeric)) {
         return Ok(CssTransformScaleComponent::Number(number));
     }
     input.reset(&state);
-    parse_specified_percentage(input, numeric, "transform")
-        .map(CssTransformScaleComponent::Percentage)
+    parse_specified_percentage(input, numeric).map(CssTransformScaleComponent::Percentage)
 }
 
 fn parse_transform_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
-    parse_length_percentage(input, numeric, "transform translation")
+    parse_length_percentage(input, numeric)
 }
 
 fn parse_transform_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
-    parse_length(input, numeric, "transform translation")
+    parse_length(input, numeric)
 }
 
 fn parse_radial_extent<'i, 't>(
@@ -530,11 +498,7 @@ fn parse_radial_extent<'i, 't>(
         "farthest-side" => Ok(CssRadialExtent::FarthestSide),
         "closest-corner" => Ok(CssRadialExtent::ClosestCorner),
         "farthest-corner" => Ok(CssRadialExtent::FarthestCorner),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("shape radius", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -548,9 +512,7 @@ fn parse_circle_shape<'i, 't>(
         CssCircleRadius::Extent(extent)
     } else {
         CssCircleRadius::LengthPercentage(parse_non_negative_shape_length_percentage(
-            input,
-            numeric,
-            "circle radius",
+            input, numeric,
         )?)
     };
     Ok(CssCircleShape::new(
@@ -583,7 +545,7 @@ fn parse_ellipse_radius<'i, 't>(
     if let Ok(extent) = input.try_parse(parse_radial_extent) {
         Ok(CssEllipseRadius::Extent(extent))
     } else {
-        parse_non_negative_shape_length_percentage(input, numeric, "ellipse radius")
+        parse_non_negative_shape_length_percentage(input, numeric)
             .map(CssEllipseRadius::LengthPercentage)
     }
 }
@@ -602,17 +564,15 @@ fn parse_optional_shape_position<'i, 't>(
 fn parse_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
 ) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
-    parse_length_percentage(input, numeric, context)
+    parse_length_percentage(input, numeric)
 }
 
 fn parse_non_negative_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
 ) -> Result<CssSpecifiedNonNegativeLengthPercentage, ParseError<'i, Error>> {
-    parse_nonnegative_length_percentage(input, numeric, context)
+    parse_nonnegative_length_percentage(input, numeric)
 }
 
 fn parse_inset_shape<'i, 't>(
@@ -622,20 +582,12 @@ fn parse_inset_shape<'i, 't>(
     let mut offsets = Vec::new();
     while !input.is_exhausted() && !next_is_ident(input, "round") {
         if offsets.len() == 4 {
-            return Err(unsupported_value(
-                input,
-                None,
-                "inset shape has too many offsets",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
-        offsets.push(parse_shape_length_percentage(
-            input,
-            numeric,
-            "inset shape offset",
-        )?);
+        offsets.push(parse_shape_length_percentage(input, numeric)?);
     }
     let offsets = CssInsetShapeOffsets::try_new(offsets)
-        .ok_or_else(|| unsupported_value(input, None, "inset shape is missing an offset"))?;
+        .ok_or_else(|| unexpected_at(input.current_source_location()))?;
     let round = if input.is_exhausted() {
         None
     } else {
@@ -672,8 +624,7 @@ fn parse_rect_shape_edge<'i, 't>(
     {
         Ok(CssRectShapeEdge::Auto)
     } else {
-        parse_shape_length_percentage(input, numeric, "rect edge")
-            .map(CssRectShapeEdge::LengthPercentage)
+        parse_shape_length_percentage(input, numeric).map(CssRectShapeEdge::LengthPercentage)
     }
 }
 
@@ -681,10 +632,10 @@ fn parse_xywh_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssXywhShape, ParseError<'i, Error>> {
-    let x = parse_shape_length_percentage(input, numeric, "xywh x")?;
-    let y = parse_shape_length_percentage(input, numeric, "xywh y")?;
-    let width = parse_non_negative_shape_length_percentage(input, numeric, "xywh width")?;
-    let height = parse_non_negative_shape_length_percentage(input, numeric, "xywh height")?;
+    let x = parse_shape_length_percentage(input, numeric)?;
+    let y = parse_shape_length_percentage(input, numeric)?;
+    let width = parse_non_negative_shape_length_percentage(input, numeric)?;
+    let height = parse_non_negative_shape_length_percentage(input, numeric)?;
     Ok(CssXywhShape::new(
         x,
         y,
@@ -717,7 +668,7 @@ fn parse_shape_radii<'i, 't>(
     };
     input.expect_exhausted().map_err(basic)?;
     crate::CssBorderRadiusShorthand::try_new(horizontal, vertical)
-        .ok_or_else(|| unsupported_value(input, None, "invalid inset round radii"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_shape_radius_list<'i, 't>(
@@ -727,24 +678,12 @@ fn parse_shape_radius_list<'i, 't>(
     let mut values = Vec::new();
     while !input.is_exhausted() && !next_is_delim(input, '/') {
         if values.len() == 4 {
-            return Err(unsupported_value(
-                input,
-                None,
-                "inset round has too many radii",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
-        values.push(parse_non_negative_shape_length_percentage(
-            input,
-            numeric,
-            "inset round radius",
-        )?);
+        values.push(parse_non_negative_shape_length_percentage(input, numeric)?);
     }
     if values.is_empty() {
-        Err(unsupported_value(
-            input,
-            None,
-            "inset round is missing radii",
-        ))
+        Err(unexpected_at(input.current_source_location()))
     } else {
         Ok(values)
     }
@@ -757,7 +696,7 @@ fn parse_polygon_shape<'i, 't>(
     let fill_rule = input.try_parse(parse_fill_rule).ok();
     let round = if next_is_ident(input, "round") {
         input.expect_ident_matching("round")?;
-        Some(parse_length(input, numeric, "polygon round")?)
+        Some(parse_length(input, numeric)?)
     } else {
         None
     };
@@ -767,23 +706,19 @@ fn parse_polygon_shape<'i, 't>(
     }
     let mut points = Vec::new();
     loop {
-        let x = parse_shape_length_percentage(input, numeric, "polygon x")?;
-        let y = parse_shape_length_percentage(input, numeric, "polygon y")?;
+        let x = parse_shape_length_percentage(input, numeric)?;
+        let y = parse_shape_length_percentage(input, numeric)?;
         points.push(CssPolygonPoint::new(x, y));
         if input.is_exhausted() {
             break;
         }
         input.expect_comma()?;
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "polygon point list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     let points = CssPolygonPointList::try_new(points)
-        .ok_or_else(|| unsupported_value(input, None, "polygon point list is empty"))?;
+        .ok_or_else(|| unexpected_at(input.current_source_location()))?;
     Ok(CssPolygonShape::new(fill_rule, round, points))
 }
 
@@ -799,9 +734,9 @@ fn parse_path_shape<'i, 't>(
     let location = input.current_source_location();
     let component = context
         .collect(input)
-        .map_err(|_| unsupported_value_at(location, None, "path() requires one string"))?;
+        .map_err(|_| unexpected_at(location))?;
     let data = CssPathData::from_parser_component(component, context)
-        .map_err(|error| unsupported_value_at(location, None, error.to_string()))?;
+        .map_err(|_| unexpected_at(location))?;
     Ok(CssPathShape::new(fill_rule, data))
 }
 
@@ -812,11 +747,7 @@ fn parse_fill_rule<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "nonzero" => Ok(CssFillRule::Nonzero),
         "evenodd" => Ok(CssFillRule::Evenodd),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("polygon fill rule", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -830,16 +761,16 @@ pub(super) fn parse_translate<'i, 't>(
     {
         return Ok(CssTranslate::None);
     }
-    let x = parse_length_percentage(input, numeric, "translate x")?;
+    let x = parse_length_percentage(input, numeric)?;
     let y = if input.is_exhausted() {
         None
     } else {
-        Some(parse_length_percentage(input, numeric, "translate y")?)
+        Some(parse_length_percentage(input, numeric)?)
     };
     let z = if input.is_exhausted() {
         None
     } else {
-        Some(parse_length(input, numeric, "translate z")?)
+        Some(parse_length(input, numeric)?)
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(CssTranslate::Values(
@@ -859,20 +790,19 @@ pub(super) fn parse_rotate<'i, 't>(
         return Ok(CssRotate::None);
     }
     // The axis is one consecutive group, unordered relative to the strict angle.
-    let (angle, axis) = if let Ok(angle) =
-        input.try_parse(|input| parse_angle_value(input, numeric, AngleParserContext::Transform))
-    {
-        let axis = if input.is_exhausted() {
-            None
+    let (angle, axis) =
+        if let Ok(angle) = input.try_parse(|input| parse_angle_value(input, numeric)) {
+            let axis = if input.is_exhausted() {
+                None
+            } else {
+                Some(parse_rotate_axis(input, numeric)?)
+            };
+            (angle, axis)
         } else {
-            Some(parse_rotate_axis(input, numeric)?)
+            let axis = parse_rotate_axis(input, numeric)?;
+            let angle = parse_angle_value(input, numeric)?;
+            (angle, Some(axis))
         };
-        (angle, axis)
-    } else {
-        let axis = parse_rotate_axis(input, numeric)?;
-        let angle = parse_angle_value(input, numeric, AngleParserContext::Transform)?;
-        (angle, Some(axis))
-    };
     input.expect_exhausted().map_err(basic)?;
     let values = match axis {
         Some((axis, Some(origin))) => CssRotateValues::from_keyword_axis(angle, axis, origin),
@@ -891,7 +821,7 @@ fn parse_rotate_axis<'i, 't>(
         let location = input.current_source_location();
         let component = numeric
             .collect(input)
-            .map_err(|_| unsupported_value_at(location, None, "invalid rotate axis keyword"))?;
+            .map_err(|_| unexpected_at(location))?;
         let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(keyword)) =
             component.view()
         else {
@@ -906,9 +836,9 @@ fn parse_rotate_axis<'i, 't>(
         };
         return Ok((axis, Some(component.origin().clone())));
     }
-    let x = parse_specified_number(input, numeric, "rotate axis x")?;
-    let y = parse_specified_number(input, numeric, "rotate axis y")?;
-    let z = parse_specified_number(input, numeric, "rotate axis z")?;
+    let x = parse_specified_number(input, numeric)?;
+    let y = parse_specified_number(input, numeric)?;
+    let z = parse_specified_number(input, numeric)?;
     Ok((CssRotateAxis::Vector([x, y, z]), None))
 }
 
@@ -926,12 +856,12 @@ pub(super) fn parse_scale<'i, 't>(
     while !input.is_exhausted() {
         values.push(parse_transform_scale_component(input, numeric)?);
         if values.len() > 3 {
-            return Err(unsupported_value(input, None, "scale has too many values"));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssScaleValues::try_new(values)
         .map(CssScale::Values)
-        .ok_or_else(|| unsupported_value(input, None, "scale is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_filter<'i, 't>(
@@ -956,7 +886,7 @@ pub(super) fn parse_filter_function_list<'i, 't>(
         functions.push(parse_filter_function(input, numeric)?);
     }
     CssFilterFunctionList::try_new(functions)
-        .ok_or_else(|| unsupported_value(input, None, "filter function list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_filter_function<'i, 't>(
@@ -986,7 +916,7 @@ fn parse_filter_function_value<'i, 't>(
             let blur = if input.is_exhausted() {
                 CssFilterBlur::omitted()
             } else {
-                CssFilterBlur::new(parse_nonnegative_length(input, numeric, "filter blur")?)
+                CssFilterBlur::new(parse_nonnegative_length(input, numeric)?)
             };
             input.expect_exhausted().map_err(basic)?;
             Ok(CssFilterFunction::Blur(blur))
@@ -1003,11 +933,7 @@ fn parse_filter_function_value<'i, 't>(
             let angle = if input.is_exhausted() {
                 CssFilterHueRotate::omitted()
             } else {
-                CssFilterHueRotate::new(parse_angle_or_zero(
-                    input,
-                    numeric,
-                    AngleParserContext::Filter,
-                )?)
+                CssFilterHueRotate::new(parse_angle_or_zero(input, numeric)?)
             };
             input.expect_exhausted().map_err(basic)?;
             Ok(CssFilterFunction::HueRotate(angle))
@@ -1016,11 +942,7 @@ fn parse_filter_function_value<'i, 't>(
         "opacity" => parse_filter_amount(input, numeric).map(CssFilterFunction::Opacity),
         "saturate" => parse_filter_amount(input, numeric).map(CssFilterFunction::Saturate),
         "sepia" => parse_filter_amount(input, numeric).map(CssFilterFunction::Sepia),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            format!("unsupported filter function `{name}`"),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -1035,16 +957,10 @@ fn parse_filter_amount<'i, 't>(
         input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
     {
         CssFilterAmount::HintedNumberCalculation(calculation)
-    } else if let Ok(number) =
-        input.try_parse(|input| parse_nonnegative_number(input, numeric, "filter amount"))
-    {
+    } else if let Ok(number) = input.try_parse(|input| parse_nonnegative_number(input, numeric)) {
         CssFilterAmount::Number(number)
     } else {
-        CssFilterAmount::Percentage(parse_nonnegative_percentage(
-            input,
-            numeric,
-            "filter amount",
-        )?)
+        CssFilterAmount::Percentage(parse_nonnegative_percentage(input, numeric)?)
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(amount)
@@ -1067,7 +983,7 @@ pub(super) fn parse_clip_path<'i, 't>(
     if input.is_exhausted() {
         return reference_box
             .map(CssClipPath::GeometryBox)
-            .ok_or_else(|| unsupported_value(input, None, "missing clip-path shape or box"));
+            .ok_or_else(|| unexpected_at(input.current_source_location()));
     }
     let shape = parse_clip_path_shape(input, numeric)?;
     if reference_box.is_none() && !input.is_exhausted() {
@@ -1085,13 +1001,7 @@ fn parse_geometry_box<'i, 't>(
 ) -> Result<CssBoxEdgeKeyword, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    CssBoxEdgeKeyword::from_keyword(ident.as_ref()).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("clip-path geometry box", ident.as_ref()),
-        )
-    })
+    CssBoxEdgeKeyword::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn is_basic_shape_function(name: &str) -> bool {
@@ -1112,11 +1022,7 @@ pub(super) fn parse_clip_path_shape<'i, 't>(
     };
     let normalized_name = name.to_ascii_lowercase();
     if !is_basic_shape_function(normalized_name.as_str()) {
-        return Err(unsupported_value(
-            input,
-            None,
-            format!("unsupported clip-path function `{name}`"),
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     input.parse_nested_block(|input| {
         let shape = match normalized_name.as_str() {
@@ -1130,18 +1036,10 @@ pub(super) fn parse_clip_path_shape<'i, 't>(
             "path" => parse_path_shape(input, numeric).map(CssBasicShape::Path),
             "rect" => parse_rect_shape(input, numeric).map(CssBasicShape::Rect),
             "xywh" => parse_xywh_shape(input, numeric).map(CssBasicShape::Xywh),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                "unsupported basic-shape function",
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         }?;
         if !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "basic-shape function has trailing arguments",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         Ok(shape)
     })

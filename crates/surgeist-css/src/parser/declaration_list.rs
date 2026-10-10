@@ -102,10 +102,7 @@ pub(crate) fn parse_declaration_list_text_with_context(
                         let name = unit.expect_ident_cloned()?;
                         unit.expect_colon()?;
                         if !generic_valid {
-                            return Err(invalid_syntax(
-                                unit.current_source_location(),
-                                "a declaration",
-                            ));
+                            return Err(invalid_syntax(unit.current_source_location()));
                         }
                         let declaration = parse_declaration_core(
                             DeclarationMode::Ordinary,

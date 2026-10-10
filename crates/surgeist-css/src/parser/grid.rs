@@ -2,9 +2,8 @@ use super::values::parse_length_percentage;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{next_is_delim, parse_positive_integer_value};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssComponentValueRef, CssFeatureId, CssFlexCalculation, CssGridTemplateAreas,
     CssLengthPercentageCalculation, CssSpecifiedNonNegativeFlex,
@@ -22,15 +21,11 @@ pub(super) fn parse_flow_tolerance<'i, 't>(
         return match_ignore_ascii_case! { &ident,
             "normal" => Ok(CssFlowTolerance::normal()),
             "infinite" => Ok(CssFlowTolerance::infinite()),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("flow-tolerance", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
 
-    let length = parse_length_percentage(input, numeric, "flow-tolerance")?;
+    let length = parse_length_percentage(input, numeric)?;
     Ok(CssFlowTolerance::length_percentage(length))
 }
 
@@ -72,11 +67,7 @@ fn parse_grid_track_list_with_mode<'i, 't>(
             &component,
             |item| matches!(item, ParsedGridTrackComponent::LineNames(_)),
         ) {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                "adjacent grid line-name blocks",
-            ));
+            return Err(unexpected_at(location));
         }
         components.push(LocatedGridTrackComponent {
             location,
@@ -88,11 +79,7 @@ fn parse_grid_track_list_with_mode<'i, 't>(
             .iter()
             .any(|component| !matches!(component.component, ParsedGridTrackComponent::LineNames(_)))
     {
-        return Err(unsupported_value(
-            input,
-            None,
-            "grid track list is missing a track",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     build_grid_track_list(components)
@@ -119,41 +106,24 @@ fn parse_grid_subgrid<'i, 't>(
                     {
                         None
                     } else {
-                        Some(parse_positive_integer_value(
-                            input,
-                            numeric,
-                            "grid name repeat count",
-                        )?)
+                        Some(parse_positive_integer_value(input, numeric)?)
                     };
                     input.expect_comma().map_err(basic)?;
                     let mut groups = Vec::new();
                     while !input.is_exhausted() {
-                        groups.push(parse_optional_grid_line_names(input)?.ok_or_else(|| {
-                            unsupported_value(
-                                input,
-                                None,
-                                "name repetition requires line-name groups",
-                            )
-                        })?);
+                        groups.push(
+                            parse_optional_grid_line_names(input)?
+                                .ok_or_else(|| unexpected_at(input.current_source_location()))?,
+                        );
                     }
                     let value = match count {
                         Some(count) => CssGridNameRepeat::try_new(count, groups),
                         None => CssGridNameRepeat::try_auto_fill(groups),
                     };
-                    value.ok_or_else(|| {
-                        unsupported_value(
-                            input,
-                            None,
-                            "name repetition requires a nonempty group list",
-                        )
-                    })
+                    value.ok_or_else(|| unexpected_at(input.current_source_location()))
                 })?;
                 if repeat.is_auto_fill() && has_auto_fill {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "subgrid contains more than one automatic name repetition",
-                    ));
+                    return Err(unexpected_at(location));
                 }
                 has_auto_fill |= repeat.is_auto_fill();
                 CssGridSubgridComponent::Repeat(repeat)
@@ -228,7 +198,7 @@ pub(super) fn parse_grid_line_names<'i, 't>(
         let ident = input.expect_ident_cloned().map_err(basic)?;
         names.push(
             CssGridLineName::try_new(CssIdent::new(ident.as_ref()))
-                .ok_or_else(|| unsupported_value_at(location, None, "reserved grid line name"))?,
+                .ok_or_else(|| unexpected_at(location))?,
         );
     }
     Ok(CssGridLineNames::new(names))
@@ -247,18 +217,10 @@ fn parse_grid_repeat<'i, 't>(
         match_ignore_ascii_case! { &ident,
             "auto-fill" => Count::Auto(CssGridAutoRepeatKind::AutoFill),
             "auto-fit" => Count::Auto(CssGridAutoRepeatKind::AutoFit),
-            _ => return Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("grid repeat count", ident.as_ref()),
-            )),
+            _ => return Err(unexpected_at(input.current_source_location())),
         }
     } else {
-        Count::Integer(parse_positive_integer_value(
-            input,
-            numeric,
-            "grid repeat count",
-        )?)
+        Count::Integer(parse_positive_integer_value(input, numeric)?)
     };
 
     input.expect_comma().map_err(basic)?;
@@ -286,11 +248,7 @@ fn parse_integer_grid_repeat<'i, 't>(
             if adjacent_line_names(track_components.last(), &component, |item| {
                 matches!(item, CssGridTrackRepeatComponent::LineNames(_))
             }) {
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    "adjacent grid line-name blocks",
-                ));
+                return Err(unexpected_at(location));
             }
             track_components.push(component);
             fixed_components.push(CssGridFixedRepeatComponent::LineNames(names.clone()));
@@ -307,11 +265,7 @@ fn parse_integer_grid_repeat<'i, 't>(
         track_components.push(CssGridTrackRepeatComponent::TrackSize(size));
     }
     if !has_track {
-        return Err(unsupported_value(
-            input,
-            None,
-            "grid repeat content is missing a track",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     Ok(ParsedGridTrackComponent::IntegerRepeat {
         track: CssGridIntegerTrackRepeat::try_new(
@@ -346,11 +300,7 @@ fn parse_auto_grid_repeat<'i, 't>(
             if adjacent_line_names(components.last(), &component, |item| {
                 matches!(item, CssGridTrackRepeatComponent::LineNames(_))
             }) {
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    "adjacent grid line-name blocks",
-                ));
+                return Err(unexpected_at(location));
             }
             components.push(component);
             continue;
@@ -361,11 +311,7 @@ fn parse_auto_grid_repeat<'i, 't>(
         components.push(CssGridTrackRepeatComponent::TrackSize(size));
     }
     if !has_track {
-        return Err(unsupported_value(
-            input,
-            None,
-            "grid repeat content is missing a track",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     Ok(ParsedGridTrackComponent::AutoRepeat {
         value: CssGridAutoRepeat::new(
@@ -397,11 +343,9 @@ fn parse_grid_track_size<'i, 't>(
                 input.expect_exhausted().map_err(basic)?;
                 Ok(CssGridTrackSize::from_fit_content(limit))
             }),
-        Token::Function(name) if name.eq_ignore_ascii_case("repeat") => Err(unsupported_value_at(
-            location,
-            None,
-            "repeat() is a grid track list component, not a track size",
-        )),
+        Token::Function(name) if name.eq_ignore_ascii_case("repeat") => {
+            Err(unexpected_at(location))
+        }
         _ => {
             input.reset(&state);
             parse_grid_track_breadth(input, numeric).map(CssGridTrackSize::from_breadth)
@@ -418,11 +362,7 @@ fn parse_grid_inflexible_track_breadth<'i, 't>(
     if breadth.is_inflexible() {
         Ok(breadth)
     } else {
-        Err(unsupported_value_at(
-            location,
-            None,
-            "minmax() minimum must be an inflexible track breadth",
-        ))
+        Err(unexpected_at(location))
     }
 }
 
@@ -453,11 +393,7 @@ fn parse_grid_track_breadth<'i, 't>(
             "min-content" => Ok(CssGridTrackBreadth::min_content()),
             "max-content" => Ok(CssGridTrackBreadth::max_content()),
             "auto" => Ok(CssGridTrackBreadth::auto()),
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("grid track", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(location)),
         },
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             input.reset(&numeric_start);
@@ -484,11 +420,7 @@ fn parse_grid_track_breadth<'i, 't>(
                 }
             }
         }
-        Token::Function(name) => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported grid track function `{name}`"),
-        )),
+        Token::Function(_) => Err(unexpected_at(location)),
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
@@ -563,11 +495,7 @@ fn build_grid_track_list<'i>(
             .nth(1)
             .expect("second auto repeat")
             .location;
-        return Err(unsupported_value_at(
-            location,
-            None,
-            "grid auto track list contains more than one automatic repetition",
-        ));
+        return Err(unexpected_at(location));
     }
 
     let current = if auto_repeat_count == 0 {
@@ -600,21 +528,13 @@ fn build_grid_track_list<'i>(
                 }
                 ParsedGridTrackComponent::TrackSize(value) => {
                     let Some(value) = grid_fixed_size(&value) else {
-                        return Err(unsupported_value_at(
-                            located.location,
-                            None,
-                            "tracks surrounding automatic repetition must be fixed-size",
-                        ));
+                        return Err(unexpected_at(located.location));
                     };
                     CssGridAutoTrackComponent::FixedSize(value)
                 }
                 ParsedGridTrackComponent::IntegerRepeat { fixed, .. } => {
                     let Some(value) = fixed else {
-                        return Err(unsupported_value_at(
-                            located.location,
-                            None,
-                            "repetition surrounding automatic repetition must be fixed-size",
-                        ));
+                        return Err(unexpected_at(located.location));
                     };
                     CssGridAutoTrackComponent::Repeat(value)
                 }
@@ -651,11 +571,7 @@ fn parse_grid_auto_track_sizes_with_mode<'i, 't>(
         sizes.push(parse_grid_track_size(input, numeric)?);
     }
     if sizes.is_empty() {
-        return Err(unsupported_value(
-            input,
-            None,
-            "grid automatic track list is missing a track size",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     Ok(CssGridTrackSizeList::try_new(sizes).expect("nonempty implicit tracks"))
 }
@@ -666,11 +582,7 @@ pub(super) fn parse_grid_template_areas<'i, 't>(
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
             "none" => Ok(CssGridTemplateAreas::None),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("grid-template-areas", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
 
@@ -680,32 +592,10 @@ pub(super) fn parse_grid_template_areas<'i, 't>(
         let row = input.expect_string_cloned().map_err(basic)?;
         rows.push(
             crate::grid_template_areas::parse_decoded_row(row.as_ref())
-                .map_err(|error| unsupported_value_at(location, None, area_error_message(error)))?,
+                .map_err(|_| unexpected_at(location))?,
         );
     }
-    CssGridTemplateAreas::try_rows(rows)
-        .map_err(|error| unsupported_value(input, None, area_error_message(error)))
-}
-
-fn area_error_message(error: crate::CssGridTemplateAreaError) -> String {
-    match error {
-        crate::CssGridTemplateAreaError::InvalidName => {
-            "invalid grid template area name".to_owned()
-        }
-        crate::CssGridTemplateAreaError::TrashCharacter(character) => {
-            format!("invalid grid template area character {character}")
-        }
-        crate::CssGridTemplateAreaError::MissingRows => {
-            "grid-template-areas is missing rows".to_owned()
-        }
-        crate::CssGridTemplateAreaError::EmptyRow => "grid template area row is empty".to_owned(),
-        crate::CssGridTemplateAreaError::InconsistentWidths => {
-            "grid-template-areas rows have inconsistent widths".to_owned()
-        }
-        crate::CssGridTemplateAreaError::NonRectangular(name) => {
-            format!("grid template area {name} is not rectangular")
-        }
-    }
+    CssGridTemplateAreas::try_rows(rows).map_err(|_| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_grid_template<'i, 't>(
@@ -752,7 +642,7 @@ fn parse_grid_area_template<'i, 't>(
         let location = input.current_source_location();
         let text = input.expect_string_cloned().map_err(basic)?;
         let area = crate::grid_template_areas::parse_decoded_row(text.as_ref())
-            .map_err(|error| unsupported_value_at(location, None, area_error_message(error)))?;
+            .map_err(|_| unexpected_at(location))?;
         let state = input.state();
         let omitted = input.is_exhausted()
             || matches!(
@@ -784,28 +674,19 @@ fn parse_grid_area_template<'i, 't>(
             if adjacent_line_names(components.last(), &component, |item| {
                 matches!(item, CssGridTrackRepeatComponent::LineNames(_))
             }) {
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    "adjacent explicit column line-name blocks",
-                ));
+                return Err(unexpected_at(location));
             }
             components.push(component);
         }
         Some(
-            CssGridTrackRepeatContent::try_new(components).ok_or_else(|| {
-                unsupported_value(
-                    input,
-                    None,
-                    "area template columns require an explicit track list",
-                )
-            })?,
+            CssGridTrackRepeatContent::try_new(components)
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?,
         )
     } else {
         None
     };
     CssGridTemplate::try_areas(rows, columns)
-        .map_err(|error| unsupported_value(input, None, area_error_message(error)))
+        .map_err(|_| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_grid_auto_flow<'i, 't>(
@@ -840,11 +721,7 @@ pub(super) fn parse_grid_auto_flow_axis<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "row" => Ok(CssGridAutoFlowAxis::Row),
         "column" => Ok(CssGridAutoFlowAxis::Column),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("grid-auto-flow", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 

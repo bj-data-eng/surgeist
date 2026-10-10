@@ -2,7 +2,7 @@
 
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use crate::error::{Error, basic, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssColorScheme, CssColorSchemeKeyword, CssColorSchemeName, CssForcedColorAdjust, CssIdent,
     CssPrintColorAdjust,
@@ -25,11 +25,7 @@ pub(super) fn parse_color_scheme<'i, 't>(
         let ident = input.expect_ident_cloned().map_err(basic)?;
         if ident.eq_ignore_ascii_case("only") {
             if only || schemes.is_empty() && input.is_exhausted() {
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    "only requires a scheme list and cannot repeat",
-                ));
+                return Err(unexpected_at(location));
             }
             only = true;
             if !schemes.is_empty() {
@@ -42,20 +38,15 @@ pub(super) fn parse_color_scheme<'i, 't>(
                 "dark" => CssColorSchemeKeyword::Dark,
                 _ => {
                     let name = CssColorSchemeName::try_new(CssIdent::new(ident.as_ref()))
-                        .map_err(|_| unsupported_value_at(location, None, "reserved color-scheme identifier"))?;
+                        .map_err(|_| unexpected_at(location))?;
                     CssColorSchemeKeyword::Custom(name)
                 },
             };
             schemes.push(scheme);
         }
     }
-    CssColorScheme::try_new(schemes, only).map_err(|_| {
-        unsupported_value_at(
-            input.current_source_location(),
-            None,
-            "color-scheme requires normal or a nonempty list",
-        )
-    })
+    CssColorScheme::try_new(schemes, only)
+        .map_err(|_| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_forced_color_adjust<'i, 't>(
@@ -68,7 +59,7 @@ pub(super) fn parse_forced_color_adjust<'i, 't>(
         "auto" => Ok(CssForcedColorAdjust::Auto),
         "none" => Ok(CssForcedColorAdjust::None),
         "preserve-parent-color" => Ok(CssForcedColorAdjust::PreserveParentColor),
-        _ => Err(unsupported_value_at(location, None, "expected auto, none or preserve-parent-color")),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -81,6 +72,6 @@ pub(super) fn parse_print_color_adjust<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "economy" => Ok(CssPrintColorAdjust::Economy),
         "exact" => Ok(CssPrintColorAdjust::Exact),
-        _ => Err(unsupported_value_at(location, None, "expected economy or exact")),
+        _ => Err(unexpected_at(location)),
     }
 }

@@ -271,10 +271,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 )?;
                 if !input.is_exhausted() {
                     return Err(with_media_query_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after media query list",
-                        ),
+                        invalid_syntax(input.current_source_location()),
                         None,
                     ));
                 }
@@ -305,10 +302,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                     .map_err(with_container_prelude_context)?;
                 if !input.is_exhausted() {
                     return Err(with_at_rule_prelude_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after container condition",
-                        ),
+                        invalid_syntax(input.current_source_location()),
                         "container",
                         "baseline.rule.container",
                         "the end of the @container prelude",

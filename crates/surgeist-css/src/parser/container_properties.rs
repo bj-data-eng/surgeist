@@ -1,4 +1,4 @@
-use crate::error::{Error, basic, unsupported_value};
+use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
 };
@@ -14,11 +14,7 @@ pub(super) fn parse_container_type<'i, 't>(
         "inline-size" => CssContainerType::InlineSize,
         "scroll-state" => CssContainerType::ScrollState,
         _ => {
-            return Err(unsupported_value(
-                input,
-                None,
-                "expected a container-type keyword",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     };
     if input.is_exhausted() {
@@ -32,11 +28,7 @@ pub(super) fn parse_container_type<'i, 't>(
         (CssContainerType::InlineSize, "scroll-state")
         | (CssContainerType::ScrollState, "inline-size") => CssContainerType::InlineSizeScrollState,
         _ => {
-            return Err(unsupported_value(
-                input,
-                None,
-                "expected one size axis and scroll-state",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     };
     input.expect_exhausted().map_err(basic)?;
@@ -60,19 +52,14 @@ fn names<'i, 't>(
         }
         let ident = input.expect_ident_cloned().map_err(basic)?;
         if none {
-            return Err(unsupported_value(
-                input,
-                None,
-                "none must be the entire container-name value",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         if ident.eq_ignore_ascii_case("none") && names.is_empty() {
             none = true;
             continue;
         }
-        let name = CssContainerName::try_from_decoded(ident.to_string()).ok_or_else(|| {
-            unsupported_value(input, None, "expected a non-reserved container name")
-        })?;
+        let name = CssContainerName::try_from_decoded(ident.to_string())
+            .ok_or_else(|| unexpected_at(input.current_source_location()))?;
         names.push(name);
     }
     if none {
@@ -80,7 +67,7 @@ fn names<'i, 't>(
     }
     CssContainerNameList::try_new(names)
         .map(CssContainerNames::Names)
-        .ok_or_else(|| unsupported_value(input, None, "expected a container name"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_container_names<'i, 't>(
     input: &mut Parser<'i, 't>,

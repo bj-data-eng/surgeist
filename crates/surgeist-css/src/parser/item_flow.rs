@@ -12,7 +12,7 @@ use super::grid::parse_flow_tolerance;
 use crate::{
     CssFlowTolerance, CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode,
     CssItemWrapOrder,
-    error::{Error, basic, unsupported_value},
+    error::{Error, basic, unexpected_at},
     numeric::NumericInputContext,
 };
 
@@ -28,7 +28,7 @@ pub(super) fn parse_item_direction<'i, 't>(
         "column" => Ok(CssItemDirection::Column),
         "row-reverse" => Ok(CssItemDirection::RowReverse),
         "column-reverse" => Ok(CssItemDirection::ColumnReverse),
-        _ => Err(unsupported_value(input, None, "invalid item-direction keyword")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -49,7 +49,7 @@ fn wrap_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemWr
         "normal" => Ok(CssItemWrap::Order(CssItemWrapOrder::Normal)),
         "reverse" => Ok(CssItemWrap::Order(CssItemWrapOrder::Reverse)),
         "wrap-reverse" => Ok(CssItemWrap::WrapReverse),
-        _ => Err(unsupported_value(input, None, "invalid item-wrap keyword")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -67,11 +67,7 @@ fn parse_wrap_width<'i, 't>(
         | (CssItemWrap::Order(order), CssItemWrap::Mode(mode)) => {
             Ok(CssItemWrap::Both(mode, order))
         }
-        _ => Err(unsupported_value(
-            input,
-            None,
-            "item-wrap requires distinct mode and order facets",
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -87,7 +83,7 @@ fn pack_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemPa
         "normal" => Ok(CssItemPack::Normal),
         "dense" => Ok(CssItemPack::Dense),
         "balance" => Ok(CssItemPack::Balance),
-        _ => Err(unsupported_value(input, None, "invalid item-pack keyword")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -104,11 +100,7 @@ fn parse_pack_width<'i, 't>(
         (CssItemPack::Dense, CssItemPack::Balance) | (CssItemPack::Balance, CssItemPack::Dense) => {
             Ok(CssItemPack::DenseBalance)
         }
-        _ => Err(unsupported_value(
-            input,
-            None,
-            "item-pack requires distinct dense and balance keywords",
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -179,11 +171,7 @@ pub(super) fn parse_item_flow<'i, 't>(
 ) -> ParseResult<'i, CssItemFlow> {
     let mut selection = Selection {
         best: None,
-        failure: unsupported_value(
-            input,
-            None,
-            "item-flow requires a complete constituent value",
-        ),
+        failure: unexpected_at(input.current_source_location()),
         failure_offset: input.position().byte_index(),
     };
     search(input, numeric, &Candidate::empty(), &mut selection);
@@ -218,7 +206,7 @@ fn search<'i, 't>(
         return;
     }
     if candidate.occupied == 15 {
-        let error = unsupported_value(input, None, "item-flow has excess components");
+        let error = unexpected_at(input.current_source_location());
         selection.failed(input, error);
         return;
     }

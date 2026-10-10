@@ -1,6 +1,6 @@
 //! Selected Color4 Appendix B fallback, confined to direct property color slots.
 use super::color::parse_color;
-use crate::error::{Error, ErrorKind, unsupported_value};
+use crate::error::{Error, ErrorKind, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::*;
 use cssparser::{ParseError, Parser};
@@ -56,18 +56,12 @@ pub(super) fn parse_property_value<'i, 't>(
             let mut colors = Vec::new();
             while !input.is_exhausted() {
                 if colors.len() == 4 {
-                    return Err(unsupported_value(
-                        input,
-                        None,
-                        "border-color accepts at most four colors",
-                    ));
+                    return Err(unexpected_at(input.current_source_location()));
                 }
                 colors.push(direct_color(input, numeric)?);
             }
             let value = CssBorderColorShorthand::try_new(CssBoxSideKind::Physical, colors)
-                .ok_or_else(|| {
-                    unsupported_value(input, None, "border-color requires one to four colors")
-                })?;
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::BorderColor(CssDeclaredValue::Value(
                     CssBorderColorPropertyValue::new(authored, value),
@@ -105,7 +99,7 @@ fn direct_color<'i, 't>(
     let component = numeric.collect(input).map_err(|error| {
         let at = numeric.error_location(&error, location, offset);
         error.component_error().map_or_else(
-            || unsupported_value(input, None, "invalid quirky color token"),
+            || unexpected_at(input.current_source_location()),
             |component| crate::error::invalid_component_value(at, component.clone()),
         )
     })?;

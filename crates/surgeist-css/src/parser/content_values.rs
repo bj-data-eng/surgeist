@@ -7,7 +7,7 @@ use super::generated_content::parse_content_string;
 use super::url::parse_url;
 use crate::CssIdent;
 use crate::content_values::*;
-use crate::error::{Error, basic, unsupported_value};
+use crate::error::{Error, basic, unexpected_at};
 
 type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
 
@@ -28,11 +28,7 @@ pub(super) fn parse_content_value<'i, 't>(
             return if input.is_exhausted() {
                 Ok(keyword)
             } else {
-                Err(unsupported_value(
-                    input,
-                    None,
-                    "content keyword cannot be combined with items",
-                ))
+                Err(unexpected_at(input.current_source_location()))
             };
         }
     }
@@ -45,15 +41,13 @@ pub(super) fn parse_content_value<'i, 't>(
             input.expect_exhausted().map_err(basic)?;
             return CssGeneratedContent::try_new(items, Some(alternative))
                 .map(CssContentValue::Generated)
-                .ok_or_else(|| {
-                    unsupported_value(input, None, "content requires generated items before slash")
-                });
+                .ok_or_else(|| unexpected_at(input.current_source_location()));
         }
         items.push(parse_item(input, numeric)?);
     }
     CssGeneratedContent::try_new(items, None)
         .map(CssContentValue::Generated)
-        .ok_or_else(|| unsupported_value(input, None, "content requires at least one item"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 /// Admits the full shared nonempty list without `content` keywords/slash branches.
@@ -65,8 +59,7 @@ pub(super) fn parse_content_list<'i, 't>(
     while !input.is_exhausted() {
         items.push(parse_item(input, numeric)?);
     }
-    CssContentList::try_new(items)
-        .ok_or_else(|| unsupported_value(input, None, "content list requires at least one item"))
+    CssContentList::try_new(items).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_alternative<'i, 't>(
@@ -95,7 +88,7 @@ fn parse_alternative<'i, 't>(
         }
     }
     CssContentAlternative::try_new(items)
-        .ok_or_else(|| unsupported_value(input, None, "content alternative requires text"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_item<'i, 't>(
@@ -117,11 +110,7 @@ fn parse_item<'i, 't>(
             "close-quote" => Ok(CssContentValueItem::CloseQuote),
             "no-open-quote" => Ok(CssContentValueItem::NoOpenQuote),
             "no-close-quote" => Ok(CssContentValueItem::NoCloseQuote),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                "unsupported content keyword",
-            )),
+            _ => Err(unexpected_at(input.current_source_location())),
         };
     }
     let location = input.current_source_location();
@@ -157,9 +146,8 @@ fn parse_item<'i, 't>(
 pub(super) fn parse_generic_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssContentName> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let checked = CssIdent::try_new(ident.to_string())
-        .map_err(|_| unsupported_value(input, None, "invalid decoded identifier"))?;
-    CssContentName::try_new(checked)
-        .ok_or_else(|| unsupported_value(input, None, "reserved custom identifier"))
+        .map_err(|_| unexpected_at(input.current_source_location()))?;
+    CssContentName::try_new(checked).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_counter_name<'i, 't>(
@@ -167,9 +155,9 @@ pub(super) fn parse_counter_name<'i, 't>(
 ) -> Result<'i, CssContentCounterName> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let checked = CssIdent::try_new(ident.to_string())
-        .map_err(|_| unsupported_value(input, None, "invalid decoded counter name"))?;
+        .map_err(|_| unexpected_at(input.current_source_location()))?;
     CssContentCounterName::try_new(checked)
-        .ok_or_else(|| unsupported_value(input, None, "reserved counter name"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_counter<'i, 't>(
@@ -208,9 +196,9 @@ pub(super) fn parse_style<'i, 't>(
 ) -> Result<'i, CssCounterStyleValue> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         let checked = CssIdent::try_new(ident.to_string())
-            .map_err(|_| unsupported_value(input, None, "invalid counter-style identifier"))?;
+            .map_err(|_| unexpected_at(input.current_source_location()))?;
         return CssCounterStyleValue::try_named(checked)
-            .ok_or_else(|| unsupported_value(input, None, "reserved counter-style name"));
+            .ok_or_else(|| unexpected_at(input.current_source_location()));
     }
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
@@ -251,7 +239,7 @@ fn parse_symbols<'i, 't>(
         symbols.push(CssCounterSymbolValue::Image(image));
     }
     CssSymbolsStyleValue::try_new(system, symbols)
-        .ok_or_else(|| unsupported_value(input, None, "symbols() has too few symbols"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 fn parse_target<'i, 't>(
@@ -311,11 +299,7 @@ fn parse_target_text<'i, 't>(
             "after" => CssTargetTextMode::After,
             "first-letter" => CssTargetTextMode::FirstLetter,
             _ => {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "unsupported target-text selector",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         })
     } else {
@@ -335,11 +319,7 @@ fn parse_named_string<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssNamed
             "last" => CssNamedStringMode::Last,
             "first-except" => CssNamedStringMode::FirstExcept,
             _ => {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "unsupported string selector",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         })
     } else {
@@ -363,11 +343,7 @@ fn parse_content_reference<'i, 't>(
             "first-letter" => CssContentReferenceMode::FirstLetter,
             "marker" => CssContentReferenceMode::Marker,
             _ => {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "unsupported content() selector",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         })
     };
@@ -385,7 +361,7 @@ fn parse_leader<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssLeaderValue
         "dotted" => CssLeaderValue::Dotted,
         "solid" => CssLeaderValue::Solid,
         "space" => CssLeaderValue::Space,
-        _ => return Err(unsupported_value(input, None, "unsupported leader type")),
+        _ => return Err(unexpected_at(input.current_source_location())),
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(mode)

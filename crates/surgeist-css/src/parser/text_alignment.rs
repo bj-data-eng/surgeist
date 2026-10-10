@@ -2,7 +2,7 @@
 
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssCharacterAlignment, CssComponentValueRef, CssTextAlign, CssTextAlignAllValue,
@@ -41,36 +41,22 @@ fn character<'i, 't>(
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position().byte_index();
-    let component = numeric.collect(input).map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, offset),
-            None,
-            "invalid text alignment string component",
-        )
-    })?;
+    let component = numeric
+        .collect(input)
+        .map_err(|error| unexpected_at(numeric.error_location(&error, location, offset)))?;
     if !matches!(
         component.view(),
         CssComponentValueRef::Token(CssValueTokenRef::String(_))
     ) {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            "text alignment requires a string component",
-        ));
+        return Err(unexpected_at(location));
     }
-    CssCharacterAlignment::try_from_component(component, fallback).map_err(|_| {
-        unsupported_value_at(
-            location,
-            None,
-            "text alignment string must contain exactly one extended grapheme cluster",
-        )
-    })
+    CssCharacterAlignment::try_from_component(component, fallback)
+        .map_err(|_| unexpected_at(location))
 }
 
 fn alignment<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-    shorthand: bool,
 ) -> Result<CssTextAlignAllValue, ParseError<'i, Error>> {
     let start = input.state();
     let token = input.next().map_err(basic)?.clone();
@@ -82,13 +68,8 @@ fn alignment<'i, 't>(
                 return Ok(CssTextAlignAllValue::Character(component));
             }
             let ident = input.expect_ident_cloned().map_err(basic)?;
-            let fallback = position(ident.as_ref()).ok_or_else(|| {
-                unsupported_value(
-                    input,
-                    None,
-                    "only a positional keyword can follow a character",
-                )
-            })?;
+            let fallback = position(ident.as_ref())
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
             let component = CssCharacterAlignment::try_from_component(
                 component.component().clone(),
                 Some(fallback),
@@ -98,7 +79,7 @@ fn alignment<'i, 't>(
         }
         Token::Ident(ident) => {
             let value = keyword(ident.as_ref())
-                .ok_or_else(|| unsupported_value(input, None, "unknown text alignment keyword"))?;
+                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
             if let Some(fallback) = position(ident.as_ref())
                 && !input.is_exhausted()
             {
@@ -110,15 +91,7 @@ fn alignment<'i, 't>(
             }
             Ok(CssTextAlignAllValue::Keyword(value))
         }
-        _ => Err(unsupported_value(
-            input,
-            None,
-            if shorthand {
-                "text-align requires a keyword or character alignment"
-            } else {
-                "text-align-all requires a keyword or character alignment"
-            },
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -132,14 +105,14 @@ pub(super) fn parse_text_align<'i, 't>(
     {
         return Ok(CssTextAlignValue::JustifyAll);
     }
-    alignment(input, numeric, true).map(CssTextAlignValue::Alignment)
+    alignment(input, numeric).map(CssTextAlignValue::Alignment)
 }
 
 pub(super) fn parse_text_align_all<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssTextAlignAllValue, ParseError<'i, Error>> {
-    alignment(input, numeric, false)
+    alignment(input, numeric)
 }
 
 pub(super) fn parse_text_align_last<'i, 't>(
@@ -151,5 +124,5 @@ pub(super) fn parse_text_align_last<'i, 't>(
     }
     keyword(ident.as_ref())
         .map(CssTextAlignLastValue::Keyword)
-        .ok_or_else(|| unsupported_value(input, None, "unknown text-align-last keyword"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

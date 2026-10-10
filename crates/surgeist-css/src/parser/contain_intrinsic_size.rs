@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, Token};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssContainIntrinsicSize, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
@@ -56,15 +56,11 @@ fn parse_nonnegative_length<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid contained intrinsic-size length")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLength::try_from_component(component).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "contained intrinsic size requires a nonnegative length",
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })
         }
         Token::Function(name) if is_math_function(name) => {
@@ -73,13 +69,7 @@ fn parse_nonnegative_length<'i, 't>(
             CssSpecifiedNonNegativeLength::try_from_calculation(
                 CssLengthCalculation::from_expression(expression),
             )
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "invalid contained intrinsic-size length math",
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

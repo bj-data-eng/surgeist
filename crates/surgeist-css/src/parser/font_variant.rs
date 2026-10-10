@@ -1,5 +1,5 @@
 use crate::CssFontFeatureValueName;
-use crate::error::{Error, basic, unsupported_value};
+use crate::error::{Error, basic, unexpected_at};
 use crate::font_variant::*;
 use cssparser::{ParseError, Parser, Token};
 
@@ -59,9 +59,8 @@ impl AlternateComponents {
             let mut names = Vec::new();
             loop {
                 let ident = nested.expect_ident_cloned().map_err(basic)?;
-                let name = CssFontFeatureValueName::try_new(ident.as_ref()).map_err(|_| {
-                    unsupported_value(nested, None, "invalid font feature value name")
-                })?;
+                let name = CssFontFeatureValueName::try_new(ident.as_ref())
+                    .map_err(|_| unexpected_at(nested.current_source_location()))?;
                 names.push(name);
                 if nested.is_exhausted() {
                     break;
@@ -69,11 +68,7 @@ impl AlternateComponents {
                 nested.expect_comma().map_err(basic)?;
             }
             if !multi && names.len() != 1 {
-                return Err(unsupported_value(
-                    nested,
-                    None,
-                    "one font feature value name required",
-                ));
+                return Err(unexpected_at(nested.current_source_location()));
             }
             Ok(names)
         })?;
@@ -405,7 +400,7 @@ pub(super) fn parse_font_variant_ligatures<'i, 't>(
     components
         .ligatures()
         .map(CssFontVariantLigatures::Values)
-        .ok_or_else(|| unsupported_value(input, None, "font-variant-ligatures requires a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_font_variant_numeric<'i, 't>(
@@ -428,7 +423,7 @@ pub(super) fn parse_font_variant_numeric<'i, 't>(
     components
         .numeric()
         .map(CssFontVariantNumeric::Values)
-        .ok_or_else(|| unsupported_value(input, None, "font-variant-numeric requires a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_font_variant_east_asian<'i, 't>(
@@ -451,7 +446,7 @@ pub(super) fn parse_font_variant_east_asian<'i, 't>(
     components
         .east_asian()
         .map(CssFontVariantEastAsian::Values)
-        .ok_or_else(|| unsupported_value(input, None, "font-variant-east-asian requires a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_font_variant_emoji<'i, 't>(
@@ -495,7 +490,7 @@ pub(super) fn parse_font_variant_alternates<'i, 't>(
     components
         .finish()
         .map(CssFontVariantAlternates::Values)
-        .ok_or_else(|| unsupported_value(input, None, "font-variant-alternates requires a value"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_font_variant<'i, 't>(
@@ -545,5 +540,5 @@ pub(super) fn parse_font_variant<'i, 't>(
         components.emoji,
     )
     .map(CssFontVariantValue::Values)
-    .ok_or_else(|| unsupported_value(input, None, "font-variant requires a value"))
+    .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

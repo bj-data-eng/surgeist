@@ -42,9 +42,7 @@ pub(super) fn parse_name<'i>(
         } else {
             CssColorProfileName::try_new(ident.as_ref())
                 .map(CssColorProfileRuleName::Custom)
-                .ok_or_else(|| {
-                    invalid_syntax(location, "expected a dashed identifier or device-cmyk")
-                })
+                .ok_or_else(|| invalid_syntax(location))
         }
     })()
     .map_err(|error| {
@@ -218,7 +216,7 @@ fn parse_value_data<'i>(
             let ident = input.expect_ident_cloned().map_err(basic)?;
             CssColorProfileDescriptorData::RenderingIntent(
                 CssColorProfileRenderingIntent::from_css_name(&ident)
-                    .ok_or_else(|| invalid_syntax(location, "expected a rendering intent"))?,
+                    .ok_or_else(|| invalid_syntax(location))?,
             )
         }
         CssColorProfileDescriptorKind::Components => {
@@ -226,9 +224,8 @@ fn parse_value_data<'i>(
                 let location = input.current_source_location();
                 let ident = input.expect_ident_cloned().map_err(basic)?;
                 input.expect_exhausted().map_err(basic)?;
-                CssColorProfileComponentName::try_new(ident.as_ref()).ok_or_else(|| {
-                    invalid_syntax(location, "expected a component identifier other than none")
-                })
+                CssColorProfileComponentName::try_new(ident.as_ref())
+                    .ok_or_else(|| invalid_syntax(location))
             })?)
         }
     })

@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, Token};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssGapShorthand, CssGapValue, CssLengthPercentageCalculation,
@@ -29,7 +29,7 @@ pub(super) fn parse_gap_value<'i, 't>(
             input.reset(&state);
             let component = numeric
                 .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid gap value"))?;
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
         }
         Token::Function(name) if is_math_function(name) => {
@@ -41,13 +41,9 @@ pub(super) fn parse_gap_value<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    checked.map(CssGapValue::LengthPercentage).map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            "gap requires normal or a nonnegative length-percentage",
-        )
-    })
+    checked
+        .map(CssGapValue::LengthPercentage)
+        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
 }
 
 pub(super) fn parse_gap_shorthand<'i, 't>(

@@ -51,7 +51,7 @@ pub(super) fn parse_prelude<'i, 't>(
         .collect();
     let [component] = meaningful.as_slice() else {
         return Err(with_at_rule_prelude_context(
-            invalid_syntax(at, "one extension name"),
+            invalid_syntax(at),
             "supports-condition",
             "ext.rule.supports-condition",
             "one extension name",
@@ -60,7 +60,7 @@ pub(super) fn parse_prelude<'i, 't>(
     let name =
         CssSupportsConditionName::try_from_component((*component).clone()).map_err(|_| {
             with_at_rule_prelude_context(
-                invalid_syntax(at, "one extension name"),
+                invalid_syntax(at),
                 "supports-condition",
                 "ext.rule.supports-condition",
                 "one extension name",
@@ -196,9 +196,7 @@ fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDi
         column: position.column().value() + 1,
     };
     let error = match &issue {
-        PartitionIssue::Grammar(_, _) => {
-            from_parse_error(source, invalid_syntax(location, "invalid test candidate"))
-        }
+        PartitionIssue::Grammar(_, _) => from_parse_error(source, invalid_syntax(location)),
         PartitionIssue::Lexical(detail, _) => {
             from_parse_error(source, invalid_component_value(location, detail.clone()))
         }

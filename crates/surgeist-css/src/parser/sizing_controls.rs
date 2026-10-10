@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
 use super::sizing::{parse_max_size_value, parse_size_value};
-use crate::error::{Error, basic, unsupported_value};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
 
@@ -43,7 +43,7 @@ pub(super) fn parse_frame_sizing<'i, 't>(
         "content-height" => Ok(CssFrameSizing::ContentHeight),
         "content-block-size" => Ok(CssFrameSizing::ContentBlockSize),
         "content-inline-size" => Ok(CssFrameSizing::ContentInlineSize),
-        _ => Err(unsupported_value(input, None, "invalid frame-sizing keyword")),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -59,11 +59,7 @@ pub(super) fn parse_min_intrinsic_sizing<'i, 't>(
     } else if ident.eq_ignore_ascii_case("zero-if-extrinsic") {
         false
     } else {
-        return Err(unsupported_value(
-            input,
-            None,
-            "invalid min-intrinsic-sizing keyword",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     };
     if input.is_exhausted() {
         return Ok(if first_scroll {
@@ -78,10 +74,6 @@ pub(super) fn parse_min_intrinsic_sizing<'i, 't>(
     {
         Ok(CssMinIntrinsicSizing::ZeroIfScrollAndExtrinsic)
     } else {
-        Err(unsupported_value(
-            input,
-            None,
-            "min-intrinsic-sizing requires distinct zero keywords",
-        ))
+        Err(unexpected_at(input.current_source_location()))
     }
 }

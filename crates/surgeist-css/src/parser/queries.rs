@@ -23,7 +23,7 @@ use super::recovery::{
 };
 use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, invalid_syntax, is_nesting_limit_error,
-    unsupported_value_at, with_media_query_context,
+    unexpected_at, with_media_query_context,
 };
 use crate::media::{MediaConditionSyntax, MediaFeatureShape, MediaTypedSyntax};
 use crate::numeric::{CalculationRoot, NumericInputContext};
@@ -189,10 +189,7 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
                 let Some(diagnostic) = crate::CssRecoveryDiagnostic::new(error, span, action)
                 else {
                     return Err(with_media_query_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "invalid media-query recovery provenance",
-                        ),
+                        invalid_syntax(input.current_source_location()),
                         None,
                     ));
                 };
@@ -235,10 +232,7 @@ pub(crate) fn parse_media_query_list_for_test(
     if !parser.is_exhausted() {
         return Err(from_parse_error(
             source,
-            invalid_syntax(
-                parser.current_source_location(),
-                "unexpected token after media query list",
-            ),
+            invalid_syntax(parser.current_source_location()),
         ));
     }
     Ok(list)
@@ -330,11 +324,7 @@ fn parse_media_query_modifier<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "not" => Ok(CssMediaQueryModifier::Not),
         "only" => Ok(CssMediaQueryModifier::Only),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported media query modifier `{ident}`"),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -363,11 +353,7 @@ fn parse_media_type<'i, 't>(
         "tty" => Ok(ParsedMediaType::Known(CssMediaType::Tty)),
         "tv" => Ok(ParsedMediaType::Known(CssMediaType::Tv)),
         "print" => Ok(ParsedMediaType::Known(CssMediaType::Print)),
-        "layer" | "not" | "and" | "only" | "or" => Err(unsupported_value_at(
-            location,
-            None,
-            format!("reserved media type `{ident}`"),
-        )),
+        "layer" | "not" | "and" | "only" | "or" => Err(unexpected_at(location)),
         _ => Ok(ParsedMediaType::Unknown(CssUnknownMediaType::new(
             source
                 .get(position.byte_offset().value()..input.position().byte_index())
@@ -477,10 +463,7 @@ fn parse_media_in_parens<'i, 't>(
             Some(block.closing_origin().clone())
         }
         _ => {
-            return Err(invalid_syntax(
-                start.source_location(),
-                "expected media parenthesis or function",
-            ));
+            return Err(invalid_syntax(start.source_location()));
         }
     };
     if let Some(closing) = closing {
@@ -548,7 +531,7 @@ fn parse_media_in_parens<'i, 't>(
     }
     input.reset(&end);
     let enclosed = CssGeneralEnclosed::try_from_component(component)
-        .map_err(|_| invalid_syntax(start.source_location(), "invalid media enclosure"))?;
+        .map_err(|_| invalid_syntax(start.source_location()))?;
     Ok(CssMediaCondition::new(
         CssMediaConditionKind::GeneralEnclosed(enclosed),
         origin,
@@ -642,12 +625,7 @@ impl MediaInput<'_> {
                     .component_paths_in_range(
                         start.position().byte_index()..end.position().byte_index(),
                     )
-                    .ok_or_else(|| {
-                        invalid_syntax(
-                            start.source_location(),
-                            "media value is not a complete component slice",
-                        )
-                    })?;
+                    .ok_or_else(|| invalid_syntax(start.source_location()))?;
                 paths
                     .into_iter()
                     .map(|path| {

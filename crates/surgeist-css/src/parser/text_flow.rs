@@ -1,7 +1,6 @@
 //! Wrapping, whitespace, and line-breaking grammar.
-use crate::error::{Error, basic, unsupported_value};
+use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
 fn text_wrap_mode_keyword(ident: &str) -> Option<CssTextWrapMode> {
@@ -30,37 +29,20 @@ pub(super) fn parse_text_wrap_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextWrapMode, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    text_wrap_mode_keyword(&ident).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-wrap-mode", &ident),
-        )
-    })
+    text_wrap_mode_keyword(&ident).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_text_wrap_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextWrapStyle, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    text_wrap_style_keyword(&ident).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-wrap-style", &ident),
-        )
-    })
+    text_wrap_style_keyword(&ident).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 pub(super) fn parse_white_space_collapse<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssWhiteSpaceCollapse, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    white_space_collapse_keyword(&ident).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("white-space-collapse", &ident),
-        )
-    })
+    white_space_collapse_keyword(&ident)
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_white_space_trim<'i, 't>(
@@ -74,14 +56,10 @@ pub(super) fn parse_white_space_trim<'i, 't>(
     loop {
         let flag = match_ignore_ascii_case! { &ident,
             "discard-before" => &mut before, "discard-after" => &mut after, "discard-inner" => &mut inner,
-            _ => return Err(unsupported_value(input, None, unsupported_keyword_reason("white-space-trim", &ident))),
+            _ => return Err(unexpected_at(input.current_source_location())),
         };
         if *flag {
-            return Err(unsupported_value(
-                input,
-                None,
-                "white-space-trim flags cannot repeat",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         *flag = true;
         let state = input.state();
@@ -109,30 +87,17 @@ pub(super) fn parse_text_wrap<'i, 't>(
         let ident = input.expect_ident_cloned().map_err(basic)?;
         if let Some(value) = text_wrap_mode_keyword(&ident) {
             if mode.replace(value).is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "text-wrap mode cannot repeat",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         } else if let Some(value) = text_wrap_style_keyword(&ident) {
             if style.replace(value).is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "text-wrap style cannot repeat",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         } else {
-            return Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("text-wrap", &ident),
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
-    CssTextWrap::try_new(mode, style)
-        .ok_or_else(|| unsupported_value(input, None, "text-wrap requires a mode or style"))
+    CssTextWrap::try_new(mode, style).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_white_space<'i, 't>(
@@ -154,19 +119,11 @@ pub(super) fn parse_white_space<'i, 't>(
         let ident = input.expect_ident_cloned().map_err(basic)?;
         if let Some(value) = white_space_collapse_keyword(&ident) {
             if collapse.replace(value).is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "white-space collapse cannot repeat",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         } else if let Some(value) = text_wrap_mode_keyword(&ident) {
             if mode.replace(value).is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "white-space mode cannot repeat",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         } else if ident.eq_ignore_ascii_case("none")
             || ident.eq_ignore_ascii_case("discard-before")
@@ -176,24 +133,16 @@ pub(super) fn parse_white_space<'i, 't>(
             // Quoted property ranges preserve their grouping: the entire trim
             // constituent is contiguous and can occur only once (Values4 §2.2).
             if trim.is_some() {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "white-space trim must form one nonrepeated group",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
             input.reset(&state);
             trim = Some(parse_white_space_trim(input)?);
         } else {
-            return Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("white-space", &ident),
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssWhiteSpace::try_new(collapse, mode, trim)
-        .ok_or_else(|| unsupported_value(input, None, "white-space requires a constituent"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_word_break<'i, 't>(
@@ -207,11 +156,7 @@ pub(super) fn parse_word_break<'i, 't>(
         "manual" => Ok(CssWordBreak::Manual),
         "auto-phrase" => Ok(CssWordBreak::AutoPhrase),
         "break-word" => Ok(CssWordBreak::BreakWord),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("word-break", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -223,11 +168,7 @@ pub(super) fn parse_overflow_wrap<'i, 't>(
         "normal" => Ok(CssOverflowWrap::Normal),
         "break-word" => Ok(CssOverflowWrap::BreakWord),
         "anywhere" => Ok(CssOverflowWrap::Anywhere),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("overflow-wrap", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -238,10 +179,6 @@ pub(super) fn parse_text_overflow<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "clip" => Ok(CssTextOverflow::Clip),
         "ellipsis" => Ok(CssTextOverflow::Ellipsis),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-overflow", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }

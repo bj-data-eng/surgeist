@@ -220,7 +220,7 @@ use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, from_rule_parse_error, invalid_at_rule_block,
     invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
     invalid_descriptor_annotation, invalid_known_declaration_annotation, invalid_syntax,
-    property_name_error, unsupported_value, with_at_rule_prelude_context, with_media_query_context,
+    property_name_error, unexpected_at, with_at_rule_prelude_context, with_media_query_context,
     with_property_context,
 };
 use crate::properties::*;
@@ -557,11 +557,7 @@ property_schema!(define_property_dispatch, input, numeric);
 fn parse_all_property<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssGlobalKeyword, ParseError<'i, Error>> {
-    Err(unsupported_value(
-        input,
-        None,
-        "`all` only accepts CSS-wide global keywords",
-    ))
+    Err(unexpected_at(input.current_source_location()))
 }
 
 /// Parses a UTF-8 stylesheet into valid authored syntax and recovery diagnostics.
@@ -1448,10 +1444,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 )?;
                 if !input.is_exhausted() {
                     return Err(crate::error::with_media_query_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after media query list",
-                        ),
+                        invalid_syntax(input.current_source_location()),
                         None,
                     ));
                 }
@@ -1482,10 +1475,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     .map_err(with_container_prelude_context)?;
                 if !input.is_exhausted() {
                     return Err(with_at_rule_prelude_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after container condition",
-                        ),
+                        invalid_syntax(input.current_source_location()),
                         "container",
                         "baseline.rule.container",
                         "the end of the @container prelude",
@@ -2163,10 +2153,7 @@ fn parse_layer_prelude<'i, 't>(
         }
     }
     if !input.is_exhausted() {
-        return Err(invalid_syntax(
-            input.current_source_location(),
-            "unexpected token after layer name list",
-        ));
+        return Err(invalid_syntax(input.current_source_location()));
     }
     Ok(names)
 }
@@ -2193,7 +2180,7 @@ fn parse_layer_name<'i, 't>(
         }
     }
 
-    CssLayerName::try_new(components).ok_or_else(|| invalid_syntax(location, "invalid layer name"))
+    CssLayerName::try_new(components).ok_or_else(|| invalid_syntax(location))
 }
 
 fn parse_scope_prelude<'i, 't>(
@@ -2234,10 +2221,7 @@ fn parse_scope_prelude<'i, 't>(
     };
 
     if !input.is_exhausted() {
-        return Err(invalid_syntax(
-            input.current_source_location(),
-            "unexpected token after scope prelude",
-        ));
+        return Err(invalid_syntax(input.current_source_location()));
     }
 
     Ok(CssScopePrelude { root, limit })
@@ -2289,10 +2273,7 @@ fn parse_font_face_prelude<'i, 't>(
 ) -> Result<(), ParseError<'i, Error>> {
     if !input.is_exhausted() {
         return Err(with_at_rule_prelude_context(
-            invalid_syntax(
-                input.current_source_location(),
-                "unexpected token after font-face at-rule name",
-            ),
+            invalid_syntax(input.current_source_location()),
             "font-face",
             "baseline.rule.font-face",
             "an empty @font-face prelude",
@@ -2314,10 +2295,7 @@ fn parse_keyframes_prelude<'i, 't>(
     })?;
     if !input.is_exhausted() {
         return Err(with_at_rule_prelude_context(
-            invalid_syntax(
-                input.current_source_location(),
-                "unexpected token after keyframes name",
-            ),
+            invalid_syntax(input.current_source_location()),
             "keyframes",
             "baseline.rule.keyframes",
             "the end of the @keyframes prelude",
@@ -2444,10 +2422,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 )?;
                 if !input.is_exhausted() {
                     return Err(with_media_query_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after media query list",
-                        ),
+                        invalid_syntax(input.current_source_location()),
                         None,
                     ));
                 }
@@ -2478,10 +2453,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     .map_err(with_container_prelude_context)?;
                 if !input.is_exhausted() {
                     return Err(with_at_rule_prelude_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after container condition",
-                        ),
+                        invalid_syntax(input.current_source_location()),
                         "container",
                         "baseline.rule.container",
                         "the end of the @container prelude",
@@ -3205,11 +3177,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
         if matches!(mode, DeclarationMode::Keyframe) && !keyframe_property_admitted(known_property)
         {
             return Err(with_property_context(
-                crate::error::unsupported_value_at(
-                    declaration_start.source_location(),
-                    None,
-                    "animation property is not permitted in keyframes",
-                ),
+                crate::error::unexpected_at(declaration_start.source_location()),
                 known_property.canonical_name(),
             ));
         }
@@ -3390,10 +3358,7 @@ fn parse_known_declaration_body<'i, 't>(
         if let Some(keyword) = parse_global_keyword(&ident) {
             if !input.is_exhausted() {
                 return Err(with_property_context(
-                    invalid_syntax(
-                        input.current_source_location(),
-                        "CSS global keyword must be the entire declaration value",
-                    ),
+                    invalid_syntax(input.current_source_location()),
                     context_name,
                 ));
             }
@@ -3478,15 +3443,9 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
                 let literal_start = input.state();
                 let root_token = input.next().ok().cloned();
                 input.reset(&literal_start);
-                let component = numeric.collect(input).map_err(|error| {
-                    values::angle_error(
-                        numeric,
-                        &error,
-                        location,
-                        offset,
-                        values::AngleParserContext::SvgGlyph,
-                    )
-                })?;
+                let component = numeric
+                    .collect(input)
+                    .map_err(|error| values::angle_error(numeric, &error, location, offset))?;
                 let root_origin = component.origin().clone();
                 let value = if matches!(
                     component.view(),
@@ -3498,13 +3457,7 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
                         .and_then(crate::CssSvgGlyphOrientationVerticalValue::from_parser_angle)
                 }
                 .map_err(|error| {
-                    let mapped = values::angle_error(
-                        numeric,
-                        &error,
-                        location,
-                        offset,
-                        values::AngleParserContext::SvgGlyph,
-                    );
+                    let mapped = values::angle_error(numeric, &error, location, offset);
                     if let Some(token) = &root_token
                         && !crate::error::is_resource_parse_error(&mapped)
                         && (matches!(token, Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. })
@@ -3784,7 +3737,7 @@ fn parse_custom_media_prelude<'i>(
             .map_err(|e| crate::error::invalid_component_value(location, e))?;
     let name = crate::CssCustomMediaName::try_from_component(component).map_err(|_| {
         with_at_rule_prelude_context(
-            invalid_syntax(location, "expected extension name"),
+            invalid_syntax(location),
             "custom-media",
             "ext.rule.custom-media",
             "an extension name followed by a custom-media body",
@@ -3795,7 +3748,7 @@ fn parse_custom_media_prelude<'i>(
         .try_parse(|p| {
             let name = p.expect_ident_cloned().map_err(basic)?;
             let boolean = crate::custom_media::boolean_keyword(&name)
-                .ok_or_else(|| invalid_syntax(p.current_source_location(), "not a boolean body"))?;
+                .ok_or_else(|| invalid_syntax(p.current_source_location()))?;
             p.expect_exhausted().map_err(basic)?;
             Ok::<_, ParseError<'i, Error>>(boolean)
         })

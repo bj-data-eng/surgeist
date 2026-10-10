@@ -9,7 +9,7 @@ use super::{
     top_level_only_at_rule_placement,
 };
 use crate::error::{
-    CssFeatureId, Error, basic, invalid_at_rule_body, property_name_error, unsupported_value,
+    CssFeatureId, Error, basic, invalid_at_rule_body, property_name_error, unexpected_at,
     with_property_context,
 };
 use crate::properties::{CssKnownProperty, CssKnownPropertyValueRef};
@@ -36,7 +36,7 @@ pub(super) fn parse_page_selector<'i, 't>(
         "first" => CssPageSelector::First,
         "recto" => CssPageSelector::Recto,
         "verso" => CssPageSelector::Verso,
-        _ => return Err(unsupported_value(input, None, "unsupported page pseudo selector")),
+        _ => return Err(unexpected_at(input.current_source_location())),
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(Some(selector))
@@ -211,7 +211,7 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
         }
         if property.is_some_and(|property| !is_page_margin_property(property)) {
             return Err(with_property_context(
-                unsupported_value(input, None, "property is not accepted in page context"),
+                unexpected_at(input.current_source_location()),
                 name.as_ref(),
             ));
         }
@@ -229,7 +229,7 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
                 .component()
                 .or_else(|| first_page_component(&parsed.components));
             let error = component.map_or_else(
-                || unsupported_value(input, None, "invalid Page margin value"),
+                || unexpected_at(input.current_source_location()),
                 |component| {
                     crate::error::unexpected_component_value(
                         component,

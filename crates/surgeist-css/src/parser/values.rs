@@ -1,6 +1,6 @@
 use cssparser::{ParseError, Parser, Token};
 
-use crate::error::{CssFeatureId, Error, basic, unsupported_value_at};
+use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
@@ -67,7 +67,6 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 pub(super) fn checked_percentage_value<'i>(
     location: cssparser::SourceLocation,
     token_css: &str,
-    non_finite_reason: impl Into<String>,
 ) -> std::result::Result<f64, ParseError<'i, Error>> {
     // cssparser exposes percentages after dividing by 100 and rounding to f32.
     // Re-multiplication can change the authored magnitude (30% -> 30.000002).
@@ -76,7 +75,7 @@ pub(super) fn checked_percentage_value<'i>(
         .strip_suffix('%')
         .and_then(|numeric| numeric.parse::<f64>().ok())
         .filter(|value| value.is_finite());
-    value.ok_or_else(|| unsupported_value_at(location, None, non_finite_reason))
+    value.ok_or_else(|| unexpected_at(location))
 }
 
 // Ordinary tokens are collected with their exact spelling and origin. Math roots
@@ -86,7 +85,6 @@ macro_rules! checked_length_parser {
         pub(super) fn $name<'i, 't>(
             input: &mut Parser<'i, 't>,
             numeric: &NumericInputContext<'_>,
-            context: &str,
         ) -> Result<crate::$owner, ParseError<'i, Error>> {
             input.skip_whitespace();
             let state = input.state();
@@ -96,11 +94,7 @@ macro_rules! checked_length_parser {
                 Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
                     input.reset(&state);
                     let component = numeric.collect(input).map_err(|error| {
-                        unsupported_value_at(
-                            numeric.error_location(&error, location, root_offset),
-                            None,
-                            format!("invalid {context}"),
-                        )
+                        unexpected_at(numeric.error_location(&error, location, root_offset))
                     })?;
                     crate::$owner::from_property_component(component, numeric)
                 }
@@ -111,28 +105,12 @@ macro_rules! checked_length_parser {
                         expression,
                     ))
                 }
-                Token::Ident(ident) => {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        format!("unsupported {context} `{ident}`"),
-                    ))
-                }
-                Token::Function(name) => {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        format!("unsupported length function `{name}` for {context}"),
-                    ))
-                }
+                Token::Ident(_) => return Err(unexpected_at(location)),
+                Token::Function(_) => return Err(unexpected_at(location)),
                 token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
             };
             value.map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    format!("invalid {context} length domain"),
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })
         }
     };
@@ -186,7 +164,6 @@ macro_rules! checked_scalar_parser {
         pub(super) fn $name<'i, 't>(
             input: &mut Parser<'i, 't>,
             numeric: &NumericInputContext<'_>,
-            context: &str,
         ) -> Result<crate::$owner, ParseError<'i, Error>> {
             input.skip_whitespace();
             let state = input.state();
@@ -196,11 +173,7 @@ macro_rules! checked_scalar_parser {
                 Token::$token { .. } => {
                     input.reset(&state);
                     let component = numeric.collect(input).map_err(|error| {
-                        unsupported_value_at(
-                            numeric.error_location(&error, location, root_offset),
-                            None,
-                            format!("invalid {context}"),
-                        )
+                        unexpected_at(numeric.error_location(&error, location, root_offset))
                     })?;
                     crate::$owner::try_from_component(component)
                 }
@@ -214,11 +187,7 @@ macro_rules! checked_scalar_parser {
                 token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
             };
             value.map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    format!("invalid {context} nonnegative domain"),
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })
         }
     };
@@ -242,13 +211,13 @@ pub(super) fn parse_shadow_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<crate::CssSpecifiedLength, ParseError<'i, Error>> {
-    parse_length(input, numeric, "shadow offset")
+    parse_length(input, numeric)
 }
 pub(super) fn parse_shadow_nonnegative_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<crate::CssSpecifiedNonNegativeLength, ParseError<'i, Error>> {
-    parse_nonnegative_length(input, numeric, "nonnegative shadow length")
+    parse_nonnegative_length(input, numeric)
 }
 
 use crate::numeric::NumericInputContext;
@@ -275,7 +244,7 @@ pub(super) fn parse_numeric_function<'i, 't>(
 }
 
 pub(super) fn calculation_error<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
-    unsupported_value_at(location, None, "invalid typed calculation")
+    unexpected_at(location)
 }
 
 /// Shared exact integer admission for authored number tokens and integer-root math.
@@ -306,25 +275,17 @@ pub(super) fn parse_integer_literal<'i, 't>(
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position().byte_index();
-    let component = numeric.collect(input).map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, offset),
-            None,
-            "invalid integer component",
-        )
-    })?;
-    crate::CssIntegerLiteral::try_from_component(component)
-        .map_err(|_| unsupported_value_at(location, None, "value must have integer token syntax"))
+    let component = numeric
+        .collect(input)
+        .map_err(|error| unexpected_at(numeric.error_location(&error, location, offset)))?;
+    crate::CssIntegerLiteral::try_from_component(component).map_err(|_| unexpected_at(location))
 }
 
 pub(super) fn parse_custom_ident_from_str_at<'i>(
-    context: &str,
     ident: &str,
     location: cssparser::SourceLocation,
 ) -> std::result::Result<CssCustomIdent, ParseError<'i, Error>> {
-    CssCustomIdent::try_from_ident(CssIdent::new(ident)).ok_or_else(|| {
-        unsupported_value_at(location, None, format!("unsupported {context} `{ident}`"))
-    })
+    CssCustomIdent::try_from_ident(CssIdent::new(ident)).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn next_is_delim<'i, 't>(input: &mut Parser<'i, 't>, delim: char) -> bool {
@@ -576,7 +537,6 @@ macro_rules! specified_scalar_parser {
         pub(super) fn $name<'i, 't>(
             input: &mut Parser<'i, 't>,
             numeric: &crate::numeric::NumericInputContext<'_>,
-            context: &str,
         ) -> Result<$owner, ParseError<'i, Error>> {
             input.skip_whitespace();
             let start = input.state();
@@ -585,13 +545,9 @@ macro_rules! specified_scalar_parser {
             let value = match input.next().map_err(basic)? {
                 Token::$token { .. } => {
                     input.reset(&start);
-                    let component = numeric.collect(input).map_err(|_| {
-                        unsupported_value_at(
-                            location,
-                            None,
-                            format!("invalid {context} numeric literal"),
-                        )
-                    })?;
+                    let component = numeric
+                        .collect(input)
+                        .map_err(|_| unexpected_at(location))?;
                     $owner::try_from_component(component)
                 }
                 Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -602,14 +558,7 @@ macro_rules! specified_scalar_parser {
                 token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
             };
             value.map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    format!(
-                        "{context} requires a {}",
-                        stringify!($root).to_ascii_lowercase()
-                    ),
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })
         }
     };
@@ -633,7 +582,6 @@ specified_scalar_parser!(
 pub(super) fn parse_ordinary_resolution<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-    context: &str,
 ) -> Result<crate::CssResolutionValue, ParseError<'i, Error>> {
     input.skip_whitespace();
     let start = input.state();
@@ -643,11 +591,7 @@ pub(super) fn parse_ordinary_resolution<'i, 't>(
         Token::Dimension { .. } => {
             input.reset(&start);
             let component = numeric.collect(input).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    format!("invalid {context}"),
-                )
+                unexpected_at(numeric.error_location(&error, location, root_offset))
             })?;
             crate::CssResolutionLiteral::try_from_component(component)
                 .map(crate::CssResolutionValue::from_literal)
@@ -661,70 +605,37 @@ pub(super) fn parse_ordinary_resolution<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    value.map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            format!("invalid {context}"),
-        )
-    })
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum AngleParserContext {
-    SvgGlyph,
-    Transform,
-    Filter,
-    Gradient,
-    ImageOrientation,
-    ShapeRotation,
-    Motion,
-}
-impl AngleParserContext {
-    fn label(self) -> &'static str {
-        match self {
-            Self::SvgGlyph => "SVG glyph orientation",
-            Self::Transform => "transform",
-            Self::Filter => "filter",
-            Self::Gradient => "gradient",
-            Self::ImageOrientation => "image-orientation",
-            Self::ShapeRotation => "shape rotation",
-            Self::Motion => "motion",
-        }
-    }
+    value.map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
 }
 
 pub(super) fn parse_angle_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-    context: AngleParserContext,
 ) -> Result<crate::CssAngleValue, ParseError<'i, Error>> {
-    let (component, location, offset) = collect_angle_component(input, numeric, context)?;
+    let (component, location, offset) = collect_angle_component(input, numeric)?;
     crate::CssAngleValue::from_parser_component(component, numeric)
-        .map_err(|error| angle_error(numeric, &error, location, offset, context))
+        .map_err(|error| angle_error(numeric, &error, location, offset))
 }
 
 pub(super) fn parse_angle_or_zero<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-    context: AngleParserContext,
 ) -> Result<crate::CssAngleOrZero, ParseError<'i, Error>> {
-    let (component, location, offset) = collect_angle_component(input, numeric, context)?;
+    let (component, location, offset) = collect_angle_component(input, numeric)?;
     crate::CssAngleOrZero::from_parser_component(component, numeric)
-        .map_err(|error| angle_error(numeric, &error, location, offset, context))
+        .map_err(|error| angle_error(numeric, &error, location, offset))
 }
 
 fn collect_angle_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-    context: AngleParserContext,
 ) -> Result<(crate::CssComponentValue, cssparser::SourceLocation, usize), ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position().byte_index();
     let component = numeric
         .collect(input)
-        .map_err(|error| angle_error(numeric, &error, location, offset, context))?;
+        .map_err(|error| angle_error(numeric, &error, location, offset))?;
     Ok((component, location, offset))
 }
 
@@ -733,7 +644,6 @@ pub(super) fn angle_error<'i>(
     error: &crate::CssNumericConstructionError,
     fallback: cssparser::SourceLocation,
     offset: usize,
-    context: AngleParserContext,
 ) -> ParseError<'i, Error> {
     let mut location = numeric.error_location(error, fallback, offset);
     // Map the exact recovered angle closure through the original component map;
@@ -752,13 +662,12 @@ pub(super) fn angle_error<'i>(
     {
         return crate::error::invalid_component_value(location, component.clone());
     }
-    unsupported_value_at(location, None, format!("invalid {} angle", context.label()))
+    unexpected_at(location)
 }
 
 pub(super) fn parse_positive_integer_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
 ) -> Result<CssPositiveIntegerValue, ParseError<'i, Error>> {
     input.skip_whitespace();
     let numeric_start = input.state();
@@ -766,20 +675,13 @@ pub(super) fn parse_positive_integer_value<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, format!("invalid {context} integer"))
-            })?;
-            let literal =
-                crate::CssIntegerLiteral::try_from_component(component).map_err(|_| {
-                    unsupported_value_at(location, None, format!("{context} must be an integer"))
-                })?;
-            let positive = CssPositiveIntegerLiteral::try_new(literal).ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    format!("{context} must be a positive integer"),
-                )
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
+            let literal = crate::CssIntegerLiteral::try_from_component(component)
+                .map_err(|_| unexpected_at(location))?;
+            let positive = CssPositiveIntegerLiteral::try_new(literal)
+                .ok_or_else(|| unexpected_at(location))?;
             Ok(CssPositiveIntegerValue::Literal(positive))
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {

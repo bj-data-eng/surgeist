@@ -25,9 +25,8 @@ pub(super) fn parse_families<'i>(
         .parse_comma_separated(|input| {
             let name = super::typography::parse_non_generic_font_family_name(input)?;
             input.expect_exhausted().map_err(basic)?;
-            CssFontFaceFamily::try_new(name.as_str()).ok_or_else(|| {
-                invalid_syntax(input.current_source_location(), "invalid font family")
-            })
+            CssFontFaceFamily::try_new(name.as_str())
+                .ok_or_else(|| invalid_syntax(input.current_source_location()))
         })
         .map_err(|error| {
             with_at_rule_prelude_context(
@@ -50,7 +49,7 @@ pub(super) fn parse_rule<'i>(
     diagnostics.extend(recovered.diagnostics);
     CssFontFeatureValuesRule::try_new(families, recovered.syntax)
         .map(|rule| rule.with_position(position(start)))
-        .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))
+        .map_err(|_| invalid_syntax(start.source_location()))
 }
 
 pub(super) fn parse_outer_body<'i>(
@@ -164,7 +163,7 @@ impl<'i> AtRuleParser<'i> for BodyParser<'i> {
                 .enter_rule_block(self.source, input, "later.rule.font-feature-values")?;
         let recovered = parse_definition_body(self.source, input, kind, self.recovery.clone());
         let block = CssFontFeatureValueBlock::try_new(kind, recovered.syntax)
-            .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))?
+            .map_err(|_| invalid_syntax(start.source_location()))?
             .with_position(position(start));
         self.diagnostics.extend(recovered.diagnostics);
         depth.retain();
@@ -211,7 +210,7 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
         let result = parse_descriptor_boundary(input, owner, &name, |input| {
             if let Some(kind) = self.kind {
                 let friendly = CssFontFeatureValueName::try_new(name.to_string())
-                    .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))?;
+                    .map_err(|_| invalid_syntax(start.source_location()))?;
                 let (data, components, origin) = super::collect_declaration_value(
                     input,
                     self.recovery.source_snapshot(),
@@ -257,7 +256,7 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
 // select the responsible component origin. Both use this exact token grammar.
 pub(super) fn indexes_from_components<'i>(
     values: &CssComponentValues,
-    error_for_component: impl Fn(&CssComponentValue, &str) -> ParseError<'i, Error>,
+    error_for_component: impl Fn(&CssComponentValue) -> ParseError<'i, Error>,
 ) -> Result<Vec<CssFontFeatureValueIndex>, ParseError<'i, Error>> {
     let mut indexes = Vec::new();
     for value in values.items() {
@@ -268,17 +267,14 @@ pub(super) fn indexes_from_components<'i>(
                 if number.kind() == CssNumericTokenKind::Integer =>
             {
                 let index = CssFontFeatureValueIndex::try_from_decimal(number.representation())
-                    .map_err(|error| error_for_component(value, &error.to_string()))?;
+                    .map_err(|_| error_for_component(value))?;
                 indexes.push(match value.origin() {
                     CssValueOrigin::Parsed(origin) => index.with_origin(origin.clone()),
                     _ => index,
                 });
             }
             _ => {
-                return Err(error_for_component(
-                    value,
-                    "expected nonnegative integer tokens",
-                ));
+                return Err(error_for_component(value));
             }
         }
     }
@@ -390,17 +386,17 @@ fn feature_data<'i>(
     if qualifies(components, numeric, input.current_source_location())? {
         return Ok(FontFeatureValueData::Pending(pending(input)?));
     }
-    let indexes = indexes_from_components(components, |component, reason| {
+    let indexes = indexes_from_components(components, |component| {
         if let Some(location) = name_location {
-            invalid_syntax(location, reason)
+            invalid_syntax(location)
         } else {
             error(component, "nonnegative integer tokens")
         }
     })?;
     super::descriptor_values::consume_remaining_components(input)?;
-    kind.validate_index_count(indexes.len()).map_err(|issue| {
+    kind.validate_index_count(indexes.len()).map_err(|_| {
         if let Some(location) = name_location {
-            return invalid_syntax(location, issue.to_string());
+            return invalid_syntax(location);
         }
         let surplus = components
             .items()

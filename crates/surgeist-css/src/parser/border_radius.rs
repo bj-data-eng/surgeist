@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, Token};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssBorderRadiusShorthand, CssCornerRadiusValue, CssLengthPercentageCalculation,
@@ -23,7 +23,7 @@ fn parse_radius_scalar<'i, 't>(
             input.reset(&state);
             let component = numeric
                 .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid border radius"))?;
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
         }
         Token::Function(name) if is_math_function(name) => {
@@ -35,13 +35,7 @@ fn parse_radius_scalar<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    checked.map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            "border radius requires a nonnegative length-percentage",
-        )
-    })
+    checked.map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
 }
 
 pub(super) fn parse_exact_corner_radius<'i, 't>(
@@ -74,11 +68,7 @@ fn parse_radius_list<'i, 't>(
             let slash_is_next = input.try_parse(|input| input.expect_delim('/')).is_ok();
             input.reset(&state);
             if !slash_is_next {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "border-radius accepts at most four radii per axis",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         }
     }
@@ -91,30 +81,17 @@ pub(super) fn parse_exact_border_radius<'i, 't>(
 ) -> Result<CssBorderRadiusShorthand, ParseError<'i, Error>> {
     let horizontal = parse_radius_list(input, numeric)?;
     if horizontal.is_empty() {
-        return Err(unsupported_value(
-            input,
-            None,
-            "border-radius requires a horizontal radius",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
     let vertical = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
         let values = parse_radius_list(input, numeric)?;
         if values.is_empty() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "border-radius slash requires a vertical radius",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         Some(values)
     } else {
         None
     };
-    CssBorderRadiusShorthand::try_new(horizontal, vertical).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "border-radius requires one to four values per axis",
-        )
-    })
+    CssBorderRadiusShorthand::try_new(horizontal, vertical)
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

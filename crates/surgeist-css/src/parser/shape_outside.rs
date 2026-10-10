@@ -1,6 +1,6 @@
 //! Shapes 1 property composition over shared authored image and shape owners.
 
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::{CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
 use cssparser::{ParseError, Parser, Token};
 
@@ -19,7 +19,7 @@ pub(super) fn parse_shape_outside<'i, 't>(
     if input.is_exhausted() {
         return reference_box
             .map(CssShapeOutside::ShapeBox)
-            .ok_or_else(|| unsupported_value(input, None, "missing shape-outside shape or box"));
+            .ok_or_else(|| unexpected_at(input.current_source_location()));
     }
     let state = input.state();
     let basic_shape = matches!(input.next(), Ok(Token::Function(name))
@@ -46,7 +46,5 @@ fn parse_shape_box<'i, 't>(
 ) -> Result<CssShapeBox, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    CssShapeBox::from_keyword(ident.as_ref()).ok_or_else(|| {
-        unsupported_value_at(location, None, format!("unsupported shape box `{ident}`"))
-    })
+    CssShapeBox::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
 }

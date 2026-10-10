@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, Token};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssBoxSideKind, CssLengthPercentageCalculation, CssMarginPair, CssMarginShorthand,
@@ -42,17 +42,11 @@ fn parse_signed_length_percentage<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid margin length-percentage")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedLengthPercentage::from_property_component(component, numeric).map_err(
-                |error| {
-                    unsupported_value_at(
-                        numeric.error_location(&error, location, root_offset),
-                        None,
-                        "margin requires a length-percentage or auto",
-                    )
-                },
+                |error| unexpected_at(numeric.error_location(&error, location, root_offset)),
             )
         }
         Token::Function(name) if is_math_function(name) => {
@@ -61,13 +55,7 @@ fn parse_signed_length_percentage<'i, 't>(
             CssSpecifiedLengthPercentage::try_from_calculation(
                 CssLengthPercentageCalculation::from_expression(expression),
             )
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "invalid margin length-percentage math",
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -84,16 +72,12 @@ fn parse_nonnegative_length_percentage<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid padding length-percentage")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::from_property_component(component, numeric)
                 .map_err(|error| {
-                    unsupported_value_at(
-                        numeric.error_location(&error, location, root_offset),
-                        None,
-                        "padding requires a nonnegative length-percentage",
-                    )
+                    unexpected_at(numeric.error_location(&error, location, root_offset))
                 })
         }
         Token::Function(name) if is_math_function(name) => {
@@ -102,13 +86,7 @@ fn parse_nonnegative_length_percentage<'i, 't>(
             CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
                 CssLengthPercentageCalculation::from_expression(expression),
             )
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "invalid padding length-percentage math",
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -160,15 +138,11 @@ pub(super) fn parse_box_margin_shorthand<'i, 't>(
     while !input.is_exhausted() {
         authored.push(parse_box_margin_value(input, numeric)?);
         if authored.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "margin accepts at most four values",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssMarginShorthand::try_new(kind, authored)
-        .ok_or_else(|| unsupported_value(input, None, "margin requires one to four values"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_box_padding_shorthand<'i, 't>(
@@ -180,13 +154,9 @@ pub(super) fn parse_box_padding_shorthand<'i, 't>(
     while !input.is_exhausted() {
         authored.push(parse_box_padding_value(input, numeric)?);
         if authored.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "padding accepts at most four values",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssPaddingShorthand::try_new(kind, authored)
-        .ok_or_else(|| unsupported_value(input, None, "padding requires one to four values"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

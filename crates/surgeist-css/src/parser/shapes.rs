@@ -1,9 +1,7 @@
 //! Authored shape command parsing over shared exact scalar and position owners.
 use super::position::parse_full_position_bounded;
-use super::values::{
-    AngleParserContext, next_is_ident, parse_angle_value, parse_length_percentage,
-};
-use crate::error::{Error, basic, unsupported_value};
+use super::values::{next_is_ident, parse_angle_value, parse_length_percentage};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::*;
 use cssparser::{ParseError, Parser};
@@ -57,8 +55,8 @@ fn pair<'i, 't>(
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeCoordinatePair> {
     Ok(CssShapeCoordinatePair::new(
-        parse_length_percentage(input, numeric, "shape coordinate")?,
-        parse_length_percentage(input, numeric, "shape coordinate")?,
+        parse_length_percentage(input, numeric)?,
+        parse_length_percentage(input, numeric)?,
     ))
 }
 fn affinity<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, bool> {
@@ -69,11 +67,7 @@ fn affinity<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, bool> {
     } else if word.eq_ignore_ascii_case("by") {
         Ok(false)
     } else {
-        Err(crate::error::unsupported_value_at(
-            location,
-            None,
-            "expected shape to or by",
-        ))
+        Err(crate::error::unexpected_at(location))
     }
 }
 fn endpoint<'i, 't>(
@@ -93,11 +87,7 @@ fn anchor<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssShapeControlAncho
         "start" => Ok(CssShapeControlAnchor::Start),
         "end" => Ok(CssShapeControlAnchor::End),
         "origin" => Ok(CssShapeControlAnchor::Origin),
-        _ => Err(crate::error::unsupported_value_at(
-            location,
-            None,
-            "invalid shape control anchor",
-        )),
+        _ => Err(crate::error::unexpected_at(location)),
     }
 }
 fn relative_control<'i, 't>(
@@ -155,11 +145,7 @@ fn parse_command<'i, 't>(
                         "right" => Ok(CssHorizontalPositionKeyword::Right),
                         "x-start" => Ok(CssHorizontalPositionKeyword::XStart),
                         "x-end" => Ok(CssHorizontalPositionKeyword::XEnd),
-                        _ => Err(unsupported_value(
-                            p,
-                            None,
-                            "invalid horizontal line keyword",
-                        )),
+                        _ => Err(unexpected_at(p.current_source_location())),
                     }
                 });
                 if let Ok(keyword) = keyword {
@@ -168,7 +154,7 @@ fn parse_command<'i, 't>(
                     ));
                 }
             }
-            let value = parse_length_percentage(input, numeric, "horizontal line")?;
+            let value = parse_length_percentage(input, numeric)?;
             Ok(CssShapeCommand::HorizontalLine(if to {
                 CssShapeHorizontalLine::ToOffset(value)
             } else {
@@ -186,7 +172,7 @@ fn parse_command<'i, 't>(
                         "bottom" => Ok(CssVerticalPositionKeyword::Bottom),
                         "y-start" => Ok(CssVerticalPositionKeyword::YStart),
                         "y-end" => Ok(CssVerticalPositionKeyword::YEnd),
-                        _ => Err(unsupported_value(p, None, "invalid vertical line keyword")),
+                        _ => Err(unexpected_at(p.current_source_location())),
                     }
                 });
                 if let Ok(keyword) = keyword {
@@ -195,7 +181,7 @@ fn parse_command<'i, 't>(
                     ));
                 }
             }
-            let value = parse_length_percentage(input, numeric, "vertical line")?;
+            let value = parse_length_percentage(input, numeric)?;
             Ok(CssShapeCommand::VerticalLine(if to {
                 CssShapeVerticalLine::ToOffset(value)
             } else {
@@ -249,11 +235,7 @@ fn parse_command<'i, 't>(
             }))
         }
         "arc" => parse_arc(input, numeric).map(CssShapeCommand::Arc),
-        _ => Err(crate::error::unsupported_value_at(
-            location,
-            None,
-            "invalid shape command",
-        )),
+        _ => Err(crate::error::unexpected_at(location)),
     }
 }
 fn parse_arc<'i, 't>(
@@ -270,11 +252,9 @@ fn parse_arc<'i, 't>(
             .to_ascii_lowercase();
         match option.as_str() {
             "of" if radii.is_none() => {
-                let horizontal = parse_length_percentage(input, numeric, "arc radius")?;
+                let horizontal = parse_length_percentage(input, numeric)?;
                 radii = Some(
-                    if let Ok(vertical) =
-                        input.try_parse(|p| parse_length_percentage(p, numeric, "arc radius"))
-                    {
+                    if let Ok(vertical) = input.try_parse(|p| parse_length_percentage(p, numeric)) {
                         CssShapeArcRadii::Two {
                             horizontal,
                             vertical,
@@ -298,22 +278,12 @@ fn parse_arc<'i, 't>(
                     CssShapeArcSize::Small
                 })
             }
-            "rotate" if rotation.is_none() => {
-                rotation = Some(parse_angle_value(
-                    input,
-                    numeric,
-                    AngleParserContext::ShapeRotation,
-                )?)
-            }
+            "rotate" if rotation.is_none() => rotation = Some(parse_angle_value(input, numeric)?),
             _ => {
-                return Err(crate::error::unsupported_value_at(
-                    location,
-                    None,
-                    "invalid or duplicate arc option",
-                ));
+                return Err(crate::error::unexpected_at(location));
             }
         }
     }
-    let radii = radii.ok_or_else(|| unsupported_value(input, None, "arc requires of and radii"))?;
+    let radii = radii.ok_or_else(|| unexpected_at(input.current_source_location()))?;
     Ok(CssShapeArc::new(end, radii, sweep, size, rotation))
 }

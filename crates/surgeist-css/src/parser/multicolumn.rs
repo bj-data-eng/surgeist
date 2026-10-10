@@ -3,9 +3,8 @@ use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
 use super::values::parse_positive_integer_value;
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 
 pub(super) fn parse_column_count<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -17,7 +16,7 @@ pub(super) fn parse_column_count<'i, 't>(
     {
         Ok(CssColumnCount::Auto)
     } else {
-        parse_positive_integer_value(input, numeric, "column-count").map(CssColumnCount::Count)
+        parse_positive_integer_value(input, numeric).map(CssColumnCount::Count)
     }
 }
 
@@ -30,11 +29,7 @@ pub(super) fn parse_column_fill<'i, 't>(
         "auto" => Ok(CssColumnFill::Auto),
         "balance" => Ok(CssColumnFill::Balance),
         "balance-all" => Ok(CssColumnFill::BalanceAll),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("column-fill", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -48,15 +43,14 @@ pub(super) fn parse_line_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssLineWidth, ParseError<'i, Error>> {
-    parse_exact_line_width(input, numeric, "column-rule-width")
+    parse_exact_line_width(input, numeric)
 }
 
 pub(super) fn parse_column_rule<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssColumnRule, ParseError<'i, Error>> {
-    let (width, style, color) =
-        parse_exact_line_triple(input, numeric, "column-rule", "column-rule-width")?;
+    let (width, style, color) = parse_exact_line_triple(input, numeric)?;
     Ok(CssColumnRule::try_new(width, style, color).expect("parsed nonempty column rule"))
 }
 
@@ -68,11 +62,7 @@ pub(super) fn parse_column_span<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssColumnSpan::None),
         "all" => Ok(CssColumnSpan::All),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("column-span", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -103,34 +93,21 @@ pub(super) fn parse_columns<'i, 't>(
         {
             width = Some(value);
         } else if count.is_none()
-            && let Ok(value) =
-                input.try_parse(|input| parse_positive_integer_value(input, numeric, "columns"))
+            && let Ok(value) = input.try_parse(|input| parse_positive_integer_value(input, numeric))
         {
             count = Some(CssColumnCount::Count(value));
         } else {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                "unsupported or duplicate columns component",
-            ));
+            return Err(unexpected_at(location));
         }
 
         let component_count = u8::from(width.is_some()) + u8::from(count.is_some()) + autos;
         if component_count > 2 {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                "columns shorthand has too many components",
-            ));
+            return Err(unexpected_at(location));
         }
     }
 
     if width.is_none() && count.is_none() && autos == 0 {
-        return Err(unsupported_value(
-            input,
-            None,
-            "columns shorthand is missing a component",
-        ));
+        return Err(unexpected_at(input.current_source_location()));
     }
 
     Ok(CssColumns::new(

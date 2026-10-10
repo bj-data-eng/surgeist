@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser, Token};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssBoxSideKind, CssInsetPair, CssInsetShorthand, CssInsetValue, CssLengthPercentageCalculation,
@@ -27,17 +27,13 @@ pub(super) fn parse_inset_value<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid inset length-percentage")
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
             CssSpecifiedLengthPercentage::from_property_component(component, numeric)
                 .map(CssInsetValue::LengthPercentage)
                 .map_err(|error| {
-                    unsupported_value_at(
-                        numeric.error_location(&error, location, root_offset),
-                        None,
-                        "inset requires auto or a length-percentage",
-                    )
+                    unexpected_at(numeric.error_location(&error, location, root_offset))
                 })
         }
         Token::Function(name) if is_math_function(name) => {
@@ -47,13 +43,7 @@ pub(super) fn parse_inset_value<'i, 't>(
                 CssLengthPercentageCalculation::from_expression(expression),
             )
             .map(CssInsetValue::LengthPercentage)
-            .map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "invalid inset length-percentage math",
-                )
-            })
+            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -88,13 +78,9 @@ pub(super) fn parse_inset_shorthand<'i, 't>(
     while !input.is_exhausted() {
         authored.push(parse_inset_value(input, numeric)?);
         if authored.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "inset accepts at most four values",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssInsetShorthand::try_new(kind, authored)
-        .ok_or_else(|| unsupported_value(input, None, "inset requires one to four values"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

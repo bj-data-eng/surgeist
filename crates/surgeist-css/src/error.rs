@@ -1486,10 +1486,7 @@ pub(crate) fn invalid_component_value<'i>(
     }
 }
 
-pub(crate) fn invalid_syntax<'i>(
-    location: cssparser::SourceLocation,
-    _reason: impl Into<String>,
-) -> ParseError<'i, Error> {
+pub(crate) fn invalid_syntax<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
     error_at(
         location,
         ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
@@ -1630,16 +1627,12 @@ fn invalid_at_rule_body_at<'i>(
     }
 }
 
-pub(crate) fn invalid_selector<'i, 't>(
-    input: &Parser<'i, 't>,
-    reason: impl Into<String>,
-) -> ParseError<'i, Error> {
-    invalid_selector_at(input.current_source_location(), reason)
+pub(crate) fn invalid_selector<'i, 't>(input: &Parser<'i, 't>) -> ParseError<'i, Error> {
+    invalid_selector_at(input.current_source_location())
 }
 
 pub(crate) fn invalid_selector_at<'i>(
     location: cssparser::SourceLocation,
-    _reason: impl Into<String>,
 ) -> ParseError<'i, Error> {
     error_at(
         location,
@@ -1723,27 +1716,6 @@ pub(crate) fn invalid_descriptor_combination<'i, 't>(
     }
 }
 
-pub(crate) fn unsupported_value<'i, 't>(
-    input: &Parser<'i, 't>,
-    _property: Option<&str>,
-    _reason: impl Into<String>,
-) -> ParseError<'i, Error> {
-    unexpected_at(input.current_source_location())
-}
-
-pub(crate) fn unsupported_value_at<'i>(
-    location: cssparser::SourceLocation,
-    _property: Option<&str>,
-    _reason: impl Into<String>,
-) -> ParseError<'i, Error> {
-    error_at(
-        location,
-        ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
-            expectation: EXPECT_DECLARATION_VALUE,
-        }),
-    )
-}
-
 pub(crate) fn invalid_color<'i>(
     location: cssparser::SourceLocation,
     component: Option<&str>,
@@ -1813,10 +1785,7 @@ pub(crate) fn custom_media_context_error<'i>(
     location: cssparser::SourceLocation,
     name: &str,
 ) -> ParseError<'i, Error> {
-    let mut error = with_media_query_context(
-        invalid_syntax(location, "custom-media references require boolean context"),
-        Some(name),
-    );
+    let mut error = with_media_query_context(invalid_syntax(location), Some(name));
     if let ParseErrorKind::Custom(Error {
         kind: ErrorKind::InvalidMediaQuery(detail),
         ..
@@ -2056,7 +2025,7 @@ pub(crate) fn error_at<'i>(
     }
 }
 
-fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
+pub(crate) fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {

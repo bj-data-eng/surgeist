@@ -2,7 +2,7 @@ use super::values::{parse_length, parse_length_percentage};
 use cssparser::{ParseError, Parser, ParserState, Token, match_ignore_ascii_case};
 
 use super::values::{next_is_comma, next_is_delim};
-use crate::error::{Error, unsupported_value};
+use crate::error::{Error, unexpected_at};
 use crate::syntax::*;
 
 pub(super) fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -63,15 +63,11 @@ pub(super) fn parse_mask_position_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "mask-position list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssPhysicalPositionList::try_new(positions)
-        .ok_or_else(|| unsupported_value(input, None, "mask-position list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_background_position_list<'i, 't>(
@@ -85,15 +81,11 @@ pub(super) fn parse_background_position_list<'i, 't>(
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "background-position list has an empty item",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
     CssBackgroundPositionList::try_new(positions)
-        .ok_or_else(|| unsupported_value(input, None, "background-position list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_object_position<'i, 't>(
@@ -122,7 +114,7 @@ pub(super) fn parse_transform_origin<'i, 't>(
         let z_index = atoms.len() - 1;
         if let Some(position) = build_physical_position(&atoms[..z_index]) {
             input.reset(&states[z_index]);
-            let z = parse_length(input, numeric, "transform-origin z")?;
+            let z = parse_length(input, numeric)?;
             return CssTransformOrigin::try_new(position, Some(z))
                 .ok_or_else(|| invalid_generic_position_atom(input, &states[0]));
         }
@@ -213,13 +205,7 @@ pub(super) fn parse_full_position_before_angle<'i, 't>(
     let mut states = Vec::new();
     while atoms.len() < 4 && next_starts_position(input, PositionGrammar::Full) {
         let state = input.state();
-        let angle = input.try_parse(|input| {
-            super::values::parse_angle_value(
-                input,
-                numeric,
-                super::values::AngleParserContext::Motion,
-            )
-        });
+        let angle = input.try_parse(|input| super::values::parse_angle_value(input, numeric));
         if angle.is_ok() {
             input.reset(&state);
             break;
@@ -238,7 +224,7 @@ pub(super) fn parse_full_position_before_angle<'i, 't>(
         )?);
     }
     if atoms.is_empty() {
-        return Err(unsupported_value(input, None, "position is empty"));
+        return Err(unexpected_at(input.current_source_location()));
     }
     build_full_position(&atoms)
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
@@ -284,7 +270,7 @@ fn collect_position_atoms<'i, 't>(
         }
     }
     if atoms.is_empty() {
-        return Err(unsupported_value(input, None, "position is empty"));
+        return Err(unexpected_at(input.current_source_location()));
     }
     Ok((atoms, states))
 }
@@ -345,7 +331,7 @@ fn parse_generic_position_atom<'i, 't>(
         };
     }
     input.reset(&state);
-    let value = parse_length_percentage(input, numeric, "position")?;
+    let value = parse_length_percentage(input, numeric)?;
     Ok(GenericPositionAtom::Offset(value))
 }
 

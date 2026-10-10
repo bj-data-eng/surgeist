@@ -634,7 +634,7 @@ pub(super) fn container_prelude_from_components<'i>(
                 line: position.line().value(),
                 column: position.column().value() + 1,
             });
-            invalid_syntax(location, "invalid container prelude")
+            invalid_syntax(location)
         }
     })
 }
@@ -682,14 +682,11 @@ pub(crate) fn parse_container_condition_for_test(
         .map_err(|index| {
             from_parse_error(
                 source,
-                invalid_syntax(
-                    container_failure_location(
-                        values.items(),
-                        index,
-                        parser.current_source_location(),
-                    ),
-                    "invalid container condition",
-                ),
+                invalid_syntax(container_failure_location(
+                    values.items(),
+                    index,
+                    parser.current_source_location(),
+                )),
             )
         })
 }

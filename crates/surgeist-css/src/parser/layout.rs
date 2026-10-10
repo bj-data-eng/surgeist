@@ -1,14 +1,13 @@
 use super::values::parse_nonnegative_length;
-use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
     CalculationRoot, parse_integer_literal, parse_integer_value, parse_numeric_function,
 };
 use crate::CssOverflowValue;
 use crate::display::*;
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
+use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] =
     &[crate::CssFeatureId::new("ext.value.grid-lanes-display")];
@@ -24,11 +23,7 @@ pub(super) fn parse_resize<'i, 't>(
         "vertical" => Ok(CssResize::Vertical),
         "block" => Ok(CssResize::Block),
         "inline" => Ok(CssResize::Inline),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("resize", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -58,24 +53,16 @@ pub(super) fn parse_contain<'i, 't>(
             "layout" => CssContainComponent::Layout,
             "style" => CssContainComponent::Style,
             "paint" => CssContainComponent::Paint,
-            _ => return Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("contain", ident.as_ref()),
-            )),
+            _ => return Err(unexpected_at(location)),
         };
         if components.contains(&component) {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                format!("duplicate contain component `{ident}`"),
-            ));
+            return Err(unexpected_at(location));
         }
         components.push(component);
     }
     CssContainComponentList::try_new(components)
         .map(CssContain::Components)
-        .ok_or_else(|| unsupported_value(input, None, "contain component list is empty"))
+        .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_border_collapse<'i, 't>(
@@ -85,11 +72,7 @@ pub(super) fn parse_border_collapse<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "collapse" => Ok(CssBorderCollapse::Collapse),
         "separate" => Ok(CssBorderCollapse::Separate),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("border-collapse", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -97,11 +80,11 @@ pub(super) fn parse_border_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderSpacing, ParseError<'i, Error>> {
-    let horizontal = parse_nonnegative_length(input, numeric, "border-spacing")?;
+    let horizontal = parse_nonnegative_length(input, numeric)?;
     let vertical = if input.is_exhausted() {
         horizontal.clone()
     } else {
-        parse_nonnegative_length(input, numeric, "border-spacing")?
+        parse_nonnegative_length(input, numeric)?
     };
     Ok(CssBorderSpacing::new(horizontal, vertical))
 }
@@ -113,11 +96,7 @@ pub(super) fn parse_caption_side<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "top" => Ok(CssCaptionSide::Top),
         "bottom" => Ok(CssCaptionSide::Bottom),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("caption-side", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -128,46 +107,30 @@ pub(super) fn parse_empty_cells<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "show" => Ok(CssEmptyCells::Show),
         "hide" => Ok(CssEmptyCells::Hide),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("empty-cells", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
 pub(super) fn parse_page_line_minimum<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    property: &str,
 ) -> std::result::Result<CssPageLineMinimum, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, format!("invalid {property} integer"))
-            })?;
-            CssPageLineMinimum::try_from_component(component).map_err(|_| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    format!("{property} must be a positive integer"),
-                )
-            })
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
+            CssPageLineMinimum::try_from_component(component).map_err(|_| unexpected_at(location))
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
                 .map(CssIntegerCalculation::from_expression)
                 .and_then(|value| {
-                    CssPageLineMinimum::try_from_calculation(value).map_err(|_| {
-                        unsupported_value_at(
-                            location,
-                            None,
-                            format!("invalid {property} integer calculation"),
-                        )
-                    })
+                    CssPageLineMinimum::try_from_calculation(value)
+                        .map_err(|_| unexpected_at(location))
                 })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
@@ -191,11 +154,7 @@ pub(super) fn parse_break_between<'i, 't>(
         "column" => Ok(CssBreakBetween::Column),
         "avoid-region" => Ok(CssBreakBetween::AvoidRegion),
         "region" => Ok(CssBreakBetween::Region),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("break-before/after", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -209,11 +168,7 @@ pub(super) fn parse_break_inside<'i, 't>(
         "avoid-page" => Ok(CssBreakInside::AvoidPage),
         "avoid-column" => Ok(CssBreakInside::AvoidColumn),
         "avoid-region" => Ok(CssBreakInside::AvoidRegion),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("break-inside", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -229,8 +184,7 @@ pub(super) fn parse_page_break_between<'i, 't>(
         "right" => Ok(CssBreakBetween::Right),
         "recto" => Ok(CssBreakBetween::Recto),
         "verso" => Ok(CssBreakBetween::Verso),
-        _ => Err(unsupported_value(input, None,
-            unsupported_keyword_reason("page-break-before/after", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -241,8 +195,7 @@ pub(super) fn parse_page_break_inside<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakInside::Auto),
         "avoid" => Ok(CssBreakInside::Avoid),
-        _ => Err(unsupported_value(input, None,
-            unsupported_keyword_reason("page-break-inside", ident.as_ref()))),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -253,11 +206,7 @@ pub(super) fn parse_table_layout<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssTableLayout::Auto),
         "fixed" => Ok(CssTableLayout::Fixed),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("table-layout", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -276,11 +225,7 @@ pub(super) fn parse_display<'i, 't>(
     let mut count = 0;
     while !input.is_exhausted() {
         if count == 3 {
-            return Err(unsupported_value(
-                input,
-                None,
-                "display has too many components",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
         count += 1;
         let location = input.current_source_location();
@@ -316,7 +261,7 @@ pub(super) fn parse_display<'i, 't>(
             "inline-grid" => Component::Exclusive(CssDisplayValue::Legacy(CssDisplayLegacy::InlineGrid)),
             "grid-lanes" => Component::Exclusive(CssDisplayValue::GridLanes),
             "inline-grid-lanes" => Component::Exclusive(CssDisplayValue::InlineGridLanes),
-            _ => return Err(unsupported_value_at(location, None, unsupported_keyword_reason("display", ident.as_ref()))),
+            _ => return Err(unexpected_at(location)),
         };
         let duplicate = match component {
             Component::Outside(value) => outside.replace(value).is_some(),
@@ -326,34 +271,22 @@ pub(super) fn parse_display<'i, 't>(
                 if count == 1 && input.is_exhausted() {
                     return Ok(value);
                 }
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    "exclusive display keyword cannot be combined",
-                ));
+                return Err(unexpected_at(location));
             }
         };
         if duplicate {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                "duplicate display component category",
-            ));
+            return Err(unexpected_at(location));
         }
     }
     if count == 0 {
-        return Err(unsupported_value(input, None, "display value is empty"));
+        return Err(unexpected_at(input.current_source_location()));
     }
     if list_item {
         let inside = match inside {
             None | Some(CssDisplayInside::Flow) => CssDisplayListItemInside::Flow,
             Some(CssDisplayInside::FlowRoot) => CssDisplayListItemInside::FlowRoot,
             Some(_) => {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "list-item permits only flow or flow-root",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         };
         return Ok(CssDisplayValue::ListItem {
@@ -379,11 +312,7 @@ pub(super) fn parse_box_sizing<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "content-box" => Ok(CssBoxSizing::ContentBox),
         "border-box" => Ok(CssBoxSizing::BorderBox),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("box-sizing", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -397,11 +326,7 @@ pub(super) fn parse_position<'i, 't>(
         "absolute" => Ok(CssLayoutPosition::Absolute),
         "fixed" => Ok(CssLayoutPosition::Fixed),
         "sticky" => Ok(CssLayoutPosition::Sticky),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("position", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -412,11 +337,7 @@ pub(super) fn parse_direction<'i, 't>(
     match_ignore_ascii_case! { &ident,
         "ltr" => Ok(CssDirection::Ltr),
         "rtl" => Ok(CssDirection::Rtl),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("direction", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -430,11 +351,7 @@ pub(super) fn parse_overflow<'i, 't>(
         "hidden" => Ok(CssOverflow::Hidden),
         "scroll" => Ok(CssOverflow::Scroll),
         "auto" | "overlay" => Ok(CssOverflow::Auto),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("overflow", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -460,11 +377,7 @@ pub(super) fn parse_float<'i, 't>(
         "none" => Ok(CssFloat::None),
         "inline-start" => Ok(CssFloat::InlineStart),
         "inline-end" => Ok(CssFloat::InlineEnd),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("float", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -479,11 +392,7 @@ pub(super) fn parse_clear<'i, 't>(
         "none" => Ok(CssClear::None),
         "inline-start" => Ok(CssClear::InlineStart),
         "inline-end" => Ok(CssClear::InlineEnd),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("clear", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -495,11 +404,7 @@ pub(super) fn parse_visibility<'i, 't>(
         "visible" => Ok(CssVisibility::Visible),
         "hidden" => Ok(CssVisibility::Hidden),
         "collapse" => Ok(CssVisibility::Collapse),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("visibility", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -511,11 +416,7 @@ pub(super) fn parse_content_visibility<'i, 't>(
         "visible" => Ok(CssContentVisibility::Visible),
         "hidden" => Ok(CssContentVisibility::Hidden),
         "auto" => Ok(CssContentVisibility::Auto),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("content-visibility", ident.as_ref()),
-        )),
+        _ => Err(unexpected_at(input.current_source_location())),
     }
 }
 
@@ -530,15 +431,11 @@ pub(super) fn parse_opacity<'i, 't>(
             input.reset(&numeric_start);
             input.skip_whitespace();
             let offset = input.position().byte_index();
-            let component = numeric.collect(input).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, offset),
-                    None,
-                    "invalid opacity scalar component",
-                )
-            })?;
+            let component = numeric
+                .collect(input)
+                .map_err(|error| unexpected_at(numeric.error_location(&error, location, offset)))?;
             crate::opacity_scalar::admit_opacity_scalar(component)
-                .map_err(|_| unsupported_value_at(location, None, "invalid opacity scalar token"))
+                .map_err(|_| unexpected_at(location))
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             let calculation = parse_numeric_function(
@@ -605,20 +502,18 @@ fn parse_ratio_operand<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&start);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, "invalid ratio number component")
-            })?;
-            crate::CssRatioOperand::try_from_component(component).map_err(|_| {
-                unsupported_value_at(location, None, "ratio number must be nonnegative")
-            })
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unexpected_at(location))?;
+            crate::CssRatioOperand::try_from_component(component)
+                .map_err(|_| unexpected_at(location))
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &start, numeric, CalculationRoot::Number)
                 .map(CssNumberCalculation::from_expression)
                 .and_then(|calculation| {
-                    crate::CssRatioOperand::try_from_calculation(calculation).map_err(|_| {
-                        unsupported_value_at(location, None, "invalid ratio number math")
-                    })
+                    crate::CssRatioOperand::try_from_calculation(calculation)
+                        .map_err(|_| unexpected_at(location))
                 })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
@@ -634,17 +529,9 @@ pub(super) fn parse_scrollbar_width<'i, 't>(
             "auto" => Ok(CssScrollbarWidth::Auto),
             "thin" => Ok(CssScrollbarWidth::Thin),
             "none" => Ok(CssScrollbarWidth::None),
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("scrollbar-width", ident.as_ref()),
-            )),
+            _ => Err(unexpected_at(location)),
         },
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported scrollbar-width `{}`", token.to_css_string()),
-        )),
+        _ => Err(unexpected_at(location)),
     }
 }
 
@@ -663,22 +550,14 @@ pub(super) fn parse_z_index<'i, 't>(
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => Ok(CssZIndexValue::Auto),
-        Token::Ident(ident) => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported z-index `{ident}`"),
-        )),
+        Token::Ident(_) => Err(unexpected_at(location)),
         Token::Number { .. } => {
             input.reset(&numeric_start);
             parse_integer_literal(input, numeric)
                 .map(CssIntegerValue::Literal)
                 .map(CssZIndexValue::Integer)
         }
-        Token::Dimension { unit, .. } => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported z-index length unit `{unit}`"),
-        )),
+        Token::Dimension { .. } => Err(unexpected_at(location)),
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
                 .map(CssIntegerCalculation::from_expression)

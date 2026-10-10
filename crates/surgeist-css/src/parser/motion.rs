@@ -1,9 +1,7 @@
 //! Motion Path authored grammar composed over the shared numeric, position,
 //! URL and complete BasicShape owners.
-use super::values::{
-    AngleParserContext, next_is_delim, next_is_ident, parse_angle_value, parse_length_percentage,
-};
-use crate::error::{Error, basic, unsupported_value};
+use super::values::{next_is_delim, next_is_ident, parse_angle_value, parse_length_percentage};
+use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::*;
 use cssparser::{ParseError, Parser, Token};
@@ -111,20 +109,12 @@ fn parse_ray<'i, 't>(
             input.next().map_err(basic)?;
             size = Some(value);
         } else if angle.is_none() {
-            angle = Some(parse_angle_value(
-                input,
-                numeric,
-                AngleParserContext::Motion,
-            )?);
+            angle = Some(parse_angle_value(input, numeric)?);
         } else {
-            return Err(unsupported_value(
-                input,
-                None,
-                "duplicate or unsupported ray argument",
-            ));
+            return Err(unexpected_at(input.current_source_location()));
         }
     }
-    let angle = angle.ok_or_else(|| unsupported_value(input, None, "ray requires an angle"))?;
+    let angle = angle.ok_or_else(|| unexpected_at(input.current_source_location()))?;
     Ok(CssRay::new(angle, size, contain, position))
 }
 
@@ -180,8 +170,7 @@ pub(super) fn parse_offset_rotate<'i, 't>(
     // A modifier alone is complete, so a following distance or slash belongs
     // to the enclosing grammar rather than requiring an angle here.
     let angle = if modifier.is_some() {
-        match input.try_parse(|input| parse_angle_value(input, numeric, AngleParserContext::Motion))
-        {
+        match input.try_parse(|input| parse_angle_value(input, numeric)) {
             Ok(value) => Some(value),
             Err(error) if crate::error::is_resource_parse_error(&error) => {
                 return Err(error);
@@ -189,17 +178,13 @@ pub(super) fn parse_offset_rotate<'i, 't>(
             Err(_) => None,
         }
     } else {
-        Some(parse_angle_value(
-            input,
-            numeric,
-            AngleParserContext::Motion,
-        )?)
+        Some(parse_angle_value(input, numeric)?)
     };
     if modifier.is_none() {
         modifier = take_modifier(input)?;
     }
     CssOffsetRotate::try_new(modifier, angle)
-        .map_err(|_| unsupported_value(input, None, "offset-rotate is empty"))
+        .map_err(|_| unexpected_at(input.current_source_location()))
 }
 
 pub(super) fn parse_offset<'i, 't>(
@@ -242,13 +227,9 @@ pub(super) fn parse_offset<'i, 't>(
                 }
             }
             if distance.is_none() {
-                distance = Some(parse_length_percentage(input, numeric, "offset-distance")?);
+                distance = Some(parse_length_percentage(input, numeric)?);
             } else {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "duplicate or unsupported offset constituent",
-                ));
+                return Err(unexpected_at(input.current_source_location()));
             }
         }
     }
@@ -258,5 +239,5 @@ pub(super) fn parse_offset<'i, 't>(
         None
     };
     CssOffset::try_new(position, path, distance, rotate, anchor)
-        .map_err(|_| unsupported_value(input, None, "offset requires a position or path"))
+        .map_err(|_| unexpected_at(input.current_source_location()))
 }
