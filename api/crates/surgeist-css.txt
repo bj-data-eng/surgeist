@@ -30,6 +30,9 @@ pub fn surgeist_css::CssAccentColor::serialize_specified_with_limits(&self, limi
 pub enum surgeist_css::CssAdmittedRule
 pub surgeist_css::CssAdmittedRule::Ordinary(surgeist_css::CssRule)
 pub surgeist_css::CssAdmittedRule::Scoped(surgeist_css::CssScopedRule)
+pub enum surgeist_css::CssAdmittedStyleSelectors
+pub surgeist_css::CssAdmittedStyleSelectors::Ordinary(surgeist_css::CssStyleSelectorList)
+pub surgeist_css::CssAdmittedStyleSelectors::Scoped(surgeist_css::CssScopedStyleSelectorList)
 #[non_exhaustive] pub enum surgeist_css::CssAlignmentPosition
 pub surgeist_css::CssAlignmentPosition::Center
 pub surgeist_css::CssAlignmentPosition::End
@@ -5176,6 +5179,10 @@ pub surgeist_css::CssStyleSelector::Relative(surgeist_css::CssRelativeSelector)
 pub surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector)
 impl surgeist_css::CssStyleSelector
 pub const fn surgeist_css::CssStyleSelector::selector(&self) -> &surgeist_css::CssSelector
+pub enum surgeist_css::CssStyleSelectorContext
+pub surgeist_css::CssStyleSelectorContext::Nested
+pub surgeist_css::CssStyleSelectorContext::Ordinary
+pub surgeist_css::CssStyleSelectorContext::Scoped(surgeist_css::CssStyleAncestor)
 pub enum surgeist_css::CssSupportStatus
 pub surgeist_css::CssSupportStatus::Complete
 pub surgeist_css::CssSupportStatus::Partial
@@ -10663,6 +10670,11 @@ pub struct surgeist_css::CssParsedOrigin
 impl surgeist_css::CssParsedOrigin
 pub const fn surgeist_css::CssParsedOrigin::source(&self) -> &surgeist_css::CssSourceSnapshot
 pub const fn surgeist_css::CssParsedOrigin::span(&self) -> surgeist_css::CssSourceSpan
+pub struct surgeist_css::CssParsedStyleSelectors
+impl surgeist_css::CssParsedStyleSelectors
+pub const fn surgeist_css::CssParsedStyleSelectors::context(&self) -> surgeist_css::CssStyleSelectorContext
+pub const fn surgeist_css::CssParsedStyleSelectors::origin(&self) -> &surgeist_css::CssParsedOrigin
+pub const fn surgeist_css::CssParsedStyleSelectors::selectors(&self) -> &surgeist_css::CssAdmittedStyleSelectors
 pub struct surgeist_css::CssParserContext
 impl surgeist_css::CssParserContext
 pub const fn surgeist_css::CssParserContext::mode(self) -> surgeist_css::CssParserMode
@@ -13073,6 +13085,8 @@ pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<s
 pub fn surgeist_css::parse_sheet_with_options(source: &str, options: surgeist_css::CssStylesheetParseOptions) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::parse_style_block(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleBlock>>
+pub fn surgeist_css::parse_style_selector_list(source: &str, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedStyleSelectors>>
+pub fn surgeist_css::parse_style_selector_list_with_limits(source: &str, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedStyleSelectors>>
 pub fn surgeist_css::parse_supports_test_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssSupportsTestBody>>>
 pub fn surgeist_css::parse_when_condition(source: &str) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::parse_when_condition_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>

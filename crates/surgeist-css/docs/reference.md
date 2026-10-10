@@ -24,6 +24,8 @@ subset; it does not establish complete support for all CSS syntax.
 | `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
 | `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
 | `parse_relative_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssRelativeSelectorList>>` |
+| `parse_style_selector_list(source, namespaces, CssStyleSelectorContext)` | Default features | `CssParseReport<Option<CssParsedStyleSelectors>>` |
+| `parse_style_selector_list_with_limits(source, namespaces, context, limits)` | Default features | Contextual raw selectors with cumulative component limits |
 | `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
 | `parse_media_query_list(&str)` | Default features | `CssParseReport<CssMediaQueryList>` |
 | `parse_font_face_descriptor_value(&str, CssFontFaceDescriptorKind)` | Default features | `CssParseReport<Option<CssFontFaceDescriptorValue>>` |
@@ -184,6 +186,23 @@ retains its diagnostics. `into_validation_result()` accepts only a clean report.
 Detached relative anchors remain symbolic until an admitting consumer binds
 them. Normalized `ExplicitAnchors` bindings retain an optional
 parent through `CssSelectorContext::parent()` rather than manufacturing one.
+
+`parse_style_selector_list` admits raw selectorText in the actual destination
+grammar: `Ordinary` rejects leading combinators; `Nested` retains relative
+members and symbolic nesting anchors; `Scoped(CssStyleAncestor)` retains scope
+anchors even when a style ancestor exists through the scope. An intervening
+style rule starts ordinary nesting context. The result contains the existing
+ordinary/scoped checked carrier through `CssAdmittedStyleSelectors` and retains
+the complete original input occurrence through `CssParsedStyleSelectors::origin`.
+It feeds checked edited rule views without manufacturing an authored rule.
+One invalid outer member or trailing nontrivia rejects the whole input, while
+forgiving and implicit EOF recovery may retain a payload with diagnostics.
+Consumers implementing selectorText no-ops therefore inspect retention and
+typed failure causes separately from clean-report validation. The limits variant
+charges all original bytes and component nodes, including trivia and descendants,
+before invoking the existing selector grammar; resource failures publish no
+payload and allow unchanged retry. Later specified output has its own limits.
+
 `CssSelector::to_specified_css()` emits canonical authored selector text.
 `to_specified_css_with_limits()` applies cumulative semantic-node and final UTF-8
 byte limits, returning a typed error atomically while retaining the input graph.

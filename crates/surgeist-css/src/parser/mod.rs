@@ -36,6 +36,11 @@ pub(crate) mod font_palette_values;
 mod font_settings;
 mod font_variant;
 mod fragments;
+mod style_selector_fragments;
+pub use style_selector_fragments::{
+    CssAdmittedStyleSelectors, CssParsedStyleSelectors, CssStyleSelectorContext,
+    parse_style_selector_list, parse_style_selector_list_with_limits,
+};
 mod import;
 use import::{CssImportPrelude, parse_import_prelude};
 pub(crate) use import::{construct_import, import_boundaries_match};

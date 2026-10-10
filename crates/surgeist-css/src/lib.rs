@@ -2039,8 +2039,9 @@ pub use normalization::{
     normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssAdmittedRule, CssNamespaceContext, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
-    CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind, classify_rule_syntax,
+    CssAdmittedRule, CssAdmittedStyleSelectors, CssNamespaceContext, CssParsedKeyframeRule,
+    CssParsedKeyframeSelectors, CssParsedStyleSelectors, CssRuleAdmissionContext, CssRuleSyntax,
+    CssRuleSyntaxKind, CssStyleSelectorContext, classify_rule_syntax,
     classify_rule_syntax_with_limits, parse_color_profile_block,
     parse_color_profile_descriptor_value, parse_counter_style_block,
     parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
@@ -2054,7 +2055,7 @@ pub use parser::{
     parse_page_selector_list, parse_property_value_text, parse_property_value_text_for_grammar,
     parse_relative_selector_list, parse_rule, parse_scope_block, parse_scoped_group_block,
     parse_selector, parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
-    parse_supports_test_block,
+    parse_style_selector_list, parse_style_selector_list_with_limits, parse_supports_test_block,
 };
 pub use properties::*;
 pub use property_value::{

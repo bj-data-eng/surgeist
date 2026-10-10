@@ -713,6 +713,18 @@ fn selector_fragment<T>(
     for (prefix, name) in &context.0.named {
         state.activate_namespace(Some(prefix.clone()), name.clone());
     }
+    selector_fragment_with_state(source, state, single, parse)
+}
+
+pub(super) fn selector_fragment_with_state<T>(
+    source: &str,
+    state: RecoveryState,
+    single: bool,
+    parse: impl for<'i> FnOnce(
+        &mut Parser<'i, '_>,
+        &mut SelectorRecovery<'_>,
+    ) -> Result<T, ParseError<'i, Error>>,
+) -> crate::CssParseReport<Option<T>> {
     let working_source = crate::tokenization::prepare(source);
     let mut input = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut input);
