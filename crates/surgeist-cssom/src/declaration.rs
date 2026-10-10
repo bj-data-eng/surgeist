@@ -376,7 +376,7 @@ fn query_value(
 }
 // Complete setter values reject tokenizer syntax as a source null parse.
 // Resource and other checked-provider failures retain their typed cause.
-fn complete_value_components(
+pub(crate) fn complete_value_components(
     value: &str,
     limits: CssComponentValueLimits,
 ) -> Result<bool, CssomError> {
@@ -395,7 +395,9 @@ fn complete_value_components(
         Err(error) => Err(CssomError::Component(error)),
     }
 }
-fn resource_diagnostics(diagnostics: &[CssRecoveryDiagnostic]) -> Result<(), CssomError> {
+pub(crate) fn resource_diagnostics(
+    diagnostics: &[CssRecoveryDiagnostic],
+) -> Result<(), CssomError> {
     for diagnostic in diagnostics {
         if matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
             || matches!(diagnostic.error().kind(),ErrorKind::InvalidComponentValue(e) if matches!(e.kind(),CssComponentValueErrorKind::NestingLimit|CssComponentValueErrorKind::ComponentLimit|CssComponentValueErrorKind::ByteLimit|CssComponentValueErrorKind::CapacityOverflow))

@@ -65,6 +65,7 @@ pub surgeist_cssom::CssomError::AuthoredFeatureConversion
 pub surgeist_cssom::CssomError::BatchAborted
 pub surgeist_cssom::CssomError::Component(surgeist_css::component_values::CssComponentValueError)
 pub surgeist_cssom::CssomError::ComputedStyleUpdatePrecondition
+pub surgeist_cssom::CssomError::CounterStylePreparationUnavailable(surgeist_css::counter_definition::CssCounterStyleDefinitionStatus)
 pub surgeist_cssom::CssomError::Declaration(surgeist_css::specified_declaration_block::CssDeclarationBlockError)
 pub surgeist_cssom::CssomError::EffectAlreadyConsumed
 pub surgeist_cssom::CssomError::EffectIdentityExhausted
@@ -324,6 +325,8 @@ pub fn surgeist_cssom::CssomBatch::insert_sheet_rule(&mut self, id: &surgeist_cs
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::prepare_font_face_css_text(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::prepare_font_face_descriptor(&mut self, id: &surgeist_cssom::CssomRuleId, kind: surgeist_css::syntax::font_face::CssFontFaceDescriptorKind, value: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::set_counter_descriptor(&mut self, id: &surgeist_cssom::CssomRuleId, kind: surgeist_css::syntax::counter_style::CssCounterStyleDescriptorKind, source: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomBlock
 impl surgeist_cssom::CssomBlock
 pub fn surgeist_cssom::CssomBlock::admission_inputs(&self) -> &[surgeist_cssom::CssomInputVersion]
@@ -333,6 +336,8 @@ pub fn surgeist_cssom::CssomBlock::owner(&self) -> core::option::Option<&surgeis
 pub fn surgeist_cssom::CssomBlock::parent(&self) -> core::option::Option<&surgeist_cssom::CssomRuleId>
 pub fn surgeist_cssom::CssomBlock::replacement_input(&self) -> core::option::Option<&surgeist_cssom::CssomDeclarationInput>
 pub fn surgeist_cssom::CssomBlock::selected_font_face(&self) -> core::option::Option<&surgeist_cssom::CssomProjection<surgeist_css::font_face_declaration_block::CssSpecifiedFontFaceDeclarationBlock, surgeist_css::font_face_declaration_block::CssFontFaceDeclarationBlockError>>
+impl surgeist_cssom::CssomBlock
+pub fn surgeist_cssom::CssomBlock::counter_descriptors(&self, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::counter_definition::CssCounterStyleDescriptorCollection<'_>, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomBlockFlags
 pub surgeist_cssom::CssomBlockFlags::computed: bool
 pub surgeist_cssom::CssomBlockFlags::readonly: bool
@@ -657,6 +662,9 @@ pub fn surgeist_cssom::CssomSnapshot::color_profile_rendering_intent(&self, id: 
 pub fn surgeist_cssom::CssomSnapshot::color_profile_src(&self, id: &surgeist_cssom::CssomRuleId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomSnapshot::custom_media_name(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&str, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomSnapshot::custom_media_query(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&surgeist_cssom::CssomCustomMediaQuery, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::counter_descriptor(&self, id: &surgeist_cssom::CssomRuleId, kind: surgeist_css::syntax::counter_style::CssCounterStyleDescriptorKind, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::counter_name(&self, id: &surgeist_cssom::CssomRuleId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::declarations(&self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomDeclarationView<'_>, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot

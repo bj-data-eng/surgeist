@@ -449,6 +449,7 @@ pub struct CssomBlock {
     pub(crate) flags: CssomBlockFlags,
     pub(crate) data: CssomBlockData,
     pub(crate) admission_inputs: Vec<CssomInputVersion>,
+    pub(crate) counter_edits: Vec<CssCounterStyleDescriptorValue>,
     pub(crate) replacement_input: Option<CssomDeclarationInput>,
     pub(crate) selected_font_face: Option<
         CssomProjection<CssSpecifiedFontFaceDeclarationBlock, CssFontFaceDeclarationBlockError>,
@@ -693,6 +694,8 @@ pub enum CssomException {
 pub enum CssomError {
     Source(CssomException),
     ComputedStyleUpdatePrecondition,
+    /// The intrinsic definition or original algorithm depends on unresolved inputs.
+    CounterStylePreparationUnavailable(CssCounterStyleDefinitionStatus),
     UnresolvedDeclarationPreparation,
     StaleDeclarationDecision,
     EffectAlreadyConsumed,

@@ -80,6 +80,7 @@ impl CssomStore {
             full_recompute: false,
             terminal_replacement: None,
             declaration_changes: Vec::new(),
+            counter_changes: Vec::new(),
             owner_updates: Vec::new(),
             pending_preparations: Arc::new(AtomicUsize::new(0)),
         })
@@ -330,6 +331,7 @@ pub struct CssomBatch {
     created: Vec<Created>,
     pub(crate) full_recompute: bool,
     pub(crate) declaration_changes: Vec<CssomBlockId>,
+    pub(crate) counter_changes: Vec<CssomBlockId>,
     pub(crate) owner_updates: Vec<(CssomBlockId, crate::declaration_support::DeclarationBudget)>,
     pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
@@ -976,7 +978,8 @@ impl CssomBatch {
         })
     }
     fn changed(&self) -> bool {
-        if !self.declaration_changes.is_empty()
+        if !self.counter_changes.is_empty()
+            || !self.declaration_changes.is_empty()
             || self.staged.next_identity != self.base.next_identity
             || self.staged.context != self.base.context
         {
@@ -1211,6 +1214,12 @@ impl State {
             add(&mut entries, media.queries().len());
         }
         for block in self.blocks.values() {
+            add(&mut entries, block.counter_edits.len());
+            for value in &block.counter_edits {
+                if let Some(origin) = value.origin() {
+                    add(&mut strings, origin.source().as_str().len());
+                }
+            }
             if let Some(CssomProjection::Available(selected)) = &block.selected_font_face {
                 add(&mut entries, selected.entries().len());
             }

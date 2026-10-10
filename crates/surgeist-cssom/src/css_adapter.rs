@@ -71,6 +71,7 @@ impl State {
                 flags,
                 data,
                 admission_inputs: Vec::new(),
+                counter_edits: Vec::new(),
                 replacement_input: None,
                 selected_font_face,
             },

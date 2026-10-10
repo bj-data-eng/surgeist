@@ -42,7 +42,34 @@ Valid symbolic inputs can retain a typed unavailable projection rather than beco
 an empty or partial block. Storage does not imply
 that every authored property or whole-rule format is supported.
 
-Live counter names are raw strings. Seven ordered feature maps accept raw keys and
+Live counter names are raw strings. `counter_name` applies the CSS identifier
+writer; `counter_descriptor` reads any of the ten specified effective descriptor
+values and returns empty text for an unspecified descriptor. These partial reads
+remain available for intrinsically undefined rules, independently of the selected
+whole-rule format's unavailability. `set_counter_descriptor` parses a complete raw
+value and validates the prospective current collection through CSS. Grammar or
+undefined-definition rejection and a changed system algorithm are source no-ops;
+fixed-system first values can change. Undefined existing rules can be repaired.
+Definition-relevant environment substitution or calculated additive weights return
+`CounterStylePreparationUnavailable`; resource errors retain their native cause.
+Irrelevant pending descriptors remain symbolic checked values. The
+[`CounterStyle interface`](../../references/css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md#the-csscounterstylerule-interface)
+supplies these operations, consumed through the existing CSS prospective provider.
+
+`CssomBlock::counter_descriptors` supplies the bounded current checked collection
+for intrinsic inspection. Untouched named duplicates preserve genuine parsed
+occurrences and last-occurrence reads. An edited kind replaces its current
+occurrences with one honest raw value origin, while original syntax remains
+separately retained. Edits never invent descriptor-name occurrences. Each retained
+edit owns one quota entry and its complete raw UTF-8 input; replacement releases
+the previous current edit's quota. Detached objects count globally, while older
+immutable captures do not count again against current storage. Request work uses
+disjoint cumulative provider allowances and bounded entry/input scans; it does not
+evaluate counters, substitute environment values or resolve calculated weights.
+The [counter consumer](examples/counter_consumer.rs) demonstrates independent old
+and new partial readouts and origin inspection.
+
+Seven ordered feature maps accept raw keys and
 unsigned-long sequences, including present-empty values. Exact authored indices
 and symbolic values remain separate; unrepresentable authored initialization gives
 an explicit conversion failure. Empty nested declaration children retain their

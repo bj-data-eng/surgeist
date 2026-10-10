@@ -4,6 +4,7 @@
 //! ancestry and atomic publication. It performs no cascade, evaluation or loading.
 #![forbid(unsafe_code)]
 
+mod counter_operations;
 mod css_adapter;
 mod declaration;
 mod declaration_support;
