@@ -1244,3 +1244,11 @@ Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and perm
 * License: [software-license-2023](software-license-2023.txt)
 
 Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. The captured source’s complete notice is retained in the bundled copy. Original HTML SHA-256: `75e15be8c8b41c6c34de2fa861801dbc6b77a06e6aba79d397bad82608e0aac1`.
+
+### CSS Paged Media Module Level 3 — bounded page-orientation editor capture retrieved 2026-10-10
+
+* Bundled copy: [css-page-3-page-orientation--editor-capture-20261010--48ec99cd3a58.md](../../references/css-page-3-page-orientation--editor-capture-20261010--48ec99cd3a58.md)
+* Original: [CSS Paged Media Module Level 3, Editor’s Draft displaying 3 March 2026](https://drafts.csswg.org/css-page-3/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete §1.1 and §7.1.2 only are retained; the bundled copy explicitly identifies partial coverage and retains the original legal links and full license text. Original HTML SHA-256: `48ec99cd3a581f90b588c6d578be8fd97102c01d6482b1d75ebf39108924dbfb`.

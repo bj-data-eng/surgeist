@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 192 retained source identities and states their representations: 190 full documents/source witnesses and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 193 retained source identities and states their representations: 190 full documents/source witnesses, one partial clause witness, and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -9,6 +9,8 @@ The references are format conversions, not summaries or replacement standards. D
 [Source editions and bounded imports](SOURCE-EDITIONS.md) separates the pinned Snapshot bibliography from later implementation-selected editions and importer-specific witnesses. No implementation behavior or source-selection decision is changed by adding these documents.
 
 The [CSSOM planning sources](SOURCE-EDITIONS.md#cssom-planning-sources) select complete current CSSOM, Counter Styles 3, and Conditional 5 captures for the new CSSOM work. Historical editions remain available for completed CSS consumers; each planning contribution uses one operative edition.
+
+The [bounded Page3 supplement](SOURCE-EDITIONS.md#bounded-page-page-orientation-supplement) retains complete §1.1 and §7.1.2 from one hashed editor capture for the named `page-orientation` grammar. It explicitly has partial document coverage and adds no font-model selection; other Page/margin domains retain their own requirements and source selections. The historical Page3 witness remains dated evidence, and the adopted Blink Page/margin serialization format is unchanged.
 
 ## Coverage exceptions
 

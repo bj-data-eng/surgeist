@@ -1,6 +1,6 @@
 # Exact source catalog
 
-192 retained source identities. Public full text is included for 190. Unicode revision 47 is metadata-only under its report-specific terms, and the pinned WebKit witness is metadata-only because file-specific redistribution terms remain unverified. Source hashes identify original snapshots, not converted Markdown hashes.
+193 retained source identities: 190 full documents/source witnesses, one partial clause witness, and two metadata-only exceptions. Unicode revision 47 is metadata-only under its report-specific terms, and the pinned WebKit witness is metadata-only because file-specific redistribution terms remain unverified. The partial Page3 witness contains complete §1.1 and §7.1.2 only. Source hashes identify original snapshots, not converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -249,3 +249,11 @@ Twenty complete files and four newer byte-identical identities supply bounded br
 | [FontFeatureValues.h (newer byte-identical identity)](webkit-cssom-wrapper-rules--73aa6c89e2cb.md#fontfeaturevalues-h) | [upstream](https://github.com/WebKit/WebKit/blob/437139e30888c5e1b4c35f889f32e1d0c39d018e/Source/WebCore/platform/graphics/FontFeatureValues.h) | c8f1257cabc1812cf890b985199f519e88718708d5e67fe449d7186631dca137 | complete source through byte-identical retained preferred-revision body |
 | [CSSAtRuleID.h (newer byte-identical identity)](webkit-cssom-wrapper-rules--73aa6c89e2cb.md#cssatruleid-h) | [upstream](https://github.com/WebKit/WebKit/blob/437139e30888c5e1b4c35f889f32e1d0c39d018e/Source/WebCore/css/parser/CSSAtRuleID.h) | 513fd46453ad215eebf3a43451865a5baf1a7d0d3a7f76e9c41bbeb1dc23eb95 | complete source through byte-identical retained preferred-revision body |
 | [CSSAtRuleID.cpp (newer byte-identical identity)](webkit-cssom-wrapper-rules--73aa6c89e2cb.md#cssatruleid-cpp) | [upstream](https://github.com/WebKit/WebKit/blob/437139e30888c5e1b4c35f889f32e1d0c39d018e/Source/WebCore/css/parser/CSSAtRuleID.cpp) | 75b617c09371237044d852cb1371523bd7c57227d8958e5f0285cc267792235e | complete source through byte-identical retained preferred-revision body |
+
+## Bounded CSSOM Page normative supplement
+
+This partial witness supplies only the named page-orientation definitions; the full-document hash identifies the original capture, not the partial Markdown bytes.
+
+| Reference | Upstream source | Original source SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [Page 3 page-orientation and common CSS-wide acceptance](css-page-3-page-orientation--editor-capture-20261010--48ec99cd3a58.md) | [Editor’s Draft displaying 3 March 2026, captured 10 October 2026](https://drafts.csswg.org/css-page-3/) | 48ec99cd3a581f90b588c6d578be8fd97102c01d6482b1d75ebf39108924dbfb | partial source witness; complete §1.1 and §7.1.2 only; copyright, license, fragment IDs and note classification retained |

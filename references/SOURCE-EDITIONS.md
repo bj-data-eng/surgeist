@@ -59,6 +59,12 @@ The Conditional 5 page advertises a dated 8 October 2026 Working Draft. That dat
 
 The [CSSOM 2021](cssom-1--WD-cssom-1-20210826--24d77393e4ea.md), [Counter Styles 2021](css-counter-styles-3--CR-css-counter-styles-3-20210727--7d697581c3eb.md), and [Conditional 5 2025](css-conditional-5--WD-css-conditional-5-20251030--272548f04685.md) copies remain historical sources for completed CSS work. The [implemented CSS reference](../crates/surgeist-css/docs/reference.md) and [source conformance records](../crates/surgeist-css/src/conformance.rs) still consume those editions. Planning selection does not rewrite completed implementation provenance or assert implementation conformance to the newer editions.
 
+### Bounded Page page-orientation supplement
+
+For the Page CSSOM contribution, the [bounded Page 3 witness](css-page-3-page-orientation--editor-capture-20261010--48ec99cd3a58.md) selects only the authored `page-orientation` descriptor grammar in §7.1.2 and §1.1’s common CSS-wide acceptance statement. The Editor’s Draft displays 3 March 2026; the HTML was captured on 10 October 2026 from `https://drafts.csswg.org/css-page-3/`, SHA-256 `48ec99cd3a581f90b588c6d578be8fd97102c01d6482b1d75ebf39108924dbfb`, 407,670 bytes, declaring source revision `4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c`. The witness retains both selected sections in full and explicitly has partial document coverage. The grammar is `upright | rotate-left | rotate-right`, with initial `upright`; §1.1 supplies common CSS-wide acceptance without repeating the keywords in the descriptor definition.
+
+This is a named supplement for that descriptor, not a whole-Page3 edition selection. Keep the [18 October 2018 Page3 historical witness](css-page-3--WD-css-page-3-20181018--0c654ec792d0.md) as dated evidence and preserve the adopted [Blink Page/margin serialization evidence](blink-cssom-page-rules--7984f9d11800.md). This supplement alone adds no font-model selection; other Page/margin domains retain their own requirements and source selections. Page rotation, layout and painting remain downstream.
+
 The [WebKit container-query source witness](webkit-cssom-container-query--73aa6c89e2cb.md) supplies separate, bounded implementation evidence for omitted-query serialization where the selected Conditional 5 prose lacks the complete rule. Its four complete files are identified by immutable revision and per-file hashes. This browser-source evidence is explicitly distinct from the operative normative edition.
 
 ## Retained registry history and representation limits
