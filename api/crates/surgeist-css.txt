@@ -11377,10 +11377,6 @@ pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static st
 pub struct surgeist_css::CssSpecifiedDeclarationBlock
 impl surgeist_css::CssSpecifiedDeclarationBlock
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::entries(&self) -> &[surgeist_css::CssSpecifiedDeclarationEntry]
-pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value(&self, name: surgeist_css::CssPropertyNameRef<'_>) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
-pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value_with_limits(&self, name: surgeist_css::CssPropertyNameRef<'_>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
-pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
-pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations(declarations: &surgeist_css::CssDeclarationList) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(declarations: &surgeist_css::CssDeclarationList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_expansions(expansions: &[surgeist_css::CssExpansion]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
@@ -11389,6 +11385,11 @@ pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_declaration
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(declarations: &surgeist_css::CssKeyframeDeclarationList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(expansions: &[surgeist_css::CssExpansion]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions_with_limits(expansions: &[surgeist_css::CssExpansion], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+impl surgeist_css::CssSpecifiedDeclarationBlock
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value(&self, name: surgeist_css::CssPropertyNameRef<'_>) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value_with_limits(&self, name: surgeist_css::CssPropertyNameRef<'_>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
 pub struct surgeist_css::CssSpecifiedDeclarationEntry
 impl surgeist_css::CssSpecifiedDeclarationEntry
 pub const fn surgeist_css::CssSpecifiedDeclarationEntry::authored_ordinal(&self) -> usize
