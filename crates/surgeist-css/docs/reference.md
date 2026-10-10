@@ -9000,6 +9000,22 @@ work limits without spending output bytes. Punctuation costs bytes only.
 
 ## Authored declaration specified output
 
+`CssCustomPropertyName::try_from_decoded` admits an already semantic supplied
+name for the selected [CSSOM custom-property operations](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#dom-cssstyledeclaration-getpropertyvalue).
+It requires two leading hyphens and a nonempty suffix, sharing the existing
+decoded-name owner. It preserves every supplied Rust string character, case and
+Unicode sequence, including whitespace, punctuation, literal backslashes and NUL.
+The adopted [WebKit name predicate](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParser.cpp#L186-L190)
+adds no stricter character check. No tokenization, escape decoding, trimming,
+normalization or parsed name provenance is introduced. Existing `try_new` keeps
+its complete authored identifier-token contract and decodes CSS escapes.
+For example, semantic `--bad name` is admitted directly; semantic `--\78`
+keeps the literal backslash, whereas authored `--\78` decodes to `--x`.
+CSSOM retains exact semantic identity for lookup and edits. CSS-owned output
+independently applies identifier escaping and the selected NUL-to-U+FFFD output
+rule without changing the stored name. Live membership, operation budgets and
+publication remain consumer responsibilities.
+
 `CssCustomPropertyName::metadata()` returns the same immutable
 `CssCustomPropertyMetadata` for every validated name in the open custom-property
 family. Its typed accessors expose the selected Variables 1 source and all nine

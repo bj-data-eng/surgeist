@@ -3710,12 +3710,14 @@ impl CssCustomPropertyMetadata {
     }
 }
 
-/// A case-sensitive custom-property name in the authored CSS syntax phase.
+/// A case-sensitive semantic custom-property name.
 ///
 /// [`Self::try_new`] accepts one complete authored CSS identifier token whose decoded name begins
 /// with `--`, including non-ASCII characters and escapes. [`Self::as_str`] returns its decoded semantic
 /// identity, matching names produced by the stylesheet parser; it does not retain the name's
 /// source escape spelling.
+/// [`Self::try_from_decoded`] instead preserves an already semantic string exactly,
+/// using the selected CSSOM prefix/nonempty check without tokenizing its spelling.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct CssCustomPropertyName {
     name: String,
@@ -3740,6 +3742,26 @@ impl CssCustomPropertyName {
             return None;
         }
         Self::from_ident_token(decoded.as_ref())
+    }
+
+    /// Admits an already decoded or supplied semantic custom-property name.
+    ///
+    /// The string must start with `--` and have a nonempty suffix. Every supplied
+    /// character, including whitespace, punctuation, backslashes and NUL, is
+    /// preserved exactly. No escapes, case or Unicode sequences are normalized.
+    /// This creates no parsed-source provenance. CSS serialization independently
+    /// applies its identifier output rules, including NUL replacement.
+    ///
+    /// ```
+    /// use surgeist_css::CssCustomPropertyName;
+    /// let name = CssCustomPropertyName::try_from_decoded("--bad name").unwrap();
+    /// assert_eq!(name.as_str(), "--bad name");
+    /// assert!(CssCustomPropertyName::try_new("--bad name").is_none());
+    /// assert!(CssCustomPropertyName::try_from_decoded("--").is_none());
+    /// ```
+    #[must_use]
+    pub fn try_from_decoded(name: impl AsRef<str>) -> Option<Self> {
+        Self::from_ident_token(name.as_ref())
     }
 
     #[must_use]

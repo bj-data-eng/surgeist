@@ -7963,6 +7963,7 @@ pub struct surgeist_css::CssCustomPropertyName
 impl surgeist_css::CssCustomPropertyName
 pub fn surgeist_css::CssCustomPropertyName::as_str(&self) -> &str
 pub fn surgeist_css::CssCustomPropertyName::metadata(&self) -> &'static surgeist_css::CssCustomPropertyMetadata
+pub fn surgeist_css::CssCustomPropertyName::try_from_decoded(name: impl core::convert::AsRef<str>) -> core::option::Option<Self>
 pub fn surgeist_css::CssCustomPropertyName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
 pub struct surgeist_css::CssCustomPropertyValue
 impl surgeist_css::CssCustomPropertyValue
