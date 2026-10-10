@@ -9311,6 +9311,43 @@ The compact `to_specified_css` operations preserve authored duplicates and their
 existing rule/provider behavior. The literal operation's selected formats and
 explicit limits are separate contracts.
 
+### Borrowed current rule graph inputs
+
+`CssRuleGraphInput` assembles a request-local borrowed graph without walking or
+formatting descendants. Its Copy nodes borrow current ordinary/scoped Style
+selectors and selected declarations, grouping preludes and ordered children,
+NestedDeclarations, Page/margin views, Keyframes names and ordered keyframe
+views, and Import originals with current media. `font_face` borrows the current
+checked selected descriptor block; it emits that block's supplied survivor order
+inside the defined FontFace wrapper, including empty membership and retained
+pending values. The original parsed FontFace whole-rule fixed-kind order stays
+independent.
+
+`serialize_cssom[_with_limits]` takes actual namespace bindings and enclosing
+`CssStyleAncestor`. One native graph visitor admits the assembled domains and
+spends cumulative input, projection and output allowances for the complete
+request. A mismatched Style or NestedDeclarations block fails at its actual child
+path. No intermediate descendant strings or independently reset writers are
+created. Assembly does not establish placement validity or change origins;
+the consumer owns its live relationships and stable child buffers. Existing
+`CssEditedRuleView` checked constructors retain their eager validation contracts.
+
+`from_rule` and `from_scoped_rule` borrow original parsed payloads. A consumer
+must use current typed inputs for edited fields. Unsupported whole wrappers keep
+their lazy typed capability failures before descendant output; the graph route
+does not invent Scope, When/Else or CounterStyle literal algorithms. Independently
+defined partial reads remain usable.
+
+`CssLayerName::serialize_specified[_with_limits]` exposes the existing native
+name writer for a checked named layer. The name aggregate and every component
+share the same work meter; each identifier is escaped and dots are punctuation.
+Empty or reserved names remain excluded by the checked type. Import absence and
+anonymous-layer decisions belong to the consumer.
+
+The public [graph input tests](../tests/cssom_rule_graph_input.rs) exercise exact
+aggregate exhaustion, later-child paths, unchanged retries, current survivors,
+empty members, retained provenance, namespace facts and inherited Style context.
+
 ## Complete authored Transforms contribution
 
 The selected [Transforms 1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/)

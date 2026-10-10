@@ -28,6 +28,12 @@ pub struct CssImportRuleView<'a> {
 }
 
 impl<'a> CssImportRuleView<'a> {
+    pub(crate) const fn from_checked_parts(
+        rule: &'a CssImportRule,
+        media: &'a CssMediaQueryList,
+    ) -> Self {
+        Self { rule, media }
+    }
     pub fn try_new(
         rule: &'a CssImportRule,
         media: &'a CssMediaQueryList,

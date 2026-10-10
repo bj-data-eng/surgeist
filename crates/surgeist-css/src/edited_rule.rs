@@ -24,19 +24,174 @@ pub(crate) enum EditedStyleSelectorsRef<'a> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(crate) enum EditedRuleChildrenRef<'a> {
+    Views(&'a [CssEditedRuleView<'a>]),
+    Inputs(&'a [CssRuleGraphInput<'a>]),
+}
+impl<'a> EditedRuleChildrenRef<'a> {
+    pub(crate) fn split_first(self) -> Option<(EditedRuleKind<'a>, Self)> {
+        match self {
+            Self::Views(rules) => rules
+                .split_first()
+                .map(|(first, rest)| (first.kind, Self::Views(rest))),
+            Self::Inputs(rules) => rules
+                .split_first()
+                .map(|(first, rest)| (first.kind, Self::Inputs(rest))),
+        }
+    }
+    pub(crate) const fn is_empty(self) -> bool {
+        match self {
+            Self::Views(rules) => rules.is_empty(),
+            Self::Inputs(rules) => rules.is_empty(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum EditedRuleKind<'a> {
     Parsed(&'a CssRule),
     ParsedScoped(&'a CssScopedRule),
     Style(
         EditedStyleSelectorsRef<'a>,
         &'a CssSpecifiedDeclarationBlock,
-        &'a [CssEditedRuleView<'a>],
+        EditedRuleChildrenRef<'a>,
     ),
-    Group(CssEditedGroupPreludeRef<'a>, &'a [CssEditedRuleView<'a>]),
+    Group(CssEditedGroupPreludeRef<'a>, EditedRuleChildrenRef<'a>),
     NestedDeclarations(&'a CssSpecifiedDeclarationBlock),
     Page(crate::CssPageRuleView<'a>),
     Keyframes(crate::CssKeyframesRuleView<'a>),
     Import(crate::CssImportRuleView<'a>),
+    FontFace(&'a crate::CssSpecifiedFontFaceDeclarationBlock),
+}
+
+/// Borrowed current rule-graph input, admitted by one final CSSOM writer request.
+///
+/// Node assembly only stores already typed CSS payloads and child slices. It does
+/// not visit descendants, serialize, allocate or reset a native work allowance.
+/// Declaration-domain coupling and resource/capability validation occur lazily
+/// in the final owning graph traversal, with the actual failing child path.
+/// Original payload origins are retained; edited wrappers have no fabricated
+/// authored occurrence. Live membership, buffer allocation and placement belong
+/// to the consumer. Existing checked view constructors remain independent eager
+/// formatting requests with their original contracts.
+#[derive(Clone, Copy, Debug)]
+pub struct CssRuleGraphInput<'a> {
+    pub(crate) kind: EditedRuleKind<'a>,
+}
+impl<'a> CssRuleGraphInput<'a> {
+    #[must_use]
+    pub const fn from_rule(rule: &'a CssRule) -> Self {
+        Self {
+            kind: EditedRuleKind::Parsed(rule),
+        }
+    }
+    #[must_use]
+    pub const fn from_scoped_rule(rule: &'a CssScopedRule) -> Self {
+        Self {
+            kind: EditedRuleKind::ParsedScoped(rule),
+        }
+    }
+    /// The selected block must be Ordinary-domain when the request is admitted.
+    #[must_use]
+    pub const fn style(
+        selectors: &'a CssStyleSelectorList,
+        declarations: &'a CssSpecifiedDeclarationBlock,
+        children: &'a [Self],
+    ) -> Self {
+        Self {
+            kind: EditedRuleKind::Style(
+                EditedStyleSelectorsRef::Ordinary(selectors),
+                declarations,
+                EditedRuleChildrenRef::Inputs(children),
+            ),
+        }
+    }
+    /// Preserves the checked selectors' symbolic scope anchor domain.
+    #[must_use]
+    pub const fn scoped_style(
+        selectors: &'a CssScopedStyleSelectorList,
+        declarations: &'a CssSpecifiedDeclarationBlock,
+        children: &'a [Self],
+    ) -> Self {
+        Self {
+            kind: EditedRuleKind::Style(
+                EditedStyleSelectorsRef::Scoped(selectors),
+                declarations,
+                EditedRuleChildrenRef::Inputs(children),
+            ),
+        }
+    }
+    #[must_use]
+    pub const fn group(prelude: CssEditedGroupPreludeRef<'a>, children: &'a [Self]) -> Self {
+        Self {
+            kind: EditedRuleKind::Group(prelude, EditedRuleChildrenRef::Inputs(children)),
+        }
+    }
+    /// Empty Ordinary-domain blocks remain real ordered children, with no text.
+    #[must_use]
+    pub const fn nested_declarations(declarations: &'a CssSpecifiedDeclarationBlock) -> Self {
+        Self {
+            kind: EditedRuleKind::NestedDeclarations(declarations),
+        }
+    }
+    #[must_use]
+    pub const fn page(page: crate::CssPageRuleView<'a>) -> Self {
+        Self {
+            kind: EditedRuleKind::Page(page),
+        }
+    }
+    /// Borrows exact current selected descriptor order, independent of the
+    /// original whole-rule writer's fixed effective-kind order.
+    #[must_use]
+    pub const fn font_face(declarations: &'a crate::CssSpecifiedFontFaceDeclarationBlock) -> Self {
+        Self {
+            kind: EditedRuleKind::FontFace(declarations),
+        }
+    }
+    /// Children already carry the owning Keyframe-domain coupling proof.
+    #[must_use]
+    pub const fn keyframes(
+        name: &'a crate::CssKeyframesName,
+        rules: &'a [crate::CssKeyframeRuleView<'a>],
+    ) -> Self {
+        Self {
+            kind: EditedRuleKind::Keyframes(crate::CssKeyframesRuleView::from_checked_parts(
+                name, rules,
+            )),
+        }
+    }
+    /// Borrows original checked clauses and supplied current rule-owned media.
+    #[must_use]
+    pub const fn import(rule: &'a crate::CssImportRule, media: &'a CssMediaQueryList) -> Self {
+        Self {
+            kind: EditedRuleKind::Import(crate::CssImportRuleView::from_checked_parts(rule, media)),
+        }
+    }
+    pub fn serialize_cssom(
+        self,
+        namespaces: &crate::CssNamespaceContext,
+        ancestor: crate::CssStyleAncestor,
+    ) -> Result<String, CssRuleCssomSerializationError> {
+        self.serialize_cssom_with_limits(
+            namespaces,
+            ancestor,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    /// One native graph traversal owns input/projection/output work for the full
+    /// request. Supply actual namespace bindings and external Style ancestry;
+    /// grouping descendants inherit that ancestry and siblings restore it.
+    /// Failure returns no partial text, mutates no input and allows fresh retry.
+    pub fn serialize_cssom_with_limits(
+        self,
+        namespaces: &crate::CssNamespaceContext,
+        ancestor: crate::CssStyleAncestor,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssRuleCssomSerializationError> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.append_rule_graph_input(self, namespaces, ancestor)?;
+        Ok(writer.css)
+    }
 }
 
 /// A checked immutable formatting view over edited payloads and child order.
@@ -88,7 +243,7 @@ impl<'a> CssEditedRuleView<'a> {
             kind: EditedRuleKind::Style(
                 EditedStyleSelectorsRef::Ordinary(selectors),
                 declarations,
-                children,
+                EditedRuleChildrenRef::Views(children),
             ),
         }
         .checked(limits)
@@ -118,7 +273,7 @@ impl<'a> CssEditedRuleView<'a> {
             kind: EditedRuleKind::Style(
                 EditedStyleSelectorsRef::Scoped(selectors),
                 declarations,
-                children,
+                EditedRuleChildrenRef::Views(children),
             ),
         }
         .checked(limits)
@@ -141,7 +296,7 @@ impl<'a> CssEditedRuleView<'a> {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<Self, CssRuleCssomSerializationError> {
         let view = Self {
-            kind: EditedRuleKind::Group(prelude, children),
+            kind: EditedRuleKind::Group(prelude, EditedRuleChildrenRef::Views(children)),
         };
         view.to_specified_css_with_limits(limits)?;
         Ok(view)

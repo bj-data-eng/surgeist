@@ -10,7 +10,8 @@ use crate::cssom_rule_serialization::{
     CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationError, RuleCssomSource,
 };
 use crate::edited_rule::{
-    CssEditedGroupPreludeRef, CssEditedRuleView, EditedRuleKind, EditedStyleSelectorsRef,
+    CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput, EditedRuleChildrenRef,
+    EditedRuleKind, EditedStyleSelectorsRef,
 };
 use crate::specified_rule_serialization::{SpecifiedRuleSerializationSource, SpecifiedRuleWriter};
 use crate::{
@@ -33,6 +34,35 @@ struct GraphFailure {
 }
 type ValueResult<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
+fn ordinary_domain(block: &crate::CssSpecifiedDeclarationBlock) -> Result<()> {
+    if block.is_ordinary() {
+        Ok(())
+    } else {
+        Err(CssSpecifiedValueSerializationError::new(
+            CssSpecifiedValueSerializationErrorKind::UnserializableBoundary,
+        )
+        .into())
+    }
+}
+
+impl CssLayerName {
+    /// Formats this checked name through its native aggregate/component writer.
+    /// Each identifier is escaped independently; dots are grammar punctuation.
+    pub fn serialize_specified(&self) -> ValueResult<String> {
+        self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+    }
+    /// One name aggregate and each component share input/projection/output
+    /// allowances. Failure returns no partial name and leaves retry unchanged.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> ValueResult<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.layer_name(self)?;
+        Ok(writer.css)
+    }
+}
+
 #[derive(Clone, Copy)]
 enum EditedChildStart {
     NewLine,
@@ -43,7 +73,7 @@ enum EditedChildStart {
 enum SupportsChildren<'a> {
     Ordinary(&'a [CssRule]),
     Scoped(&'a [CssScopedRule]),
-    Edited(&'a [CssEditedRuleView<'a>]),
+    Edited(EditedRuleChildrenRef<'a>),
 }
 
 impl<'a> SupportsChildren<'a> {
@@ -57,14 +87,14 @@ impl<'a> SupportsChildren<'a> {
                 .map(|(first, rest)| (Event::Scoped(first, Some(index)), Self::Scoped(rest))),
             Self::Edited(rules) => rules
                 .split_first()
-                .map(|(first, rest)| (Event::Edited(*first, Some(index)), Self::Edited(rest))),
+                .map(|(first, rest)| (Event::Edited(first, Some(index)), Self::Edited(rest))),
         }
     }
 }
 
 enum Event<'a> {
-    Edited(CssEditedRuleView<'a>, Option<usize>),
-    EditedChildren(&'a [CssEditedRuleView<'a>], usize, bool, EditedChildStart),
+    Edited(EditedRuleKind<'a>, Option<usize>),
+    EditedChildren(EditedRuleChildrenRef<'a>, usize, bool, EditedChildStart),
     Ordinary(&'a CssRule, Option<usize>),
     Scoped(&'a CssScopedRule, Option<usize>),
     OrdinaryChildren(&'a [CssRule], usize, bool),
@@ -99,6 +129,7 @@ impl SpecifiedRuleWriter {
             Format::Compact,
             Vec::new(),
             None,
+            false,
         )
         .map_err(|error| match error.source {
             RuleCssomSource::Provider(source) => source,
@@ -112,14 +143,20 @@ impl SpecifiedRuleWriter {
         path: Vec<usize>,
         namespaces: Option<&crate::CssNamespaceContext>,
     ) -> std::result::Result<(), CssRuleCssomSerializationError> {
-        self.append_graph(Event::Ordinary(rule, None), Format::Cssom, path, namespaces)
-            .map_err(|failure| {
-                CssRuleCssomSerializationError::new(
-                    failure.source,
-                    failure.path,
-                    failure.keyframe_block_index,
-                )
-            })
+        self.append_graph(
+            Event::Ordinary(rule, None),
+            Format::Cssom,
+            path,
+            namespaces,
+            false,
+        )
+        .map_err(|failure| {
+            CssRuleCssomSerializationError::new(
+                failure.source,
+                failure.path,
+                failure.keyframe_block_index,
+            )
+        })
     }
 
     pub(crate) fn append_edited_rule_graph(
@@ -128,7 +165,7 @@ impl SpecifiedRuleWriter {
         cssom: bool,
     ) -> std::result::Result<(), CssRuleCssomSerializationError> {
         self.append_graph(
-            Event::Edited(rule, None),
+            Event::Edited(rule.kind, None),
             if cssom {
                 Format::Cssom
             } else {
@@ -136,6 +173,29 @@ impl SpecifiedRuleWriter {
             },
             Vec::new(),
             None,
+            false,
+        )
+        .map_err(|failure| {
+            CssRuleCssomSerializationError::new(
+                failure.source,
+                failure.path,
+                failure.keyframe_block_index,
+            )
+        })
+    }
+
+    pub(crate) fn append_rule_graph_input(
+        &mut self,
+        rule: CssRuleGraphInput<'_>,
+        namespaces: &crate::CssNamespaceContext,
+        ancestor: crate::CssStyleAncestor,
+    ) -> std::result::Result<(), CssRuleCssomSerializationError> {
+        self.append_graph(
+            Event::Edited(rule.kind, None),
+            Format::Cssom,
+            Vec::new(),
+            Some(namespaces),
+            ancestor == crate::CssStyleAncestor::Present,
         )
         .map_err(|failure| {
             CssRuleCssomSerializationError::new(
@@ -152,11 +212,11 @@ impl SpecifiedRuleWriter {
         format: Format,
         mut path: Vec<usize>,
         namespaces: Option<&crate::CssNamespaceContext>,
+        mut style_ancestor: bool,
     ) -> std::result::Result<(), GraphFailure> {
         let mut work = Vec::new();
         let mut keyframe_block_index = None;
         let mut margin_rule_index = None;
-        let mut style_ancestor = false;
         let result = (|| -> Result<()> {
             push(&mut work, first)?;
             while let Some(event) = work.pop() {
@@ -182,7 +242,7 @@ impl SpecifiedRuleWriter {
                     }
                     Event::EditedChildren(rules, index, separator, start) => {
                         if let Some((first, rest)) = rules.split_first() {
-                            if let EditedRuleKind::NestedDeclarations(block) = first.kind
+                            if let EditedRuleKind::NestedDeclarations(block) = first
                                 && block.entries().is_empty()
                             {
                                 // Visit the omitted child with its normal provider
@@ -191,7 +251,7 @@ impl SpecifiedRuleWriter {
                                     &mut work,
                                     Event::EditedChildren(rest, index + 1, separator, start),
                                 )?;
-                                push(&mut work, Event::Edited(*first, Some(index)))?;
+                                push(&mut work, Event::Edited(first, Some(index)))?;
                                 continue;
                             }
                             push(
@@ -211,15 +271,15 @@ impl SpecifiedRuleWriter {
                             } else if separator {
                                 self.append(" ")?;
                             }
-                            push(&mut work, Event::Edited(*first, Some(index)))?;
+                            push(&mut work, Event::Edited(first, Some(index)))?;
                         }
                     }
-                    Event::Edited(view, index) => {
-                        if let EditedRuleKind::Parsed(rule) = view.kind {
+                    Event::Edited(kind, index) => {
+                        if let EditedRuleKind::Parsed(rule) = kind {
                             push(&mut work, Event::Ordinary(rule, index))?;
                             continue;
                         }
-                        if let EditedRuleKind::ParsedScoped(rule) = view.kind {
+                        if let EditedRuleKind::ParsedScoped(rule) = kind {
                             push(&mut work, Event::Scoped(rule, index))?;
                             continue;
                         }
@@ -237,12 +297,15 @@ impl SpecifiedRuleWriter {
                             push(&mut work, Event::EndRule(index.is_some()))?;
                         }
                         self.node()?;
-                        match view.kind {
+                        match kind {
                             EditedRuleKind::Parsed(_) | EditedRuleKind::ParsedScoped(_) => {
                                 unreachable!("parsed event forwarded")
                             }
                             EditedRuleKind::Page(page) => {
                                 self.append_selected_page(page, &mut margin_rule_index)?;
+                            }
+                            EditedRuleKind::FontFace(declarations) => {
+                                self.selected_font_face(declarations)?;
                             }
                             EditedRuleKind::Keyframes(keyframes) => {
                                 self.append_selected_keyframes(
@@ -264,9 +327,11 @@ impl SpecifiedRuleWriter {
                                 }
                             }
                             EditedRuleKind::NestedDeclarations(block) => {
+                                ordinary_domain(block)?;
                                 block.append_cssom(self)?
                             }
                             EditedRuleKind::Style(selectors, declarations, children) => {
+                                ordinary_domain(declarations)?;
                                 match selectors {
                                     EditedStyleSelectorsRef::Ordinary(selectors) => {
                                         if format == Format::Cssom {

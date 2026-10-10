@@ -1744,7 +1744,7 @@ mod supports;
 pub use supports::{CssSupportsAtRule, CssSupportsConstructionError};
 mod cssom_rule_serialization;
 mod edited_rule;
-pub use edited_rule::{CssEditedGroupPreludeRef, CssEditedRuleView};
+pub use edited_rule::{CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput};
 mod keyframe_serialization;
 pub use keyframe_serialization::{
     CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframesRuleView,

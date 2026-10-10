@@ -9648,6 +9648,9 @@ pub struct surgeist_css::CssLayerName
 impl surgeist_css::CssLayerName
 pub fn surgeist_css::CssLayerName::components(&self) -> &[alloc::string::String]
 pub fn surgeist_css::CssLayerName::try_new(components: impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> core::option::Option<Self>
+impl surgeist_css::CssLayerName
+pub fn surgeist_css::CssLayerName::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssLayerName::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssLayerNameList
 impl surgeist_css::CssLayerNameList
 pub fn surgeist_css::CssLayerNameList::names(&self) -> &[surgeist_css::CssLayerName]
@@ -11286,6 +11289,20 @@ impl core::error::Error for surgeist_css::CssRuleCssomSerializationError
 pub fn surgeist_css::CssRuleCssomSerializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssRuleCssomSerializationError
 pub fn surgeist_css::CssRuleCssomSerializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssRuleGraphInput<'a>
+impl<'a> surgeist_css::CssRuleGraphInput<'a>
+pub const fn surgeist_css::CssRuleGraphInput<'a>::font_face(declarations: &'a surgeist_css::CssSpecifiedFontFaceDeclarationBlock) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::from_rule(rule: &'a surgeist_css::CssRule) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::from_scoped_rule(rule: &'a surgeist_css::CssScopedRule) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::group(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self]) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::import(rule: &'a surgeist_css::CssImportRule, media: &'a surgeist_css::CssMediaQueryList) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::keyframes(name: &'a surgeist_css::CssKeyframesName, rules: &'a [surgeist_css::CssKeyframeRuleView<'a>]) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::nested_declarations(declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::page(page: surgeist_css::CssPageRuleView<'a>) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::scoped_style(selectors: &'a surgeist_css::CssScopedStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> Self
+pub fn surgeist_css::CssRuleGraphInput<'a>::serialize_cssom(self, namespaces: &surgeist_css::CssNamespaceContext, ancestor: surgeist_css::CssStyleAncestor) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssRuleGraphInput<'a>::serialize_cssom_with_limits(self, namespaces: &surgeist_css::CssNamespaceContext, ancestor: surgeist_css::CssStyleAncestor, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub const fn surgeist_css::CssRuleGraphInput<'a>::style(selectors: &'a surgeist_css::CssStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> Self
 pub struct surgeist_css::CssRuleList
 impl surgeist_css::CssRuleList
 pub fn surgeist_css::CssRuleList::rules(&self) -> &[surgeist_css::CssRule]

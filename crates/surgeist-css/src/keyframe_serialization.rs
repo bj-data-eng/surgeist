@@ -175,6 +175,12 @@ pub struct CssKeyframesRuleView<'a> {
     rules: &'a [CssKeyframeRuleView<'a>],
 }
 impl<'a> CssKeyframesRuleView<'a> {
+    pub(crate) const fn from_checked_parts(
+        name: &'a crate::CssKeyframesName,
+        rules: &'a [CssKeyframeRuleView<'a>],
+    ) -> Self {
+        Self { name, rules }
+    }
     pub fn try_new(
         name: &'a crate::CssKeyframesName,
         rules: &'a [CssKeyframeRuleView<'a>],

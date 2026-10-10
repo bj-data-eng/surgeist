@@ -163,6 +163,20 @@ impl CssPendingFontFaceDescriptorValue {
 }
 
 impl SpecifiedRuleWriter {
+    /// The graph owns the rule node; the selected declaration owner charges its
+    /// aggregate, ordered entries, scalar projections and actual punctuation.
+    pub(crate) fn selected_font_face(
+        &mut self,
+        declarations: &crate::CssSpecifiedFontFaceDeclarationBlock,
+    ) -> Result<()> {
+        self.append("@font-face {")?;
+        if !declarations.entries().is_empty() {
+            self.append(" ")?;
+        }
+        declarations.append_cssom(self)?;
+        self.append(" }")
+    }
+
     pub(crate) fn font_face(&mut self, rule: &CssFontFaceRule) -> Result<()> {
         node(self)?;
         // CSSOM's older listed kinds retain relative order. Additional Fonts4

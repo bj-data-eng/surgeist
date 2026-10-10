@@ -234,6 +234,9 @@ the pending-footprint boundary before physical or logical reentry is established
 The [literal CSSOM rule and sheet operations](docs/reference.md#authored-literal-cssom-rule-and-sheet-output)
 compose selected rule formats with normalized declaration runs, namespace-safe
 selector shortening and typed limits for formats without an adopted wrapper.
+The [borrowed current graph input](docs/reference.md#borrowed-current-rule-graph-inputs)
+assembles edited typed fields without preformatting descendants, then admits and
+formats the complete request under one native cumulative allowance.
 
 ## License and attribution
 

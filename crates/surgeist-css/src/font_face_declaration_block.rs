@@ -100,6 +100,13 @@ impl CssSpecifiedFontFaceDeclarationBlock {
         limits: Limits,
     ) -> Result<String, CssFontFaceDeclarationBlockError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_cssom(&mut writer)?;
+        Ok(writer.css)
+    }
+    pub(crate) fn append_cssom(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
         writer.node()?;
         for (index, entry) in self.entries.iter().enumerate() {
             writer.node()?;
@@ -108,9 +115,9 @@ impl CssSpecifiedFontFaceDeclarationBlock {
             }
             writer.append(entry.value().kind().css_name())?;
             writer.append(": ")?;
-            entry.value().append_to_rule_writer(&mut writer)?;
+            entry.value().append_to_rule_writer(writer)?;
             writer.append(";")?;
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
