@@ -1253,6 +1253,7 @@ impl State {
         for rule in self.rules.values() {
             match &rule.data {
                 CssomRuleData::CounterStyle { name, .. } => add(&mut strings, name.len()),
+                CssomRuleData::CustomMedia { name, .. } => add(&mut strings, name.as_str().len()),
                 CssomRuleData::FontFeatureValues { families, .. } => {
                     add(&mut entries, families.len());
                     for family in families {

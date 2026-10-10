@@ -386,6 +386,23 @@ impl State {
                 .collect(),
         })
     }
+    fn custom_media_data(
+        &mut self,
+        rule: &CssCustomMediaRule,
+        limits: &CssomLimits,
+    ) -> Result<CssomRuleData, CssomError> {
+        let query = match rule.body() {
+            CssCustomMediaBody::True => CssomCustomMediaQuery::Boolean(true),
+            CssCustomMediaBody::False => CssomCustomMediaQuery::Boolean(false),
+            CssCustomMediaBody::Media(list) => {
+                CssomCustomMediaQuery::MediaList(self.media_list(list.clone(), limits)?)
+            }
+        };
+        Ok(CssomRuleData::CustomMedia {
+            name: rule.name().clone(),
+            query,
+        })
+    }
     fn ordinary_data(
         &mut self,
         v: &CssRule,
@@ -438,6 +455,7 @@ impl State {
             CssRule::CounterStyle(v) => self.counter_data(v, id, limits)?,
             CssRule::FontFace(v) => self.font_data(v, id, limits)?,
             CssRule::FontFeatureValues(v) => self.features_data(v, limits)?,
+            CssRule::CustomMedia(v) => self.custom_media_data(v, limits)?,
             CssRule::Import(v) => CssomRuleData::Import {
                 target: v.target().clone(),
                 layer: v.layer().cloned(),
@@ -510,6 +528,7 @@ impl State {
             CssScopedRule::CounterStyle(v) => self.counter_data(v, id, limits)?,
             CssScopedRule::FontFace(v) => self.font_data(v, id, limits)?,
             CssScopedRule::FontFeatureValues(v) => self.features_data(v, limits)?,
+            CssScopedRule::CustomMedia(v) => self.custom_media_data(v, limits)?,
             _ => CssomRuleData::Leaf {
                 current: CssomAuthoredRule::Scoped(v.clone()),
             },

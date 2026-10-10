@@ -62,6 +62,28 @@ resource failures remain observable. Append/delete charge the candidate and
 all current members through one cumulative CSS input, projection and output
 budget.
 
+Readonly extension facets expose `custom_media_name` and `custom_media_query`
+from the checked current rule. The query is an authored boolean or a stable
+`CssomMediaListId`, including a genuine empty list; it never defaults to false
+or evaluates an alias. Existing MediaList operations edit that associated
+collection while old snapshots and original rule occurrences remain immutable.
+The readonly query slot and name have no replacement setters. Ordinary and
+scoped rule ingress use the same association owner, and retained media objects,
+entries and live-name bytes obey product quotas.
+
+`color_profile_name`, `color_profile_src`, `color_profile_rendering_intent` and
+`color_profile_components` read checked current ordinary/scoped profile data.
+They use the CSS identifier and effective descriptor-value writers with explicit
+output limits. Absent descriptors return empty text before emission; a present
+empty URL emits `url("")`, and an absent intent does not fabricate its initial
+value. Symbolic pending descriptors remain symbolic. Getter availability is
+independent of the native `FormatUnavailable` whole CustomMedia/ColorProfile
+capabilities; no wrapper text, resource loading or channel computation is added.
+Wrong-kind, foreign-owner, missing-capture and native writer resource errors
+remain typed. [Readonly extension tests](tests/readonly_extensions.rs) cover
+these facets, current collection identity, recovery, detached objects, retained
+source coordinates and atomic quota failure.
+
 Source sheet getters and the guarded deprecated `rules` alias retain
 the same live identities. Owner attribute captures update title/media (absence
 clears), without changing fixed location or emitting a host attribute write.

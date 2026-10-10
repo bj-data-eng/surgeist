@@ -45,6 +45,9 @@ pub enum surgeist_cssom::CssomChanges
 pub surgeist_cssom::CssomChanges::FullRecompute(surgeist_cssom::CssomRecomputeReason)
 pub surgeist_cssom::CssomChanges::Incremental(alloc::boxed::Box<surgeist_cssom::CssomChangeSummary>)
 pub surgeist_cssom::CssomChanges::Unchanged
+pub enum surgeist_cssom::CssomCustomMediaQuery
+pub surgeist_cssom::CssomCustomMediaQuery::Boolean(bool)
+pub surgeist_cssom::CssomCustomMediaQuery::MediaList(surgeist_cssom::CssomMediaListId)
 pub enum surgeist_cssom::CssomDeclarationEditResult
 pub surgeist_cssom::CssomDeclarationEditResult::Noop
 pub surgeist_cssom::CssomDeclarationEditResult::Replaced
@@ -216,6 +219,9 @@ pub enum surgeist_cssom::CssomRuleData
 pub surgeist_cssom::CssomRuleData::CounterStyle
 pub surgeist_cssom::CssomRuleData::CounterStyle::block: surgeist_cssom::CssomBlockId
 pub surgeist_cssom::CssomRuleData::CounterStyle::name: alloc::string::String
+pub surgeist_cssom::CssomRuleData::CustomMedia
+pub surgeist_cssom::CssomRuleData::CustomMedia::name: surgeist_css::custom_media::CssCustomMediaName
+pub surgeist_cssom::CssomRuleData::CustomMedia::query: surgeist_cssom::CssomCustomMediaQuery
 pub surgeist_cssom::CssomRuleData::FontFace
 pub surgeist_cssom::CssomRuleData::FontFace::block: surgeist_cssom::CssomBlockId
 pub surgeist_cssom::CssomRuleData::FontFeatureValues
@@ -580,6 +586,13 @@ pub fn surgeist_cssom::CssomSnapshot::sheet_list(&self) -> &surgeist_cssom::Csso
 pub fn surgeist_cssom::CssomSnapshot::sheet_rules(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<&[surgeist_cssom::CssomRuleId], surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomSnapshot::sheets(&self) -> &[surgeist_cssom::CssomSheetId]
 pub fn surgeist_cssom::CssomSnapshot::specified_property_css_text(&self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::color_profile_components(&self, id: &surgeist_cssom::CssomRuleId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::color_profile_name(&self, id: &surgeist_cssom::CssomRuleId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::color_profile_rendering_intent(&self, id: &surgeist_cssom::CssomRuleId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::color_profile_src(&self, id: &surgeist_cssom::CssomRuleId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::custom_media_name(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&str, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::custom_media_query(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<&surgeist_cssom::CssomCustomMediaQuery, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::declarations(&self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomDeclarationView<'_>, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot

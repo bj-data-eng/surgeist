@@ -304,6 +304,11 @@ pub enum CssomRuleData {
         maps: Vec<CssomFeatureMapId>,
         font_display: Vec<CssFontFeatureDisplayOccurrence>,
     },
+    /// Readonly rule fields; a query-list body owns an editable MediaList identity.
+    CustomMedia {
+        name: CssCustomMediaName,
+        query: CssomCustomMediaQuery,
+    },
     Leaf {
         current: CssomAuthoredRule,
     },
