@@ -36,6 +36,7 @@ pub struct CssomInputManifest {
     pub imports: Vec<(CssomRuleId, CssomInputVersion)>,
     pub declaration_admissions: Vec<(CssomBlockId, Vec<CssomInputVersion>)>,
     pub font_family_admissions: Vec<(CssomRuleId, Vec<CssomInputVersion>)>,
+    pub selector_admissions: Vec<(CssomRuleId, Vec<CssomInputVersion>)>,
 }
 impl crate::model::State {
     pub(crate) fn input_manifest(&self) -> CssomInputManifest {
@@ -79,9 +80,28 @@ impl crate::model::State {
             })
             .collect::<Vec<_>>();
         font_family_admissions.sort_by_key(|(id, _)| id.serial);
+        let mut selector_admissions = self
+            .rules
+            .iter()
+            .filter_map(|(id, rule)| {
+                rule.selector_inputs.as_ref().map(|context| {
+                    (
+                        id.clone(),
+                        context
+                            .inputs
+                            .iter()
+                            .map(|input| input.version.clone())
+                            .chain(context.linked.iter().map(|input| input.version.clone()))
+                            .collect(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        selector_admissions.sort_by_key(|(id, _)| id.serial);
         CssomInputManifest {
             declaration_admissions,
             font_family_admissions,
+            selector_admissions,
             context: self.context.clone(),
             sheets,
             blocks,

@@ -42,6 +42,7 @@ impl Default for CssomLimits {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssomInputRole {
     Document,
+    Window,
     ParserMode,
     Origin,
     Layer,
@@ -62,6 +63,10 @@ pub struct CssomInputVersion {
 pub enum CssomInputData {
     Document {
         identity: String,
+    },
+    Window {
+        identity: String,
+        document: String,
     },
     ParserMode(CssParserContext),
     Origin {
@@ -89,6 +94,7 @@ impl CssomInputData {
     pub const fn role(&self) -> CssomInputRole {
         match self {
             Self::Document { .. } => CssomInputRole::Document,
+            Self::Window { .. } => CssomInputRole::Window,
             Self::ParserMode(_) => CssomInputRole::ParserMode,
             Self::Origin { .. } => CssomInputRole::Origin,
             Self::Layer { .. } => CssomInputRole::Layer,
@@ -349,8 +355,27 @@ pub struct CssomRule {
     pub(crate) parent: CssomParent,
     pub(crate) data: CssomRuleData,
     pub(crate) authored: CssomAuthoredRule,
+    pub(crate) selector_input: Option<CssParsedOrigin>,
+    pub(crate) selector_inputs: Option<CssomContext>,
+    pub(crate) selector_namespaces: Option<CssNamespaceContext>,
+    pub(crate) admission_diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssomRule {
+    /// Recovery from the latest successful rule or selector admission. Initial
+    /// sheet ingress retains its complete ordered report on the owning sheet.
+    pub fn admission_diagnostics(&self) -> &[CssRecoveryDiagnostic] {
+        &self.admission_diagnostics
+    }
+    /// Latest complete selector input, independent of the original rule occurrence.
+    pub fn selector_input(&self) -> Option<&CssParsedOrigin> {
+        self.selector_input.as_ref()
+    }
+    pub fn selector_inputs(&self) -> Option<&CssomContext> {
+        self.selector_inputs.as_ref()
+    }
+    pub fn selector_namespaces(&self) -> Option<&CssNamespaceContext> {
+        self.selector_namespaces.as_ref()
+    }
     pub fn parent(&self) -> &CssomParent {
         &self.parent
     }
@@ -729,6 +754,10 @@ pub enum CssomError {
     Media(CssMediaCssomSerializationError),
     AuthoredFeatureConversion,
     Format(CssRuleCssomSerializationError),
+    Serialization(CssSpecifiedValueSerializationError),
+    QueryMatch(CssomQueryMatchError),
+    Keyframe(CssKeyframeRuleViewError),
+    KeyframeComparison(CssKeyframeSelectorComparisonError),
 }
 impl fmt::Display for CssomError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -746,8 +775,12 @@ impl std::error::Error for CssomError {
             Self::Value(e) => Some(e),
             Self::Page(e) => Some(e),
             Self::Format(e) => Some(e),
-            Self::Component(e) => Some(e),
+            Self::Serialization(e) => Some(e),
             Self::Media(e) => Some(e),
+            Self::QueryMatch(e) => Some(e),
+            Self::Keyframe(e) => Some(e),
+            Self::KeyframeComparison(e) => Some(e),
+            Self::Component(e) => Some(e),
             _ => None,
         }
     }

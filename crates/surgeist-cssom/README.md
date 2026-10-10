@@ -122,8 +122,72 @@ the same classified source occurrence. `add_sheet_rule` supplies the standard
 legacy defaults, builds its actual bounded input and delegates insertion, returning
 `-1`; absent index means the current end. `remove_sheet_rule` delegates deletion,
 defaulting its index to zero. These are CSS-standard aliases, not crate shims.
-Complete #1049 rule text/selector operations remain separate work.
 The CSSRule cssText setter is implemented as its standards-defined no-op.
+
+Rule list IDs remain the same while their current membership changes. Store
+length/item reads acquire a fresh capture; snapshot reads retain the older order.
+Selector replacement uses actual nesting/scope ancestry and current namespace
+bindings, preserves declaration/child identities, and retains the successful
+input occurrence, captured inputs and recovery diagnostics. Invalid syntax is
+the operation's source no-op or Syntax error; resource exhaustion remains a typed
+failure. Keyframes append retains duplicate selectors with distinct identities.
+Find/delete compare complete ordered selector sequences through CSS's selected
+specified-phase normalizer, searching from the last current child. Endpoint and
+literal normalization, calculation simplification and unresolved context-bearing
+trees remain CSS-owned; authored equality and serialized text are not match keys.
+One request-local matcher prepares the query once and retains its native work
+budget across every candidate. Invalid/unmatched queries return absence and
+delete nothing. A successful deletion detaches only the matched root, preserving
+its ID, declaration object and earlier captures. Resource failure aborts a batch
+without publishing earlier edits; a read can retry unchanged with larger limits.
+
+`rule_css_text` reads current selectors, selected declaration survivors, ordered
+membership, keyframe names, Page margins, FontFace descriptors and Import media.
+It never rebuilds a selected block from historical shorthand occurrences.
+Request-local borrowed child buffers feed one CSS-owned graph traversal. Each
+native input constructor does constant work without serialization or grammar
+reparse; the buffer assembly and traversal work are separately metered.
+`CssomRuleFormatLimits` separately bounds actual preparation steps, view nodes,
+ancestry/traversal depth and the final cumulative native CSS request. Pending
+sibling buffers count toward the node limit before allocation. Preparation
+failure or CSS failure returns no text, changes no capture, and allows unchanged
+retry with larger read limits. These are work/buffer bounds, not process-memory
+guarantees or copies of private CSS node tariffs.
+
+Whole wrappers whose selected source remains unavailable or undefined preserve
+their native typed failure and actual child path; their descendant buffers are
+not prepared. A genuine original occurrence is used only as that failure carrier,
+never to serialize stale mutable content. Standalone keyframe and margin reads
+use their single owning native writer. Defined partial reads stay independent of
+unavailable whole wrappers. Import layer names distinguish null, anonymous empty
+and native serialized names; block names are local, and statement names return
+new owned arrays without ancestor qualification. Their explicit byte allowance
+is shared across emitted names.
+
+Conditional matches consume an explicitly supplied evaluator result. Call
+`capture_query_result` with the actual rule, required independently revised input
+versions and evaluator boolean, then pass that immutable transport to
+`condition_matches`. The transport retains its owning immutable snapshot rather
+than copying the complete captured input inventories. Media requires an
+associated sheet, a Document input and a Window input carrying that Document's
+identity. A constructed sheet's supplied
+constructor-document fact must agree. Supports requires the actual captured
+support-profile input, using the published concrete declaration-usability facts.
+CSSOM validates owner, concrete Media/Supports role, rule, complete captured
+context and owner-qualified revision before returning the supplied boolean.
+Missing or foreign results, stale state/context and mismatched facts are typed
+failures; there is no default false, host callback or query evaluator here.
+An older capture can still validate its result after the store changes or drops.
+
+Container reads produce new owned name/query dictionaries in authored order,
+including duplicates and empty queries for name-only entries. Singular getters
+return empty strings for multiple entries. Their explicit byte allowance covers
+aggregate emitted fields or final composed text; existing checked CSS payload
+constraints remain independent. CSS owns identifier escaping and lexical query
+serialization. The specified plural composition uses its public list joiners
+without evaluation or logical simplification. The defined named-support name
+getter is readable independently of its unresolved non-rendering body-to-child
+projection and whole-wrapper contract; ordinary grouping is not inferred for it.
 
 `replace_sheet_sync` delegates the recovered replacement algorithm. Asynchronous
 replacement is a finite core lifecycle: `begin_replace_sheet` publishes the
@@ -205,8 +269,12 @@ empty, while readonly independently guards edits. Null base URL differs from an
 explicit empty base. Host adapters supply facts, not fabricated document objects.
 
 Change summaries own owner, `(from, to]` coverage, category union, affected IDs and
-all input endpoints. Incremental consumers check complete contiguous matching
-coverage and inputs. Missing history, foreign ownership, input drift and conservative
+all input endpoints.
+Selector admissions correlate each edited rule with its retained input versions,
+including endpoints captured before a later context change. Declaration and font
+family admission inventories remain independent. Incremental consumers check
+complete contiguous matching coverage and inputs. Missing history, foreign
+ownership, input drift and conservative
 changes request full recomputation from one owning snapshot. CSSOM does not perform
 selector matching, cascade, layout, scheduling or resource loading.
 
@@ -229,6 +297,14 @@ the owning state and exceptional live cases;
 domain dispatch, supplied support, atomic failures, effects and provenance.
 [Stylesheet tests](tests/sheet_operations.rs) cover source construction,
 replacement reservations and bounded terminal cleanup.
+[Rule tests](tests/rule_operations.rs) cover lists, guards, contextual selectors,
+admission, recovery and associated object identity;
+[current graph tests](tests/rule_serialization.rs) cover recursive native output,
+selected survivors, membership, lazy capability boundaries and bounded retry;
+[condition reads](tests/condition_reads.rs) cover plural/local-name reads and
+supplied evaluator-result correlation independently of query evaluation.
+[Keyframes tests](tests/keyframe_operations.rs) cover normalized reverse-last
+matching, current keyText, invalid no-ops and cumulative search failure/rollback.
 
 Fonts views expose the font-face rule's stable declaration identity and its named
 descriptor reflections, including the fontStretch/fontWidth alias. Reflected

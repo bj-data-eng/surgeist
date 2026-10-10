@@ -997,6 +997,11 @@ impl CssomBatch {
                 let a = &self.staged.rules[id];
                 let b = &self.base.rules[id];
                 a.parent != b.parent
+                    || match (&a.selector_input, &b.selector_input) {
+                        (None, None) => false,
+                        (Some(a), Some(b)) => !a.source().same_snapshot(b.source()),
+                        _ => true,
+                    }
                     || match (&a.data, &b.data) {
                         (
                             CssomRuleData::FontFeatureValues {
@@ -1010,6 +1015,10 @@ impl CssomBatch {
                                 ..
                             },
                         ) => a != b || ai != bi,
+                        (
+                            CssomRuleData::Keyframes { name: a, .. },
+                            CssomRuleData::Keyframes { name: b, .. },
+                        ) => a != b,
                         (
                             CssomRuleData::CounterStyle { name: a, .. },
                             CssomRuleData::CounterStyle { name: b, .. },
@@ -1140,11 +1149,22 @@ impl State {
         fn version(total: &mut Option<usize>, value: &CssomInputVersion) {
             add(total, value.identity.len());
         }
-        for input in &self.context.inputs {
+        for input in std::iter::once(&self.context)
+            .chain(
+                self.rules
+                    .values()
+                    .filter_map(|rule| rule.selector_inputs.as_ref()),
+            )
+            .flat_map(|context| &context.inputs)
+        {
             version(&mut strings, &input.version);
             add(&mut entries, 1);
             match &input.data {
                 CssomInputData::Document { identity } => add(&mut strings, identity.len()),
+                CssomInputData::Window { identity, document } => {
+                    add(&mut strings, identity.len());
+                    add(&mut strings, document.len());
+                }
                 CssomInputData::Origin { origin, profile } => {
                     add(&mut strings, origin.len());
                     add(&mut strings, profile.len());
@@ -1184,7 +1204,14 @@ impl State {
                 ),
             }
         }
-        for linked in &self.context.linked {
+        for linked in std::iter::once(&self.context)
+            .chain(
+                self.rules
+                    .values()
+                    .filter_map(|rule| rule.selector_inputs.as_ref()),
+            )
+            .flat_map(|context| &context.linked)
+        {
             version(&mut strings, &linked.version);
             linked.snapshot.sheet(&linked.sheet)?;
             add(&mut entries, 1);
@@ -1272,6 +1299,16 @@ impl State {
             }
         }
         for rule in self.rules.values() {
+            add(&mut entries, rule.admission_diagnostics.len());
+            if let Some(origin) = &rule.selector_input {
+                if origin.source().as_str().len() > limits.max_input_bytes {
+                    return Err(CssomError::Limit {
+                        resource: "retained selector input bytes",
+                        maximum: limits.max_input_bytes,
+                    });
+                }
+                add(&mut strings, origin.source().as_str().len());
+            }
             match &rule.data {
                 CssomRuleData::CounterStyle { name, .. } => add(&mut strings, name.len()),
                 CssomRuleData::CustomMedia { name, .. } => add(&mut strings, name.as_str().len()),
@@ -1293,6 +1330,14 @@ impl State {
                         }
                     }
                 }
+                CssomRuleData::Keyframes { name, .. } => add(
+                    &mut strings,
+                    match name {
+                        surgeist_css::CssKeyframesName::Ident(value) => value.as_str().len(),
+                        surgeist_css::CssKeyframesName::String(value) => value.as_str().len(),
+                        _ => 0,
+                    },
+                ),
                 CssomRuleData::Import {
                     resolved_location,
                     input,

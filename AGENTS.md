@@ -108,8 +108,10 @@ The separate original source checkouts are outside this repository's
 implementation scope.
 
 The previous `surgeist-style` implementation is removed. `surgeist-cssom`
-provides its #1050 foundation; complete its live authored operations through
-#1049 before greenfielding style. Future style consumes CSSOM snapshots and owns
+provides stable identities, immutable snapshots, atomic edits and headless live
+declaration, rule, stylesheet and MediaList operations. Its crate README records
+current extension operations and source-qualified capability limits. Greenfield
+style follows the CSSOM contribution. Future style consumes CSSOM snapshots and owns
 matching, cascade, inheritance, substitution, computed values, and invalidation;
 CSSOM does not depend on style. Manifests and source establish the implemented
 workspace and current capabilities.

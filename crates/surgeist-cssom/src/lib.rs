@@ -28,5 +28,9 @@ pub use model::*;
 pub use owner_effect::*;
 pub use publication::*;
 pub use readonly_extensions::*;
+pub use rule_operations::{
+    CssomContainerCondition, CssomKeyframeIndex, CssomQueryFacts, CssomQueryMatchError,
+    CssomQueryResult, CssomQueryResultRole, CssomRuleFormatLimits,
+};
 pub use sheet_operations::*;
 pub use store::*;

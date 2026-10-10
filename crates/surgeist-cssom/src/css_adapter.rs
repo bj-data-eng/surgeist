@@ -218,6 +218,10 @@ impl State {
                 parent,
                 data,
                 authored,
+                selector_input: None,
+                selector_inputs: None,
+                selector_namespaces: None,
+                admission_diagnostics: Vec::new(),
             },
         );
         self.check_limits(limits)?;

@@ -24,11 +24,14 @@ the necessary context. A shared repository does not resolve mismatched models,
 feature incompatibilities, or missing integration behavior by itself.
 
 The previous style crate and facade module are removed. CSSOM consumes the public
-CSS producers and owns their adapter into live authored state. Its foundation
-provides stable identities, immutable snapshots, revisions, and atomic edits;
-the complete declaration, rule, stylesheet, and MediaList operations remain in
-development. Style will be rebuilt after CSSOM is complete, using its snapshots
-for matching, cascade, inheritance, substitution, and computed values.
+CSS producers and owns their adapter into live authored state. It provides stable
+identities, immutable snapshots, revisions and atomic edits for headless
+declaration, rule, stylesheet and MediaList operations. The
+[CSSOM crate guide](../crates/surgeist-cssom/README.md) explains the supported
+extension operations, explicit host facts and source-qualified formatting limits.
+Root host bindings and full product CSSOM conformance remain separate work.
+Style will be rebuilt using CSSOM snapshots for matching, cascade, inheritance,
+substitution and computed values.
 
 ## Facade And Integration
 
