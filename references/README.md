@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 168 retained source identities and states their representations: 166 full documents/source witnesses and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 192 retained source identities and states their representations: 190 full documents/source witnesses and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -21,6 +21,8 @@ The [WebKit CSSProperties witness](webkit-cssproperties--73aa6c89e2cb--848d6e24b
 The [WebKit container-query source witness](webkit-cssom-container-query--73aa6c89e2cb.md) retains four complete files with their original two-clause license notices. Its bounded implementation evidence is distinct from normative specification selections and from the earlier metadata-only CSSProperties witness.
 
 The [WebKit core CSSOM witness](webkit-cssom-core-rules--73aa6c89e2cb.md) and [Blink Page/margin witness](blink-cssom-page-rules--7984f9d11800.md) retain the eleven additional complete files used for bounded planning evidence, with their file-specific LGPL or BSD legal material.
+
+The [WebKit wrapper and dispatch witness](webkit-cssom-wrapper-rules--73aa6c89e2cb.md) and [Blink wrapper deficiency witness](blink-cssom-wrapper-gaps--7984f9d11800.md) retain twenty additional complete files and four newer WebKit identities whose bytes equal retained preferred-revision bodies. They document wrapper branches, getter/storage deficiencies, and bounded dispatch absence without selecting product behavior.
 
 ## Supporting resources
 

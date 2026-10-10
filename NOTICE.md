@@ -65,8 +65,8 @@ records its font and notice hashes. These fonts are test assets.
 ### Chromium Blink implementation references
 
 The reference collection retains selected Blink source files as readable
-implementation evidence for Page and margin-rule CSSOM requirements. Each file
-preserves its original copyright and license notice; the accompanying legal
+implementation evidence for CSSOM rules, wrappers, and bounded implementation
+gaps. Each file preserves its original copyright and license notice; the accompanying legal
 material identifies the exact retained source scope.
 
 * Licenses and exact covered files: [Chromium reference attribution](licenses/chromium/NOTICE.md)

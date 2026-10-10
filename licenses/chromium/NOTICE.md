@@ -7,3 +7,19 @@ The [Page and margin CSSOM source witness](../../references/blink-cssom-page-rul
 The four Chromium-authored files css_margin_rule.cc, css_margin_rule.idl, css_parser.cc and css_parser_impl.cc carry BSD-style project-license declarations. Their copyright notices (2024 or 2014 The Chromium Authors) remain in full. The exact root [Chromium LICENSE](LICENSE.txt), copyright 2015 The Chromium Authors, is retained from that same immutable revision and contains the BSD redistribution conditions and disclaimer.
 
 The other two files, css_page_rule.cc and css_selector.cc, explicitly carry GNU Library General Public License version 2 or later notices. Their complete copyright notices remain in the source blocks, including Lars Knoll, Waldo Bastian, Andreas Schlapbach, Dirk Mueller, Apple Inc., David Smith and Google Inc. The exact [Blink LICENSE_FOR_ABOUT_CREDITS](blink-LICENSE_FOR_ABOUT_CREDITS.txt) is retained from `third_party/blink/LICENSE_FOR_ABOUT_CREDITS` at this same revision. It includes the full GNU Library General Public License version 2 and GNU Lesser General Public License version 2.1, together with the source-derived upstream credit statement. The Chromium BSD license is not substituted for the file-specific LGPL notices.
+
+## Wrapper deficiency and dispatch source files
+
+The [wrapper deficiency witness](../../references/blink-cssom-wrapper-gaps--7984f9d11800.md) retains seven additional complete files at the same immutable Chromium revision, acquired from official Gitiles TEXT responses on 2026-10-10. Every original header, path, and decoded-byte hash is retained. All seven carry the Chromium BSD-style project-license declaration and are covered by the same exact [root LICENSE](LICENSE.txt) already retained at that revision. The original file copyright years remain in the complete source blocks.
+
+| Retained source | Original copyright declaration |
+| --- | --- |
+| [css_counter_style_rule.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_counter_style_rule.cc) | Copyright 2020 The Chromium Authors |
+| [css_custom_media_rule.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_custom_media_rule.cc) | Copyright 2025 The Chromium Authors |
+| [css_font_feature_values_rule.idl](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_font_feature_values_rule.idl) | Copyright 2022 The Chromium Authors |
+| [css_font_feature_values_rule.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/css_font_feature_values_rule.cc) | Copyright 2022 The Chromium Authors |
+| [style_rule_font_feature_values.h](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/style_rule_font_feature_values.h) | Copyright 2022 The Chromium Authors |
+| [css_at_rule_id.h](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/parser/css_at_rule_id.h) | Copyright 2015 The Chromium Authors |
+| [css_at_rule_id.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/parser/css_at_rule_id.cc) | Copyright 2015 The Chromium Authors |
+
+No new LGPL files are included in this witness, and the earlier Page/margin LGPL notices are unchanged. Source blocks are documentation copies and were not compiled or linked into Surgeist.
