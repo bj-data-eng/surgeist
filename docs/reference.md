@@ -3,16 +3,16 @@
 ## Package And Workspace
 
 The root [Cargo.toml](../Cargo.toml) declares `surgeist` 0.1.0, Rust edition 2024,
-MSRV 1.97, and the MIT license. The product workspace contains root plus 14
+MSRV 1.97, and the MIT license. The product workspace contains root plus 15
 crates, with `default-members = ["."]` and one committed root
-[Cargo.lock](../Cargo.lock). Twelve crates are exact `=0.1.0` production path
+[Cargo.lock](../Cargo.lock). Thirteen crates are exact `=0.1.0` production path
 dependencies of the facade. `surgeist-test` supplies verification support and
 `surgeist-generator` 0.2.0 supplies shared corpus tooling; both are workspace
 members and API-audit inputs with no facade dependency or reexport.
 
 The [API generator](../api/generator/Cargo.toml) and optional
 [layout Dylint catalog](../crates/surgeist-layout/tools/surgeist-layout-audits/Cargo.toml)
-are separate Cargo workspaces, outside the 15 product members. Crate manifests
+are separate Cargo workspaces, outside the 16 product members. Crate manifests
 own their respective version, MSRV, dependencies, and features.
 
 ## Facade Modules
@@ -26,6 +26,7 @@ front door. It also exposes `crate_name() -> &'static str`, returning
 | `animation` | [surgeist-animation](../crates/surgeist-animation/src/lib.rs) |
 | `app`, `runtime` | [surgeist-runtime](../crates/surgeist-runtime/src/lib.rs) |
 | `css` | [surgeist-css](../crates/surgeist-css/src/lib.rs) |
+| `cssom` | [surgeist-cssom](../crates/surgeist-cssom/src/lib.rs) |
 | `dialog` | [surgeist-dialog](../crates/surgeist-dialog/src/lib.rs) |
 | `layout` | [surgeist-layout](../crates/surgeist-layout/src/lib.rs) |
 | `render` | [surgeist-render](../crates/surgeist-render/src/lib.rs) |
@@ -92,7 +93,7 @@ packages keep their default profile. The CSS profile appears as
 The [root command inventory](../AGENTS.md#command-inventory) selects focused
 package check/test/Clippy commands, formatting, and explicit API auditing.
 Unqualified root Cargo commands select the facade by default; `--workspace`
-would explicitly expand selection to all 15 product packages. Broad workspace
+would explicitly expand selection to all 16 product packages. Broad workspace
 test runs and assumed all-feature combinations are not the verification policy.
 
 Root has one library identity test. The API generator has tests in its separate

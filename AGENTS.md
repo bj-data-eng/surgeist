@@ -80,6 +80,7 @@ implemented dependency graph and behavior.
 | Root `surgeist` | Thin facade, public composition, cross-crate adapters, and integration |
 | `surgeist-animation` | CSS animation and transition timing, easing, keyframes, interpolation, and sampled values |
 | `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, and clean-report validation |
+| `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
 | `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |
@@ -106,12 +107,12 @@ implemented dependency graph and behavior.
 The separate original source checkouts are outside this repository's
 implementation scope.
 
-The previous `surgeist-style` implementation is removed. Establish
-`surgeist-cssom` through #1050 and complete its live authored operations through
+The previous `surgeist-style` implementation is removed. `surgeist-cssom`
+provides its #1050 foundation; complete its live authored operations through
 #1049 before greenfielding style. Future style consumes CSSOM snapshots and owns
 matching, cascade, inheritance, substitution, computed values, and invalidation;
-CSSOM does not depend on style. Manifests and source establish when the new
-crate becomes part of the implemented workspace.
+CSSOM does not depend on style. Manifests and source establish the implemented
+workspace and current capabilities.
 
 ## Backward Compatibility
 

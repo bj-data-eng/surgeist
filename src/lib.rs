@@ -15,6 +15,9 @@ pub mod app {
 pub mod css {
     pub use surgeist_css::*;
 }
+pub mod cssom {
+    pub use surgeist_cssom::*;
+}
 pub mod dialog {
     pub use surgeist_dialog::*;
 }

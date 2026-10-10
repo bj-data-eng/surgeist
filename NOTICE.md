@@ -2,11 +2,11 @@
 
 [Surgeist](https://github.com/bj-data-eng/surgeist) is licensed under its own
 [MIT License](LICENSE). This notice records attribution for the repository source
-checkout: the 12 facade production path dependencies in [Cargo.toml](Cargo.toml),
+checkout: the 13 facade production path dependencies in [Cargo.toml](Cargo.toml),
 the `surgeist-test` support crate, the shared `surgeist-generator` corpus tooling,
 and the two direct dependencies of the
 [API generator](https://github.com/bj-data-eng/surgeist/blob/0b0c6338c20f77f9dfe743c47914afaf6b98792d/api/generator/Cargo.toml).
-All 14 retained crates under `crates/` are source owned in this repository. The
+All 15 crates under `crates/` are source owned in this repository. The
 original consolidation imported the 14 revisions selected by root
 [`e0303b14ccd6a81cf3d092105201daf7797ef6aa`](https://github.com/bj-data-eng/surgeist/tree/e0303b14ccd6a81cf3d092105201daf7797ef6aa/crates)
 and `surgeist-generator`
@@ -123,6 +123,14 @@ The root facade depends on surgeist-css, distributed by bj-data-eng.
 
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-css](https://github.com/bj-data-eng/surgeist-css)
+
+### surgeist-cssom 0.1.0
+
+The root facade depends on surgeist-cssom, authored in this repository.
+It owns its integration adapter with the source-owned surgeist-css crate.
+
+* License: [MIT](LICENSE)
+* Homepage: [Surgeist](https://github.com/bj-data-eng/surgeist)
 
 ### surgeist-dialog 0.1.0
 
@@ -333,6 +341,7 @@ transitive binary-release inventory.
 | --- | --- |
 | surgeist-animation | [NOTICE.md](crates/surgeist-animation/NOTICE.md) |
 | surgeist-css | [NOTICE.md](crates/surgeist-css/NOTICE.md) |
+| surgeist-cssom | [MIT License](LICENSE); authored in this repository |
 | surgeist-dialog | [LICENSE](crates/surgeist-dialog/LICENSE); no separate notice |
 | surgeist-generator | [NOTICE.md](crates/surgeist-generator/NOTICE.md) |
 | surgeist-layout | [NOTICE.md](crates/surgeist-layout/NOTICE.md) |

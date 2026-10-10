@@ -3620,6 +3620,7 @@ version = "0.1.0"
 dependencies = [
  "surgeist-animation",
  "surgeist-css",
+ "surgeist-cssom",
  "surgeist-dialog",
  "surgeist-layout",
  "surgeist-render",
@@ -3648,6 +3649,13 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "surgeist-cssom"
+version = "0.1.0"
+dependencies = [
+ "surgeist-css",
 ]
 
 [[package]]

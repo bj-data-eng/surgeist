@@ -23,12 +23,12 @@ and acyclic, and symbolic values remain unresolved until their owning layer has
 the necessary context. A shared repository does not resolve mismatched models,
 feature incompatibilities, or missing integration behavior by itself.
 
-The previous style crate and facade module are removed. CSSOM is the next crate
-being established: it consumes the public CSS producers and owns their adapter
-into live authored state. Style will be rebuilt after CSSOM is complete, using
-its immutable snapshots for matching, cascade, inheritance, substitution, and
-computed values. The current manifests distinguish established crates from this
-implementation sequence.
+The previous style crate and facade module are removed. CSSOM consumes the public
+CSS producers and owns their adapter into live authored state. Its foundation
+provides stable identities, immutable snapshots, revisions, and atomic edits;
+the complete declaration, rule, stylesheet, and MediaList operations remain in
+development. Style will be rebuilt after CSSOM is complete, using its snapshots
+for matching, cascade, inheritance, substitution, and computed values.
 
 ## Facade And Integration
 
@@ -45,7 +45,7 @@ the GitHub Project record current work under the
 
 ## Workspace Membership And Verification Are Separate
 
-All 15 product packages share one committed root lockfile. The facade is the
+All 16 product packages share one committed root lockfile. The facade is the
 sole default member, keeping unqualified root commands focused. Explicit package
 selection exposes the rest of the workspace without automatically running its
 CPU-heavy layout suites, GPU tests, platform hosts, or browser tooling.

@@ -16,6 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 surgeist-animation = { path = "crates/surgeist-animation", version = "=0.1.0" }
 surgeist-css = { path = "crates/surgeist-css", version = "=0.1.0" }
+surgeist-cssom = { path = "crates/surgeist-cssom", version = "=0.1.0" }
 surgeist-dialog = { path = "crates/surgeist-dialog", version = "=0.1.0" }
 surgeist-layout = { path = "crates/surgeist-layout", version = "=0.1.0" }
 surgeist-render = { path = "crates/surgeist-render", version = "=0.1.0" }
@@ -48,6 +49,7 @@ default-members = ["."]
 members = [
     "crates/surgeist-animation",
     "crates/surgeist-css",
+    "crates/surgeist-cssom",
     "crates/surgeist-dialog",
     "crates/surgeist-generator",
     "crates/surgeist-layout",
