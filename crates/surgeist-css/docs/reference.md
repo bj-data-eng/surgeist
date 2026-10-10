@@ -4024,6 +4024,68 @@ proved zero and hundred endpoints for `from` and `to`; it performs no evaluation
 Calculation equality includes authored origins and does not establish resolved
 offset equivalence.
 
+`CssKeyframeSelectorList::matches_normalized[_with_limits]` supplies the separate
+specified-phase comparison needed by CSSOM find/delete. It preserves sequence
+count, order and duplicates, maps from/to to literal zero/hundred, and keeps
+literal percentages distinct from calculations. The adopted
+[WebKit matching phase](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/values/primitives/CSSUnevaluatedCalc.cpp#L141-L170)
+simplifies context-independent math without conversion data before root comparison.
+This API reuses the native CSS binary64 projection walk, folding and budgets in
+an explicit keyframe mode, then compares normalized nodes before output, ignoring
+source origins and irrelevant whitespace. The pinned
+[specified-tree simplification](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree%2BSimplification.cpp#L490-L814)
+keeps merged sum units at their first positions among symbolic terms and places
+combined product Numbers after non-number children. Matching uses those positions;
+existing output projection retains its separate ordering. The native min/max
+owner also merges matching numeric subsets at their first positions while keeping
+unresolved children in order. It does not sort contextual trees into mathematical
+commutative equivalence. Foldable
+`calc(5% + 5%)` and `calc(10%)` match; raw `10%` and `calc(10%)` do not.
+The mode also follows the pin's
+[numeric-container negation and one-sided Clamp rules](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree%2BSimplification.cpp#L816-L993).
+Numeric Sum/Product children are negated in place order; symbolic container
+children retain their Negate wrapper. One-sided Clamp becomes ordered Min/Max
+only for a numeric middle leaf; a symbolic middle keeps Clamp. Matching selects
+magnitude-comparable scalar Abs/Sign, retains noncanonical Hypot without conversion
+data, and treats fr as the pinned canonical Flex dimension. Context-dependent
+roots remain symbolic where the selected phase requires it; no style context is
+invented. Keyframe normalization keeps binary64 canonical conversion/overflow
+outcomes, including angle overflow; ordinary finite-output angle policies remain
+unchanged. These are specified-root relations, including the pin's numeric Product
+negation branch, rather than claims of computed arithmetic equivalence.
+Product folding accepts numeric leaves and inverses of numeric leaves, retaining
+compound inverse subtrees even if a separate evaluator knows their magnitudes.
+Its source-ordered division uses direct binary64 division. The selected pin's
+Number-plus-numeric-Invert shortcut drops the inverse wrapper and retains the
+numeric child's unit; matching reproduces this specified-tree quirk.
+Product folding derives its resulting dimension from the actual normalized
+numeric leaves, as required by
+[Product step 9.4](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree%2BSimplification.cpp#L718-L810),
+even when the parser's earlier type differs after that shortcut. A compound
+result remains symbolic; a simple resulting dimension can fold. Retained
+operation nodes also compare their stored dimensional types, as required by
+[IndirectNode equality](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree.h#L173-L184).
+Folded numeric leaves compare their actual fields instead of discarded parser
+type annotations. Ordinary projection/evaluation behavior is unchanged.
+Finite values retain unrounded binary64 distinctions, signed zeros compare equally,
+same-sign infinities match, and NaN does not match itself, following the pinned
+[native numeric leaf relation](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree.h#L94-L110).
+Specified roots receive no computed-value range clamping or NaN/zero censorship.
+
+`CssKeyframeSelectorMatcher::try_new[_with_limits]` prepares one borrowed query
+once; its mutable `matches(candidate)` shares a monotonic native budget across
+all candidates in a search. Pair methods delegate to this owner. CSSOM owns
+reverse iteration, last-match selection and live identities. Both complete lists
+normalize before equality is decided, including an unequal earlier selector.
+Each list aggregate and selector costs one input and projection node; native
+math normalization retains existing tariffs. Selector-pair and numeric-node-pair
+comparison slots each cost one projection node before allocation. No text is
+emitted, so the CSS-byte limit is unused. Typed failures expose the native cause,
+normalization/comparison stage, real selector index when available and retained
+calculation origins on the participating sides. Literal/programmatic inputs
+gain no fabricated coordinates. Failure returns no boolean and refunds no
+completed work; fresh larger-budget retry preserves authored inputs and equality.
+
 Keyframe declaration parsing ignores animation-name, animation-duration,
 animation-delay, animation-iteration-count, animation-direction,
 animation-fill-mode, animation-play-state and animation shorthand. It retains

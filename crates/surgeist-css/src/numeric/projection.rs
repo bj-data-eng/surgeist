@@ -158,11 +158,27 @@ struct Node {
     resolved_magnitude: Option<f64>,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ProjectionMode {
+    SpecifiedOutput,
+    KeyframeMatching,
+}
+
 struct Projection<'a> {
+    mode: ProjectionMode,
     arena: Vec<Node>,
     context: &'a mut SpecifiedSerializationContext,
 }
 impl Projection<'_> {
+    fn unit_for_type(&self, ty: CssNumericType) -> Unit {
+        if self.mode == ProjectionMode::KeyframeMatching && ty.is(CssNumericDimension::Flex) {
+            // The selected specified tree treats fr as a canonical dimension;
+            // ordinary projection keeps its layout-context policy.
+            Unit::Canonical("fr")
+        } else {
+            Unit::from_type(ty)
+        }
+    }
     fn add(&mut self, kind: Kind, ty: CssNumericType) -> Result<Id> {
         self.context.charge_generated_projection(1)?;
         self.arena
@@ -195,6 +211,11 @@ impl Projection<'_> {
     // An exceptional numeric subset poisons the operation even when another
     // term still requires external context. No contextual magnitude is guessed.
     fn resolved_terms(&self, children: &[Id], product: bool) -> Option<f64> {
+        if product && self.mode == ProjectionMode::KeyframeMatching {
+            return self
+                .keyframe_product_result(children)
+                .map(|(value, _)| value);
+        }
         let mut known = None;
         let mut all_resolved = true;
         for &child in children {
@@ -209,6 +230,38 @@ impl Projection<'_> {
             }
         }
         known.filter(|value| all_resolved || value.is_nan())
+    }
+    fn keyframe_product_result(&self, children: &[Id]) -> Option<(f64, CssNumericType)> {
+        // Product 9.4 derives its result from actual normalized leaves, not the
+        // parser type retained across a replacement. The 9.3 inverse shortcut
+        // can change those leaf units. Compound cached magnitudes do not prove
+        // eligibility. Direct division also preserves source binary64 order.
+        let mut value = 1.0;
+        let mut ty = CssNumericType::NUMBER;
+        for &child in children {
+            let (id, divide) = if let Kind::Invert(id) = self.arena[child].kind {
+                (id, true)
+            } else {
+                (child, false)
+            };
+            let scalar = self.scalar(id)?;
+            if !scalar.unit.resolved() || !self.magnitude_comparable(id) {
+                return None;
+            }
+            let leaf_type = match &scalar.unit {
+                Unit::Number => CssNumericType::NUMBER,
+                Unit::Percentage => CssNumericType::dimension(CssNumericDimension::Percentage),
+                Unit::Canonical(unit) => CssNumericType::dimension(super::unit_dimension(unit)?),
+                Unit::Context(_) => return None,
+            };
+            ty = ty.product(leaf_type, divide)?;
+            value = if divide {
+                value / scalar.value
+            } else {
+                value * scalar.value
+            };
+        }
+        ty.simple().then_some((value, ty))
     }
     fn is_nan(&self, id: Id) -> bool {
         self.arena[id].resolved_magnitude.is_some_and(f64::is_nan)
@@ -236,6 +289,33 @@ impl Projection<'_> {
         if let Kind::Negate(child) = self.arena[id].kind {
             return Ok(child);
         }
+        if self.mode == ProjectionMode::KeyframeMatching {
+            let numeric_container = match &self.arena[id].kind {
+                Kind::Sum(children) | Kind::Product(children) => {
+                    children.iter().all(|&child| self.scalar(child).is_some())
+                }
+                _ => false,
+            };
+            if numeric_container {
+                // The selected pin negates each numeric child and returns the
+                // same ordered container, including its Product branch.
+                let kind = std::mem::replace(&mut self.arena[id].kind, Kind::Consumed);
+                let (mut children, is_sum) = match kind {
+                    Kind::Sum(children) => (children, true),
+                    Kind::Product(children) => (children, false),
+                    _ => unreachable!("checked numeric container"),
+                };
+                for child in &mut children {
+                    *child = self.negate(*child)?;
+                }
+                let kind = if is_sum {
+                    Kind::Sum(children)
+                } else {
+                    Kind::Product(children)
+                };
+                return self.add(kind, self.arena[id].ty);
+            }
+        }
         self.add(Kind::Negate(id), self.arena[id].ty)
     }
     fn invert(&mut self, id: Id) -> Result<Id> {
@@ -254,12 +334,13 @@ impl Projection<'_> {
     }
     fn sum(&mut self, ids: Vec<Id>, ty: CssNumericType) -> Result<Id> {
         if ty.simple() && ids.iter().any(|&id| self.is_nan(id)) {
-            return self.value(f64::NAN, Unit::from_type(ty), ty);
+            return self.value(f64::NAN, self.unit_for_type(ty), ty);
         }
         let mut pending = ids;
         pending.reverse();
         let mut other = Vec::new();
-        let mut scalars: BTreeMap<Unit, (f64, bool)> = BTreeMap::new();
+        let mut scalars: BTreeMap<Unit, (f64, bool, usize)> = BTreeMap::new();
+        let mut position = 0;
         // Visit flattened children in source order, including binary64 sums.
         while let Some(id) = pending.pop() {
             if matches!(self.arena[id].kind, Kind::Sum(_)) {
@@ -272,32 +353,43 @@ impl Projection<'_> {
             } else if let Some(scalar) = self.scalar(id) {
                 scalars
                     .entry(scalar.unit.clone())
-                    .and_modify(|(value, finite_operands)| {
+                    .and_modify(|(value, finite_operands, _)| {
                         *value += scalar.value;
                         *finite_operands &= scalar.value.is_finite();
                     })
-                    .or_insert((scalar.value, scalar.value.is_finite()));
+                    .or_insert((scalar.value, scalar.value.is_finite(), position));
+                position += 1;
             } else {
-                other.push(id);
+                other.push((position, id));
+                position += 1;
             }
         }
-        if ty.simple() && scalars.values().any(|(value, _)| value.is_nan()) {
-            return self.value(f64::NAN, Unit::from_type(ty), ty);
+        if ty.simple() && scalars.values().any(|(value, _, _)| value.is_nan()) {
+            return self.value(f64::NAN, self.unit_for_type(ty), ty);
         }
         let mut combined = Vec::new();
-        for (unit, (value, finite_operands)) in scalars {
+        for (unit, (value, finite_operands, position)) in scalars {
             // Each same-unit set creates one replacement. Range conversion
             // occurs here, after source-order accumulation, not at prefixes.
             // The accumulator may overflow although every source operand was
             // finite; a genuine infinite operand must remain distinguishable.
-            let value = if ty.is(CssNumericDimension::Angle) && unit == Unit::Canonical("deg") {
+            let value = if self.mode == ProjectionMode::SpecifiedOutput
+                && ty.is(CssNumericDimension::Angle)
+                && unit == Unit::Canonical("deg")
+            {
                 finite_angle_overflow(value, finite_operands)
             } else {
                 value
             };
-            combined.push(self.value(value, unit, ty)?);
+            combined.push((position, self.value(value, unit, ty)?));
         }
         combined.extend(other);
+        if self.mode == ProjectionMode::KeyframeMatching {
+            // Specified-tree equality retains each merged unit at its first
+            // source occurrence, including its position among symbolic terms.
+            combined.sort_unstable_by_key(|&(position, _)| position);
+        }
+        let combined: Vec<_> = combined.into_iter().map(|(_, id)| id).collect();
         if combined.len() == 1 {
             return Ok(combined[0]);
         }
@@ -351,6 +443,15 @@ impl Projection<'_> {
             };
             if other.len() == 1 {
                 let child = other[0];
+                if self.mode == ProjectionMode::KeyframeMatching
+                    && let Kind::Invert(id) = self.arena[child].kind
+                    && let Some(value) = self.scalar(id).cloned()
+                {
+                    // Pinned Product 9.3 returns the inverse's numeric child
+                    // multiplied by the combined Number, retaining its unit.
+                    // This specified-tree quirk is not reciprocal arithmetic.
+                    return self.value(coefficient * value.value, value.unit, ty);
+                }
                 if let Kind::Sum(children) = &self.arena[child].kind
                     && children.iter().all(|&id| self.scalar(id).is_some())
                 {
@@ -367,32 +468,50 @@ impl Projection<'_> {
                     return self.sum(distributed, ty);
                 }
             }
+            let position = if self.mode == ProjectionMode::KeyframeMatching {
+                // The pinned specified tree appends its combined Number after
+                // non-number children; output projection retains its own order.
+                other.len()
+            } else {
+                position
+            };
             other.insert(position, id);
         }
         if other.len() == 1 {
             return Ok(other[0]);
         }
-        if ty.simple() {
-            let resolved = self.resolved_terms(&other, true);
-            if let Some(value) = resolved {
-                let value = if ty.is(CssNumericDimension::Angle) {
-                    finite_angle_overflow(
-                        value,
-                        other.iter().all(|&id| {
-                            self.arena[id]
-                                .resolved_magnitude
-                                .is_some_and(f64::is_finite)
-                        }),
-                    )
-                } else {
-                    value
-                };
-                return self.value(value, Unit::from_type(ty), ty);
-            }
+        let resolved = if self.mode == ProjectionMode::KeyframeMatching {
+            self.keyframe_product_result(&other)
+        } else if ty.simple() {
+            self.resolved_terms(&other, true).map(|value| (value, ty))
+        } else {
+            None
+        };
+        if let Some((value, result_type)) = resolved {
+            let value = if self.mode == ProjectionMode::SpecifiedOutput
+                && ty.is(CssNumericDimension::Angle)
+            {
+                finite_angle_overflow(
+                    value,
+                    other.iter().all(|&id| {
+                        self.arena[id]
+                            .resolved_magnitude
+                            .is_some_and(f64::is_finite)
+                    }),
+                )
+            } else {
+                value
+            };
+            return self.value(value, self.unit_for_type(result_type), result_type);
         }
         if let Some((_, coefficient, _, position)) = number
             && other.len() == 2
         {
+            let position = if self.mode == ProjectionMode::KeyframeMatching {
+                other.len() - 1
+            } else {
+                position
+            };
             let child = other[1 - position];
             if let Some(value) = self.scalar(child).cloned() {
                 return self.value(coefficient * value.value, value.unit, ty);
@@ -412,7 +531,7 @@ impl Projection<'_> {
         }
         // NaN is infectious in every CSS math function, including pow(NaN, 0).
         if args.iter().flatten().any(|&id| self.is_nan(id)) {
-            return self.value(f64::NAN, Unit::from_type(ty), ty);
+            return self.value(f64::NAN, self.unit_for_type(ty), ty);
         }
         if function == Function::Clamp && args[0].is_none() && args[2].is_none() {
             return Ok(args[1].expect("clamp value argument"));
@@ -434,21 +553,35 @@ impl Projection<'_> {
                 .flatten()
                 .map(|v| &v.unit)
                 .all(|unit| Some(unit) == values.iter().flatten().next().map(|v| &v.unit));
+            let same_unit_fold = if self.mode == ProjectionMode::KeyframeMatching {
+                matches!(
+                    function,
+                    Function::Min
+                        | Function::Max
+                        | Function::Clamp
+                        | Function::Abs
+                        | Function::Sign
+                )
+            } else {
+                matches!(function, Function::Min | Function::Max | Function::Clamp)
+                    || matches!(function, Function::Abs | Function::Hypot)
+                        && values
+                            .iter()
+                            .flatten()
+                            .all(|value| value.unit.nonnegative_basis())
+            };
             if resolved
                 || same_unit
-                    && (matches!(function, Function::Min | Function::Max | Function::Clamp)
-                        || matches!(function, Function::Abs | Function::Hypot)
-                            && values
-                                .iter()
-                                .flatten()
-                                .all(|value| value.unit.nonnegative_basis()))
+                    && same_unit_fold
                     && args
                         .iter()
                         .flatten()
                         .all(|&id| self.magnitude_comparable(id))
             {
                 let output = math::evaluate(function, &values, strategy);
-                let output = if ty.is(CssNumericDimension::Angle) {
+                let output = if self.mode == ProjectionMode::SpecifiedOutput
+                    && ty.is(CssNumericDimension::Angle)
+                {
                     finite_angle_overflow(
                         output,
                         values.iter().flatten().all(|value| value.value.is_finite()),
@@ -456,8 +589,8 @@ impl Projection<'_> {
                 } else {
                     output
                 };
-                let unit = if resolved {
-                    Unit::from_type(ty)
+                let unit = if resolved || function == Function::Sign {
+                    self.unit_for_type(ty)
                 } else {
                     values
                         .iter()
@@ -469,6 +602,27 @@ impl Projection<'_> {
                 };
                 return self.value(output, unit, ty);
             }
+        }
+        if self.mode == ProjectionMode::KeyframeMatching
+            && function == Function::Clamp
+            && self
+                .scalar(args[1].expect("clamp middle argument"))
+                .is_some()
+            && (args[0].is_none() || args[2].is_none())
+        {
+            let (function, args) = if args[0].is_none() {
+                (Function::Min, vec![args[1], args[2]])
+            } else {
+                (Function::Max, vec![args[0], args[1]])
+            };
+            return self.add(
+                Kind::Function {
+                    function,
+                    args,
+                    strategy: None,
+                },
+                ty,
+            );
         }
         if matches!(function, Function::Min | Function::Max) {
             let mut grouped: BTreeMap<Unit, (usize, f64)> = BTreeMap::new();
@@ -719,6 +873,81 @@ impl DeferredNumericProjection {
         self.outcome
     }
 
+    /// Compares normalized specified roots, without emission or numeric censorship.
+    /// Floating leaves use the adopted native double relation: signed zeros compare
+    /// equally, infinities retain their sign, and NaN does not equal any value.
+    pub(crate) fn same_specified_root(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> Result<bool> {
+        fn push(
+            pending: &mut Vec<(Id, Id)>,
+            pair: (Id, Id),
+            context: &mut SpecifiedSerializationContext,
+        ) -> Result<()> {
+            context.charge_generated_projection(1)?;
+            pending
+                .try_reserve(1)
+                .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
+            pending.push(pair);
+            Ok(())
+        }
+        let mut pending = Vec::new();
+        push(&mut pending, (self.root, other.root), context)?;
+        while let Some((left, right)) = pending.pop() {
+            let left = &self.arena[left];
+            let right = &other.arena[right];
+            // Numeric leaves compare their actual value/unit fields, whereas
+            // retained operations also compare the pinned IndirectNode type.
+            // Parser types discarded when folding a leaf are not leaf fields.
+            if !matches!(
+                left.kind,
+                Kind::Scalar(_) | Kind::Symbol(_) | Kind::ProfileChannel(_)
+            ) && left.ty != right.ty
+            {
+                return Ok(false);
+            }
+            match (&left.kind, &right.kind) {
+                (Kind::Scalar(a), Kind::Scalar(b)) if a.unit == b.unit && a.value == b.value => {}
+                (Kind::Symbol(a), Kind::Symbol(b)) if a == b => {}
+                (Kind::ProfileChannel(a), Kind::ProfileChannel(b)) if a == b => {}
+                (Kind::Negate(a), Kind::Negate(b)) | (Kind::Invert(a), Kind::Invert(b)) => {
+                    push(&mut pending, (*a, *b), context)?;
+                }
+                (Kind::Sum(a), Kind::Sum(b)) | (Kind::Product(a), Kind::Product(b))
+                    if a.len() == b.len() =>
+                {
+                    for (&a, &b) in a.iter().zip(b).rev() {
+                        push(&mut pending, (a, b), context)?;
+                    }
+                }
+                (
+                    Kind::Function {
+                        function: a,
+                        args: a_args,
+                        strategy: a_strategy,
+                    },
+                    Kind::Function {
+                        function: b,
+                        args: b_args,
+                        strategy: b_strategy,
+                    },
+                ) if a == b && a_strategy == b_strategy && a_args.len() == b_args.len() => {
+                    for (a, b) in a_args.iter().zip(b_args).rev() {
+                        match (a, b) {
+                            (Some(a), Some(b)) => push(&mut pending, (*a, *b), context)?,
+                            (None, None) => {}
+                            _ => return Ok(false),
+                        }
+                    }
+                }
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
     /// Negation retains the dimensional type and charges derived projection work.
     pub(crate) fn append(
         self,
@@ -729,6 +958,7 @@ impl DeferredNumericProjection {
         let mut prepared = self;
         if negate {
             let mut projection = Projection {
+                mode: ProjectionMode::SpecifiedOutput,
                 arena: prepared.arena,
                 context: &mut *context,
             };
@@ -754,12 +984,37 @@ pub(crate) fn prepare_specified(
     prepare_specified_scaled(expression, NumericProjectionScale::Identity, context)
 }
 
+/// The native specified-tree phase selected for keyframe lookup. This reuses
+/// the checked walk, numeric folding and resource owner while retaining the
+/// pinned tree ordering rather than output-canonical ordering.
+pub(crate) fn prepare_keyframe_matching(
+    expression: &CssCalculationExpression,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<DeferredNumericProjection> {
+    prepare_specified_scaled_with_mode(
+        expression,
+        NumericProjectionScale::Identity,
+        context,
+        ProjectionMode::KeyframeMatching,
+    )
+}
+
 fn prepare_specified_scaled(
     expression: &CssCalculationExpression,
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<DeferredNumericProjection> {
+    prepare_specified_scaled_with_mode(expression, scale, context, ProjectionMode::SpecifiedOutput)
+}
+
+fn prepare_specified_scaled_with_mode(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+    mode: ProjectionMode,
+) -> Result<DeferredNumericProjection> {
     let mut projection = Projection {
+        mode,
         arena: Vec::new(),
         context,
     };
@@ -797,8 +1052,15 @@ fn prepare_specified_scaled(
                         (number, Unit::Percentage)
                     }
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
-                        let (unit, factor) = canonical_unit(unit);
-                        let value = if unit == Unit::Canonical("deg") {
+                        let (mut unit, factor) = canonical_unit(unit);
+                        if projection.mode == ProjectionMode::KeyframeMatching
+                            && node.ty.is(CssNumericDimension::Flex)
+                        {
+                            unit = projection.unit_for_type(node.ty);
+                        }
+                        let value = if projection.mode == ProjectionMode::SpecifiedOutput
+                            && unit == Unit::Canonical("deg")
+                        {
                             finite_angle_leaf(number.representation(), factor)
                         } else {
                             lexical_value(number.representation()) * factor
@@ -904,6 +1166,7 @@ fn emit_prepared(
     let outcome = prepared.outcome;
     let root = prepared.root;
     let mut projection = Projection {
+        mode: ProjectionMode::SpecifiedOutput,
         arena: prepared.arena,
         context,
     };
@@ -1712,6 +1975,7 @@ mod tests {
     fn cumulative_budget_counts_replacements_not_only_live_roots() {
         let mut context = SpecifiedSerializationContext::new(Limits::new(100, 3, 100));
         let mut projection = Projection {
+            mode: ProjectionMode::SpecifiedOutput,
             arena: Vec::new(),
             context: &mut context,
         };
@@ -1741,6 +2005,7 @@ mod tests {
         let evaluate = |cap| -> Result<String> {
             let mut context = SpecifiedSerializationContext::new(Limits::new(100, cap, 100));
             let mut projection = Projection {
+                mode: ProjectionMode::SpecifiedOutput,
                 arena: Vec::new(),
                 context: &mut context,
             };
@@ -1929,6 +2194,7 @@ mod comparison_capture_tests {
         let ty = CssNumericType::NUMBER;
         let mut context = SpecifiedSerializationContext::new(Limits::default());
         let mut projection = Projection {
+            mode: ProjectionMode::SpecifiedOutput,
             arena: Vec::new(),
             context: &mut context,
         };
@@ -1970,6 +2236,7 @@ mod comparison_capture_tests {
         let ty = CssNumericType::NUMBER;
         let mut context = SpecifiedSerializationContext::new(Limits::default());
         let mut projection = Projection {
+            mode: ProjectionMode::SpecifiedOutput,
             arena: Vec::new(),
             context: &mut context,
         };

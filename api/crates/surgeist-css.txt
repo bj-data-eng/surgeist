@@ -2335,6 +2335,10 @@ pub surgeist_css::CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent)
 pub surgeist_css::CssKeyframeSelector::To
 impl surgeist_css::CssKeyframeSelector
 pub fn surgeist_css::CssKeyframeSelector::offset(&self) -> surgeist_css::CssKeyframePercent
+pub enum surgeist_css::CssKeyframeSelectorComparisonStage
+pub surgeist_css::CssKeyframeSelectorComparisonStage::Comparison
+pub surgeist_css::CssKeyframeSelectorComparisonStage::LeftNormalization
+pub surgeist_css::CssKeyframeSelectorComparisonStage::RightNormalization
 #[non_exhaustive] pub enum surgeist_css::CssKeyframesName
 pub surgeist_css::CssKeyframesName::Ident(surgeist_css::CssKeyframesIdent)
 pub surgeist_css::CssKeyframesName::String(surgeist_css::CssKeyframesString)
@@ -9586,7 +9590,21 @@ pub const fn surgeist_css::CssKeyframeRuleView<'a>::selectors(&self) -> &'a surg
 pub fn surgeist_css::CssKeyframeRuleView<'a>::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssKeyframeRuleViewError>
 pub fn surgeist_css::CssKeyframeRuleView<'a>::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssKeyframeRuleViewError>
 pub fn surgeist_css::CssKeyframeRuleView<'a>::try_new(selectors: &'a surgeist_css::CssKeyframeSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> core::result::Result<Self, surgeist_css::CssKeyframeRuleViewError>
+pub struct surgeist_css::CssKeyframeSelectorComparisonError
+impl surgeist_css::CssKeyframeSelectorComparisonError
+pub fn surgeist_css::CssKeyframeSelectorComparisonError::cause(&self) -> &surgeist_css::CssSpecifiedValueSerializationError
+pub fn surgeist_css::CssKeyframeSelectorComparisonError::left_origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub fn surgeist_css::CssKeyframeSelectorComparisonError::right_origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub const fn surgeist_css::CssKeyframeSelectorComparisonError::selector_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_css::CssKeyframeSelectorComparisonError::stage(&self) -> surgeist_css::CssKeyframeSelectorComparisonStage
+impl core::error::Error for surgeist_css::CssKeyframeSelectorComparisonError
+pub fn surgeist_css::CssKeyframeSelectorComparisonError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssKeyframeSelectorComparisonError
+pub fn surgeist_css::CssKeyframeSelectorComparisonError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssKeyframeSelectorList
+impl surgeist_css::CssKeyframeSelectorList
+pub fn surgeist_css::CssKeyframeSelectorList::matches_normalized(&self, other: &Self) -> core::result::Result<bool, surgeist_css::CssKeyframeSelectorComparisonError>
+pub fn surgeist_css::CssKeyframeSelectorList::matches_normalized_with_limits(&self, other: &Self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<bool, surgeist_css::CssKeyframeSelectorComparisonError>
 impl surgeist_css::CssKeyframeSelectorList
 pub fn surgeist_css::CssKeyframeSelectorList::offsets(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css::CssKeyframePercent> + '_
 pub fn surgeist_css::CssKeyframeSelectorList::serialize_key_text(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -9594,6 +9612,11 @@ pub fn surgeist_css::CssKeyframeSelectorList::serialize_key_text_with_limits(&se
 impl surgeist_css::CssKeyframeSelectorList
 pub fn surgeist_css::CssKeyframeSelectorList::selectors(&self) -> &[surgeist_css::CssKeyframeSelector]
 pub fn surgeist_css::CssKeyframeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssKeyframeSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssKeyframeSelectorMatcher<'query>
+impl<'query> surgeist_css::CssKeyframeSelectorMatcher<'query>
+pub fn surgeist_css::CssKeyframeSelectorMatcher<'query>::matches(&mut self, other: &surgeist_css::CssKeyframeSelectorList) -> core::result::Result<bool, surgeist_css::CssKeyframeSelectorComparisonError>
+pub fn surgeist_css::CssKeyframeSelectorMatcher<'query>::try_new(query: &'query surgeist_css::CssKeyframeSelectorList) -> core::result::Result<Self, surgeist_css::CssKeyframeSelectorComparisonError>
+pub fn surgeist_css::CssKeyframeSelectorMatcher<'query>::try_new_with_limits(query: &'query surgeist_css::CssKeyframeSelectorList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssKeyframeSelectorComparisonError>
 pub struct surgeist_css::CssKeyframesIdent(_)
 impl surgeist_css::CssKeyframesIdent
 pub fn surgeist_css::CssKeyframesIdent::as_str(&self) -> &str

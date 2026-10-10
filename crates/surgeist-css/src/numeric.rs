@@ -16,8 +16,8 @@ mod projection;
 pub(crate) use projection::{
     DeferredNumericProjection, NumericComparisonCapture, NumericProjectionOutcome,
     NumericProjectionScale, capture_specified, capture_specified_for_comparison,
-    capture_specified_scaled, prepare_specified, project_calc_size_sum_into,
-    project_specified_into,
+    capture_specified_scaled, prepare_keyframe_matching, prepare_specified,
+    project_calc_size_sum_into, project_specified_into,
 };
 
 /// Explicit provenance for an existing parser cursor; never ambient parser state.
