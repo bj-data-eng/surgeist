@@ -6965,6 +6965,27 @@ temporary grammar transport never becomes their public source provenance.
 Canonical output omits surrounding trivia. Normalization preserves the optional
 rule position and intact import payload without loading its target.
 
+`CssImportRuleView::try_new[_with_limits]` borrows a checked original import and
+a supplied current `CssMediaQueryList`. Its CSSOM output uses that supplied list,
+including an empty list, while retaining the original checked target, layer,
+supports clauses and source observations. It assigns no live identity or source
+position and does not reconstruct an authored rule. `rule()` and `media()` expose
+the two immutable borrowed inputs; neither is changed by formatting or failure.
+The plain import branch emits the decoded location as a CSSOM URL. Modern clauses
+and extended URL targets retain the existing qualified output policy; this view
+does not select a new complete literal wrapper contract for them.
+
+`CssEditedRuleView::try_import[_with_limits]` embeds the current import view in
+the existing recursive formatting graph. The original target/clause components
+and supplied media share the enclosing operation's input, projection and output
+budgets, interpretation protection and typed failures. Retired authored media is
+not charged or emitted. Constructors validate formatting under their supplied
+limits, while a later whole-graph request applies one cumulative budget across
+all children; errors return no partial text and permit unchanged retry. CSSOM
+owns live list edits, placement, parent links and publication. In particular,
+being representable in a formatting graph does not authorize an import in an
+otherwise invalid grouping destination.
+
 Import targets accept empty and whitespace-only decoded strings and URLs without
 trimming their contents. This follows the authored grammar in
 [Cascade 5](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#at-import)

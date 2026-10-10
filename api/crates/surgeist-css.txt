@@ -8130,6 +8130,8 @@ pub fn surgeist_css::CssEditedRuleView<'a>::to_specified_css(self) -> core::resu
 pub fn surgeist_css::CssEditedRuleView<'a>::to_specified_css_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_group(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_group_with_limits(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_import(import: surgeist_css::CssImportRuleView<'a>) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_import_with_limits(import: surgeist_css::CssImportRuleView<'a>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_keyframes(keyframes: surgeist_css::CssKeyframesRuleView<'a>) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_keyframes_with_limits(keyframes: surgeist_css::CssKeyframesRuleView<'a>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_nested_declarations(declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
@@ -9322,6 +9324,14 @@ pub fn surgeist_css::CssImportRule::serialize(&self) -> core::result::Result<sur
 pub fn surgeist_css::CssImportRule::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssImportSerializationError>
 pub fn surgeist_css::CssImportRule::try_from_components(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssImportConstructionError>
 pub fn surgeist_css::CssImportRule::try_from_components_with_limits(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssImportConstructionError>
+pub struct surgeist_css::CssImportRuleView<'a>
+impl<'a> surgeist_css::CssImportRuleView<'a>
+pub const fn surgeist_css::CssImportRuleView<'a>::media(self) -> &'a surgeist_css::CssMediaQueryList
+pub const fn surgeist_css::CssImportRuleView<'a>::rule(self) -> &'a surgeist_css::CssImportRule
+pub fn surgeist_css::CssImportRuleView<'a>::serialize_cssom(self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssImportRuleView<'a>::serialize_cssom_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssImportRuleView<'a>::try_new(rule: &'a surgeist_css::CssImportRule, media: &'a surgeist_css::CssMediaQueryList) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssImportRuleView<'a>::try_new_with_limits(rule: &'a surgeist_css::CssImportRule, media: &'a surgeist_css::CssMediaQueryList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub struct surgeist_css::CssImportString
 impl surgeist_css::CssImportString
 pub fn surgeist_css::CssImportString::as_str(&self) -> &str

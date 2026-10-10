@@ -36,6 +36,7 @@ pub(crate) enum EditedRuleKind<'a> {
     NestedDeclarations(&'a CssSpecifiedDeclarationBlock),
     Page(crate::CssPageRuleView<'a>),
     Keyframes(crate::CssKeyframesRuleView<'a>),
+    Import(crate::CssImportRuleView<'a>),
 }
 
 /// A checked immutable formatting view over edited payloads and child order.
@@ -173,6 +174,22 @@ impl<'a> CssEditedRuleView<'a> {
     ) -> Result<Self, CssRuleCssomSerializationError> {
         Self {
             kind: EditedRuleKind::Keyframes(keyframes),
+        }
+        .checked(limits)
+    }
+    /// Embeds current import-owned media with the original checked clauses and
+    /// provenance. Placement remains the consumer's responsibility.
+    pub fn try_import(
+        import: crate::CssImportRuleView<'a>,
+    ) -> Result<Self, CssRuleCssomSerializationError> {
+        Self::try_import_with_limits(import, CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn try_import_with_limits(
+        import: crate::CssImportRuleView<'a>,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssRuleCssomSerializationError> {
+        Self {
+            kind: EditedRuleKind::Import(import),
         }
         .checked(limits)
     }

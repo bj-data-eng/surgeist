@@ -207,6 +207,19 @@ impl SpecifiedRuleWriter {
                                         &mut keyframe_block_index,
                                     )?;
                                 }
+                                EditedRuleKind::Import(import) => {
+                                    if format == Format::Cssom {
+                                        import
+                                            .rule()
+                                            .append_cssom_with_media(self, Some(import.media()))?;
+                                    } else {
+                                        import.rule().append_specified_with_media(
+                                            &mut self.context,
+                                            &mut self.css,
+                                            Some(import.media()),
+                                        )?;
+                                    }
+                                }
                                 EditedRuleKind::NestedDeclarations(block) => {
                                     block.append_cssom(self)?
                                 }
