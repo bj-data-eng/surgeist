@@ -301,6 +301,13 @@ impl OrderedAttributes {
         &self.attributes
     }
 
+    /// Only the controlled construction owner may mutate a uniquely owned
+    /// parser backing after proving expanded-name uniqueness and admission.
+    #[cfg(test)]
+    pub(crate) fn parser_backing_mut(&mut self) -> &mut Arc<Vec<Attribute>> {
+        &mut self.attributes
+    }
+
     #[cfg(test)]
     pub(crate) fn into_parser_storage(self) -> Arc<Vec<Attribute>> {
         self.attributes

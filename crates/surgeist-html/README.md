@@ -348,6 +348,16 @@ HTML rules, and explicit or implied HTML roots lead to an owned BeforeHead
 continuation. It retains exact reprocessed input, diagnostics and ignored
 whitespace origins. The constructor creates a fresh ordinary document; hosted,
 srcdoc, mode-fixed and captured-document execution remain unsupported.
+The owning head-stage driver consumes that continuation and the same paused
+tokenizer. It implements BeforeHead, ordinary non-script/non-template InHead,
+Disabled InHeadNoscript and RCDATA/RAWTEXT Text processing. Text restores its
+actual return mode, including delegated noscript processing. It transfers an
+owned AfterHead continuation, or stops with the untouched script/template token
+for further dispatch. These boundaries retain the actual tree, head pointer,
+lexical input and diagnostics; they are unfinished execution states.
+Head-stage `html` delegation adds missing attributes to managed root storage,
+preserving expanded-name matching, order and origins under the shared controller.
+Imported attribute storage remains explicitly unavailable at this checkpoint.
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.
 The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,

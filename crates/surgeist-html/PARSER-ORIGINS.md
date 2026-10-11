@@ -9,8 +9,10 @@ provenance, not a different HTML dialect. This machinery currently compiles only
 for tests. The tree kernel implements adjusted insertion locations, element/text
 insertion and stack/scope operations over actual controlled native storage.
 The ordinary-document prologue implements Initial and BeforeHtml and hands off
-an owned BeforeHead continuation. Complete insertion-mode dispatch and public
-parse execution remain unfinished.
+an owned BeforeHead continuation. The subsequent owning head-stage driver handles
+BeforeHead, ordinary non-script/non-template InHead, Disabled InHeadNoscript and
+non-script Text. It retains AfterHead or untouched script/template continuations;
+complete insertion-mode dispatch and public parse execution remain unfinished.
 
 ## Original source and incorporated files
 
@@ -24,9 +26,9 @@ before adaptation.
 | `html5ever/src/tokenizer/states.rs` | `35ea888082a92b77a428af263224169b05ff5740bd519efdace90e44858a0b7d` | `src/parser/tokenizer/states.rs` |
 | `html5ever/src/tokenizer/interface.rs` | `cdab80709a6e27663b9a349a607cf85da93fcc9ee3b3a54cf97ee635a9ae7cf4` | `src/parser/tokenizer/token.rs` |
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
-| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location and stack/scope adaptation in `src/parser/tree_builder/mod.rs` |
+| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location and stack/scope adaptation in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs` |
 | `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope-list adaptation in `src/parser/tree_builder/tag_sets.rs` |
-| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml adaptation in `src/parser/tree_builder/prologue.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/non-script Text rules in `src/parser/tree_builder/head.rs` |
 | `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
@@ -56,6 +58,12 @@ remain historical.
 | --- | --- |
 | `src/parser/tree_builder/prologue.rs` | `91a99f0291d311221aa9bf3aab51c0a5c5a998eb24a2e7d87fa676a8589dd5d1` |
 | `src/parser/tree_builder/doctype.rs` | `ef2f9ddfa625128fde2910f1a74ac25b2dda64534e346fe24385f0f88ad1ac64` |
+
+The head-stage adaptation adds its own historical incorporation checkpoint:
+
+| Incorporated file | Initial adapted SHA-256 |
+| --- | --- |
+| `src/parser/tree_builder/head.rs` | `192900bcd2250130f09aa387fc022a7363078a8e8378e55820c55329b4ff56d5` |
 
 The accompanying tokenizer and tree-builder tests are Surgeist-authored
 verification, not imported upstream test files. The input, buffer, controller,
@@ -113,6 +121,21 @@ The fresh ordinary-document constructor establishes non-srcdoc initialization
 and parser-cannot-change-mode as false. Hosted, srcdoc, mode-fixed and captured
 document execution are unsupported; source labels do not select these modes.
 This prologue is a private continuation, not a completed parse result.
+
+The head-stage driver adapts `rules.rs` lines 147–370 and 1007–1032,
+the narrow InBody `html` branch at lines 427–435, and `mod.rs` lines 670–687. It uses the same
+paused tokenizer, actual controlled arena and retained head pointer. Before
+consuming borrowed owners, admission checks their source, controller and lexical
+handoff state. Raw-text transitions occur before the next lexical pull; Text
+restores the actual saved insertion mode. The pinned edition supplies processing
+instructions and treats encoding confidence as irrelevant for supplied Unicode,
+so no transport re-decoding is introduced. Script and template dispatch remain
+owned unfinished continuations rather than successful callback substitutes.
+Surgeist-owned providers allocate implied head elements and transfer missing
+attributes into managed root storage. Exact namespace/local comparisons, staged
+slots and real vector reservation/append are charged by the existing controller;
+its own weak ticket and registry owners are restored on failure. Imported
+attribute backing remains explicitly unavailable.
 
 Remaining insertion modes, formatting reconstruction/adoption, foreign dispatch,
 context effects and report publication remain required engine work. The driver, encoding implementation, serializer,

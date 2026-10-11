@@ -218,7 +218,53 @@ pub(crate) struct Tokenizer<'source> {
     pending_len: usize,
     done: bool,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TokenizerHandoffError {
+    Stop(ParseStop),
+    ForeignSource,
+    NotData,
+    PendingEvents,
+    ActiveDraft,
+}
+impl From<ParseStop> for TokenizerHandoffError {
+    fn from(stop: ParseStop) -> Self {
+        Self::Stop(stop)
+    }
+}
 impl<'source> Tokenizer<'source> {
+    /// Checks the actual paused document-prologue boundary without changing
+    /// lexical state, pulling an event, or consuming any backing owner. EOF is
+    /// admissible: the driver can retain its already-returned EOF token.
+    pub(crate) fn validate_head_handoff(
+        &self,
+        source: &HtmlSource,
+        c: &mut ParseControl,
+    ) -> Result<(), TokenizerHandoffError> {
+        c.require_identity(&self.owner)?;
+        c.require_source(source)?;
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        if self.current.source() != source.identity() {
+            return Err(TokenizerHandoffError::ForeignSource);
+        }
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.state != State::Data {
+            return Err(TokenizerHandoffError::NotData);
+        }
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.pending_len != 0 {
+            return Err(TokenizerHandoffError::PendingEvents);
+        }
+        c.charge(WorkCategory::RecordVisit, 5)?;
+        if self.tag.is_some()
+            || self.comment.is_some()
+            || self.doctype.is_some()
+            || self.pi_target.is_some()
+            || self.pi_data.is_some()
+        {
+            return Err(TokenizerHandoffError::ActiveDraft);
+        }
+        Ok(())
+    }
     pub(crate) fn new(
         source: &'source HtmlSource,
         state: State,

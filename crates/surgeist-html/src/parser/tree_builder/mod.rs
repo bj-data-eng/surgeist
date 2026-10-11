@@ -12,11 +12,12 @@
 // and stack/scope operations. HTML 877d6146487f15b15bc8dd0e3c625063a37b456a
 // governs the fragment substitution and newly-created template state.
 
-//! Concrete tree operations and document prologue over one construction arena.
-//! Initial/BeforeHtml dispatch stops at an owned BeforeHead continuation;
-//! later modes, complete parsing and report publication remain separate work.
+//! Concrete tree operations, document prologue and bounded owning head dispatch
+//! over one construction arena. Script/template and AfterHead continuations
+//! retain unfinished input; complete parsing and report publication are later.
 
 mod doctype;
+mod head;
 mod prologue;
 mod tag_sets;
 #[cfg(test)]
@@ -234,6 +235,26 @@ impl LocationKernel {
                 .ok_or(KernelError::NotElement)?;
             if tag_sets::scope_boundary(qualified, scope, control)? {
                 return Ok(false);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Actual topmost stack element, used by the narrow InBody-html branch.
+    fn first(&self, control: &mut ParseControl) -> Result<ParserNode, KernelError> {
+        self.require(control)?;
+        self.at(0, control)
+    }
+
+    /// Namespace-qualified membership, not ordinary tree ancestry or scope.
+    fn contains_html_template(&self, control: &mut ParseControl) -> Result<bool, KernelError> {
+        self.require(control)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        for index in (0..self.stack()?.len()).rev() {
+            control.charge(WorkCategory::StateStep, 1)?;
+            let node = self.at(index, control)?;
+            if self.named(&node, "template", control)? {
+                return Ok(true);
             }
         }
         Ok(false)

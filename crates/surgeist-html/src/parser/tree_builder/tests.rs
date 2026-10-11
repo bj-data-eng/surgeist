@@ -1964,3 +1964,703 @@ fn prologue_quirky_public_equality_and_prefix_cases_remain_distinct() {
         assert_released(&c);
     }
 }
+
+/// Starts the real fresh prologue and passes its actual paused tokenizer to the
+/// owning head stage. This observer releases pre-head lexer evidence explicitly;
+/// no final diagnostic/report completeness is inferred from these private tests.
+fn paused_before_head<'a>(
+    source: &'a HtmlSource,
+    c: &mut ParseControl,
+) -> (super::prologue::BeforeHead, Tokenizer<'a>) {
+    use super::prologue::{DocumentPrologue, PrologueStep};
+    c.admit_source(source).unwrap();
+    let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
+    let mut prologue = DocumentPrologue::new(source, c).unwrap();
+    loop {
+        let mut token = Some(next_token(&mut tokenizer, c));
+        if prologue.process(&mut token, c).unwrap() == PrologueStep::BeforeHead {
+            break;
+        }
+    }
+    (prologue.take_before_head(c).unwrap(), tokenizer)
+}
+fn head_stage<'a>(source: &'a HtmlSource, c: &mut ParseControl) -> super::head::HeadStage<'a> {
+    let (before, tokenizer) = paused_before_head(source, c);
+    super::head::HeadStage::new(source, &mut Some(before), &mut Some(tokenizer), c).unwrap()
+}
+fn head_boundary<'a>(
+    source: &'a HtmlSource,
+    c: &mut ParseControl,
+) -> super::head::HeadContinuation<'a> {
+    let mut driver = head_stage(source, c);
+    for _ in 0..1_000 {
+        if matches!(driver.step(c).unwrap(), super::head::HeadStep::Boundary(_)) {
+            return driver.take_continuation(c).unwrap();
+        }
+    }
+    panic!("finite fixture must reach an owned dispatch boundary")
+}
+fn observe_head(
+    mut output: super::head::HeadContinuation<'_>,
+    c: &mut ParseControl,
+) -> FrozenArena {
+    let mut state = output.driver.state.take().unwrap();
+    if let Some(mut pending) = state.pending.take() {
+        pending.release(c).unwrap();
+    }
+    if let Some(tokenizer) = state.tokenizer.take() {
+        tokenizer.release(c).unwrap();
+    }
+    while let Some(event) = state.lexical.try_pop(c).unwrap() {
+        event.release(c).unwrap();
+    }
+    while let Some(text) = state.before.whitespace.try_pop(c).unwrap() {
+        text.release(c).unwrap();
+    }
+    state.before.whitespace.release(c).unwrap();
+    state.before.diagnostics.release(c).unwrap();
+    state.diagnostics.release(c).unwrap();
+    state.lexical.release(c).unwrap();
+    freeze(state.before.kernel, c)
+}
+fn head_names(document: &crate::HtmlDocument) -> Vec<DocumentString> {
+    let html = document
+        .node(&document.root().children().last().unwrap())
+        .unwrap();
+    let head = document.node(&html.children().last().unwrap()).unwrap();
+    head.children()
+        .filter_map(|id| match document.node(&id).unwrap().kind() {
+            HtmlNodeKind::Element(element) => Some(element.name().local_name().clone()),
+            _ => None,
+        })
+        .collect()
+}
+fn first_head_child_text(document: &crate::HtmlDocument) -> Vec<u16> {
+    let html = document
+        .node(&document.root().children().last().unwrap())
+        .unwrap();
+    let head = document.node(&html.children().last().unwrap()).unwrap();
+    let element = document.node(&head.children().next().unwrap()).unwrap();
+    element
+        .children()
+        .flat_map(|id| match document.node(&id).unwrap().kind() {
+            HtmlNodeKind::Text(text) => text.code_units().to_vec(),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+#[test]
+fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order() {
+    use super::head::{HeadBoundary, HeadMode};
+    let source = HtmlSource::utf8(
+        "<!doctype html><html> <!--outside--><?x a??><head>\r\n<!--inside--><?y b?><base/><basefont><bgsound/><link/><meta charset=utf-16></head>",
+    );
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    assert_eq!(output.boundary, HeadBoundary::AfterHead);
+    let state = output.driver.state.as_ref().unwrap();
+    assert_eq!(state.mode, HeadMode::AfterHead);
+    assert!(state.pending.is_none());
+    assert!(state.diagnostics.as_slice().is_empty());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        1
+    );
+    assert_eq!(
+        state.before.whitespace.as_slice()[0]
+            .value
+            .text()
+            .code_units(),
+        [32]
+    );
+    assert!(
+        state
+            .lexical
+            .as_slice()
+            .iter()
+            .any(|event| matches!(event, Event::Preprocessing { .. }))
+    );
+    let head_id = state.head.as_ref().unwrap();
+    assert!(state.before.kernel.named(head_id, "head", &mut c).unwrap());
+    let mut frozen = observe_head(output, &mut c);
+    let document = frozen.document().unwrap();
+    assert_eq!(
+        head_names(document),
+        ["base", "basefont", "bgsound", "link", "meta"].map(DocumentString::from)
+    );
+    let html = document
+        .node(&document.root().children().last().unwrap())
+        .unwrap();
+    let kinds: Vec<_> = html
+        .children()
+        .map(|id| document.node(&id).unwrap().kind())
+        .collect();
+    assert!(
+        matches!(kinds[0], HtmlNodeKind::Comment(value) if value.code_units()==DocumentString::from("outside").code_units())
+    );
+    assert!(
+        matches!(kinds[1], HtmlNodeKind::ProcessingInstruction(value) if value.target().code_units()==[120] && value.data().code_units()==[97,63])
+    );
+    let head = document.node(&html.children().last().unwrap()).unwrap();
+    assert!(
+        matches!(document.node(&head.children().next().unwrap()).unwrap().kind(), HtmlNodeKind::Text(value) if value.code_units()==[10])
+    );
+    assert!(matches!(
+        document.root().kind(),
+        HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
+    ));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn implicit_head_reprocesses_nonhead_tag_without_consuming_its_payload() {
+    use super::head::{HeadBoundary, HeadMode};
+    let source = HtmlSource::utf8("<body x='kept'>tail");
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    assert_eq!(output.boundary, HeadBoundary::AfterHead);
+    let state = output.driver.state.as_ref().unwrap();
+    assert_eq!(state.mode, HeadMode::AfterHead);
+    let pending = state.pending.as_ref().unwrap();
+    assert_eq!(
+        source.text(&pending.source).unwrap().code_units(),
+        DocumentString::from("<body x='kept'>").code_units()
+    );
+    let super::prologue::Payload::Tag(Some(tag)) = &pending.payload else {
+        panic!("actual unconsumed body");
+    };
+    assert_eq!(
+        tag.attributes.as_slice()[0].value.value.text().code_units(),
+        DocumentString::from("kept").code_units()
+    );
+    let mut frozen = observe_head(output, &mut c);
+    assert!(head_names(frozen.document().unwrap()).is_empty());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn head_title_switches_actual_rcdata_and_recovers_mismatched_end_tag_as_text() {
+    let source = HtmlSource::utf8("<title>A&amp;<b></style>X</title><meta/></head>");
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let mut frozen = observe_head(output, &mut c);
+    let document = frozen.document().unwrap();
+    assert_eq!(
+        head_names(document),
+        [DocumentString::from("title"), DocumentString::from("meta")]
+    );
+    assert_eq!(
+        first_head_child_text(document),
+        DocumentString::from("A&<b></style>X").code_units()
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn head_rawtext_preserves_references_isolates_pairs_and_state_specific_null_recovery() {
+    let mut units = DocumentString::from("<style>&amp;<b>")
+        .code_units()
+        .to_vec();
+    units.extend([0xD800, 0xD83D, 0xDE00, 0, 0xFEFF]);
+    units.extend_from_slice(DocumentString::from("</style></head>").code_units());
+    let source = HtmlSource::utf16(DocumentString::from_utf16(units));
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let state = output.driver.state.as_ref().unwrap();
+    assert!(state.lexical.as_slice().iter().any(|event| matches!(event, Event::Diagnostic(records) if records.as_slice().iter().any(|d| d.code==crate::parser::tokenizer::token::DiagnosticCode::UnexpectedNullCharacter))));
+    let mut frozen = observe_head(output, &mut c);
+    let mut expected = DocumentString::from("&amp;<b>").code_units().to_vec();
+    expected.extend([0xD800, 0xD83D, 0xDE00, 0xFFFD, 0xFEFF]);
+    assert_eq!(first_head_child_text(frozen.document().unwrap()), expected);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn disabled_head_noscript_style_returns_to_noscript_then_ignores_nested_noscript() {
+    use super::head::{HeadCondition, HeadMode};
+    let source = HtmlSource::utf8(
+        "<head><noscript><style>&amp;</style><noscript><!--in--><?x d?><meta/><link/></noscript><title>T</title></head>",
+    );
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let diagnostics = output.driver.state.as_ref().unwrap().diagnostics.as_slice();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].condition,
+        HeadCondition::UnexpectedInNoscript
+    );
+    assert_eq!(diagnostics[0].mode, HeadMode::InHeadNoscript);
+    let mut frozen = observe_head(output, &mut c);
+    let doc = frozen.document().unwrap();
+    assert_eq!(
+        head_names(doc),
+        [
+            DocumentString::from("noscript"),
+            DocumentString::from("title")
+        ]
+    );
+    let html = doc.node(&doc.root().children().last().unwrap()).unwrap();
+    let head = doc.node(&html.children().last().unwrap()).unwrap();
+    let noscript = doc.node(&head.children().next().unwrap()).unwrap();
+    let names: Vec<_> = noscript
+        .children()
+        .filter_map(|id| match doc.node(&id).unwrap().kind() {
+            HtmlNodeKind::Element(e) => Some(e.name().local_name().clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, ["style", "meta", "link"].map(DocumentString::from));
+    drop(names);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn head_text_eof_emits_error_restores_mode_and_retains_original_eof_for_afterhead() {
+    use super::head::{HeadCondition, HeadMode};
+    let source = HtmlSource::utf8("<title>unfinished&amp;");
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let state = output.driver.state.as_ref().unwrap();
+    let d = &state.diagnostics.as_slice()[0];
+    assert_eq!(d.condition, HeadCondition::EofInText);
+    assert_eq!(d.mode, HeadMode::Text);
+    assert_eq!(source.text(&d.source).unwrap().code_units(), []);
+    let pending = state.pending.as_ref().unwrap();
+    assert!(matches!(pending.payload, super::prologue::Payload::Eof));
+    assert_eq!(pending.source.start(), source.len());
+    assert_eq!(pending.source.end(), source.len());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        1
+    );
+    let mut frozen = observe_head(output, &mut c);
+    assert_eq!(
+        first_head_child_text(frozen.document().unwrap()),
+        DocumentString::from("unfinished&").code_units()
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn script_and_template_starts_suspend_untouched_and_forbid_further_pulls() {
+    use super::head::{HeadBoundary, HeadError};
+    for (input, boundary) in [
+        ("<script a='v'>run</script>", HeadBoundary::Script),
+        (
+            "<template for='x' shadowrootmode=open>inside</template>",
+            HeadBoundary::Template,
+        ),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = control(100);
+        let mut output = head_boundary(&source, &mut c);
+        assert_eq!(output.boundary, boundary);
+        let state = output.driver.state.as_ref().unwrap();
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::OpenElements).current,
+            2
+        );
+        let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload
+        else {
+            panic!("real suspended tag");
+        };
+        assert!(tag.attributes.len() > 0);
+        let credits = c.usage().work(WorkCategory::InputUnitRead);
+        assert!(matches!(
+            output.driver.step(&mut c),
+            Err(HeadError::AlreadyAtBoundary)
+        ));
+        assert_eq!(c.usage().work(WorkCategory::InputUnitRead), credits);
+        let mut frozen = observe_head(output, &mut c);
+        assert!(head_names(frozen.document().unwrap()).is_empty());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn html_head_delegation_merges_missing_root_attributes_and_retains_duplicate_recovery() {
+    use super::head::HeadCondition;
+    let source = HtmlSource::utf8(
+        "<!doctype html><html a=first><html a=second b=before><head><html b=later c=head c=drop><noscript><html d=noscript></noscript></head>",
+    );
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let state = output.driver.state.as_ref().unwrap();
+    assert_eq!(
+        state
+            .diagnostics
+            .as_slice()
+            .iter()
+            .filter(|d| d.condition == HeadCondition::UnexpectedHtml)
+            .count(),
+        3
+    );
+    assert!(state.lexical.as_slice().iter().any(|event|matches!(event, Event::Diagnostic(records) if records.as_slice().iter().any(|d|d.code==crate::parser::tokenizer::token::DiagnosticCode::DuplicateAttribute))));
+    let mut frozen = observe_head(output, &mut c);
+    let doc = frozen.document().unwrap();
+    let html = doc.node(&doc.root().children().last().unwrap()).unwrap();
+    let HtmlNodeKind::Element(html) = html.kind() else {
+        panic!("html");
+    };
+    let attrs: Vec<_> = html
+        .attributes()
+        .iter()
+        .map(|a| (a.name().local_name().clone(), a.value().clone()))
+        .collect();
+    assert_eq!(
+        attrs,
+        [
+            ("a", "first"),
+            ("b", "before"),
+            ("c", "head"),
+            ("d", "noscript")
+        ]
+        .map(|(a, b)| (DocumentString::from(a), DocumentString::from(b)))
+    );
+    drop(attrs);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn beforehead_and_inhead_ignore_erroneous_doctype_endtags_and_nested_head() {
+    use super::head::HeadCondition;
+    let source = HtmlSource::utf8(
+        "<!doctype html><html><!doctype other></title><head><head></foo></template><meta/></head>",
+    );
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let conditions: Vec<_> = output
+        .driver
+        .state
+        .as_ref()
+        .unwrap()
+        .diagnostics
+        .as_slice()
+        .iter()
+        .map(|d| d.condition)
+        .collect();
+    assert_eq!(
+        conditions,
+        [
+            HeadCondition::UnexpectedDoctype,
+            HeadCondition::UnexpectedEndTag,
+            HeadCondition::UnexpectedHead,
+            HeadCondition::UnexpectedEndTag,
+            HeadCondition::UnexpectedEndTag
+        ]
+    );
+    let mut frozen = observe_head(output, &mut c);
+    assert_eq!(
+        head_names(frozen.document().unwrap()),
+        [DocumentString::from("meta")]
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn mixed_head_whitespace_inserts_prefix_before_reprocessing_suffix_afterhead() {
+    use super::head::HeadBoundary;
+    let source = HtmlSource::utf8("<html> \r\n<head> \r\nX<body>");
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    assert_eq!(output.boundary, HeadBoundary::AfterHead);
+    let state = output.driver.state.as_ref().unwrap();
+    let ignored: Vec<_> = state
+        .before
+        .whitespace
+        .as_slice()
+        .iter()
+        .flat_map(|text| text.value.text().code_units().iter().copied())
+        .collect();
+    assert_eq!(ignored, [32, 10]);
+    let super::prologue::Payload::Text(Some(text)) = &state.pending.as_ref().unwrap().payload
+    else {
+        panic!("actual pending suffix");
+    };
+    assert_eq!(text.value.text().code_units(), [88]);
+    assert_eq!(
+        source
+            .text(&text.origins.as_slice()[0].source)
+            .unwrap()
+            .code_units(),
+        [88]
+    );
+    let mut frozen = observe_head(output, &mut c);
+    let doc = frozen.document().unwrap();
+    let html = doc.node(&doc.root().children().last().unwrap()).unwrap();
+    let head = doc.node(&html.children().last().unwrap()).unwrap();
+    assert!(
+        matches!(doc.node(&head.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t.code_units()==[32,10])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn head_open_element_cap_stops_before_raw_state_success_and_cleans_all_actual_owners() {
+    use super::head::HeadMode;
+    let source = HtmlSource::utf8("<!doctype html><html><head><title>x</title>");
+    let mut c = control(2); // html + head fit; the mandatory text-element push does not.
+    let mut driver = head_stage(&source, &mut c);
+    driver.step(&mut c).unwrap();
+    assert!(driver.step(&mut c).is_err());
+    assert!(c.stop().is_some());
+    assert_eq!(driver.state.as_ref().unwrap().mode, HeadMode::InHead);
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        2
+    );
+    driver.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn head_cancellation_precedes_next_cursor_read_and_keeps_state_for_terminal_release() {
+    let source = HtmlSource::utf8("<html><head><title>later");
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(100), cancellation.clone());
+    let mut driver = head_stage(&source, &mut c);
+    driver.step(&mut c).unwrap();
+    let open = c.usage().resource(HtmlParseResource::OpenElements).current;
+    cancellation.cancel();
+    assert!(driver.step(&mut c).is_err());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        open
+    );
+    driver.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn head_handoff_rejects_changed_tokenizer_state_without_taking_either_owner() {
+    use super::head::{HeadError, HeadStage};
+    use crate::parser::tokenizer::{TokenizerHandoffError, states::Raw};
+    let source = HtmlSource::utf8("<html><head>");
+    let mut c = control(100);
+    let (before, mut tokenizer) = paused_before_head(&source, &mut c);
+    tokenizer
+        .set_state(State::Raw(Raw::Rcdata), &mut c)
+        .unwrap();
+    let mut before = Some(before);
+    let mut tokenizer = Some(tokenizer);
+    assert!(matches!(
+        HeadStage::new(&source, &mut before, &mut tokenizer, &mut c),
+        Err(HeadError::Handoff(TokenizerHandoffError::NotData))
+    ));
+    assert!(before.is_some());
+    assert!(tokenizer.is_some());
+    let mut frozen = observe_prologue(before.take().unwrap(), &mut c);
+    tokenizer.take().unwrap().release(&mut c).unwrap();
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn head_handoff_rejects_foreign_controller_before_effects_and_preserves_owned_inputs() {
+    use super::head::{HeadError, HeadStage};
+    let source = HtmlSource::utf8("<html><head>");
+    let mut c = control(100);
+    let (before, tokenizer) = paused_before_head(&source, &mut c);
+    let mut before = Some(before);
+    let mut tokenizer = Some(tokenizer);
+    let mut other = control(100);
+    other.admit_source(&source).unwrap();
+    assert!(matches!(
+        HeadStage::new(&source, &mut before, &mut tokenizer, &mut other),
+        Err(HeadError::Kernel(KernelError::Stop(
+            ParseStop::InternalInvariant(Invariant::ForeignControl)
+        )))
+    ));
+    assert!(before.is_some());
+    assert!(tokenizer.is_some());
+    let mut frozen = observe_prologue(before.take().unwrap(), &mut c);
+    tokenizer.take().unwrap().release(&mut c).unwrap();
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn selfclosing_text_and_noscript_starttags_remain_open_and_emit_unacknowledged_errors() {
+    use super::head::HeadCondition;
+    let source =
+        HtmlSource::utf8("<title/>x</title><style/>y</style><noscript/></noscript><meta/></head>");
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let diagnostics = output.driver.state.as_ref().unwrap().diagnostics.as_slice();
+    assert_eq!(diagnostics.len(), 3);
+    assert!(
+        diagnostics
+            .iter()
+            .all(|d| d.condition == HeadCondition::UnacknowledgedSelfClosing)
+    );
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|d| source.text(&d.source).unwrap())
+            .collect::<Vec<_>>(),
+        ["<title/>", "<style/>", "<noscript/>"].map(DocumentString::from)
+    );
+    let mut frozen = observe_head(output, &mut c);
+    assert_eq!(
+        head_names(frozen.document().unwrap()),
+        ["title", "style", "noscript", "meta"].map(DocumentString::from)
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn disabled_noscript_default_closes_then_reprocesses_br_as_afterhead_input() {
+    use super::head::{HeadCondition, HeadMode};
+    let source = HtmlSource::utf8("<head><noscript></foo></br>tail");
+    let mut c = control(100);
+    let output = head_boundary(&source, &mut c);
+    let state = output.driver.state.as_ref().unwrap();
+    assert_eq!(state.diagnostics.as_slice().len(), 2);
+    assert!(
+        state
+            .diagnostics
+            .as_slice()
+            .iter()
+            .all(|d| d.condition == HeadCondition::UnexpectedInNoscript
+                && d.mode == HeadMode::InHeadNoscript)
+    );
+    let pending = state.pending.as_ref().unwrap();
+    assert_eq!(
+        source.text(&pending.source).unwrap(),
+        DocumentString::from("</br>")
+    );
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        1
+    );
+    let mut frozen = observe_head(output, &mut c);
+    assert_eq!(
+        head_names(frozen.document().unwrap()),
+        [DocumentString::from("noscript")]
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn eof_and_permitted_beforehead_endtags_create_head_with_exact_continuation_input() {
+    use super::head::HeadBoundary;
+    for (input, pending) in [
+        ("", Some("")),
+        ("<html></head>", None),
+        ("<html></body>", Some("</body>")),
+        ("<html></html>", Some("</html>")),
+        ("<html></br>", Some("</br>")),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = control(100);
+        let output = head_boundary(&source, &mut c);
+        assert_eq!(output.boundary, HeadBoundary::AfterHead);
+        let state = output.driver.state.as_ref().unwrap();
+        assert_eq!(
+            state
+                .pending
+                .as_ref()
+                .map(|p| source.text(&p.source).unwrap()),
+            pending.map(DocumentString::from)
+        );
+        assert!(state.diagnostics.as_slice().is_empty());
+        let mut frozen = observe_head(output, &mut c);
+        assert!(head_names(frozen.document().unwrap()).is_empty());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn head_diagnostic_cap_preserves_pending_tag_first_stop_and_terminal_ownership() {
+    use super::head::{HeadError, HeadMode};
+    let source = HtmlSource::utf8("<!doctype html><html><head></oops>");
+    let mut c = ParseControl::new(
+        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+        HtmlParseCancellation::new(),
+    );
+    let mut driver = head_stage(&source, &mut c);
+    driver.step(&mut c).unwrap();
+    assert!(matches!(
+        driver.step(&mut c),
+        Err(HeadError::Kernel(KernelError::Stop(
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::Diagnostics,
+                ..
+            }
+        )))
+    ));
+    assert_eq!(driver.state.as_ref().unwrap().mode, HeadMode::InHead);
+    assert!(matches!(
+        &driver
+            .state
+            .as_ref()
+            .unwrap()
+            .pending
+            .as_ref()
+            .unwrap()
+            .payload,
+        super::prologue::Payload::Tag(Some(_))
+    ));
+    let first = c.stop();
+    let reads = c.usage().work(WorkCategory::InputUnitRead);
+    let writes = c.usage().work(WorkCategory::RecordWrite);
+    assert!(driver.step(&mut c).is_err());
+    assert_eq!(c.stop(), first);
+    assert_eq!(c.usage().work(WorkCategory::InputUnitRead), reads);
+    assert_eq!(c.usage().work(WorkCategory::RecordWrite), writes);
+    driver.release(&mut c).unwrap();
+    assert_eq!(c.stop(), first);
+    assert_released(&c);
+}
+
+#[test]
+fn head_release_rejects_foreign_controller_without_consuming_driver_owners() {
+    let source = HtmlSource::utf8("<html><head><style>x</style>");
+    let mut c = control(100);
+    let mut driver = head_stage(&source, &mut c);
+    driver.step(&mut c).unwrap();
+    let mut other = control(100);
+    assert!(driver.release(&mut other).is_err());
+    assert!(driver.state.is_some());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        2
+    );
+    driver.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn actual_template_stack_predicate_distinguishes_foreign_template_from_html_template() {
+    let source = HtmlSource::utf8("<html><template>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let (mut kernel, _) = begin(
+        &mut tokenizer,
+        RootKind::Document(HtmlDocumentMode::NoQuirks),
+        &mut c,
+    );
+    let foreign = preexisting(&mut kernel.session, Namespace::svg(), "template", &mut c);
+    kernel.push(&foreign, &mut c).unwrap();
+    assert!(!kernel.contains_html_template(&mut c).unwrap());
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    assert!(kernel.contains_html_template(&mut c).unwrap());
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}

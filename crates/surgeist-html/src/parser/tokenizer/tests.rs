@@ -2,6 +2,130 @@ use super::*;
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use states::{Raw, State};
 
+#[test]
+fn head_handoff_keeps_the_real_pause_and_accepts_returned_eof() {
+    let source = HtmlSource::utf8("<html>A");
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let event = t.next(&mut c, false).unwrap().unwrap();
+    assert!(
+        matches!(&event, Event::Token(value) if matches!(&value.token().kind, TokenKind::Tag(_)))
+    );
+    event.release(&mut c).unwrap();
+    let last = t.last_start.len();
+    t.validate_head_handoff(&source, &mut c).unwrap();
+    assert_eq!(t.last_start.len(), last);
+    let event = t.next(&mut c, false).unwrap().unwrap();
+    assert!(
+        matches!(&event, Event::Token(value) if matches!(&value.token().kind, TokenKind::Text(text) if text.value.text().code_units() == [65]))
+    );
+    event.release(&mut c).unwrap();
+    let event = t.next(&mut c, false).unwrap().unwrap();
+    assert!(matches!(&event, Event::Token(value) if matches!(&value.token().kind, TokenKind::Eof)));
+    t.validate_head_handoff(&source, &mut c).unwrap();
+    assert!(t.done);
+    event.release(&mut c).unwrap();
+    t.release(&mut c).unwrap();
+}
+
+#[test]
+fn head_handoff_rejects_foreign_owner_raw_state_and_pending_without_consumption() {
+    let source = HtmlSource::utf8("\0");
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut t = Tokenizer::new(&source, State::Raw(Raw::Rawtext), None, &mut c).unwrap();
+    assert_eq!(
+        t.validate_head_handoff(&source, &mut c),
+        Err(TokenizerHandoffError::NotData)
+    );
+    assert_eq!(t.state, State::Raw(Raw::Rawtext));
+    t.set_state(State::Data, &mut c).unwrap();
+    let event = t.next(&mut c, false).unwrap().unwrap();
+    assert!(t.pending_len > 0);
+    let pending = t.pending_len;
+    assert_eq!(
+        t.validate_head_handoff(&source, &mut c),
+        Err(TokenizerHandoffError::PendingEvents)
+    );
+    assert_eq!(t.pending_len, pending);
+    event.release(&mut c).unwrap();
+    while let Some(event) = t.next(&mut c, false).unwrap() {
+        event.release(&mut c).unwrap();
+    }
+    let mut foreign = ParseControl::new(limits(), HtmlParseCancellation::new());
+    foreign.admit_source(&source).unwrap();
+    assert_eq!(
+        t.validate_head_handoff(&source, &mut foreign),
+        Err(TokenizerHandoffError::Stop(ParseStop::InternalInvariant(
+            Invariant::ForeignControl
+        )))
+    );
+    assert!(t.done);
+    t.release(&mut c).unwrap();
+}
+
+#[test]
+fn head_handoff_work_cancel_and_foreign_source_preserve_the_borrowed_tokenizer() {
+    let source = HtmlSource::utf8("A");
+    let mut probe = ParseControl::new(limits(), HtmlParseCancellation::new());
+    probe.admit_source(&source).unwrap();
+    let tokenizer = Tokenizer::new(&source, State::Data, None, &mut probe).unwrap();
+    let setup_work = probe
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
+    tokenizer.release(&mut probe).unwrap();
+    for reason in 0..3 {
+        let cancellation = HtmlParseCancellation::new();
+        let selected = if reason == 0 {
+            limits()
+                .into_builder()
+                .work_credits(setup_work + 1)
+                .finish()
+                .unwrap()
+        } else {
+            limits()
+        };
+        let mut c = ParseControl::new(selected, cancellation.clone());
+        c.admit_source(&source).unwrap();
+        let t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        if reason == 0 {
+            assert!(matches!(
+                t.validate_head_handoff(&source, &mut c),
+                Err(TokenizerHandoffError::Stop(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    ..
+                }))
+            ));
+        } else if reason == 1 {
+            cancellation.cancel();
+            assert_eq!(
+                t.validate_head_handoff(&source, &mut c),
+                Err(TokenizerHandoffError::Stop(ParseStop::Cancelled))
+            );
+        } else {
+            let foreign = HtmlSource::utf8("A");
+            assert_eq!(
+                t.validate_head_handoff(&foreign, &mut c),
+                Err(TokenizerHandoffError::Stop(ParseStop::InternalInvariant(
+                    Invariant::ForeignSource
+                )))
+            );
+        }
+        assert_eq!(t.state, State::Data);
+        assert_eq!(t.pending_len, 0);
+        assert!(!t.done);
+        t.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            0
+        );
+    }
+}
+
 fn limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)

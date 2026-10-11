@@ -52,7 +52,9 @@ markup5ever, Tendril or web_atoms and does not yet expose a complete parser.
 
 The private tree-insertion kernel additionally adapts bounded operations and
 scope lists from two files at that same revision. Its Initial/BeforeHtml
-prologue and doctype tables adapt two additional files. Their original notices are
+prologue and doctype tables adapt two additional files; the owning head-stage
+driver further adapts selected head, noscript and non-script Text rules.
+Their original notices are
 retained verbatim, with separate adaptation notes and origin hashes. The same
 MIT OR Apache-2.0 attribution applies; see the
 [tree-source notice](../../licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).

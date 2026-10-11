@@ -71,7 +71,7 @@ impl From<SessionError> for PrologueError {
 
 /// Borrowed producer slots own the actual lexical payloads, including after a
 /// failed transfer. No synthetic Tag or intermediate tree is constructed.
-enum Payload {
+pub(super) enum Payload {
     Text(Option<Text>),
     Tag(Option<Tag>),
     Comment(Option<Text>),
@@ -79,12 +79,12 @@ enum Payload {
     Pi(Option<(Text, Text)>),
     Eof,
 }
-struct PendingToken {
-    source: HtmlSourceRange,
-    payload: Payload,
+pub(super) struct PendingToken {
+    pub(super) source: HtmlSourceRange,
+    pub(super) payload: Payload,
 }
 impl PendingToken {
-    fn from_token(token: Token) -> Self {
+    pub(super) fn from_token(token: Token) -> Self {
         let payload = match token.kind {
             TokenKind::Text(text) => Payload::Text(Some(text)),
             TokenKind::Tag(tag) => Payload::Tag(Some(tag)),
@@ -98,7 +98,7 @@ impl PendingToken {
             payload,
         }
     }
-    fn into_token(self) -> Option<Token> {
+    pub(super) fn into_token(self) -> Option<Token> {
         let kind = match self.payload {
             Payload::Text(text) => text.map(TokenKind::Text),
             Payload::Tag(tag) => tag.map(TokenKind::Tag),
@@ -114,7 +114,7 @@ impl PendingToken {
             source: self.source,
         })
     }
-    fn release(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
+    pub(super) fn release(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
         if c.stop().is_none() {
             c.charge(WorkCategory::RecordVisit, 1)?;
         }

@@ -97,6 +97,26 @@ pub(crate) struct ParseControl {
     terminal: Option<ParseStop>,
     source: Option<(HtmlSourceId, HtmlSourceCoordinates)>,
     identity: Arc<()>,
+    #[cfg(test)]
+    owned_spans: OwnedSpanObservation,
+}
+
+/// Fixed-size diagnostic metadata for actual execution between real polls.
+/// It neither admits work/storage nor participates in parser decisions. Only
+/// the observed append and registry operations are instrumented here; this is
+/// not an observation of every parser instruction or provider implementation.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct OwnedSpanObservation {
+    pub(crate) polls: u64,
+    pub(crate) append_calls: u64,
+    pub(crate) append_slots: usize,
+    pub(crate) largest_append_copy_bytes: usize,
+    pub(crate) registry_iterations: usize,
+    pub(crate) largest_registry_iterations_between_polls: usize,
+    pub(crate) largest_registry_credits_between_polls: usize,
+    registry_iterations_since_poll: usize,
+    registry_credits_since_poll: usize,
 }
 
 #[derive(Clone)]
@@ -118,6 +138,8 @@ impl ParseControl {
             terminal: None,
             source: None,
             identity: Arc::new(()),
+            #[cfg(test)]
+            owned_spans: OwnedSpanObservation::default(),
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -153,10 +175,59 @@ impl ParseControl {
         if let Some(reason) = self.terminal {
             return Err(reason);
         }
+        #[cfg(test)]
+        {
+            self.owned_spans.polls = self.owned_spans.polls.saturating_add(1);
+            self.owned_spans.registry_iterations_since_poll = 0;
+            self.owned_spans.registry_credits_since_poll = 0;
+        }
         if self.cancellation.is_cancelled() {
             return self.fail(ParseStop::Cancelled);
         }
         Ok(())
+    }
+    #[cfg(test)]
+    pub(crate) fn clear_owned_span_observation(&mut self) {
+        self.owned_spans = OwnedSpanObservation::default();
+    }
+    #[cfg(test)]
+    pub(crate) fn owned_span_observation(&self) -> OwnedSpanObservation {
+        self.owned_spans
+    }
+    #[cfg(test)]
+    fn observe_attribute_append(&mut self, slots: usize) {
+        // The actual fixed pop/push transfers each slot twice. Observe its
+        // performed copy span, not an unrelated prepaid whole-vector total.
+        let bytes = slots.saturating_mul(2 * size_of::<crate::Attribute>());
+        self.owned_spans.append_calls = self.owned_spans.append_calls.saturating_add(1);
+        self.owned_spans.append_slots = self.owned_spans.append_slots.saturating_add(slots);
+        self.owned_spans.largest_append_copy_bytes =
+            self.owned_spans.largest_append_copy_bytes.max(bytes);
+    }
+    #[cfg(test)]
+    pub(crate) fn observe_registry_iteration(&mut self) {
+        let observed = &mut self.owned_spans;
+        observed.registry_iterations = observed.registry_iterations.saturating_add(1);
+        observed.registry_iterations_since_poll =
+            observed.registry_iterations_since_poll.saturating_add(1);
+        observed.largest_registry_iterations_between_polls = observed
+            .largest_registry_iterations_between_polls
+            .max(observed.registry_iterations_since_poll);
+        self.observe_registry_credits(1);
+    }
+    #[cfg(test)]
+    pub(crate) fn observe_registry_location_write(&mut self, bytes: usize) {
+        // Actual read and write of one location, plus its record-write event.
+        self.observe_registry_credits(bytes.saturating_mul(2).saturating_add(1));
+    }
+    #[cfg(test)]
+    fn observe_registry_credits(&mut self, credits: usize) {
+        let observed = &mut self.owned_spans;
+        observed.registry_credits_since_poll =
+            observed.registry_credits_since_poll.saturating_add(credits);
+        observed.largest_registry_credits_between_polls = observed
+            .largest_registry_credits_between_polls
+            .max(observed.registry_credits_since_poll);
     }
     /// Latches a checked-arithmetic failure observed after the caller's initial
     /// checkpoint. No extra poll can replace that already observed first stop.
@@ -227,6 +298,24 @@ impl ParseControl {
         match &self.source {
             Some((identity, coordinates))
                 if identity == source.identity() && *coordinates == source.coordinates() =>
+            {
+                Ok(())
+            }
+            Some(_) => self.fail(ParseStop::InternalInvariant(Invariant::ForeignSource)),
+            None => self.fail(ParseStop::InternalInvariant(Invariant::MissingSource)),
+        }
+    }
+    pub(crate) fn require_source_range(
+        &mut self,
+        range: &crate::HtmlSourceRange,
+    ) -> Result<(), ParseStop> {
+        self.charge_many(&[
+            (WorkCategory::RecordVisit, 1),
+            (WorkCategory::ProviderCall, 1),
+        ])?;
+        match &self.source {
+            Some((identity, coordinates))
+                if identity == range.source() && *coordinates == range.coordinates() =>
             {
                 Ok(())
             }
@@ -442,6 +531,105 @@ impl ParseControl {
     ) -> Result<(), ParseStop> {
         allocation.capacity = vector.capacity();
         result
+    }
+    /// The only Weak reference permitted here is this actual wrapper ticket.
+    /// Its temporary removal and restoration are prepaid, even if reserve
+    /// latches a terminal failure. Opaque Arc headers stay outside byte counts.
+    fn prepare_attribute_edit(
+        &mut self,
+        values: &Arc<Vec<crate::Attribute>>,
+        shared: &SharedAllocation<Vec<crate::Attribute>>,
+        vector: &VectorCapacity<crate::Attribute>,
+    ) -> Result<(), ParseStop> {
+        self.charge_many(&[
+            (WorkCategory::RecordVisit, 3),
+            (WorkCategory::ProviderCall, 9),
+            (
+                WorkCategory::CopyByte,
+                (2 * size_of::<Weak<Vec<crate::Attribute>>>()) as u64,
+            ),
+            (WorkCategory::RecordWrite, 2),
+        ])?;
+        if !Arc::ptr_eq(&shared.owner, &self.identity)
+            || !Arc::ptr_eq(&vector.owner, &self.identity)
+        {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        if shared.shared.as_ptr() != Arc::as_ptr(values)
+            || shared.bytes != size_of::<Vec<crate::Attribute>>() as u64
+            || vector.capacity != values.capacity()
+        {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        if Arc::strong_count(values) != 1 || Arc::weak_count(values) != 1 {
+            return self.fail(ParseStop::InternalInvariant(
+                Invariant::SharedAllocationAliased,
+            ));
+        }
+        Ok(())
+    }
+    pub(crate) fn reserve_attribute_storage(
+        &mut self,
+        values: &mut Arc<Vec<crate::Attribute>>,
+        shared: &mut SharedAllocation<Vec<crate::Attribute>>,
+        vector: &mut VectorCapacity<crate::Attribute>,
+        additional: usize,
+    ) -> Result<(), ParseStop> {
+        self.prepare_attribute_edit(values, shared, vector)?;
+        drop(std::mem::replace(&mut shared.shared, Weak::new()));
+        let result = self.reserve_vector(
+            Arc::get_mut(values).expect("only ticket Weak was removed"),
+            vector,
+            additional,
+        );
+        shared.shared = Arc::downgrade(values);
+        result
+    }
+    /// Moves one actual last staged slot into already reserved storage. The
+    /// caller prepays its fixed progress write and commits it immediately after
+    /// success. Repeated slots must call this producer again, observing a poll.
+    pub(crate) fn append_attribute_slot(
+        &mut self,
+        values: &mut Arc<Vec<crate::Attribute>>,
+        shared: &mut SharedAllocation<Vec<crate::Attribute>>,
+        vector: &VectorCapacity<crate::Attribute>,
+        incoming: &mut Vec<crate::Attribute>,
+        incoming_allocation: &VectorCapacity<crate::Attribute>,
+    ) -> Result<(), ParseStop> {
+        self.prepare_attribute_edit(values, shared, vector)?;
+        self.charge_many(&[
+            (WorkCategory::ProviderCall, 1),
+            (WorkCategory::RecordVisit, 2),
+        ])?;
+        if !Arc::ptr_eq(&incoming_allocation.owner, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        if incoming.capacity() != incoming_allocation.capacity {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        if incoming.is_empty() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let Some(len) = values.len().checked_add(1) else {
+            return self.representation(HtmlParseResource::ManagedAttributes);
+        };
+        if len > values.capacity() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let bytes = 2 * size_of::<crate::Attribute>();
+        self.admit_atomic_layout(bytes)?;
+        self.charge_many(&[
+            (WorkCategory::CopyByte, bytes as u64),
+            (WorkCategory::RecordWrite, 3),
+        ])?;
+        drop(std::mem::replace(&mut shared.shared, Weak::new()));
+        #[cfg(test)]
+        self.observe_attribute_append(1);
+        Arc::get_mut(values)
+            .expect("only ticket Weak was removed")
+            .push(incoming.pop().expect("checked real last slot"));
+        shared.shared = Arc::downgrade(values);
+        Ok(())
     }
     /// Consumes real storage plus its ticket, returning both on invalid owner
     /// or capacity. Cleanup needs no budget, and releases capacity only: managed
@@ -1452,6 +1640,159 @@ mod tests {
     }
     fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+
+    fn attribute(local: &str) -> crate::Attribute {
+        crate::Attribute::new(
+            crate::QualifiedName::new(crate::Namespace::none(), None, local),
+            "v",
+        )
+    }
+    #[test]
+    fn actual_attribute_edit_restores_ticket_weak_on_reserve_stop_and_retains_contents() {
+        let mut c = control();
+        let (mut vector, mut capacity) = c.new_vector().unwrap();
+        c.reserve_vector(&mut vector, &mut capacity, 1).unwrap();
+        vector.push(attribute("a"));
+        let (mut backing, mut shared) = c.share_owned(vector).unwrap();
+        c.limits[HtmlParseResource::ManagedCapacityBytes as usize] =
+            c.usage().actual_capacity_bytes;
+        let before = c.usage().actual_capacity_bytes;
+        assert!(matches!(
+            c.reserve_attribute_storage(&mut backing, &mut shared, &mut capacity, 100),
+            Err(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+                ..
+            })
+        ));
+        assert_eq!(backing.len(), 1);
+        assert_eq!(backing[0].name().local_name().to_utf8().unwrap(), "a");
+        assert_eq!(Arc::weak_count(&backing), 1);
+        assert_eq!(c.usage().actual_capacity_bytes, before);
+        let stop = c.stop();
+        let vector = c.release_shared(backing, shared).unwrap();
+        c.release_vector(vector, capacity).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.stop(), stop);
+    }
+    #[test]
+    fn actual_attribute_edit_rejects_external_strong_and_weak_owners_without_dropping_tickets() {
+        for weak in [false, true] {
+            let mut c = control();
+            let (vector, mut capacity) = c.new_vector().unwrap();
+            let (mut backing, mut shared) = c.share_owned(vector).unwrap();
+            let strong = (!weak).then(|| backing.clone());
+            let external_weak = weak.then(|| Arc::downgrade(&backing));
+            assert_eq!(
+                c.reserve_attribute_storage(&mut backing, &mut shared, &mut capacity, 1),
+                Err(ParseStop::InternalInvariant(
+                    Invariant::SharedAllocationAliased
+                ))
+            );
+            assert!(backing.is_empty());
+            drop(strong);
+            drop(external_weak);
+            assert_eq!(Arc::weak_count(&backing), 1);
+            let vector = c.release_shared(backing, shared).unwrap();
+            c.release_vector(vector, capacity).unwrap();
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+        }
+    }
+    #[test]
+    fn actual_attribute_append_moves_slots_without_capacity_or_logical_growth() {
+        let mut c = control();
+        let (mut old, mut old_capacity) = c.new_vector().unwrap();
+        c.reserve_vector(&mut old, &mut old_capacity, 1).unwrap();
+        old.push(attribute("old"));
+        let (mut backing, mut shared) = c.share_owned(old).unwrap();
+        let (mut incoming, mut incoming_capacity) = c.new_vector().unwrap();
+        c.reserve_vector(&mut incoming, &mut incoming_capacity, 2)
+            .unwrap();
+        incoming.push(attribute("second"));
+        incoming.push(attribute("first"));
+        c.acquire(HtmlParseResource::ManagedAttributes, 3).unwrap();
+        c.reserve_attribute_storage(&mut backing, &mut shared, &mut old_capacity, 2)
+            .unwrap();
+        let before = c.usage().actual_capacity_bytes;
+        let copies = c.usage().work(WorkCategory::CopyByte);
+        for _ in 0..2 {
+            c.append_attribute_slot(
+                &mut backing,
+                &mut shared,
+                &old_capacity,
+                &mut incoming,
+                &incoming_capacity,
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            backing
+                .iter()
+                .map(|a| a.name().local_name().to_utf8().unwrap())
+                .collect::<Vec<_>>(),
+            ["old", "first", "second"]
+        );
+        assert!(incoming.is_empty());
+        assert_eq!(c.usage().actual_capacity_bytes, before);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedAttributes)
+                .current,
+            3
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::CopyByte) - copies,
+            (4 * size_of::<Weak<Vec<crate::Attribute>>>() + 4 * size_of::<crate::Attribute>())
+                as u64
+        );
+        assert_eq!(Arc::weak_count(&backing), 1);
+        let vector = c.release_shared(backing, shared).unwrap();
+        c.release_vector(vector, old_capacity).unwrap();
+        c.release_vector(incoming, incoming_capacity).unwrap();
+        c.release(HtmlParseResource::ManagedAttributes, 3).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn actual_attribute_append_rejects_foreign_stage_and_work_cap_before_any_slot_move() {
+        for foreign in [false, true] {
+            let mut c = control();
+            let mut other = control();
+            let (mut old, mut old_capacity) = c.new_vector().unwrap();
+            c.reserve_vector(&mut old, &mut old_capacity, 4).unwrap();
+            old.push(attribute("old"));
+            let (mut backing, mut shared) = c.share_owned(old).unwrap();
+            let producer = if foreign { &mut other } else { &mut c };
+            let (mut incoming, mut incoming_capacity) = producer.new_vector().unwrap();
+            producer
+                .reserve_vector(&mut incoming, &mut incoming_capacity, 1)
+                .unwrap();
+            incoming.push(attribute("new"));
+            if !foreign {
+                c.limits[HtmlParseResource::WorkCredits as usize] =
+                    c.usage().resource(HtmlParseResource::WorkCredits).current + 1;
+            }
+            assert!(
+                c.append_attribute_slot(
+                    &mut backing,
+                    &mut shared,
+                    &old_capacity,
+                    &mut incoming,
+                    &incoming_capacity
+                )
+                .is_err()
+            );
+            assert_eq!(backing.len(), 1);
+            assert_eq!(incoming.len(), 1);
+            assert_eq!(Arc::weak_count(&backing), 1);
+            let vector = c.release_shared(backing, shared).unwrap();
+            c.release_vector(vector, old_capacity).unwrap();
+            if foreign {
+                other.release_vector(incoming, incoming_capacity).unwrap();
+            } else {
+                c.release_vector(incoming, incoming_capacity).unwrap();
+            }
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+        }
     }
 
     fn bound_string(
