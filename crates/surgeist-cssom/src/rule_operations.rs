@@ -1243,6 +1243,10 @@ impl CssomSnapshot {
                 prelude: CssomGroupPrelude::Supports(_),
                 ..
             } => self.supports_condition_text(id, limits.max_css_bytes()),
+            CssomRuleData::Group {
+                prelude: CssomGroupPrelude::Container(_),
+                ..
+            } => self.container_condition_text(id, limits.max_css_bytes()),
             _ => Err(CssomError::WrongKind),
         }
     }
