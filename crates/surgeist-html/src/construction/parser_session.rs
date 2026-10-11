@@ -8,13 +8,15 @@
 //! same arena, with controlled implied-html backing and exact whitespace splits.
 //! Preexisting immutable element inputs retain their earlier physical exclusion.
 //! Foreign-name adjustment, foster-parent selection, full patching/template
-//! metadata, form/script metadata, source reports and public parsing remain later
+//! metadata, form metadata, source reports and public parsing remain later
 //! producers; this private checkpoint makes no complete parser claim.
+//! Script facts are retained for a sealed fresh ordinary Disabled execution;
+//! preparation ends at step18 and never fabricates a loaded or executed result.
 
 use super::*;
 use crate::parser::control::{
     ControlIdentity, DocumentStringAllocation, OwnedVec, ParseControl, ParseStop, SharedAllocation,
-    VectorCapacity, WorkCategory,
+    StandaloneUnsupported, VectorCapacity, WorkCategory,
 };
 use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
@@ -48,6 +50,7 @@ pub(crate) enum SessionError {
     NotDocument,
     OriginSplitUnavailable,
     AttributeStorageUnavailable,
+    ScriptMetadataUnavailable,
 }
 /// Pinned element-placement guards; generic storage moves remain independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,6 +88,7 @@ pub(crate) struct ParserArenaSession {
 
 struct SessionStorage {
     control: ControlIdentity,
+    standalone_ineligibility: Option<StandaloneUnsupported>,
     identity: Arc<Identity>,
     identity_allocation: SharedAllocation<Identity>,
     records: Vec<Record>,
@@ -128,6 +132,47 @@ enum RetainedPayload {
         location: StringLocation,
     },
     Attributes(Option<AttributeStorage>),
+    Script {
+        node: usize,
+        metadata: ScriptMetadata,
+    },
+}
+/// Source processing model facts retained in the actual arena owner.
+/// Document indices are private and resolved only through qualified handles.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ScriptMetadata {
+    parser_document: Option<usize>,
+    preparation_document: Option<usize>,
+    pub(crate) force_async: bool,
+    pub(crate) already_started: bool,
+    pub(crate) script_type: Option<ScriptType>,
+    pub(crate) external_file: bool,
+    pub(crate) ready_to_be_parser_executed: bool,
+    pub(crate) delaying_load: bool,
+    pub(crate) result: ScriptResult,
+    pub(crate) steps_when_result_ready: Option<ScriptReadySteps>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScriptType {
+    Classic,
+    Module,
+    ImportMap,
+    SpeculationRules,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScriptResult {
+    Uninitialized,
+}
+/// No preparation beyond the Disabled return installs result-ready steps.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScriptReadySteps {}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DisabledScriptPreparation {
+    AlreadyStarted,
+    Empty,
+    Disconnected,
+    UnrecognizedType,
+    Disabled(ScriptType),
 }
 enum AttributeStorage {
     Building {
@@ -243,6 +288,7 @@ impl PayloadStorage {
                     AttributeStorage::Building { .. } | AttributeStorage::Transferring { .. },
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
+                RetainedPayload::Script { .. } => {}
             }
         }
         Ok(())
@@ -478,6 +524,7 @@ impl SessionStorage {
             .map_err(|(stop, _)| SessionError::Stop(stop))?;
         let mut session = Self {
             control: control.identity(),
+            standalone_ineligibility: None,
             identity,
             identity_allocation,
             records,
@@ -535,6 +582,13 @@ impl SessionStorage {
         element: HtmlElement,
     ) -> Result<ParserNode, SessionError> {
         self.require(control)?;
+        // Actual preexisting input permanently leaves the closed producer
+        // inventory. Admission precedes the monotone provenance transition.
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if self.standalone_ineligibility.is_none() {
+            payload_write::<Option<StandaloneUnsupported>>(control, 1)?;
+            self.standalone_ineligibility = Some(StandaloneUnsupported::Provenance);
+        }
         let name = element.name();
         let template = exact_ascii(
             control,
@@ -1553,6 +1607,28 @@ impl SessionStorage {
         Ok(maximum)
     }
 
+    /// Actual entry into an associated document leaves the closed ordinary
+    /// producer inventory. This qualifies topology mutation, not preparation's
+    /// source-ordered ordinary connectivity condition.
+    fn associated_document_parent(
+        &self,
+        control: &mut ParseControl,
+        mut index: usize,
+    ) -> Result<bool, SessionError> {
+        for _ in 0..self.records.len() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let record = self.records.get(index).ok_or(SessionError::ForeignNode)?;
+            if record.owner.is_some() {
+                return Ok(true);
+            }
+            let Some(parent) = record.parent else {
+                return Ok(false);
+            };
+            index = parent;
+        }
+        Err(SessionError::Cycle)
+    }
+
     /// Prepared child order. The real replacement vector is admitted and every
     /// entry is read/copied before use. Commit later consists only of vector swaps.
     fn child_order(
@@ -1641,6 +1717,9 @@ impl SessionStorage {
         let old_parent = self.records[node].parent;
         let depth = self.maximum_depth(control, Some((node, Some(parent))))?;
         control.observe_tree_depth(depth as u64)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let revoke_standalone = self.standalone_ineligibility.is_none()
+            && self.associated_document_parent(control, parent)?;
         let requests = [(
             HtmlParseResource::ManagedEdges,
             u64::from(old_parent.is_none()),
@@ -1664,6 +1743,9 @@ impl SessionStorage {
                 WorkCategory::CopyByte,
                 (mem::size_of::<Vec<usize>>() * 4) as u64,
             )?;
+            if revoke_standalone {
+                payload_write::<Option<StandaloneUnsupported>>(control, 1)?;
+            }
             let scratch_entries = order.len() as u64
                 + old_order
                     .as_ref()
@@ -1682,6 +1764,9 @@ impl SessionStorage {
         let mut retired_old =
             old_order.map(|(old, (order, allocation))| self.swap_order(old, order, allocation));
         self.records[node].parent = Some(parent);
+        if revoke_standalone {
+            self.standalone_ineligibility = Some(StandaloneUnsupported::ScriptDocument);
+        }
         self.usage.edges += usize::from(old_parent.is_none());
         self.usage.depth = depth;
         // Complete the same fixed commit by retiring the old initialized
@@ -1780,6 +1865,7 @@ impl SessionStorage {
     fn release(self, control: &mut ParseControl) {
         let Self {
             control: owner,
+            standalone_ineligibility: _,
             identity,
             identity_allocation,
             records,
@@ -1811,6 +1897,208 @@ impl SessionStorage {
 /// Borrowed transitions retain the owner on every failure, including terminal
 /// stops. Storage is absent only after successful freeze or explicit cleanup.
 impl ParserArenaSession {
+    pub(crate) fn validate_standalone_document(
+        &self,
+        control: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        let storage = self.active()?;
+        storage.require(control)?;
+        control.charge(WorkCategory::RecordVisit, 2)?;
+        if let Some(reason) = storage.standalone_ineligibility {
+            return Err(control.stop_unsupported_standalone(reason).into());
+        }
+        if !matches!(storage.records[0].kind, HtmlNodeKind::Document(_)) {
+            return Err(control
+                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .into());
+        }
+        Ok(())
+    }
+    /// The sealed execution owner, not a generic Document constructor, proves
+    /// the selected ordinary Disabled environment before any payload transfer.
+    pub(crate) fn allocate_disabled_parser_script(
+        &mut self,
+        control: &mut ParseControl,
+        input: &mut Option<Tag>,
+        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+    ) -> Result<ParserNode, SessionError> {
+        capability.validate_session(control, self)?;
+        let tag = input.as_ref().ok_or(SessionError::Consumed)?;
+        check_disposal_text(control, &tag.name)?;
+        tag.attributes.require_disposal_owner(control)?;
+        check_text_source(control, &tag.name)?;
+        for position in 0..tag.attributes.len() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let attribute = &tag.attributes.as_slice()[position];
+            check_disposal_text(control, &attribute.name)?;
+            check_disposal_text(control, &attribute.value)?;
+            control.require_source_range(&attribute.source)?;
+            check_text_source(control, &attribute.name)?;
+            check_text_source(control, &attribute.value)?;
+        }
+        if !exact_ascii(control, Some(tag.name.value.text()), "script")? {
+            return Err(SessionError::WrongToken);
+        }
+        let node = self.allocate_html_tag(control, input)?;
+        let storage = self.active_mut()?;
+        storage.prepare_payload_slot(control)?;
+        storage.payloads.values.push(RetainedPayload::Script {
+            node: node.index,
+            metadata: ScriptMetadata {
+                parser_document: Some(0),
+                preparation_document: None,
+                force_async: false,
+                already_started: false,
+                script_type: None,
+                external_file: false,
+                ready_to_be_parser_executed: false,
+                delaying_load: false,
+                result: ScriptResult::Uninitialized,
+                steps_when_result_ready: None,
+            },
+        });
+        Ok(node)
+    }
+    pub(crate) fn script_metadata(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<ScriptMetadata, SessionError> {
+        let storage = self.active()?;
+        let node = storage.index(control, node)?;
+        script_metadata(&storage.payloads, control, node).map(|(_, metadata)| metadata)
+    }
+    pub(crate) fn script_parser_document(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<Option<ParserNode>, SessionError> {
+        self.script_metadata(control, node)?
+            .parser_document
+            .map(|index| self.active()?.node(control, index))
+            .transpose()
+    }
+    pub(crate) fn script_preparation_document(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<Option<ParserNode>, SessionError> {
+        self.script_metadata(control, node)?
+            .preparation_document
+            .map(|index| self.active()?.node(control, index))
+            .transpose()
+    }
+    /// Text-mode EOF marks the current script started; it does not prepare it.
+    pub(crate) fn mark_script_eof(
+        &mut self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+    ) -> Result<(), SessionError> {
+        capability.validate_session(control, self)?;
+        let storage = self.active_mut()?;
+        let index = storage.index(control, node)?;
+        let (slot, mut metadata) = script_metadata(&storage.payloads, control, index)?;
+        metadata.already_started = true;
+        set_script_metadata(storage, control, slot, metadata)
+    }
+    /// Exact preparation prefix through HTML's scripting-disabled step18.
+    /// No loader, compilation, result or execution callback is invoked.
+    pub(crate) fn prepare_disabled_script(
+        &mut self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+    ) -> Result<DisabledScriptPreparation, SessionError> {
+        capability.validate_session(control, self)?;
+        let storage = self.active_mut()?;
+        let index = storage.index(control, node)?;
+        let (slot, mut metadata) = script_metadata(&storage.payloads, control, index)?;
+        if metadata.already_started {
+            return Ok(DisabledScriptPreparation::AlreadyStarted);
+        }
+        let saved_document = metadata.parser_document;
+        metadata.parser_document = None;
+        set_script_metadata(storage, control, slot, metadata)?;
+        if saved_document.is_some() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let HtmlNodeKind::Element(element) = &storage.records[index].kind else {
+                return Err(SessionError::ScriptMetadataUnavailable);
+            };
+            if script_attribute(control, element, "async")?.is_none() {
+                metadata.force_async = true;
+                set_script_metadata(storage, control, slot, metadata)?;
+            }
+        }
+        let mut empty = true;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let children = storage.records[index].children.len();
+        for position in 0..children {
+            control.charge(WorkCategory::RecordVisit, 3)?;
+            let child = storage.records[index].children[position];
+            let record = storage
+                .records
+                .get(child)
+                .ok_or(SessionError::ForeignNode)?;
+            if let HtmlNodeKind::Text(text) = &record.kind
+                && !text.is_empty()
+            {
+                empty = false;
+                break;
+            }
+        }
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let HtmlNodeKind::Element(element) = &storage.records[index].kind else {
+            unreachable!()
+        };
+        if empty && script_attribute(control, element, "src")?.is_none() {
+            return Ok(DisabledScriptPreparation::Empty);
+        }
+        // HTML step 7 follows the parser-document/force-async and empty-source
+        // prefix. Associated-domain eligibility was qualified at the actual
+        // topology producer and rejected by the capability before any effects.
+        let mut ancestor = Some(index);
+        let mut connected = false;
+        for _ in 0..storage.records.len() {
+            let Some(current) = ancestor else { break };
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let record = storage
+                .records
+                .get(current)
+                .ok_or(SessionError::ForeignNode)?;
+            if current == 0 && matches!(record.kind, HtmlNodeKind::Document(_)) {
+                connected = true;
+                ancestor = None;
+                break;
+            }
+            ancestor = record.parent;
+        }
+        if ancestor.is_some() {
+            return Err(SessionError::Cycle);
+        }
+        if !connected {
+            return Ok(DisabledScriptPreparation::Disconnected);
+        }
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let HtmlNodeKind::Element(element) = &storage.records[index].kind else {
+            unreachable!()
+        };
+        let Some(kind) = classify_script(control, element)? else {
+            return Ok(DisabledScriptPreparation::UnrecognizedType);
+        };
+        metadata.script_type = Some(kind);
+        set_script_metadata(storage, control, slot, metadata)?;
+        if saved_document.is_some() {
+            metadata.parser_document = saved_document;
+            metadata.force_async = false;
+            set_script_metadata(storage, control, slot, metadata)?;
+        }
+        metadata.already_started = true;
+        set_script_metadata(storage, control, slot, metadata)?;
+        metadata.preparation_document = Some(0);
+        set_script_metadata(storage, control, slot, metadata)?;
+        Ok(DisabledScriptPreparation::Disabled(kind))
+    }
     pub(crate) fn new(control: &mut ParseControl, root: RootKind) -> Result<Self, SessionError> {
         Ok(Self {
             storage: Some(SessionStorage::new(control, root)?),
@@ -2233,6 +2521,7 @@ impl ParserArenaSession {
         let document = self.active_mut()?.prepare_freeze(control)?;
         let SessionStorage {
             control: owner,
+            standalone_ineligibility,
             identity,
             identity_allocation,
             records,
@@ -2255,6 +2544,7 @@ impl ParserArenaSession {
             Err((stop, arena)) => {
                 self.storage = Some(SessionStorage {
                     control: owner,
+                    standalone_ineligibility,
                     identity: arena.identity,
                     identity_allocation,
                     records: arena.records,
@@ -2299,6 +2589,25 @@ impl ParserArenaSession {
 }
 
 impl FrozenArena {
+    pub(crate) fn script_metadata(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<ScriptMetadata, SessionError> {
+        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
+        control.require_identity(&storage.control)?;
+        let arena = match &storage.view {
+            FrozenView::Document(view) => &view.arena,
+            FrozenView::Fragment(view) => &view.arena,
+        };
+        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if node.owner.as_ptr() != Arc::as_ptr(&arena.identity) || node.index >= arena.records.len()
+        {
+            return Err(SessionError::ForeignNode);
+        }
+        script_metadata(&storage.payloads, control, node.index).map(|(_, metadata)| metadata)
+    }
     pub(crate) fn document(&self) -> Option<&HtmlDocument> {
         match &self.storage.as_ref()?.view {
             FrozenView::Document(view) => Some(view),
@@ -2794,6 +3103,193 @@ fn exact_ascii(
     }
     Ok(true)
 }
+fn script_metadata(
+    payloads: &PayloadStorage,
+    control: &mut ParseControl,
+    node: usize,
+) -> Result<(usize, ScriptMetadata), SessionError> {
+    for position in 0..payloads.values.len() {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if let RetainedPayload::Script {
+            node: owner,
+            metadata,
+        } = &payloads.values[position]
+            && *owner == node
+        {
+            control.charge(
+                WorkCategory::CopyByte,
+                mem::size_of::<ScriptMetadata>() as u64,
+            )?;
+            return Ok((position, *metadata));
+        }
+    }
+    Err(SessionError::ScriptMetadataUnavailable)
+}
+fn set_script_metadata(
+    storage: &mut SessionStorage,
+    control: &mut ParseControl,
+    slot: usize,
+    value: ScriptMetadata,
+) -> Result<(), SessionError> {
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    payload_write::<ScriptMetadata>(control, 1)?;
+    let RetainedPayload::Script { metadata, .. } = storage
+        .payloads
+        .values
+        .get_mut(slot)
+        .ok_or(SessionError::ScriptMetadataUnavailable)?
+    else {
+        return Err(SessionError::ScriptMetadataUnavailable);
+    };
+    *metadata = value;
+    Ok(())
+}
+fn script_attribute<'a>(
+    control: &mut ParseControl,
+    element: &'a HtmlElement,
+    local: &str,
+) -> Result<Option<&'a DocumentString>, SessionError> {
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    for position in 0..element.attributes().len() {
+        control.charge(WorkCategory::RecordVisit, 3)?;
+        let attribute = &element.attributes().as_slice()[position];
+        if attribute.name().namespace().uri().is_none()
+            && exact_ascii(control, Some(attribute.name().local_name()), local)?
+        {
+            return Ok(Some(attribute.value()));
+        }
+    }
+    Ok(None)
+}
+/// ASCII-insensitive exact match of a virtual prefix and exact UTF16 range.
+/// The language branch never allocates a synthetic `text/` string.
+fn script_match(
+    control: &mut ParseControl,
+    prefix: &[u8],
+    value: &DocumentString,
+    start: usize,
+    end: usize,
+    expected: &[u8],
+) -> Result<bool, SessionError> {
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    if prefix.len() + end - start != expected.len() {
+        return Ok(false);
+    }
+    let mut position = 0;
+    while position < expected.len() {
+        control.charge(
+            WorkCategory::InspectByte,
+            if position < prefix.len() { 2 } else { 3 },
+        )?;
+        let actual = if position < prefix.len() {
+            u16::from(prefix[position])
+        } else {
+            value.code_units()[start + position - prefix.len()]
+        };
+        let folded = if (0x41..=0x5a).contains(&actual) {
+            actual + 0x20
+        } else {
+            actual
+        };
+        if folded != u16::from(expected[position].to_ascii_lowercase()) {
+            return Ok(false);
+        }
+        position += 1;
+    }
+    Ok(true)
+}
+fn javascript_essence(
+    control: &mut ParseControl,
+    prefix: &[u8],
+    value: &DocumentString,
+    start: usize,
+    end: usize,
+) -> Result<bool, SessionError> {
+    // MIME39aa535 §4.6's complete essence list; parameters are never removed.
+    const ESSENCES: [&[u8]; 16] = [
+        b"application/ecmascript",
+        b"application/javascript",
+        b"application/x-ecmascript",
+        b"application/x-javascript",
+        b"text/ecmascript",
+        b"text/javascript",
+        b"text/javascript1.0",
+        b"text/javascript1.1",
+        b"text/javascript1.2",
+        b"text/javascript1.3",
+        b"text/javascript1.4",
+        b"text/javascript1.5",
+        b"text/jscript",
+        b"text/livescript",
+        b"text/x-ecmascript",
+        b"text/x-javascript",
+    ];
+    let mut position = 0;
+    while position < ESSENCES.len() {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if script_match(control, prefix, value, start, end, ESSENCES[position])? {
+            return Ok(true);
+        }
+        position += 1;
+    }
+    Ok(false)
+}
+fn classify_script(
+    control: &mut ParseControl,
+    element: &HtmlElement,
+) -> Result<Option<ScriptType>, SessionError> {
+    let explicit = script_attribute(control, element, "type")?;
+    let language = script_attribute(control, element, "language")?;
+    control.charge(WorkCategory::RecordVisit, 2)?;
+    if explicit.is_some_and(DocumentString::is_empty)
+        || (explicit.is_none() && language.is_none_or(DocumentString::is_empty))
+    {
+        return Ok(Some(ScriptType::Classic));
+    }
+    let (prefix, value): (&[u8], _) = if let Some(value) = explicit {
+        (b"", value)
+    } else {
+        (b"text/", language.expect("nonempty language branch"))
+    };
+    if javascript_essence(control, prefix, value, 0, value.len())? {
+        return Ok(Some(ScriptType::Classic));
+    }
+    if explicit.is_some() {
+        let mut start = 0;
+        let mut end = value.len();
+        while start < end {
+            control.charge(WorkCategory::InspectByte, 2)?;
+            if !matches!(value.code_units()[start], 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
+                break;
+            }
+            start += 1;
+        }
+        while end > start {
+            control.charge(WorkCategory::InspectByte, 2)?;
+            if !matches!(
+                value.code_units()[end - 1],
+                0x09 | 0x0a | 0x0c | 0x0d | 0x20
+            ) {
+                break;
+            }
+            end -= 1;
+        }
+        if javascript_essence(control, prefix, value, start, end)? {
+            return Ok(Some(ScriptType::Classic));
+        }
+    }
+    for (literal, kind) in [
+        (b"module".as_slice(), ScriptType::Module),
+        (b"importmap".as_slice(), ScriptType::ImportMap),
+        (b"speculationrules".as_slice(), ScriptType::SpeculationRules),
+    ] {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if script_match(control, prefix, value, 0, value.len(), literal)? {
+            return Ok(Some(kind));
+        }
+    }
+    Ok(None)
+}
 fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize, SessionError> {
     control.charge(WorkCategory::RecordVisit, 4)?;
     let units = name
@@ -2814,6 +3310,1064 @@ mod tests {
     use super::*;
     use crate::{Attribute, HtmlParseResource};
     use crate::{HtmlParseCancellation, HtmlParseLimits};
+
+    fn fresh_script_owner<'a>(
+        request: &'a crate::HtmlDocumentParseRequest,
+    ) -> (
+        ParseControl,
+        ParserArenaSession,
+        crate::parser::tree_builder::StandaloneCapability<'a>,
+    ) {
+        use crate::parser::tree_builder::StandaloneDocumentDriver;
+        let mut driver = Some(StandaloneDocumentDriver::new(request).unwrap());
+        for _ in 0..128 {
+            let owner = driver.as_mut().unwrap();
+            if owner.standalone_parts().is_some() {
+                break;
+            }
+            owner.step().unwrap();
+        }
+        assert!(driver.as_mut().unwrap().standalone_parts().is_some());
+        let parts = StandaloneDocumentDriver::take_standalone_fixture(&mut driver).unwrap();
+        assert!(driver.is_none());
+        parts
+    }
+    fn fresh_script<'a>(
+        request: &'a crate::HtmlDocumentParseRequest,
+        connected: bool,
+        text: bool,
+    ) -> (
+        ParseControl,
+        ParserArenaSession,
+        crate::parser::tree_builder::StandaloneCapability<'a>,
+        ParserNode,
+    ) {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let (mut c, mut session, capability) = fresh_script_owner(request);
+        let mut tokenizer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut incoming = loop {
+            let kind = lexical_kind(&mut tokenizer, &mut c);
+            if matches!(&kind, TokenKind::Tag(tag) if tag.name.value.text().code_units() == [0x73,0x63,0x72,0x69,0x70,0x74])
+            {
+                let TokenKind::Tag(tag) = kind else {
+                    unreachable!()
+                };
+                break Some(tag);
+            }
+            assert!(!matches!(kind, TokenKind::Eof));
+            release_token_kind(&mut Some(kind), &mut c).unwrap();
+        };
+        let node = session
+            .allocate_disabled_parser_script(&mut c, &mut incoming, &capability)
+            .unwrap();
+        assert!(incoming.is_none());
+        if connected {
+            let html_index = session.active().unwrap().records[0].children[0];
+            let html = session.active().unwrap().node(&mut c, html_index).unwrap();
+            session.insert(&mut c, &html, &node, None).unwrap();
+        }
+        if text {
+            let TokenKind::Text(value) = lexical_kind(&mut tokenizer, &mut c) else {
+                panic!("literal text")
+            };
+            session
+                .insert_text(&mut c, &node, None, &mut Some(value))
+                .unwrap();
+        }
+        tokenizer.release(&mut c).unwrap();
+        (c, session, capability, node)
+    }
+
+    fn next_fixture_tag(
+        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        c: &mut ParseControl,
+        expected: &[u16],
+    ) -> Tag {
+        loop {
+            let kind = lexical_kind(tokenizer, c);
+            if matches!(&kind, TokenKind::Tag(tag) if tag.kind == TagKind::Start && tag.name.value.text().code_units() == expected)
+            {
+                let TokenKind::Tag(tag) = kind else {
+                    unreachable!()
+                };
+                return tag;
+            }
+            assert!(!matches!(kind, TokenKind::Eof));
+            release_token_kind(&mut Some(kind), c).unwrap();
+        }
+    }
+
+    fn actual_template_and_div(
+        source: &crate::HtmlSource,
+        c: &mut ParseControl,
+        session: &mut ParserArenaSession,
+    ) -> (ParserNode, ParserNode) {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
+        let template = next_fixture_tag(
+            &mut tokenizer,
+            c,
+            &[0x74, 0x65, 0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65],
+        );
+        let template = session.allocate_html_tag(c, &mut Some(template)).unwrap();
+        let contents = session.template_contents(c, &template).unwrap().unwrap();
+        let div = next_fixture_tag(&mut tokenizer, c, &[0x64, 0x69, 0x76]);
+        let div = session.allocate_html_tag(c, &mut Some(div)).unwrap();
+        tokenizer.release(c).unwrap();
+        (contents, div)
+    }
+
+    #[test]
+    fn disabled_preparation_retains_actual_documents_and_uninitialized_result_through_freeze() {
+        for (attributes, kind) in [
+            ("src=''", ScriptType::Classic),
+            ("src='' type=module async", ScriptType::Module),
+            ("src='' type=importmap", ScriptType::ImportMap),
+            ("src='' type=speculationrules", ScriptType::SpeculationRules),
+        ] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(format!("<html><head><script {attributes}>")),
+                limits(),
+            );
+            let (mut c, mut session, capability, node) = fresh_script(&request, true, false);
+            let initial = session.script_metadata(&mut c, &node).unwrap();
+            assert!(!initial.force_async && !initial.already_started);
+            assert_eq!(initial.script_type, None);
+            let root = session.root(&mut c).unwrap();
+            let parser_document = session
+                .script_parser_document(&mut c, &node)
+                .unwrap()
+                .unwrap();
+            assert!(session.same_node(&mut c, &root, &parser_document).unwrap());
+            assert!(
+                session
+                    .script_preparation_document(&mut c, &node)
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(
+                session
+                    .prepare_disabled_script(&mut c, &node, &capability)
+                    .unwrap(),
+                DisabledScriptPreparation::Disabled(kind)
+            );
+            let prepared = session.script_metadata(&mut c, &node).unwrap();
+            assert!(prepared.already_started && !prepared.force_async);
+            assert_eq!(prepared.script_type, Some(kind));
+            assert!(
+                !prepared.external_file
+                    && !prepared.ready_to_be_parser_executed
+                    && !prepared.delaying_load
+            );
+            assert_eq!(prepared.result, ScriptResult::Uninitialized);
+            assert!(prepared.steps_when_result_ready.is_none());
+            let preparation_document = session
+                .script_preparation_document(&mut c, &node)
+                .unwrap()
+                .unwrap();
+            assert!(
+                session
+                    .same_node(&mut c, &root, &preparation_document)
+                    .unwrap()
+            );
+            assert_eq!(
+                session
+                    .prepare_disabled_script(&mut c, &node, &capability)
+                    .unwrap(),
+                DisabledScriptPreparation::AlreadyStarted
+            );
+            let mut frozen = session.freeze(&mut c).unwrap();
+            assert_eq!(frozen.script_metadata(&mut c, &node).unwrap(), prepared);
+            let document = frozen.document().unwrap();
+            assert_eq!(document.root().children().count(), 1);
+            frozen.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn empty_disconnected_and_unknown_returns_keep_source_prefix_metadata_effects() {
+        for (attributes, connected, text, outcome, force_async) in [
+            ("", true, false, DisabledScriptPreparation::Empty, true),
+            (
+                "async",
+                true,
+                false,
+                DisabledScriptPreparation::Empty,
+                false,
+            ),
+            (
+                "src=''",
+                false,
+                false,
+                DisabledScriptPreparation::Disconnected,
+                true,
+            ),
+            (
+                "src='' type=' module '",
+                true,
+                false,
+                DisabledScriptPreparation::UnrecognizedType,
+                true,
+            ),
+        ] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(format!("<html><head><script {attributes}>")),
+                limits(),
+            );
+            let (mut c, mut session, capability, node) = fresh_script(&request, connected, text);
+            assert_eq!(
+                session
+                    .prepare_disabled_script(&mut c, &node, &capability)
+                    .unwrap(),
+                outcome
+            );
+            let metadata = session.script_metadata(&mut c, &node).unwrap();
+            assert_eq!(metadata.force_async, force_async);
+            assert!(!metadata.already_started);
+            assert_eq!(metadata.script_type, None);
+            assert!(
+                session
+                    .script_parser_document(&mut c, &node)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                session
+                    .script_preparation_document(&mut c, &node)
+                    .unwrap()
+                    .is_none()
+            );
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><script>x"),
+            limits(),
+        );
+        let (mut c, mut session, capability, node) = fresh_script(&request, true, true);
+        assert_eq!(
+            session
+                .prepare_disabled_script(&mut c, &node, &capability)
+                .unwrap(),
+            DisabledScriptPreparation::Disabled(ScriptType::Classic)
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn script_eof_marks_started_without_preparation_and_cancelled_marker_has_no_effect() {
+        for cancel in [false, true] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<html><head><script>"),
+                limits(),
+            );
+            let (mut c, mut session, capability, node) = fresh_script(&request, true, false);
+            let initial = session.script_metadata(&mut c, &node).unwrap();
+            if cancel {
+                request.cancellation().cancel();
+            }
+            let result = session.mark_script_eof(&mut c, &node, &capability);
+            if cancel {
+                assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+                let (_, retained) = session
+                    .active()
+                    .unwrap()
+                    .payloads
+                    .values
+                    .iter()
+                    .find_map(|value| {
+                        if let RetainedPayload::Script { node, metadata } = value {
+                            Some((*node, *metadata))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                assert_eq!(retained, initial);
+                assert!(matches!(
+                    session.freeze(&mut c),
+                    Err(SessionError::Stop(ParseStop::Cancelled))
+                ));
+            } else {
+                result.unwrap();
+                let marked = session.script_metadata(&mut c, &node).unwrap();
+                assert!(marked.already_started && !marked.force_async);
+                assert_eq!(marked.script_type, None);
+                assert_eq!(marked.preparation_document, None);
+                assert_eq!(marked.parser_document, initial.parser_document);
+                assert_eq!(
+                    session
+                        .prepare_disabled_script(&mut c, &node, &capability)
+                        .unwrap(),
+                    DisabledScriptPreparation::AlreadyStarted
+                );
+            }
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn real_standalone_capability_cannot_be_reused_for_another_arena_on_the_same_control() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><script>"),
+            limits(),
+        );
+        let (mut c, mut original, capability, node) = fresh_script(&request, true, false);
+        let mut unrelated =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
+        let result = unrelated.mark_script_eof(&mut c, &node, &capability);
+        assert_eq!(result, Err(SessionError::Stop(stop)));
+        assert_eq!(c.stop(), Some(stop));
+        assert_eq!(unrelated.active().unwrap().records.len(), 1);
+        assert!(original.active().unwrap().payloads.values.iter().any(|entry| matches!(entry, RetainedPayload::Script { metadata, .. } if !metadata.already_started)));
+        assert!(
+            matches!(unrelated.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
+        );
+        unrelated.release(&mut c).unwrap();
+        original.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(stop));
+    }
+
+    #[test]
+    fn preparation_clears_parser_document_before_ordinary_connectivity_work_can_stop() {
+        let source = "<html><head><script src=x>";
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+        let (mut baseline, mut session, capability, node) = fresh_script(&request, true, false);
+        let setup_work = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        // Establish only the actual unchanged owner/node/metadata-read cost.
+        // This performs no preparation or ordinary ancestry walk.
+        capability
+            .validate_session(&mut baseline, &session)
+            .unwrap();
+        let storage = session.active().unwrap();
+        let index = storage.index(&mut baseline, &node).unwrap();
+        let (_, initial) = script_metadata(&storage.payloads, &mut baseline, index).unwrap();
+        assert_eq!(initial.parser_document, Some(0));
+        let qualification_work = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - setup_work;
+        // One metadata-slot visit, the actual fixed payload copy, and its write
+        // are sufficient for HTML preparation step 3. The source connectivity
+        // condition is step 7, after this required parser-document clear.
+        let first_write_work = 1 + mem::size_of::<ScriptMetadata>() as u64 + 1;
+        let cap = setup_work + qualification_work + first_write_work;
+        session.release(&mut baseline).unwrap();
+        storage_zero(&baseline);
+
+        let limits = limits().into_builder().work_credits(cap).finish().unwrap();
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits);
+        let (mut c, mut session, capability, node) = fresh_script(&request, true, false);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            setup_work
+        );
+        let result = session.prepare_disabled_script(&mut c, &node, &capability);
+        assert!(matches!(
+            result,
+            Err(SessionError::Stop(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            }))
+        ));
+        let retained = session
+            .active()
+            .unwrap()
+            .payloads
+            .values
+            .iter()
+            .find_map(|entry| match entry {
+                RetainedPayload::Script { metadata, .. } => Some(*metadata),
+                _ => None,
+            })
+            .unwrap();
+        let first_stop = c.stop().unwrap();
+        assert!(
+            matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first_stop)
+        );
+        let stopped_work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let high_water = c
+            .usage()
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .high_water;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(first_stop));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            stopped_work
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .high_water,
+            high_water
+        );
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::ManagedNodes).current,
+            3
+        );
+        assert_eq!(
+            retained.parser_document, None,
+            "HTML step 3 must be retained before ordinary connectivity work at step 7"
+        );
+        assert!(!retained.already_started && !retained.force_async);
+        assert_eq!(retained.script_type, None);
+        assert_eq!(retained.preparation_document, None);
+    }
+
+    #[test]
+    fn empty_preparation_work_is_independent_of_actual_ordinary_ancestor_depth() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = format!("<html><head><script>{}", "<div>".repeat(16));
+        let mut observed_work = Vec::new();
+        for depth in [0, 16] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(source.clone()),
+                limits(),
+            );
+            let (mut c, mut session, capability, node) = fresh_script(&request, false, false);
+            let html_index = session.active().unwrap().records[0].children[0];
+            let mut parent = session.active().unwrap().node(&mut c, html_index).unwrap();
+            let mut tokenizer =
+                Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            for _ in 0..depth {
+                let tag = next_fixture_tag(&mut tokenizer, &mut c, &[0x64, 0x69, 0x76]);
+                let child = session.allocate_html_tag(&mut c, &mut Some(tag)).unwrap();
+                session.insert(&mut c, &parent, &child, None).unwrap();
+                parent = child;
+            }
+            session.insert(&mut c, &parent, &node, None).unwrap();
+            tokenizer.release(&mut c).unwrap();
+            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            assert_eq!(
+                session.prepare_disabled_script(&mut c, &node, &capability),
+                Ok(DisabledScriptPreparation::Empty)
+            );
+            observed_work.push(c.usage().resource(HtmlParseResource::WorkCredits).current - before);
+            let retained = session.script_metadata(&mut c, &node).unwrap();
+            assert_eq!(retained.parser_document, None);
+            assert!(retained.force_async && !retained.already_started);
+            assert_eq!(retained.script_type, None);
+            assert_eq!(retained.preparation_document, None);
+            assert_eq!(session.active().unwrap().records.len(), 3 + depth);
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+        // HTML step 6 returns Empty; ordinary connectedness at step 7 is never
+        // needed. Both actual trees have the same script payload/qualifications.
+        assert_eq!(observed_work[0], observed_work[1]);
+    }
+
+    #[test]
+    fn actual_associated_domain_entry_revokes_only_on_commit_and_never_resets() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><script src=x><template><div>"),
+            limits(),
+        );
+        let (mut c, mut session, capability, script) = fresh_script(&request, false, false);
+        let (contents, div) = actual_template_and_div(request.source(), &mut c, &mut session);
+        session.insert(&mut c, &div, &script, None).unwrap();
+        let initial = session.script_metadata(&mut c, &script).unwrap();
+        assert_eq!(session.active().unwrap().standalone_ineligibility, None);
+        let mut foreign_control = control();
+        assert!(matches!(
+            session.insert(&mut foreign_control, &contents, &div, None),
+            Err(SessionError::Stop(_))
+        ));
+        assert_eq!(session.active().unwrap().standalone_ineligibility, None);
+        let mut foreign_arena =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let foreign_root = foreign_arena.root(&mut c).unwrap();
+        assert_eq!(
+            session.insert(&mut c, &contents, &foreign_root, None),
+            Err(SessionError::ForeignNode)
+        );
+        assert_eq!(
+            session.insert(&mut c, &contents, &div, Some(&script)),
+            Err(SessionError::WrongSibling)
+        );
+        assert_eq!(session.active().unwrap().standalone_ineligibility, None);
+        assert_eq!(session.active().unwrap().records[div.index].parent, None);
+        foreign_arena.release(&mut c).unwrap();
+        // The ordinary div carries the actual script descendant into the real
+        // template-owned fragment. No script-name guess or callback flag is used.
+        session.insert(&mut c, &contents, &div, None).unwrap();
+        assert_eq!(
+            session.active().unwrap().standalone_ineligibility,
+            Some(StandaloneUnsupported::ScriptDocument)
+        );
+        assert_eq!(
+            session.active().unwrap().records[script.index].parent,
+            Some(div.index)
+        );
+        assert_eq!(session.script_metadata(&mut c, &script).unwrap(), initial);
+        session.remove(&mut c, &div).unwrap();
+        assert_eq!(session.active().unwrap().records[div.index].parent, None);
+        session.allocate_element(&mut c, html("span")).unwrap();
+        assert_eq!(
+            session.active().unwrap().standalone_ineligibility,
+            Some(StandaloneUnsupported::ScriptDocument)
+        );
+        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::ScriptDocument);
+        assert_eq!(
+            session.prepare_disabled_script(&mut c, &script, &capability),
+            Err(SessionError::Stop(stop))
+        );
+        let retained = session
+            .active()
+            .unwrap()
+            .payloads
+            .values
+            .iter()
+            .find_map(|entry| {
+                if let RetainedPayload::Script { metadata, .. } = entry {
+                    Some(*metadata)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(retained, initial);
+        assert!(
+            matches!(session.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(stop));
+    }
+
+    #[test]
+    fn cancelled_domain_insert_preserves_ordinary_eligibility_and_all_actual_owners() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><script src=x><template><div>"),
+            limits(),
+        );
+        let (mut c, mut session, _, script) = fresh_script(&request, false, false);
+        let (contents, div) = actual_template_and_div(request.source(), &mut c, &mut session);
+        session.insert(&mut c, &div, &script, None).unwrap();
+        request.cancellation().cancel();
+        assert_eq!(
+            session.insert(&mut c, &contents, &div, None),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let storage = session.active().unwrap();
+        assert_eq!(storage.standalone_ineligibility, None);
+        assert_eq!(storage.records[div.index].parent, None);
+        assert_eq!(storage.records[script.index].parent, Some(div.index));
+        assert!(storage.records[contents.index].children.is_empty());
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        assert!(matches!(
+            session.freeze(&mut c),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        ));
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::ManagedNodes).current,
+            6
+        );
+    }
+
+    #[test]
+    fn exact_and_one_short_domain_insert_work_admit_eligibility_only_with_topology() {
+        let source = "<html><head><script src=x><template><div>";
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+        let (mut baseline, mut session, _, script) = fresh_script(&request, false, false);
+        let (contents, div) =
+            actual_template_and_div(request.source(), &mut baseline, &mut session);
+        session.insert(&mut baseline, &div, &script, None).unwrap();
+        session
+            .insert(&mut baseline, &contents, &div, None)
+            .unwrap();
+        let exact = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        session.release(&mut baseline).unwrap();
+        storage_zero(&baseline);
+        for cap in [exact - 1, exact] {
+            let limits = limits().into_builder().work_credits(cap).finish().unwrap();
+            let request =
+                crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits);
+            let (mut c, mut session, _, script) = fresh_script(&request, false, false);
+            let (contents, div) = actual_template_and_div(request.source(), &mut c, &mut session);
+            session.insert(&mut c, &div, &script, None).unwrap();
+            let result = session.insert(&mut c, &contents, &div, None);
+            let storage = session.active().unwrap();
+            assert_eq!(storage.records[script.index].parent, Some(div.index));
+            if cap == exact {
+                assert_eq!(result, Ok(()));
+                assert_eq!(storage.records[div.index].parent, Some(contents.index));
+                assert_eq!(storage.records[contents.index].children, [div.index]);
+                assert_eq!(
+                    storage.standalone_ineligibility,
+                    Some(StandaloneUnsupported::ScriptDocument)
+                );
+                assert_eq!(c.stop(), None);
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    }))
+                ));
+                assert_eq!(storage.records[div.index].parent, None);
+                assert!(storage.records[contents.index].children.is_empty());
+                assert_eq!(storage.standalone_ineligibility, None);
+                let first = c.stop().unwrap();
+                assert!(
+                    matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
+                );
+            }
+            if session.release(&mut c).is_err() {
+                session.release(&mut c).unwrap();
+            }
+            storage_zero(&c);
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                6
+            );
+        }
+    }
+
+    #[test]
+    fn exact_preparation_work_reaches_step18_and_one_short_retains_step15_for_cleanup() {
+        let source = "<html><head><script src=''>";
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+        let (mut baseline, mut session, capability, node) = fresh_script(&request, true, false);
+        session
+            .prepare_disabled_script(&mut baseline, &node, &capability)
+            .unwrap();
+        let exact = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        session.release(&mut baseline).unwrap();
+        storage_zero(&baseline);
+        for cap in [exact - 1, exact] {
+            let limits = limits().into_builder().work_credits(cap).finish().unwrap();
+            let request =
+                crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits);
+            let (mut c, mut session, capability, node) = fresh_script(&request, true, false);
+            let result = session.prepare_disabled_script(&mut c, &node, &capability);
+            let retained = session
+                .active()
+                .unwrap()
+                .payloads
+                .values
+                .iter()
+                .find_map(|entry| {
+                    if let RetainedPayload::Script { metadata, .. } = entry {
+                        Some(*metadata)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert!(retained.already_started && !retained.force_async);
+            assert_eq!(retained.script_type, Some(ScriptType::Classic));
+            assert_eq!(retained.parser_document, Some(0));
+            if cap == exact {
+                assert_eq!(
+                    result,
+                    Ok(DisabledScriptPreparation::Disabled(ScriptType::Classic))
+                );
+                assert_eq!(retained.preparation_document, Some(0));
+                assert_eq!(c.stop(), None);
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    }))
+                ));
+                assert_eq!(retained.preparation_document, None);
+                let first = c.stop().unwrap();
+                assert!(
+                    matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
+                );
+            }
+            // Exact useful work can leave no credit for active disposal. The
+            // same retained owner then performs terminal cleanup, without work
+            // refund or a usable partially prepared immutable tree.
+            if session.release(&mut c).is_err() {
+                session.release(&mut c).unwrap();
+            }
+            storage_zero(&c);
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                3
+            );
+        }
+    }
+
+    #[test]
+    fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable()
+    {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // Three node child-storage tickets, two actual attribute containers,
+        // and four name/namespace registry entries consume nine slots. Script
+        // metadata is the tenth. No attribute-name trie competes with this cap.
+        for cap in [9, 10] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<html><head><script>"),
+                limits()
+                    .into_builder()
+                    .auxiliary_entries(cap)
+                    .finish()
+                    .unwrap(),
+            );
+            let (mut c, mut session, capability) = fresh_script_owner(&request);
+            let mut tokenizer =
+                Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut incoming = loop {
+                let kind = lexical_kind(&mut tokenizer, &mut c);
+                if matches!(&kind, TokenKind::Tag(tag) if tag.name.value.text().code_units() == [0x73,0x63,0x72,0x69,0x70,0x74])
+                {
+                    let TokenKind::Tag(tag) = kind else {
+                        unreachable!()
+                    };
+                    break Some(tag);
+                }
+                release_token_kind(&mut Some(kind), &mut c).unwrap();
+            };
+            let result =
+                session.allocate_disabled_parser_script(&mut c, &mut incoming, &capability);
+            assert!(incoming.is_none());
+            assert_eq!(session.active().unwrap().records.len(), 3);
+            let count = session
+                .active()
+                .unwrap()
+                .payloads
+                .values
+                .iter()
+                .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
+                .count();
+            if cap == 10 {
+                result.unwrap();
+                assert_eq!(count, 1);
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::AuxiliaryEntries)
+                        .current,
+                    10
+                );
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::AuxiliaryEntries,
+                        current: 9,
+                        requested_delta: 1,
+                        ..
+                    }))
+                ));
+                assert_eq!(count, 0);
+                let stop = c.stop().unwrap();
+                assert!(
+                    matches!(session.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
+                );
+            }
+            let first = c.stop();
+            tokenizer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), first);
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                3
+            );
+        }
+    }
+
+    #[test]
+    fn script_allocation_alias_rejection_preserves_the_actual_lexical_owner_and_arena() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><script src=''>"),
+            limits(),
+        );
+        let (mut c, mut session, capability, _) = fresh_script(&request, true, false);
+        let mut tokenizer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let tag = loop {
+            let kind = lexical_kind(&mut tokenizer, &mut c);
+            if let TokenKind::Tag(tag) = kind {
+                if tag.name.value.text().code_units() == [0x73, 0x63, 0x72, 0x69, 0x70, 0x74] {
+                    break tag;
+                }
+                release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
+            } else {
+                panic!("only tags before script")
+            }
+        };
+        let alias = tag.name.value.text().clone();
+        let before = session.active().unwrap().records.len();
+        let mut input = Some(tag);
+        assert!(matches!(
+            session.allocate_disabled_parser_script(&mut c, &mut input, &capability),
+            Err(SessionError::AliasedPayload)
+        ));
+        assert!(input.is_some());
+        assert_eq!(session.active().unwrap().records.len(), before);
+        assert_eq!(c.stop(), None);
+        drop(alias);
+        release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    fn lexical_script_type(attributes: &str) -> Option<ScriptType> {
+        lexical_script_type_source(crate::HtmlSource::utf8(format!("<script {attributes}>")))
+    }
+    fn lexical_script_type_source(source: crate::HtmlSource) -> Option<ScriptType> {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
+            panic!("script tag")
+        };
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let node = session.allocate_html_tag(&mut c, &mut Some(tag)).unwrap();
+        let HtmlNodeKind::Element(element) = &session.active().unwrap().records[node.index].kind
+        else {
+            panic!("script")
+        };
+        let kind = classify_script(&mut c, element).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        kind
+    }
+
+    #[test]
+    fn isolated_surrogates_and_supplementary_units_are_not_mime_normalized() {
+        for extra in [vec![0xd800], vec![0xdc00], vec![0xd83d, 0xde00]] {
+            let units = "<script type='text/javascript"
+                .encode_utf16()
+                .chain(extra)
+                .chain("'>".encode_utf16())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                lexical_script_type_source(crate::HtmlSource::utf16(DocumentString::from_utf16(
+                    units
+                ))),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn every_javascript_essence_and_ascii_case_variant_is_classic_without_parameters() {
+        // Independently enumerated selected MIME §4.6 expectations.
+        for essence in [
+            "application/ecmascript",
+            "application/javascript",
+            "application/x-ecmascript",
+            "application/x-javascript",
+            "text/ecmascript",
+            "text/javascript",
+            "text/javascript1.0",
+            "text/javascript1.1",
+            "text/javascript1.2",
+            "text/javascript1.3",
+            "text/javascript1.4",
+            "text/javascript1.5",
+            "text/jscript",
+            "text/livescript",
+            "text/x-ecmascript",
+            "text/x-javascript",
+        ] {
+            for value in [essence.to_owned(), essence.to_ascii_uppercase()] {
+                assert_eq!(
+                    lexical_script_type(&format!("type='{value}'")),
+                    Some(ScriptType::Classic)
+                );
+            }
+        }
+        for value in [
+            "text/javascript;charset=utf-8",
+            "text/javascript1.6",
+            "application/json",
+            "text/javaſcript",
+            "text/javascript&#xFFFD;",
+        ] {
+            assert_eq!(
+                lexical_script_type(&format!("type='{value}'")),
+                None,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_type_and_legacy_language_follow_distinct_whitespace_and_default_branches() {
+        for attributes in [
+            "",
+            "type=''",
+            "language=''",
+            "type='' language=unknown",
+            "language=javascript",
+            "type=' \tTEXT/JAVASCRIPT\n\r\x0c '",
+        ] {
+            assert_eq!(
+                lexical_script_type(attributes),
+                Some(ScriptType::Classic),
+                "{attributes}"
+            );
+        }
+        for (value, kind) in [
+            ("MoDuLe", ScriptType::Module),
+            ("IMPORTMAP", ScriptType::ImportMap),
+            ("speculationrules", ScriptType::SpeculationRules),
+        ] {
+            assert_eq!(lexical_script_type(&format!("type={value}")), Some(kind));
+            assert_eq!(lexical_script_type(&format!("type=' {value} '")), None);
+        }
+        for attributes in [
+            "language=' javascript '",
+            "language=module",
+            "type=unknown language=javascript",
+            "type='   '",
+            "type='&#xA0;text/javascript&#xA0;'",
+            "type=text/javascript1.0x",
+        ] {
+            assert_eq!(lexical_script_type(attributes), None, "{attributes}");
+        }
+    }
+
+    #[test]
+    fn actual_import_permanently_revokes_standalone_inventory_but_foreign_control_does_not() {
+        let mut c = control();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        session.validate_standalone_document(&mut c).unwrap();
+        let mut foreign = control();
+        assert!(matches!(
+            session.allocate_element(&mut foreign, html("div")),
+            Err(SessionError::Stop(_))
+        ));
+        assert!(session.active().unwrap().standalone_ineligibility.is_none());
+        session.validate_standalone_document(&mut c).unwrap();
+        session.allocate_element(&mut c, html("div")).unwrap();
+        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
+        assert_eq!(
+            session.validate_standalone_document(&mut c),
+            Err(SessionError::Stop(stop))
+        );
+        assert!(
+            matches!(session.allocate_implicit_html(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
+        );
+        assert_eq!(
+            session.validate_standalone_document(&mut c),
+            Err(SessionError::Stop(stop))
+        );
+        assert!(
+            matches!(session.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(stop));
+    }
+
+    #[test]
+    fn generic_fragment_and_preexisting_input_cannot_establish_ordinary_document_provenance() {
+        let mut c = control();
+        let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        assert_eq!(
+            session.validate_standalone_document(&mut c),
+            Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Provenance
+            )))
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn an_actual_template_association_cannot_be_guessed_as_the_ordinary_script_document() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><template><script src=''>"),
+            limits(),
+        );
+        let (mut c, mut session, capability, node) = fresh_script(&request, false, false);
+        let initial = session.script_metadata(&mut c, &node).unwrap();
+        let mut tokenizer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let tag = loop {
+            let kind = lexical_kind(&mut tokenizer, &mut c);
+            if let TokenKind::Tag(tag) = kind {
+                if tag.name.value.text().code_units()
+                    == [0x74, 0x65, 0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65]
+                {
+                    break tag;
+                }
+                release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
+            } else {
+                panic!("template tag")
+            }
+        };
+        let template = session.allocate_html_tag(&mut c, &mut Some(tag)).unwrap();
+        let contents = session
+            .template_contents(&mut c, &template)
+            .unwrap()
+            .unwrap();
+        session.insert(&mut c, &contents, &node, None).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::ScriptDocument);
+        assert_eq!(
+            session.prepare_disabled_script(&mut c, &node, &capability),
+            Err(SessionError::Stop(stop))
+        );
+        let retained = session
+            .active()
+            .unwrap()
+            .payloads
+            .values
+            .iter()
+            .find_map(|entry| {
+                if let RetainedPayload::Script { metadata, .. } = entry {
+                    Some(*metadata)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(retained, initial);
+        assert!(
+            matches!(session.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(stop));
+    }
 
     fn limits() -> HtmlParseLimits {
         HtmlParseLimits::builder()

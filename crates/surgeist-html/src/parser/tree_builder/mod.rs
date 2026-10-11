@@ -13,8 +13,9 @@
 // governs the fragment substitution and newly-created template state.
 
 //! Concrete tree operations, document prologue and bounded owning head dispatch
-//! over one construction arena. Script/template and AfterHead continuations
-//! retain unfinished input; complete parsing and report publication are later.
+//! over one construction arena. The fresh sealed Disabled driver handles actual
+//! scripts; a general proofless head stage suspends at script. Template and
+//! AfterHead continuations remain unfinished; full parse/report work is later.
 
 mod doctype;
 mod head;
@@ -24,7 +25,9 @@ mod tag_sets;
 mod tests;
 
 use super::{
-    control::{ControlIdentity, OwnedVec, ParseControl, ParseStop, WorkCategory},
+    control::{
+        ControlIdentity, OwnedVec, ParseControl, ParseStop, StandaloneUnsupported, WorkCategory,
+    },
     tokenizer::token::{Tag, Text},
 };
 use crate::{
@@ -441,4 +444,487 @@ impl LocationKernel {
         self.root_target = None;
         Ok(())
     }
+}
+
+/// Sealed execution eligibility issued only by StandaloneDocumentDriver's fresh
+/// offline request path. Source/control and actual arena identity travel together.
+/// There are no host/realm/settings objects, executable registry/callbacks,
+/// observers/listeners, external mutation/feed hooks, loader/speculative parser,
+/// live nodes, JS stack, promise recipients, IDB transactions or kept JS objects.
+/// Admitted producers are the real prologue/head tag/text/comment/PI/doctype,
+/// implicit html/head, root-attribute merge, ordinary placement and exact payload
+/// operations. None schedules work. Imported elements/hosted fragments and shadow
+/// attachment producers are unreachable from that constructor; template starts
+/// suspend before effects. Structural records and metadata remain retained.
+/// No running-script/frame-timing domain exists: checkpoint specialization does
+/// not implement an external timing algorithm or assume a normative null return.
+pub(crate) struct StandaloneCapability<'source> {
+    source: &'source crate::HtmlSource,
+    owner: ControlIdentity,
+    document: ParserNode,
+}
+impl StandaloneCapability<'_> {
+    pub(crate) fn validate_session(
+        &self,
+        c: &mut ParseControl,
+        session: &ParserArenaSession,
+    ) -> Result<(), SessionError> {
+        c.require_identity(&self.owner)?;
+        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.require_source(self.source)?;
+        session.validate_standalone_document(c)?;
+        let root = session.root(c)?;
+        match session.same_node(c, &root, &self.document) {
+            Ok(true) => {}
+            Ok(false) | Err(SessionError::ForeignNode) => {
+                return Err(SessionError::Stop(
+                    c.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
+                ));
+            }
+            Err(error) => return Err(error),
+        }
+        Ok(())
+    }
+    fn checkpoint(
+        &self,
+        c: &mut ParseControl,
+        session: &ParserArenaSession,
+    ) -> Result<(), SessionError> {
+        self.validate_session(c, session)?;
+        // Source checkpoint reduction over the construction-proved closed
+        // environment. All cleanup/notification/timing domains are absent, not
+        // arbitrary empty queues. Admission still polls cancellation here.
+        c.charge(WorkCategory::StateStep, 1)?;
+        Ok(())
+    }
+}
+
+pub(crate) enum StandaloneError {
+    UnsupportedDocumentInitialization,
+    UnsupportedExecutionProfile,
+    Stop(ParseStop),
+    Prologue(prologue::PrologueError),
+    Head(head::HeadError),
+    Consumed,
+    TokenizerExhausted,
+}
+impl std::fmt::Debug for StandaloneError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedDocumentInitialization => {
+                f.write_str("UnsupportedDocumentInitialization")
+            }
+            Self::UnsupportedExecutionProfile => f.write_str("UnsupportedExecutionProfile"),
+            Self::Stop(error) => f.debug_tuple("Stop").field(error).finish(),
+            Self::Prologue(error) => f.debug_tuple("Prologue").field(error).finish(),
+            Self::Head(error) => f.debug_tuple("Head").field(error).finish(),
+            Self::Consumed => f.write_str("Consumed"),
+            Self::TokenizerExhausted => f.write_str("TokenizerExhausted"),
+        }
+    }
+}
+impl From<ParseStop> for StandaloneError {
+    fn from(error: ParseStop) -> Self {
+        Self::Stop(error)
+    }
+}
+impl From<prologue::PrologueError> for StandaloneError {
+    fn from(error: prologue::PrologueError) -> Self {
+        Self::Prologue(error)
+    }
+}
+impl From<head::HeadError> for StandaloneError {
+    fn from(error: head::HeadError) -> Self {
+        Self::Head(error)
+    }
+}
+
+/// Fresh ordinary request admission owns the sole controller and actual lexer /
+/// prologue/head state. Captured/hosted initialization cannot enter this path.
+/// This bounded driver still stops at template/AfterHead, not full parse success.
+pub(crate) struct StandaloneDocumentDriver<'source> {
+    source: &'source crate::HtmlSource,
+    control: ParseControl,
+    prologue: Option<prologue::DocumentPrologue<'source>>,
+    tokenizer: Option<super::tokenizer::Tokenizer<'source>>,
+    event: Option<super::tokenizer::token::Event>,
+    token: Option<super::tokenizer::token::Token>,
+    before: Option<prologue::BeforeHead>,
+    head: Option<head::HeadStage<'source>>,
+    lexical: Option<OwnedVec<super::tokenizer::token::Event>>,
+}
+impl<'source> StandaloneDocumentDriver<'source> {
+    pub(crate) fn new(
+        request: &'source crate::HtmlDocumentParseRequest,
+    ) -> Result<Self, StandaloneError> {
+        // Actual request facts precede construction/source scans. No label,
+        // Disabled enum alone, native Document, or caller boolean grants proof.
+        if request.capture().is_some() || request.document().is_some() {
+            return Err(StandaloneError::UnsupportedDocumentInitialization);
+        }
+        if request.scripting_mode() != crate::HtmlParserScriptingMode::Disabled
+            || request.allow_declarative_shadow_roots()
+        {
+            return Err(StandaloneError::UnsupportedExecutionProfile);
+        }
+        let source = request.source();
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(source)?;
+        write(size_of::<Self>(), 9, &mut c)?;
+        let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        lexical.require_owner(&mut c)?;
+        let tokenizer = match super::tokenizer::Tokenizer::new(
+            source,
+            super::tokenizer::states::State::Data,
+            None,
+            &mut c,
+        ) {
+            Ok(tokenizer) => tokenizer,
+            Err(stop) => {
+                lexical.release(&mut c)?;
+                return Err(stop.into());
+            }
+        };
+        let prologue = match prologue::DocumentPrologue::new(source, &mut c) {
+            Ok(prologue) => prologue,
+            Err(error) => {
+                tokenizer.release(&mut c)?;
+                lexical.release(&mut c)?;
+                return Err(error.into());
+            }
+        };
+        Ok(Self {
+            source,
+            control: c,
+            prologue: Some(prologue),
+            tokenizer: Some(tokenizer),
+            event: None,
+            token: None,
+            before: None,
+            head: None,
+            lexical: Some(lexical),
+        })
+    }
+    pub(crate) fn step(&mut self) -> Result<head::HeadStep, StandaloneError> {
+        let result = self.step_inner();
+        if let Err(error) = &result {
+            // One controller owns terminality. Retained owners support cleanup,
+            // never resumption or successful partial continuation publication.
+            let reason = match error {
+                StandaloneError::Head(head::HeadError::UnsupportedScriptPause) => {
+                    StandaloneUnsupported::ScriptPause
+                }
+                StandaloneError::Head(head::HeadError::UnsupportedPendingScript) => {
+                    StandaloneUnsupported::PendingScript
+                }
+                StandaloneError::Head(head::HeadError::StandaloneCapabilityUnavailable) => {
+                    StandaloneUnsupported::Provenance
+                }
+                StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
+                    SessionError::ScriptMetadataUnavailable,
+                ))) => StandaloneUnsupported::ScriptDocument,
+                _ => StandaloneUnsupported::InvalidNesting,
+            };
+            self.control.stop_unsupported_standalone(reason);
+        }
+        result
+    }
+    fn step_inner(&mut self) -> Result<head::HeadStep, StandaloneError> {
+        use super::tokenizer::token::Event;
+        self.control.require_source(self.source)?;
+        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        if let Some(head) = &mut self.head {
+            return Ok(head.step(&mut self.control)?);
+        }
+        let c = &mut self.control;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.before.is_none() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if self.token.is_none() {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                write(size_of::<Option<Event>>(), 1, c)?;
+                self.event = self
+                    .tokenizer
+                    .as_mut()
+                    .ok_or(StandaloneError::Consumed)?
+                    .next(c, false)?;
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                let event = self
+                    .event
+                    .as_ref()
+                    .ok_or(StandaloneError::TokenizerExhausted)?;
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if event.token().is_some() {
+                    write(
+                        size_of::<Option<Event>>()
+                            + size_of::<Option<super::tokenizer::token::Token>>(),
+                        2,
+                        c,
+                    )?;
+                    let Event::Token(event) =
+                        self.event.take().expect("retained actual token event")
+                    else {
+                        unreachable!("variant inspected")
+                    };
+                    self.token = Some(event.into_token(c)?);
+                } else {
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    write(size_of::<Option<Event>>(), 1, c)?;
+                    let event = self.event.take().expect("retained lexical event");
+                    if let Err((stop, event)) = self
+                        .lexical
+                        .as_mut()
+                        .ok_or(StandaloneError::Consumed)?
+                        .try_push_recover(c, event)
+                    {
+                        self.event = Some(event);
+                        return Err(stop.into());
+                    }
+                    return Ok(head::HeadStep::Consumed);
+                }
+            }
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if self
+                .prologue
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .process(&mut self.token, c)?
+                == prologue::PrologueStep::Consumed
+            {
+                return Ok(head::HeadStep::Consumed);
+            }
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            write(
+                size_of::<Option<prologue::BeforeHead>>()
+                    + size_of::<Option<prologue::DocumentPrologue>>(),
+                2,
+                c,
+            )?;
+            self.before = Some(
+                self.prologue
+                    .as_mut()
+                    .expect("active prologue")
+                    .take_before_head(c)?,
+            );
+            self.prologue = None;
+        }
+        write(size_of::<Option<head::HeadStage>>(), 1, c)?;
+        self.head = Some(head::HeadStage::new(
+            self.source,
+            &mut self.before,
+            &mut self.tokenizer,
+            c,
+        )?);
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let head = self.head.as_mut().expect("actual fresh head transfer");
+        write(size_of::<StandaloneCapability>(), 3, c)?;
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        let document = head
+            .state
+            .as_ref()
+            .expect("actual fresh head")
+            .before
+            .kernel
+            .session
+            .root(c)
+            .map_err(|error| StandaloneError::Head(error.into()))?;
+        let capability = StandaloneCapability {
+            source: self.source,
+            owner: c.identity(),
+            document,
+        };
+        head.install_standalone(capability, c)?;
+        // Swap retained real lexical evidence into the same head owner; leave
+        // its original empty vector in this driver for release, without cloning.
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        write(size_of::<OwnedVec<Event>>() * 2, 2, c)?;
+        std::mem::swap(
+            &mut head.state.as_mut().expect("active head").lexical,
+            self.lexical.as_mut().expect("retained lexical evidence"),
+        );
+        Ok(head::HeadStep::Consumed)
+    }
+    #[cfg(test)]
+    pub(crate) fn standalone_parts(
+        &mut self,
+    ) -> Option<(
+        &mut ParseControl,
+        &mut ParserArenaSession,
+        &StandaloneCapability<'source>,
+    )> {
+        let (session, capability) = self.head.as_mut()?.standalone_parts()?;
+        Some((&mut self.control, session, capability))
+    }
+    #[cfg(test)]
+    pub(crate) fn usage(&self) -> &super::control::ParseUsage {
+        self.control.usage()
+    }
+    /// The only fixture issuer moves the real admitted owners after a genuine
+    /// fresh prologue/head transition. Production exclusive ownership is intact.
+    #[cfg(test)]
+    pub(crate) fn take_standalone_fixture(
+        input: &mut Option<Self>,
+    ) -> Result<
+        (
+            ParseControl,
+            ParserArenaSession,
+            StandaloneCapability<'source>,
+        ),
+        StandaloneError,
+    > {
+        let driver = input.as_mut().ok_or(StandaloneError::Consumed)?;
+        let c = &mut driver.control;
+        c.require_source(driver.source)?;
+        driver
+            .head
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .prepare_standalone_fixture(c)?;
+        dispose_token(&mut driver.token, c)?;
+        write(size_of::<Option<super::tokenizer::token::Event>>(), 1, c)?;
+        if let Some(event) = driver.event.take() {
+            event.release(c)?;
+        }
+        if let Some(lexical) = &mut driver.lexical {
+            while let Some(event) = lexical.try_pop(c)? {
+                event.release(c)?;
+            }
+        }
+        write(
+            size_of::<Option<OwnedVec<super::tokenizer::token::Event>>>(),
+            1,
+            c,
+        )?;
+        if let Some(lexical) = driver.lexical.take() {
+            lexical.release(c)?;
+        }
+        write(
+            size_of::<Self>()
+                + size_of::<Option<Self>>()
+                + size_of::<ParseControl>()
+                + size_of::<ParserArenaSession>()
+                + size_of::<StandaloneCapability>(),
+            5,
+            c,
+        )?;
+        let driver = input.take().expect("validated owning real driver");
+        let (session, capability) = driver
+            .head
+            .expect("prepared real head")
+            .into_standalone_fixture();
+        Ok((driver.control, session, capability))
+    }
+    pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
+        let c = &mut self.control;
+        if c.stop().is_none() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+        }
+        if let Some(head) = &mut self.head {
+            if c.stop().is_none() {
+                write(size_of::<Option<head::HeadStage>>(), 1, c)?;
+            }
+            head.release(c)?;
+            self.head = None;
+        }
+        if c.stop().is_none() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+        }
+        if let Some(before) = &mut self.before {
+            dispose_token(&mut before.input, c)?;
+            loop {
+                let text = if c.stop().is_some() {
+                    before.whitespace.cleanup_pop(c)?
+                } else {
+                    before.whitespace.try_pop(c)?
+                };
+                let Some(text) = text else { break };
+                text.release(c)?;
+            }
+            before
+                .kernel
+                .release(c)
+                .map_err(|error| StandaloneError::Head(error.into()))?;
+            if c.stop().is_none() {
+                write(size_of::<Option<prologue::BeforeHead>>(), 1, c)?;
+            }
+            let before = self.before.take().expect("retained BeforeHead");
+            before.diagnostics.release(c)?;
+            before.whitespace.release(c)?;
+        }
+        if c.stop().is_none() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+        }
+        if let Some(prologue) = &mut self.prologue {
+            if c.stop().is_none() {
+                write(size_of::<Option<prologue::DocumentPrologue>>(), 1, c)?;
+            }
+            prologue.release(c)?;
+            self.prologue = None;
+        }
+        dispose_token(&mut self.token, c)?;
+        if c.stop().is_none() {
+            c.charge(WorkCategory::RecordVisit, 2)?;
+            write(
+                size_of::<Option<super::tokenizer::token::Event>>()
+                    + size_of::<Option<super::tokenizer::Tokenizer>>(),
+                2,
+                c,
+            )?;
+        }
+        if let Some(event) = self.event.take() {
+            event.release(c)?;
+        }
+        if let Some(tokenizer) = self.tokenizer.take() {
+            tokenizer.release(c)?;
+        }
+        if c.stop().is_none() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+        }
+        if let Some(lexical) = &mut self.lexical {
+            loop {
+                let event = if c.stop().is_some() {
+                    lexical.cleanup_pop(c)?
+                } else {
+                    lexical.try_pop(c)?
+                };
+                let Some(event) = event else { break };
+                event.release(c)?;
+            }
+        }
+        if c.stop().is_none() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            write(
+                size_of::<Option<OwnedVec<super::tokenizer::token::Event>>>(),
+                1,
+                c,
+            )?;
+        }
+        if let Some(lexical) = self.lexical.take() {
+            lexical.release(c)?;
+        }
+        Ok(())
+    }
+}
+fn dispose_token(
+    input: &mut Option<super::tokenizer::token::Token>,
+    c: &mut ParseControl,
+) -> Result<(), StandaloneError> {
+    if c.stop().is_none() {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let slot_bytes = size_of::<Option<super::tokenizer::token::Token>>();
+        if input.is_some() {
+            write(slot_bytes + size_of::<prologue::PendingToken>(), 2, c)?;
+        } else {
+            write(slot_bytes, 1, c)?;
+        }
+    }
+    if let Some(token) = input.take() {
+        let mut pending = prologue::PendingToken::from_token(token);
+        let result = pending.release(c);
+        if result.is_err() {
+            *input = pending.into_token();
+        }
+        result?;
+    }
+    Ok(())
 }

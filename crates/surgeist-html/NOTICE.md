@@ -37,6 +37,28 @@ document-state facts. It does not incorporate editing-command execution.
 HTML itself remains the owner of editing-host classification, under the
 separate WHATWG attribution above.
 
+## JavaScript MIME essence and checkpoint sources
+
+The private Disabled-script preparation adaptation incorporates the exact 16
+JavaScript MIME essence strings and ASCII case-insensitive matching definition
+from [MIME Sniffing §4.6](../../references/mimesniff-javascript-essence--39aa53511b13.md),
+revision `39aa53511b13953d84fef8d4131d6f61d0ccbde6`, into Rust source under
+the WHATWG BSD 3-Clause code-incorporation provision. The bounded reference
+prose remains CC BY 4.0; the existing complete
+[WHATWG license](../../licenses/whatwg/LICENSE) and
+[source notice](../../licenses/whatwg/NOTICE.md#javascript-mime-essence-and-html-checkpoint--2026-10-11)
+retain the copyright, conditions, disclaimer and adaptation scope. HTML owns
+the surrounding preparation rules; no MIME parser or sniffer is incorporated.
+
+The [microtask queue and complete checkpoint](../../references/html-microtask-checkpoint--877d6146487f.md)
+come from the existing HTML877d edition, including all external cleanup/timing
+hooks. The
+[selected standalone reduction](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
+is an architecture capability specialization over absent runtime domains, not
+a browser event-loop implementation or an external timing algorithm. No timing
+source pin or normative null-script-return rule is selected. These private
+adaptations do not expose a complete parser or add a production dependency.
+
 ## Adapted parser source
 
 The private, test-compiled tokenizer adapts four source files from
@@ -53,7 +75,8 @@ markup5ever, Tendril or web_atoms and does not yet expose a complete parser.
 The private tree-insertion kernel additionally adapts bounded operations and
 scope lists from two files at that same revision. Its Initial/BeforeHtml
 prologue and doctype tables adapt two additional files; the owning head-stage
-driver further adapts selected head, noscript and non-script Text rules.
+driver further adapts selected head, noscript and Text rules, including script
+insertion and EOF/end-tag dispatch for the fresh Disabled operation.
 Their original notices are
 retained verbatim, with separate adaptation notes and origin hashes. The same
 MIT OR Apache-2.0 attribution applies; see the

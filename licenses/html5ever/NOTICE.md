@@ -23,7 +23,8 @@ applies to the adaptation. No html5ever Cargo package is added by this ingestion
 The same selected revision supplies a bounded adaptation of tree-builder
 insertion-location and stack/scope operations plus selected tag sets, followed
 by the ordinary-document Initial/BeforeHtml prologue and doctype tables, then
-the owning BeforeHead/ordinary InHead/Disabled-noscript/non-script Text driver. The
+the owning BeforeHead/ordinary InHead/Disabled-noscript/Text driver, including
+script insertion and EOF/end-tag dispatch adapted for the fresh Disabled operation. The
 [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;

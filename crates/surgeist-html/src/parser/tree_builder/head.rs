@@ -9,7 +9,7 @@
 //
 // Adapted from html5ever/src/tree_builder/rules.rs at
 // d7232d746d3112f08926d169591576bd12fe2fdf: BeforeHead, ordinary InHead,
-// Disabled InHeadNoscript and non-script Text. HTML
+// Disabled InHeadNoscript, Text and constructor-proved Disabled ScriptData. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs behavior and PI.
 
 use super::{
@@ -57,17 +57,17 @@ pub(super) struct HeadDiagnostic {
     pub(super) source: HtmlSourceRange,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum HeadBoundary {
+pub(crate) enum HeadBoundary {
     AfterHead,
     Script,
     Template,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum HeadStep {
+pub(crate) enum HeadStep {
     Consumed,
     Boundary(HeadBoundary),
 }
-pub(super) enum HeadError {
+pub(crate) enum HeadError {
     Kernel(KernelError),
     Prologue(PrologueError),
     Handoff(TokenizerHandoffError),
@@ -79,6 +79,10 @@ pub(super) enum HeadError {
     TokenizerExhausted,
     InvalidTextToken,
     MissingReturnMode,
+    StandaloneCapabilityUnavailable,
+    UnsupportedScriptPause,
+    UnsupportedPendingScript,
+    InvalidScriptNesting,
 }
 impl std::fmt::Debug for HeadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -94,6 +98,10 @@ impl std::fmt::Debug for HeadError {
             Self::TokenizerExhausted => f.write_str("TokenizerExhausted"),
             Self::InvalidTextToken => f.write_str("InvalidTextToken"),
             Self::MissingReturnMode => f.write_str("MissingReturnMode"),
+            Self::StandaloneCapabilityUnavailable => f.write_str("StandaloneCapabilityUnavailable"),
+            Self::UnsupportedScriptPause => f.write_str("UnsupportedScriptPause"),
+            Self::UnsupportedPendingScript => f.write_str("UnsupportedPendingScript"),
+            Self::InvalidScriptNesting => f.write_str("InvalidScriptNesting"),
         }
     }
 }
@@ -153,8 +161,20 @@ enum Class {
     Eof,
 }
 
-/// All state belongs to this one driver and the existing flat arena. A suspended
-/// script/template start has no marker, script metadata or insertion effects.
+/// Actual source-initial state of the sealed ordinary Disabled execution owner.
+/// No pending script producer is reached by the Disabled preparation prefix.
+struct StandaloneScriptState<'source> {
+    capability: super::StandaloneCapability<'source>,
+    nesting: u32,
+    pause: bool,
+    insertion_point: Option<HtmlSourceRange>,
+    saved_insertion_point: Option<Option<HtmlSourceRange>>,
+    pending_blocking: Option<ParserNode>,
+}
+
+/// All state belongs to this one driver and the existing flat arena. A proofless
+/// script or template start suspends without insertion effects. The sealed fresh
+/// driver retains actual script parser state and metadata in the same arena.
 pub(super) struct HeadState<'source> {
     pub(super) before: BeforeHead,
     pub(super) tokenizer: Option<Tokenizer<'source>>,
@@ -167,6 +187,7 @@ pub(super) struct HeadState<'source> {
     pub(super) lexical: OwnedVec<Event>,
     lexical_pending: Option<Event>,
     whitespace_pending: Option<Text>,
+    script: Option<StandaloneScriptState<'source>>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
 /// host, srcdoc, mode-fixed state or execution mode can be supplied here.
@@ -207,10 +228,10 @@ impl<'source> HeadStage<'source> {
         let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         diagnostics.require_owner(c)?;
         lexical.require_owner(c)?;
-        // Three driver fields + eleven state fields + caller BeforeHead and
+        // Three driver fields + twelve state fields + caller BeforeHead and
         // Tokenizer slots + the retained BeforeHead input slot are written.
-        // Admit all seventeen field writes before the first owning take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 17, c) {
+        // Admit all eighteen field writes before the first owning take.
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 18, c) {
             diagnostics.release(c)?;
             lexical.release(c)?;
             return Err(stop.into());
@@ -237,8 +258,162 @@ impl<'source> HeadStage<'source> {
                 lexical,
                 lexical_pending: None,
                 whitespace_pending: None,
+                script: None,
             }),
         })
+    }
+    pub(super) fn install_standalone(
+        &mut self,
+        capability: super::StandaloneCapability<'source>,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
+        self.require(c)?;
+        let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
+        capability.validate_session(c, &state.before.kernel.session)?;
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        if state.mode != HeadMode::BeforeHead || state.script.is_some() {
+            return Err(HeadError::StandaloneCapabilityUnavailable);
+        }
+        write(size_of::<Option<StandaloneScriptState>>(), 7, c)?;
+        state.script = Some(StandaloneScriptState {
+            capability,
+            nesting: 0,
+            pause: false,
+            insertion_point: None,
+            saved_insertion_point: None,
+            pending_blocking: None,
+        });
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(super) fn standalone_parts(
+        &mut self,
+    ) -> Option<(
+        &mut crate::construction::parser_session::ParserArenaSession,
+        &super::StandaloneCapability<'source>,
+    )> {
+        let state = self.state.as_mut()?;
+        Some((
+            &mut state.before.kernel.session,
+            &state.script.as_ref()?.capability,
+        ))
+    }
+    #[cfg(test)]
+    pub(super) fn script_observation(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<(u32, bool, bool, bool, bool), HeadError> {
+        self.require(c)?;
+        let script = self
+            .state
+            .as_ref()
+            .ok_or(HeadError::Consumed)?
+            .script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+        c.charge(WorkCategory::RecordVisit, 5)?;
+        c.charge(
+            WorkCategory::InspectByte,
+            (size_of::<u32>()
+                + size_of::<bool>()
+                + size_of::<Option<HtmlSourceRange>>()
+                + size_of::<Option<Option<HtmlSourceRange>>>()
+                + size_of::<Option<ParserNode>>()) as u64,
+        )?;
+        Ok((
+            script.nesting,
+            script.pause,
+            script.insertion_point.is_some(),
+            script.saved_insertion_point.is_some(),
+            script.pending_blocking.is_some(),
+        ))
+    }
+    /// Test-only extraction releases the actual lexer/stack/evidence first.
+    /// On failure the borrowed owner remains available for terminal disposal.
+    #[cfg(test)]
+    pub(super) fn prepare_standalone_fixture(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
+        self.require(c)?;
+        let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
+        state
+            .script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .capability
+            .validate_session(c, &state.before.kernel.session)?;
+        if let Some(pending) = &mut state.pending {
+            pending.release(c)?;
+        }
+        super::dispose_token(&mut state.before.input, c).map_err(|error| match error {
+            super::StandaloneError::Head(error) => error,
+            super::StandaloneError::Stop(stop) => stop.into(),
+            _ => HeadError::InvalidTextToken,
+        })?;
+        write(
+            size_of::<Option<Text>>() + size_of::<Option<Event>>() + size_of::<Option<Tokenizer>>(),
+            3,
+            c,
+        )?;
+        if let Some(text) = state.whitespace_pending.take() {
+            text.release(c)?;
+        }
+        if let Some(event) = state.lexical_pending.take() {
+            event.release(c)?;
+        }
+        while let Some(event) = state.lexical.try_pop(c)? {
+            event.release(c)?;
+        }
+        while let Some(text) = state.before.whitespace.try_pop(c)? {
+            text.release(c)?;
+        }
+        state
+            .before
+            .kernel
+            .open
+            .as_mut()
+            .ok_or(KernelError::Consumed)?
+            .clear(c)?;
+        if let Some(tokenizer) = state.tokenizer.take() {
+            tokenizer.release(c)?;
+        }
+        release_fixture_vector(
+            state
+                .before
+                .kernel
+                .open
+                .as_mut()
+                .ok_or(KernelError::Consumed)?,
+            HtmlParseResource::OpenElements,
+            c,
+        )?;
+        release_fixture_vector(
+            &mut state.before.whitespace,
+            HtmlParseResource::AuxiliaryEntries,
+            c,
+        )?;
+        release_fixture_vector(
+            &mut state.before.diagnostics,
+            HtmlParseResource::Diagnostics,
+            c,
+        )?;
+        release_fixture_vector(&mut state.diagnostics, HtmlParseResource::Diagnostics, c)?;
+        release_fixture_vector(&mut state.lexical, HtmlParseResource::AuxiliaryEntries, c)?;
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(super) fn into_standalone_fixture(
+        self,
+    ) -> (
+        crate::construction::parser_session::ParserArenaSession,
+        super::StandaloneCapability<'source>,
+    ) {
+        let state = self.state.expect("prepared real standalone fixture");
+        (
+            state.before.kernel.session,
+            state.script.expect("actual issued capability").capability,
+        )
     }
     fn require(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         c.require_identity(&self.owner)?;
@@ -253,6 +428,13 @@ impl<'source> HeadStage<'source> {
         self.require(c)?;
         let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
+        if let Some(script) = &state.script {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
+            if script.pause {
+                return Err(HeadError::UnsupportedScriptPause);
+            }
+        }
         if state.boundary.is_some() {
             return Err(HeadError::AlreadyAtBoundary);
         }
@@ -388,6 +570,17 @@ impl<'source> HeadStage<'source> {
         state.lexical.release(c)?;
         Ok(())
     }
+}
+#[cfg(test)]
+fn release_fixture_vector<T>(
+    vector: &mut OwnedVec<T>,
+    resource: HtmlParseResource,
+    c: &mut ParseControl,
+) -> Result<(), ParseStop> {
+    vector.require_owner(c)?;
+    write(size_of::<OwnedVec<T>>() * 2, 2, c)?;
+    let empty = OwnedVec::new(resource)?;
+    std::mem::replace(vector, empty).release(c)
 }
 fn validate_source(
     source: &HtmlSource,
@@ -608,6 +801,138 @@ impl HeadState<'_> {
         }
         self.finish(c)
     }
+    fn script_start(
+        &mut self,
+        self_closing: bool,
+        c: &mut ParseControl,
+    ) -> Result<HeadStep, HeadError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let script = self
+            .script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+        script
+            .capability
+            .validate_session(c, &self.before.kernel.session)?;
+        let location = self.before.kernel.adjusted_location(None, c)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let Payload::Tag(input) = &mut self
+            .pending
+            .as_mut()
+            .ok_or(HeadError::MissingInput)?
+            .payload
+        else {
+            unreachable!("classified actual script tag")
+        };
+        let node = self.before.kernel.session.allocate_disabled_parser_script(
+            c,
+            input,
+            &script.capability,
+        )?;
+        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.push(&node, c)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        self.tokenizer
+            .as_mut()
+            .ok_or(HeadError::Consumed)?
+            .set_state(State::Raw(Raw::Script), c)?;
+        write(size_of::<Option<HeadMode>>(), 1, c)?;
+        let mode = self.mode(c)?;
+        self.return_mode = Some(mode);
+        self.set_mode(HeadMode::Text, c)?;
+        if self_closing {
+            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+        }
+        self.finish(c)
+    }
+    fn script_end(
+        &mut self,
+        node: &ParserNode,
+        c: &mut ParseControl,
+    ) -> Result<HeadStep, HeadError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let script = self
+            .script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        // This closed owner cannot reenter. Nesting is not the standard's
+        // checkpoint predicate: its speculative parser is absent and its JS
+        // execution stack is absent/empty, so the checkpoint is mandatory.
+        if script.nesting != 0 {
+            return Err(HeadError::InvalidScriptNesting);
+        }
+        script
+            .capability
+            .checkpoint(c, &self.before.kernel.session)?;
+        self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(
+            WorkCategory::InspectByte,
+            size_of::<Option<HeadMode>>() as u64,
+        )?;
+        let mode = self.return_mode.ok_or(HeadError::MissingReturnMode)?;
+        self.set_mode(mode, c)?;
+        write(size_of::<Option<HeadMode>>(), 1, c)?;
+        self.return_mode = None;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let script = self
+            .script
+            .as_mut()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let next = self
+            .tokenizer
+            .as_ref()
+            .ok_or(HeadError::Consumed)?
+            .checked_next_input_position(script.capability.source, c)?;
+        write(
+            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            2,
+            c,
+        )?;
+        script.saved_insertion_point = Some(script.insertion_point.take());
+        script.insertion_point = Some(next);
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        let nesting = script
+            .nesting
+            .checked_add(1)
+            .ok_or(HeadError::InvalidScriptNesting)?;
+        write(size_of::<u32>(), 1, c)?;
+        script.nesting = nesting;
+        self.before
+            .kernel
+            .session
+            .prepare_disabled_script(c, node, &script.capability)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        let nesting = script
+            .nesting
+            .checked_sub(1)
+            .ok_or(HeadError::InvalidScriptNesting)?;
+        write(size_of::<u32>(), 1, c)?;
+        script.nesting = nesting;
+        if nesting == 0 {
+            write(size_of::<bool>(), 1, c)?;
+            script.pause = false;
+        }
+        write(
+            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            2,
+            c,
+        )?;
+        script.insertion_point = script
+            .saved_insertion_point
+            .take()
+            .ok_or(HeadError::InvalidScriptNesting)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if script.pending_blocking.is_some() {
+            return Err(HeadError::UnsupportedPendingScript);
+        }
+        self.discard(c)
+    }
     fn html(&mut self, self_closing: bool, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         self.emit(HeadCondition::UnexpectedHtml, c)?;
         if self.before.kernel.contains_html_template(c)? {
@@ -655,8 +980,37 @@ impl HeadState<'_> {
                         return self.finish(c);
                     }
                     Class::End(_) | Class::Eof => {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        let top = self.before.kernel.at(
+                            self.before
+                                .kernel
+                                .stack()?
+                                .len()
+                                .checked_sub(1)
+                                .ok_or(KernelError::EmptyStack)?,
+                            c,
+                        )?;
+                        let is_script = self.before.kernel.named(&top, "script", c)?;
+                        if is_script && matches!(class, Class::End(Name::Script)) {
+                            return self.script_end(&top, c);
+                        }
+                        if is_script && !matches!(class, Class::Eof) {
+                            return Err(HeadError::InvalidTextToken);
+                        }
                         if matches!(class, Class::Eof) {
                             self.emit(HeadCondition::EofInText, c)?;
+                            if is_script {
+                                c.charge(WorkCategory::RecordVisit, 1)?;
+                                let script = self
+                                    .script
+                                    .as_ref()
+                                    .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+                                self.before.kernel.session.mark_script_eof(
+                                    c,
+                                    &top,
+                                    &script.capability,
+                                )?;
+                            }
                         }
                         self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
                         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -762,7 +1116,13 @@ impl HeadState<'_> {
                     }
                     return self.finish(c);
                 }
-                Class::Start(Name::Script, _) => return self.stop_at(HeadBoundary::Script, c),
+                Class::Start(Name::Script, close) => {
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    if self.script.is_some() {
+                        return self.script_start(close, c);
+                    }
+                    return self.stop_at(HeadBoundary::Script, c);
+                }
                 Class::Start(Name::Template, _) => return self.stop_at(HeadBoundary::Template, c),
                 Class::End(Name::Head) => {
                     self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
@@ -794,5 +1154,57 @@ impl HeadState<'_> {
             self.set_mode(HeadMode::AfterHead, c)?;
             return self.stop_at(HeadBoundary::AfterHead, c);
         }
+    }
+}
+
+#[cfg(test)]
+mod script_state_tests {
+    use super::*;
+
+    #[test]
+    fn actual_standalone_owner_rejects_corrupted_nonzero_nesting_before_pop_and_preparation() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<script>x</script>"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = super::super::StandaloneDocumentDriver::new(&request).unwrap();
+        for _ in 0..100 {
+            driver.step().unwrap();
+            if driver
+                .head
+                .as_ref()
+                .is_some_and(|head| head.state.as_ref().unwrap().mode == HeadMode::Text)
+            {
+                break;
+            }
+        }
+        driver.step().unwrap(); // actual script character token
+        let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+        assert_eq!(state.mode, HeadMode::Text);
+        assert_eq!(state.script.as_ref().unwrap().nesting, 0);
+        // Private-state fault injection tests the defense, without issuing a
+        // capability, simulating script execution, or adding an input producer.
+        state.script.as_mut().unwrap().nesting = 1;
+        assert!(matches!(
+            driver.step(),
+            Err(super::super::StandaloneError::Head(
+                HeadError::InvalidScriptNesting
+            ))
+        ));
+        assert_eq!(
+            driver.control.stop(),
+            Some(ParseStop::UnsupportedStandaloneState(
+                crate::parser::control::StandaloneUnsupported::InvalidNesting
+            ))
+        );
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.mode, HeadMode::Text);
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+        assert!(matches!(
+            state.pending.as_ref().unwrap().payload,
+            Payload::Tag(Some(_))
+        ));
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
     }
 }

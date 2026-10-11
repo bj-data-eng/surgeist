@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-fn limits(open: u64) -> HtmlParseLimits {
+pub(super) fn limits(open: u64) -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
@@ -143,7 +143,7 @@ fn freeze(kernel: LocationKernel, control: &mut ParseControl) -> FrozenArena {
     open.unwrap().release(control).unwrap();
     session.freeze(control).unwrap()
 }
-fn assert_released(control: &ParseControl) {
+pub(super) fn assert_released(control: &ParseControl) {
     for resource in [
         HtmlParseResource::BufferedUtf16Units,
         HtmlParseResource::TokenAttributes,
@@ -152,9 +152,13 @@ fn assert_released(control: &ParseControl) {
         HtmlParseResource::ManagedAttributes,
         HtmlParseResource::ManagedUtf16Units,
         HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::SourceMapPayloadUnits,
         HtmlParseResource::Diagnostics,
+        HtmlParseResource::DiagnosticPayloadUnits,
+        HtmlParseResource::ContextEffects,
         HtmlParseResource::OpenElements,
         HtmlParseResource::ManagedCapacityBytes,
+        HtmlParseResource::PeakTransientBytes,
     ] {
         assert_eq!(
             control.usage().resource(resource).current,
@@ -2662,5 +2666,1035 @@ fn actual_template_stack_predicate_distinguishes_foreign_template_from_html_temp
     assert!(kernel.contains_html_template(&mut c).unwrap());
     tokenizer.release(&mut c).unwrap();
     kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+fn script_text_node(driver: &mut StandaloneDocumentDriver<'_>) -> ParserNode {
+    for _ in 0..1_000 {
+        driver.step().unwrap();
+        if let Some(head) = &driver.head
+            && head.state.as_ref().unwrap().mode == super::head::HeadMode::Text
+        {
+            let kernel = &head.state.as_ref().unwrap().before.kernel;
+            let node = kernel
+                .at(kernel.stack().unwrap().len() - 1, &mut driver.control)
+                .unwrap();
+            assert!(kernel.named(&node, "script", &mut driver.control).unwrap());
+            return node;
+        }
+    }
+    panic!("actual script fixture must enter Text");
+}
+fn standalone_boundary(driver: &mut StandaloneDocumentDriver<'_>) -> super::head::HeadBoundary {
+    for _ in 0..1_000 {
+        if let super::head::HeadStep::Boundary(boundary) = driver.step().unwrap() {
+            return boundary;
+        }
+    }
+    panic!("finite actual source must reach an unfinished dispatch boundary");
+}
+
+#[test]
+fn standalone_script_start_retains_actual_document_and_initial_metadata_before_preparation() {
+    use crate::construction::parser_session::ScriptResult;
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script src='x'>body</script>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    let (c, session, capability) = driver.standalone_parts().unwrap();
+    capability.validate_session(c, session).unwrap();
+    let metadata = session.script_metadata(c, &node).unwrap();
+    assert!(!metadata.force_async);
+    assert!(!metadata.already_started);
+    assert_eq!(metadata.script_type, None);
+    assert!(!metadata.external_file);
+    assert!(!metadata.ready_to_be_parser_executed);
+    assert!(!metadata.delaying_load);
+    assert_eq!(metadata.result, ScriptResult::Uninitialized);
+    assert_eq!(metadata.steps_when_result_ready, None);
+    let root = session.root(c).unwrap();
+    let parser_document = session.script_parser_document(c, &node).unwrap().unwrap();
+    assert!(session.same_node(c, &root, &parser_document).unwrap());
+    assert!(
+        session
+            .script_preparation_document(c, &node)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .script_observation(&mut driver.control)
+            .unwrap(),
+        (0, false, false, false, false)
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn standalone_script_end_prepares_disabled_classic_and_restores_head_and_insertion_state() {
+    use crate::construction::parser_session::ScriptType;
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script>x</script><meta name=m></head><body>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::AfterHead
+    );
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    let metadata = session.script_metadata(c, &node).unwrap();
+    assert!(metadata.already_started);
+    assert_eq!(metadata.script_type, Some(ScriptType::Classic));
+    assert!(!metadata.force_async);
+    let root = session.root(c).unwrap();
+    let parser = session.script_parser_document(c, &node).unwrap().unwrap();
+    let prepared = session
+        .script_preparation_document(c, &node)
+        .unwrap()
+        .unwrap();
+    assert!(session.same_node(c, &root, &parser).unwrap());
+    assert!(session.same_node(c, &root, &prepared).unwrap());
+    assert_eq!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .script_observation(&mut driver.control)
+            .unwrap(),
+        (0, false, false, false, false)
+    );
+    let mut owning = Some(driver);
+    let (mut c, mut session, capability) =
+        StandaloneDocumentDriver::take_standalone_fixture(&mut owning).unwrap();
+    assert!(owning.is_none());
+    capability.validate_session(&mut c, &session).unwrap();
+    let mut frozen = session.freeze(&mut c).unwrap();
+    assert_eq!(frozen.script_metadata(&mut c, &node).unwrap(), metadata);
+    assert_eq!(
+        head_names(frozen.document().unwrap()),
+        vec![DocumentString::from("script"), DocumentString::from("meta")]
+    );
+    assert_eq!(
+        first_head_child_text(frozen.document().unwrap()),
+        vec![b'x' as u16]
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn standalone_repeated_script_endings_restore_actual_nesting_pause_and_current_return_mode() {
+    use crate::construction::parser_session::ScriptType;
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script>x</script><script type=module>y</script></head>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let first = script_text_node(&mut driver);
+    for _ in 0..100 {
+        driver.step().unwrap();
+        if driver.head.as_ref().unwrap().state.as_ref().unwrap().mode
+            == super::head::HeadMode::InHead
+        {
+            break;
+        }
+    }
+    assert_eq!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .script_observation(&mut driver.control)
+            .unwrap(),
+        (0, false, false, false, false)
+    );
+    let second = script_text_node(&mut driver);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::AfterHead
+    );
+    assert_eq!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .script_observation(&mut driver.control)
+            .unwrap(),
+        (0, false, false, false, false)
+    );
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(!session.same_node(c, &first, &second).unwrap());
+    let first = session.script_metadata(c, &first).unwrap();
+    let second = session.script_metadata(c, &second).unwrap();
+    assert!(first.already_started && second.already_started);
+    assert_eq!(first.script_type, Some(ScriptType::Classic));
+    assert_eq!(second.script_type, Some(ScriptType::Module));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_facts() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script type=module>x"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::AfterHead
+    );
+    let head = driver.head.as_ref().unwrap();
+    let state = head.state.as_ref().unwrap();
+    let diagnostics = state.diagnostics.as_slice();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].condition,
+        super::head::HeadCondition::EofInText
+    );
+    assert_eq!(
+        (diagnostics[0].source.start(), diagnostics[0].source.end()),
+        (21, 21)
+    );
+    assert!(matches!(
+        state.pending.as_ref().unwrap().payload,
+        super::prologue::Payload::Eof
+    ));
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    let metadata = session.script_metadata(c, &node).unwrap();
+    assert!(metadata.already_started);
+    assert!(!metadata.force_async);
+    assert_eq!(metadata.script_type, None);
+    assert!(session.script_parser_document(c, &node).unwrap().is_some());
+    assert!(
+        session
+            .script_preparation_document(c, &node)
+            .unwrap()
+            .is_none()
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_distinctions() {
+    use crate::construction::parser_session::ScriptType;
+    for (attrs, body, started, force_async, kind, has_document) in [
+        ("", "", false, true, None, false),
+        ("async", "", false, false, None, false),
+        ("type=unknown", "x", false, true, None, false),
+        ("type=' module '", "x", false, true, None, false),
+        (
+            "src='' type=MODULE",
+            "",
+            true,
+            false,
+            Some(ScriptType::Module),
+            true,
+        ),
+        (
+            "type=importmap",
+            "x",
+            true,
+            false,
+            Some(ScriptType::ImportMap),
+            true,
+        ),
+        (
+            "type=speculationrules",
+            "x",
+            true,
+            false,
+            Some(ScriptType::SpeculationRules),
+            true,
+        ),
+        (
+            "type=' text/JAVASCRIPT '",
+            "x",
+            true,
+            false,
+            Some(ScriptType::Classic),
+            true,
+        ),
+        (
+            "type='text/javascript; charset=utf-8'",
+            "x",
+            false,
+            true,
+            None,
+            false,
+        ),
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!("<script {attrs}>{body}</script></head>")),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let node = script_text_node(&mut driver);
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::AfterHead
+        );
+        let (c, session, _) = driver.standalone_parts().unwrap();
+        let metadata = session.script_metadata(c, &node).unwrap();
+        assert_eq!(
+            (
+                metadata.already_started,
+                metadata.force_async,
+                metadata.script_type
+            ),
+            (started, force_async, kind),
+            "{attrs}"
+        );
+        assert_eq!(
+            session.script_parser_document(c, &node).unwrap().is_some(),
+            has_document,
+            "{attrs}"
+        );
+        assert_eq!(
+            session
+                .script_preparation_document(c, &node)
+                .unwrap()
+                .is_some(),
+            started,
+            "{attrs}"
+        );
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn standalone_scriptdata_preserves_literal_utf16_and_escaped_script_content() {
+    let mut units: Vec<_> = "<script><!--<script>".encode_utf16().collect();
+    units.extend([0xd800, 0xd83d, 0xde80]);
+    units.extend("&amp;</script>--></script></head>".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::AfterHead
+    );
+    let mut owning = Some(driver);
+    let (mut c, mut session, _) =
+        StandaloneDocumentDriver::take_standalone_fixture(&mut owning).unwrap();
+    let mut frozen = session.freeze(&mut c).unwrap();
+    assert!(
+        frozen
+            .script_metadata(&mut c, &node)
+            .unwrap()
+            .already_started
+    );
+    let mut expected: Vec<_> = "<!--<script>".encode_utf16().collect();
+    expected.extend([0xd800, 0xd83d, 0xde80]);
+    expected.extend("&amp;</script>-->".encode_utf16());
+    assert_eq!(first_head_child_text(frozen.document().unwrap()), expected);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn standalone_scriptdata_preserves_newline_origins_and_state_specific_null_recovery() {
+    let mut units: Vec<_> = "<script>\r\n".encode_utf16().collect();
+    units.extend([0xd800, 0, 0xdc00, 0xd83d, 0xde80]);
+    units.extend("</script></head>".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    script_text_node(&mut driver);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::AfterHead
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    let null_error = state
+        .lexical
+        .as_slice()
+        .iter()
+        .find_map(|event| match event {
+            Event::Diagnostic(diagnostics) => diagnostics.as_slice().iter().find(|diagnostic| {
+                diagnostic.code
+                    == crate::parser::tokenizer::token::DiagnosticCode::UnexpectedNullCharacter
+            }),
+            _ => None,
+        })
+        .expect("actual ScriptData NULL diagnostic");
+    assert_eq!(null_error.source.source(), request.source().identity());
+    assert_eq!(
+        (null_error.source.start(), null_error.source.end()),
+        (11, 12)
+    );
+    let mut owning = Some(driver);
+    let (mut c, mut session, _) =
+        StandaloneDocumentDriver::take_standalone_fixture(&mut owning).unwrap();
+    let mut frozen = session.freeze(&mut c).unwrap();
+    assert_eq!(
+        first_head_child_text(frozen.document().unwrap()),
+        [10, 0xd800, 0xfffd, 0xdc00, 0xd83d, 0xde80]
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn standalone_script_import_revocation_stops_required_end_checkpoint_before_pop_or_prepare() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script>x</script><meta>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    driver.step().unwrap(); // actual script character token
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(!session.script_metadata(c, &node).unwrap().already_started);
+    preexisting(session, Namespace::html(), "imported", c);
+    let error = driver.step().unwrap_err();
+    assert!(matches!(
+        error,
+        StandaloneError::Head(super::head::HeadError::Kernel(KernelError::Session(
+            SessionError::Stop(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Provenance
+            ))
+        )))
+    ));
+    let stop = driver.control.stop().unwrap();
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.mode, super::head::HeadMode::Text);
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+    assert!(matches!(
+        state.pending.as_ref().unwrap().payload,
+        super::prologue::Payload::Tag(Some(_))
+    ));
+    let work = driver.control.usage().work(WorkCategory::InputUnitRead);
+    assert!(matches!(driver.step(), Err(StandaloneError::Stop(reason)) if reason == stop));
+    assert_eq!(
+        driver.control.usage().work(WorkCategory::InputUnitRead),
+        work
+    );
+    assert!(
+        driver
+            .head
+            .as_mut()
+            .unwrap()
+            .take_continuation(&mut driver.control)
+            .is_err()
+    );
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(matches!(session.freeze(c), Err(SessionError::Stop(reason)) if reason == stop));
+    let mut owning = Some(driver);
+    assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut owning).is_err());
+    assert!(owning.is_some());
+    let driver = owning.as_mut().unwrap();
+    driver.release().unwrap();
+    assert_eq!(driver.control.stop(), Some(stop));
+    assert_released(&driver.control);
+}
+
+#[test]
+fn standalone_script_cancellation_is_sticky_before_next_input_and_cleanup_has_no_parse_work() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script>x</script>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    script_text_node(&mut driver);
+    request.cancellation().cancel();
+    let reads = driver.control.usage().work(WorkCategory::InputUnitRead);
+    assert!(matches!(
+        driver.step(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    assert!(matches!(
+        driver.step(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    assert_eq!(
+        driver.control.usage().work(WorkCategory::InputUnitRead),
+        reads
+    );
+    let work = driver.control.usage().clone();
+    driver.release().unwrap();
+    for category in [
+        WorkCategory::InputUnitRead,
+        WorkCategory::RecordVisit,
+        WorkCategory::RecordWrite,
+        WorkCategory::CopyByte,
+        WorkCategory::InspectByte,
+        WorkCategory::ProviderCall,
+        WorkCategory::StateStep,
+        WorkCategory::ReserveByte,
+    ] {
+        assert_eq!(driver.control.usage().work(category), work.work(category));
+    }
+    assert_released(&driver.control);
+}
+
+#[test]
+fn standalone_template_continuation_preserves_unconsumed_token_and_has_no_script_metadata_effect() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script>x</script><template data-x=q>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::Template
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+        panic!("actual retained template token")
+    };
+    assert_eq!(
+        tag.name.value.text().code_units(),
+        [116, 101, 109, 112, 108, 97, 116, 101]
+    );
+    assert_eq!(tag.attributes.as_slice().len(), 1);
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(session.script_metadata(c, &node).unwrap().already_started);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn tokenizer_next_input_position_is_nonconsuming_and_uses_real_utf8_crlf_and_utf16_coordinates() {
+    for (source, reads) in [
+        (HtmlSource::utf8("<script></script>\r\n\u{1f680}"), 7),
+        (
+            HtmlSource::utf16(DocumentString::from("<script></script>\r\n\u{1f680}")),
+            2,
+        ),
+    ] {
+        let mut c = control(100);
+        c.admit_source(&source).unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut start = Some(next_kind(&mut tokenizer, &mut c));
+        crate::construction::parser_session::release_token_kind(&mut start, &mut c).unwrap();
+        tokenizer
+            .set_state(
+                crate::parser::tokenizer::states::State::Raw(
+                    crate::parser::tokenizer::states::Raw::Script,
+                ),
+                &mut c,
+            )
+            .unwrap();
+        let mut end = Some(next_kind(&mut tokenizer, &mut c));
+        crate::construction::parser_session::release_token_kind(&mut end, &mut c).unwrap();
+        let before = c.usage().clone();
+        let position = tokenizer
+            .checked_next_input_position(&source, &mut c)
+            .unwrap();
+        assert_eq!(
+            c.usage().work(WorkCategory::InputUnitRead) - before.work(WorkCategory::InputUnitRead),
+            reads
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+            15
+        );
+        let again = tokenizer
+            .checked_next_input_position(&source, &mut c)
+            .unwrap();
+        assert_eq!((position.start(), position.end()), (17, 17));
+        assert_eq!(position, again);
+        let actual = next_kind(&mut tokenizer, &mut c);
+        let TokenKind::Text(value) = &actual else {
+            panic!("real preprocessed text")
+        };
+        assert_eq!(value.value.text().code_units(), [10]);
+        assert_eq!(
+            (
+                value.origins.as_slice()[0].source.start(),
+                value.origins.as_slice()[0].source.end()
+            ),
+            (17, 19)
+        );
+        crate::construction::parser_session::release_token_kind(&mut Some(actual), &mut c).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn standalone_constructor_rejects_real_captured_initialization_before_source_or_tree_effects() {
+    let mut builder = crate::HtmlCaptureBuilder::new(
+        crate::HtmlCaptureLimits::new(10, 10, 0, 0, 10, 0, 0),
+        crate::HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::Quirks,
+            crate::HtmlScriptingStatus::Disabled,
+            crate::HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let capture = builder.finish().unwrap();
+    let document = capture
+        .document_id(&capture.subject_id(&document).unwrap())
+        .unwrap();
+    let request = crate::HtmlDocumentParseRequest::captured(
+        HtmlSource::utf8("<script>x</script>"),
+        capture,
+        document,
+        limits(100)
+            .into_builder()
+            .source_units(0)
+            .managed_nodes(0)
+            .finish()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        StandaloneDocumentDriver::new(&request),
+        Err(StandaloneError::UnsupportedDocumentInitialization)
+    ));
+}
+
+#[test]
+fn standalone_constructor_source_cancellation_and_atomic_layout_failures_are_typed_before_tree_success()
+ {
+    let cancellation_request =
+        crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<script>"), limits(100));
+    cancellation_request.cancellation().cancel();
+    assert!(matches!(
+        StandaloneDocumentDriver::new(&cancellation_request),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    let cap_request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(""),
+        limits(100)
+            .into_builder()
+            .atomic_layout_bytes(0)
+            .finish()
+            .unwrap(),
+    );
+    assert!(matches!(
+        StandaloneDocumentDriver::new(&cap_request),
+        Err(StandaloneError::Stop(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::AtomicLayoutBytes,
+            ..
+        }))
+    ));
+    let source_request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script>"),
+        limits(100).into_builder().source_units(1).finish().unwrap(),
+    );
+    assert!(matches!(
+        StandaloneDocumentDriver::new(&source_request),
+        Err(StandaloneError::Stop(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::SourceUnits,
+            ..
+        }))
+    ));
+}
+
+#[test]
+fn tokenizer_next_input_position_at_eof_is_checked_empty_and_foreign_owner_is_rejected() {
+    let source = HtmlSource::utf8("");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let range = tokenizer
+        .checked_next_input_position(&source, &mut c)
+        .unwrap();
+    assert_eq!(range.source(), source.identity());
+    assert_eq!((range.start(), range.end()), (0, 0));
+    let mut foreign = control(100);
+    foreign.admit_source(&source).unwrap();
+    assert!(matches!(
+        tokenizer.checked_next_input_position(&source, &mut foreign),
+        Err(crate::parser::tokenizer::TokenizerHandoffError::Stop(
+            ParseStop::InternalInvariant(Invariant::ForeignControl)
+        ))
+    ));
+    tokenizer.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn standalone_script_resource_caps_retain_created_payloads_and_stop_without_partial_success() {
+    for (caps, expected, node_count) in [
+        (
+            limits(100)
+                .into_builder()
+                .managed_nodes(4)
+                .finish()
+                .unwrap(),
+            HtmlParseResource::ManagedNodes,
+            4,
+        ),
+        (limits(2), HtmlParseResource::OpenElements, 5),
+        (
+            limits(100).into_builder().diagnostics(0).finish().unwrap(),
+            HtmlParseResource::Diagnostics,
+            5,
+        ),
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><script/>x</script>"),
+            caps,
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let error = (0..100)
+            .find_map(|_| driver.step().err())
+            .expect("actual source must hit selected cap");
+        let stop = driver.control.stop().unwrap();
+        assert!(
+            matches!(stop, ParseStop::LimitExceeded { resource, .. } if resource == expected),
+            "{error:?}"
+        );
+        assert_eq!(
+            driver
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            node_count
+        );
+        let work = driver.usage().work(WorkCategory::InputUnitRead);
+        assert!(matches!(driver.step(), Err(StandaloneError::Stop(reason)) if reason == stop));
+        assert_eq!(driver.usage().work(WorkCategory::InputUnitRead), work);
+        driver.release().unwrap();
+        assert_eq!(driver.control.stop(), Some(stop));
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn real_standalone_fixture_failed_cleanup_keeps_driver_and_first_stop_without_issuing_another_capability()
+ {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<script>x</script>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    script_text_node(&mut driver);
+    request.cancellation().cancel();
+    let mut input = Some(driver);
+    assert!(matches!(
+        StandaloneDocumentDriver::take_standalone_fixture(&mut input),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    assert!(input.is_some());
+    let driver = input.as_mut().unwrap();
+    assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn standalone_selfclosing_script_is_not_void_and_emits_exact_source_qualified_error() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><script/>x</script></head>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+    let diagnostics = state.diagnostics.as_slice();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].condition,
+        super::head::HeadCondition::UnacknowledgedSelfClosing
+    );
+    assert_eq!(
+        (diagnostics[0].source.start(), diagnostics[0].source.end()),
+        (15, 24)
+    );
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::AfterHead
+    );
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(session.script_metadata(c, &node).unwrap().already_started);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn tokenizer_next_input_point_has_independent_physical_provider_and_metadata_category_deltas() {
+    // Handoff: state + pending + five drafts. Then peek: reconsume, raw
+    // position and range. A character adds its offset and checked range's
+    // external/private metadata. EOF omits those three visits and one range.
+    for (source, visits, copies, input_reads, inspected) in [
+        (HtmlSource::utf8(""), 11, 2, 0, 0),
+        (
+            HtmlSource::utf8("ab"),
+            14,
+            3,
+            2,
+            (size_of::<usize>() + size_of::<u32>()) as u64,
+        ),
+        (
+            HtmlSource::utf16(DocumentString::from("ab")),
+            14,
+            3,
+            1,
+            (size_of::<usize>() + size_of::<u32>()) as u64,
+        ),
+    ] {
+        let mut c = control(100);
+        c.admit_source(&source).unwrap();
+        let tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let before = c.usage().clone();
+        let point = tokenizer
+            .checked_next_input_position(&source, &mut c)
+            .unwrap();
+        assert_eq!((point.start(), point.end()), (0, 0));
+        for (category, expected) in [
+            (WorkCategory::RecordVisit, visits),
+            (
+                WorkCategory::CopyByte,
+                copies * size_of::<crate::HtmlSourceRange>() as u64,
+            ),
+            (WorkCategory::InputUnitRead, input_reads),
+            (WorkCategory::InspectByte, inspected),
+            (WorkCategory::ProviderCall, 1),
+            (WorkCategory::RecordWrite, 1),
+            (WorkCategory::StateStep, 0),
+            (WorkCategory::ReserveByte, 0),
+        ] {
+            assert_eq!(
+                c.usage().work(category) - before.work(category),
+                expected,
+                "{category:?}"
+            );
+        }
+        tokenizer.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn tokenizer_next_input_point_uses_actual_reconsume_and_reference_lookahead_positions() {
+    for (source, emitted, next, offset) in [
+        (HtmlSource::utf8("<1"), b'<', b'1', 1),
+        (HtmlSource::utf16(DocumentString::from("<1")), b'<', b'1', 1),
+        (HtmlSource::utf8("&ltx"), b'<', b'x', 3),
+    ] {
+        let mut c = control(100);
+        c.admit_source(&source).unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let first = next_kind(&mut tokenizer, &mut c);
+        let TokenKind::Text(value) = &first else {
+            panic!("real recovered literal")
+        };
+        assert_eq!(value.value.text().code_units(), [u16::from(emitted)]);
+        crate::construction::parser_session::release_token_kind(&mut Some(first), &mut c).unwrap();
+        let point = tokenizer
+            .checked_next_input_position(&source, &mut c)
+            .unwrap();
+        assert_eq!((point.start(), point.end()), (offset, offset));
+        let second = next_kind(&mut tokenizer, &mut c);
+        let TokenKind::Text(value) = &second else {
+            panic!("actual unconsumed following input")
+        };
+        assert_eq!(value.value.text().code_units(), [u16::from(next)]);
+        assert_eq!(
+            (
+                value.origins.as_slice()[0].source.start(),
+                value.origins.as_slice()[0].source.end()
+            ),
+            (offset, offset + 1)
+        );
+        crate::construction::parser_session::release_token_kind(&mut Some(second), &mut c).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short_terminal_admission()
+ {
+    // Proof: three retained qualification fields, two actual session facts,
+    // two checked node identities, one root Weak creation, then StateStep1.
+    let expected_work = 7 + 1 + size_of::<ParserNode>() as u64 + 1;
+    for short in [false, true] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<script>x</script>"),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let node = script_text_node(&mut driver);
+        let (c, session, proof) = driver.standalone_parts().unwrap();
+        assert!(!session.script_metadata(c, &node).unwrap().already_started);
+        // Exhaust the actual controller to isolate the fixed checkpoint seam;
+        // expectations above are derived from its source operations, not runs.
+        let remaining = request.limits().work_credits()
+            - c.usage().resource(HtmlParseResource::WorkCredits).current;
+        c.charge(
+            WorkCategory::StateStep,
+            remaining - expected_work + u64::from(short),
+        )
+        .unwrap();
+        let before = c.usage().clone();
+        let result = proof.checkpoint(c, session);
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+            7
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
+            1
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+            size_of::<ParserNode>() as u64
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
+            u64::from(!short)
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordWrite),
+            before.work(WorkCategory::RecordWrite)
+        );
+        if short {
+            assert!(matches!(
+                result,
+                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    requested_delta: 1,
+                    ..
+                }))
+            ));
+        } else {
+            result.unwrap();
+        }
+        // The exact-budget case reaches its cap too; the next real drive latches
+        // a stop before parsing work and both cases retain owners for cleanup.
+        assert!(driver.step().is_err());
+        assert_eq!(
+            driver.head.as_ref().unwrap().state.as_ref().unwrap().mode,
+            super::head::HeadMode::Text
+        );
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn empty_token_disposal_charges_only_the_actual_optional_slot_move() {
+    // Controls' physical-event policy permits charging the optional-slot take,
+    // but an absent token creates no PendingToken record or second write.
+    let mut c = control(100);
+    let before = c.usage().clone();
+    let mut input = None;
+    dispose_token(&mut input, &mut c).unwrap();
+    assert!(input.is_none());
+    assert_eq!(
+        c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+        1
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+        size_of::<Option<super::super::tokenizer::token::Token>>() as u64
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
+        1
+    );
+    assert_eq!(
+        c.usage().largest_atomic_layout,
+        size_of::<Option<super::super::tokenizer::token::Token>>() as u64
+    );
+    assert!(c.stop().is_none());
+    assert_released(&c);
+}
+
+#[test]
+fn empty_token_disposal_requires_no_pending_record_atomic_layout() {
+    let slot_bytes = size_of::<Option<super::super::tokenizer::token::Token>>() as u64;
+    let caps = limits(100)
+        .into_builder()
+        .atomic_layout_bytes(slot_bytes)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    let mut input = None;
+    let result = dispose_token(&mut input, &mut c);
+    assert!(
+        result.is_ok(),
+        "the only moved record fits the exact slot layout: {result:?}"
+    );
+    assert!(input.is_none());
+    assert!(c.stop().is_none());
+    assert_released(&c);
+}
+
+#[test]
+fn empty_token_disposal_requires_only_its_actual_slot_work_budget() {
+    // One fetched optional slot, one fixed-slot move, and one slot write.
+    let actual_work = size_of::<Option<super::super::tokenizer::token::Token>>() as u64 + 2;
+    let caps = limits(100)
+        .into_builder()
+        .work_credits(actual_work)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    let mut input = None;
+    let result = dispose_token(&mut input, &mut c);
+    assert!(
+        result.is_ok(),
+        "empty disposal has no pending-record work: {result:?}"
+    );
+    assert!(input.is_none());
+    assert!(c.stop().is_none());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits).current,
+        actual_work
+    );
+    assert_released(&c);
+}
+
+#[test]
+fn present_token_disposal_accounts_for_real_pending_and_payload_moves() {
+    let source = HtmlSource::utf8("");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let Event::Token(event) = tokenizer.next(&mut c, false).unwrap().unwrap() else {
+        panic!("real EOF token");
+    };
+    let mut input = Some(event.into_token(&mut c).unwrap());
+    assert!(matches!(input.as_ref().unwrap().kind, TokenKind::Eof));
+    let before = c.usage().clone();
+    dispose_token(&mut input, &mut c).unwrap();
+    // Optional Token take + constructed PendingToken, then extracted TokenKind
+    // and its optional-slot disposal. EOF carries no nested payload tickets.
+    let copied = size_of::<Option<super::super::tokenizer::token::Token>>()
+        + size_of::<prologue::PendingToken>()
+        + size_of::<TokenKind>()
+        + size_of::<Option<TokenKind>>();
+    assert_eq!(
+        c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+        3
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+        copied as u64
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
+        6
+    );
+    assert!(input.is_none());
+    assert!(c.stop().is_none());
+    tokenizer.release(&mut c).unwrap();
     assert_released(&c);
 }

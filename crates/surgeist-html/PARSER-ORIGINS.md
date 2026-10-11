@@ -10,8 +10,11 @@ for tests. The tree kernel implements adjusted insertion locations, element/text
 insertion and stack/scope operations over actual controlled native storage.
 The ordinary-document prologue implements Initial and BeforeHtml and hands off
 an owned BeforeHead continuation. The subsequent owning head-stage driver handles
-BeforeHead, ordinary non-script/non-template InHead, Disabled InHeadNoscript and
-non-script Text. It retains AfterHead or untouched script/template continuations;
+BeforeHead, ordinary non-template InHead, Disabled InHeadNoscript and Text.
+A fresh standalone Disabled driver also retains actual script metadata and
+implements script Text entry, end-tag preparation and EOF marking. The generic
+head continuation still suspends before script effects when it lacks that
+constructor proof. AfterHead and template continuations remain unfinished;
 complete insertion-mode dispatch and public parse execution remain unfinished.
 
 ## Original source and incorporated files
@@ -28,7 +31,7 @@ before adaptation.
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
 | `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location and stack/scope adaptation in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs` |
 | `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope-list adaptation in `src/parser/tree_builder/tag_sets.rs` |
-| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/non-script Text rules in `src/parser/tree_builder/head.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs` |
 | `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
@@ -64,6 +67,14 @@ The head-stage adaptation adds its own historical incorporation checkpoint:
 | Incorporated file | Initial adapted SHA-256 |
 | --- | --- |
 | `src/parser/tree_builder/head.rs` | `192900bcd2250130f09aa387fc022a7363078a8e8378e55820c55329b4ff56d5` |
+
+The Disabled-script extension records a later, separate adapted checkpoint.
+The earlier head-stage hash remains historical; the fresh execution owner and
+native metadata providers are Surgeist-authored and their revisions remain in Git.
+
+| Incorporated file | Disabled-script adapted SHA-256 |
+| --- | --- |
+| `src/parser/tree_builder/head.rs` | `a19b85cf179750248e02101765a745e0f17246f19ff776f32b10656ca330aaa4` |
 
 The accompanying tokenizer and tree-builder tests are Surgeist-authored
 verification, not imported upstream test files. The input, buffer, controller,
@@ -129,16 +140,32 @@ consuming borrowed owners, admission checks their source, controller and lexical
 handoff state. Raw-text transitions occur before the next lexical pull; Text
 restores the actual saved insertion mode. The pinned edition supplies processing
 instructions and treats encoding confidence as irrelevant for supplied Unicode,
-so no transport re-decoding is introduced. Script and template dispatch remain
-owned unfinished continuations rather than successful callback substitutes.
+so no transport re-decoding is introduced. Generic script and template dispatch
+retain owned continuations when the required construction proof is unavailable.
 Surgeist-owned providers allocate implied head elements and transfer missing
 attributes into managed root storage. Exact namespace/local comparisons, staged
 slots and real vector reservation/append are charged by the existing controller;
 its own weak ticket and registry owners are restored on failure. Imported
 attribute backing remains explicitly unavailable.
 
+The standalone Disabled script adaptation incorporates `rules.rs` lines 234–247
+and the script portions of lines 1010–1029, within those previously identified
+head/Text ranges. It replaces the upstream end-tag script dispatch with actual
+HTML metadata and preparation through the scripting-disabled return. EOF marks
+the script already started without preparing it. The fresh request owner,
+sealed capability, checkpoint reduction, nesting and insertion-point bookkeeping
+are Surgeist-authored adaptations of the selected HTML clauses. They do not
+incorporate html5ever's driver or a successful script callback substitute.
+The [selected source boundary](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
+identifies the exact JavaScript MIME essence source and complete checkpoint.
+Constructor-proved absent runtime domains permit the checkpoint specialization;
+Disabled scripting alone does not. Actual structural/text/attribute effects,
+script metadata and source-qualified terminal failures remain retained in the
+same controlled arena. Imported, hosted, shadow-document and template-document
+preparation have no supported execution path in this checkpoint.
+
 Remaining insertion modes, formatting reconstruction/adoption, foreign dispatch,
-context effects and report publication remain required engine work. The driver, encoding implementation, serializer,
+context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,
 XML parser and RcDom are not incorporated here. Research prototypes and their
 measurements do not certify this adapted implementation or supply a public
 parsing contract.

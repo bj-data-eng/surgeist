@@ -410,6 +410,24 @@ lexical input and diagnostics; they are unfinished execution states.
 Head-stage `html` delegation adds missing attributes to managed root storage,
 preserving expanded-name matching, order and origins under the shared controller.
 Imported attribute storage remains explicitly unavailable at this checkpoint.
+
+A private fresh ordinary-document driver adds constructor-proved Disabled
+script processing. It owns the same tokenizer, controller and arena, retains
+actual script metadata, and performs the preparation prefix through the
+scripting-disabled return. Empty and unrecognized types preserve their earlier
+source-defined metadata changes; script Text EOF marks already started without
+preparation. End-tag processing performs the mandatory checkpoint before stack
+pop and preparation, using the constructor's closed producer inventory and
+absent runtime domains. Captured or hosted requests, declarative shadow roots,
+and imported arena state cannot acquire or retain that proof. This specialization
+does not execute scripts, load resources or implement a browser event loop.
+The generic proofless head continuation still suspends at script starts.
+The [selected source boundary](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
+records MIME essence matching and the complete checkpoint clauses; source-local
+work/storage admission and sticky terminal failures remain with the sole parser
+controller. This private test-compiled machinery still stops at AfterHead or
+template continuation rather than producing a completed public parse report.
+
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.
 The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,

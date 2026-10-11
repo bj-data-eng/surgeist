@@ -5,4 +5,4 @@ pub(crate) mod control;
 mod input;
 mod references;
 pub(crate) mod tokenizer;
-mod tree_builder;
+pub(crate) mod tree_builder;

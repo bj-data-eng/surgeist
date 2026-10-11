@@ -311,3 +311,37 @@ casing follows HTML; the corroborating WebKit witness does not select blanket
 lowercasing. The recorded upstream defect remains unresolved by the selected
 edition. No browser-source excerpt, credential mediation or alternate
 compatibility mode is incorporated.
+
+### Disabled script preparation and standalone checkpoint sources
+
+For [#1136](https://github.com/bj-data-eng/surgeist/issues/1136), the
+[bounded MIME Sniffing definitions](mimesniff-javascript-essence--39aa53511b13.md)
+select revision `39aa53511b13953d84fef8d4131d6f61d0ccbde6`, displayed
+17 July 2026, complete original HTML SHA-256
+`11caac49505995bcef51153a827c6fe96464111c8914e2c399d9e8fe9a467cd7`.
+Only the exact 16 JavaScript MIME essence strings and their ASCII case-insensitive
+string-match hook are selected. This is neither MIME-record parsing nor sniffing:
+parameter stripping is not part of an essence match. HTML877d retains authority
+over default type/language branches, its separate explicit-type ASCII-whitespace
+stripping step, module/importmap/speculationrules recognition, script metadata
+and the Disabled return before fetch/execution.
+
+The [complete microtask checkpoint](html-microtask-checkpoint--877d6146487f.md)
+retains queue/reentrancy definitions and all cleanup/timing hooks from that same
+HTML edition. Disabled scripting alone does not establish an empty checkpoint.
+The selected private standalone specialization requires the actual fresh
+construction owner to establish absent executable microtasks, settings/globals,
+IndexedDB transactions, kept JavaScript objects and running-script/frame-timing
+domains, with no effect-producing callbacks or host integration. Structural
+construction effects and script metadata remain required; cancellation/work
+admission remains in source order. Captured/hosted execution does not acquire
+this proof from an immutable capture or Disabled state.
+
+[Long Animation Frames §3.2.2](https://w3c.github.io/long-animation-frames/#record-timing-info-for-microtask-checkpoint)
+is an explanatory live citation inspected on 2026-10-11. No original bytes or
+content hash were retained, and no timing-source commit is selected or counted.
+The retained HTML checkpoint establishes that the hook exists. The absent-domain
+disposition is an explicit architecture capability specialization, not an
+implementation of the external timing algorithm or a normative null-script
+return. These source selections do not certify a complete parser or browser
+event loop.

@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **353 source identities: 255 full documents/source witnesses, 90 partial witnesses and 8 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **354 source identities: 255 full documents/source witnesses, 91 partial witnesses and 8 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -342,3 +342,44 @@ identity, giving 353 identities: 255 full, 90 partial and eight metadata-only.
 HTML's existing identity is reused, and linked issues/PRs without retained
 response snapshots do not add identities. This records provenance and the
 selected recovery disposition rather than autofill or credential execution.
+
+## JavaScript MIME essence and HTML checkpoint sources — 2026-10-11
+
+The [JavaScript essence definitions](mimesniff-javascript-essence--39aa53511b13.md)
+add one partial source identity: MIME Sniffing revision
+`39aa53511b13953d84fef8d4131d6f61d0ccbde6`, displayed 17 July 2026,
+complete original HTML SHA-256
+`11caac49505995bcef51153a827c6fe96464111c8914e2c399d9e8fe9a467cd7`.
+The bounded conversion retains original lines 838–880: the JavaScript MIME type
+definition, all 16 distinct essence strings, the ASCII case-insensitive string
+match and attached HTML hook note. Independent comparison of the GFM rendering
+with the retained original preserves 528 non-layout text characters, all eight
+ordered links and nine retained IDs. Every same-edition target resolves in the
+original snapshot. The original footer declares CC BY 4.0 for prose and BSD
+3-Clause for portions incorporated into code; the existing full WHATWG license
+is reused without claiming an acquired MIME repository LICENSE byte comparison.
+
+The [microtask queue and checkpoint](html-microtask-checkpoint--877d6146487f.md)
+adds a bounded representation of the existing HTML877d identity. Its queue and
+reentrancy definitions and complete eight-step checkpoint retain all explanatory
+notes and promise, IndexedDB, ClearKeptObjects and timing hooks. Independent
+comparison preserves 1,399 non-layout text characters, all 36 ordered links and
+40 retained IDs; every same-edition target resolves. The two prepared extracts
+are retained byte-for-byte. Their Markdown SHA-256 values are
+`72aabeed12109427769c58c3b2b9d1d4cdaaa6a539edefe307abcebfbb7730bb`
+and `0d8b8d8d533d1a62a3f9ddbc91fb44831d8e4f458a1a63b3069cc12710594815`.
+Conversion used Pandoc 3.1.11.1 with absolute links and no source-script execution.
+These checks establish selected text/anchor fidelity, not browser execution,
+complete document conversion or universal external-link availability.
+
+Long Animation Frames is an explanatory live citation inspected on 2026-10-11;
+no original page bytes/content hash or verified commit/page association was
+retained. It adds no source identity or selected pin. HTML's retained checkpoint
+establishes the hook's existence. The standalone absent-runtime-domain reduction
+is an explicit architecture capability specialization, not execution of that
+external algorithm or a normative null-script-return rule.
+
+The catalog now contains **354 identities: 255 full, 91 partial and eight
+metadata-only**, with **81 passive SVG assets** unchanged. Historical counts
+above remain dated records. No production dependency is introduced by retaining
+these source references.

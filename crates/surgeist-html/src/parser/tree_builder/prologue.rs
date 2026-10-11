@@ -46,7 +46,7 @@ pub(super) struct PrologueDiagnostic {
 }
 
 #[derive(Debug)]
-pub(super) enum PrologueError {
+pub(crate) enum PrologueError {
     Kernel(KernelError),
     AlreadyAtBeforeHead,
     PendingInput,

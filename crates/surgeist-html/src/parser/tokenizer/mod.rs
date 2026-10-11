@@ -265,6 +265,29 @@ impl<'source> Tokenizer<'source> {
         }
         Ok(())
     }
+    /// Borrows the actual preprocessed/reconsume-aware next input item without
+    /// consuming it or changing lexical state. A script end hands off in Data
+    /// with no queued events/drafts; a raw token endpoint is not substituted.
+    pub(crate) fn checked_next_input_position(
+        &self,
+        source: &HtmlSource,
+        c: &mut ParseControl,
+    ) -> Result<HtmlSourceRange, TokenizerHandoffError> {
+        self.validate_head_handoff(source, c)?;
+        c.admit_atomic_layout(size_of::<HtmlSourceRange>())?;
+        c.charge(WorkCategory::CopyByte, size_of::<HtmlSourceRange>() as u64)?;
+        c.charge(WorkCategory::RecordWrite, 1)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        match self.cursor.peek(c)? {
+            super::input::InputRead::Character(character) => {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(WorkCategory::InspectByte, size_of::<usize>() as u64)?;
+                let before = character.source().start();
+                Ok(self.cursor.checked_range(before, before, c)?)
+            }
+            super::input::InputRead::Eof(range) => Ok(range),
+        }
+    }
     pub(crate) fn new(
         source: &'source HtmlSource,
         state: State,

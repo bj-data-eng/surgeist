@@ -356,16 +356,30 @@ were checked by the leaf against the named files at the pinned revision.
 The checkout includes the Fullscreen specification snapshot at
 `7c38d773117aa1e6bfa13754afe77483f40c908f`, distributed by WHATWG
 (Apple, Google, Mozilla, Microsoft), as reformatted implementation reference text.
-The collection also retains bounded DOM, HTML, Web IDL and Infra captures with
-their original notices and independently hashed source scope.
+The collection also retains bounded DOM, HTML, Web IDL, Infra and MIME Sniffing
+captures with their original notices and independently hashed source scope.
 
 * License: [Creative Commons Attribution 4.0 International, with the upstream BSD 3-Clause provision for portions incorporated into source code](licenses/whatwg/LICENSE)
-* Homepages: [WHATWG Fullscreen](https://fullscreen.spec.whatwg.org/), [DOM](https://dom.spec.whatwg.org/), [HTML](https://html.spec.whatwg.org/), [Web IDL](https://webidl.spec.whatwg.org/) and [Infra](https://infra.spec.whatwg.org/)
+* Homepages: [WHATWG Fullscreen](https://fullscreen.spec.whatwg.org/), [DOM](https://dom.spec.whatwg.org/), [HTML](https://html.spec.whatwg.org/), [Web IDL](https://webidl.spec.whatwg.org/), [Infra](https://infra.spec.whatwg.org/) and [MIME Sniffing](https://mimesniff.spec.whatwg.org/)
 * Exact revision, copyright statement and changes: [reference attribution](licenses/whatwg/NOTICE.md)
 
 The complete selected upstream LICENSE is preserved byte-for-byte. Its BSD
 provision applies to the stated source-code scope; the Markdown specification
 text is covered by Creative Commons Attribution 4.0 International.
+
+The [bounded JavaScript MIME essence definitions](references/mimesniff-javascript-essence--39aa53511b13.md)
+retain the 16-string vocabulary and matching hook from the
+[MIME Sniffing project](https://github.com/whatwg/mimesniff), revision
+`39aa53511b13953d84fef8d4131d6f61d0ccbde6`; the private script adaptation
+incorporates those strings under the BSD source-code provision. The
+[complete microtask checkpoint](references/html-microtask-checkpoint--877d6146487f.md)
+adds a bounded representation of the existing HTML877d edition, including its
+external cleanup/timing hooks. The
+[source notice](licenses/whatwg/NOTICE.md#javascript-mime-essence-and-html-checkpoint--2026-10-11)
+records these conversions and their exact original hashes. They introduce no
+MIME parser/sniffer or browser event-loop implementation; the selected
+standalone absent-runtime-domain reduction is an explicit architecture
+capability specialization.
 
 The HTML crate also incorporates the selected edition's common microsyntax
 algorithms and element and attribute indexes under that BSD provision; see the

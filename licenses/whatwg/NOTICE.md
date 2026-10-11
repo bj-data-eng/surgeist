@@ -90,3 +90,45 @@ selected sections converted to Markdown, source links made absolute and
 script/style/MDN annotations removed without executing source scripts.
 The capture retains the complete selected algorithms and interface text; no
 editing-command runtime or spelling service is incorporated.
+
+## JavaScript MIME essence and HTML checkpoint — 2026-10-11
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded MIME Sniffing capture](../../references/mimesniff-javascript-essence--39aa53511b13.md)
+retains §4.6 JavaScript MIME type and essence-match definitions, all 16 essence
+strings and the attached HTML hook note from
+[immutable revision `39aa53511b13953d84fef8d4131d6f61d0ccbde6`](https://mimesniff.spec.whatwg.org/commit-snapshots/39aa53511b13953d84fef8d4131d6f61d0ccbde6/),
+displayed 17 July 2026; complete original HTML SHA-256
+`11caac49505995bcef51153a827c6fe96464111c8914e2c399d9e8fe9a467cd7`.
+Its original footer declares CC BY 4.0 for specification prose and BSD 3-Clause
+instead for portions incorporated into source code. The existing complete
+[WHATWG license](LICENSE) supplies both legal texts, the copyright and disclaimer.
+No MIME repository LICENSE acquisition or byte-identity comparison is claimed.
+Changes by Surgeist on 2026-10-11 are bounded extraction, Markdown conversion
+with Pandoc 3.1.11.1 and absolute-link rewriting, without executing source scripts.
+Original source text remains authoritative; no endorsement is implied.
+
+The private Disabled-script classification adapts the exact 16-string matching
+vocabulary into Rust source under the BSD code-incorporation provision. HTML
+owns the surrounding preparation branches. This incorporation adds no MIME
+record parser, parameter stripping, sniffing operation or runtime dependency.
+
+The [complete checkpoint capture](../../references/html-microtask-checkpoint--877d6146487f.md)
+retains queue/reentrancy definitions, all eight algorithm steps and explanatory
+notes from the existing HTML snapshot
+`877d6146487f15b15bc8dd0e3c625063a37b456a`, complete original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+The same CC BY prose terms and unchanged exact HTML license above apply.
+Changes comprise bounded extraction, Pandoc conversion and absolute-link
+rewriting on 2026-10-11, with no source-script execution. This is another
+representation of that HTML identity, not a separate edition. Promise,
+IndexedDB, ClearKeptObjects and external timing hooks remain in the capture.
+
+The selected private standalone absent-runtime-domain reduction is an explicit
+architecture capability specialization, not a browser event loop, execution of
+the external timing algorithm or a normative null-script-return rule. No timing
+source pin, retained snapshot or algorithm incorporation is claimed. The
+[edition selection](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
+and [conversion record](../../references/CONVERSION-REPORT.md#javascript-mime-essence-and-html-checkpoint-sources--2026-10-11)
+bound this source use without certifying a complete parser.

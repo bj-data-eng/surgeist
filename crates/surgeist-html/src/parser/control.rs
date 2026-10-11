@@ -61,6 +61,16 @@ pub(crate) enum ParseStop {
         layout_bytes: u64,
     },
     InternalInvariant(Invariant),
+    UnsupportedStandaloneState(StandaloneUnsupported),
+}
+/// Actual selected closed-environment execution boundaries, not limit errors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StandaloneUnsupported {
+    Provenance,
+    ScriptDocument,
+    ScriptPause,
+    PendingScript,
+    InvalidNesting,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -166,6 +176,17 @@ impl ParseControl {
         *self
             .terminal
             .get_or_insert(ParseStop::InternalInvariant(invariant))
+    }
+    pub(crate) fn stop_unsupported_standalone(
+        &mut self,
+        reason: StandaloneUnsupported,
+    ) -> ParseStop {
+        if let Err(first) = self.checkpoint() {
+            return first;
+        }
+        *self
+            .terminal
+            .get_or_insert(ParseStop::UnsupportedStandaloneState(reason))
     }
     fn fail<T>(&mut self, reason: ParseStop) -> Result<T, ParseStop> {
         let first = *self.terminal.get_or_insert(reason);
@@ -1611,6 +1632,60 @@ impl<T: Copy> OwnedVec<T> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unsupported_standalone_state_is_terminal_without_refunding_admitted_storage_or_work() {
+        let mut c = control();
+        let mut storage = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        storage.try_push(&mut c, 7u16).unwrap();
+        let before = c.usage().clone();
+        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
+        assert_eq!(
+            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
+            stop
+        );
+        assert_eq!(c.usage(), &before);
+        assert_eq!(
+            c.stop_unsupported_standalone(StandaloneUnsupported::PendingScript),
+            stop
+        );
+        assert_eq!(c.charge(WorkCategory::StateStep, 1), Err(stop));
+        assert_eq!(storage.try_push(&mut c, 9), Err(stop));
+        assert_eq!(storage.cleanup_pop(&mut c).unwrap(), Some(7));
+        storage.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            0
+        );
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(c.stop(), Some(stop));
+    }
+
+    #[test]
+    fn an_observed_cancellation_precedes_later_unsupported_state() {
+        let cancellation = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancellation.clone());
+        cancellation.cancel();
+        assert_eq!(
+            c.stop_unsupported_standalone(StandaloneUnsupported::InvalidNesting),
+            ParseStop::Cancelled
+        );
+        assert_eq!(
+            c.stop_unsupported_standalone(StandaloneUnsupported::ScriptPause),
+            ParseStop::Cancelled
+        );
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    }
     use super::*;
     use crate::DocumentString;
 
