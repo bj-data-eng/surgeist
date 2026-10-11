@@ -458,6 +458,26 @@ Immutable shared input backing and fixed wrappers remain outside variable-buffer
 accounting. Terminal resource or cancellation failures preserve the session's
 sticky failure and atomic batch contract.
 
+The captured `ImageMapAttribute`, `ImageControlsAttribute` and
+`StylesheetDisabledAttribute` queries retain the intrinsic Boolean report and
+the author-context evidence they actually consult. A present Boolean remains
+true even when its spelling or required context is nonconforming. The ismap
+query walks ordinary ancestors for the first exact HTML a with href present;
+empty href qualifies, and a witness ends the walk before further ancestry is
+needed. Missing ancestry preserves the known content report with explicitly
+unavailable author context. Controls observes alt presence and nonempty content;
+disabled observes ASCII-insensitive stylesheet membership in rel.
+
+`HyperlinkReferrerPolicyAttribute` applies to HTML a and area and retains the
+actual href-presence observation separately from intrinsic policy recognition.
+An absent target attribute requires no contextual lookup. All selected raw
+values and consulted rel text are admitted in full before recognition; href and
+alt contents need only presence or emptiness observations. These operations use
+the shared semantic ledger, fallible output admission and sticky atomic batches.
+Immutable attribute backing and fixed wrappers are outside variable-buffer
+accounting. They establish no effective request policy, stylesheet activation,
+image-map execution or UI effect.
+
 `InputSuggestionsSource` uses the input state's source-defined `list`
 applicability and the first element in the same ordinary tree whose ID exactly
 matches the raw attribute. That element supplies the source only when it is an

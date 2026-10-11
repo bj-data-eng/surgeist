@@ -290,6 +290,13 @@ pub surgeist_html::HtmlBooleanAttribute::TrackDefault
 impl surgeist_html::HtmlBooleanAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::attribute(self) -> surgeist_html::KnownHtmlAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::into_attribute(self, present: bool) -> core::option::Option<surgeist_html::Attribute>
+pub enum surgeist_html::HtmlBooleanAuthorContextEvidence
+pub surgeist_html::HtmlBooleanAuthorContextEvidence::ImageControls
+pub surgeist_html::HtmlBooleanAuthorContextEvidence::ImageControls::alt: core::option::Option<surgeist_html::Attribute>
+pub surgeist_html::HtmlBooleanAuthorContextEvidence::ImageMap(surgeist_html::HtmlImageMapAncestorEvidence)
+pub surgeist_html::HtmlBooleanAuthorContextEvidence::NotRequired
+pub surgeist_html::HtmlBooleanAuthorContextEvidence::StylesheetLink
+pub surgeist_html::HtmlBooleanAuthorContextEvidence::StylesheetLink::rel: core::option::Option<surgeist_html::Attribute>
 pub enum surgeist_html::HtmlButtonSubmitterContext
 pub surgeist_html::HtmlButtonSubmitterContext::NotSubmitButton
 pub surgeist_html::HtmlButtonSubmitterContext::SubmitButton
@@ -730,6 +737,12 @@ pub surgeist_html::HtmlImageControlsAttributeContext::AltEmpty
 pub surgeist_html::HtmlImageControlsAttributeContext::AltMissing
 pub surgeist_html::HtmlImageControlsAttributeContext::AltNonempty
 pub surgeist_html::HtmlImageControlsAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImageMapAncestorEvidence
+pub surgeist_html::HtmlImageMapAncestorEvidence::AncestorAnchorWithHref
+pub surgeist_html::HtmlImageMapAncestorEvidence::AncestorAnchorWithHref::ancestor: surgeist_html::HtmlCaptureSubjectId
+pub surgeist_html::HtmlImageMapAncestorEvidence::AncestorAnchorWithHref::href: surgeist_html::Attribute
+pub surgeist_html::HtmlImageMapAncestorEvidence::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlImageMapAncestorEvidence::NoAncestorAnchorWithHref
 pub enum surgeist_html::HtmlImageMapAttributeContext
 pub surgeist_html::HtmlImageMapAttributeContext::AncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAttributeContext::NoAncestorAnchorWithHref
@@ -1201,6 +1214,9 @@ pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemant
 pub surgeist_html::HtmlSemanticFact::FormImplicitSubmissionCondition(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImplicitSubmissionCondition>)
 pub surgeist_html::HtmlSemanticFact::FormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFormOwner>)
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
+pub surgeist_html::HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHyperlinkReferrerPolicyReadback>)
+pub surgeist_html::HtmlSemanticFact::ImageControlsAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
+pub surgeist_html::HtmlSemanticFact::ImageMapAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
 pub surgeist_html::HtmlSemanticFact::Indeterminateness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Inertness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::InputSuggestionsSource(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
@@ -1225,6 +1241,7 @@ pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSema
 pub surgeist_html::HtmlSemanticFact::SelectValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectValue>)
 pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::Spellcheck(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::StylesheetDisabledAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormEnctype>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormMethod>)
 pub surgeist_html::HtmlSemanticFact::SubmitterNoValidate(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterNoValidate>)
@@ -1284,6 +1301,9 @@ pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
 pub surgeist_html::HtmlSemanticQuery::FormImplicitSubmissionCondition
 pub surgeist_html::HtmlSemanticQuery::FormOwner
 pub surgeist_html::HtmlSemanticQuery::Hidden
+pub surgeist_html::HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute
+pub surgeist_html::HtmlSemanticQuery::ImageControlsAttribute
+pub surgeist_html::HtmlSemanticQuery::ImageMapAttribute
 pub surgeist_html::HtmlSemanticQuery::Indeterminateness
 pub surgeist_html::HtmlSemanticQuery::Inertness
 pub surgeist_html::HtmlSemanticQuery::InputSuggestionsSource
@@ -1308,6 +1328,7 @@ pub surgeist_html::HtmlSemanticQuery::SelectSelectedIndex
 pub surgeist_html::HtmlSemanticQuery::SelectValue
 pub surgeist_html::HtmlSemanticQuery::SelectedOptions
 pub surgeist_html::HtmlSemanticQuery::Spellcheck
+pub surgeist_html::HtmlSemanticQuery::StylesheetDisabledAttribute
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormEnctype
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormMethod
 pub surgeist_html::HtmlSemanticQuery::SubmitterNoValidate
@@ -2090,6 +2111,10 @@ pub struct surgeist_html::HtmlAutocompleteSection
 impl surgeist_html::HtmlAutocompleteSection
 pub fn surgeist_html::HtmlAutocompleteSection::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAutocompleteSectionError>
 pub fn surgeist_html::HtmlAutocompleteSection::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlBooleanAuthorContextReadback
+impl surgeist_html::HtmlBooleanAuthorContextReadback
+pub fn surgeist_html::HtmlBooleanAuthorContextReadback::attribute_report(&self) -> &surgeist_html::HtmlAttributeReport<bool>
+pub fn surgeist_html::HtmlBooleanAuthorContextReadback::evidence(&self) -> &surgeist_html::HtmlBooleanAuthorContextEvidence
 pub struct surgeist_html::HtmlBuilderNode
 pub struct surgeist_html::HtmlCapture(_)
 impl surgeist_html::HtmlCapture
@@ -2563,6 +2588,10 @@ impl core::cmp::PartialEq for surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlHostFactsRevision::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlHostFactsRevision::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_html::HtmlHyperlinkReferrerPolicyReadback
+impl surgeist_html::HtmlHyperlinkReferrerPolicyReadback
+pub fn surgeist_html::HtmlHyperlinkReferrerPolicyReadback::attribute_report(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>
+pub fn surgeist_html::HtmlHyperlinkReferrerPolicyReadback::href_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
 pub struct surgeist_html::HtmlInertFactLimits
 impl surgeist_html::HtmlInertFactLimits
 pub fn surgeist_html::HtmlInertFactLimits::new(record_capacity: usize, validation_work: usize) -> Self

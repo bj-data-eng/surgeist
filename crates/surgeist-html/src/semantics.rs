@@ -4,7 +4,7 @@
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets and control labels, current control flags, global inheritance, select
 //! readbacks, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
-//! defaults, textarea/output text getters, captured time-element interpretation and input/button form setting selection
+//! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
@@ -23,6 +23,8 @@ mod control;
 pub use control::*;
 mod control_text;
 pub use control_text::*;
+mod attribute_context;
+pub use attribute_context::*;
 mod time_element;
 pub use time_element::*;
 mod inheritance;
@@ -681,6 +683,10 @@ pub enum HtmlSemanticQuery {
     InputSuggestionsSource,
     DatalistOptions,
     DatalistSuggestionOptions,
+    ImageMapAttribute,
+    ImageControlsAttribute,
+    StylesheetDisabledAttribute,
+    HyperlinkReferrerPolicyAttribute,
     TimeElement,
     TextareaDefaultValue,
     OutputValue,
@@ -702,6 +708,18 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::ImageMapAttribute => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-img-ismap"
+            }
+            Self::ImageControlsAttribute => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-img-controls"
+            }
+            Self::StylesheetDisabledAttribute => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-disabled"
+            }
+            Self::HyperlinkReferrerPolicyAttribute => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-referrerpolicy"
+            }
             Self::TimeElement => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-time-element"
             }
@@ -961,6 +979,10 @@ pub enum HtmlSemanticFact {
     /// Known(None) establishes that the input has no source of suggestions.
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    ImageMapAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
+    ImageControlsAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
+    StylesheetDisabledAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
+    HyperlinkReferrerPolicyAttribute(HtmlSemanticValue<HtmlHyperlinkReferrerPolicyReadback>),
     TimeElement(HtmlSemanticValue<HtmlTimeElementReadback>),
     TextareaDefaultValue(HtmlSemanticValue<HtmlControlTextReadback>),
     OutputValue(HtmlSemanticValue<HtmlControlTextReadback>),
@@ -2231,6 +2253,26 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Spellcheck => {
                             HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
                         }
+                        HtmlSemanticQuery::ImageMapAttribute => {
+                            HtmlSemanticFact::ImageMapAttribute(
+                                self.image_map_attribute(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::ImageControlsAttribute => {
+                            HtmlSemanticFact::ImageControlsAttribute(
+                                self.image_controls_attribute(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::StylesheetDisabledAttribute => {
+                            HtmlSemanticFact::StylesheetDisabledAttribute(
+                                self.stylesheet_disabled_attribute(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute => {
+                            HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(
+                                self.hyperlink_referrerpolicy_attribute(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::TimeElement => {
                             HtmlSemanticFact::TimeElement(self.time_element(&request.subject)?)
                         }
@@ -2425,6 +2467,22 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Spellcheck => {
                         HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ImageMapAttribute => {
+                        HtmlSemanticFact::ImageMapAttribute(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ImageControlsAttribute => {
+                        HtmlSemanticFact::ImageControlsAttribute(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::StylesheetDisabledAttribute => {
+                        HtmlSemanticFact::StylesheetDisabledAttribute(
+                            HtmlSemanticValue::Inapplicable,
+                        )
+                    }
+                    HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute => {
+                        HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(
+                            HtmlSemanticValue::Inapplicable,
+                        )
                     }
                     HtmlSemanticQuery::TimeElement => {
                         HtmlSemanticFact::TimeElement(HtmlSemanticValue::Inapplicable)

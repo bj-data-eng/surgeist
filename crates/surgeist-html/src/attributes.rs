@@ -1331,14 +1331,28 @@ fn report<T>(
 }
 
 fn ascii_keyword(raw: &DocumentString, keyword: &str) -> bool {
-    raw.code_units().len() == keyword.len()
-        && raw
-            .code_units()
-            .iter()
-            .zip(keyword.bytes())
-            .all(|(&unit, byte)| {
-                u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte))
-            })
+    ascii_keyword_units(raw.code_units(), keyword)
+}
+
+fn ascii_keyword_units(units: &[u16], keyword: &str) -> bool {
+    units.len() == keyword.len()
+        && units.iter().zip(keyword.bytes()).all(|(&unit, byte)| {
+            u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte))
+        })
+}
+
+/// Finite work envelope for stylesheet membership and fixed context creation.
+///
+/// For n input units, the borrowed Infra splitter inspects at most n boundary
+/// units and visits at most n + 1 fields. At most n nonempty tokens reach the
+/// membership search, with two length reads each. Compared tokens are disjoint:
+/// at most n unit/keyword-byte pairs are read and ASCII-compared. These account
+/// for n + (n + 1) + n + 2n + 2n + n = 8n + 1 actions. The additional twelve
+/// cover raw presence/length/cap admission, borrowed slice access, search result,
+/// shared-handle retention, and fixed result construction. Early matches only
+/// reduce work. No token or code-unit buffer is materialized by this operation.
+pub(crate) fn stylesheet_link_context_work_bound(input_code_units: usize) -> Option<usize> {
+    input_code_units.checked_mul(8)?.checked_add(13)
 }
 
 impl HtmlValueInterpreter {
@@ -1727,10 +1741,8 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlStylesheetLinkAttributeContext, HtmlValueAdmissionError> {
         self.admit_attribute_raw(rel)?;
         let contains_stylesheet = rel.is_some_and(|raw| {
-            crate::tokens::split_space_tokens(raw)
-                .tokens()
-                .iter()
-                .any(|token| ascii_keyword(token.value(), "stylesheet"))
+            crate::tokens::space_token_slices(raw)
+                .any(|token| ascii_keyword_units(token, "stylesheet"))
         });
         Ok(HtmlStylesheetLinkAttributeContext {
             rel: rel.cloned(),
@@ -1976,3 +1988,103 @@ pub use srcset::*;
 
 mod modification;
 pub use modification::*;
+
+#[cfg(test)]
+mod stylesheet_context_tests {
+    use super::*;
+
+    #[test]
+    fn stylesheet_membership_keeps_exact_shared_rel_and_ascii_only_boundaries() {
+        let interpreter = HtmlValueInterpreter::new(100);
+        for (units, expected) in [
+            (vec![], false),
+            (" \t\n\r\u{c}".encode_utf16().collect(), false),
+            (
+                "alternate\tStYlEsHeEt\nstylesheet\r\u{c}preload "
+                    .encode_utf16()
+                    .collect(),
+                true,
+            ),
+            ("stylesheet\u{a0}alternate".encode_utf16().collect(), false),
+            ("stylesheet,preload".encode_utf16().collect(), false),
+            ("xstylesheet stylesheetx".encode_utf16().collect(), false),
+            (vec![0xD800, 0x20, 0xDC00, 0x20, 0xD83D, 0xDE00], false),
+            (
+                [vec![0xD800, 0x20], "STYLESHEET".encode_utf16().collect()].concat(),
+                true,
+            ),
+        ] {
+            let raw = DocumentString::from_utf16(units.clone());
+            let context = interpreter.stylesheet_link_context(Some(&raw)).unwrap();
+            assert_eq!(context.contains_stylesheet(), expected);
+            assert_eq!(context.rel().unwrap().code_units(), units);
+            assert_eq!(
+                context.rel().unwrap().code_units().as_ptr(),
+                raw.code_units().as_ptr()
+            );
+        }
+        let missing = interpreter.stylesheet_link_context(None).unwrap();
+        assert_eq!(missing.rel(), None);
+        assert!(!missing.contains_stylesheet());
+    }
+
+    #[test]
+    fn borrowed_keyword_comparison_has_the_same_exact_ascii_language() {
+        for (text, expected) in [
+            ("stylesheet", true),
+            ("STyLeShEeT", true),
+            (" stylesheet", false),
+            ("stylesheet ", false),
+            ("\u{17f}tylesheet", false),
+            ("styleſheet", false),
+            ("stylesheetx", false),
+        ] {
+            let raw = DocumentString::from(text);
+            assert_eq!(ascii_keyword(&raw, "stylesheet"), expected);
+            assert_eq!(
+                ascii_keyword_units(raw.code_units(), "stylesheet"),
+                expected
+            );
+        }
+        let isolated = DocumentString::from_utf16([0xD800; 10].to_vec());
+        assert!(!ascii_keyword_units(isolated.code_units(), "stylesheet"));
+    }
+
+    #[test]
+    fn stylesheet_work_envelope_is_finite_for_empty_wide_and_representation_edges() {
+        // n splitter reads + n+1 field visits + n token visits + 2n length
+        // reads + 2n paired reads + n comparisons, plus 12 fixed actions.
+        assert_eq!(stylesheet_link_context_work_bound(0), Some(13));
+        assert_eq!(stylesheet_link_context_work_bound(10), Some(93));
+        assert_eq!(stylesheet_link_context_work_bound(10_000), Some(80_013));
+        let maximum_input = (usize::MAX - 13) / 8;
+        assert_eq!(
+            stylesheet_link_context_work_bound(maximum_input),
+            Some(maximum_input * 8 + 13)
+        );
+        assert_eq!(stylesheet_link_context_work_bound(maximum_input + 1), None);
+        assert_eq!(stylesheet_link_context_work_bound(usize::MAX), None);
+
+        let raw = DocumentString::from("x ".repeat(5_000));
+        let context = HtmlValueInterpreter::new(10_000)
+            .stylesheet_link_context(Some(&raw))
+            .unwrap();
+        assert!(!context.contains_stylesheet());
+        assert_eq!(context.rel().unwrap().code_units(), raw.code_units());
+    }
+
+    #[test]
+    fn whole_rel_cap_precedes_an_early_stylesheet_match() {
+        let raw = DocumentString::from("stylesheet ignored");
+        let error = HtmlValueInterpreter::new(raw.len() - 1)
+            .stylesheet_link_context(Some(&raw))
+            .unwrap_err();
+        assert_eq!(error.capacity(), raw.len() - 1);
+        assert_eq!(error.required(), raw.len());
+        let context = HtmlValueInterpreter::new(raw.len())
+            .stylesheet_link_context(Some(&raw))
+            .unwrap();
+        assert!(context.contains_stylesheet());
+        assert_eq!(context.rel().unwrap().code_units(), raw.code_units());
+    }
+}
