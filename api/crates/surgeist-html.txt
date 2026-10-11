@@ -92,6 +92,7 @@ pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionMustBeLtrOrRtl
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
 pub surgeist_html::HtmlAttributeConformanceError::DetailsNameMustNotBeEmpty
+pub surgeist_html::HtmlAttributeConformanceError::InvalidIdToken(surgeist_html::HtmlTokenError)
 pub surgeist_html::HtmlAttributeConformanceError::NonconformingKeyword
 pub surgeist_html::HtmlAttributeConformanceError::UnrecognizedKeyword
 pub enum surgeist_html::HtmlAttributeContextAuthorState
@@ -3564,6 +3565,8 @@ pub fn surgeist_html::HtmlSpaceSeparatedTokens::new(tokens: impl core::iter::tra
 pub fn surgeist_html::HtmlSpaceSeparatedTokens::tokens(&self) -> &[surgeist_html::HtmlSpaceToken]
 pub struct surgeist_html::HtmlSpaceToken
 impl surgeist_html::HtmlSpaceToken
+pub fn surgeist_html::HtmlSpaceToken::into_id_attribute(self) -> surgeist_html::Attribute
+impl surgeist_html::HtmlSpaceToken
 pub fn surgeist_html::HtmlSpaceToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlTokenError>
 pub fn surgeist_html::HtmlSpaceToken::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlSpellcheckDefaultFact
@@ -3890,6 +3893,8 @@ pub fn surgeist_html::HtmlValueInterpreter::formmethod_for_button(&self, element
 pub fn surgeist_html::HtmlValueInterpreter::formmethod_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::hidden(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlHiddenState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::id_attribute(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::iframe_sandbox(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSandboxReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

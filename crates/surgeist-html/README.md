@@ -287,6 +287,15 @@ including numbers beyond binary64 range or precision. Emission moves those strin
 into ordered attributes. Both operations use ordinary allocation; raw interpretation
 uses per-value admission. Captured Meter below owns processing defaults and clamping.
 
+`id_attribute` checks HTML id's local nonempty/no-ASCII-whitespace rule through
+the existing `HtmlSpaceToken` validator. Missing, supplied empty and invalid
+content remain distinct with exact raw UTF-16; every present applicable id leaves
+tree uniqueness unchecked. A missing checked token does not establish absence
+of a DOM ID. `HtmlSpaceToken::into_id_attribute` emits the canonical attribute
+with exact accepted content. These operations use ordinary allocation, with a
+per-value admission cap on raw interpretation. They do not validate uniqueness,
+DOM ID behavior in other namespaces, selectors or serialized characters.
+
 `details_name` checks the local specified-nonempty rule for `details[name]`.
 Absence remains missing; supplied empty content is retained and nonconforming.
 Every nonempty name preserves its exact UTF-16, including whitespace and case.

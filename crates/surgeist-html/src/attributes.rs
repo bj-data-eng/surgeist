@@ -9,8 +9,9 @@
 //! Referrer-policy vocabulary is qualified separately in its report metadata.
 
 use crate::{
-    Attribute, DocumentString, HtmlShadowRootMode, HtmlSlotAssignment, HtmlValueAdmissionError,
-    HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
+    Attribute, DocumentString, HtmlShadowRootMode, HtmlSlotAssignment, HtmlTokenError,
+    HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, Namespace,
+    QualifiedName,
 };
 
 /// Exact presence of the supplied attribute, independent of validity/defaults.
@@ -190,6 +191,8 @@ pub enum HtmlAttributeConformanceError {
     BdoDirectionMustBeLtrOrRtl,
     /// A specified details name must not be the empty string.
     DetailsNameMustNotBeEmpty,
+    /// An HTML id violates its local nonempty/no-ASCII-whitespace author rule.
+    InvalidIdToken(HtmlTokenError),
 }
 
 /// Intrinsic value author conformance is independent of state/applicability.
@@ -2018,6 +2021,8 @@ pub use meter::*;
 
 mod details_name;
 pub use details_name::*;
+
+mod id;
 
 #[cfg(test)]
 mod stylesheet_context_tests {
