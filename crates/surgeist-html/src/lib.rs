@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod attributes;
+mod capture;
 mod color;
 mod construction;
 mod interpretation;
@@ -17,6 +18,7 @@ mod values;
 mod vocabulary;
 
 pub use attributes::*;
+pub use capture::*;
 pub use color::*;
 pub use construction::*;
 pub use interpretation::*;

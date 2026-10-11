@@ -3,7 +3,8 @@
 This crate owns the pinned HTML language foundation. Its initial public surface
 provides immutable exact UTF-16 strings, namespace identity, qualified names,
 ordered raw attributes, native immutable document/fragment construction,
-known-name inventories and common intrinsic value operations.
+known-name inventories, common intrinsic value operations and bounded immutable
+captures of HTML semantic facts.
 The [HTML contribution](https://github.com/bj-data-eng/surgeist/issues/1132)
 tracks the remaining typed vocabulary/value interpretation, parser, semantic
 interpretation, provenance and full parser resource-admission capabilities.
@@ -129,3 +130,21 @@ spelling when a clause supplies a fallback; keyboard hints retain their lack of
 a defined fallback. Native keyword values construct their canonical raw
 attributes. These views do not compute inheritance or claim runtime effects,
 and the remaining attribute families are tracked by the contribution.
+
+`HtmlCaptureBuilder` freezes one bounded, flat capture of document, node,
+registry and relationship facts. Capture-qualified subjects are independent of
+native result IDs and future canonical DOM IDs. Unavailable facts remain
+distinct from known absence; lookups and traversal borrow the captured records.
+Every retention capacity is explicit, and rejected changes preserve logical
+content and usage. Document self identity is covered by the subject count;
+relationships count references to other retained records.
+
+`HtmlFragmentContext` selects an actual captured element or hosted fragment,
+retaining its context and target documents, integration facts and nearest form.
+It derives the initial tokenizer/insertion state and checked scripting mode:
+Inert is the fragment default, disabled context forces Disabled, and unavailable
+execution is a typed error. Captured processing-instruction target/data preserve
+producer values independently of strict native author syntax. Capture and context
+selection perform no parsing, live mutation, script execution or effect
+publication. The parser still owns recovered metadata, contextual construction
+effects, diagnostics, provenance and its separate execution controls.
