@@ -1,11 +1,11 @@
 //! Capture-qualified intrinsic semantic queries, HTML 877d6146487f.
 //!
-//! These queries implement `attr-hidden`, `concept-element-disabled`,
-//! `concept-fe-disabled`, `concept-fieldset-disabled`, `concept-option-disabled`
-//! and `option-element-nearest-ancestor-select`, plus `list-owner`,
-//! `concept-ol-start`, `ordinal-value` and the table model. Rendering and computed
-//! list-item classification are supplied capture-qualified facts. These queries
-//! do not compute style, layout, focus, inertness or custom-element execution.
+//! Queries cover hidden state, disabledness, list ownership and ordinals, the
+//! table model, language and directionality, meter and progress state, inertness,
+//! form owners, label targets and supplied current control flags. Computed list
+//! participation, flat-tree/modal facts and current control state are concrete
+//! capture-qualified inputs. Style, layout, focus and runtime state transitions
+//! remain with their producers; queries borrow one immutable capture.
 
 mod table;
 pub use table::*;
@@ -13,6 +13,10 @@ mod language;
 pub use language::*;
 mod range;
 pub use range::*;
+mod inert;
+pub use inert::*;
+mod control;
+pub use control::*;
 
 use crate::numeric::{
     IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
@@ -231,6 +235,9 @@ pub struct HtmlSemanticContextInput {
     participation_revision: Option<HtmlListParticipationRevision>,
     participation: Option<HtmlListParticipation>,
     language_direction: Option<HtmlLanguageDirectionFacts>,
+    inert_revision: Option<HtmlFlatTreeRevision>,
+    inert: Option<HtmlInertFacts>,
+    controls: Option<HtmlControlFacts>,
 }
 impl HtmlSemanticContextInput {
     pub fn new(classifications: Vec<HtmlCustomControlClassification>) -> Self {
@@ -239,6 +246,9 @@ impl HtmlSemanticContextInput {
             participation_revision: None,
             participation: None,
             language_direction: None,
+            inert_revision: None,
+            inert: None,
+            controls: None,
         }
     }
     pub fn with_list_participation(
@@ -248,6 +258,19 @@ impl HtmlSemanticContextInput {
     ) -> Self {
         self.participation_revision = Some(expected);
         self.participation = participation;
+        self
+    }
+    pub fn with_inert(
+        mut self,
+        expected: HtmlFlatTreeRevision,
+        facts: Option<HtmlInertFacts>,
+    ) -> Self {
+        self.inert_revision = Some(expected);
+        self.inert = facts;
+        self
+    }
+    pub fn with_controls(mut self, facts: HtmlControlFacts) -> Self {
+        self.controls = Some(facts);
         self
     }
     pub fn with_language_direction(mut self, facts: HtmlLanguageDirectionFacts) -> Self {
@@ -266,6 +289,9 @@ pub struct HtmlSemanticContext {
     participation_revision: Option<HtmlListParticipationRevision>,
     participation: Option<HtmlListParticipation>,
     language_direction: Option<HtmlLanguageDirectionFacts>,
+    inert_revision: Option<HtmlFlatTreeRevision>,
+    inert: Option<HtmlInertFacts>,
+    controls: Option<HtmlControlFacts>,
     empty_language: DocumentString,
 }
 /// Rejected producer context; no query result is created.
@@ -287,6 +313,13 @@ pub enum HtmlSemanticContextError {
     ContradictoryParticipation(HtmlCaptureSubjectId),
     LanguageDirectionCaptureMismatch,
     LanguageDirectionHostRevisionMismatch,
+    InertCaptureMismatch,
+    InertHostRevisionMismatch,
+    InertRevisionMismatch,
+    ControlsCaptureMismatch,
+    ControlsHostRevisionMismatch,
+    ContradictoryCustomControlAssociation(HtmlCaptureSubjectId),
+    ControlsFacts(HtmlControlFactsError),
 }
 impl fmt::Display for HtmlSemanticContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -313,7 +346,29 @@ impl HtmlSemanticContext {
             participation_revision,
             participation,
             language_direction,
+            inert_revision,
+            inert,
+            controls,
         } = input;
+        if let Some(facts) = &inert {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::InertCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::InertHostRevisionMismatch);
+            }
+            if inert_revision.as_ref() != Some(facts.flat_revision()) {
+                return Err(HtmlSemanticContextError::InertRevisionMismatch);
+            }
+        }
+        if let Some(facts) = &controls {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::ControlsCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::ControlsHostRevisionMismatch);
+            }
+        }
         if let Some(facts) = &language_direction {
             if facts.capture() != capture.identity() {
                 return Err(HtmlSemanticContextError::LanguageDirectionCaptureMismatch);
@@ -349,6 +404,15 @@ impl HtmlSemanticContext {
                 ));
             }
         }
+        let controls = controls
+            .map(|facts| facts.validate_classifications(capture, &classifications))
+            .transpose()
+            .map_err(|error| match error {
+                HtmlControlFactsError::ContradictoryCustomControlAssociation(subject) => {
+                    HtmlSemanticContextError::ContradictoryCustomControlAssociation(subject)
+                }
+                other => HtmlSemanticContextError::ControlsFacts(other),
+            })?;
         Ok(Self {
             identity: HtmlSemanticContextId(Arc::new(())),
             capture: capture.identity().clone(),
@@ -357,6 +421,9 @@ impl HtmlSemanticContext {
             participation_revision,
             participation,
             language_direction,
+            inert_revision,
+            inert,
+            controls,
             empty_language: DocumentString::default(),
         })
     }
@@ -380,6 +447,15 @@ impl HtmlSemanticContext {
     }
     pub fn language_direction(&self) -> Option<&HtmlLanguageDirectionFacts> {
         self.language_direction.as_ref()
+    }
+    pub fn inert_revision(&self) -> Option<&HtmlFlatTreeRevision> {
+        self.inert_revision.as_ref()
+    }
+    pub fn inert(&self) -> Option<&HtmlInertFacts> {
+        self.inert.as_ref()
+    }
+    pub fn controls(&self) -> Option<&HtmlControlFacts> {
+        self.controls.as_ref()
     }
     fn empty_language(&self) -> &DocumentString {
         &self.empty_language
@@ -502,6 +578,15 @@ pub enum HtmlSemanticQuery {
     Directionality,
     Meter,
     Progress,
+    Inertness,
+    FormOwner,
+    LabeledControl,
+    CurrentCheckedness,
+    CurrentSelectedness,
+    DirtyValueFlag,
+    DirtyCheckednessFlag,
+    OptionDirtiness,
+    Indeterminateness,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
@@ -536,6 +621,33 @@ impl HtmlSemanticQuery {
             Self::Progress => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-progress-element"
             }
+            Self::Inertness => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#inert-subtrees"
+            }
+            Self::FormOwner => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-owner"
+            }
+            Self::LabeledControl => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#labeled-control"
+            }
+            Self::CurrentCheckedness => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-fe-checked"
+            }
+            Self::CurrentSelectedness => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-option-selectedness"
+            }
+            Self::DirtyValueFlag => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-fe-dirty"
+            }
+            Self::DirtyCheckednessFlag => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-input-checked-dirty-flag"
+            }
+            Self::OptionDirtiness => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-option-dirtiness"
+            }
+            Self::Indeterminateness => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-input-indeterminate"
+            }
         }
     }
 }
@@ -568,6 +680,15 @@ pub enum HtmlSemanticMissing {
     CurrentValue(HtmlCaptureSubjectId),
     SlotAssignment(HtmlCaptureSubjectId),
     ShadowHost(HtmlCaptureSubjectId),
+    InertNodeFacts(HtmlCaptureSubjectId),
+    InertAncestry(HtmlCaptureSubjectId),
+    Connectedness(HtmlCaptureSubjectId),
+    ModalBlocking(HtmlCaptureSubjectId),
+    FormAssociation(HtmlCaptureSubjectId),
+    ControlState {
+        subject: HtmlCaptureSubjectId,
+        flag: HtmlControlFlag,
+    },
 }
 /// Hidden and disabledness do not implement foreign-language semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -604,6 +725,15 @@ pub enum HtmlSemanticFact {
     Directionality(HtmlSemanticValue<HtmlDirectionality>),
     Meter(HtmlSemanticValue<HtmlMeterState>),
     Progress(HtmlSemanticValue<HtmlProgressState>),
+    Inertness(HtmlSemanticValue<bool>),
+    FormOwner(HtmlSemanticValue<HtmlFormOwner>),
+    LabeledControl(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    CurrentCheckedness(HtmlSemanticValue<bool>),
+    CurrentSelectedness(HtmlSemanticValue<bool>),
+    DirtyValueFlag(HtmlSemanticValue<bool>),
+    DirtyCheckednessFlag(HtmlSemanticValue<bool>),
+    OptionDirtiness(HtmlSemanticValue<bool>),
+    Indeterminateness(HtmlSemanticValue<bool>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlSemanticResult {
@@ -652,6 +782,7 @@ pub struct HtmlSemanticQualification {
     attribute_input_limit: usize,
     participation_revision: Option<HtmlListParticipationRevision>,
     directionality_source: HtmlDirectionalitySource,
+    inert_revision: Option<HtmlFlatTreeRevision>,
 }
 impl HtmlSemanticQualification {
     pub fn source_revision(&self) -> &'static str {
@@ -674,6 +805,9 @@ impl HtmlSemanticQualification {
     }
     pub fn participation_revision(&self) -> Option<&HtmlListParticipationRevision> {
         self.participation_revision.as_ref()
+    }
+    pub fn inert_revision(&self) -> Option<&HtmlFlatTreeRevision> {
+        self.inert_revision.as_ref()
     }
     pub fn directionality_source(&self) -> HtmlDirectionalitySource {
         self.directionality_source
@@ -769,7 +903,10 @@ impl fmt::Display for HtmlSemanticFailure {
 }
 impl Error for HtmlSemanticFailure {}
 
-/// Reusable borrowed query boundary. The first terminal failure is sticky.
+/// Reusable borrowed boundary for the implemented capture-qualified queries.
+/// Supplements provide current control, flat-tree and modal evidence; this
+/// session neither mutates those states nor computes their producer transitions.
+/// The first terminal failure is sticky and retains the original qualification.
 pub struct HtmlSemanticSession<'a> {
     capture: &'a HtmlCapture,
     context: &'a HtmlSemanticContext,
@@ -816,6 +953,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 limits,
                 attribute_input_limit: interpreter.max_input_code_units(),
                 participation_revision: context.participation_revision.clone(),
+                inert_revision: context.inert_revision.clone(),
                 directionality_source: HtmlDirectionalitySource {
                     unicode_version: crate::bidi::UCD_VERSION,
                     uax9_revision: crate::bidi::UAX9_REVISION,
@@ -1817,6 +1955,43 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Progress => {
                             HtmlSemanticFact::Progress(self.progress_state(element)?)
                         }
+                        HtmlSemanticQuery::Inertness => {
+                            HtmlSemanticFact::Inertness(self.inertness(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::FormOwner => {
+                            HtmlSemanticFact::FormOwner(self.form_owner(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::LabeledControl => HtmlSemanticFact::LabeledControl(
+                            self.labeled_control(&request.subject)?,
+                        ),
+                        HtmlSemanticQuery::CurrentCheckedness => {
+                            HtmlSemanticFact::CurrentCheckedness(
+                                self.control_flag(&request.subject, HtmlControlFlag::Checkedness)?,
+                            )
+                        }
+                        HtmlSemanticQuery::CurrentSelectedness => {
+                            HtmlSemanticFact::CurrentSelectedness(
+                                self.control_flag(&request.subject, HtmlControlFlag::Selectedness)?,
+                            )
+                        }
+                        HtmlSemanticQuery::DirtyValueFlag => HtmlSemanticFact::DirtyValueFlag(
+                            self.control_flag(&request.subject, HtmlControlFlag::DirtyValue)?,
+                        ),
+                        HtmlSemanticQuery::DirtyCheckednessFlag => {
+                            HtmlSemanticFact::DirtyCheckednessFlag(self.control_flag(
+                                &request.subject,
+                                HtmlControlFlag::DirtyCheckedness,
+                            )?)
+                        }
+                        HtmlSemanticQuery::OptionDirtiness => HtmlSemanticFact::OptionDirtiness(
+                            self.control_flag(&request.subject, HtmlControlFlag::OptionDirtiness)?,
+                        ),
+                        HtmlSemanticQuery::Indeterminateness => {
+                            HtmlSemanticFact::Indeterminateness(self.control_flag(
+                                &request.subject,
+                                HtmlControlFlag::Indeterminateness,
+                            )?)
+                        }
                     }
                 }
                 _ => match request.query {
@@ -1849,6 +2024,33 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Progress => {
                         HtmlSemanticFact::Progress(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::Inertness => {
+                        HtmlSemanticFact::Inertness(self.inertness(&request.subject)?)
+                    }
+                    HtmlSemanticQuery::FormOwner => {
+                        HtmlSemanticFact::FormOwner(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::LabeledControl => {
+                        HtmlSemanticFact::LabeledControl(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::CurrentCheckedness => {
+                        HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::CurrentSelectedness => {
+                        HtmlSemanticFact::CurrentSelectedness(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DirtyValueFlag => {
+                        HtmlSemanticFact::DirtyValueFlag(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DirtyCheckednessFlag => {
+                        HtmlSemanticFact::DirtyCheckednessFlag(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OptionDirtiness => {
+                        HtmlSemanticFact::OptionDirtiness(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::Indeterminateness => {
+                        HtmlSemanticFact::Indeterminateness(HtmlSemanticValue::Inapplicable)
                     }
                 },
             };

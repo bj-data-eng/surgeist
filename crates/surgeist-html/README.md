@@ -182,7 +182,8 @@ relationships count references to other retained records.
 
 `HtmlSemanticSession` borrows one capture and a matching `HtmlSemanticContext`
 to answer hidden-state, disabledness, language, directionality, list, table,
-meter and progress queries. Disabledness includes
+meter, progress, inertness, form-owner, labeled-control and current control-flag
+queries. Disabledness includes
 the fieldset’s first-legend exception and the option/optgroup/select rules;
 custom controls use the supplied form-associated classifications. Results
 distinguish known values, inapplicable subjects, missing captured facts and
@@ -193,8 +194,8 @@ Reports and admitted query failures retain the same immutable qualification:
 HTML revision, capture, context, host-facts revision and selected limits.
 Constructor rejection has no admitted-session qualification. Dependency results
 currently request conservative recomputation. These operations borrow captured
-relationships without constructing a live tree. Inertness and the remaining
-control/form semantics remain part of the contribution.
+relationships without constructing a live tree. Remaining control/form
+algorithms and state transitions remain part of the contribution.
 
 `HtmlSemanticContextInput` groups supplied classifications and optional qualified
 supplements. The checked context joins them to the exact capture and host
@@ -202,6 +203,24 @@ revision. `HtmlLanguageDirectionFacts` retains processed document-language
 fallbacks, actual current control values and ordered assigned-slot nodes.
 Its finite retention and validation caps are explicit. Missing facts remain
 unavailable; known empty assignments are distinct from missing assignments.
+
+`HtmlInertFacts` joins actual flat-tree membership, parent relations and
+connectedness to the document's actual blocking modal dialog. The producer owns
+flattening and modal transitions. Only the topmost blocking dialog escapes
+inherited inertness; an element's own inert attribute still applies. Unavailable
+or excluded ancestry remains missing evidence unless a local fact proves the
+result. The supplement and query share finite validation and session work
+limits, and reports retain its exact producer/configuration revision.
+
+`HtmlControlFacts` retains established current form pointers or explicit
+reset-against-capture evidence, plus independently optional current input, option
+and textarea flags. Form-owner queries preserve parser-established associations
+and distinguish them from a reset computed against this capture. Label targeting
+uses actual tree order and labelable classification. Known false flags remain
+distinct from unavailable slots; attributes do not substitute for current state.
+These operations observe facts and execute no form reset, activation or control
+state transition. Actual control strings remain owned by the language/direction
+supplement.
 
 Language selection preserves the exact tag and its origin, including XML
 language precedence, inheritance, explicitly unknown empty language and

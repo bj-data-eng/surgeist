@@ -1932,3 +1932,321 @@ fn one_complete_batch_composes_old_queries_and_fixed_scalar_range_facts() {
     assert_eq!(report.usage().scratch_records(), 0);
     assert!(cx.language_direction().is_none());
 }
+
+fn empty_inert_facts(c: &HtmlCapture, revision: HtmlFlatTreeRevision) -> HtmlInertFacts {
+    HtmlInertFacts::new(
+        c,
+        c.host_facts_revision().clone(),
+        revision,
+        vec![],
+        vec![],
+        HtmlInertFactLimits::new(0, 0),
+    )
+    .unwrap()
+}
+
+fn empty_control_facts(c: &HtmlCapture) -> HtmlControlFacts {
+    HtmlControlFacts::new(
+        c,
+        c.host_facts_revision().clone(),
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+        HtmlControlFactsLimits::new(0, 0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn aggregate_rejects_foreign_inert_and_control_inputs_and_wrong_flat_revision() {
+    let (b, _) = builder();
+    let c = b.finish().unwrap();
+    let (b, _) = builder();
+    let other = b.finish().unwrap();
+    let key = HtmlFlatTreeRevision::new(HtmlFlatTreeProducerId::fresh(), 2, 3);
+    let wrong = HtmlFlatTreeRevision::new(HtmlFlatTreeProducerId::fresh(), 2, 3);
+    for (input, expected) in [
+        (
+            HtmlSemanticContextInput::new(vec![])
+                .with_inert(key.clone(), Some(empty_inert_facts(&other, key.clone()))),
+            HtmlSemanticContextError::InertCaptureMismatch,
+        ),
+        (
+            HtmlSemanticContextInput::new(vec![]).with_controls(empty_control_facts(&other)),
+            HtmlSemanticContextError::ControlsCaptureMismatch,
+        ),
+        (
+            HtmlSemanticContextInput::new(vec![])
+                .with_inert(wrong, Some(empty_inert_facts(&c, key))),
+            HtmlSemanticContextError::InertRevisionMismatch,
+        ),
+    ] {
+        assert_eq!(
+            HtmlSemanticContext::new(&c, c.host_facts_revision().clone(), input, 0).unwrap_err(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn flat_producer_configuration_and_revision_qualify_reports_and_sticky_failures() {
+    let (mut b, d) = builder();
+    let own = element(&mut b, &d, "div", &[("inert", "false")]);
+    let c = b.finish().unwrap();
+    let producer = HtmlFlatTreeProducerId::fresh();
+    let keys = [
+        HtmlFlatTreeRevision::new(producer.clone(), 2, 3),
+        HtmlFlatTreeRevision::new(producer.clone(), 4, 3),
+        HtmlFlatTreeRevision::new(producer, 2, 4),
+        HtmlFlatTreeRevision::new(HtmlFlatTreeProducerId::fresh(), 2, 3),
+    ];
+    let limits = HtmlSemanticLimits::new(1000000, 100, 10000, 10000, 1000000, 100000);
+    let contexts: Vec<_> = keys
+        .iter()
+        .map(|key| {
+            HtmlSemanticContext::new(
+                &c,
+                c.host_facts_revision().clone(),
+                HtmlSemanticContextInput::new(vec![]).with_inert(key.clone(), None),
+                0,
+            )
+            .unwrap()
+        })
+        .collect();
+    let mut failures = Vec::new();
+    for (cx, key) in contexts.iter().zip(&keys) {
+        // Own inertness needs no flat relation or modal payload.
+        let report = session(&c, cx)
+            .query(&[request(&c, &own, HtmlSemanticQuery::Inertness)])
+            .unwrap();
+        assert_eq!(
+            report.results()[0].fact(),
+            &HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
+        );
+        assert_eq!(report.qualification().inert_revision(), Some(key));
+        let failure = cancelled_failure(&c, cx, limits, 10000);
+        assert_eq!(failure.qualification().unwrap().inert_revision(), Some(key));
+        assert_eq!(failure.qualification(), Some(report.qualification()));
+        failures.push(failure);
+    }
+    for changed in &failures[1..] {
+        assert_ne!(failures[0].qualification(), changed.qualification());
+    }
+    let cx = &contexts[0];
+    let cancel = HtmlSemanticCancellation::new();
+    let mut live = HtmlSemanticSession::new(
+        &c,
+        cx,
+        HtmlValueInterpreter::new(10000),
+        limits,
+        cancel.clone(),
+    )
+    .unwrap();
+    cancel.cancel();
+    let first = live.query(&[]).unwrap_err();
+    let repeated = live
+        .query(&[request(&c, &own, HtmlSemanticQuery::Inertness)])
+        .unwrap_err();
+    assert_eq!(first, repeated);
+    assert_eq!(
+        first.qualification().unwrap().inert_revision(),
+        Some(&keys[0])
+    );
+}
+
+#[test]
+fn supplied_control_values_change_context_and_failure_identity() {
+    let (mut b, d) = builder();
+    let input = element(&mut b, &d, "input", &[("checked", "")]);
+    let c = b.finish().unwrap();
+    let mut reports = Vec::new();
+    let mut failures = Vec::new();
+    for current in [false, true] {
+        let facts = HtmlControlFacts::new(
+            &c,
+            c.host_facts_revision().clone(),
+            vec![],
+            vec![HtmlInputControlState::new(
+                c.subject_id(&input).unwrap(),
+                Some(current),
+                None,
+                None,
+                None,
+            )],
+            vec![],
+            vec![],
+            HtmlControlFactsLimits::new(1, 10000),
+        )
+        .unwrap();
+        let cx = HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]).with_controls(facts),
+            0,
+        )
+        .unwrap();
+        let report = session(&c, &cx)
+            .query(&[request(&c, &input, HtmlSemanticQuery::CurrentCheckedness)])
+            .unwrap();
+        assert_eq!(
+            report.results()[0].fact(),
+            &HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Known(current))
+        );
+        assert!(report.qualification().inert_revision().is_none());
+        let failure = cancelled_failure(
+            &c,
+            &cx,
+            HtmlSemanticLimits::new(1000000, 100, 10000, 10000, 1000000, 100000),
+            10000,
+        );
+        assert_eq!(failure.qualification(), Some(report.qualification()));
+        reports.push(report);
+        failures.push(failure);
+    }
+    assert_ne!(reports[0].context(), reports[1].context());
+    assert_ne!(failures[0].qualification(), failures[1].qualification());
+    assert_eq!(reports[0].capture(), reports[1].capture());
+    assert_eq!(reports[0].host_revision(), reports[1].host_revision());
+}
+
+#[test]
+fn mixed_inert_and_control_batch_preserves_known_missing_and_inapplicable_facts() {
+    let (mut b, d) = builder();
+    let input = element(&mut b, &d, "input", &[("inert", ""), ("disabled", "")]);
+    let c = b.finish().unwrap();
+    let cx = context(&c); // Old queries need none of the new supplements.
+    let report = session(&c, &cx)
+        .query(&[
+            request(&c, &input, HtmlSemanticQuery::Hidden),
+            request(&c, &input, HtmlSemanticQuery::Disabledness),
+            request(&c, &input, HtmlSemanticQuery::Inertness),
+            request(&c, &d, HtmlSemanticQuery::Inertness),
+            request(&c, &input, HtmlSemanticQuery::CurrentCheckedness),
+            request(&c, &input, HtmlSemanticQuery::FormOwner),
+            request(&c, &d, HtmlSemanticQuery::CurrentCheckedness),
+            request(&c, &input, HtmlSemanticQuery::LabeledControl),
+        ])
+        .unwrap();
+    let id = c.subject_id(&input).unwrap();
+    let expected = [
+        HtmlSemanticFact::Hidden(HtmlSemanticValue::Known(HtmlHiddenState::NotHidden)),
+        disabled(true),
+        HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true)),
+        HtmlSemanticFact::Inertness(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::ModalBlocking(c.subject_id(&d).unwrap()),
+        )),
+        HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::ControlState {
+                subject: id.clone(),
+                flag: HtmlControlFlag::Checkedness,
+            },
+        )),
+        HtmlSemanticFact::FormOwner(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::FormAssociation(id),
+        )),
+        HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Inapplicable),
+        HtmlSemanticFact::LabeledControl(HtmlSemanticValue::Inapplicable),
+    ];
+    for (result, expected) in report.results().iter().zip(&expected) {
+        assert_eq!(result.fact(), expected);
+    }
+    assert_eq!(report.results().len(), 8);
+    assert_eq!(report.usage().scratch_records(), 0);
+}
+
+#[test]
+fn control_or_inert_limit_stop_discards_whole_mixed_batch_and_retains_key() {
+    let (mut b, d) = builder();
+    let input = element(&mut b, &d, "input", &[("inert", "")]);
+    let c = b.finish().unwrap();
+    let key = HtmlFlatTreeRevision::new(HtmlFlatTreeProducerId::fresh(), 1, 2);
+    let cx = HtmlSemanticContext::new(
+        &c,
+        c.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![])
+            .with_inert(key.clone(), None)
+            .with_controls(empty_control_facts(&c)),
+        0,
+    )
+    .unwrap();
+    let limits = HtmlSemanticLimits::new(1000000, 1, 10000, 10000, 1000000, 100000);
+    let mut live = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(10000),
+        limits,
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let completed = live
+        .query(&[request(&c, &input, HtmlSemanticQuery::Inertness)])
+        .unwrap();
+    let failed = live
+        .query(&[request(&c, &input, HtmlSemanticQuery::CurrentCheckedness)])
+        .unwrap_err();
+    assert_eq!(failed.qualification(), Some(completed.qualification()));
+    assert_eq!(failed.qualification().unwrap().inert_revision(), Some(&key));
+    assert_eq!(failed.usage().scratch_records(), 0);
+    let repeated = live
+        .query(&[request(&c, &input, HtmlSemanticQuery::FormOwner)])
+        .unwrap_err();
+    assert_eq!(repeated, failed);
+    assert_eq!(
+        completed.results()[0].fact(),
+        &HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
+    );
+}
+
+#[test]
+fn late_inert_attribute_stop_publishes_no_completed_control_prefix() {
+    let (mut b, d) = builder();
+    let input = element(&mut b, &d, "input", &[("inert", "false")]);
+    let c = b.finish().unwrap();
+    let facts = HtmlControlFacts::new(
+        &c,
+        c.host_facts_revision().clone(),
+        vec![],
+        vec![HtmlInputControlState::new(
+            c.subject_id(&input).unwrap(),
+            Some(false),
+            None,
+            None,
+            None,
+        )],
+        vec![],
+        vec![],
+        HtmlControlFactsLimits::new(1, 10000),
+    )
+    .unwrap();
+    let cx = HtmlSemanticContext::new(
+        &c,
+        c.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_controls(facts),
+        0,
+    )
+    .unwrap();
+    let mut live = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(0),
+        HtmlSemanticLimits::new(1000000, 100, 10000, 10000, 1000000, 100000),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let failure = live
+        .query(&[
+            request(&c, &input, HtmlSemanticQuery::CurrentCheckedness),
+            request(&c, &input, HtmlSemanticQuery::Inertness),
+        ])
+        .unwrap_err();
+    assert!(matches!(
+        failure.kind(),
+        HtmlSemanticFailureKind::Attribute(_)
+    ));
+    assert_eq!(failure.usage().output_records(), 2);
+    assert_eq!(failure.usage().scratch_records(), 0);
+    assert_eq!(failure.qualification().unwrap().context(), cx.identity());
+    assert_eq!(failure.qualification().unwrap().attribute_input_limit(), 0);
+    assert_eq!(live.query(&[]).unwrap_err(), failure);
+}
