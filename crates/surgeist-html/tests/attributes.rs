@@ -362,6 +362,10 @@ fn referrerpolicy_contexts_use_explicit_hyperlink_and_script_facts() {
         DataBlock, ExternalClassic, ExternalModule, ImportMap, InlineClassic, InlineModule,
         SpeculationRules,
     };
+    use surgeist_html::{
+        HtmlAttributeContextAuthorState as ContextAuthor,
+        HtmlAttributeContextConformanceError as ContextConformance,
+    };
     let interpreter = HtmlValueInterpreter::new(100);
     let raw = attr("referrerpolicy", "ORIGIN");
     for local in ["iframe", "img", "link"] {
@@ -386,12 +390,10 @@ fn referrerpolicy_contexts_use_explicit_hyperlink_and_script_facts() {
     for (local, source) in [("a", "#the-a-element"), ("area", "#the-area-element")] {
         let context = element(local);
         let unspecified = interpreter.referrerpolicy(&context, Some(&raw)).unwrap();
-        assert_eq!(
-            unspecified.applicability(),
-            Applicability::HyperlinkContextRequired
-        );
-        assert_eq!(unspecified.intrinsic(), None);
-        assert_eq!(unspecified.author(), Author::Unapplied);
+        assert_eq!(unspecified.applicability(), Applicability::Applicable);
+        assert_eq!(unspecified.intrinsic(), Some(&HtmlReferrerPolicy::Origin));
+        assert_eq!(unspecified.author(), Author::Conforming);
+        assert_eq!(unspecified.context_author(), ContextAuthor::Unchecked);
         assert_eq!(unspecified.hyperlink_context(), None);
         for facts in [WithHref, WithoutHref] {
             let report = interpreter
@@ -402,39 +404,22 @@ fn referrerpolicy_contexts_use_explicit_hyperlink_and_script_facts() {
             assert_eq!(report.element(), &context);
             assert_eq!(report.raw_attribute(), Some(&raw));
             assert!(report.context_source_clause().unwrap().ends_with(source));
-            assert_eq!(
-                report.applicability(),
-                if facts == WithHref {
-                    Applicability::Applicable
-                } else {
-                    Applicability::InapplicableHyperlinkContext
-                }
-            );
-            assert_eq!(
-                report.intrinsic(),
-                if facts == WithHref {
-                    Some(&HtmlReferrerPolicy::Origin)
-                } else {
-                    None
-                }
-            );
+            assert_eq!(report.applicability(), Applicability::Applicable);
+            assert_eq!(report.intrinsic(), Some(&HtmlReferrerPolicy::Origin));
             assert_eq!(
                 report.recognition(),
-                if facts == WithHref {
-                    Recognition::Keyword {
-                        matched: "origin",
-                        canonical: "origin",
-                    }
-                } else {
-                    Recognition::Unapplied
+                Recognition::Keyword {
+                    matched: "origin",
+                    canonical: "origin",
                 }
             );
+            assert_eq!(report.author(), Author::Conforming);
             assert_eq!(
-                report.author(),
+                report.context_author(),
                 if facts == WithHref {
-                    Author::Conforming
+                    ContextAuthor::Conforming
                 } else {
-                    Author::Unapplied
+                    ContextAuthor::Nonconforming(ContextConformance::ReferrerPolicyRequiresHref)
                 }
             );
         }

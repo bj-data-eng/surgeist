@@ -6,11 +6,10 @@ pub enum surgeist_html::HtmlAttributeApplicability
 pub surgeist_html::HtmlAttributeApplicability::Applicable
 pub surgeist_html::HtmlAttributeApplicability::CustomControlContextRequired
 pub surgeist_html::HtmlAttributeApplicability::DifferentAttribute
+pub surgeist_html::HtmlAttributeApplicability::DifferentContext
 pub surgeist_html::HtmlAttributeApplicability::DifferentElement
 pub surgeist_html::HtmlAttributeApplicability::ForeignElementNamespace
-pub surgeist_html::HtmlAttributeApplicability::HyperlinkContextRequired
 pub surgeist_html::HtmlAttributeApplicability::InapplicableCustomControl
-pub surgeist_html::HtmlAttributeApplicability::InapplicableHyperlinkContext
 pub surgeist_html::HtmlAttributeApplicability::InapplicableScriptKind
 pub surgeist_html::HtmlAttributeApplicability::ScriptContextRequired
 pub enum surgeist_html::HtmlAttributeAuthorState
@@ -23,6 +22,21 @@ pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionMustBeLtrOrRtl
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
 pub surgeist_html::HtmlAttributeConformanceError::UnrecognizedKeyword
+pub enum surgeist_html::HtmlAttributeContextAuthorState
+pub surgeist_html::HtmlAttributeContextAuthorState::Conforming
+pub surgeist_html::HtmlAttributeContextAuthorState::Nonconforming(surgeist_html::HtmlAttributeContextConformanceError)
+pub surgeist_html::HtmlAttributeContextAuthorState::NotRequired
+pub surgeist_html::HtmlAttributeContextAuthorState::Unapplied
+pub surgeist_html::HtmlAttributeContextAuthorState::Unavailable
+pub surgeist_html::HtmlAttributeContextAuthorState::Unchecked
+pub enum surgeist_html::HtmlAttributeContextConformanceError
+pub surgeist_html::HtmlAttributeContextConformanceError::FormnovalidateRequiresSubmitButton
+pub surgeist_html::HtmlAttributeContextConformanceError::ImageControlsRequireNonemptyAlt
+pub surgeist_html::HtmlAttributeContextConformanceError::ImageMapRequiresAncestorAnchorWithHref
+pub surgeist_html::HtmlAttributeContextConformanceError::InputStateForbidsAttribute
+pub surgeist_html::HtmlAttributeContextConformanceError::ReferrerPolicyRequiresHref
+pub surgeist_html::HtmlAttributeContextConformanceError::ScriptContextForbidsAttribute
+pub surgeist_html::HtmlAttributeContextConformanceError::StylesheetDisabledRequiresStylesheetRel
 pub enum surgeist_html::HtmlAttributeObservation
 pub surgeist_html::HtmlAttributeObservation::Missing
 pub surgeist_html::HtmlAttributeObservation::PresentEmpty
@@ -55,29 +69,44 @@ pub fn surgeist_html::HtmlAutocorrect::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlAutocorrect::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlBooleanAttribute
 pub surgeist_html::HtmlBooleanAttribute::AllowFullscreen
+pub surgeist_html::HtmlBooleanAttribute::Alpha
+pub surgeist_html::HtmlBooleanAttribute::Async
 pub surgeist_html::HtmlBooleanAttribute::Autofocus
 pub surgeist_html::HtmlBooleanAttribute::Autoplay
+pub surgeist_html::HtmlBooleanAttribute::Checked
+pub surgeist_html::HtmlBooleanAttribute::Defer
 pub surgeist_html::HtmlBooleanAttribute::DetailsOpen
 pub surgeist_html::HtmlBooleanAttribute::DialogOpen
 pub surgeist_html::HtmlBooleanAttribute::Disabled
+pub surgeist_html::HtmlBooleanAttribute::Formnovalidate
 pub surgeist_html::HtmlBooleanAttribute::HeadingReset
+pub surgeist_html::HtmlBooleanAttribute::ImageControls
 pub surgeist_html::HtmlBooleanAttribute::Inert
+pub surgeist_html::HtmlBooleanAttribute::Ismap
 pub surgeist_html::HtmlBooleanAttribute::Itemscope
 pub surgeist_html::HtmlBooleanAttribute::Loop
 pub surgeist_html::HtmlBooleanAttribute::MediaControls
+pub surgeist_html::HtmlBooleanAttribute::Multiple
 pub surgeist_html::HtmlBooleanAttribute::Muted
+pub surgeist_html::HtmlBooleanAttribute::Nomodule
 pub surgeist_html::HtmlBooleanAttribute::Novalidate
 pub surgeist_html::HtmlBooleanAttribute::PlaysInline
+pub surgeist_html::HtmlBooleanAttribute::Readonly
+pub surgeist_html::HtmlBooleanAttribute::Required
 pub surgeist_html::HtmlBooleanAttribute::Reversed
 pub surgeist_html::HtmlBooleanAttribute::Selected
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootClonable
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootCustomElementRegistry
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootDelegatesFocus
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootSerializable
+pub surgeist_html::HtmlBooleanAttribute::StylesheetDisabled
 pub surgeist_html::HtmlBooleanAttribute::TrackDefault
 impl surgeist_html::HtmlBooleanAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::attribute(self) -> surgeist_html::KnownHtmlAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::into_attribute(self, present: bool) -> core::option::Option<surgeist_html::Attribute>
+pub enum surgeist_html::HtmlButtonSubmitterContext
+pub surgeist_html::HtmlButtonSubmitterContext::NotSubmitButton
+pub surgeist_html::HtmlButtonSubmitterContext::SubmitButton
 pub enum surgeist_html::HtmlButtonType
 pub surgeist_html::HtmlButtonType::Button
 pub surgeist_html::HtmlButtonType::Reset
@@ -374,6 +403,15 @@ pub surgeist_html::HtmlHiddenState::NotHidden
 pub enum surgeist_html::HtmlHyperlinkAttributeContext
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithHref
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithoutHref
+pub enum surgeist_html::HtmlImageControlsAttributeContext
+pub surgeist_html::HtmlImageControlsAttributeContext::AltEmpty
+pub surgeist_html::HtmlImageControlsAttributeContext::AltMissing
+pub surgeist_html::HtmlImageControlsAttributeContext::AltNonempty
+pub surgeist_html::HtmlImageControlsAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImageMapAttributeContext
+pub surgeist_html::HtmlImageMapAttributeContext::AncestorAnchorWithHref
+pub surgeist_html::HtmlImageMapAttributeContext::NoAncestorAnchorWithHref
+pub surgeist_html::HtmlImageMapAttributeContext::Unavailable
 pub enum surgeist_html::HtmlInputMode
 pub surgeist_html::HtmlInputMode::Decimal
 pub surgeist_html::HtmlInputMode::Email
@@ -1144,11 +1182,16 @@ impl<T> surgeist_html::HtmlAttributeReport<T>
 pub fn surgeist_html::HtmlAttributeReport<T>::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
 pub fn surgeist_html::HtmlAttributeReport<T>::attribute(&self) -> surgeist_html::KnownHtmlAttribute
 pub fn surgeist_html::HtmlAttributeReport<T>::author(&self) -> surgeist_html::HtmlAttributeAuthorState
+pub fn surgeist_html::HtmlAttributeReport<T>::button_submitter_context(&self) -> core::option::Option<surgeist_html::HtmlButtonSubmitterContext>
+pub fn surgeist_html::HtmlAttributeReport<T>::context_author(&self) -> surgeist_html::HtmlAttributeContextAuthorState
 pub fn surgeist_html::HtmlAttributeReport<T>::context_source_clause(&self) -> core::option::Option<&'static str>
 pub fn surgeist_html::HtmlAttributeReport<T>::custom_control_context(&self) -> core::option::Option<surgeist_html::HtmlCustomControlAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::element(&self) -> &surgeist_html::QualifiedName
 pub fn surgeist_html::HtmlAttributeReport<T>::hyperlink_context(&self) -> core::option::Option<surgeist_html::HtmlHyperlinkAttributeContext>
+pub fn surgeist_html::HtmlAttributeReport<T>::image_controls_context(&self) -> core::option::Option<surgeist_html::HtmlImageControlsAttributeContext>
+pub fn surgeist_html::HtmlAttributeReport<T>::image_map_context(&self) -> core::option::Option<surgeist_html::HtmlImageMapAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlAttributeReport<T>::input_state(&self) -> core::option::Option<surgeist_html::HtmlInputType>
 pub fn surgeist_html::HtmlAttributeReport<T>::intrinsic(&self) -> core::option::Option<&T>
 pub fn surgeist_html::HtmlAttributeReport<T>::inventory_rows(&self) -> &'static [u16]
 pub fn surgeist_html::HtmlAttributeReport<T>::observation(&self) -> surgeist_html::HtmlAttributeObservation
@@ -1157,6 +1200,7 @@ pub fn surgeist_html::HtmlAttributeReport<T>::raw_attribute(&self) -> core::opti
 pub fn surgeist_html::HtmlAttributeReport<T>::recognition(&self) -> surgeist_html::HtmlAttributeRecognition
 pub fn surgeist_html::HtmlAttributeReport<T>::script_context(&self) -> core::option::Option<surgeist_html::HtmlScriptAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlAttributeReport<T>::stylesheet_link_context(&self) -> core::option::Option<&surgeist_html::HtmlStylesheetLinkAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::vocabulary_source_clause(&self) -> core::option::Option<&'static str>
 pub struct surgeist_html::HtmlAuthoredProcessingInstruction
 impl surgeist_html::HtmlAuthoredProcessingInstruction
@@ -1890,6 +1934,10 @@ pub struct surgeist_html::HtmlSpaceToken
 impl surgeist_html::HtmlSpaceToken
 pub fn surgeist_html::HtmlSpaceToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlTokenError>
 pub fn surgeist_html::HtmlSpaceToken::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlStylesheetLinkAttributeContext
+impl surgeist_html::HtmlStylesheetLinkAttributeContext
+pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::contains_stylesheet(&self) -> bool
+pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::rel(&self) -> core::option::Option<&surgeist_html::DocumentString>
 pub struct surgeist_html::HtmlTableCell
 impl surgeist_html::HtmlTableCell
 pub fn surgeist_html::HtmlTableCell::height(&self) -> usize
@@ -1982,9 +2030,17 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::autocorrect(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocorrect>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::boolean_attribute(&self, selected: surgeist_html::HtmlBooleanAttribute, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::boolean_attribute_for_input(&self, selected: surgeist_html::HtmlBooleanAttribute, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::boolean_attribute_for_script(&self, selected: surgeist_html::HtmlBooleanAttribute, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::dir(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDirState>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::disabled(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::disabled_for_custom_control(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlCustomControlAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::formnovalidate_for_button(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlButtonSubmitterContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::image_controls_with_context(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlImageControlsAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::ismap_with_context(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlImageMapAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::readonly_for_custom_control(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlCustomControlAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::stylesheet_disabled(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: &surgeist_html::HtmlStylesheetLinkAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::stylesheet_link_context(&self, rel: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlStylesheetLinkAttributeContext, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::button_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlButtonTypeState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

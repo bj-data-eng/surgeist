@@ -130,7 +130,8 @@ without a dependency on surgeist-css or invocation of CSS tokenization.
 See the [dependency notice](NOTICE.md) and [source selection](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline).
 
 `HtmlAttributeReport` separates exact presence, expanded-name applicability,
-keyword recognition, author conformance and the selected intrinsic state. The
+keyword recognition, lexical author conformance, selected contextual author conformance
+and the selected intrinsic state. The
 implemented overlays cover twelve global enumerated attributes, template
 shadow mode/slot assignment, eleven element-specific keyword rules and
 element-specific Boolean attributes. Input types retain all twenty-two standard keywords and their
@@ -143,12 +144,29 @@ spelling when a clause supplies a fallback; keyboard hints retain their lack of
 a defined fallback. Native keyword values construct their canonical raw
 attributes. CORS, fetch-priority and referrer-policy operations retain their finite intrinsic
 states. Script operations require explicit classic/module/inline/external or
-non-script type context; hyperlink referrer policy requires an explicit href
-presence fact. Inapplicable contexts remain distinct from invalid spelling.
+non-script type context. For `a` and `area`, referrer-policy reflection retains
+its intrinsic state even when `href` is absent or its presence is unknown.
+Supplied absence records the separate authoring violation; unknown presence
+leaves that contextual check unchecked. Inapplicable contexts remain distinct
+from invalid spelling.
 Disabled-attribute interpretation also covers fieldset, optgroup, option and
 the four standard form controls. Custom controls require an explicit
 form-associated classification. This intrinsic Boolean presence operation
 does not itself compute disabledness inherited from ancestors.
+Boolean operations also cover input attributes, submitter
+`formnovalidate`, script `async`/`defer`/`nomodule`, image `ismap`/`controls`,
+and stylesheet-link `disabled`. Correct native roles retain content presence
+across prohibited supplied states; the report records their authoring
+restrictions separately. State-specific ignore rules govern applied processing.
+The `async` operation observes the content attribute, without inferring the
+script's force-async flag or implementing its complete IDL getter.
+Image and link authoring restrictions remain
+separate from their content-presence state: an applicable present Boolean stays
+true when its required ancestor, alternate text or stylesheet relation is
+missing. The report can retain both a lexical and a contextual violation.
+Supplied input, script, submitter, custom-control, image and link contexts select
+only their defining clauses; they do not establish current control state,
+resource lifecycle or activation effects.
 Referrer policy uses the [pinned external vocabulary](../../references/referrer-policy-vocabulary--cc435b05ca4a.md);
 its empty state remains unresolved rather than selecting a host network default.
 These views do not compute inheritance or claim runtime effects,

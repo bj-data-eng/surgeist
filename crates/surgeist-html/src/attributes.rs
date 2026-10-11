@@ -20,7 +20,8 @@ pub enum HtmlAttributeObservation {
     PresentNonempty,
 }
 
-/// Whether the selected intrinsic rule applies to the supplied expanded names.
+/// Whether the selected rule applies to the expanded names and fact family.
+/// Author-only restrictions do not suppress known intrinsic content presence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAttributeApplicability {
     Applicable,
@@ -31,14 +32,12 @@ pub enum HtmlAttributeApplicability {
     ScriptContextRequired,
     /// The supplied script kind does not admit the selected content attribute.
     InapplicableScriptKind,
-    /// Whether an a/area element has href was not supplied.
-    HyperlinkContextRequired,
-    /// The supplied a/area context has no href and forbids this attribute.
-    InapplicableHyperlinkContext,
     /// An unknown HTML element needs actual custom-control classification.
     CustomControlContextRequired,
     /// The supplied custom element is not form-associated.
     InapplicableCustomControl,
+    /// The supplied facts belong to another rule or element context.
+    DifferentContext,
 }
 
 /// Explicit script facts from HTML's content-attribute applicability table.
@@ -73,12 +72,92 @@ pub enum HtmlCustomControlAttributeContext {
     NotFormAssociated,
 }
 
+/// Actual button classification, including source-defined Auto-state context.
+/// This is not inferred from the type keyword or used to submit a form.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlButtonSubmitterContext {
+    SubmitButton,
+    NotSubmitButton,
+}
+
+/// Actual ancestor-chain evidence for img's ismap author requirement.
+/// An HTML a ancestor with href present qualifies even when href is empty.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlImageMapAttributeContext {
+    AncestorAnchorWithHref,
+    NoAncestorAnchorWithHref,
+    Unavailable,
+}
+
+/// Actual alt observation for img controls, without trimming its value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlImageControlsAttributeContext {
+    AltMissing,
+    AltEmpty,
+    AltNonempty,
+    Unavailable,
+}
+
+/// Source-derived stylesheet membership with the exact supplied rel value.
+/// Construction belongs to HtmlValueInterpreter::stylesheet_link_context.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlStylesheetLinkAttributeContext {
+    rel: Option<DocumentString>,
+    contains_stylesheet: bool,
+}
+
+impl HtmlStylesheetLinkAttributeContext {
+    /// None is an actual missing rel attribute, not unavailable evidence.
+    pub fn rel(&self) -> Option<&DocumentString> {
+        self.rel.as_ref()
+    }
+    pub fn contains_stylesheet(&self) -> bool {
+        self.contains_stylesheet
+    }
+}
+
+/// A selected extra author constraint, independent of value spelling.
+/// This bounded observation does not certify complete element conformance.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlAttributeContextAuthorState {
+    /// This rule/raw observation selects no extra context-author check.
+    NotRequired,
+    /// No author-context observation was requested for the present attribute.
+    Unchecked,
+    /// Supplied actual context evidence could not be established.
+    Unavailable,
+    Conforming,
+    Nonconforming(HtmlAttributeContextConformanceError),
+    /// The selected rule does not apply to these names or operation context.
+    Unapplied,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlAttributeContextConformanceError {
+    ImageMapRequiresAncestorAnchorWithHref,
+    ImageControlsRequireNonemptyAlt,
+    StylesheetDisabledRequiresStylesheetRel,
+    ReferrerPolicyRequiresHref,
+    /// The normative input-state bookkeeping prohibits authored presence.
+    /// This report does not apply the source's separate ignore/effect rule.
+    InputStateForbidsAttribute,
+    /// The script table prohibits authored presence for this kind/placement.
+    ScriptContextForbidsAttribute,
+    /// The actual button is not a source-defined submit button.
+    FormnovalidateRequiresSubmitButton,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum SuppliedContext {
     None,
     Script(HtmlScriptAttributeContext),
     Hyperlink(HtmlHyperlinkAttributeContext),
     CustomControl(HtmlCustomControlAttributeContext),
+    Input(HtmlInputType),
+    ButtonSubmitter(HtmlButtonSubmitterContext),
+    ImageMap(HtmlImageMapAttributeContext),
+    ImageControls(HtmlImageControlsAttributeContext),
+    StylesheetLink(HtmlStylesheetLinkAttributeContext),
 }
 
 /// Recognition of literal value syntax; a fallback never changes this result.
@@ -130,6 +209,7 @@ pub struct HtmlAttributeReport<T> {
     applicability: HtmlAttributeApplicability,
     recognition: HtmlAttributeRecognition,
     author: HtmlAttributeAuthorState,
+    context_author: HtmlAttributeContextAuthorState,
     intrinsic: Option<T>,
     supplied_context: SuppliedContext,
 }
@@ -159,6 +239,11 @@ impl<T> HtmlAttributeReport<T> {
     pub fn author(&self) -> HtmlAttributeAuthorState {
         self.author
     }
+    /// Returns the selected extra author-context observation. Boolean value
+    /// spelling remains in author(); both violations can therefore coexist.
+    pub fn context_author(&self) -> HtmlAttributeContextAuthorState {
+        self.context_author
+    }
     /// Returns the attribute's typed intrinsic state, without contextual effects.
     pub fn intrinsic(&self) -> Option<&T> {
         self.intrinsic.as_ref()
@@ -169,22 +254,54 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the exact supplied script facts, even for an unapplied rule.
     pub fn script_context(&self) -> Option<HtmlScriptAttributeContext> {
-        match self.supplied_context {
-            SuppliedContext::Script(context) => Some(context),
+        match &self.supplied_context {
+            SuppliedContext::Script(context) => Some(*context),
             _ => None,
         }
     }
     /// Returns the exact supplied hyperlink facts, even for an unapplied rule.
     pub fn hyperlink_context(&self) -> Option<HtmlHyperlinkAttributeContext> {
-        match self.supplied_context {
-            SuppliedContext::Hyperlink(context) => Some(context),
+        match &self.supplied_context {
+            SuppliedContext::Hyperlink(context) => Some(*context),
             _ => None,
         }
     }
     /// Returns the supplied actual custom-control classification, if any.
     pub fn custom_control_context(&self) -> Option<HtmlCustomControlAttributeContext> {
-        match self.supplied_context {
-            SuppliedContext::CustomControl(context) => Some(context),
+        match &self.supplied_context {
+            SuppliedContext::CustomControl(context) => Some(*context),
+            _ => None,
+        }
+    }
+    /// Returns the supplied actual input type state, without inferring a type.
+    pub fn input_state(&self) -> Option<HtmlInputType> {
+        match &self.supplied_context {
+            SuppliedContext::Input(state) => Some(*state),
+            _ => None,
+        }
+    }
+    /// Returns supplied actual submit-button classification, if any.
+    pub fn button_submitter_context(&self) -> Option<HtmlButtonSubmitterContext> {
+        match &self.supplied_context {
+            SuppliedContext::ButtonSubmitter(context) => Some(*context),
+            _ => None,
+        }
+    }
+    pub fn image_map_context(&self) -> Option<HtmlImageMapAttributeContext> {
+        match &self.supplied_context {
+            SuppliedContext::ImageMap(context) => Some(*context),
+            _ => None,
+        }
+    }
+    pub fn image_controls_context(&self) -> Option<HtmlImageControlsAttributeContext> {
+        match &self.supplied_context {
+            SuppliedContext::ImageControls(context) => Some(*context),
+            _ => None,
+        }
+    }
+    pub fn stylesheet_link_context(&self) -> Option<&HtmlStylesheetLinkAttributeContext> {
+        match &self.supplied_context {
+            SuppliedContext::StylesheetLink(context) => Some(context),
             _ => None,
         }
     }
@@ -203,6 +320,38 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the defining clause for additional element-context facts.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if matches!(
+            (
+                self.rule.context,
+                KnownHtmlElement::from_name(&self.element)
+            ),
+            (
+                Context::ImageMap | Context::ImageControls,
+                Some(KnownHtmlElement::Img)
+            ) | (Context::StylesheetLink, Some(KnownHtmlElement::Link))
+        ) {
+            return Some(self.rule.source);
+        }
+        if matches!(self.rule.context, Context::InputControl(_)) {
+            match KnownHtmlElement::from_name(&self.element) {
+                Some(KnownHtmlElement::Input) => {
+                    return Some(match &self.supplied_context {
+                        SuppliedContext::Input(state) => input_state_source(*state),
+                        _ => INPUT_SOURCE,
+                    });
+                }
+                Some(KnownHtmlElement::Button) => return Some(BUTTON_TYPE_SOURCE),
+                None if self.element.namespace() == &Namespace::html() => {
+                    return Some(FORM_ASSOCIATED_CUSTOM_SOURCE);
+                }
+                _ => {}
+            }
+        }
+        if matches!(self.rule.context, Context::ScriptBoolean(_))
+            && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Script)
+        {
+            return Some(SCRIPT_SOURCE);
+        }
         if self.rule.context == Context::DisabledControls
             && self.element.namespace() == &Namespace::html()
             && KnownHtmlElement::from_name(&self.element).is_none()
@@ -245,6 +394,11 @@ enum Context {
     Template,
     Elements(&'static [KnownHtmlElement]),
     DisabledControls,
+    InputControl(InputBooleanApplicability),
+    ScriptBoolean(ScriptApplicability),
+    ImageMap,
+    ImageControls,
+    StylesheetLink,
     Fetching {
         elements: &'static [KnownHtmlElement],
         script: ScriptApplicability,
@@ -256,6 +410,9 @@ enum Context {
 enum ScriptApplicability {
     ClassicOrModule,
     ExternalClassicOrModule,
+    Classic,
+    ExternalClassic,
+    Async,
 }
 
 impl ScriptApplicability {
@@ -269,6 +426,64 @@ impl ScriptApplicability {
                 ExternalClassic | ExternalModule | InlineClassic | InlineModule
             ),
             Self::ExternalClassicOrModule => matches!(context, ExternalClassic | ExternalModule),
+            Self::Classic => matches!(context, ExternalClassic | InlineClassic),
+            Self::ExternalClassic => context == ExternalClassic,
+            Self::Async => matches!(context, ExternalClassic | ExternalModule | InlineModule),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InputBooleanApplicability {
+    Alpha,
+    Checked,
+    Multiple,
+    Readonly,
+    Required,
+    Formnovalidate,
+}
+
+impl InputBooleanApplicability {
+    fn allows(self, state: HtmlInputType) -> bool {
+        use HtmlInputType::{
+            Checkbox, Color, Date, Email, File, Image, LocalDateTime, Month, Number, Password,
+            Radio, Search, Submit, Telephone, Text, Time, Url, Week,
+        };
+        let editable = matches!(
+            state,
+            Text | Search
+                | Telephone
+                | Url
+                | Email
+                | Password
+                | Date
+                | Month
+                | Week
+                | Time
+                | LocalDateTime
+                | Number
+        );
+        match self {
+            Self::Alpha => state == Color,
+            Self::Checked => matches!(state, Checkbox | Radio),
+            Self::Multiple => matches!(state, Email | File),
+            Self::Readonly => editable,
+            Self::Required => editable || matches!(state, Checkbox | Radio | File),
+            Self::Formnovalidate => matches!(state, Submit | Image),
+        }
+    }
+
+    fn applicability(self, element: Option<KnownHtmlElement>) -> HtmlAttributeApplicability {
+        use HtmlAttributeApplicability::{
+            Applicable, CustomControlContextRequired, DifferentElement,
+        };
+        match (self, element) {
+            (_, Some(KnownHtmlElement::Input)) => Applicable,
+            (Self::Multiple | Self::Required, Some(KnownHtmlElement::Select))
+            | (Self::Readonly | Self::Required, Some(KnownHtmlElement::Textarea)) => Applicable,
+            (Self::Readonly, None) => CustomControlContextRequired,
+            (Self::Formnovalidate, Some(KnownHtmlElement::Button)) => Applicable,
+            _ => DifferentElement,
         }
     }
 }
@@ -312,6 +527,36 @@ const SCRIPT_SOURCE: &str = source!("the-script-element");
 const HYPERLINK_A_SOURCE: &str = source!("the-a-element");
 const HYPERLINK_AREA_SOURCE: &str = source!("the-area-element");
 const FORM_ASSOCIATED_CUSTOM_SOURCE: &str = source!("form-associated-custom-element");
+const INPUT_SOURCE: &str = source!("the-input-element");
+const BUTTON_TYPE_SOURCE: &str = source!("attr-button-type");
+
+fn input_state_source(state: HtmlInputType) -> &'static str {
+    match state {
+        HtmlInputType::Hidden => source!("hidden-state-(type=hidden)"),
+        HtmlInputType::Text | HtmlInputType::Search => {
+            source!("text-(type=text)-state-and-search-state-(type=search)")
+        }
+        HtmlInputType::Telephone => source!("telephone-state-(type=tel)"),
+        HtmlInputType::Url => source!("url-state-(type=url)"),
+        HtmlInputType::Email => source!("email-state-(type=email)"),
+        HtmlInputType::Password => source!("password-state-(type=password)"),
+        HtmlInputType::Date => source!("date-state-(type=date)"),
+        HtmlInputType::Month => source!("month-state-(type=month)"),
+        HtmlInputType::Week => source!("week-state-(type=week)"),
+        HtmlInputType::Time => source!("time-state-(type=time)"),
+        HtmlInputType::LocalDateTime => source!("local-date-and-time-state-(type=datetime-local)"),
+        HtmlInputType::Number => source!("number-state-(type=number)"),
+        HtmlInputType::Range => source!("range-state-(type=range)"),
+        HtmlInputType::Color => source!("color-state-(type=color)"),
+        HtmlInputType::Checkbox => source!("checkbox-state-(type=checkbox)"),
+        HtmlInputType::Radio => source!("radio-button-state-(type=radio)"),
+        HtmlInputType::File => source!("file-upload-state-(type=file)"),
+        HtmlInputType::Submit => source!("submit-button-state-(type=submit)"),
+        HtmlInputType::Image => source!("image-button-state-(type=image)"),
+        HtmlInputType::Reset => source!("reset-button-state-(type=reset)"),
+        HtmlInputType::Button => source!("button-state-(type=button)"),
+    }
+}
 // Vocabulary-only adoption; raw index.src.html SHA-256:
 // a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1.
 const REFERRER_POLICY_VOCABULARY: &str = concat!(
@@ -667,11 +912,31 @@ pub enum HtmlBooleanAttribute {
     /// Local disabled content presence, with defining source chosen by context.
     /// This does not compute inherited or actual disabledness.
     Disabled,
+    /// Color-input alpha content presence, not a CSS color interpretation.
+    Alpha,
+    /// Default checkedness content presence, not current checkedness.
+    Checked,
+    Multiple,
+    Readonly,
+    Required,
+    /// Content presence on source-qualified submitters, not no-validate state.
+    Formnovalidate,
+    /// Script content presence, not scheduling, force-async or execution state.
+    Async,
+    Defer,
+    Nomodule,
+    /// img controls content presence, independent of the alt author constraint.
+    ImageControls,
+    /// ismap content presence, independent of hyperlink activation behavior.
+    Ismap,
+    /// link disabled presence, not an associated stylesheet's runtime state.
+    StylesheetDisabled,
 }
 
 impl HtmlBooleanAttribute {
     fn rule(self) -> RuleMetadata {
-        // These defining clauses each explicitly say Boolean attribute.
+        // Defining clauses select presence semantics and element contexts;
+        // contextual readonly also uses the common Boolean attribute grammar.
         let (attribute, rows, source, context): (_, &[u16], _, _) = match self {
             Self::Autofocus => (
                 KnownHtmlAttribute::Autofocus,
@@ -799,6 +1064,78 @@ impl HtmlBooleanAttribute {
                 source!("attr-fe-disabled"),
                 Context::DisabledControls,
             ),
+            Self::Alpha => (
+                KnownHtmlAttribute::Alpha,
+                &[8],
+                source!("attr-input-alpha"),
+                Context::InputControl(InputBooleanApplicability::Alpha),
+            ),
+            Self::Checked => (
+                KnownHtmlAttribute::Checked,
+                &[20],
+                source!("attr-input-checked"),
+                Context::InputControl(InputBooleanApplicability::Checked),
+            ),
+            Self::Multiple => (
+                KnownHtmlAttribute::Multiple,
+                &[100],
+                source!("attr-input-multiple"),
+                Context::InputControl(InputBooleanApplicability::Multiple),
+            ),
+            Self::Readonly => (
+                KnownHtmlAttribute::Readonly,
+                &[124],
+                source!("attr-input-readonly"),
+                Context::InputControl(InputBooleanApplicability::Readonly),
+            ),
+            Self::Required => (
+                KnownHtmlAttribute::Required,
+                &[129],
+                source!("attr-input-required"),
+                Context::InputControl(InputBooleanApplicability::Required),
+            ),
+            Self::Formnovalidate => (
+                KnownHtmlAttribute::Formnovalidate,
+                &[59],
+                source!("attr-fs-formnovalidate"),
+                Context::InputControl(InputBooleanApplicability::Formnovalidate),
+            ),
+            Self::Async => (
+                KnownHtmlAttribute::Async,
+                &[11],
+                source!("attr-script-async"),
+                Context::ScriptBoolean(ScriptApplicability::Async),
+            ),
+            Self::Defer => (
+                KnownHtmlAttribute::Defer,
+                &[40],
+                source!("attr-script-defer"),
+                Context::ScriptBoolean(ScriptApplicability::ExternalClassic),
+            ),
+            Self::Nomodule => (
+                KnownHtmlAttribute::Nomodule,
+                &[109],
+                source!("attr-script-nomodule"),
+                Context::ScriptBoolean(ScriptApplicability::Classic),
+            ),
+            Self::ImageControls => (
+                KnownHtmlAttribute::Controls,
+                &[32],
+                source!("attr-img-controls"),
+                Context::ImageControls,
+            ),
+            Self::Ismap => (
+                KnownHtmlAttribute::Ismap,
+                &[79],
+                source!("attr-img-ismap"),
+                Context::ImageMap,
+            ),
+            Self::StylesheetDisabled => (
+                KnownHtmlAttribute::Disabled,
+                &[46],
+                source!("attr-link-disabled"),
+                Context::StylesheetLink,
+            ),
         };
         RuleMetadata {
             attribute,
@@ -821,6 +1158,25 @@ impl HtmlBooleanAttribute {
                 Some(KnownHtmlElement::Option) => rule.source = source!("attr-option-disabled"),
                 _ => {}
             }
+        }
+        match (self, KnownHtmlElement::from_name(element)) {
+            (Self::Multiple, Some(KnownHtmlElement::Select)) => {
+                rule.source = source!("attr-select-multiple");
+            }
+            (Self::Readonly, Some(KnownHtmlElement::Textarea)) => {
+                rule.source = source!("attr-textarea-readonly");
+            }
+            (Self::Readonly, None) if element.namespace() == &Namespace::html() => {
+                rule.source = source!("attr-face-readonly");
+                rule.rows = &[125];
+            }
+            (Self::Required, Some(KnownHtmlElement::Select)) => {
+                rule.source = source!("attr-select-required");
+            }
+            (Self::Required, Some(KnownHtmlElement::Textarea)) => {
+                rule.source = source!("attr-textarea-required");
+            }
+            _ => {}
         }
         rule
     }
@@ -851,6 +1207,8 @@ fn applies(
     let applicable = match rule.context {
         Context::Global | Context::Direction => true,
         Context::Template => known == Some(KnownHtmlElement::Template),
+        Context::ImageMap | Context::ImageControls => known == Some(KnownHtmlElement::Img),
+        Context::StylesheetLink => known == Some(KnownHtmlElement::Link),
         Context::DisabledControls => matches!(
             known,
             None | Some(
@@ -866,6 +1224,14 @@ fn applies(
         Context::Elements(elements) | Context::Fetching { elements, .. } => {
             known.is_some_and(|name| elements.contains(&name))
         }
+        Context::InputControl(condition) => return condition.applicability(known),
+        Context::ScriptBoolean(_) => {
+            return if known == Some(KnownHtmlElement::Script) {
+                HtmlAttributeApplicability::Applicable
+            } else {
+                HtmlAttributeApplicability::DifferentElement
+            };
+        }
     };
     if !applicable {
         return HtmlAttributeApplicability::DifferentElement;
@@ -876,17 +1242,34 @@ fn applies(
     if matches!(rule.context, Context::Fetching { .. }) && known == Some(KnownHtmlElement::Script) {
         return HtmlAttributeApplicability::ScriptContextRequired;
     }
-    if matches!(
+    HtmlAttributeApplicability::Applicable
+}
+
+fn has_hyperlink_author_constraint(rule: RuleMetadata, element: &QualifiedName) -> bool {
+    matches!(
         rule.context,
         Context::Fetching {
             hyperlink: true,
             ..
         }
-    ) && matches!(known, Some(KnownHtmlElement::A | KnownHtmlElement::Area))
-    {
-        return HtmlAttributeApplicability::HyperlinkContextRequired;
+    ) && matches!(
+        KnownHtmlElement::from_name(element),
+        Some(KnownHtmlElement::A | KnownHtmlElement::Area)
+    )
+}
+
+fn has_boolean_author_constraint(rule: RuleMetadata, element: &QualifiedName) -> bool {
+    match rule.context {
+        Context::ImageMap | Context::ImageControls | Context::StylesheetLink => true,
+        Context::InputControl(_) => matches!(
+            KnownHtmlElement::from_name(element),
+            Some(KnownHtmlElement::Input | KnownHtmlElement::Button)
+        ),
+        Context::ScriptBoolean(_) => {
+            KnownHtmlElement::from_name(element) == Some(KnownHtmlElement::Script)
+        }
+        _ => false,
     }
-    HtmlAttributeApplicability::Applicable
 }
 
 fn report<T>(
@@ -899,14 +1282,26 @@ fn report<T>(
         Some(a) if a.value().is_empty() => HtmlAttributeObservation::PresentEmpty,
         Some(_) => HtmlAttributeObservation::PresentNonempty,
     };
+    let applicability = applies(rule, element, raw);
+    let context_author = if applicability != HtmlAttributeApplicability::Applicable {
+        HtmlAttributeContextAuthorState::Unapplied
+    } else if raw.is_some()
+        && (has_boolean_author_constraint(rule, element)
+            || has_hyperlink_author_constraint(rule, element))
+    {
+        HtmlAttributeContextAuthorState::Unchecked
+    } else {
+        HtmlAttributeContextAuthorState::NotRequired
+    };
     HtmlAttributeReport {
         element: element.clone(),
         raw_attribute: raw.cloned(),
         rule,
         observation,
-        applicability: applies(rule, element, raw),
+        applicability,
         recognition: HtmlAttributeRecognition::Unapplied,
         author: HtmlAttributeAuthorState::Unapplied,
+        context_author,
         intrinsic: None,
         supplied_context: SuppliedContext::None,
     }
@@ -942,7 +1337,7 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(Attribute::value))?;
         let mut result = report(rule.metadata, element, raw);
-        result.supplied_context = supplied_context;
+        result.supplied_context = supplied_context.clone();
         match supplied_context {
             SuppliedContext::None => {}
             SuppliedContext::Script(context) => {
@@ -954,38 +1349,54 @@ impl HtmlValueInterpreter {
                             HtmlAttributeApplicability::InapplicableScriptKind
                         };
                     }
-                } else if matches!(
-                    result.applicability,
-                    HtmlAttributeApplicability::Applicable
-                        | HtmlAttributeApplicability::HyperlinkContextRequired
-                ) {
+                } else if result.applicability == HtmlAttributeApplicability::Applicable {
                     result.applicability = HtmlAttributeApplicability::DifferentElement;
                 }
             }
-            SuppliedContext::Hyperlink(context) => {
-                if result.applicability == HtmlAttributeApplicability::HyperlinkContextRequired {
-                    result.applicability = match context {
-                        HtmlHyperlinkAttributeContext::WithHref => {
-                            HtmlAttributeApplicability::Applicable
-                        }
-                        HtmlHyperlinkAttributeContext::WithoutHref => {
-                            HtmlAttributeApplicability::InapplicableHyperlinkContext
-                        }
-                    };
-                } else if matches!(
-                    result.applicability,
-                    HtmlAttributeApplicability::Applicable
-                        | HtmlAttributeApplicability::ScriptContextRequired
-                ) {
+            SuppliedContext::Hyperlink(_) => {
+                if !has_hyperlink_author_constraint(rule.metadata, element)
+                    && matches!(
+                        result.applicability,
+                        HtmlAttributeApplicability::Applicable
+                            | HtmlAttributeApplicability::ScriptContextRequired
+                    )
+                {
                     result.applicability = HtmlAttributeApplicability::DifferentElement;
                 }
             }
             SuppliedContext::CustomControl(_) => {
                 result.applicability = HtmlAttributeApplicability::DifferentElement;
             }
+            SuppliedContext::Input(_)
+            | SuppliedContext::ButtonSubmitter(_)
+            | SuppliedContext::ImageMap(_)
+            | SuppliedContext::ImageControls(_)
+            | SuppliedContext::StylesheetLink(_) => {
+                result.applicability = HtmlAttributeApplicability::DifferentContext;
+            }
         }
         if result.applicability != HtmlAttributeApplicability::Applicable {
+            result.context_author = HtmlAttributeContextAuthorState::Unapplied;
             return Ok(result);
+        }
+        // The href requirement constrains authorship only. Without supplied
+        // evidence, intrinsic interpretation retains an unchecked author fact.
+        if !has_hyperlink_author_constraint(rule.metadata, element) {
+            result.context_author = HtmlAttributeContextAuthorState::NotRequired;
+        }
+        if raw.is_some()
+            && let SuppliedContext::Hyperlink(context) = &result.supplied_context
+        {
+            result.context_author = match context {
+                HtmlHyperlinkAttributeContext::WithHref => {
+                    HtmlAttributeContextAuthorState::Conforming
+                }
+                HtmlHyperlinkAttributeContext::WithoutHref => {
+                    HtmlAttributeContextAuthorState::Nonconforming(
+                        HtmlAttributeContextConformanceError::ReferrerPolicyRequiresHref,
+                    )
+                }
+            };
         }
         match raw {
             None => {
@@ -1052,9 +1463,12 @@ impl HtmlValueInterpreter {
         supplied_context: SuppliedContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(Attribute::value))?;
+        if let SuppliedContext::StylesheetLink(context) = &supplied_context {
+            self.admit_attribute_raw(context.rel())?;
+        }
         let mut result = report(selected.rule_for(element), element, raw);
-        result.supplied_context = supplied_context;
-        if let SuppliedContext::CustomControl(context) = supplied_context {
+        result.supplied_context = supplied_context.clone();
+        if let SuppliedContext::CustomControl(context) = &supplied_context {
             if result.applicability == HtmlAttributeApplicability::CustomControlContextRequired {
                 result.applicability = match context {
                     HtmlCustomControlAttributeContext::FormAssociated => {
@@ -1064,12 +1478,65 @@ impl HtmlValueInterpreter {
                         HtmlAttributeApplicability::InapplicableCustomControl
                     }
                 };
-            } else if result.applicability == HtmlAttributeApplicability::Applicable {
+            } else if matches!(
+                result.applicability,
+                HtmlAttributeApplicability::Applicable
+                    | HtmlAttributeApplicability::ScriptContextRequired
+            ) {
                 result.applicability = HtmlAttributeApplicability::DifferentElement;
             }
         }
+        match supplied_context {
+            SuppliedContext::Input(_) => {
+                if !matches!(
+                    (result.rule.context, KnownHtmlElement::from_name(element)),
+                    (Context::InputControl(_), Some(KnownHtmlElement::Input))
+                ) && matches!(
+                    result.applicability,
+                    HtmlAttributeApplicability::Applicable
+                        | HtmlAttributeApplicability::ScriptContextRequired
+                        | HtmlAttributeApplicability::CustomControlContextRequired
+                ) {
+                    result.applicability = HtmlAttributeApplicability::DifferentContext;
+                }
+            }
+            SuppliedContext::Script(_) => {
+                if !matches!(
+                    (result.rule.context, KnownHtmlElement::from_name(element)),
+                    (Context::ScriptBoolean(_), Some(KnownHtmlElement::Script))
+                ) && matches!(
+                    result.applicability,
+                    HtmlAttributeApplicability::Applicable
+                        | HtmlAttributeApplicability::ScriptContextRequired
+                        | HtmlAttributeApplicability::CustomControlContextRequired
+                ) {
+                    result.applicability = HtmlAttributeApplicability::DifferentContext;
+                }
+            }
+            SuppliedContext::ButtonSubmitter(_)
+                if !matches!(
+                    (result.rule.context, KnownHtmlElement::from_name(element)),
+                    (
+                        Context::InputControl(InputBooleanApplicability::Formnovalidate),
+                        Some(KnownHtmlElement::Button)
+                    )
+                ) && matches!(
+                    result.applicability,
+                    HtmlAttributeApplicability::Applicable
+                        | HtmlAttributeApplicability::ScriptContextRequired
+                        | HtmlAttributeApplicability::CustomControlContextRequired
+                ) =>
+            {
+                result.applicability = HtmlAttributeApplicability::DifferentContext;
+            }
+            _ => {}
+        }
         if result.applicability != HtmlAttributeApplicability::Applicable {
+            result.context_author = HtmlAttributeContextAuthorState::Unapplied;
             return Ok(result);
+        }
+        if !has_boolean_author_constraint(result.rule, element) {
+            result.context_author = HtmlAttributeContextAuthorState::NotRequired;
         }
         result.intrinsic = Some(raw.is_some());
         match raw {
@@ -1092,7 +1559,201 @@ impl HtmlValueInterpreter {
                 );
             }
         }
+        if raw.is_some() {
+            result.context_author = match &result.supplied_context {
+                SuppliedContext::Input(state) => {
+                    if let Context::InputControl(condition) = result.rule.context {
+                        if condition.allows(*state) {
+                            HtmlAttributeContextAuthorState::Conforming
+                        } else {
+                            HtmlAttributeContextAuthorState::Nonconforming(
+                                HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
+                            )
+                        }
+                    } else {
+                        result.context_author
+                    }
+                }
+                SuppliedContext::Script(context) => {
+                    if let Context::ScriptBoolean(condition) = result.rule.context {
+                        if condition.allows(*context) {
+                            HtmlAttributeContextAuthorState::Conforming
+                        } else {
+                            HtmlAttributeContextAuthorState::Nonconforming(
+                                HtmlAttributeContextConformanceError::ScriptContextForbidsAttribute,
+                            )
+                        }
+                    } else {
+                        result.context_author
+                    }
+                }
+                SuppliedContext::ButtonSubmitter(context) => match context {
+                    HtmlButtonSubmitterContext::SubmitButton => HtmlAttributeContextAuthorState::Conforming,
+                    HtmlButtonSubmitterContext::NotSubmitButton => HtmlAttributeContextAuthorState::Nonconforming(
+                        HtmlAttributeContextConformanceError::FormnovalidateRequiresSubmitButton,
+                    ),
+                },
+                SuppliedContext::ImageMap(context) if result.rule.context == Context::ImageMap => {
+                    match context {
+                        HtmlImageMapAttributeContext::AncestorAnchorWithHref => {
+                            HtmlAttributeContextAuthorState::Conforming
+                        }
+                        HtmlImageMapAttributeContext::NoAncestorAnchorWithHref => {
+                            HtmlAttributeContextAuthorState::Nonconforming(
+                                HtmlAttributeContextConformanceError::ImageMapRequiresAncestorAnchorWithHref,
+                            )
+                        }
+                        HtmlImageMapAttributeContext::Unavailable => HtmlAttributeContextAuthorState::Unavailable,
+                    }
+                }
+                SuppliedContext::ImageControls(context) if result.rule.context == Context::ImageControls => {
+                    match context {
+                        HtmlImageControlsAttributeContext::AltNonempty => HtmlAttributeContextAuthorState::Conforming,
+                        HtmlImageControlsAttributeContext::AltMissing | HtmlImageControlsAttributeContext::AltEmpty => {
+                            HtmlAttributeContextAuthorState::Nonconforming(
+                                HtmlAttributeContextConformanceError::ImageControlsRequireNonemptyAlt,
+                            )
+                        }
+                        HtmlImageControlsAttributeContext::Unavailable => HtmlAttributeContextAuthorState::Unavailable,
+                    }
+                }
+                SuppliedContext::StylesheetLink(context) if result.rule.context == Context::StylesheetLink => {
+                    if context.contains_stylesheet() {
+                        HtmlAttributeContextAuthorState::Conforming
+                    } else {
+                        HtmlAttributeContextAuthorState::Nonconforming(
+                            HtmlAttributeContextConformanceError::StylesheetDisabledRequiresStylesheetRel,
+                        )
+                    }
+                }
+                _ => result.context_author,
+            };
+        }
         Ok(result)
+    }
+
+    /// Interprets ismap presence while observing its actual ancestor author fact.
+    /// URL resolution, activation and server-side map behavior remain external.
+    pub fn ismap_with_context(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: HtmlImageMapAttributeContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(
+            HtmlBooleanAttribute::Ismap,
+            element,
+            raw,
+            SuppliedContext::ImageMap(context),
+        )
+    }
+
+    /// Interprets img controls presence independently of the actual alt fact.
+    /// A host may expose UI; this operation does not create or suppress controls.
+    pub fn image_controls_with_context(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: HtmlImageControlsAttributeContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(
+            HtmlBooleanAttribute::ImageControls,
+            element,
+            raw,
+            SuppliedContext::ImageControls(context),
+        )
+    }
+
+    /// Admits an actual rel value and derives only stylesheet token membership.
+    /// ASCII whitespace and case apply; no full rel vocabulary is certified.
+    pub fn stylesheet_link_context(
+        &self,
+        rel: Option<&DocumentString>,
+    ) -> Result<HtmlStylesheetLinkAttributeContext, HtmlValueAdmissionError> {
+        self.admit_attribute_raw(rel)?;
+        let contains_stylesheet = rel.is_some_and(|raw| {
+            crate::tokens::split_space_tokens(raw)
+                .tokens()
+                .iter()
+                .any(|token| ascii_keyword(token.value(), "stylesheet"))
+        });
+        Ok(HtmlStylesheetLinkAttributeContext {
+            rel: rel.cloned(),
+            contains_stylesheet,
+        })
+    }
+
+    /// Interprets link disabled content presence and its rel author constraint.
+    /// The supplied context is re-admitted under this interpreter's own cap.
+    pub fn stylesheet_disabled(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: &HtmlStylesheetLinkAttributeContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(
+            HtmlBooleanAttribute::StylesheetDisabled,
+            element,
+            raw,
+            SuppliedContext::StylesheetLink(context.clone()),
+        )
+    }
+
+    /// Interprets Boolean content and its actual input-state author constraint.
+    /// The state can come from input_type interpretation; it is never guessed.
+    /// Ignored effects, current checkedness and other live control state are separate.
+    pub fn boolean_attribute_for_input(
+        &self,
+        selected: HtmlBooleanAttribute,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        state: HtmlInputType,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(selected, element, raw, SuppliedContext::Input(state))
+    }
+
+    /// Interprets script Boolean content presence with actual kind/src facts.
+    /// Scheduling, force-async, module support and execution remain external.
+    pub fn boolean_attribute_for_script(
+        &self,
+        selected: HtmlBooleanAttribute,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: HtmlScriptAttributeContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(selected, element, raw, SuppliedContext::Script(context))
+    }
+
+    /// Interprets formnovalidate presence on an actually classified button.
+    /// This does not compute form ownership or the effective no-validate state.
+    pub fn formnovalidate_for_button(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: HtmlButtonSubmitterContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(
+            HtmlBooleanAttribute::Formnovalidate,
+            element,
+            raw,
+            SuppliedContext::ButtonSubmitter(context),
+        )
+    }
+
+    /// Interprets readonly for an explicitly classified autonomous custom control.
+    /// Presence does not describe current editability or validation results.
+    pub fn readonly_for_custom_control(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: HtmlCustomControlAttributeContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(
+            HtmlBooleanAttribute::Readonly,
+            element,
+            raw,
+            SuppliedContext::CustomControl(context),
+        )
     }
 
     /// Interprets local disabled content presence using its defining element clause.
