@@ -1215,6 +1215,12 @@ pub enum surgeist_html::HtmlScriptingStatus
 pub surgeist_html::HtmlScriptingStatus::Disabled
 pub surgeist_html::HtmlScriptingStatus::Enabled
 pub surgeist_html::HtmlScriptingStatus::Unavailable
+pub enum surgeist_html::HtmlSelectDisplaySize<'a>
+pub surgeist_html::HtmlSelectDisplaySize::MultipleRoleUnavailable(surgeist_html::HtmlAttributeApplicability)
+pub surgeist_html::HtmlSelectDisplaySize::Unapplied(surgeist_html::HtmlAttributeApplicability)
+pub surgeist_html::HtmlSelectDisplaySize::Value
+pub surgeist_html::HtmlSelectDisplaySize::Value::origin: surgeist_html::HtmlNumericAttributeValueOrigin
+pub surgeist_html::HtmlSelectDisplaySize::Value::value: &'a surgeist_html::HtmlNonNegativeInteger
 pub enum surgeist_html::HtmlSemanticContextError
 pub surgeist_html::HtmlSemanticContextError::Capture(surgeist_html::HtmlCaptureError)
 pub surgeist_html::HtmlSemanticContextError::ClassificationLimit
@@ -2980,6 +2986,7 @@ pub fn surgeist_html::HtmlNonNegativeInteger::to_u64(&self) -> core::result::Res
 impl surgeist_html::HtmlNonNegativeInteger
 pub fn surgeist_html::HtmlNonNegativeInteger::into_canvas_height_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlNonNegativeInteger::into_canvas_width_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlNonNegativeInteger::into_select_size_attribute(self) -> core::result::Result<surgeist_html::Attribute, surgeist_html::HtmlNumericAttributeConformanceError>
 pub fn surgeist_html::HtmlNonNegativeInteger::into_textarea_cols_attribute(self) -> core::result::Result<surgeist_html::Attribute, surgeist_html::HtmlNumericAttributeConformanceError>
 pub fn surgeist_html::HtmlNonNegativeInteger::into_textarea_rows_attribute(self) -> core::result::Result<surgeist_html::Attribute, surgeist_html::HtmlNumericAttributeConformanceError>
 impl surgeist_html::HtmlNonNegativeInteger
@@ -3215,6 +3222,22 @@ pub fn surgeist_html::HtmlSandboxValue::flags(&self) -> surgeist_html::HtmlSandb
 pub fn surgeist_html::HtmlSandboxValue::into_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlSandboxValue::new(keywords: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSandboxKeyword>) -> core::result::Result<Self, surgeist_html::HtmlSandboxValueError>
 pub fn surgeist_html::HtmlSandboxValue::tokens(&self) -> &surgeist_html::HtmlUnorderedTokenSet
+pub struct surgeist_html::HtmlSelectSizeReport
+impl surgeist_html::HtmlSelectSizeReport
+pub fn surgeist_html::HtmlSelectSizeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlSelectSizeReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlSelectSizeReport::author(&self) -> surgeist_html::HtmlNumericAttributeAuthorState
+pub fn surgeist_html::HtmlSelectSizeReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>>
+pub fn surgeist_html::HtmlSelectSizeReport::display_size(&self) -> surgeist_html::HtmlSelectDisplaySize<'_>
+pub fn surgeist_html::HtmlSelectSizeReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlSelectSizeReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlSelectSizeReport::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlSelectSizeReport::multiple(&self) -> &surgeist_html::HtmlAttributeReport<bool>
+pub fn surgeist_html::HtmlSelectSizeReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlSelectSizeReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlSelectSizeReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlSelectSizeReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlSelectSizeReport::source_clause(&self) -> &'static str
 pub struct surgeist_html::HtmlSelectValue
 impl surgeist_html::HtmlSelectValue
 pub fn surgeist_html::HtmlSelectValue::selected_option(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
@@ -3706,6 +3729,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_hyperlink(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlHyperlinkAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::select_size(&self, element: &surgeist_html::QualifiedName, size: core::option::Option<&surgeist_html::Attribute>, multiple: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSelectSizeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::shadowrootmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlShadowRootMode>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

@@ -196,6 +196,18 @@ selected value; the captured form-setting queries below use the actual form
 owner for effective fallback. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
 
+`select_size` combines exact size content with the actual multiple attribute.
+Native size construction requires a positive integer. Processing preserves every
+successful nonnegative recovery, including zero and negative zero; only missing
+or failed size parsing selects display size 4 when multiple is present, otherwise
+1. Boolean spelling conformance is retained separately from presence. Successful
+size recovery needs no multiple role; a missing/failed size with a supplied wrong
+multiple attribute leaves the fallback explicitly unavailable. Both supplied raw
+slots use per-value UTF-16 admission before applicability, and derived values use
+ordinary Rust allocation. This [intrinsic display-size concept](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#concept-select-size)
+retains arbitrary magnitudes and is distinct from the size IDL getter’s zero
+reflection default, rendering and selection state.
+
 Input size and input/textarea length reports retain exact recovered integers,
 whole-value authorship and actual input-state applicability. A missing, invalid
 or zero input size selects no positive content advisory; its reflected getter

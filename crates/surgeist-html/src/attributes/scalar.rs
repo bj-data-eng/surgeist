@@ -21,7 +21,7 @@ pub enum HtmlNumericAttributeAuthorState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNumericAttributeConformanceError {
     CommonValue(HtmlValueFailure),
-    /// Textarea rows/cols require a strictly positive authored integer.
+    /// Textarea rows/cols and select size require a positive authored integer.
     ZeroMustBePositive,
 }
 
@@ -171,6 +171,14 @@ nonnegative_rule!(
     true
 );
 
+const SELECT_SIZE: RuleMetadata = RuleMetadata {
+    attribute: KnownHtmlAttribute::Size,
+    rows: &[143],
+    source: source!("attr-select-size"),
+    context: Context::Elements(&[KnownHtmlElement::Select]),
+    vocabulary_source: None,
+};
+
 const TABINDEX: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Tabindex,
     rows: &[156],
@@ -230,6 +238,21 @@ fn numeric_author<A>(common: &HtmlValueReport<A, A>) -> HtmlNumericAttributeAuth
     }
 }
 
+fn nonnegative_author(
+    common: &HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+    positive: bool,
+) -> HtmlNumericAttributeAuthorState {
+    if positive
+        && let HtmlValueAuthorState::Valid(value) = common.author()
+        && value.is_zero()
+    {
+        return HtmlNumericAttributeAuthorState::Nonconforming(
+            HtmlNumericAttributeConformanceError::ZeroMustBePositive,
+        );
+    }
+    numeric_author(common)
+}
+
 impl HtmlValueInterpreter {
     fn nonnegative_attribute(
         &self,
@@ -251,15 +274,7 @@ impl HtmlValueInterpreter {
             });
         }
         let common = self.nonnegative_integer(raw.map(Attribute::value))?;
-        let mut author = numeric_author(&common);
-        if rule.positive
-            && let HtmlValueAuthorState::Valid(value) = common.author()
-            && value.is_zero()
-        {
-            author = HtmlNumericAttributeAuthorState::Nonconforming(
-                HtmlNumericAttributeConformanceError::ZeroMustBePositive,
-            );
-        }
+        let author = nonnegative_author(&common, rule.positive);
         let (value, origin) = match common.recovery() {
             HtmlValueRecoveryState::Value(value) if !rule.positive || !value.is_zero() => {
                 (value.clone(), HtmlNumericAttributeValueOrigin::Recovered)
@@ -445,18 +460,27 @@ override_methods!(
 
 fn nonnegative_author_attribute(
     value: HtmlNonNegativeInteger,
-    rule: NonnegativeRule,
+    metadata: RuleMetadata,
+    positive: bool,
 ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
-    if rule.positive && value.is_zero() {
+    if positive && value.is_zero() {
         return Err(HtmlNumericAttributeConformanceError::ZeroMustBePositive);
     }
     Ok(Attribute::new(
-        rule.metadata.attribute.qualified_name(),
+        metadata.attribute.qualified_name(),
         value.decimal_digits(),
     ))
 }
 
 impl HtmlNonNegativeInteger {
+    /// Constructs conforming select size syntax. Authored zero is rejected,
+    /// independently of the source processing algorithm's recovered zero.
+    pub fn into_select_size_attribute(
+        self,
+    ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
+        nonnegative_author_attribute(self, SELECT_SIZE, true)
+    }
+
     /// Constructs exact conforming canvas width syntax, including zero.
     pub fn into_canvas_width_attribute(self) -> Attribute {
         Attribute::new(
@@ -475,13 +499,13 @@ impl HtmlNonNegativeInteger {
     pub fn into_textarea_cols_attribute(
         self,
     ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
-        nonnegative_author_attribute(self, TEXTAREA_COLS)
+        nonnegative_author_attribute(self, TEXTAREA_COLS.metadata, TEXTAREA_COLS.positive)
     }
     /// Rejects authored zero; larger exact values have no imposed machine bound.
     pub fn into_textarea_rows_attribute(
         self,
     ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
-        nonnegative_author_attribute(self, TEXTAREA_ROWS)
+        nonnegative_author_attribute(self, TEXTAREA_ROWS.metadata, TEXTAREA_ROWS.positive)
     }
 }
 
@@ -514,5 +538,147 @@ impl HtmlFormEnctype {
             KnownHtmlAttribute::Formenctype.qualified_name(),
             self.canonical_keyword(),
         )
+    }
+}
+
+/// The intrinsic HTML display-size concept, not the size IDL getter (whose
+/// ReflectDefault is zero), rendered geometry, or current selection state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlSelectDisplaySize<'a> {
+    Value {
+        value: &'a HtmlNonNegativeInteger,
+        origin: HtmlNumericAttributeValueOrigin,
+    },
+    Unapplied(HtmlAttributeApplicability),
+    /// A missing/failed size needs actual multiple presence. A supplied wrong
+    /// attribute role cannot establish that presence or count as absence.
+    MultipleRoleUnavailable(HtmlAttributeApplicability),
+}
+
+/// Exact select size and multiple content records with separate author checks
+/// and source-defined display size (HTML #attr-select-size/#concept-select-size).
+///
+/// Each raw slot is admitted through the interpreter's finite UTF-16 unit cap
+/// before name/grammar interpretation. Derived integers and reports use ordinary
+/// Rust allocation. This is not parser/captured-session resource accounting,
+/// cancellation, WebIDL projection, rendering or selection execution.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HtmlSelectSizeReport {
+    attribute: HtmlAttributeReport<()>,
+    common: Option<HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>>,
+    author: HtmlNumericAttributeAuthorState,
+    multiple: HtmlAttributeReport<bool>,
+    fallback: Option<(HtmlNonNegativeInteger, HtmlNumericAttributeValueOrigin)>,
+}
+impl HtmlSelectSizeReport {
+    pub fn element(&self) -> &QualifiedName {
+        self.attribute.element()
+    }
+    pub fn raw_attribute(&self) -> Option<&Attribute> {
+        self.attribute.raw_attribute()
+    }
+    pub fn raw(&self) -> Option<&DocumentString> {
+        self.attribute.raw()
+    }
+    pub fn observation(&self) -> HtmlAttributeObservation {
+        self.attribute.observation()
+    }
+    pub fn applicability(&self) -> HtmlAttributeApplicability {
+        self.attribute.applicability()
+    }
+    pub fn attribute(&self) -> KnownHtmlAttribute {
+        self.attribute.attribute()
+    }
+    pub fn inventory_rows(&self) -> &'static [u16] {
+        self.attribute.inventory_rows()
+    }
+    pub fn source_clause(&self) -> &'static str {
+        self.attribute.source_clause()
+    }
+    pub fn processing_source_clause(&self) -> &'static str {
+        source!("concept-select-size")
+    }
+    /// Returns size's raw units; multiple retains its own count in multiple().
+    pub fn input_code_units(&self) -> usize {
+        self.attribute.input_code_units()
+    }
+    /// None means size was unapplied. Applicable absence has a Missing report.
+    pub fn common(
+        &self,
+    ) -> Option<&HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>> {
+        self.common.as_ref()
+    }
+    pub fn author(&self) -> HtmlNumericAttributeAuthorState {
+        self.author
+    }
+    /// Actual content presence and independent Boolean spelling conformance.
+    pub fn multiple(&self) -> &HtmlAttributeReport<bool> {
+        &self.multiple
+    }
+    /// Successful parsing, including zero, does not require multiple evidence.
+    /// Only missing/failed parsing consults that evidence for the 1/4 fallback.
+    pub fn display_size(&self) -> HtmlSelectDisplaySize<'_> {
+        let Some(common) = &self.common else {
+            return HtmlSelectDisplaySize::Unapplied(self.applicability());
+        };
+        if let HtmlValueRecoveryState::Value(value) = common.recovery() {
+            return HtmlSelectDisplaySize::Value {
+                value,
+                origin: HtmlNumericAttributeValueOrigin::Recovered,
+            };
+        }
+        match &self.fallback {
+            Some((value, origin)) => HtmlSelectDisplaySize::Value {
+                value,
+                origin: *origin,
+            },
+            None => HtmlSelectDisplaySize::MultipleRoleUnavailable(self.multiple.applicability()),
+        }
+    }
+}
+impl HtmlValueInterpreter {
+    /// Interprets only exact HTML `select[size]`, with actual multiple content
+    /// evidence. None establishes absence; a wrong supplied role is not absence.
+    /// Both raw slots are admitted before applicability, even if recovery makes
+    /// multiple unnecessary for the display-size result.
+    pub fn select_size(
+        &self,
+        element: &QualifiedName,
+        size: Option<&Attribute>,
+        multiple: Option<&Attribute>,
+    ) -> Result<HtmlSelectSizeReport, HtmlValueAdmissionError> {
+        self.admit_attribute_raw(size.map(Attribute::value))?;
+        self.admit_attribute_raw(multiple.map(Attribute::value))?;
+        let attribute = report(SELECT_SIZE, element, size);
+        let multiple = self.boolean_attribute(HtmlBooleanAttribute::Multiple, element, multiple)?;
+        let common = if attribute.applicability() == HtmlAttributeApplicability::Applicable {
+            Some(self.nonnegative_integer(size.map(Attribute::value))?)
+        } else {
+            None
+        };
+        let author = common
+            .as_ref()
+            .map_or(HtmlNumericAttributeAuthorState::Unapplied, |common| {
+                nonnegative_author(common, true)
+            });
+        let fallback = common.as_ref().and_then(|common| {
+            let origin = match common.recovery() {
+                HtmlValueRecoveryState::Missing => HtmlNumericAttributeValueOrigin::MissingDefault,
+                HtmlValueRecoveryState::Failed(_) => {
+                    HtmlNumericAttributeValueOrigin::ParseFailureDefault
+                }
+                HtmlValueRecoveryState::Value(_) => return None,
+            };
+            multiple
+                .intrinsic()
+                .map(|present| ((if *present { 4_u128 } else { 1_u128 }).into(), origin))
+        });
+        Ok(HtmlSelectSizeReport {
+            attribute,
+            common,
+            author,
+            multiple,
+            fallback,
+        })
     }
 }
