@@ -384,6 +384,32 @@ a select with an established null owner. Consulted attributes, traversal,
 temporary scratch and actual output capacities use the semantic session's
 admission and atomic batch contract; missing influencing facts remain explicit.
 
+`TextareaDefaultValue` concatenates exact Text data from immediate ordinary
+children only. `OutputValue` concatenates exact Text data from all ordinary
+descendants. Both preserve UTF-16 units and whitespace; output traversal includes
+script and image descendants, without the option getters' HTML-aware pruning
+or whitespace collapse. Separate shadow and template trees do not contribute.
+The [textarea default-value clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-textarea-defaultvalue)
+and [output default-value clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-output-defaultvalue)
+retain the selected getter definitions.
+
+`OutputDefaultValue` reads the actual nullable default override from
+`HtmlOutputDefaultFacts`. An established null selects descendant text; an
+established string is returned unchanged, including an empty string. Absent or
+unavailable override evidence produces a typed missing result. Checked facts
+require the same capture and host revision, actual HTML output subjects and
+unique records, with finite validation work, moved-vector capacity and logical
+stored UTF-16 unit limits. The semantic context validates the join before
+creating its identity; captured text does not establish the historical override.
+
+Computed text buffers admit actual variable capacity through the shared finite
+semantic ledger. Traversal and writes are charged, scratch frames are released
+on every outcome, and cancellation, sticky qualified failures and atomic batches
+follow the session contract. Existing immutable override backing and fixed
+shared wrappers remain outside that variable-allocation accounting. These
+readbacks execute no setters or reset and do not supply textarea current value
+or complete source-conformance checking.
+
 `InputSuggestionsSource` uses the input state's source-defined `list`
 applicability and the first element in the same ordinary tree whose ID exactly
 matches the raw attribute. That element supplies the source only when it is an

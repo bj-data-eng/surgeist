@@ -524,6 +524,10 @@ pub surgeist_html::HtmlControlLengthPairState::Unchecked
 pub enum surgeist_html::HtmlControlLengthValue
 pub surgeist_html::HtmlControlLengthValue::Bound(surgeist_html::HtmlNonNegativeInteger)
 pub surgeist_html::HtmlControlLengthValue::NoBound
+pub enum surgeist_html::HtmlControlTextOrigin
+pub surgeist_html::HtmlControlTextOrigin::ChildText
+pub surgeist_html::HtmlControlTextOrigin::DescendantText
+pub surgeist_html::HtmlControlTextOrigin::OutputDefaultOverride
 pub enum surgeist_html::HtmlCrossOrigin
 pub surgeist_html::HtmlCrossOrigin::Anonymous
 pub surgeist_html::HtmlCrossOrigin::UseCredentials
@@ -947,6 +951,28 @@ pub enum surgeist_html::HtmlOptionReadbackOrigin
 pub surgeist_html::HtmlOptionReadbackOrigin::DescendantText
 pub surgeist_html::HtmlOptionReadbackOrigin::LabelAttribute
 pub surgeist_html::HtmlOptionReadbackOrigin::ValueAttribute
+pub enum surgeist_html::HtmlOutputDefaultError
+pub surgeist_html::HtmlOutputDefaultError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlOutputDefaultError::CodeUnits
+pub surgeist_html::HtmlOutputDefaultError::CodeUnits::limit: usize
+pub surgeist_html::HtmlOutputDefaultError::CodeUnits::required: usize
+pub surgeist_html::HtmlOutputDefaultError::DuplicateSubject(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlOutputDefaultError::HostRevisionMismatch
+pub surgeist_html::HtmlOutputDefaultError::InapplicableSubject(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlOutputDefaultError::RecordCapacity
+pub surgeist_html::HtmlOutputDefaultError::RecordCapacity::limit: usize
+pub surgeist_html::HtmlOutputDefaultError::RecordCapacity::required: usize
+pub surgeist_html::HtmlOutputDefaultError::RepresentationExhausted
+pub surgeist_html::HtmlOutputDefaultError::ValidationWork
+pub surgeist_html::HtmlOutputDefaultError::ValidationWork::limit: usize
+pub surgeist_html::HtmlOutputDefaultError::ValidationWork::required: usize
+impl core::error::Error for surgeist_html::HtmlOutputDefaultError
+impl core::fmt::Display for surgeist_html::HtmlOutputDefaultError
+pub fn surgeist_html::HtmlOutputDefaultError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlOutputDefaultValueOverride
+pub surgeist_html::HtmlOutputDefaultValueOverride::Null
+pub surgeist_html::HtmlOutputDefaultValueOverride::Unavailable
+pub surgeist_html::HtmlOutputDefaultValueOverride::Value(surgeist_html::DocumentString)
 pub enum surgeist_html::HtmlParseLimitsError
 pub surgeist_html::HtmlParseLimitsError::MissingResource(surgeist_html::HtmlParseResource)
 pub surgeist_html::HtmlParseLimitsError::Unrepresentable
@@ -1134,6 +1160,8 @@ pub surgeist_html::HtmlSemanticContextError::InertHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::InertRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::OutputDefaultsCaptureMismatch
+pub surgeist_html::HtmlSemanticContextError::OutputDefaultsHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::ParticipationCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::ParticipationLimit
 pub surgeist_html::HtmlSemanticContextError::ParticipationLimit::limit: usize
@@ -1178,6 +1206,8 @@ pub surgeist_html::HtmlSemanticFact::OptionIndex(surgeist_html::HtmlSemanticValu
 pub surgeist_html::HtmlSemanticFact::OptionLabel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
 pub surgeist_html::HtmlSemanticFact::OptionText(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
 pub surgeist_html::HtmlSemanticFact::OptionValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
+pub surgeist_html::HtmlSemanticFact::OutputDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
+pub surgeist_html::HtmlSemanticFact::OutputValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::Progress(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlProgressState>)
 pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
@@ -1188,6 +1218,7 @@ pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSem
 pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormMethod>)
 pub surgeist_html::HtmlSemanticFact::SubmitterNoValidate(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterNoValidate>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
+pub surgeist_html::HtmlSemanticFact::TextareaDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
 pub enum surgeist_html::HtmlSemanticFailureKind
 pub surgeist_html::HtmlSemanticFailureKind::AllocationFailed
@@ -1217,6 +1248,7 @@ pub surgeist_html::HtmlSemanticMissing::InertNodeFacts(surgeist_html::HtmlCaptur
 pub surgeist_html::HtmlSemanticMissing::LanguageFallback(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::ModalBlocking(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OrderedChildren(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::OutputDefaultValueOverride(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::Parent(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::ProducesCssBox(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::ShadowHost(surgeist_html::HtmlCaptureSubjectId)
@@ -1256,6 +1288,8 @@ pub surgeist_html::HtmlSemanticQuery::OptionIndex
 pub surgeist_html::HtmlSemanticQuery::OptionLabel
 pub surgeist_html::HtmlSemanticQuery::OptionText
 pub surgeist_html::HtmlSemanticQuery::OptionValue
+pub surgeist_html::HtmlSemanticQuery::OutputDefaultValue
+pub surgeist_html::HtmlSemanticQuery::OutputValue
 pub surgeist_html::HtmlSemanticQuery::Progress
 pub surgeist_html::HtmlSemanticQuery::SelectOptions
 pub surgeist_html::HtmlSemanticQuery::SelectSelectedIndex
@@ -1266,6 +1300,7 @@ pub surgeist_html::HtmlSemanticQuery::SubmitterFormEnctype
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormMethod
 pub surgeist_html::HtmlSemanticQuery::SubmitterNoValidate
 pub surgeist_html::HtmlSemanticQuery::TableModel
+pub surgeist_html::HtmlSemanticQuery::TextareaDefaultValue
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
 impl surgeist_html::HtmlSemanticQuery
 pub fn surgeist_html::HtmlSemanticQuery::source_clause(self) -> &'static str
@@ -2231,6 +2266,10 @@ pub fn surgeist_html::HtmlControlLengthReport::getter_limitation_source_clause(&
 pub fn surgeist_html::HtmlControlLengthReport::getter_origin(&self) -> core::option::Option<surgeist_html::HtmlControlGetterOrigin>
 pub fn surgeist_html::HtmlControlLengthReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlControlLengthReport::reflected_getter(&self) -> core::option::Option<i32>
+pub struct surgeist_html::HtmlControlTextReadback
+impl surgeist_html::HtmlControlTextReadback
+pub fn surgeist_html::HtmlControlTextReadback::origin(&self) -> surgeist_html::HtmlControlTextOrigin
+pub fn surgeist_html::HtmlControlTextReadback::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlCustomControlClassification
 impl surgeist_html::HtmlCustomControlClassification
 pub fn surgeist_html::HtmlCustomControlClassification::form_associated(&self) -> bool
@@ -2836,6 +2875,24 @@ pub fn surgeist_html::HtmlOrderedTokenSet::tokens(&self) -> &[surgeist_html::Htm
 impl core::cmp::Eq for surgeist_html::HtmlOrderedTokenSet
 impl core::cmp::PartialEq for surgeist_html::HtmlOrderedTokenSet
 pub fn surgeist_html::HtmlOrderedTokenSet::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlOutputDefaultFact
+impl surgeist_html::HtmlOutputDefaultFact
+pub fn surgeist_html::HtmlOutputDefaultFact::default_value_override(&self) -> &surgeist_html::HtmlOutputDefaultValueOverride
+pub fn surgeist_html::HtmlOutputDefaultFact::new(subject: surgeist_html::HtmlCaptureSubjectId, default_value_override: surgeist_html::HtmlOutputDefaultValueOverride) -> Self
+pub fn surgeist_html::HtmlOutputDefaultFact::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlOutputDefaultFacts
+impl surgeist_html::HtmlOutputDefaultFacts
+pub fn surgeist_html::HtmlOutputDefaultFacts::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlOutputDefaultFacts::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlOutputDefaultFacts::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, records: alloc::vec::Vec<surgeist_html::HtmlOutputDefaultFact>, limits: surgeist_html::HtmlOutputDefaultLimits) -> core::result::Result<Self, surgeist_html::HtmlOutputDefaultError>
+pub fn surgeist_html::HtmlOutputDefaultFacts::records(&self) -> &[surgeist_html::HtmlOutputDefaultFact]
+pub fn surgeist_html::HtmlOutputDefaultFacts::validation_work(&self) -> usize
+pub struct surgeist_html::HtmlOutputDefaultLimits
+impl surgeist_html::HtmlOutputDefaultLimits
+pub fn surgeist_html::HtmlOutputDefaultLimits::code_units(self) -> usize
+pub fn surgeist_html::HtmlOutputDefaultLimits::new(record_capacity: usize, code_units: usize, validation_work: usize) -> Self
+pub fn surgeist_html::HtmlOutputDefaultLimits::record_capacity(self) -> usize
+pub fn surgeist_html::HtmlOutputDefaultLimits::validation_work(self) -> usize
 pub struct surgeist_html::HtmlParseCancellation(_)
 impl surgeist_html::HtmlParseCancellation
 pub fn surgeist_html::HtmlParseCancellation::cancel(&self)
@@ -3011,6 +3068,7 @@ pub fn surgeist_html::HtmlSemanticContext::inert(&self) -> core::option::Option<
 pub fn surgeist_html::HtmlSemanticContext::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticContext::language_direction(&self) -> core::option::Option<&surgeist_html::HtmlLanguageDirectionFacts>
 pub fn surgeist_html::HtmlSemanticContext::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, input: surgeist_html::HtmlSemanticContextInput, max_classifications: usize) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
+pub fn surgeist_html::HtmlSemanticContext::output_defaults(&self) -> core::option::Option<&surgeist_html::HtmlOutputDefaultFacts>
 pub fn surgeist_html::HtmlSemanticContext::participation(&self) -> core::option::Option<&surgeist_html::HtmlListParticipation>
 pub fn surgeist_html::HtmlSemanticContext::participation_revision(&self) -> core::option::Option<&surgeist_html::HtmlListParticipationRevision>
 pub struct surgeist_html::HtmlSemanticContextId(_)
@@ -3025,6 +3083,7 @@ pub fn surgeist_html::HtmlSemanticContextInput::with_global_inheritance(self, ex
 pub fn surgeist_html::HtmlSemanticContextInput::with_inert(self, expected: surgeist_html::HtmlFlatTreeRevision, facts: core::option::Option<surgeist_html::HtmlInertFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_language_direction(self, facts: surgeist_html::HtmlLanguageDirectionFacts) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_list_participation(self, expected: surgeist_html::HtmlListParticipationRevision, participation: core::option::Option<surgeist_html::HtmlListParticipation>) -> Self
+pub fn surgeist_html::HtmlSemanticContextInput::with_output_defaults(self, facts: surgeist_html::HtmlOutputDefaultFacts) -> Self
 pub struct surgeist_html::HtmlSemanticFailure
 impl surgeist_html::HtmlSemanticFailure
 pub fn surgeist_html::HtmlSemanticFailure::kind(&self) -> &surgeist_html::HtmlSemanticFailureKind

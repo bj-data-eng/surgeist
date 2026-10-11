@@ -4,7 +4,7 @@
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets and control labels, current control flags, global inheritance, select
 //! readbacks, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
-//! defaults and input/button form setting selection
+//! defaults, textarea/output text getters and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
@@ -21,6 +21,8 @@ mod inert;
 pub use inert::*;
 mod control;
 pub use control::*;
+mod control_text;
+pub use control_text::*;
 mod inheritance;
 pub use inheritance::*;
 mod select;
@@ -255,6 +257,7 @@ pub struct HtmlSemanticContextInput {
     inert_revision: Option<HtmlFlatTreeRevision>,
     inert: Option<HtmlInertFacts>,
     controls: Option<HtmlControlFacts>,
+    output_defaults: Option<HtmlOutputDefaultFacts>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
 }
@@ -268,6 +271,7 @@ impl HtmlSemanticContextInput {
             inert_revision: None,
             inert: None,
             controls: None,
+            output_defaults: None,
             global_inheritance_revision: None,
             global_inheritance: None,
         }
@@ -303,6 +307,10 @@ impl HtmlSemanticContextInput {
         self.controls = Some(facts);
         self
     }
+    pub fn with_output_defaults(mut self, facts: HtmlOutputDefaultFacts) -> Self {
+        self.output_defaults = Some(facts);
+        self
+    }
     pub fn with_language_direction(mut self, facts: HtmlLanguageDirectionFacts) -> Self {
         self.language_direction = Some(facts);
         self
@@ -322,6 +330,7 @@ pub struct HtmlSemanticContext {
     inert_revision: Option<HtmlFlatTreeRevision>,
     inert: Option<HtmlInertFacts>,
     controls: Option<HtmlControlFacts>,
+    output_defaults: Option<HtmlOutputDefaultFacts>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
     empty_language: DocumentString,
@@ -350,6 +359,8 @@ pub enum HtmlSemanticContextError {
     InertRevisionMismatch,
     ControlsCaptureMismatch,
     ControlsHostRevisionMismatch,
+    OutputDefaultsCaptureMismatch,
+    OutputDefaultsHostRevisionMismatch,
     GlobalInheritanceCaptureMismatch,
     GlobalInheritanceHostRevisionMismatch,
     GlobalInheritanceRevisionMismatch,
@@ -384,6 +395,7 @@ impl HtmlSemanticContext {
             inert_revision,
             inert,
             controls,
+            output_defaults,
             global_inheritance_revision,
             global_inheritance,
         } = input;
@@ -407,6 +419,14 @@ impl HtmlSemanticContext {
             }
             if inert_revision.as_ref() != Some(facts.flat_revision()) {
                 return Err(HtmlSemanticContextError::InertRevisionMismatch);
+            }
+        }
+        if let Some(facts) = &output_defaults {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::OutputDefaultsCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::OutputDefaultsHostRevisionMismatch);
             }
         }
         if let Some(facts) = &controls {
@@ -472,6 +492,7 @@ impl HtmlSemanticContext {
             inert_revision,
             inert,
             controls,
+            output_defaults,
             global_inheritance_revision,
             global_inheritance,
             empty_language: DocumentString::default(),
@@ -503,6 +524,9 @@ impl HtmlSemanticContext {
     }
     pub fn inert(&self) -> Option<&HtmlInertFacts> {
         self.inert.as_ref()
+    }
+    pub fn output_defaults(&self) -> Option<&HtmlOutputDefaultFacts> {
+        self.output_defaults.as_ref()
     }
     pub fn controls(&self) -> Option<&HtmlControlFacts> {
         self.controls.as_ref()
@@ -655,6 +679,9 @@ pub enum HtmlSemanticQuery {
     InputSuggestionsSource,
     DatalistOptions,
     DatalistSuggestionOptions,
+    TextareaDefaultValue,
+    OutputValue,
+    OutputDefaultValue,
     SelectSelectedIndex,
     OptionIndex,
     OptionFormOwner,
@@ -672,6 +699,15 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::TextareaDefaultValue => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-defaultvalue"
+            }
+            Self::OutputValue => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-output-value"
+            }
+            Self::OutputDefaultValue => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-output-defaultvalue"
+            }
             Self::InputSuggestionsSource => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list"
             }
@@ -834,6 +870,7 @@ pub enum HtmlSemanticMissing {
     ProducesCssBox(HtmlCaptureSubjectId),
     LanguageFallback(HtmlCaptureSubjectId),
     CurrentValue(HtmlCaptureSubjectId),
+    OutputDefaultValueOverride(HtmlCaptureSubjectId),
     SlotAssignment(HtmlCaptureSubjectId),
     ShadowHost(HtmlCaptureSubjectId),
     InertNodeFacts(HtmlCaptureSubjectId),
@@ -918,6 +955,9 @@ pub enum HtmlSemanticFact {
     /// Known(None) establishes that the input has no source of suggestions.
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    TextareaDefaultValue(HtmlSemanticValue<HtmlControlTextReadback>),
+    OutputValue(HtmlSemanticValue<HtmlControlTextReadback>),
+    OutputDefaultValue(HtmlSemanticValue<HtmlControlTextReadback>),
     /// Membership only: source-option-enabled descendants with nonempty values.
     DatalistSuggestionOptions(HtmlSemanticValue<HtmlOptionCollection>),
     /// `Known(None)` represents the source selected index of −1.
@@ -2184,6 +2224,24 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Spellcheck => {
                             HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
                         }
+                        HtmlSemanticQuery::TextareaDefaultValue => {
+                            HtmlSemanticFact::TextareaDefaultValue(self.control_text_readback(
+                                &request.subject,
+                                HtmlControlTextOrigin::ChildText,
+                            )?)
+                        }
+                        HtmlSemanticQuery::OutputValue => {
+                            HtmlSemanticFact::OutputValue(self.control_text_readback(
+                                &request.subject,
+                                HtmlControlTextOrigin::DescendantText,
+                            )?)
+                        }
+                        HtmlSemanticQuery::OutputDefaultValue => {
+                            HtmlSemanticFact::OutputDefaultValue(self.control_text_readback(
+                                &request.subject,
+                                HtmlControlTextOrigin::OutputDefaultOverride,
+                            )?)
+                        }
                         HtmlSemanticQuery::InputSuggestionsSource => {
                             HtmlSemanticFact::InputSuggestionsSource(
                                 self.input_suggestions_source(&request.subject)?,
@@ -2357,6 +2415,15 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Spellcheck => {
                         HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TextareaDefaultValue => {
+                        HtmlSemanticFact::TextareaDefaultValue(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OutputValue => {
+                        HtmlSemanticFact::OutputValue(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OutputDefaultValue => {
+                        HtmlSemanticFact::OutputDefaultValue(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::InputSuggestionsSource => {
                         HtmlSemanticFact::InputSuggestionsSource(HtmlSemanticValue::Inapplicable)
