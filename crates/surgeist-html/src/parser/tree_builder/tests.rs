@@ -5947,3 +5947,106 @@ fn ordinary_form_control_and_template_continuations_preserve_pointer_and_origina
         assert_released(&driver.control);
     }
 }
+
+// Governing HTML877d syntax4630–4638,5110–5114,5322–5498:
+// omitted tbody and td end tags recover to two cells in one real row.
+
+#[test]
+fn ordinary_table_implied_tbody_and_cell_end_recovery_preserve_real_sibling_order() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table><tr><td>1<td>2</table>3"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        // The existing driver retains the actual table opener at Table. Dispose
+        // its real tree/token/controller owners before the runtime assertion.
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_outline = outline(document);
+    let actual_mode = document.mode();
+    let doctype_count = document
+        .root()
+        .children()
+        .filter(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Doctype(_)))
+        .count();
+    // A real doctype precedes html; select the actual element rather than
+    // treating the first document child as an element.
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let table = document.node(&body).unwrap().children().next().unwrap();
+    let tbody = document.node(&table).unwrap().children().next().unwrap();
+    let row = document.node(&tbody).unwrap().children().next().unwrap();
+    let cells: Vec<_> = document.node(&row).unwrap().children().collect();
+    let element_facts: Vec<_> = [&table, &tbody, &row]
+        .into_iter()
+        .chain(cells.iter())
+        .map(|id| {
+            let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                panic!("source-derived table positions must be actual elements");
+            };
+            (
+                element
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                element.name().local_name().code_units().to_vec(),
+                element.attributes().len(),
+            )
+        })
+        .collect();
+
+    // Native observations own plain units and qualified weak IDs, not admitted
+    // string clones. Release the actual immutable owner before assertions.
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(doctype_count, 1);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#1"),
+            (5, "td"),
+            (6, "#2"),
+            (2, "#3"),
+        ])
+    );
+    assert_eq!(cells.len(), 2);
+    assert_ne!(cells[0], cells[1]);
+    assert_ne!(table, tbody);
+    assert_ne!(tbody, row);
+    assert_eq!(
+        element_facts,
+        ["table", "tbody", "tr", "td", "td"]
+            .into_iter()
+            .map(|name| (
+                Some(
+                    "http://www.w3.org/1999/xhtml"
+                        .encode_utf16()
+                        .collect::<Vec<_>>()
+                ),
+                name.encode_utf16().collect::<Vec<_>>(),
+                0,
+            ))
+            .collect::<Vec<_>>()
+    );
+}
