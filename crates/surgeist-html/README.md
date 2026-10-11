@@ -197,6 +197,17 @@ operations do not compute runtime tooLong/tooShort, rendering or IDL setters.
 Raw admission is per supplied value; these intrinsic reports do not promise
 allocation recovery, work accounting or cancellation.
 
+Number/Range input constraints keep each raw min, max, step and value-content
+observation separate from the effective finite numeric quantities. Number has
+no default bounds; Range falls back to 0/100. The min/max author relation compares
+those effective quantities without repairing an inverted pair. Step defaults to
+1 unless positive recovery or exact `any` selects another result. Step base uses
+successful min content, then value content, then zero; a fallback Range minimum
+does not displace value content. Number permits empty authored value content,
+while Range does not; neither empty value supplies a numeric base. Temporal
+states retain an explicit unsupported numeric capability. These observations
+perform no current-value sanitization, constraint validation or stepping.
+
 Control autocomplete reports preserve ordered tokens, authored detail grammar,
 actual input-state and element constraints, and the separate processing result.
 Native detail construction requires a standard field and checks contact hints;
