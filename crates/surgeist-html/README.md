@@ -128,8 +128,12 @@ See the [dependency notice](NOTICE.md) and [source selection](../../references/S
 
 `HtmlAttributeReport` separates exact presence, expanded-name applicability,
 keyword recognition, author conformance and the selected intrinsic state. The
-implemented overlay family covers twelve global enumerated attributes, template
-shadow mode/slot assignment and eight Boolean attributes. It preserves invalid
+implemented overlays cover twelve global enumerated attributes, template
+shadow mode/slot assignment, nine element-specific keyword rules and twenty
+Boolean contexts. Media preload retains implementation-defined missing/invalid
+policy separately from its recognized keywords; ordered-list marker types use
+exact case comparison, and track kinds retain their distinct missing/invalid
+defaults. It preserves invalid
 spelling when a clause supplies a fallback; keyboard hints retain their lack of
 a defined fallback. Native keyword values construct their canonical raw
 attributes. These views do not compute inheritance or claim runtime effects,

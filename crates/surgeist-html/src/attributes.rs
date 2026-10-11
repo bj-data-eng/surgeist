@@ -1,7 +1,7 @@
 //! Intrinsic interpretation of selected HTML attributes over exact raw records.
 //!
-//! This bounded family covers global enumerations, global Boolean attributes,
-//! and declarative-shadow template modes/flags. It does not resolve inheritance,
+//! This bounded family covers global and selected element-specific enumerations,
+//! Boolean attributes, and declarative-shadow template modes/flags. It does not resolve inheritance,
 //! editing, directionality, dragging, focus, microdata, or shadow-root creation.
 //! The defining HTML clauses, rather than non-normative index summaries, own
 //! these rules. WHATWG source attribution is in `licenses/whatwg/NOTICE.md`.
@@ -139,6 +139,7 @@ enum Context {
     Global,
     Direction,
     Template,
+    Elements(&'static [KnownHtmlElement]),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -161,6 +162,7 @@ struct EnumRule<T: 'static> {
     missing: Option<T>,
     invalid: Option<T>,
     empty: Option<T>,
+    exact_keywords: bool,
 }
 
 macro_rules! source {
@@ -226,6 +228,26 @@ default_state!(HtmlWritingSuggestionsState, HtmlWritingSuggestions, Default);
 keyword_type!(HtmlInputMode, Inputmode, [None => "none", Text => "text", Tel => "tel", Url => "url", Email => "email", Numeric => "numeric", Decimal => "decimal", Search => "search"]);
 keyword_type!(HtmlEnterKeyHint, Enterkeyhint, [Enter => "enter", Done => "done", Go => "go", Next => "next", Previous => "previous", Search => "search", Send => "send"]);
 
+keyword_type!(HtmlClosedBy, Closedby, [Any => "any", CloseRequest => "closerequest", None => "none"]);
+default_state!(HtmlClosedByState, HtmlClosedBy, Auto);
+keyword_type!(HtmlFormAutocomplete, Autocomplete, [On => "on", Off => "off"]);
+keyword_type!(HtmlDecoding, Decoding, [Sync => "sync", Async => "async", Auto => "auto"]);
+keyword_type!(HtmlLoading, Loading, [Lazy => "lazy", Eager => "eager"]);
+keyword_type!(HtmlPreload, Preload, [Auto => "auto", None => "none", Metadata => "metadata"]);
+
+/// Intrinsic preload hint, with no invented implementation-defined choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlPreloadState {
+    Keyword(HtmlPreload),
+    /// HTML supplies no selected preload state for missing/invalid values.
+    ImplementationDefined,
+}
+
+keyword_type!(HtmlFormMethod, Method, [Get => "get", Post => "post", Dialog => "dialog"]);
+keyword_type!(HtmlFormEnctype, Enctype, [UrlEncoded => "application/x-www-form-urlencoded", MultipartFormData => "multipart/form-data", PlainText => "text/plain"]);
+keyword_type!(HtmlTrackKind, Kind, [Subtitles => "subtitles", Captions => "captions", Descriptions => "descriptions", Chapters => "chapters", Metadata => "metadata"]);
+keyword_type!(HtmlOlType, Type, [Decimal => "1", LowerAlpha => "a", UpperAlpha => "A", LowerRoman => "i", UpperRoman => "I"]);
+
 impl HtmlShadowRootMode {
     /// Constructs a conforming template shadowrootmode keyword attribute.
     pub fn into_shadowrootmode_attribute(self) -> Attribute {
@@ -255,49 +277,49 @@ impl HtmlSlotAssignment {
 // One authoritative authored rules declaration. Its typed records drive both
 // metadata and execution; index rows are provenance references, never grammars.
 macro_rules! enum_rule {
-    ($name:ident, $type:ty, $attribute:ident, $context:ident, [$($row:literal),+], $source:literal,
+    ($name:ident, $type:ty, $attribute:ident, $context:expr, [$($row:literal),+], $source:literal,
      $missing:expr, $invalid:expr, $empty:expr, [$($spelling:literal => ($canonical:literal, $state:expr)),+ $(,)?]) => {
         const $name: EnumRule<$type> = EnumRule {
             metadata: RuleMetadata { attribute: KnownHtmlAttribute::$attribute, rows: &[$($row),+],
-                source: source!($source), context: Context::$context },
+                source: source!($source), context: $context },
             keywords: &[$(Keyword { spelling: $spelling, canonical: $canonical, state: $state }),+],
-            missing: $missing, invalid: $invalid, empty: $empty,
+            missing: $missing, invalid: $invalid, empty: $empty, exact_keywords: false,
         };
     };
 }
 
-enum_rule!(DIR, HtmlDirState, Dir, Direction, [41, 42], "attr-dir",
+enum_rule!(DIR, HtmlDirState, Dir, Context::Direction, [41, 42], "attr-dir",
     Some(HtmlDirState::Undefined), Some(HtmlDirState::Undefined), None,
     ["ltr" => ("ltr", HtmlDirState::Keyword(HtmlDir::Ltr)),
      "rtl" => ("rtl", HtmlDirState::Keyword(HtmlDir::Rtl)),
      "auto" => ("auto", HtmlDirState::Keyword(HtmlDir::Auto))]);
-enum_rule!(CONTENTEDITABLE, HtmlContentEditableState, Contenteditable, Global, [31], "attr-contenteditable",
+enum_rule!(CONTENTEDITABLE, HtmlContentEditableState, Contenteditable, Context::Global, [31], "attr-contenteditable",
     Some(HtmlContentEditableState::Inherit), Some(HtmlContentEditableState::Inherit), Some(HtmlContentEditableState::Keyword(HtmlContentEditable::True)),
     ["true" => ("true", HtmlContentEditableState::Keyword(HtmlContentEditable::True)),
      "false" => ("false", HtmlContentEditableState::Keyword(HtmlContentEditable::False)),
      "plaintext-only" => ("plaintext-only", HtmlContentEditableState::Keyword(HtmlContentEditable::PlaintextOnly))]);
-enum_rule!(DRAGGABLE, HtmlDraggableState, Draggable, Global, [48], "attr-draggable",
+enum_rule!(DRAGGABLE, HtmlDraggableState, Draggable, Context::Global, [48], "attr-draggable",
     Some(HtmlDraggableState::Auto), Some(HtmlDraggableState::Auto), None,
     ["true" => ("true", HtmlDraggableState::Keyword(HtmlDraggable::True)),
      "false" => ("false", HtmlDraggableState::Keyword(HtmlDraggable::False))]);
-enum_rule!(HIDDEN, HtmlHiddenState, Hidden, Global, [65], "attr-hidden",
+enum_rule!(HIDDEN, HtmlHiddenState, Hidden, Context::Global, [65], "attr-hidden",
     Some(HtmlHiddenState::NotHidden), Some(HtmlHiddenState::Keyword(HtmlHidden::Hidden)), Some(HtmlHiddenState::Keyword(HtmlHidden::Hidden)),
     ["hidden" => ("hidden", HtmlHiddenState::Keyword(HtmlHidden::Hidden)),
      "until-found" => ("until-found", HtmlHiddenState::Keyword(HtmlHidden::UntilFound))]);
-enum_rule!(POPOVER, HtmlPopoverState, Popover, Global, [119], "attr-popover",
+enum_rule!(POPOVER, HtmlPopoverState, Popover, Context::Global, [119], "attr-popover",
     Some(HtmlPopoverState::NoPopover), Some(HtmlPopoverState::Keyword(HtmlPopover::Manual)), Some(HtmlPopoverState::Keyword(HtmlPopover::Auto)),
     ["auto" => ("auto", HtmlPopoverState::Keyword(HtmlPopover::Auto)),
      "manual" => ("manual", HtmlPopoverState::Keyword(HtmlPopover::Manual)),
      "hint" => ("hint", HtmlPopoverState::Keyword(HtmlPopover::Hint))]);
-enum_rule!(TRANSLATE, HtmlTranslateState, Translate, Global, [165], "attr-translate",
+enum_rule!(TRANSLATE, HtmlTranslateState, Translate, Context::Global, [165], "attr-translate",
     Some(HtmlTranslateState::Inherit), Some(HtmlTranslateState::Inherit), Some(HtmlTranslateState::Keyword(HtmlTranslate::Yes)),
     ["yes" => ("yes", HtmlTranslateState::Keyword(HtmlTranslate::Yes)),
      "no" => ("no", HtmlTranslateState::Keyword(HtmlTranslate::No))]);
-enum_rule!(SPELLCHECK, HtmlSpellcheckState, Spellcheck, Global, [148], "attr-spellcheck",
+enum_rule!(SPELLCHECK, HtmlSpellcheckState, Spellcheck, Context::Global, [148], "attr-spellcheck",
     Some(HtmlSpellcheckState::Default), Some(HtmlSpellcheckState::Default), Some(HtmlSpellcheckState::Keyword(HtmlSpellcheck::True)),
     ["true" => ("true", HtmlSpellcheckState::Keyword(HtmlSpellcheck::True)),
      "false" => ("false", HtmlSpellcheckState::Keyword(HtmlSpellcheck::False))]);
-enum_rule!(AUTOCAPITALIZE, HtmlAutocapitalizeState, Autocapitalize, Global, [12], "attr-autocapitalize",
+enum_rule!(AUTOCAPITALIZE, HtmlAutocapitalizeState, Autocapitalize, Context::Global, [12], "attr-autocapitalize",
     Some(HtmlAutocapitalizeState::Default), Some(HtmlAutocapitalizeState::Keyword(HtmlAutocapitalize::Sentences)), None,
     ["off" => ("none", HtmlAutocapitalizeState::Keyword(HtmlAutocapitalize::None)),
      "none" => ("none", HtmlAutocapitalizeState::Keyword(HtmlAutocapitalize::None)),
@@ -305,33 +327,107 @@ enum_rule!(AUTOCAPITALIZE, HtmlAutocapitalizeState, Autocapitalize, Global, [12]
      "sentences" => ("sentences", HtmlAutocapitalizeState::Keyword(HtmlAutocapitalize::Sentences)),
      "words" => ("words", HtmlAutocapitalizeState::Keyword(HtmlAutocapitalize::Words)),
      "characters" => ("characters", HtmlAutocapitalizeState::Keyword(HtmlAutocapitalize::Characters))]);
-enum_rule!(AUTOCORRECT, HtmlAutocorrect, Autocorrect, Global, [15], "attr-autocorrect",
+enum_rule!(AUTOCORRECT, HtmlAutocorrect, Autocorrect, Context::Global, [15], "attr-autocorrect",
     Some(HtmlAutocorrect::On), Some(HtmlAutocorrect::On), Some(HtmlAutocorrect::On),
     ["on" => ("on", HtmlAutocorrect::On), "off" => ("off", HtmlAutocorrect::Off)]);
-enum_rule!(WRITINGSUGGESTIONS, HtmlWritingSuggestionsState, Writingsuggestions, Global, [180], "attr-writingsuggestions",
+enum_rule!(WRITINGSUGGESTIONS, HtmlWritingSuggestionsState, Writingsuggestions, Context::Global, [180], "attr-writingsuggestions",
     Some(HtmlWritingSuggestionsState::Default), Some(HtmlWritingSuggestionsState::Keyword(HtmlWritingSuggestions::True)), Some(HtmlWritingSuggestionsState::Keyword(HtmlWritingSuggestions::True)),
     ["true" => ("true", HtmlWritingSuggestionsState::Keyword(HtmlWritingSuggestions::True)),
      "false" => ("false", HtmlWritingSuggestionsState::Keyword(HtmlWritingSuggestions::False))]);
-enum_rule!(INPUTMODE, HtmlInputMode, Inputmode, Global, [76], "attr-inputmode",
+enum_rule!(INPUTMODE, HtmlInputMode, Inputmode, Context::Global, [76], "attr-inputmode",
     None, None, None,
     ["none" => ("none", HtmlInputMode::None), "text" => ("text", HtmlInputMode::Text),
      "tel" => ("tel", HtmlInputMode::Tel), "url" => ("url", HtmlInputMode::Url),
      "email" => ("email", HtmlInputMode::Email), "numeric" => ("numeric", HtmlInputMode::Numeric),
      "decimal" => ("decimal", HtmlInputMode::Decimal), "search" => ("search", HtmlInputMode::Search)]);
-enum_rule!(ENTERKEYHINT, HtmlEnterKeyHint, Enterkeyhint, Global, [50], "attr-enterkeyhint",
+enum_rule!(ENTERKEYHINT, HtmlEnterKeyHint, Enterkeyhint, Context::Global, [50], "attr-enterkeyhint",
     None, None, None,
     ["enter" => ("enter", HtmlEnterKeyHint::Enter), "done" => ("done", HtmlEnterKeyHint::Done),
      "go" => ("go", HtmlEnterKeyHint::Go), "next" => ("next", HtmlEnterKeyHint::Next),
      "previous" => ("previous", HtmlEnterKeyHint::Previous), "search" => ("search", HtmlEnterKeyHint::Search),
      "send" => ("send", HtmlEnterKeyHint::Send)]);
-enum_rule!(SHADOWROOTMODE, HtmlShadowRootMode, Shadowrootmode, Template, [139], "attr-template-shadowrootmode",
+enum_rule!(SHADOWROOTMODE, HtmlShadowRootMode, Shadowrootmode, Context::Template, [139], "attr-template-shadowrootmode",
     None, None, None,
     ["open" => ("open", HtmlShadowRootMode::Open), "closed" => ("closed", HtmlShadowRootMode::Closed)]);
-enum_rule!(SHADOWROOTSLOTASSIGNMENT, HtmlSlotAssignment, Shadowrootslotassignment, Template, [141], "attr-template-shadowrootslotassignment",
+enum_rule!(SHADOWROOTSLOTASSIGNMENT, HtmlSlotAssignment, Shadowrootslotassignment, Context::Template, [141], "attr-template-shadowrootslotassignment",
     Some(HtmlSlotAssignment::Named), Some(HtmlSlotAssignment::Named), None,
     ["named" => ("named", HtmlSlotAssignment::Named), "manual" => ("manual", HtmlSlotAssignment::Manual)]);
 
-/// The Boolean attributes admitted by this first intrinsic overlay family.
+enum_rule!(CLOSEDBY, HtmlClosedByState, Closedby, Context::Elements(&[KnownHtmlElement::Dialog]), [23], "attr-dialog-closedby",
+    Some(HtmlClosedByState::Auto), Some(HtmlClosedByState::Auto), None,
+    ["any" => ("any", HtmlClosedByState::Keyword(HtmlClosedBy::Any)),
+     "closerequest" => ("closerequest", HtmlClosedByState::Keyword(HtmlClosedBy::CloseRequest)),
+     "none" => ("none", HtmlClosedByState::Keyword(HtmlClosedBy::None))]);
+enum_rule!(FORM_AUTOCOMPLETE, HtmlFormAutocomplete, Autocomplete, Context::Elements(&[KnownHtmlElement::Form]), [13], "attr-form-autocomplete",
+    Some(HtmlFormAutocomplete::On), Some(HtmlFormAutocomplete::On), None,
+    ["on" => ("on", HtmlFormAutocomplete::On), "off" => ("off", HtmlFormAutocomplete::Off)]);
+enum_rule!(DECODING, HtmlDecoding, Decoding, Context::Elements(&[KnownHtmlElement::Img]), [38], "attr-img-decoding",
+    Some(HtmlDecoding::Auto), Some(HtmlDecoding::Auto), None,
+    ["sync" => ("sync", HtmlDecoding::Sync), "async" => ("async", HtmlDecoding::Async), "auto" => ("auto", HtmlDecoding::Auto)]);
+// The shared defining grammar is applied by attr-img-loading,
+// attr-iframe-loading and attr-media-loading (audio/video).
+enum_rule!(LOADING, HtmlLoading, Loading, Context::Elements(&[KnownHtmlElement::Img, KnownHtmlElement::Iframe, KnownHtmlElement::Audio, KnownHtmlElement::Video]), [89], "lazy-loading-attributes",
+    Some(HtmlLoading::Eager), Some(HtmlLoading::Eager), None,
+    ["lazy" => ("lazy", HtmlLoading::Lazy), "eager" => ("eager", HtmlLoading::Eager)]);
+enum_rule!(PRELOAD, HtmlPreloadState, Preload, Context::Elements(&[KnownHtmlElement::Audio, KnownHtmlElement::Video]), [123], "attr-media-preload",
+    Some(HtmlPreloadState::ImplementationDefined), Some(HtmlPreloadState::ImplementationDefined), Some(HtmlPreloadState::Keyword(HtmlPreload::Auto)),
+    ["auto" => ("auto", HtmlPreloadState::Keyword(HtmlPreload::Auto)),
+     "none" => ("none", HtmlPreloadState::Keyword(HtmlPreload::None)),
+     "metadata" => ("metadata", HtmlPreloadState::Keyword(HtmlPreload::Metadata))]);
+enum_rule!(FORM_METHOD, HtmlFormMethod, Method, Context::Elements(&[KnownHtmlElement::Form]), [96], "attr-fs-method",
+    Some(HtmlFormMethod::Get), Some(HtmlFormMethod::Get), None,
+    ["get" => ("get", HtmlFormMethod::Get), "post" => ("post", HtmlFormMethod::Post), "dialog" => ("dialog", HtmlFormMethod::Dialog)]);
+enum_rule!(FORM_ENCTYPE, HtmlFormEnctype, Enctype, Context::Elements(&[KnownHtmlElement::Form]), [49], "attr-fs-enctype",
+    Some(HtmlFormEnctype::UrlEncoded), Some(HtmlFormEnctype::UrlEncoded), None,
+    ["application/x-www-form-urlencoded" => ("application/x-www-form-urlencoded", HtmlFormEnctype::UrlEncoded),
+     "multipart/form-data" => ("multipart/form-data", HtmlFormEnctype::MultipartFormData), "text/plain" => ("text/plain", HtmlFormEnctype::PlainText)]);
+enum_rule!(TRACK_KIND, HtmlTrackKind, Kind, Context::Elements(&[KnownHtmlElement::Track]), [85], "attr-track-kind",
+    Some(HtmlTrackKind::Subtitles), Some(HtmlTrackKind::Metadata), None,
+    ["subtitles" => ("subtitles", HtmlTrackKind::Subtitles), "captions" => ("captions", HtmlTrackKind::Captions),
+     "descriptions" => ("descriptions", HtmlTrackKind::Descriptions), "chapters" => ("chapters", HtmlTrackKind::Chapters), "metadata" => ("metadata", HtmlTrackKind::Metadata)]);
+
+// ol[type] is an exact character table, not an ASCII-insensitive enumeration.
+const OL_TYPE: EnumRule<HtmlOlType> = EnumRule {
+    metadata: RuleMetadata {
+        attribute: KnownHtmlAttribute::Type,
+        rows: &[170],
+        source: source!("attr-ol-type"),
+        context: Context::Elements(&[KnownHtmlElement::Ol]),
+    },
+    keywords: &[
+        Keyword {
+            spelling: "1",
+            canonical: "1",
+            state: HtmlOlType::Decimal,
+        },
+        Keyword {
+            spelling: "a",
+            canonical: "a",
+            state: HtmlOlType::LowerAlpha,
+        },
+        Keyword {
+            spelling: "A",
+            canonical: "A",
+            state: HtmlOlType::UpperAlpha,
+        },
+        Keyword {
+            spelling: "i",
+            canonical: "i",
+            state: HtmlOlType::LowerRoman,
+        },
+        Keyword {
+            spelling: "I",
+            canonical: "I",
+            state: HtmlOlType::UpperRoman,
+        },
+    ],
+    missing: Some(HtmlOlType::Decimal),
+    invalid: Some(HtmlOlType::Decimal),
+    empty: None,
+    exact_keywords: true,
+};
+
+/// The Boolean attribute contexts admitted by this bounded intrinsic overlay.
 ///
 /// This is not the complete HTML Boolean attribute inventory. Presence describes
 /// only the content attribute; it never claims focus, inertness, an item model,
@@ -346,6 +442,19 @@ pub enum HtmlBooleanAttribute {
     ShadowRootCustomElementRegistry,
     ShadowRootDelegatesFocus,
     ShadowRootSerializable,
+    AllowFullscreen,
+    Autoplay,
+    /// The audio/video controls rule; this does not select img's controls rule.
+    MediaControls,
+    TrackDefault,
+    Loop,
+    Muted,
+    Novalidate,
+    DetailsOpen,
+    DialogOpen,
+    PlaysInline,
+    Reversed,
+    Selected,
 }
 
 impl HtmlBooleanAttribute {
@@ -400,6 +509,78 @@ impl HtmlBooleanAttribute {
                 source!("attr-template-shadowrootserializable"),
                 Context::Template,
             ),
+            Self::AllowFullscreen => (
+                KnownHtmlAttribute::Allowfullscreen,
+                &[7],
+                source!("attr-iframe-allowfullscreen"),
+                Context::Elements(&[KnownHtmlElement::Iframe]),
+            ),
+            Self::Autoplay => (
+                KnownHtmlAttribute::Autoplay,
+                &[17],
+                source!("attr-media-autoplay"),
+                Context::Elements(&[KnownHtmlElement::Audio, KnownHtmlElement::Video]),
+            ),
+            Self::MediaControls => (
+                KnownHtmlAttribute::Controls,
+                &[32],
+                source!("attr-media-controls"),
+                Context::Elements(&[KnownHtmlElement::Audio, KnownHtmlElement::Video]),
+            ),
+            Self::TrackDefault => (
+                KnownHtmlAttribute::Default,
+                &[39],
+                source!("attr-track-default"),
+                Context::Elements(&[KnownHtmlElement::Track]),
+            ),
+            Self::Loop => (
+                KnownHtmlAttribute::Loop,
+                &[90],
+                source!("attr-media-loop"),
+                Context::Elements(&[KnownHtmlElement::Audio, KnownHtmlElement::Video]),
+            ),
+            Self::Muted => (
+                KnownHtmlAttribute::Muted,
+                &[101],
+                source!("attr-media-muted"),
+                Context::Elements(&[KnownHtmlElement::Audio, KnownHtmlElement::Video]),
+            ),
+            Self::Novalidate => (
+                KnownHtmlAttribute::Novalidate,
+                &[111],
+                source!("attr-fs-novalidate"),
+                Context::Elements(&[KnownHtmlElement::Form]),
+            ),
+            Self::DetailsOpen => (
+                KnownHtmlAttribute::Open,
+                &[112],
+                source!("attr-details-open"),
+                Context::Elements(&[KnownHtmlElement::Details]),
+            ),
+            Self::DialogOpen => (
+                KnownHtmlAttribute::Open,
+                &[113],
+                source!("attr-dialog-open"),
+                Context::Elements(&[KnownHtmlElement::Dialog]),
+            ),
+            Self::PlaysInline => (
+                KnownHtmlAttribute::Playsinline,
+                &[118],
+                source!("attr-video-playsinline"),
+                Context::Elements(&[KnownHtmlElement::Video]),
+            ),
+            Self::Reversed => (
+                KnownHtmlAttribute::Reversed,
+                &[130],
+                source!("attr-ol-reversed"),
+                Context::Elements(&[KnownHtmlElement::Ol]),
+            ),
+            Self::Selected => (
+                KnownHtmlAttribute::Selected,
+                &[135],
+                source!("attr-option-selected"),
+                Context::Elements(&[KnownHtmlElement::Option]),
+            ),
         };
         RuleMetadata {
             attribute,
@@ -431,9 +612,13 @@ fn applies(
     if element.namespace() != &Namespace::html() {
         return HtmlAttributeApplicability::ForeignElementNamespace;
     }
-    if rule.context == Context::Template
-        && KnownHtmlElement::from_name(element) != Some(KnownHtmlElement::Template)
-    {
+    let known = KnownHtmlElement::from_name(element);
+    let applicable = match rule.context {
+        Context::Global | Context::Direction => true,
+        Context::Template => known == Some(KnownHtmlElement::Template),
+        Context::Elements(elements) => known.is_some_and(|name| elements.contains(&name)),
+    };
+    if !applicable {
         return HtmlAttributeApplicability::DifferentElement;
     }
     HtmlAttributeApplicability::Applicable
@@ -492,11 +677,17 @@ impl HtmlValueInterpreter {
             }
             Some(attribute) => {
                 let value = attribute.value();
-                if let Some(keyword) = rule
-                    .keywords
-                    .iter()
-                    .find(|keyword| ascii_keyword(value, keyword.spelling))
-                {
+                if let Some(keyword) = rule.keywords.iter().find(|keyword| {
+                    if rule.exact_keywords {
+                        value
+                            .code_units()
+                            .iter()
+                            .copied()
+                            .eq(keyword.spelling.encode_utf16())
+                    } else {
+                        ascii_keyword(value, keyword.spelling)
+                    }
+                }) {
                     result.recognition = HtmlAttributeRecognition::Keyword {
                         matched: keyword.spelling,
                         canonical: keyword.canonical,
@@ -621,3 +812,12 @@ interpret_method!(
     SHADOWROOTSLOTASSIGNMENT,
     HtmlSlotAssignment
 );
+interpret_method!(closedby, CLOSEDBY, HtmlClosedByState);
+interpret_method!(form_autocomplete, FORM_AUTOCOMPLETE, HtmlFormAutocomplete);
+interpret_method!(decoding, DECODING, HtmlDecoding);
+interpret_method!(loading, LOADING, HtmlLoading);
+interpret_method!(preload, PRELOAD, HtmlPreloadState);
+interpret_method!(form_method, FORM_METHOD, HtmlFormMethod);
+interpret_method!(form_enctype, FORM_ENCTYPE, HtmlFormEnctype);
+interpret_method!(track_kind, TRACK_KIND, HtmlTrackKind);
+interpret_method!(ol_type, OL_TYPE, HtmlOlType);

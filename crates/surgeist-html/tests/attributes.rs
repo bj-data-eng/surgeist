@@ -3,10 +3,12 @@ use surgeist_html::{
     HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
     HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
     HtmlAutocapitalize, HtmlAutocapitalizeState, HtmlAutocorrect, HtmlBooleanAttribute,
-    HtmlContentEditable, HtmlContentEditableState, HtmlDir, HtmlDirState, HtmlDraggable,
-    HtmlDraggableState, HtmlEnterKeyHint, HtmlHidden, HtmlHiddenState, HtmlInputMode, HtmlPopover,
-    HtmlPopoverState, HtmlShadowRootMode, HtmlSlotAssignment, HtmlSpellcheck, HtmlSpellcheckState,
-    HtmlTranslate, HtmlTranslateState, HtmlValueInterpreter, HtmlWritingSuggestions,
+    HtmlClosedBy, HtmlClosedByState, HtmlContentEditable, HtmlContentEditableState, HtmlDecoding,
+    HtmlDir, HtmlDirState, HtmlDraggable, HtmlDraggableState, HtmlEnterKeyHint,
+    HtmlFormAutocomplete, HtmlFormEnctype, HtmlFormMethod, HtmlHidden, HtmlHiddenState,
+    HtmlInputMode, HtmlLoading, HtmlOlType, HtmlPopover, HtmlPopoverState, HtmlPreload,
+    HtmlPreloadState, HtmlShadowRootMode, HtmlSlotAssignment, HtmlSpellcheck, HtmlSpellcheckState,
+    HtmlTrackKind, HtmlTranslate, HtmlTranslateState, HtmlValueInterpreter, HtmlWritingSuggestions,
     HtmlWritingSuggestionsState, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
 };
 
@@ -15,6 +17,549 @@ fn element(local: &str) -> QualifiedName {
 }
 fn attr(local: &str, value: &str) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, local), value)
+}
+
+#[test]
+fn element_keyword_defaults_preserve_missing_empty_and_invalid() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    // Independent expectations from each defining clause, rather than an
+    // index value-summary category or generated rule metadata.
+    macro_rules! defaults {
+        ($method:ident, $element:literal, $name:literal, $missing:expr, $invalid:expr) => {
+            let context = element($element);
+            let omitted = interpreter.$method(&context, None).unwrap();
+            assert_eq!(omitted.observation(), Observation::Missing);
+            assert_eq!(omitted.author(), Author::Missing);
+            assert_eq!(omitted.intrinsic(), Some(&$missing));
+            for raw in [attr($name, ""), attr($name, "unknown")] {
+                let report = interpreter.$method(&context, Some(&raw)).unwrap();
+                assert_eq!(report.intrinsic(), Some(&$invalid));
+                assert_eq!(report.raw_attribute(), Some(&raw));
+                assert_eq!(
+                    report.author(),
+                    Author::Nonconforming(Conformance::UnrecognizedKeyword)
+                );
+                assert_eq!(
+                    report.observation(),
+                    if raw.value().is_empty() {
+                        Observation::PresentEmpty
+                    } else {
+                        Observation::PresentNonempty
+                    }
+                );
+                assert_eq!(
+                    report.recognition(),
+                    if raw.value().is_empty() {
+                        Recognition::Empty
+                    } else {
+                        Recognition::Unrecognized
+                    }
+                );
+            }
+        };
+    }
+    defaults!(
+        closedby,
+        "dialog",
+        "closedby",
+        HtmlClosedByState::Auto,
+        HtmlClosedByState::Auto
+    );
+    defaults!(
+        form_autocomplete,
+        "form",
+        "autocomplete",
+        HtmlFormAutocomplete::On,
+        HtmlFormAutocomplete::On
+    );
+    defaults!(
+        decoding,
+        "img",
+        "decoding",
+        HtmlDecoding::Auto,
+        HtmlDecoding::Auto
+    );
+    defaults!(
+        loading,
+        "iframe",
+        "loading",
+        HtmlLoading::Eager,
+        HtmlLoading::Eager
+    );
+    defaults!(
+        form_method,
+        "form",
+        "method",
+        HtmlFormMethod::Get,
+        HtmlFormMethod::Get
+    );
+    defaults!(
+        form_enctype,
+        "form",
+        "enctype",
+        HtmlFormEnctype::UrlEncoded,
+        HtmlFormEnctype::UrlEncoded
+    );
+    defaults!(
+        track_kind,
+        "track",
+        "kind",
+        HtmlTrackKind::Subtitles,
+        HtmlTrackKind::Metadata
+    );
+    defaults!(
+        ol_type,
+        "ol",
+        "type",
+        HtmlOlType::Decimal,
+        HtmlOlType::Decimal
+    );
+}
+
+#[test]
+fn preload_has_no_guessed_missing_or_invalid_hint_and_empty_is_automatic() {
+    // attr-media-preload does not normatively select the suggested Metadata.
+    let interpreter = HtmlValueInterpreter::new(100);
+    for local in ["audio", "video"] {
+        let context = element(local);
+        let missing = interpreter.preload(&context, None).unwrap();
+        assert_eq!(
+            missing.intrinsic(),
+            Some(&HtmlPreloadState::ImplementationDefined)
+        );
+        assert_eq!(missing.author(), Author::Missing);
+        let invalid = attr("preload", "invalid");
+        let report = interpreter.preload(&context, Some(&invalid)).unwrap();
+        assert_eq!(
+            report.intrinsic(),
+            Some(&HtmlPreloadState::ImplementationDefined)
+        );
+        assert_eq!(
+            report.author(),
+            Author::Nonconforming(Conformance::UnrecognizedKeyword)
+        );
+        let empty = attr("preload", "");
+        let report = interpreter.preload(&context, Some(&empty)).unwrap();
+        assert_eq!(
+            report.intrinsic(),
+            Some(&HtmlPreloadState::Keyword(HtmlPreload::Auto))
+        );
+        assert_eq!(report.observation(), Observation::PresentEmpty);
+        assert_eq!(report.recognition(), Recognition::Empty);
+        assert_eq!(report.author(), Author::Conforming);
+        assert!(report.source_clause().ends_with("#attr-media-preload"));
+    }
+}
+
+#[test]
+fn element_enumerations_recognize_literal_keywords_without_whitespace_folding() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    macro_rules! keywords {
+        ($method:ident, $element:literal, $name:literal, [$($raw:literal => ($canonical:literal, $expected:expr)),+]) => {
+            let context = element($element);
+            $(
+                let raw = attr($name, $raw);
+                let report = interpreter.$method(&context, Some(&raw)).unwrap();
+                assert_eq!(report.intrinsic(), Some(&$expected));
+                assert_eq!(report.author(), Author::Conforming);
+                assert_eq!(report.recognition(), Recognition::Keyword { matched: $canonical, canonical: $canonical });
+                assert_eq!(report.raw_attribute(), Some(&raw));
+                let spaced = attr($name, concat!(" ", $raw, " "));
+                assert_eq!(interpreter.$method(&context, Some(&spaced)).unwrap().recognition(), Recognition::Unrecognized);
+            )+
+        };
+    }
+    keywords!(closedby, "dialog", "closedby", ["ANY" => ("any", HtmlClosedByState::Keyword(HtmlClosedBy::Any)), "CLOSEREQUEST" => ("closerequest", HtmlClosedByState::Keyword(HtmlClosedBy::CloseRequest)), "NONE" => ("none", HtmlClosedByState::Keyword(HtmlClosedBy::None))]);
+    keywords!(form_autocomplete, "form", "autocomplete", ["ON" => ("on", HtmlFormAutocomplete::On), "OFF" => ("off", HtmlFormAutocomplete::Off)]);
+    keywords!(decoding, "img", "decoding", ["SYNC" => ("sync", HtmlDecoding::Sync), "ASYNC" => ("async", HtmlDecoding::Async), "AUTO" => ("auto", HtmlDecoding::Auto)]);
+    keywords!(loading, "video", "loading", ["LAZY" => ("lazy", HtmlLoading::Lazy), "EAGER" => ("eager", HtmlLoading::Eager)]);
+    keywords!(preload, "audio", "preload", ["AUTO" => ("auto", HtmlPreloadState::Keyword(HtmlPreload::Auto)), "NONE" => ("none", HtmlPreloadState::Keyword(HtmlPreload::None)), "METADATA" => ("metadata", HtmlPreloadState::Keyword(HtmlPreload::Metadata))]);
+    keywords!(form_method, "form", "method", ["GET" => ("get", HtmlFormMethod::Get), "POST" => ("post", HtmlFormMethod::Post), "DIALOG" => ("dialog", HtmlFormMethod::Dialog)]);
+    keywords!(form_enctype, "form", "enctype", ["APPLICATION/X-WWW-FORM-URLENCODED" => ("application/x-www-form-urlencoded", HtmlFormEnctype::UrlEncoded), "MULTIPART/FORM-DATA" => ("multipart/form-data", HtmlFormEnctype::MultipartFormData), "TEXT/PLAIN" => ("text/plain", HtmlFormEnctype::PlainText)]);
+    keywords!(track_kind, "track", "kind", ["SUBTITLES" => ("subtitles", HtmlTrackKind::Subtitles), "CAPTIONS" => ("captions", HtmlTrackKind::Captions), "DESCRIPTIONS" => ("descriptions", HtmlTrackKind::Descriptions), "CHAPTERS" => ("chapters", HtmlTrackKind::Chapters), "METADATA" => ("metadata", HtmlTrackKind::Metadata)]);
+}
+
+#[test]
+fn ordered_list_marker_characters_are_case_sensitive_and_preserved() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let context = element("ol");
+    for (literal, expected) in [
+        ("1", HtmlOlType::Decimal),
+        ("a", HtmlOlType::LowerAlpha),
+        ("A", HtmlOlType::UpperAlpha),
+        ("i", HtmlOlType::LowerRoman),
+        ("I", HtmlOlType::UpperRoman),
+    ] {
+        let raw = attr("type", literal);
+        let report = interpreter.ol_type(&context, Some(&raw)).unwrap();
+        assert_eq!(report.intrinsic(), Some(&expected));
+        assert_eq!(report.author(), Author::Conforming);
+        assert_eq!(report.raw_attribute(), Some(&raw));
+        assert_eq!(expected.into_attribute(), raw);
+    }
+    for literal in ["01", " a", "A ", "ii", "\u{ff21}", "\u{0131}"] {
+        let raw = attr("type", literal);
+        let report = interpreter.ol_type(&context, Some(&raw)).unwrap();
+        assert_eq!(report.intrinsic(), Some(&HtmlOlType::Decimal));
+        assert_eq!(report.recognition(), Recognition::Unrecognized);
+        assert_eq!(
+            report.author(),
+            Author::Nonconforming(Conformance::UnrecognizedKeyword)
+        );
+    }
+}
+
+#[test]
+fn intrinsic_element_rules_require_exact_html_element_and_attribute_identity() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    macro_rules! contexts {
+        ($method:ident, $name:literal, $raw:literal, [$($local:literal),+], $row:literal, $source:literal) => {
+            let raw = attr($name, $raw);
+            $(
+                let report = interpreter.$method(&element($local), Some(&raw)).unwrap();
+                assert_eq!(report.applicability(), Applicability::Applicable);
+                assert_eq!(report.inventory_rows(), &[$row]);
+                assert!(report.source_clause().ends_with(concat!("#", $source)));
+                let upper = interpreter.$method(&element(&$local.to_ascii_uppercase()), Some(&raw)).unwrap();
+                assert_eq!(upper.applicability(), Applicability::DifferentElement);
+                assert_eq!(upper.intrinsic(), None);
+                let foreign = QualifiedName::new(Namespace::svg(), None, $local);
+                let report = interpreter.$method(&foreign, Some(&raw)).unwrap();
+                assert_eq!(report.applicability(), Applicability::ForeignElementNamespace);
+                assert_eq!(report.raw_attribute(), Some(&raw));
+            )+
+            let unrelated = interpreter.$method(&element("x-thing"), Some(&raw)).unwrap();
+            assert_eq!(unrelated.applicability(), Applicability::DifferentElement);
+            assert_eq!(unrelated.author(), Author::Unapplied);
+            assert_eq!(unrelated.recognition(), Recognition::Unapplied);
+            let wrong = attr("unknown", $raw);
+            assert_eq!(interpreter.$method(&element("x-thing"), Some(&wrong)).unwrap().applicability(), Applicability::DifferentAttribute);
+        };
+    }
+    contexts!(
+        closedby,
+        "closedby",
+        "any",
+        ["dialog"],
+        23,
+        "attr-dialog-closedby"
+    );
+    contexts!(
+        form_autocomplete,
+        "autocomplete",
+        "off",
+        ["form"],
+        13,
+        "attr-form-autocomplete"
+    );
+    contexts!(
+        decoding,
+        "decoding",
+        "sync",
+        ["img"],
+        38,
+        "attr-img-decoding"
+    );
+    contexts!(
+        loading,
+        "loading",
+        "lazy",
+        ["img", "iframe", "audio", "video"],
+        89,
+        "lazy-loading-attributes"
+    );
+    contexts!(
+        preload,
+        "preload",
+        "none",
+        ["audio", "video"],
+        123,
+        "attr-media-preload"
+    );
+    contexts!(
+        form_method,
+        "method",
+        "post",
+        ["form"],
+        96,
+        "attr-fs-method"
+    );
+    contexts!(
+        form_enctype,
+        "enctype",
+        "text/plain",
+        ["form"],
+        49,
+        "attr-fs-enctype"
+    );
+    contexts!(
+        track_kind,
+        "kind",
+        "captions",
+        ["track"],
+        85,
+        "attr-track-kind"
+    );
+    contexts!(ol_type, "type", "A", ["ol"], 170, "attr-ol-type");
+    // These similarly named attributes have different owning grammars.
+    let control = attr("autocomplete", "off");
+    assert_eq!(
+        interpreter
+            .form_autocomplete(&element("input"), Some(&control))
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+    let script = attr("type", "A");
+    assert_eq!(
+        interpreter
+            .ol_type(&element("script"), Some(&script))
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+}
+
+#[test]
+fn element_boolean_rules_are_presence_only_in_their_selected_context() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let rules = [
+        (
+            HtmlBooleanAttribute::AllowFullscreen,
+            "allowfullscreen",
+            &["iframe"][..],
+            7,
+            "attr-iframe-allowfullscreen",
+        ),
+        (
+            HtmlBooleanAttribute::Autoplay,
+            "autoplay",
+            &["audio", "video"][..],
+            17,
+            "attr-media-autoplay",
+        ),
+        (
+            HtmlBooleanAttribute::MediaControls,
+            "controls",
+            &["audio", "video"][..],
+            32,
+            "attr-media-controls",
+        ),
+        (
+            HtmlBooleanAttribute::TrackDefault,
+            "default",
+            &["track"][..],
+            39,
+            "attr-track-default",
+        ),
+        (
+            HtmlBooleanAttribute::Loop,
+            "loop",
+            &["audio", "video"][..],
+            90,
+            "attr-media-loop",
+        ),
+        (
+            HtmlBooleanAttribute::Muted,
+            "muted",
+            &["audio", "video"][..],
+            101,
+            "attr-media-muted",
+        ),
+        (
+            HtmlBooleanAttribute::Novalidate,
+            "novalidate",
+            &["form"][..],
+            111,
+            "attr-fs-novalidate",
+        ),
+        (
+            HtmlBooleanAttribute::DetailsOpen,
+            "open",
+            &["details"][..],
+            112,
+            "attr-details-open",
+        ),
+        (
+            HtmlBooleanAttribute::DialogOpen,
+            "open",
+            &["dialog"][..],
+            113,
+            "attr-dialog-open",
+        ),
+        (
+            HtmlBooleanAttribute::PlaysInline,
+            "playsinline",
+            &["video"][..],
+            118,
+            "attr-video-playsinline",
+        ),
+        (
+            HtmlBooleanAttribute::Reversed,
+            "reversed",
+            &["ol"][..],
+            130,
+            "attr-ol-reversed",
+        ),
+        (
+            HtmlBooleanAttribute::Selected,
+            "selected",
+            &["option"][..],
+            135,
+            "attr-option-selected",
+        ),
+    ];
+    for (selected, name, elements, row, source) in rules {
+        assert_eq!(selected.into_attribute(true), Some(attr(name, "")));
+        assert_eq!(selected.into_attribute(false), None);
+        for local in elements {
+            let context = element(local);
+            let omitted = interpreter
+                .boolean_attribute(selected, &context, None)
+                .unwrap();
+            assert_eq!(omitted.intrinsic(), Some(&false));
+            assert_eq!(omitted.author(), Author::Missing);
+            for (literal, recognition, author) in [
+                ("", Recognition::Empty, Author::Conforming),
+                (
+                    "false",
+                    Recognition::Unrecognized,
+                    Author::Nonconforming(Conformance::BooleanSpelling),
+                ),
+            ] {
+                let raw = attr(name, literal);
+                let report = interpreter
+                    .boolean_attribute(selected, &context, Some(&raw))
+                    .unwrap();
+                assert_eq!(report.intrinsic(), Some(&true));
+                assert_eq!(report.author(), author);
+                assert_eq!(report.recognition(), recognition);
+                assert_eq!(report.raw_attribute(), Some(&raw));
+                assert_eq!(report.inventory_rows(), &[row]);
+                assert!(report.source_clause().ends_with(&format!("#{source}")));
+            }
+            let uppercase = attr(name, &name.to_ascii_uppercase());
+            assert_eq!(
+                interpreter
+                    .boolean_attribute(selected, &context, Some(&uppercase))
+                    .unwrap()
+                    .author(),
+                Author::Conforming
+            );
+            assert_eq!(
+                interpreter
+                    .boolean_attribute(
+                        selected,
+                        &element(&local.to_ascii_uppercase()),
+                        Some(&uppercase)
+                    )
+                    .unwrap()
+                    .applicability(),
+                Applicability::DifferentElement
+            );
+        }
+        assert_eq!(
+            interpreter
+                .boolean_attribute(selected, &element("div"), None)
+                .unwrap()
+                .intrinsic(),
+            None
+        );
+    }
+    // The selected media rule does not guess img's required nonempty alt.
+    let raw = attr("controls", "");
+    assert_eq!(
+        interpreter
+            .boolean_attribute(
+                HtmlBooleanAttribute::MediaControls,
+                &element("img"),
+                Some(&raw)
+            )
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+    assert_eq!(
+        interpreter
+            .boolean_attribute(HtmlBooleanAttribute::DialogOpen, &element("details"), None)
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+}
+
+#[test]
+fn element_native_keywords_author_only_real_spelling_and_not_fallback_states() {
+    for (native, expected) in [
+        (HtmlClosedBy::Any, "any"),
+        (HtmlClosedBy::CloseRequest, "closerequest"),
+        (HtmlClosedBy::None, "none"),
+    ] {
+        assert_eq!(native.into_attribute(), attr("closedby", expected));
+    }
+    for (native, expected) in [
+        (HtmlPreload::Auto, "auto"),
+        (HtmlPreload::None, "none"),
+        (HtmlPreload::Metadata, "metadata"),
+    ] {
+        assert_eq!(native.into_attribute(), attr("preload", expected));
+    }
+    assert_eq!(
+        HtmlFormAutocomplete::Off.into_attribute(),
+        attr("autocomplete", "off")
+    );
+    assert_eq!(
+        HtmlDecoding::Async.into_attribute(),
+        attr("decoding", "async")
+    );
+    assert_eq!(HtmlLoading::Lazy.into_attribute(), attr("loading", "lazy"));
+    assert_eq!(
+        HtmlFormMethod::Dialog.into_attribute(),
+        attr("method", "dialog")
+    );
+    assert_eq!(
+        HtmlFormEnctype::MultipartFormData.into_attribute(),
+        attr("enctype", "multipart/form-data")
+    );
+    assert_eq!(
+        HtmlTrackKind::Descriptions.into_attribute(),
+        attr("kind", "descriptions")
+    );
+}
+
+#[test]
+fn element_rules_admit_units_before_context_checks_and_preserve_raw_prefixes() {
+    let context = QualifiedName::new(Namespace::html(), Some("h".into()), "ol");
+    let raw = Attribute::new(
+        QualifiedName::new(Namespace::none(), Some("p".into()), "type"),
+        DocumentString::from_utf16(vec![0xd800, 0x0041]),
+    );
+    let interpreter = HtmlValueInterpreter::new(2);
+    let report = interpreter.ol_type(&context, Some(&raw)).unwrap();
+    assert_eq!(report.element(), &context);
+    assert_eq!(report.raw_attribute(), Some(&raw));
+    assert_eq!(report.input_code_units(), 2);
+    assert_eq!(report.intrinsic(), Some(&HtmlOlType::Decimal));
+    assert_eq!(
+        report.author(),
+        Author::Nonconforming(Conformance::UnrecognizedKeyword)
+    );
+    let small = HtmlValueInterpreter::new(1);
+    let wrong_context = element("div");
+    let error = small.ol_type(&wrong_context, Some(&raw)).unwrap_err();
+    assert_eq!(error.capacity(), 1);
+    assert_eq!(error.required(), 2);
+    let raw = Attribute::new(
+        QualifiedName::new(Namespace::none(), Some("p".into()), "type"),
+        "A",
+    );
+    assert_eq!(
+        interpreter
+            .ol_type(&context, Some(&raw))
+            .unwrap()
+            .intrinsic(),
+        Some(&HtmlOlType::UpperAlpha)
+    );
 }
 
 #[test]

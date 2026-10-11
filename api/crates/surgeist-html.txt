@@ -48,14 +48,26 @@ impl surgeist_html::HtmlAutocorrect
 pub fn surgeist_html::HtmlAutocorrect::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlAutocorrect::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlBooleanAttribute
+pub surgeist_html::HtmlBooleanAttribute::AllowFullscreen
 pub surgeist_html::HtmlBooleanAttribute::Autofocus
+pub surgeist_html::HtmlBooleanAttribute::Autoplay
+pub surgeist_html::HtmlBooleanAttribute::DetailsOpen
+pub surgeist_html::HtmlBooleanAttribute::DialogOpen
 pub surgeist_html::HtmlBooleanAttribute::HeadingReset
 pub surgeist_html::HtmlBooleanAttribute::Inert
 pub surgeist_html::HtmlBooleanAttribute::Itemscope
+pub surgeist_html::HtmlBooleanAttribute::Loop
+pub surgeist_html::HtmlBooleanAttribute::MediaControls
+pub surgeist_html::HtmlBooleanAttribute::Muted
+pub surgeist_html::HtmlBooleanAttribute::Novalidate
+pub surgeist_html::HtmlBooleanAttribute::PlaysInline
+pub surgeist_html::HtmlBooleanAttribute::Reversed
+pub surgeist_html::HtmlBooleanAttribute::Selected
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootClonable
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootCustomElementRegistry
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootDelegatesFocus
 pub surgeist_html::HtmlBooleanAttribute::ShadowRootSerializable
+pub surgeist_html::HtmlBooleanAttribute::TrackDefault
 impl surgeist_html::HtmlBooleanAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::attribute(self) -> surgeist_html::KnownHtmlAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::into_attribute(self, present: bool) -> core::option::Option<surgeist_html::Attribute>
@@ -161,6 +173,16 @@ pub surgeist_html::HtmlCapturedShadowRoot::Unavailable
 pub enum surgeist_html::HtmlCapturedTemplateContents
 pub surgeist_html::HtmlCapturedTemplateContents::Present(surgeist_html::HtmlCaptureFragmentId)
 pub surgeist_html::HtmlCapturedTemplateContents::Unavailable
+pub enum surgeist_html::HtmlClosedBy
+pub surgeist_html::HtmlClosedBy::Any
+pub surgeist_html::HtmlClosedBy::CloseRequest
+pub surgeist_html::HtmlClosedBy::None
+impl surgeist_html::HtmlClosedBy
+pub fn surgeist_html::HtmlClosedBy::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlClosedBy::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlClosedByState
+pub surgeist_html::HtmlClosedByState::Auto
+pub surgeist_html::HtmlClosedByState::Keyword(surgeist_html::HtmlClosedBy)
 #[non_exhaustive] pub enum surgeist_html::HtmlConstructionError
 pub surgeist_html::HtmlConstructionError::AllocationFailed
 pub surgeist_html::HtmlConstructionError::ForeignBuilder
@@ -209,6 +231,13 @@ pub surgeist_html::HtmlDecimalDigitsError::NonAsciiDigit::code_unit_offset: usiz
 impl core::error::Error for surgeist_html::HtmlDecimalDigitsError
 impl core::fmt::Display for surgeist_html::HtmlDecimalDigitsError
 pub fn surgeist_html::HtmlDecimalDigitsError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlDecoding
+pub surgeist_html::HtmlDecoding::Async
+pub surgeist_html::HtmlDecoding::Auto
+pub surgeist_html::HtmlDecoding::Sync
+impl surgeist_html::HtmlDecoding
+pub fn surgeist_html::HtmlDecoding::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlDecoding::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlDimension
 pub surgeist_html::HtmlDimension::Absolute(surgeist_html::HtmlNonNegativeDecimal)
 pub surgeist_html::HtmlDimension::Percentage(surgeist_html::HtmlNonNegativeDecimal)
@@ -250,6 +279,26 @@ pub surgeist_html::HtmlEnterKeyHint::Send
 impl surgeist_html::HtmlEnterKeyHint
 pub fn surgeist_html::HtmlEnterKeyHint::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlEnterKeyHint::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFormAutocomplete
+pub surgeist_html::HtmlFormAutocomplete::Off
+pub surgeist_html::HtmlFormAutocomplete::On
+impl surgeist_html::HtmlFormAutocomplete
+pub fn surgeist_html::HtmlFormAutocomplete::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlFormAutocomplete::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFormEnctype
+pub surgeist_html::HtmlFormEnctype::MultipartFormData
+pub surgeist_html::HtmlFormEnctype::PlainText
+pub surgeist_html::HtmlFormEnctype::UrlEncoded
+impl surgeist_html::HtmlFormEnctype
+pub fn surgeist_html::HtmlFormEnctype::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlFormEnctype::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFormMethod
+pub surgeist_html::HtmlFormMethod::Dialog
+pub surgeist_html::HtmlFormMethod::Get
+pub surgeist_html::HtmlFormMethod::Post
+impl surgeist_html::HtmlFormMethod
+pub fn surgeist_html::HtmlFormMethod::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlFormMethod::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlFragmentInsertionMode
 pub surgeist_html::HtmlFragmentInsertionMode::BeforeHead
 pub surgeist_html::HtmlFragmentInsertionMode::InBody
@@ -293,6 +342,12 @@ pub surgeist_html::HtmlInputMode::Url
 impl surgeist_html::HtmlInputMode
 pub fn surgeist_html::HtmlInputMode::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputMode::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlLoading
+pub surgeist_html::HtmlLoading::Eager
+pub surgeist_html::HtmlLoading::Lazy
+impl surgeist_html::HtmlLoading
+pub fn surgeist_html::HtmlLoading::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlLoading::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlNodeKind
 pub surgeist_html::HtmlNodeKind::Comment(surgeist_html::DocumentString)
 pub surgeist_html::HtmlNodeKind::Doctype(surgeist_html::HtmlDoctype)
@@ -301,6 +356,15 @@ pub surgeist_html::HtmlNodeKind::Element(surgeist_html::HtmlElement)
 pub surgeist_html::HtmlNodeKind::Fragment
 pub surgeist_html::HtmlNodeKind::ProcessingInstruction(surgeist_html::HtmlProcessingInstruction)
 pub surgeist_html::HtmlNodeKind::Text(surgeist_html::DocumentString)
+pub enum surgeist_html::HtmlOlType
+pub surgeist_html::HtmlOlType::Decimal
+pub surgeist_html::HtmlOlType::LowerAlpha
+pub surgeist_html::HtmlOlType::LowerRoman
+pub surgeist_html::HtmlOlType::UpperAlpha
+pub surgeist_html::HtmlOlType::UpperRoman
+impl surgeist_html::HtmlOlType
+pub fn surgeist_html::HtmlOlType::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlOlType::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlParserScriptingMode
 pub surgeist_html::HtmlParserScriptingMode::Disabled
 pub surgeist_html::HtmlParserScriptingMode::Fragment
@@ -316,6 +380,16 @@ pub fn surgeist_html::HtmlPopover::into_attribute(self) -> surgeist_html::Attrib
 pub enum surgeist_html::HtmlPopoverState
 pub surgeist_html::HtmlPopoverState::Keyword(surgeist_html::HtmlPopover)
 pub surgeist_html::HtmlPopoverState::NoPopover
+pub enum surgeist_html::HtmlPreload
+pub surgeist_html::HtmlPreload::Auto
+pub surgeist_html::HtmlPreload::Metadata
+pub surgeist_html::HtmlPreload::None
+impl surgeist_html::HtmlPreload
+pub fn surgeist_html::HtmlPreload::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlPreload::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlPreloadState
+pub surgeist_html::HtmlPreloadState::ImplementationDefined
+pub surgeist_html::HtmlPreloadState::Keyword(surgeist_html::HtmlPreload)
 pub enum surgeist_html::HtmlProcessingInstructionError
 pub surgeist_html::HtmlProcessingInstructionError::DataContainsGreaterThan
 pub surgeist_html::HtmlProcessingInstructionError::DataEndsWithQuestionMark
@@ -398,6 +472,15 @@ pub surgeist_html::HtmlTokenError::SpaceTokenWhitespace::code_unit_offset: usize
 impl core::error::Error for surgeist_html::HtmlTokenError
 impl core::fmt::Display for surgeist_html::HtmlTokenError
 pub fn surgeist_html::HtmlTokenError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlTrackKind
+pub surgeist_html::HtmlTrackKind::Captions
+pub surgeist_html::HtmlTrackKind::Chapters
+pub surgeist_html::HtmlTrackKind::Descriptions
+pub surgeist_html::HtmlTrackKind::Metadata
+pub surgeist_html::HtmlTrackKind::Subtitles
+impl surgeist_html::HtmlTrackKind
+pub fn surgeist_html::HtmlTrackKind::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlTrackKind::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlTranslate
 pub surgeist_html::HtmlTranslate::No
 pub surgeist_html::HtmlTranslate::Yes
@@ -1331,6 +1414,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::boolean_attribute(&self, selected: surgeist_html::HtmlBooleanAttribute, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::dir(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDirState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::closedby(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlClosedByState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::comma_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlCommaSeparatedTokens, surgeist_html::HtmlCommaSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDate, surgeist_html::HtmlDate>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::date_or_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDateOrTime, surgeist_html::HtmlDateOrTime>, surgeist_html::HtmlValueAdmissionError>
@@ -1358,21 +1443,37 @@ pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::opti
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::contenteditable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlContentEditableState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::decoding(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDecoding>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::draggable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDraggableState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::enterkeyhint(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlEnterKeyHint>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::form_autocomplete(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormAutocomplete>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::form_enctype(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormEnctype>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::form_method(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::hidden(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlHiddenState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::inputmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputMode>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::ol_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlOlType>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::popover(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPopoverState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::preload(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPreloadState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::shadowrootmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlShadowRootMode>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::shadowrootslotassignment(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSlotAssignment>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::spellcheck(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpellcheckState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::track_kind(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTrackKind>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::translate(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTranslateState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
