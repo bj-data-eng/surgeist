@@ -3,7 +3,8 @@
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets, current control flags, global inheritance, select
-//! readbacks, autocomplete defaults and input/button form setting selection.
+//! readbacks, autocomplete defaults and input/button form setting selection
+//! including the source no-validate state.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
@@ -648,6 +649,7 @@ pub enum HtmlSemanticQuery {
     ControlAutocomplete,
     SubmitterFormMethod,
     SubmitterFormEnctype,
+    SubmitterNoValidate,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
@@ -732,6 +734,9 @@ impl HtmlSemanticQuery {
             }
             Self::SelectSelectedIndex => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-selectedindex"
+            }
+            Self::SubmitterNoValidate => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-fs-novalidate"
             }
             Self::SubmitterFormMethod => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-fs-method"
@@ -850,6 +855,7 @@ pub enum HtmlSemanticFact {
     ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
     SubmitterFormMethod(HtmlSemanticValue<HtmlSubmitterFormMethod>),
     SubmitterFormEnctype(HtmlSemanticValue<HtmlSubmitterFormEnctype>),
+    SubmitterNoValidate(HtmlSemanticValue<HtmlSubmitterNoValidate>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlSemanticResult {
@@ -2110,6 +2116,11 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.select_selected_index(&request.subject)?,
                             )
                         }
+                        HtmlSemanticQuery::SubmitterNoValidate => {
+                            HtmlSemanticFact::SubmitterNoValidate(
+                                self.submitter_no_validate(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::SubmitterFormMethod => {
                             HtmlSemanticFact::SubmitterFormMethod(
                                 self.submitter_form_method(&request.subject)?,
@@ -2226,6 +2237,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::SelectSelectedIndex => {
                         HtmlSemanticFact::SelectSelectedIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::SubmitterNoValidate => {
+                        HtmlSemanticFact::SubmitterNoValidate(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::SubmitterFormMethod => {
                         HtmlSemanticFact::SubmitterFormMethod(HtmlSemanticValue::Inapplicable)

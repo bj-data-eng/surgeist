@@ -830,6 +830,15 @@ pub surgeist_html::HtmlLoading::Lazy
 impl surgeist_html::HtmlLoading
 pub fn surgeist_html::HtmlLoading::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlLoading::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlNoValidateResolution
+pub surgeist_html::HtmlNoValidateResolution::FormOwner
+pub surgeist_html::HtmlNoValidateResolution::FormOwner::owner: surgeist_html::HtmlFormOwner
+pub surgeist_html::HtmlNoValidateResolution::FormOwner::value: bool
+pub surgeist_html::HtmlNoValidateResolution::Missing
+pub surgeist_html::HtmlNoValidateResolution::Missing::missing: surgeist_html::HtmlSemanticMissing
+pub surgeist_html::HtmlNoValidateResolution::Missing::owner: core::option::Option<surgeist_html::HtmlFormOwner>
+pub surgeist_html::HtmlNoValidateResolution::NoFormOwner(surgeist_html::HtmlFormOwner)
+pub surgeist_html::HtmlNoValidateResolution::OwnSubmitter
 pub enum surgeist_html::HtmlNodeKind
 pub surgeist_html::HtmlNodeKind::Comment(surgeist_html::DocumentString)
 pub surgeist_html::HtmlNodeKind::Doctype(surgeist_html::HtmlDoctype)
@@ -1028,6 +1037,7 @@ pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemantic
 pub surgeist_html::HtmlSemanticFact::Spellcheck(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormEnctype>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormMethod>)
+pub surgeist_html::HtmlSemanticFact::SubmitterNoValidate(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterNoValidate>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
 pub enum surgeist_html::HtmlSemanticFailureKind
@@ -1094,6 +1104,7 @@ pub surgeist_html::HtmlSemanticQuery::SelectedOptions
 pub surgeist_html::HtmlSemanticQuery::Spellcheck
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormEnctype
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormMethod
+pub surgeist_html::HtmlSemanticQuery::SubmitterNoValidate
 pub surgeist_html::HtmlSemanticQuery::TableModel
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
 impl surgeist_html::HtmlSemanticQuery
@@ -2720,6 +2731,13 @@ pub fn surgeist_html::HtmlSubmitterFormMethod::form_attribute(&self) -> core::op
 pub fn surgeist_html::HtmlSubmitterFormMethod::intrinsic(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>
 pub fn surgeist_html::HtmlSubmitterFormMethod::selection(&self) -> &surgeist_html::HtmlFormMethodSelection
 pub fn surgeist_html::HtmlSubmitterFormMethod::submitter_type(&self) -> core::option::Option<&surgeist_html::HtmlSubmitterTypeObservation>
+pub struct surgeist_html::HtmlSubmitterNoValidate
+impl surgeist_html::HtmlSubmitterNoValidate
+pub fn surgeist_html::HtmlSubmitterNoValidate::form_attribute(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<bool>>
+pub fn surgeist_html::HtmlSubmitterNoValidate::intrinsic(&self) -> &surgeist_html::HtmlAttributeReport<bool>
+pub fn surgeist_html::HtmlSubmitterNoValidate::resolution(&self) -> &surgeist_html::HtmlNoValidateResolution
+pub fn surgeist_html::HtmlSubmitterNoValidate::submitter_type(&self) -> core::option::Option<&surgeist_html::HtmlSubmitterTypeObservation>
+pub fn surgeist_html::HtmlSubmitterNoValidate::value(&self) -> core::option::Option<bool>
 pub struct surgeist_html::HtmlTableCell
 impl surgeist_html::HtmlTableCell
 pub fn surgeist_html::HtmlTableCell::height(&self) -> usize

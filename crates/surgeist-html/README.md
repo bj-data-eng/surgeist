@@ -302,6 +302,15 @@ ordinary parent's select identity. Reports borrow the exact override, consulted
 type and consulted form observations. These selections do not replace an
 override's empty IDL value or perform validation, submission or navigation.
 
+The captured no-validate query reuses the same submit-button classification and
+form-owner operation. Present formnovalidate on an actual submit button or
+novalidate on its actual owner proves true, independently of Boolean spelling
+conformance. Established null ownership can prove false; unavailable evidence
+remains missing when it can affect the result. A sufficient true branch skips
+irrelevant facts. Reports retain the consulted raw Boolean observations and
+owner origin, including known ownership within an unresolved result. This
+readback does not execute constraint validation or submission.
+
 `HtmlGlobalInheritanceFacts` supplies actual document design-mode states and
 per-element spellcheck default behaviors. The checked supplement joins one
 capture and host revision to its producer, configuration and revision; reports

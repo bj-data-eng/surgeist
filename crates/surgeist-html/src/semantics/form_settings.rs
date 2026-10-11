@@ -1,4 +1,5 @@
-//! Source method/enctype selection for potential HTML input/button submitters.
+//! Source method/enctype selection and no-validate state for potential HTML
+//! input/button submitters.
 //! Intrinsic content reports and actual submit-button classification remain
 //! separate from IDL reflection, successful submission and execution effects.
 
@@ -286,5 +287,211 @@ impl<'a> HtmlSemanticSession<'a> {
             observation: HtmlSubmitterTypeObservation::Button(report),
             submit_button,
         })
+    }
+}
+
+/// The sufficient source evidence for no-validate, distinct from Boolean authorship.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HtmlNoValidateResolution {
+    /// An actual submit button has its own formnovalidate attribute present.
+    OwnSubmitter,
+    FormOwner {
+        value: bool,
+        owner: HtmlFormOwner,
+    },
+    /// The own branch is false and the actual owner is null: false otherwise.
+    NoFormOwner(HtmlFormOwner),
+    Missing {
+        missing: HtmlSemanticMissing,
+        /// A consulted known pointer/null remains evidence despite missing eligibility.
+        owner: Option<HtmlFormOwner>,
+    },
+}
+
+/// Static no-validate readback for potential HTML input/button submitters.
+/// This does not perform validation, select a successful submitter or reflect IDL.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlSubmitterNoValidate {
+    // Exactly one record, reserved through the same finite semantic ledger.
+    data: Vec<NoValidateData>,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NoValidateData {
+    intrinsic: HtmlAttributeReport<bool>,
+    submitter_type: Option<HtmlSubmitterTypeObservation>,
+    resolution: HtmlNoValidateResolution,
+    form_attribute: Option<HtmlAttributeReport<bool>>,
+}
+impl HtmlSubmitterNoValidate {
+    /// Exact formnovalidate content presence, independent of its contextual effect.
+    pub fn intrinsic(&self) -> &HtmlAttributeReport<bool> {
+        &self.data[0].intrinsic
+    }
+    pub fn submitter_type(&self) -> Option<&HtmlSubmitterTypeObservation> {
+        self.data[0].submitter_type.as_ref()
+    }
+    pub fn resolution(&self) -> &HtmlNoValidateResolution {
+        &self.data[0].resolution
+    }
+    /// Actual form novalidate report, only when a non-null owner was consulted.
+    pub fn form_attribute(&self) -> Option<&HtmlAttributeReport<bool>> {
+        self.data[0].form_attribute.as_ref()
+    }
+    /// None is unavailable necessary evidence, never established false.
+    pub fn value(&self) -> Option<bool> {
+        match self.resolution() {
+            HtmlNoValidateResolution::OwnSubmitter => Some(true),
+            HtmlNoValidateResolution::FormOwner { value, .. } => Some(*value),
+            HtmlNoValidateResolution::NoFormOwner(_) => Some(false),
+            HtmlNoValidateResolution::Missing { .. } => None,
+        }
+    }
+}
+
+impl HtmlSemanticSession<'_> {
+    pub(super) fn submitter_no_validate(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<HtmlSubmitterNoValidate>, HtmlSemanticFailure> {
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        };
+        if !self.html_namespace(element)? {
+            return Ok(HtmlSemanticValue::Unsupported(
+                HtmlSemanticUnsupported::ForeignNamespace,
+            ));
+        }
+        let kind = self.known(element)?;
+        if !matches!(
+            kind,
+            Some(KnownHtmlElement::Input | KnownHtmlElement::Button)
+        ) {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        let raw = self.attribute(element, "formnovalidate")?;
+        self.interpreter
+            .admit_attribute_raw(raw.map(Attribute::value))
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
+        // Without the attribute, the own conjunction is false independently
+        // of type and ordinary parent. Reuse the accepted classifier otherwise.
+        let role = if raw.is_some() {
+            Some(self.form_submitter_role(subject, element, kind)?)
+        } else {
+            None
+        };
+        self.admit_intrinsic(element, raw, 1)?;
+        let intrinsic = match &role {
+            Some(SubmitterRole {
+                observation: HtmlSubmitterTypeObservation::Input(report),
+                ..
+            }) => {
+                let state = report
+                    .intrinsic()
+                    .copied()
+                    .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
+                self.interpreter.boolean_attribute_for_input(
+                    HtmlBooleanAttribute::Formnovalidate,
+                    element.name(),
+                    raw,
+                    state,
+                )
+            }
+            Some(SubmitterRole {
+                observation: HtmlSubmitterTypeObservation::Button(_),
+                submit_button: Ok(is_submitter),
+            }) => self.interpreter.formnovalidate_for_button(
+                element.name(),
+                raw,
+                if *is_submitter {
+                    HtmlButtonSubmitterContext::SubmitButton
+                } else {
+                    HtmlButtonSubmitterContext::NotSubmitButton
+                },
+            ),
+            _ => self.interpreter.boolean_attribute(
+                HtmlBooleanAttribute::Formnovalidate,
+                element.name(),
+                raw,
+            ),
+        }
+        .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
+        self.poll()?;
+        // Intrinsic presence must remain available even when author context is
+        // prohibited or unknown; it is not itself the no-validate result.
+        let present = intrinsic
+            .intrinsic()
+            .copied()
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
+        let (submitter_type, own) = match role {
+            Some(role) => (
+                Some(role.observation),
+                role.submit_button.map(|submit| submit && present),
+            ),
+            None => (None, Ok(false)),
+        };
+        let mut form_attribute = None;
+        let resolution = if own == Ok(true) {
+            HtmlNoValidateResolution::OwnSubmitter
+        } else {
+            match self.form_owner(subject)? {
+                HtmlSemanticValue::Known(owner) => {
+                    if let Some(form) = owner.owner() {
+                        let node = self.node(form)?;
+                        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+                            return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                        };
+                        let raw = self.attribute(element, "novalidate")?;
+                        self.admit_intrinsic(element, raw, 1)?;
+                        let report = self
+                            .interpreter
+                            .boolean_attribute(
+                                HtmlBooleanAttribute::Novalidate,
+                                element.name(),
+                                raw,
+                            )
+                            .map_err(|error| {
+                                self.stop(HtmlSemanticFailureKind::Attribute(error))
+                            })?;
+                        self.poll()?;
+                        let value = report.intrinsic().copied().ok_or_else(|| {
+                            self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                        })?;
+                        form_attribute = Some(report);
+                        // A true owner disjunct proves true despite unavailable
+                        // own classification. False still needs both branches.
+                        match (value, own) {
+                            (false, Err(missing)) => HtmlNoValidateResolution::Missing {
+                                missing,
+                                owner: Some(owner),
+                            },
+                            _ => HtmlNoValidateResolution::FormOwner { value, owner },
+                        }
+                    } else if let Err(missing) = own {
+                        HtmlNoValidateResolution::Missing {
+                            missing,
+                            owner: Some(owner),
+                        }
+                    } else {
+                        HtmlNoValidateResolution::NoFormOwner(owner)
+                    }
+                }
+                HtmlSemanticValue::Missing(missing) => HtmlNoValidateResolution::Missing {
+                    missing,
+                    owner: None,
+                },
+                _ => return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)),
+            }
+        };
+        let mut data = Vec::new();
+        self.reserve_nested_output(&mut data, 1)?;
+        self.charge(1)?;
+        data.push(NoValidateData {
+            intrinsic,
+            submitter_type,
+            resolution,
+            form_attribute,
+        });
+        Ok(HtmlSemanticValue::Known(HtmlSubmitterNoValidate { data }))
     }
 }
