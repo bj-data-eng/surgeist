@@ -7184,3 +7184,115 @@ fn listed_controls_frameset_flag_follows_each_actual_start_row() {
         assert_released(&driver.control);
     }
 }
+
+#[test]
+fn ordinary_frameset_nested_frames_and_noframes_preserve_trailing_nodes() {
+    // Governing HTML877d syntax4218–4222,5618–5776: frame insertion pops
+    // immediately; noframes uses RAWTEXT; trailing comments/PI belong to Document.
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><frameset cols='*'><frame name='a'/><frameset><frame name='b'></frameset><noframes>&amp;<b>x</noframes></frameset></html><!--tail--><?x p?>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        // Dispose the actual retained opener, tree, tokenizer and controller
+        // owners before asserting the existing callable's missing behavior.
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_outline = outline(document);
+    let actual_mode = document.mode();
+    // The real doctype is a preceding Document child, not the html element.
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let frameset = document.node(&html).unwrap().children().nth(1).unwrap();
+    let children: Vec<_> = document.node(&frameset).unwrap().children().collect();
+    let nested_frame = document
+        .node(&children[1])
+        .unwrap()
+        .children()
+        .next()
+        .unwrap();
+    let element_facts: Vec<_> = [
+        &frameset,
+        &children[0],
+        &children[1],
+        &nested_frame,
+        &children[2],
+    ]
+    .into_iter()
+    .map(|id| {
+        let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+            panic!("source-derived frameset positions must be actual elements");
+        };
+        (
+            element.name().local_name().code_units().to_vec(),
+            element
+                .attributes()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute.name().local_name().code_units().to_vec(),
+                        attribute.value().code_units().to_vec(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    })
+    .collect();
+
+    // Observations retain only plain units and qualified weak identities.
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "frameset"),
+            (2, "frame"),
+            (2, "frameset"),
+            (3, "frame"),
+            (2, "noframes"),
+            (3, "#&amp;<b>x"),
+            (0, "!tail"),
+            (0, "?x"),
+        ])
+    );
+    assert_ne!(frameset, children[1]);
+    assert_ne!(children[0], nested_frame);
+    assert_eq!(
+        element_facts,
+        [
+            ("frameset", vec![("cols", "*")]),
+            ("frame", vec![("name", "a")]),
+            ("frameset", vec![]),
+            ("frame", vec![("name", "b")]),
+            ("noframes", vec![]),
+        ]
+        .into_iter()
+        .map(|(name, attributes)| (
+            name.encode_utf16().collect::<Vec<_>>(),
+            attributes
+                .into_iter()
+                .map(|(name, value)| (
+                    name.encode_utf16().collect::<Vec<_>>(),
+                    value.encode_utf16().collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>()
+        ))
+        .collect::<Vec<_>>()
+    );
+}
