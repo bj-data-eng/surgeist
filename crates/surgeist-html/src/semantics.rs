@@ -2,7 +2,7 @@
 //!
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
-//! form owners, label targets and control labels, current control flags, global inheritance, select
+//! form owners, form/fieldset listed collections and form length, label targets and control labels, current control flags, global inheritance, select
 //! readbacks, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
@@ -666,6 +666,9 @@ pub enum HtmlSemanticQuery {
     FormOwner,
     LabeledControl,
     ControlLabels,
+    FormControls,
+    FormLength,
+    FieldsetControls,
     CurrentCheckedness,
     CurrentSelectedness,
     DirtyValueFlag,
@@ -758,6 +761,15 @@ impl HtmlSemanticQuery {
             }
             Self::ControlLabels => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels"
+            }
+            Self::FormControls => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-elements"
+            }
+            Self::FormLength => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-length"
+            }
+            Self::FieldsetControls => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fieldset-elements"
             }
             Self::FormDefaultButton => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#default-button"
@@ -962,6 +974,9 @@ pub enum HtmlSemanticFact {
     LabeledControl(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     /// Known(None) is the source Hidden-input null; Some(empty) is a complete empty list.
     ControlLabels(HtmlSemanticValue<Option<HtmlControlLabels>>),
+    FormControls(HtmlSemanticValue<HtmlListedControlCollection>),
+    FormLength(HtmlSemanticValue<usize>),
+    FieldsetControls(HtmlSemanticValue<HtmlListedControlCollection>),
     CurrentCheckedness(HtmlSemanticValue<bool>),
     CurrentSelectedness(HtmlSemanticValue<bool>),
     DirtyValueFlag(HtmlSemanticValue<bool>),
@@ -2392,6 +2407,15 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::ControlLabels => {
                             HtmlSemanticFact::ControlLabels(self.control_labels(&request.subject)?)
                         }
+                        HtmlSemanticQuery::FormControls => {
+                            HtmlSemanticFact::FormControls(self.form_controls(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::FormLength => {
+                            HtmlSemanticFact::FormLength(self.form_length(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::FieldsetControls => HtmlSemanticFact::FieldsetControls(
+                            self.fieldset_controls(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::CurrentCheckedness => {
                             HtmlSemanticFact::CurrentCheckedness(
                                 self.control_flag(&request.subject, HtmlControlFlag::Checkedness)?,
@@ -2566,6 +2590,15 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::ControlLabels => {
                         HtmlSemanticFact::ControlLabels(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FormControls => {
+                        HtmlSemanticFact::FormControls(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FormLength => {
+                        HtmlSemanticFact::FormLength(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FieldsetControls => {
+                        HtmlSemanticFact::FieldsetControls(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::CurrentCheckedness => {
                         HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Inapplicable)

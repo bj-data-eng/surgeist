@@ -1261,8 +1261,11 @@ pub surgeist_html::HtmlSemanticFact::DirtyValueFlag(surgeist_html::HtmlSemanticV
 pub surgeist_html::HtmlSemanticFact::Disabledness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Editable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::EditingHost(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::FieldsetControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
+pub surgeist_html::HtmlSemanticFact::FormControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDefaultButton>>)
 pub surgeist_html::HtmlSemanticFact::FormImplicitSubmissionCondition(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImplicitSubmissionCondition>)
+pub surgeist_html::HtmlSemanticFact::FormLength(surgeist_html::HtmlSemanticValue<usize>)
 pub surgeist_html::HtmlSemanticFact::FormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFormOwner>)
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
 pub surgeist_html::HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHyperlinkReferrerPolicyReadback>)
@@ -1348,8 +1351,11 @@ pub surgeist_html::HtmlSemanticQuery::DirtyValueFlag
 pub surgeist_html::HtmlSemanticQuery::Disabledness
 pub surgeist_html::HtmlSemanticQuery::Editable
 pub surgeist_html::HtmlSemanticQuery::EditingHost
+pub surgeist_html::HtmlSemanticQuery::FieldsetControls
+pub surgeist_html::HtmlSemanticQuery::FormControls
 pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
 pub surgeist_html::HtmlSemanticQuery::FormImplicitSubmissionCondition
+pub surgeist_html::HtmlSemanticQuery::FormLength
 pub surgeist_html::HtmlSemanticQuery::FormOwner
 pub surgeist_html::HtmlSemanticQuery::Hidden
 pub surgeist_html::HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute
@@ -2885,6 +2891,11 @@ pub fn surgeist_html::HtmlListParticipationRevision::new(style_producer: surgeis
 pub fn surgeist_html::HtmlListParticipationRevision::style_configuration(&self) -> u64
 pub fn surgeist_html::HtmlListParticipationRevision::style_producer(&self) -> &surgeist_html::HtmlParticipationProducerId
 pub fn surgeist_html::HtmlListParticipationRevision::style_revision(&self) -> u64
+pub struct surgeist_html::HtmlListedControlCollection
+impl surgeist_html::HtmlListedControlCollection
+pub fn surgeist_html::HtmlListedControlCollection::controls(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub fn surgeist_html::HtmlListedControlCollection::is_empty(&self) -> bool
+pub fn surgeist_html::HtmlListedControlCollection::len(&self) -> usize
 pub struct surgeist_html::HtmlLocalDateTime
 impl surgeist_html::HtmlLocalDateTime
 pub fn surgeist_html::HtmlLocalDateTime::date(&self) -> &surgeist_html::HtmlDate

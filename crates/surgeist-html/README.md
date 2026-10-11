@@ -404,6 +404,27 @@ These operations observe facts and execute no form reset, activation or control
 state transition. Actual control strings remain owned by the language/direction
 supplement.
 
+`FormControls` returns listed elements in the form’s ordinary tree whose actual
+form owner is that form, excluding Image Button inputs. `FormLength` counts the
+same membership without retaining a member vector. External controls participate
+in tree order, and a listed ordinary root participates when qualified current
+association establishes its ownership. `FieldsetControls` instead returns listed
+ordinary descendants, excluding the queried fieldset itself and including nested
+fieldsets and Image Button inputs, independently of form ownership.
+
+Both collection facts use `HtmlListedControlCollection`, with capture-qualified
+subject keys. Influencing unavailable ownership, classification or child order
+remains missing evidence. Established other/null ownership can prove exclusion
+without consulting an input type or custom classification; an Image state can
+prove form-collection exclusion without resolving ownership. Traversal and actual
+retained capacities use the same semantic ledger and atomic batch contract.
+These immutable results provide no live collection, named lookup, past-names map
+or control mutation. The [pinned form collection predicate](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-form-element)
+and [fieldset collection clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-fieldset-element)
+define their distinct filters. The fieldset’s root exclusion follows the selected
+[pinned WebKit descendant traversal](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/CollectionTraversalInlines.h#L34-L42);
+form collections use its [actual associated-control list](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/HTMLFormControlsCollection.cpp#L75-L97).
+
 Select/option readback exposes the source-defined option list, selected options,
 selected index and option index. One bounded ordinary-tree traversal preserves
 tree order and the specific option, datalist, hr, nested-select and optgroup

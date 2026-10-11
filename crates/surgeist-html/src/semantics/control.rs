@@ -1,4 +1,4 @@
-//! Immutable form associations, label targeting, control labels and current internal flags.
+//! Immutable form associations, listed collections, label targeting, control labels and current internal flags.
 //! HTML 877d6146487f §4.10.2, §4.10.4, §4.10.5, §4.10.10 and §4.10.18.
 //! Host adapters establish history and current slots; queries execute no transitions.
 
@@ -61,6 +61,35 @@ impl HtmlControlLabels {
     pub fn labels(&self) -> &[HtmlCaptureSubjectId] {
         &self.labels
     }
+}
+
+/// Complete source-ordered listed-element membership at the report's capture.
+/// Form and fieldset query variants retain their distinct source filters. This
+/// immutable value provides no live collection, named lookup or mutation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlListedControlCollection {
+    controls: Vec<HtmlCaptureSubjectId>,
+}
+impl HtmlListedControlCollection {
+    pub fn controls(&self) -> &[HtmlCaptureSubjectId] {
+        &self.controls
+    }
+    pub fn len(&self) -> usize {
+        self.controls.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.controls.is_empty()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ListedFilter {
+    Form,
+    Fieldset,
+}
+struct ListedReadback {
+    controls: Vec<HtmlCaptureSubjectId>,
+    count: usize,
 }
 
 /// All input elements have these internal slots. Checkedness has control effects
@@ -537,6 +566,215 @@ impl<'a> HtmlSemanticSession<'a> {
         Err(ControlStop::Missing(
             HtmlSemanticMissing::CustomControlClassification(subject.clone()),
         ))
+    }
+
+    // HTML §4.10.2: the native form-associated set except img, plus actual
+    // form-associated custom controls. Input state does not change listedness.
+    fn control_listed(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+        form: Option<&HtmlCaptureSubjectId>,
+    ) -> ControlResult<bool> {
+        if let Some(kind) = self.known(element)? {
+            return Ok(native_form_associated(kind) && kind != KnownHtmlElement::Img);
+        }
+        if !self.html_namespace(element)? {
+            return Ok(false);
+        }
+        if let Some(form) = form {
+            match self.control_association(subject) {
+                Ok(HtmlFormAssociationState::EstablishedCurrent(owner)) => {
+                    self.charge(1)?;
+                    if owner.as_ref() != Some(form) {
+                        return Ok(false);
+                    }
+                }
+                Err(ControlStop::Failure(failure)) => return Err(failure.into()),
+                Ok(_) | Err(ControlStop::Missing(_)) => {}
+            }
+        }
+        // A matching pointer does not establish custom classification. Only a
+        // known other/null pointer above can make that classification irrelevant.
+        self.control_custom(subject)
+    }
+
+    pub(super) fn form_controls(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<HtmlListedControlCollection>, HtmlSemanticFailure> {
+        Ok(self
+            .listed_readback(subject, ListedFilter::Form, true)?
+            .map(|value| HtmlListedControlCollection {
+                controls: value.controls,
+            }))
+    }
+
+    pub(super) fn form_length(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<usize>, HtmlSemanticFailure> {
+        Ok(self
+            .listed_readback(subject, ListedFilter::Form, false)?
+            .map(|value| value.count))
+    }
+
+    pub(super) fn fieldset_controls(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<HtmlListedControlCollection>, HtmlSemanticFailure> {
+        Ok(self
+            .listed_readback(subject, ListedFilter::Fieldset, true)?
+            .map(|value| HtmlListedControlCollection {
+                controls: value.controls,
+            }))
+    }
+
+    fn listed_readback(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        filter: ListedFilter,
+        retain: bool,
+    ) -> Result<HtmlSemanticValue<ListedReadback>, HtmlSemanticFailure> {
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        };
+        if !self.html_namespace(element)? {
+            return Ok(HtmlSemanticValue::Unsupported(
+                HtmlSemanticUnsupported::ForeignNamespace,
+            ));
+        }
+        let role = match filter {
+            ListedFilter::Form => KnownHtmlElement::Form,
+            ListedFilter::Fieldset => KnownHtmlElement::Fieldset,
+        };
+        if self.known(element)? != Some(role) {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        let mut frames = Vec::new();
+        let result = self.listed_walk(subject, filter, retain, &mut frames);
+        self.release_scratch(frames.capacity());
+        match result {
+            Ok(value) => Ok(HtmlSemanticValue::Known(value)),
+            Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
+            Err(ControlStop::Failure(failure)) => Err(failure),
+        }
+    }
+
+    fn listed_form_matches(
+        &mut self,
+        candidate: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+        target: &HtmlCaptureSubjectId,
+    ) -> ControlResult<bool> {
+        if self.known(element)? == Some(KnownHtmlElement::Input) {
+            // An established other/null pointer excludes this input without
+            // reading its type. The same association owner supplies the fact;
+            // no reset algorithm or inferred ancestor is duplicated here.
+            match self.control_association(candidate) {
+                Ok(HtmlFormAssociationState::EstablishedCurrent(owner)) => {
+                    self.charge(1)?;
+                    if owner.as_ref() != Some(target) {
+                        return Ok(false);
+                    }
+                }
+                Err(ControlStop::Failure(failure)) => return Err(failure.into()),
+                Ok(_) | Err(ControlStop::Missing(_)) => {}
+            }
+            // Image proves exclusion even with unavailable association or a
+            // reset premise whose form attribute would otherwise need reading.
+            if self.control_input_type(element)? == HtmlInputType::Image {
+                return Ok(false);
+            }
+        }
+        match self.form_owner(candidate)? {
+            HtmlSemanticValue::Known(owner) => {
+                self.charge(1)?;
+                Ok(owner.owner() == Some(target))
+            }
+            HtmlSemanticValue::Missing(missing) => Err(ControlStop::Missing(missing)),
+            // Listedness was established through the same category owner;
+            // a nonapplicable owner here would violate that internal invariant.
+            HtmlSemanticValue::Inapplicable | HtmlSemanticValue::Unsupported(_) => Err(self
+                .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                .into()),
+        }
+    }
+
+    fn listed_walk(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        filter: ListedFilter,
+        retain: bool,
+        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
+    ) -> ControlResult<ListedReadback> {
+        let mut current = match filter {
+            // A listed ordinary root can have a preserved current owner that
+            // is a descendant form. The form's association filter includes it.
+            ListedFilter::Form => Some(self.control_root(subject)?),
+            ListedFilter::Fieldset => {
+                // Fieldset collection traversal starts with descendants: its
+                // queried listed root is never presented to the filter.
+                let children = self.control_children(subject)?;
+                self.reserve_scratch(frames, 1)?;
+                self.charge(1)?;
+                frames.push(children);
+                None
+            }
+        };
+        let mut value = ListedReadback {
+            controls: Vec::new(),
+            count: 0,
+        };
+        loop {
+            if let Some(candidate) = current.take() {
+                let node = self.node(&candidate)?;
+                if let HtmlCapturedNodeKind::Element(element) = node.kind()
+                    && self.control_listed(
+                        &candidate,
+                        element,
+                        match filter {
+                            ListedFilter::Form => Some(subject),
+                            ListedFilter::Fieldset => None,
+                        },
+                    )?
+                    && (matches!(filter, ListedFilter::Fieldset)
+                        || self.listed_form_matches(&candidate, element, subject)?)
+                {
+                    self.charge(1)?;
+                    value.count = value.count.checked_add(1).ok_or_else(|| {
+                        self.stop(HtmlSemanticFailureKind::RepresentationExhausted)
+                    })?;
+                    if retain {
+                        self.reserve_nested_output(&mut value.controls, 1)?;
+                        self.charge(1)?;
+                        value.controls.push(candidate);
+                    }
+                }
+                if matches!(
+                    node.kind(),
+                    HtmlCapturedNodeKind::Element(_)
+                        | HtmlCapturedNodeKind::Document(_)
+                        | HtmlCapturedNodeKind::Fragment(_)
+                ) {
+                    let children = self.control_children(&node.id())?;
+                    self.reserve_scratch(frames, 1)?;
+                    self.charge(1)?;
+                    frames.push(children);
+                }
+            }
+            current = loop {
+                self.charge(1)?;
+                let Some(frame) = frames.last_mut() else {
+                    return Ok(value);
+                };
+                if let Some(next) = frame.next() {
+                    break Some(next);
+                }
+                frames.pop();
+            };
+        }
     }
     fn control_category(
         &mut self,
