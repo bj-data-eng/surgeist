@@ -1,3 +1,4 @@
+use surgeist_css::CssRule;
 use surgeist_css::*;
 use surgeist_cssom::*;
 

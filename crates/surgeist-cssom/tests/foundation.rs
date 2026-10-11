@@ -1,4 +1,5 @@
 use surgeist_css::*;
+use surgeist_css::{CssNamespaceRule, CssRule};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str, revision: u64) -> CssomInputVersion {

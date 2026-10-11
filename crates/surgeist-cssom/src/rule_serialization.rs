@@ -1,6 +1,7 @@
 //! Bounded preparation and native serialization of current live rule payloads.
 use crate::{model::State, *};
 use std::cell::OnceCell;
+use surgeist_css::CssRule;
 use surgeist_css::*;
 
 /// Limits one current rule text read. Preparation counts actual context/traversal

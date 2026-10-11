@@ -5,6 +5,22 @@ immutable captures. It depends only on `surgeist-css` and the standard library.
 CSS owns grammar, checked syntax, expansion and formatting. CSSOM owns its CSS
 integration adapter under the repository's authorized ownership exception.
 
+Standard-named Rust objects such as `CssRule`, `CssStyleSheet` and
+`CssStyleProperties` are private-field live handles. Checked store factories
+recover them from product IDs; their equality and hash preserve owner-qualified
+identity across edits. Reads receive `&CssomStore` explicitly. A handle retains
+identity without retaining dropped owner data; `handle.capture(&snapshot)` creates
+an owning, read-only `CssomCapture<T>`. Captured children and conversions share
+that exact snapshot, so a parent chain remains stable after edits or store drop.
+Infallible upcasts preserve identity; checked downcasts return `None` for a
+nonmatching interface and explicit errors for foreign or absent objects.
+The public `id()` and `snapshot()` accessors support trusted provenance and host
+integration separately from standard object operations. Standard rule text uses
+the native bounded graph serializer. `css::escape` and `css::escape_with_limits`
+forward identifier escaping to CSS; CSS support evaluation remains outside this
+authored-state crate. [Object foundation tests](tests/object_foundation.rs) cover
+the live/captured distinction, checked conversions and retained ancestry.
+
 Create a `CssomStore`, capture a snapshot and acquire an edit guard from that
 capture. Stage parsed or checked typed sheets in a batch; commit resolves private
 creation tickets to owner-qualified live IDs. One successful publication advances

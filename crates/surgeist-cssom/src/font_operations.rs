@@ -1,6 +1,7 @@
 //! Fonts CSSOM views and source map operations over the shared live owner.
 use crate::*;
 use surgeist_css::*;
+use surgeist_css::{CssFontPaletteValuesRule, CssRule};
 
 /// Genuine checked family admission, independent of the original rule occurrence.
 /// Parsed carriers keep their actual whole/member origins; typed carriers retain

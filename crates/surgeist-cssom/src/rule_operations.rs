@@ -1,6 +1,7 @@
 //! Source rule algorithms over the current retained graph. CSS owns all parsing.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
+use surgeist_css::CssRule;
 use surgeist_css::*;
 
 /// The independently revised facts used by a supplied evaluator result.

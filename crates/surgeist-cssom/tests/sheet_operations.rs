@@ -1,4 +1,5 @@
 //! Public consumer expectations from the selected CSSOM §6.1/§6.2 sheet algorithms.
+use surgeist_css::CssRule;
 use surgeist_css::*;
 use surgeist_cssom::*;
 

@@ -1,6 +1,7 @@
 //! Readonly rule facets over checked current authored data and live media identity.
 use crate::*;
 use surgeist_css::*;
+use surgeist_css::{CssColorProfileRule, CssRule};
 
 /// The authored custom-media branch, without query matching or alias evaluation.
 /// A MediaList ID is stable across edits; its contents belong to each snapshot.

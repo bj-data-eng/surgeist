@@ -1,6 +1,7 @@
 use crate::*;
 use std::{collections::HashMap, fmt, sync::Arc};
 use surgeist_css::*;
+use surgeist_css::{CssFontFaceDescriptors, CssMarginRule, CssRule};
 
 /// Real product quotas, including retained detached objects. These bound admitted
 /// work/state, not allocator overhead or process RSS. Zero capacities are valid.

@@ -2,6 +2,10 @@
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
 use surgeist_css::*;
+use surgeist_css::{
+    CssCounterStyleRule, CssCustomMediaRule, CssFontFaceRule, CssFontFeatureValuesRule,
+    CssKeyframesRule, CssPageRule, CssRule,
+};
 
 impl State {
     pub(crate) fn allocate(&mut self, limits: &CssomLimits) -> Result<u64, CssomError> {

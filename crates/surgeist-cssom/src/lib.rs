@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 mod counter_operations;
+pub mod css;
 mod css_adapter;
 mod declaration;
 mod declaration_budget;
@@ -14,6 +15,7 @@ mod identity;
 mod media_operations;
 mod model;
 mod named_supports_operations;
+mod objects;
 mod owner_effect;
 mod parser_resources;
 mod publication;
@@ -30,6 +32,7 @@ pub use font_operations::*;
 pub use identity::*;
 pub use media_operations::CssomMediaEdit;
 pub use model::*;
+pub use objects::*;
 pub use owner_effect::*;
 pub use publication::*;
 pub use readonly_extensions::*;

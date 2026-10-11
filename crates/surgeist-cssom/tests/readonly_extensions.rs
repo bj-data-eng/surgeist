@@ -3,6 +3,7 @@
 //! Color5 WD 2026-09-08 §12.1: serialize associated names/descriptors;
 //! absent descriptors return empty, independently of unavailable whole formats.
 use surgeist_css::*;
+use surgeist_css::{CssColorProfileRule, CssCustomMediaRule, CssRule};
 use surgeist_cssom::*;
 
 fn limits() -> CssSpecifiedValueSerializationLimits {

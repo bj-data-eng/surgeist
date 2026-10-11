@@ -8,6 +8,7 @@ use std::{
     sync::Arc,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use surgeist_css::CssRule;
 use surgeist_css::*;
 
 /// Exclusive live writer. Snapshots/batches own captures and never borrow this store.
