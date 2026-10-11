@@ -54,6 +54,13 @@ assert complete native HTML or browser conformance.
 
 The [selected HTML edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline) retains ten bounded complete-section format conversions from [immutable HTML snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/), complete original HTML SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. This snapshot directly identifies the retained edition, unlike the historical live chapter/legal-pin association above. All §4 element definitions are included; other browser runtime chapters are explicitly bounded. The [exact upstream LICENSE](LICENSE) at this commit remains unchanged, SHA-256 `85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`. Copyright © WHATWG (Apple, Google, Mozilla, Microsoft). Specification prose is Creative Commons Attribution 4.0 International; BSD 3-Clause applies only to portions incorporated into source code. Offline extraction, Markdown reformatting, semantic tables/SVG preservation, inert embedded-example retention and same-edition link rewriting are disclosed in the [conversion report](../../references/CONVERSION-REPORT.md#pinned-html-language-snapshot--2026-10-11). Source text and original classifications remain authoritative; no endorsement is implied.
 
+The [being-rendered definition and notes](../../references/html-being-rendered--877d6146487f.md)
+add a bounded prose excerpt from original lines 99611–99622 of that same
+snapshot. Markdown conversion removes inline markup and folds layout whitespace;
+the three paragraphs retain the original words. The existing exact license and
+Creative Commons Attribution 4.0 prose terms apply. This excerpt adds no distinct
+source identity or rendering implementation.
+
 ## HTML character-reference table incorporation — 2026-10-11
 
 The HTML crate incorporates the complete named-character-reference and C1

@@ -73,3 +73,7 @@ Its selected correction and unadopted browser differences remain explicit in
 the [edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline).
 
 The [HTML language edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline) selects one immutable WHATWG HTML snapshot, split into ten complete-section captures covering all chapter 4 element definitions and the retained language/parser/host clauses. The [supplemental html5ever witness](html5ever-parser-supplemental-contracts--d7232d746d31.md) preserves exact char-reference, tree-builder and buffer excerpts at the independently selected ingestion pin. Historical live HTML captures remain available as proof for their original determinations. Selection does not assert that the current engine already implements the newer standard.
+
+The [being-rendered definition](html-being-rendered--877d6146487f.md) retains one
+definition and two notes from that same snapshot. It supplies the participation
+meaning required by HTML list ownership without importing the rendering chapter.

@@ -265,3 +265,15 @@ full algorithm parity is claimed. The catalog now contains 347 identities:
 One partial source identity is added at W3C editor-source commit `cc435b05ca4a94f7f1a139be5074b168d20014db`. The complete 49,334-byte original matches SHA-256 `a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1`. The bounded Markdown conversion retains original lines 216–236 (vocabulary paragraph and exact IDL apart from uniform indentation), line 249 (default sentence), and lines 518–522 (first empty-string paragraph). Source title, Editor's Draft status and editor identities are retained in its wrapper. Literal vocabulary and IDL are checked against the complete original; prose changes remove Bikeshed link/definition markup while preserving the selected text. There are no selected tables, images, diagrams or complex layout; no compiler, supporting-data download or network algorithm is introduced.
 
 The repository license declaration is copied byte-for-byte. Existing full W3C document/software license texts supply the applicable prose and marked Web IDL terms. The wrapper identifies the absence of an original copyright statement and includes license-prescribed source-year and derivative notices; these are separate from original text. Counts become 348 identities: 254 full, 89 partial and five metadata-only. These checks establish bounded source fidelity and local attribution, without claiming whole Referrer Policy or HTML conformance.
+
+## HTML list participation definition — 2026-10-11
+
+The [being-rendered excerpt](html-being-rendered--877d6146487f.md) converts original
+lines 99611–99622 of the already retained HTML snapshot: one definition and two
+notes. All three paragraphs match the complete original after inline-markup
+removal and layout-whitespace folding. The complete 14,930,614-byte source still
+matches SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+The excerpt’s scope explanation is separate from its retained original text.
+The existing WHATWG prose license and source identity apply; no code, diagrams,
+tables, styles or browser implementation are incorporated. Catalog counts remain
+348 identities: 254 full, 89 partial and five metadata-only.
