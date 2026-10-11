@@ -199,6 +199,15 @@ the actual form owner. Capture-qualified semantic queries resolve that fallback;
 missing owner evidence is not interpreted as no owner. These reports execute no autofill,
 credential mediation or form-control transition.
 
+Input `accept` authoring retains ordered wildcard, leading-dot extension and
+symbolic MIME specifiers with ASCII-insensitive uniqueness checks. Extensions
+follow HTML's leading-dot rule without a filename or registered-type lookup.
+Interpretation separates authored fields from literal comma-split hint tokens,
+including terminal empty fields. Only the actual File state exposes those hints;
+other input states retain the separate presence restriction and ignored effect.
+Symbolic MIME conformance remains unavailable, independently of established HTML
+constraints. These operations perform no file picking, type matching or sniffing.
+
 `HtmlCaptureBuilder` freezes one bounded, flat capture of document, node,
 registry and relationship facts. Capture-qualified subjects are independent of
 native result IDs and future canonical DOM IDs. Unavailable facts remain
