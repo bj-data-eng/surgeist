@@ -16,6 +16,7 @@ use super::super::{
     references::{self, NameLookup, ReferenceValue},
 };
 use super::*;
+use crate::HtmlParseResource;
 use token::DiagnosticCode::*;
 
 impl Tokenizer<'_> {
@@ -26,7 +27,7 @@ impl Tokenizer<'_> {
     ) -> Result<(), ParseStop> {
         let amp = self.current.clone();
         let mark = self.cursor.mark(c)?;
-        let mut query = OwnedVec::new(Resource::AuxiliaryEntries)?;
+        let mut query = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = self.reference_inner(attribute, &amp, &mark, &mut query, c);
         query.release(c)?;
         result

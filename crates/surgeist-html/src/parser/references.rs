@@ -16,6 +16,7 @@
 //! are bounded by the longest static name plus one, rather than query length.
 
 use super::control::{ParseControl, ParseStop, WorkCategory};
+use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use std::{cmp::Ordering, mem::size_of};
 
 #[path = "character_references.rs"]
@@ -219,38 +220,37 @@ pub(super) fn c1_replacement(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::control::{Cancellation, ParseLimits, Resource};
 
-    fn controller(work_credits: u64, cancellation: Cancellation) -> ParseControl {
+    fn controller(work_credits: u64, cancellation: HtmlParseCancellation) -> ParseControl {
         ParseControl::new(
-            ParseLimits {
-                source_units: 0,
-                buffered_utf16_units: 0,
-                token_attributes: 0,
-                auxiliary_entries: 0,
-                managed_nodes: 0,
-                managed_edges: 0,
-                managed_attributes: 0,
-                managed_utf16_units: 0,
-                source_map_entries: 0,
-                source_map_payload_units: 0,
-                diagnostics: 0,
-                diagnostic_payload_units: 0,
-                context_effects: 0,
-                open_elements: 0,
-                tree_depth: 0,
-                managed_capacity_bytes: 0,
-                peak_transient_bytes: 0,
-                atomic_layout_bytes: 0,
-                work_credits,
-            },
+            HtmlParseLimits::builder()
+                .source_units(0)
+                .buffered_utf16_units(0)
+                .token_attributes(0)
+                .auxiliary_entries(0)
+                .managed_nodes(0)
+                .managed_edges(0)
+                .managed_attributes(0)
+                .managed_utf16_units(0)
+                .source_map_entries(0)
+                .source_map_payload_units(0)
+                .diagnostics(0)
+                .diagnostic_payload_units(0)
+                .context_effects(0)
+                .open_elements(0)
+                .tree_depth(0)
+                .managed_capacity_bytes(0)
+                .peak_transient_bytes(0)
+                .atomic_layout_bytes(0)
+                .work_credits(work_credits)
+                .finish()
+                .unwrap(),
             cancellation,
         )
-        .unwrap()
     }
 
     fn control() -> ParseControl {
-        controller(100_000, Cancellation::new())
+        controller(100_000, HtmlParseCancellation::new())
     }
 
     fn points(name: &str) -> Vec<u32> {
@@ -361,10 +361,15 @@ mod tests {
             longest_name(&points("amp;"), &mut short).unwrap()
         );
         assert_eq!(long.usage(), short.usage());
-        assert_eq!(long.usage().resource(Resource::SourceUnits).current, 0);
         assert_eq!(
             long.usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::SourceUnits)
+                .current,
+            0
+        );
+        assert_eq!(
+            long.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
             0
         );
@@ -436,20 +441,29 @@ mod tests {
         let query = points("NotEqualTilde;");
         let mut measured = control();
         let expected = exact_name(&query, &mut measured).unwrap();
-        let credits = measured.usage().resource(Resource::WorkCredits).current;
-        let mut exact = controller(credits, Cancellation::new());
+        let credits = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let mut exact = controller(credits, HtmlParseCancellation::new());
         assert_eq!(exact_name(&query, &mut exact).unwrap(), expected);
         assert_eq!(exact.usage(), measured.usage());
 
-        let mut short = controller(credits - 1, Cancellation::new());
+        let mut short = controller(credits - 1, HtmlParseCancellation::new());
         assert!(matches!(
             exact_name(&query, &mut short),
             Err(ParseStop::LimitExceeded {
-                resource: Resource::WorkCredits,
+                resource: HtmlParseResource::WorkCredits,
                 ..
             })
         ));
-        assert!(short.usage().resource(Resource::WorkCredits).current < credits);
+        assert!(
+            short
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+                < credits
+        );
         assert!(short.stop().is_some());
     }
 
@@ -461,12 +475,15 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
-        let credits = measured.usage().resource(Resource::WorkCredits).current;
-        let mut limited = controller(credits, Cancellation::new());
+        let credits = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let mut limited = controller(credits, HtmlParseCancellation::new());
         assert!(matches!(
             longest_name(&points("notin;"), &mut limited),
             Err(ParseStop::LimitExceeded {
-                resource: Resource::WorkCredits,
+                resource: HtmlParseResource::WorkCredits,
                 ..
             })
         ));
@@ -474,7 +491,7 @@ mod tests {
 
     #[test]
     fn cancellation_is_observed_before_empty_and_nonempty_probes() {
-        let cancellation = Cancellation::new();
+        let cancellation = HtmlParseCancellation::new();
         let mut control = controller(100_000, cancellation.clone());
         cancellation.cancel();
         assert_eq!(lookup_name(&[], &mut control), Err(ParseStop::Cancelled));
@@ -487,18 +504,24 @@ mod tests {
             c1_replacement(0x80, &mut control),
             Err(ParseStop::Cancelled)
         );
-        assert_eq!(control.usage().resource(Resource::WorkCredits).current, 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            0
+        );
     }
 
     #[test]
     fn first_terminal_remains_sticky_across_cancelled_followup() {
-        let cancellation = Cancellation::new();
+        let cancellation = HtmlParseCancellation::new();
         let mut control = controller(0, cancellation.clone());
         let first = lookup_name(&points("amp;"), &mut control).unwrap_err();
         assert!(matches!(
             first,
             ParseStop::LimitExceeded {
-                resource: Resource::WorkCredits,
+                resource: HtmlParseResource::WorkCredits,
                 ..
             }
         ));

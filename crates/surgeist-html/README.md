@@ -3,8 +3,8 @@
 This crate owns the pinned HTML language foundation. Its initial public surface
 provides immutable exact UTF-16 strings, namespace identity, qualified names,
 ordered raw attributes, native immutable document/fragment construction,
-known-name inventories, common intrinsic value operations and bounded immutable
-captures of HTML semantic facts.
+known-name inventories, common intrinsic value operations, bounded immutable
+captures of HTML semantic facts and checked parser request configuration.
 The [HTML contribution](https://github.com/bj-data-eng/surgeist/issues/1132)
 tracks the remaining typed vocabulary/value interpretation, parser, semantic
 interpretation, provenance and full parser resource-admission capabilities.
@@ -185,6 +185,17 @@ producer values independently of strict native author syntax. Capture and contex
 selection perform no parsing, live mutation, script execution or effect
 publication. The parser still owns recovered metadata, contextual construction
 effects, diagnostics, provenance and its separate execution controls.
+
+`HtmlParseLimits::builder` requires all nineteen finite caps explicitly; zero
+is valid, and no default or unlimited sentinel is supplied. `finish` checks
+representation before a request can retain the configuration.
+`HtmlDocumentParseRequest` selects offline Disabled parsing or a supported
+captured document mode. `HtmlFragmentParseRequest` retains the checked fragment
+context and distinguishes requested from effective scripting mode. Each request
+issues a fresh `HtmlParseCancellation`; cloned handles share sticky cancellation.
+Constructing a request admits no source and produces no parse result. The caps
+describe logical storage, known allocation layouts and work credits, rather than
+wall-clock time, process memory or allocator headers.
 
 Private parser mechanics currently compile for tests while engine integration
 continues. Source decoding, UTF-16 buffering, reference lookup, the adapted

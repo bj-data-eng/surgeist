@@ -12,9 +12,10 @@
 
 use super::super::{
     buffer::{FrozenUtf16, Utf16Buffer},
-    control::{OwnedVec, ParseControl, ParseStop, Resource, WorkCategory},
+    control::{OwnedVec, ParseControl, ParseStop, WorkCategory},
     input::CodePoint,
 };
+use crate::HtmlParseResource;
 use crate::HtmlSourceRange;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,7 +51,7 @@ impl DraftText {
     pub(super) fn new(c: &mut ParseControl) -> Result<Self, ParseStop> {
         Ok(Self {
             value: Utf16Buffer::new(c)?,
-            origins: OwnedVec::new(Resource::SourceMapEntries)?,
+            origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
         })
     }
     pub(super) fn push(
@@ -292,7 +293,7 @@ pub(crate) struct TokenEvent {
 }
 impl TokenEvent {
     pub(super) fn new(token: Token, c: &mut ParseControl) -> Result<Self, ParseStop> {
-        let mut record = OwnedVec::new(Resource::AuxiliaryEntries)?;
+        let mut record = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         if let Err((stop, token)) = record.try_push_recover(c, token) {
             token.release(c)?;
             record.release(c)?;

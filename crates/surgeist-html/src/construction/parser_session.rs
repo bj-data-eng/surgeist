@@ -8,9 +8,9 @@
 
 use super::*;
 use crate::parser::control::{
-    ControlIdentity, ParseControl, ParseStop, Resource, SharedAllocation, VectorCapacity,
-    WorkCategory,
+    ControlIdentity, ParseControl, ParseStop, SharedAllocation, VectorCapacity, WorkCategory,
 };
+use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use std::{mem, sync::Weak};
 
 #[derive(Clone, Debug)]
@@ -150,7 +150,7 @@ impl SessionStorage {
                 .and_then(|sum| sum.checked_add(attribute.value().len()))
             else {
                 return control
-                    .representation(Resource::ManagedUtf16Units)
+                    .representation(HtmlParseResource::ManagedUtf16Units)
                     .map_err(Into::into);
             };
             units = next;
@@ -175,11 +175,11 @@ impl SessionStorage {
         self.require(control)?;
         let count = 1 + usize::from(template);
         let requests = [
-            (Resource::ManagedNodes, count as u64),
-            (Resource::ManagedEdges, u64::from(template)),
-            (Resource::ManagedAttributes, attributes as u64),
-            (Resource::ManagedUtf16Units, units as u64),
-            (Resource::AuxiliaryEntries, count as u64),
+            (HtmlParseResource::ManagedNodes, count as u64),
+            (HtmlParseResource::ManagedEdges, u64::from(template)),
+            (HtmlParseResource::ManagedAttributes, attributes as u64),
+            (HtmlParseResource::ManagedUtf16Units, units as u64),
+            (HtmlParseResource::AuxiliaryEntries, count as u64),
         ];
         control.check_acquire_many(&requests)?;
         control.reserve_vector(&mut self.records, &mut self.records_allocation, count)?;
@@ -342,12 +342,12 @@ impl SessionStorage {
                 {
                     control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
                     control.charge(WorkCategory::RecordWrite, 1)?;
-                    control.acquire(Resource::AuxiliaryEntries, 1)?;
+                    control.acquire(HtmlParseResource::AuxiliaryEntries, 1)?;
                     order.push(node);
                     inserted = true;
                 }
                 control.charge(WorkCategory::RecordWrite, 1)?;
-                control.acquire(Resource::AuxiliaryEntries, 1)?;
+                control.acquire(HtmlParseResource::AuxiliaryEntries, 1)?;
                 order.push(child);
             }
             if let Some((node, before)) = insert
@@ -358,7 +358,7 @@ impl SessionStorage {
                 }
                 control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
                 control.charge(WorkCategory::RecordWrite, 1)?;
-                control.acquire(Resource::AuxiliaryEntries, 1)?;
+                control.acquire(HtmlParseResource::AuxiliaryEntries, 1)?;
                 order.push(node);
             }
             Ok(())
@@ -400,7 +400,10 @@ impl SessionStorage {
         let old_parent = self.records[node].parent;
         let depth = self.maximum_depth(control, Some((node, Some(parent))))?;
         control.observe_tree_depth(depth as u64)?;
-        let requests = [(Resource::ManagedEdges, u64::from(old_parent.is_none()))];
+        let requests = [(
+            HtmlParseResource::ManagedEdges,
+            u64::from(old_parent.is_none()),
+        )];
         control.check_acquire_many(&requests)?;
         let (order, allocation) = self.child_order(control, parent, node, Some((node, before)))?;
         let old_order = if let Some(old) = old_parent.filter(|old| *old != parent) {
@@ -758,10 +761,14 @@ fn release_order(
 ) -> Result<(), SessionError> {
     let entries = order.len() as u64;
     release_vector(control, order, allocation)?;
-    if control.stop().is_none() && control.release(Resource::AuxiliaryEntries, entries).is_ok() {
+    if control.stop().is_none()
+        && control
+            .release(HtmlParseResource::AuxiliaryEntries, entries)
+            .is_ok()
+    {
         return Ok(());
     }
-    control.cleanup_release(owner, Resource::AuxiliaryEntries, entries)?;
+    control.cleanup_release(owner, HtmlParseResource::AuxiliaryEntries, entries)?;
     Ok(())
 }
 fn release_parts(
@@ -786,10 +793,19 @@ fn release_parts(
     release_vector(control, children_allocations, tickets_allocation)
         .expect("private session retains its exact ticket-vector capacity ticket and control");
     for (resource, units) in [
-        (Resource::ManagedEdges, arena.usage.edges as u64),
-        (Resource::ManagedAttributes, arena.usage.attributes as u64),
-        (Resource::ManagedUtf16Units, arena.usage.utf16_units as u64),
-        (Resource::AuxiliaryEntries, arena.usage.nodes as u64),
+        (HtmlParseResource::ManagedEdges, arena.usage.edges as u64),
+        (
+            HtmlParseResource::ManagedAttributes,
+            arena.usage.attributes as u64,
+        ),
+        (
+            HtmlParseResource::ManagedUtf16Units,
+            arena.usage.utf16_units as u64,
+        ),
+        (
+            HtmlParseResource::AuxiliaryEntries,
+            arena.usage.nodes as u64,
+        ),
     ] {
         if control.stop().is_none() && control.release(resource, units).is_ok() {
             continue;
@@ -811,12 +827,12 @@ fn release_parts(
 
 fn cleanup_owner(control: &mut ParseControl, owner: &ControlIdentity) -> Result<(), SessionError> {
     if control.stop().is_some() {
-        control.cleanup_release(owner, Resource::AuxiliaryEntries, 0)?;
+        control.cleanup_release(owner, HtmlParseResource::AuxiliaryEntries, 0)?;
     } else if let Err(stop) = control.require_identity(owner) {
         // A cancellation can latch during the normal identity checkpoint. The
         // terminal cleanup check still verifies ownership before any consumption.
         control
-            .cleanup_release(owner, Resource::AuxiliaryEntries, 0)
+            .cleanup_release(owner, HtmlParseResource::AuxiliaryEntries, 0)
             .map_err(|_| SessionError::Stop(stop))?;
     }
     Ok(())
@@ -850,7 +866,7 @@ fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize,
     match units {
         Some(units) => Ok(units),
         None => control
-            .representation(Resource::ManagedUtf16Units)
+            .representation(HtmlParseResource::ManagedUtf16Units)
             .map_err(Into::into),
     }
 }
@@ -859,33 +875,33 @@ fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize,
 mod tests {
     use super::*;
     use crate::Attribute;
-    use crate::parser::control::{Cancellation, ParseLimits};
 
-    fn limits() -> ParseLimits {
-        ParseLimits {
-            source_units: 1_000,
-            buffered_utf16_units: 1_000,
-            token_attributes: 1_000,
-            auxiliary_entries: 1_000,
-            managed_nodes: 1_000,
-            managed_edges: 1_000,
-            managed_attributes: 1_000,
-            managed_utf16_units: 100_000,
-            source_map_entries: 1_000,
-            source_map_payload_units: 1_000,
-            diagnostics: 1_000,
-            diagnostic_payload_units: 1_000,
-            context_effects: 1_000,
-            open_elements: 1_000,
-            tree_depth: 1_000,
-            managed_capacity_bytes: 1_000_000,
-            peak_transient_bytes: 2_000_000,
-            atomic_layout_bytes: 1_000_000,
-            work_credits: 10_000_000,
-        }
+    fn limits() -> HtmlParseLimits {
+        HtmlParseLimits::builder()
+            .source_units(1_000)
+            .buffered_utf16_units(1_000)
+            .token_attributes(1_000)
+            .auxiliary_entries(1_000)
+            .managed_nodes(1_000)
+            .managed_edges(1_000)
+            .managed_attributes(1_000)
+            .managed_utf16_units(100_000)
+            .source_map_entries(1_000)
+            .source_map_payload_units(1_000)
+            .diagnostics(1_000)
+            .diagnostic_payload_units(1_000)
+            .context_effects(1_000)
+            .open_elements(1_000)
+            .tree_depth(1_000)
+            .managed_capacity_bytes(1_000_000)
+            .peak_transient_bytes(2_000_000)
+            .atomic_layout_bytes(1_000_000)
+            .work_credits(10_000_000)
+            .finish()
+            .unwrap()
     }
     fn control() -> ParseControl {
-        ParseControl::new(limits(), Cancellation::new()).unwrap()
+        ParseControl::new(limits(), HtmlParseCancellation::new())
     }
     fn element(namespace: Namespace, local: &str) -> HtmlElement {
         HtmlElement {
@@ -942,10 +958,25 @@ mod tests {
             [c.index, b.index, a.index]
         );
         session.remove(&mut control, &b).unwrap();
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 4);
-        assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 2);
         assert_eq!(
-            control.usage().resource(Resource::ManagedEdges).high_water,
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            4
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedEdges)
+                .current,
+            2
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedEdges)
+                .high_water,
             3
         );
         let mut output = frozen(session, &mut control);
@@ -958,12 +989,24 @@ mod tests {
         assert_eq!(fragment.arena.records[b.index].depth, 0);
         assert!(output.release(&mut control).is_ok());
         assert_eq!(control.usage().actual_capacity_bytes, 0);
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 4);
-        assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            4
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedEdges)
+                .current,
+            0
+        );
         assert!(
             control
                 .usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .high_water
                 > 0
         );
@@ -1061,7 +1104,7 @@ mod tests {
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::ManagedAttributes)
+                .resource(HtmlParseResource::ManagedAttributes)
                 .current,
             1
         );
@@ -1070,7 +1113,7 @@ mod tests {
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::ManagedUtf16Units)
+                .resource(HtmlParseResource::ManagedUtf16Units)
                 .current,
             39
         );
@@ -1093,25 +1136,31 @@ mod tests {
     #[test]
     fn node_and_depth_cap_failures_leave_topology_unmodified_and_cleanup_releases_capacity() {
         let mut selected = limits();
-        selected.managed_nodes = 2;
-        let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+        selected = selected.into_builder().managed_nodes(2).finish().unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         assert!(matches!(
             session.allocate_element(&mut control, html("template")),
             Err(SessionError::Stop(ParseStop::LimitExceeded {
-                resource: Resource::ManagedNodes,
+                resource: HtmlParseResource::ManagedNodes,
                 ..
             }))
         ));
         assert_eq!(session.active().unwrap().records.len(), 1);
         assert_eq!(session.active().unwrap().records[0].children, []);
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 1);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            1
+        );
         assert!(session.release(&mut control).is_ok());
         assert_eq!(control.usage().actual_capacity_bytes, 0);
 
         let mut selected = limits();
-        selected.tree_depth = 2;
-        let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+        selected = selected.into_builder().tree_depth(2).finish().unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         let root = session.root(&mut control).unwrap();
         let template = session
@@ -1128,7 +1177,7 @@ mod tests {
         assert!(matches!(
             session.insert(&mut control, &root, &template, None),
             Err(SessionError::Stop(ParseStop::LimitExceeded {
-                resource: Resource::TreeDepth,
+                resource: HtmlParseResource::TreeDepth,
                 ..
             }))
         ));
@@ -1179,8 +1228,8 @@ mod tests {
             before.actual_capacity_bytes
         );
         assert_eq!(
-            foreign.usage().resource(Resource::WorkCredits),
-            before.resource(Resource::WorkCredits)
+            foreign.usage().resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
         );
         assert!(other.release(&mut foreign).is_ok());
         assert!(session.release(&mut owner).is_ok());
@@ -1197,8 +1246,8 @@ mod tests {
             session.release(&mut foreign),
             Err(SessionError::Stop(_))
         ));
-        let cancellation = Cancellation::new();
-        let mut stopped = ParseControl::new(limits(), cancellation.clone()).unwrap();
+        let cancellation = HtmlParseCancellation::new();
+        let mut stopped = ParseControl::new(limits(), cancellation.clone());
         let mut candidate = ParserArenaSession::new(&mut stopped, RootKind::Fragment).unwrap();
         candidate.allocate_element(&mut stopped, html("x")).unwrap();
         cancellation.cancel();
@@ -1208,7 +1257,13 @@ mod tests {
         ));
         assert!(candidate.release(&mut stopped).is_ok());
         assert_eq!(stopped.usage().actual_capacity_bytes, 0);
-        assert_eq!(stopped.usage().resource(Resource::ManagedNodes).current, 2);
+        assert_eq!(
+            stopped
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            2
+        );
         assert!(session.release(&mut owner).is_ok());
         assert_eq!(owner.usage().actual_capacity_bytes, 0);
     }
@@ -1279,10 +1334,25 @@ mod tests {
         session.insert(&mut control, &a, &c, None).unwrap();
         session.insert(&mut control, &b, &d, None).unwrap();
         session.insert(&mut control, &b, &c, Some(&d)).unwrap();
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 5);
-        assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 4);
         assert_eq!(
-            control.usage().resource(Resource::ManagedEdges).high_water,
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            5
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedEdges)
+                .current,
+            4
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedEdges)
+                .high_water,
             4
         );
         let mut output = frozen(session, &mut control);
@@ -1305,33 +1375,49 @@ mod tests {
     #[test]
     fn edge_preflight_and_zero_physical_capacity_reject_before_actual_record_admission() {
         let mut selected = limits();
-        selected.managed_edges = 0;
-        let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+        selected = selected.into_builder().managed_edges(0).finish().unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         let bytes_before = control.usage().actual_capacity_bytes;
         assert!(matches!(
             session.allocate_element(&mut control, html("template")),
             Err(SessionError::Stop(ParseStop::LimitExceeded {
-                resource: Resource::ManagedEdges,
+                resource: HtmlParseResource::ManagedEdges,
                 ..
             }))
         ));
         assert_eq!(session.active().unwrap().records.len(), 1);
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 1);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            1
+        );
         assert_eq!(control.usage().actual_capacity_bytes, bytes_before);
         assert!(session.release(&mut control).is_ok());
         assert_eq!(control.usage().actual_capacity_bytes, 0);
         let mut selected = limits();
-        selected.managed_capacity_bytes = 0;
-        let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+        selected = selected
+            .into_builder()
+            .managed_capacity_bytes(0)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         assert!(matches!(
             ParserArenaSession::new(&mut control, RootKind::Fragment),
             Err(SessionError::Stop(ParseStop::LimitExceeded {
-                resource: Resource::ManagedCapacityBytes,
+                resource: HtmlParseResource::ManagedCapacityBytes,
                 ..
             }))
         ));
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            0
+        );
         assert_eq!(control.usage().actual_capacity_bytes, 0);
     }
 
@@ -1402,13 +1488,17 @@ mod tests {
         // A root owns one actual record slot and one actual child-vector ticket;
         // its empty child vector and zero-sized identity add no known payload.
         let root_capacity = mem::size_of::<Record>() + mem::size_of::<VectorCapacity<usize>>();
-        selected.managed_capacity_bytes = root_capacity as u64;
-        let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+        selected = selected
+            .into_builder()
+            .managed_capacity_bytes(root_capacity as u64)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         let records_pointer = session.active().unwrap().records.as_ptr();
         assert!(
             matches!(session.freeze(&mut control), Err(SessionError::Stop(ParseStop::LimitExceeded {
-            resource: Resource::ManagedCapacityBytes,
+            resource: HtmlParseResource::ManagedCapacityBytes,
             current,
             requested_delta,
             ..
@@ -1419,7 +1509,13 @@ mod tests {
         assert_eq!(control.usage().actual_capacity_bytes, root_capacity as u64);
         session.release(&mut control).unwrap();
         assert_eq!(control.usage().actual_capacity_bytes, 0);
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 1);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            1
+        );
     }
 
     #[test]
@@ -1445,12 +1541,18 @@ mod tests {
         );
         assert_eq!(order, [a.index]);
         assert_eq!(
-            control.usage().resource(Resource::AuxiliaryEntries).current,
+            control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
             3
         );
         release_order(&mut control, &storage.control, order, allocation).unwrap();
         assert_eq!(
-            control.usage().resource(Resource::AuxiliaryEntries).current,
+            control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
             2
         );
         session.insert(&mut control, &root, &a, None).unwrap();
@@ -1470,12 +1572,18 @@ mod tests {
         );
         assert_eq!(order, [b.index, a.index]);
         assert_eq!(
-            control.usage().resource(Resource::AuxiliaryEntries).current,
+            control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
             5
         );
         release_order(&mut control, &storage.control, order, allocation).unwrap();
         assert_eq!(
-            control.usage().resource(Resource::AuxiliaryEntries).current,
+            control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
             3
         );
         session.release(&mut control).unwrap();
@@ -1485,9 +1593,13 @@ mod tests {
     #[test]
     fn inserted_index_copy_work_boundary_stops_before_any_scratch_slot_is_initialized() {
         let mut selected = limits();
-        let work_limit = selected.work_credits;
-        selected.auxiliary_entries = 3;
-        let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+        let work_limit = selected.work_credits();
+        selected = selected
+            .into_builder()
+            .auxiliary_entries(3)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         let a = session
             .allocate_element(&mut control, element(Namespace::none(), "a"))
@@ -1499,7 +1611,10 @@ mod tests {
         // parent visit costs 1; reserve has 2 visits, one word ReserveByte,
         // provider call, capacity write and one word CopyByte. Total: records+7+2*word.
         let prefix = records + 7 + 2 * word;
-        let before = control.usage().resource(Resource::WorkCredits).current;
+        let before = control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
         control
             .charge(
                 WorkCategory::StateStep,
@@ -1512,7 +1627,7 @@ mod tests {
         assert!(
             matches!(storage.child_order(&mut control, 0, usize::MAX, Some((a.index, None))),
             Err(SessionError::Stop(ParseStop::LimitExceeded {
-                resource: Resource::WorkCredits,
+                resource: HtmlParseResource::WorkCredits,
                 requested_delta,
                 ..
             })) if requested_delta == word)
@@ -1522,13 +1637,16 @@ mod tests {
             records + word
         );
         assert_eq!(
-            control.usage().resource(Resource::AuxiliaryEntries).current,
+            control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
             2
         );
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::AuxiliaryEntries)
+                .resource(HtmlParseResource::AuxiliaryEntries)
                 .high_water,
             2
         );
@@ -1536,10 +1654,13 @@ mod tests {
         assert!(control.usage().actual_capacity_high_water > capacity_before);
         assert!(storage.records[0].children.is_empty());
         let stop = control.stop();
-        let work = control.usage().resource(Resource::WorkCredits);
+        let work = control.usage().resource(HtmlParseResource::WorkCredits);
         session.release(&mut control).unwrap();
         assert_eq!(control.stop(), stop);
-        assert_eq!(control.usage().resource(Resource::WorkCredits), work);
+        assert_eq!(
+            control.usage().resource(HtmlParseResource::WorkCredits),
+            work
+        );
         assert_eq!(control.usage().actual_capacity_bytes, 0);
     }
 
@@ -1547,8 +1668,12 @@ mod tests {
     fn one_scratch_slot_exact_limit_succeeds_and_one_short_preserves_topology() {
         for (auxiliary_limit, succeeds) in [(3, true), (2, false)] {
             let mut selected = limits();
-            selected.auxiliary_entries = auxiliary_limit;
-            let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+            selected = selected
+                .into_builder()
+                .auxiliary_entries(auxiliary_limit)
+                .finish()
+                .unwrap();
+            let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
             let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
             let root = session.root(&mut control).unwrap();
             let child = session
@@ -1558,11 +1683,17 @@ mod tests {
             if succeeds {
                 result.unwrap();
                 assert_eq!(session.active().unwrap().records[0].children, [child.index]);
-                assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 1);
                 assert_eq!(
                     control
                         .usage()
-                        .resource(Resource::AuxiliaryEntries)
+                        .resource(HtmlParseResource::ManagedEdges)
+                        .current,
+                    1
+                );
+                assert_eq!(
+                    control
+                        .usage()
+                        .resource(HtmlParseResource::AuxiliaryEntries)
                         .high_water,
                     3
                 );
@@ -1570,7 +1701,7 @@ mod tests {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: Resource::AuxiliaryEntries,
+                        resource: HtmlParseResource::AuxiliaryEntries,
                         current: 2,
                         requested_delta: 1,
                         ..
@@ -1582,18 +1713,36 @@ mod tests {
                         .parent
                         .is_none()
                 );
-                assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 0);
+                assert_eq!(
+                    control
+                        .usage()
+                        .resource(HtmlParseResource::ManagedEdges)
+                        .current,
+                    0
+                );
             }
             assert_eq!(
-                control.usage().resource(Resource::AuxiliaryEntries).current,
+                control
+                    .usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
                 2
             );
             session.release(&mut control).unwrap();
             assert_eq!(
-                control.usage().resource(Resource::AuxiliaryEntries).current,
+                control
+                    .usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
                 0
             );
-            assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 2);
+            assert_eq!(
+                control
+                    .usage()
+                    .resource(HtmlParseResource::ManagedNodes)
+                    .current,
+                2
+            );
             assert_eq!(control.usage().actual_capacity_bytes, 0);
         }
     }
@@ -1602,8 +1751,12 @@ mod tests {
     fn simultaneous_cross_parent_orders_require_both_live_scratch_sequences() {
         for (auxiliary_limit, succeeds) in [(9, true), (8, false)] {
             let mut selected = limits();
-            selected.auxiliary_entries = auxiliary_limit;
-            let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+            selected = selected
+                .into_builder()
+                .auxiliary_entries(auxiliary_limit)
+                .finish()
+                .unwrap();
+            let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
             let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
             let root = session.root(&mut control).unwrap();
             let mut nodes = Vec::new();
@@ -1637,7 +1790,7 @@ mod tests {
                 assert_eq!(
                     control
                         .usage()
-                        .resource(Resource::AuxiliaryEntries)
+                        .resource(HtmlParseResource::AuxiliaryEntries)
                         .high_water,
                     9
                 );
@@ -1645,7 +1798,7 @@ mod tests {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: Resource::AuxiliaryEntries,
+                        resource: HtmlParseResource::AuxiliaryEntries,
                         current: 8,
                         requested_delta: 1,
                         ..
@@ -1663,18 +1816,39 @@ mod tests {
                 assert!(control.usage().actual_capacity_high_water > capacity_before);
             }
             assert_eq!(
-                control.usage().resource(Resource::AuxiliaryEntries).current,
+                control
+                    .usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
                 6
             );
-            assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 5);
-            assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 6);
+            assert_eq!(
+                control
+                    .usage()
+                    .resource(HtmlParseResource::ManagedEdges)
+                    .current,
+                5
+            );
+            assert_eq!(
+                control
+                    .usage()
+                    .resource(HtmlParseResource::ManagedNodes)
+                    .current,
+                6
+            );
             let stop = control.stop();
-            let work = control.usage().resource(Resource::WorkCredits);
+            let work = control.usage().resource(HtmlParseResource::WorkCredits);
             session.release(&mut control).unwrap();
             assert_eq!(control.stop(), stop);
-            assert_eq!(control.usage().resource(Resource::WorkCredits), work);
             assert_eq!(
-                control.usage().resource(Resource::AuxiliaryEntries).current,
+                control.usage().resource(HtmlParseResource::WorkCredits),
+                work
+            );
+            assert_eq!(
+                control
+                    .usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
                 0
             );
             assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -1684,8 +1858,12 @@ mod tests {
     #[test]
     fn partially_initialized_order_cap_stop_releases_only_its_one_admitted_entry() {
         let mut selected = limits();
-        selected.auxiliary_entries = 5;
-        let mut control = ParseControl::new(selected, Cancellation::new()).unwrap();
+        selected = selected
+            .into_builder()
+            .auxiliary_entries(5)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         let root = session.root(&mut control).unwrap();
         let a = session
@@ -1708,36 +1886,54 @@ mod tests {
                 Some((c.index, None))
             ),
             Err(SessionError::Stop(ParseStop::LimitExceeded {
-                resource: Resource::AuxiliaryEntries,
+                resource: HtmlParseResource::AuxiliaryEntries,
                 current: 5,
                 requested_delta: 1,
                 ..
             }))
         ));
         assert_eq!(
-            control.usage().resource(Resource::AuxiliaryEntries).current,
+            control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
             4
         );
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::AuxiliaryEntries)
+                .resource(HtmlParseResource::AuxiliaryEntries)
                 .high_water,
             5
         );
         assert_eq!(control.usage().actual_capacity_bytes, capacity_before);
-        assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 2);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedEdges)
+                .current,
+            2
+        );
         assert_eq!(
             session.active().unwrap().records[0].children,
             [a.index, b.index]
         );
         assert!(session.active().unwrap().records[c.index].parent.is_none());
         let stop = control.stop();
-        let work = control.usage().resource(Resource::WorkCredits);
+        let work = control.usage().resource(HtmlParseResource::WorkCredits);
         session.release(&mut control).unwrap();
         assert_eq!(control.stop(), stop);
-        assert_eq!(control.usage().resource(Resource::WorkCredits), work);
-        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 4);
+        assert_eq!(
+            control.usage().resource(HtmlParseResource::WorkCredits),
+            work
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            4
+        );
         assert_eq!(control.usage().actual_capacity_bytes, 0);
     }
 }

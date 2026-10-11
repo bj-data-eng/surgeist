@@ -1,29 +1,30 @@
-use super::super::control::{Cancellation, ParseLimits};
 use super::*;
+use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use states::{Raw, State};
 
-fn limits() -> ParseLimits {
-    ParseLimits {
-        source_units: 100_000,
-        buffered_utf16_units: 100_000,
-        token_attributes: 10_000,
-        auxiliary_entries: 1_000_000,
-        managed_nodes: 100_000,
-        managed_edges: 100_000,
-        managed_attributes: 100_000,
-        managed_utf16_units: 100_000,
-        source_map_entries: 100_000,
-        source_map_payload_units: 100_000,
-        diagnostics: 100_000,
-        diagnostic_payload_units: 100_000,
-        context_effects: 100_000,
-        open_elements: 100_000,
-        tree_depth: 100_000,
-        managed_capacity_bytes: 100_000_000,
-        peak_transient_bytes: 100_000_000,
-        atomic_layout_bytes: 100_000_000,
-        work_credits: 100_000_000,
-    }
+fn limits() -> HtmlParseLimits {
+    HtmlParseLimits::builder()
+        .source_units(100_000)
+        .buffered_utf16_units(100_000)
+        .token_attributes(10_000)
+        .auxiliary_entries(1_000_000)
+        .managed_nodes(100_000)
+        .managed_edges(100_000)
+        .managed_attributes(100_000)
+        .managed_utf16_units(100_000)
+        .source_map_entries(100_000)
+        .source_map_payload_units(100_000)
+        .diagnostics(100_000)
+        .diagnostic_payload_units(100_000)
+        .context_effects(100_000)
+        .open_elements(100_000)
+        .tree_depth(100_000)
+        .managed_capacity_bytes(100_000_000)
+        .peak_transient_bytes(100_000_000)
+        .atomic_layout_bytes(100_000_000)
+        .work_credits(100_000_000)
+        .finish()
+        .unwrap()
 }
 #[derive(Debug, Eq, PartialEq)]
 enum Seen {
@@ -46,7 +47,7 @@ fn collect(
     last: Option<&str>,
     cdata: bool,
 ) -> (Vec<Seen>, Vec<DiagnosticCode>) {
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(source).unwrap();
     let last = last.map(DocumentString::from);
     let mut tokenizer = Tokenizer::new(source, state, last.as_ref(), &mut c).unwrap();
@@ -123,12 +124,12 @@ fn collect(
     }
     tokenizer.release(&mut c).unwrap();
     for resource in [
-        Resource::BufferedUtf16Units,
-        Resource::TokenAttributes,
-        Resource::AuxiliaryEntries,
-        Resource::SourceMapEntries,
-        Resource::Diagnostics,
-        Resource::ManagedCapacityBytes,
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::Diagnostics,
+        HtmlParseResource::ManagedCapacityBytes,
     ] {
         assert_eq!(c.usage().resource(resource).current, 0, "{resource:?}");
     }
@@ -396,7 +397,7 @@ fn doctype_optional_empty_identifiers_quirks_and_recovery() {
 #[test]
 fn spans_cover_original_crlf_utf8_and_reference_spelling() {
     let source = HtmlSource::utf8("é\r\n&NotEqualTilde;");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     let mut records = Vec::new();
@@ -440,8 +441,8 @@ fn spans_cover_original_crlf_utf8_and_reference_spelling() {
 #[test]
 fn cancellation_and_terminal_stop_never_return_a_later_token() {
     let source = HtmlSource::utf8("<a x='large'>");
-    let cancel = Cancellation::new();
-    let mut c = ParseControl::new(limits(), cancel.clone()).unwrap();
+    let cancel = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(), cancel.clone());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     cancel.cancel();
@@ -449,7 +450,9 @@ fn cancellation_and_terminal_stop_never_return_a_later_token() {
     assert!(matches!(t.next(&mut c, false), Err(ParseStop::Cancelled)));
     t.release(&mut c).unwrap();
     assert_eq!(
-        c.usage().resource(Resource::ManagedCapacityBytes).current,
+        c.usage()
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current,
         0
     );
 }
@@ -458,9 +461,9 @@ fn run_with_limits(
     source: &HtmlSource,
     state: State,
     last: Option<&DocumentString>,
-    caps: ParseLimits,
+    caps: HtmlParseLimits,
 ) -> (Option<ParseStop>, u64) {
-    let mut c = ParseControl::new(caps, Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
     if c.admit_source(source).is_ok()
         && let Ok(mut tokenizer) = Tokenizer::new(source, state, last, &mut c)
     {
@@ -483,22 +486,25 @@ fn run_with_limits(
         tokenizer.release(&mut c).unwrap();
     }
     for resource in [
-        Resource::BufferedUtf16Units,
-        Resource::TokenAttributes,
-        Resource::AuxiliaryEntries,
-        Resource::SourceMapEntries,
-        Resource::Diagnostics,
-        Resource::ManagedCapacityBytes,
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::Diagnostics,
+        HtmlParseResource::ManagedCapacityBytes,
     ] {
         assert_eq!(
             c.usage().resource(resource).current,
             0,
             "leak {resource:?}; stop {:?}; work cap {}",
             c.stop(),
-            caps.work_credits
+            caps.work_credits()
         );
     }
-    (c.stop(), c.usage().resource(Resource::WorkCredits).current)
+    (
+        c.stop(),
+        c.usage().resource(HtmlParseResource::WorkCredits).current,
+    )
 }
 #[test]
 fn every_work_credit_boundary_cleans_nested_payloads_without_partial_later_success() {
@@ -520,13 +526,13 @@ fn every_work_credit_boundary_cleans_nested_payloads_without_partial_later_succe
         assert_eq!(stop, None);
         for cap in 0..used {
             let mut caps = limits();
-            caps.work_credits = cap;
+            caps = caps.into_builder().work_credits(cap).finish().unwrap();
             let (stop, _) = run_with_limits(&source, state, last.as_ref(), caps);
             assert!(
                 matches!(
                     stop,
                     Some(ParseStop::LimitExceeded {
-                        resource: Resource::WorkCredits,
+                        resource: HtmlParseResource::WorkCredits,
                         ..
                     })
                 ),
@@ -534,7 +540,7 @@ fn every_work_credit_boundary_cleans_nested_payloads_without_partial_later_succe
             );
         }
         let mut exact = limits();
-        exact.work_credits = used;
+        exact = exact.into_builder().work_credits(used).finish().unwrap();
         assert_eq!(
             run_with_limits(&source, state, last.as_ref(), exact).0,
             None
@@ -544,26 +550,54 @@ fn every_work_credit_boundary_cleans_nested_payloads_without_partial_later_succe
 #[test]
 fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
     for resource in [
-        Resource::BufferedUtf16Units,
-        Resource::TokenAttributes,
-        Resource::AuxiliaryEntries,
-        Resource::SourceMapEntries,
-        Resource::Diagnostics,
-        Resource::ManagedCapacityBytes,
-        Resource::PeakTransientBytes,
-        Resource::AtomicLayoutBytes,
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::Diagnostics,
+        HtmlParseResource::ManagedCapacityBytes,
+        HtmlParseResource::PeakTransientBytes,
+        HtmlParseResource::AtomicLayoutBytes,
     ] {
         let source = HtmlSource::utf8("<a x='&zzz;' x='discard'>");
         let mut caps = limits();
         match resource {
-            Resource::BufferedUtf16Units => caps.buffered_utf16_units = 0,
-            Resource::TokenAttributes => caps.token_attributes = 0,
-            Resource::AuxiliaryEntries => caps.auxiliary_entries = 0,
-            Resource::SourceMapEntries => caps.source_map_entries = 0,
-            Resource::Diagnostics => caps.diagnostics = 0,
-            Resource::ManagedCapacityBytes => caps.managed_capacity_bytes = 0,
-            Resource::PeakTransientBytes => caps.peak_transient_bytes = 0,
-            Resource::AtomicLayoutBytes => caps.atomic_layout_bytes = 0,
+            HtmlParseResource::BufferedUtf16Units => {
+                caps = caps
+                    .into_builder()
+                    .buffered_utf16_units(0)
+                    .finish()
+                    .unwrap()
+            }
+            HtmlParseResource::TokenAttributes => {
+                caps = caps.into_builder().token_attributes(0).finish().unwrap()
+            }
+            HtmlParseResource::AuxiliaryEntries => {
+                caps = caps.into_builder().auxiliary_entries(0).finish().unwrap()
+            }
+            HtmlParseResource::SourceMapEntries => {
+                caps = caps.into_builder().source_map_entries(0).finish().unwrap()
+            }
+            HtmlParseResource::Diagnostics => {
+                caps = caps.into_builder().diagnostics(0).finish().unwrap()
+            }
+            HtmlParseResource::ManagedCapacityBytes => {
+                caps = caps
+                    .into_builder()
+                    .managed_capacity_bytes(0)
+                    .finish()
+                    .unwrap()
+            }
+            HtmlParseResource::PeakTransientBytes => {
+                caps = caps
+                    .into_builder()
+                    .peak_transient_bytes(0)
+                    .finish()
+                    .unwrap()
+            }
+            HtmlParseResource::AtomicLayoutBytes => {
+                caps = caps.into_builder().atomic_layout_bytes(0).finish().unwrap()
+            }
             _ => unreachable!(),
         }
         assert!(
@@ -575,7 +609,7 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
 #[test]
 fn tree_state_selection_after_actual_start_tag_is_functional() {
     let source = HtmlSource::utf8("<title>&amp;</title>");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     let tag = tokenizer.next(&mut c, false).unwrap().unwrap();
@@ -723,7 +757,7 @@ fn input_diagnostics_and_reconsume_newline_origins_are_emitted_once() {
     let source = HtmlSource::utf16(DocumentString::from_utf16(vec![
         60, 33, 45, 45, 13, 10, 0xD800, 0xFDD0, 1, 45, 45, 62,
     ]));
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     let mut errors = Vec::new();
@@ -767,11 +801,11 @@ fn input_diagnostics_and_reconsume_newline_origins_are_emitted_once() {
         ]
     );
     let mut caps = limits();
-    caps.diagnostics = 0;
+    caps = caps.into_builder().diagnostics(0).finish().unwrap();
     assert!(matches!(
         run_with_limits(&source, State::Data, None, caps).0,
         Some(ParseStop::LimitExceeded {
-            resource: Resource::Diagnostics,
+            resource: HtmlParseResource::Diagnostics,
             ..
         })
     ));
@@ -788,8 +822,8 @@ fn duplicate_name_exit_at_eof_precedes_eof_in_tag() {
 #[test]
 fn cancellation_discards_a_prepared_token_behind_a_real_diagnostic() {
     let source = HtmlSource::utf8("\0");
-    let cancellation = Cancellation::new();
-    let mut c = ParseControl::new(limits(), cancellation.clone()).unwrap();
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(), cancellation.clone());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
@@ -801,15 +835,22 @@ fn cancellation_discards_a_prepared_token_behind_a_real_diagnostic() {
     assert!(matches!(t.next(&mut c, false), Err(ParseStop::Cancelled)));
     t.release(&mut c).unwrap();
     assert_eq!(
-        c.usage().resource(Resource::ManagedCapacityBytes).current,
+        c.usage()
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current,
         0
     );
-    assert_eq!(c.usage().resource(Resource::BufferedUtf16Units).current, 0);
+    assert_eq!(
+        c.usage()
+            .resource(HtmlParseResource::BufferedUtf16Units)
+            .current,
+        0
+    );
 }
 #[test]
 fn attribute_occurrence_spans_exclude_separating_whitespace() {
     let source = HtmlSource::utf8("<a X = 'v'  y >");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
@@ -833,7 +874,7 @@ fn attribute_occurrence_spans_exclude_separating_whitespace() {
 #[test]
 fn consumer_transfer_releases_outer_slot_and_preserves_nested_payload() {
     let source = HtmlSource::utf16(DocumentString::from_utf16(vec![0xD800]));
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
@@ -842,12 +883,27 @@ fn consumer_transfer_releases_outer_slot_and_preserves_nested_payload() {
     let Event::Token(event) = t.next(&mut c, false).unwrap().unwrap() else {
         panic!("text token")
     };
-    assert_eq!(c.usage().resource(Resource::AuxiliaryEntries).current, 1);
-    let retained_units = c.usage().resource(Resource::BufferedUtf16Units).current;
-    let token = event.into_token(&mut c).unwrap();
-    assert_eq!(c.usage().resource(Resource::AuxiliaryEntries).current, 0);
     assert_eq!(
-        c.usage().resource(Resource::BufferedUtf16Units).current,
+        c.usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current,
+        1
+    );
+    let retained_units = c
+        .usage()
+        .resource(HtmlParseResource::BufferedUtf16Units)
+        .current;
+    let token = event.into_token(&mut c).unwrap();
+    assert_eq!(
+        c.usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current,
+        0
+    );
+    assert_eq!(
+        c.usage()
+            .resource(HtmlParseResource::BufferedUtf16Units)
+            .current,
         retained_units
     );
     let TokenKind::Text(value) = &token.kind else {
@@ -859,9 +915,16 @@ fn consumer_transfer_releases_outer_slot_and_preserves_nested_payload() {
         event.release(&mut c).unwrap();
     }
     t.release(&mut c).unwrap();
-    assert_eq!(c.usage().resource(Resource::BufferedUtf16Units).current, 0);
     assert_eq!(
-        c.usage().resource(Resource::ManagedCapacityBytes).current,
+        c.usage()
+            .resource(HtmlParseResource::BufferedUtf16Units)
+            .current,
+        0
+    );
+    assert_eq!(
+        c.usage()
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current,
         0
     );
 }
@@ -870,13 +933,13 @@ fn consumer_transfer_releases_outer_slot_and_preserves_nested_payload() {
 fn token_slot_admission_failure_releases_prepared_exact_text() {
     let source = HtmlSource::utf8("a");
     let mut cap = limits();
-    cap.auxiliary_entries = 0;
+    cap = cap.into_builder().auxiliary_entries(0).finish().unwrap();
     // The runner verifies every retained resource has returned to zero.
     let (stop, _) = run_with_limits(&source, State::Data, None, cap);
     assert!(matches!(
         stop,
         Some(ParseStop::LimitExceeded {
-            resource: Resource::AuxiliaryEntries,
+            resource: HtmlParseResource::AuxiliaryEntries,
             ..
         })
     ));
@@ -886,7 +949,7 @@ fn token_slot_admission_failure_releases_prepared_exact_text() {
 fn repeated_cdata_brackets_keep_the_two_pending_original_spans() {
     for input in ["<![CDATA[]]]]x", "<![CDATA[]]]]", "<![CDATA[]]]]>"] {
         let source = HtmlSource::utf8(input);
-        let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
         let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
         let mut observed = Vec::new();
@@ -920,12 +983,12 @@ fn repeated_cdata_brackets_keep_the_two_pending_original_spans() {
 
 fn assert_storage_released(c: &ParseControl) {
     for resource in [
-        Resource::BufferedUtf16Units,
-        Resource::TokenAttributes,
-        Resource::AuxiliaryEntries,
-        Resource::SourceMapEntries,
-        Resource::Diagnostics,
-        Resource::ManagedCapacityBytes,
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::Diagnostics,
+        HtmlParseResource::ManagedCapacityBytes,
     ] {
         assert_eq!(c.usage().resource(resource).current, 0, "{resource:?}");
     }
@@ -938,7 +1001,7 @@ fn emitted_text_accounts_for_each_actual_utf8_endpoint_read() {
     for (input, expected_reads, expected_text) in [("ab", 3, "a"), ("éx", 4, "é"), ("aé", 3, "a")]
     {
         let source = HtmlSource::utf8(input);
-        let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
         let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
         let before = c.usage().work(WorkCategory::InputUnitRead);
@@ -967,7 +1030,7 @@ fn tokenizer_range_counts_identical_interior_endpoints_and_zero_utf16_reads() {
         (HtmlSource::utf8("ab"), 3),
         (HtmlSource::utf16(DocumentString::from("ab")), 0),
     ] {
-        let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
         let t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
         let before = c.usage().clone();
@@ -993,18 +1056,25 @@ fn tokenizer_range_counts_identical_interior_endpoints_and_zero_utf16_reads() {
 #[test]
 fn rejected_range_endpoint_admission_performs_neither_provider_endpoint_read() {
     let source = HtmlSource::utf8("ab");
-    let mut baseline = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
     baseline.admit_source(&source).unwrap();
     let t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
-    let entry = baseline.usage().resource(Resource::WorkCredits).current;
+    let entry = baseline
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
     t.release(&mut baseline).unwrap();
     // One metadata visit, the separately checked start byte, another metadata
     // visit, and the fixed range copy precede the coupled two endpoint reads.
     let before_endpoints = 3 + size_of::<HtmlSourceRange>() as u64;
     for remaining in [0, 1, 2] {
         let mut caps = limits();
-        caps.work_credits = entry + before_endpoints + remaining;
-        let mut c = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .work_credits(entry + before_endpoints + remaining)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
         let t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
         let result = t.range(1, 1, &mut c);
@@ -1013,7 +1083,7 @@ fn rejected_range_endpoint_admission_performs_neither_provider_endpoint_read() {
             assert!(matches!(
                 stop,
                 ParseStop::LimitExceeded {
-                    resource: Resource::WorkCredits,
+                    resource: HtmlParseResource::WorkCredits,
                     requested_delta: 2,
                     ..
                 }
@@ -1038,11 +1108,14 @@ fn prepare_quoted_attribute(t: &mut Tokenizer<'_>, c: &mut ParseControl) {
 #[test]
 fn attribute_span_accounts_for_actual_interior_reads_and_keeps_failed_draft_owned() {
     let source = HtmlSource::utf8("<a x='v' >");
-    let mut baseline = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
     baseline.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
     prepare_quoted_attribute(&mut t, &mut baseline);
-    let entry = baseline.usage().resource(Resource::WorkCredits).current;
+    let entry = baseline
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
     let reads = baseline.usage().work(WorkCategory::InputUnitRead);
     t.finish_attribute(&mut baseline).unwrap();
     assert_eq!(
@@ -1057,8 +1130,12 @@ fn attribute_span_accounts_for_actual_interior_reads_and_keeps_failed_draft_owne
     assert_storage_released(&baseline);
 
     let mut caps = limits();
-    caps.work_credits = entry + size_of::<HtmlSourceRange>() as u64 + 4;
-    let mut c = ParseControl::new(caps, Cancellation::new()).unwrap();
+    caps = caps
+        .into_builder()
+        .work_credits(entry + size_of::<HtmlSourceRange>() as u64 + 4)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     prepare_quoted_attribute(&mut t, &mut c);
@@ -1067,7 +1144,7 @@ fn attribute_span_accounts_for_actual_interior_reads_and_keeps_failed_draft_owne
     assert!(matches!(
         stop,
         ParseStop::LimitExceeded {
-            resource: Resource::WorkCredits,
+            resource: HtmlParseResource::WorkCredits,
             requested_delta: 2,
             ..
         }
@@ -1088,20 +1165,26 @@ fn empty_source_constructor_admits_its_exact_fixed_record_layout() {
     assert!(bytes > WORK_QUANTUM as u64);
     for cap in [0, bytes - 1, bytes] {
         let mut caps = limits();
-        caps.atomic_layout_bytes = cap;
-        let mut c = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .atomic_layout_bytes(cap)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
         let result = Tokenizer::new(&source, State::Data, None, &mut c);
         if cap < bytes {
             assert!(
-                matches!(result, Err(ParseStop::LimitExceeded { resource: Resource::AtomicLayoutBytes, requested_delta, .. }) if requested_delta == bytes)
+                matches!(result, Err(ParseStop::LimitExceeded { resource: HtmlParseResource::AtomicLayoutBytes, requested_delta, .. }) if requested_delta == bytes)
             );
             assert_eq!(c.usage().largest_atomic_layout, 0);
         } else {
             let t = result.unwrap();
             assert_eq!(c.usage().largest_atomic_layout, bytes);
             assert_eq!(
-                c.usage().resource(Resource::AtomicLayoutBytes).current,
+                c.usage()
+                    .resource(HtmlParseResource::AtomicLayoutBytes)
+                    .current,
                 bytes
             );
             t.release(&mut c).unwrap();
@@ -1117,7 +1200,7 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     // operation directly to prepare a large queue without invented records;
     // the ordinary pull loop drains each operation's smaller batch.
     let source = HtmlSource::utf8("&#xFFFF&#xFFFF");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     t.step(&mut c, false).unwrap();
@@ -1126,13 +1209,15 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     let bytes = 6 * size_of::<Option<Event>>() + size_of::<usize>();
     assert!(bytes > WORK_QUANTUM);
     let before = c.usage().clone();
-    let entry = before.resource(Resource::WorkCredits).current;
+    let entry = before.resource(HtmlParseResource::WorkCredits).current;
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(
         matches!(&event,Event::Diagnostic(d) if d.as_slice()[0].code==DiagnosticCode::MissingSemicolonAfterCharacterReference)
     );
     assert_eq!(
-        c.usage().resource(Resource::AtomicLayoutBytes).current,
+        c.usage()
+            .resource(HtmlParseResource::AtomicLayoutBytes)
+            .current,
         bytes as u64
     );
     assert_eq!(
@@ -1149,8 +1234,12 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     assert_storage_released(&c);
 
     let mut caps = limits();
-    caps.work_credits = entry + bytes as u64;
-    let mut c = ParseControl::new(caps, Cancellation::new()).unwrap();
+    caps = caps
+        .into_builder()
+        .work_credits(entry + bytes as u64)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     t.step(&mut c, false).unwrap();
@@ -1163,7 +1252,7 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     assert!(matches!(
         stop,
         ParseStop::LimitExceeded {
-            resource: Resource::WorkCredits,
+            resource: HtmlParseResource::WorkCredits,
             requested_delta: 12,
             ..
         }
@@ -1182,7 +1271,7 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
 #[test]
 fn actual_data_to_tag_open_transition_admits_separate_persistent_writes() {
     let source = HtmlSource::utf8("<");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     let before = c.usage().clone();
@@ -1204,15 +1293,22 @@ fn actual_data_to_tag_open_transition_admits_separate_persistent_writes() {
 #[test]
 fn rejected_state_write_does_not_change_state_and_exact_admission_does() {
     let source = HtmlSource::utf8("");
-    let mut baseline = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
     baseline.admit_source(&source).unwrap();
     let t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
-    let entry = baseline.usage().resource(Resource::WorkCredits).current;
+    let entry = baseline
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
     t.release(&mut baseline).unwrap();
     for remaining in [0, 1] {
         let mut caps = limits();
-        caps.work_credits = entry + size_of::<State>() as u64 + remaining;
-        let mut c = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .work_credits(entry + size_of::<State>() as u64 + remaining)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
         let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
         let before = c.usage().clone();
@@ -1237,7 +1333,7 @@ fn rejected_state_write_does_not_change_state_and_exact_admission_does() {
 #[test]
 fn self_closing_and_force_quirks_flags_each_admit_one_independent_record_write() {
     let source = HtmlSource::utf8("<a/>");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     while t.state != State::SelfClosing {
@@ -1259,7 +1355,7 @@ fn self_closing_and_force_quirks_flags_each_admit_one_independent_record_write()
     assert_storage_released(&c);
 
     let source = HtmlSource::utf8("<!DOCTYPE >");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     while t.state != State::BeforeDoctypeName {
@@ -1285,7 +1381,7 @@ fn self_closing_and_force_quirks_flags_each_admit_one_independent_record_write()
 #[test]
 fn duplicate_bookkeeping_admits_each_flag_in_addition_to_lookup_and_diagnostic_writes() {
     let source = HtmlSource::utf8("<a x X>");
-    let mut c = ParseControl::new(limits(), Cancellation::new()).unwrap();
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
     let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
     loop {
@@ -1332,17 +1428,24 @@ fn prepare_flag_write(t: &mut Tokenizer<'_>, c: &mut ParseControl, doctype: bool
 fn rejected_self_closing_and_quirks_write_leave_each_flag_false_and_release_its_owner() {
     for (input, doctype) in [("<a/>", false), ("<!DOCTYPE >", true)] {
         let source = HtmlSource::utf8(input);
-        let mut baseline = ParseControl::new(limits(), Cancellation::new()).unwrap();
+        let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
         baseline.admit_source(&source).unwrap();
         let mut t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
         prepare_flag_write(&mut t, &mut baseline, doctype);
-        let entry = baseline.usage().resource(Resource::WorkCredits).current;
+        let entry = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
         t.release(&mut baseline).unwrap();
         assert_storage_released(&baseline);
 
         let mut caps = limits();
-        caps.work_credits = entry + size_of::<bool>() as u64;
-        let mut c = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .work_credits(entry + size_of::<bool>() as u64)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
         let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
         prepare_flag_write(&mut t, &mut c, doctype);
@@ -1356,7 +1459,7 @@ fn rejected_self_closing_and_quirks_write_leave_each_flag_false_and_release_its_
         assert!(matches!(
             stop,
             ParseStop::LimitExceeded {
-                resource: Resource::WorkCredits,
+                resource: HtmlParseResource::WorkCredits,
                 requested_delta: 1,
                 ..
             }

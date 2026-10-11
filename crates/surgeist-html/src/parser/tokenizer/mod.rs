@@ -12,6 +12,7 @@
 // dispatch replaces Tendril, atoms, SIMD, streaming and TokenSink machinery.
 // Behavior is governed by HTML 877d6146487f15b15bc8dd0e3c625063a37b456a.
 
+use crate::HtmlParseResource;
 mod char_ref;
 mod state;
 pub(crate) mod states;
@@ -22,8 +23,7 @@ pub(crate) mod token;
 use super::{
     buffer::Utf16Buffer,
     control::{
-        ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, Resource, WORK_QUANTUM,
-        WorkCategory,
+        ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WORK_QUANTUM, WorkCategory,
     },
     input::{AsciiComparison, InputCursor, InputRead},
 };
@@ -60,7 +60,7 @@ struct Names {
 impl Names {
     fn new() -> Result<Self, ParseStop> {
         Ok(Self {
-            nodes: OwnedVec::new(Resource::AuxiliaryEntries)?,
+            nodes: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
         })
     }
     fn insert(&mut self, units: &[u16], c: &mut ParseControl) -> Result<bool, ParseStop> {
@@ -370,7 +370,7 @@ impl<'source> Tokenizer<'source> {
                     } else {
                         admit_record_write(size_of::<OriginKind>(), 1, c)?;
                         self.current_kind = OriginKind::Newline;
-                        let mut retention = OwnedVec::new(Resource::SourceMapEntries)?;
+                        let mut retention = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
                         if let Err(stop) = retention.try_push(c, self.current.clone()) {
                             retention.release(c)?;
                             return Err(stop);
@@ -449,7 +449,7 @@ impl<'source> Tokenizer<'source> {
         phase: DiagnosticPhase,
         c: &mut ParseControl,
     ) -> Result<(), ParseStop> {
-        let mut diagnostics = OwnedVec::new(Resource::Diagnostics)?;
+        let mut diagnostics = OwnedVec::new(HtmlParseResource::Diagnostics)?;
         if let Err(stop) = diagnostics.try_push(
             c,
             Diagnostic {
@@ -540,7 +540,7 @@ impl<'source> Tokenizer<'source> {
             kind,
             name: DraftText::new(c)?,
             self_closing: false,
-            attributes: OwnedVec::new(Resource::TokenAttributes)?,
+            attributes: OwnedVec::new(HtmlParseResource::TokenAttributes)?,
             attribute: None,
             names: Names::new()?,
             had_duplicates: false,

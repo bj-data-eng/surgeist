@@ -119,6 +119,8 @@ pub surgeist_html::HtmlCaptureError::UnsupportedExecution(surgeist_html::HtmlPar
 pub surgeist_html::HtmlCaptureError::WrongKind
 pub surgeist_html::HtmlCaptureError::WrongKind::actual: surgeist_html::HtmlCaptureSubjectKind
 pub surgeist_html::HtmlCaptureError::WrongKind::expected: surgeist_html::HtmlCaptureSubjectKind
+impl core::convert::From<surgeist_html::HtmlCaptureError> for surgeist_html::HtmlParseRequestError
+pub fn surgeist_html::HtmlParseRequestError::from(error: surgeist_html::HtmlCaptureError) -> Self
 impl core::error::Error for surgeist_html::HtmlCaptureError
 impl core::fmt::Display for surgeist_html::HtmlCaptureError
 pub fn surgeist_html::HtmlCaptureError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -430,6 +432,43 @@ pub surgeist_html::HtmlOlType::UpperRoman
 impl surgeist_html::HtmlOlType
 pub fn surgeist_html::HtmlOlType::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlOlType::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlParseLimitsError
+pub surgeist_html::HtmlParseLimitsError::MissingResource(surgeist_html::HtmlParseResource)
+pub surgeist_html::HtmlParseLimitsError::Unrepresentable
+pub surgeist_html::HtmlParseLimitsError::Unrepresentable::maximum: u64
+pub surgeist_html::HtmlParseLimitsError::Unrepresentable::provided: u64
+pub surgeist_html::HtmlParseLimitsError::Unrepresentable::resource: surgeist_html::HtmlParseResource
+impl core::error::Error for surgeist_html::HtmlParseLimitsError
+impl core::fmt::Display for surgeist_html::HtmlParseLimitsError
+pub fn surgeist_html::HtmlParseLimitsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlParseRequestError
+pub surgeist_html::HtmlParseRequestError::Capture(surgeist_html::HtmlCaptureError)
+impl core::convert::From<surgeist_html::HtmlCaptureError> for surgeist_html::HtmlParseRequestError
+pub fn surgeist_html::HtmlParseRequestError::from(error: surgeist_html::HtmlCaptureError) -> Self
+impl core::error::Error for surgeist_html::HtmlParseRequestError
+pub fn surgeist_html::HtmlParseRequestError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlParseRequestError
+pub fn surgeist_html::HtmlParseRequestError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[repr(usize)] pub enum surgeist_html::HtmlParseResource
+pub surgeist_html::HtmlParseResource::AtomicLayoutBytes
+pub surgeist_html::HtmlParseResource::AuxiliaryEntries
+pub surgeist_html::HtmlParseResource::BufferedUtf16Units
+pub surgeist_html::HtmlParseResource::ContextEffects
+pub surgeist_html::HtmlParseResource::DiagnosticPayloadUnits
+pub surgeist_html::HtmlParseResource::Diagnostics
+pub surgeist_html::HtmlParseResource::ManagedAttributes
+pub surgeist_html::HtmlParseResource::ManagedCapacityBytes
+pub surgeist_html::HtmlParseResource::ManagedEdges
+pub surgeist_html::HtmlParseResource::ManagedNodes
+pub surgeist_html::HtmlParseResource::ManagedUtf16Units
+pub surgeist_html::HtmlParseResource::OpenElements
+pub surgeist_html::HtmlParseResource::PeakTransientBytes
+pub surgeist_html::HtmlParseResource::SourceMapEntries
+pub surgeist_html::HtmlParseResource::SourceMapPayloadUnits
+pub surgeist_html::HtmlParseResource::SourceUnits
+pub surgeist_html::HtmlParseResource::TokenAttributes
+pub surgeist_html::HtmlParseResource::TreeDepth
+pub surgeist_html::HtmlParseResource::WorkCredits
 pub enum surgeist_html::HtmlParserScriptingMode
 pub surgeist_html::HtmlParserScriptingMode::Disabled
 pub surgeist_html::HtmlParserScriptingMode::Fragment
@@ -1230,6 +1269,17 @@ pub fn surgeist_html::HtmlDocumentBuilder::finish(self) -> surgeist_html::HtmlDo
 pub fn surgeist_html::HtmlDocumentBuilder::root(&self) -> surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlDocumentBuilder::template_contents(&self, template: &surgeist_html::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::HtmlBuilderNode>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlDocumentBuilder::usage(&self) -> surgeist_html::HtmlConstructionUsage
+pub struct surgeist_html::HtmlDocumentParseRequest
+impl surgeist_html::HtmlDocumentParseRequest
+pub fn surgeist_html::HtmlDocumentParseRequest::allow_declarative_shadow_roots(&self) -> bool
+pub fn surgeist_html::HtmlDocumentParseRequest::cancellation(&self) -> &surgeist_html::HtmlParseCancellation
+pub fn surgeist_html::HtmlDocumentParseRequest::capture(&self) -> core::option::Option<&surgeist_html::HtmlCapture>
+pub fn surgeist_html::HtmlDocumentParseRequest::captured(source: surgeist_html::HtmlSource, capture: surgeist_html::HtmlCapture, document: surgeist_html::HtmlCaptureDocumentId, limits: surgeist_html::HtmlParseLimits) -> core::result::Result<Self, surgeist_html::HtmlParseRequestError>
+pub fn surgeist_html::HtmlDocumentParseRequest::document(&self) -> core::option::Option<&surgeist_html::HtmlCaptureDocumentId>
+pub fn surgeist_html::HtmlDocumentParseRequest::limits(&self) -> &surgeist_html::HtmlParseLimits
+pub fn surgeist_html::HtmlDocumentParseRequest::offline(source: surgeist_html::HtmlSource, limits: surgeist_html::HtmlParseLimits) -> Self
+pub fn surgeist_html::HtmlDocumentParseRequest::scripting_mode(&self) -> surgeist_html::HtmlParserScriptingMode
+pub fn surgeist_html::HtmlDocumentParseRequest::source(&self) -> &surgeist_html::HtmlSource
 pub struct surgeist_html::HtmlDuplicateTokenError
 impl surgeist_html::HtmlDuplicateTokenError
 pub fn surgeist_html::HtmlDuplicateTokenError::comparison(&self) -> surgeist_html::HtmlTokenComparison
@@ -1304,6 +1354,17 @@ pub fn surgeist_html::HtmlFragmentContext::root_registry(&self) -> &surgeist_htm
 pub fn surgeist_html::HtmlFragmentContext::scripting_status(&self) -> surgeist_html::HtmlScriptingStatus
 pub fn surgeist_html::HtmlFragmentContext::target(&self) -> &surgeist_html::HtmlFragmentTarget
 pub fn surgeist_html::HtmlFragmentContext::target_document(&self) -> &surgeist_html::HtmlCaptureDocumentId
+pub struct surgeist_html::HtmlFragmentParseRequest
+impl surgeist_html::HtmlFragmentParseRequest
+pub fn surgeist_html::HtmlFragmentParseRequest::allow_declarative_shadow_roots(&self) -> bool
+pub fn surgeist_html::HtmlFragmentParseRequest::cancellation(&self) -> &surgeist_html::HtmlParseCancellation
+pub fn surgeist_html::HtmlFragmentParseRequest::context(&self) -> &surgeist_html::HtmlFragmentContext
+pub fn surgeist_html::HtmlFragmentParseRequest::effective_scripting_mode(&self) -> surgeist_html::HtmlParserScriptingMode
+pub fn surgeist_html::HtmlFragmentParseRequest::limits(&self) -> &surgeist_html::HtmlParseLimits
+pub fn surgeist_html::HtmlFragmentParseRequest::new(source: surgeist_html::HtmlSource, context: surgeist_html::HtmlFragmentContext, limits: surgeist_html::HtmlParseLimits) -> core::result::Result<Self, surgeist_html::HtmlParseRequestError>
+pub fn surgeist_html::HtmlFragmentParseRequest::requested_scripting_mode(&self) -> surgeist_html::HtmlParserScriptingMode
+pub fn surgeist_html::HtmlFragmentParseRequest::source(&self) -> &surgeist_html::HtmlSource
+pub fn surgeist_html::HtmlFragmentParseRequest::with_options(source: surgeist_html::HtmlSource, context: surgeist_html::HtmlFragmentContext, limits: surgeist_html::HtmlParseLimits, requested: surgeist_html::HtmlParserScriptingMode, allow_declarative_shadow_roots: bool) -> core::result::Result<Self, surgeist_html::HtmlParseRequestError>
 pub struct surgeist_html::HtmlGlobalDateTime
 impl surgeist_html::HtmlGlobalDateTime
 pub fn surgeist_html::HtmlGlobalDateTime::local(&self) -> &surgeist_html::HtmlLocalDateTime
@@ -1423,6 +1484,55 @@ pub fn surgeist_html::HtmlOrderedTokenSet::tokens(&self) -> &[surgeist_html::Htm
 impl core::cmp::Eq for surgeist_html::HtmlOrderedTokenSet
 impl core::cmp::PartialEq for surgeist_html::HtmlOrderedTokenSet
 pub fn surgeist_html::HtmlOrderedTokenSet::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlParseCancellation(_)
+impl surgeist_html::HtmlParseCancellation
+pub fn surgeist_html::HtmlParseCancellation::cancel(&self)
+pub fn surgeist_html::HtmlParseCancellation::is_cancelled(&self) -> bool
+pub struct surgeist_html::HtmlParseLimits
+impl surgeist_html::HtmlParseLimits
+pub fn surgeist_html::HtmlParseLimits::atomic_layout_bytes(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::auxiliary_entries(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::buffered_utf16_units(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::builder() -> surgeist_html::HtmlParseLimitsBuilder
+pub fn surgeist_html::HtmlParseLimits::context_effects(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::diagnostic_payload_units(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::diagnostics(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::into_builder(self) -> surgeist_html::HtmlParseLimitsBuilder
+pub fn surgeist_html::HtmlParseLimits::managed_attributes(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::managed_capacity_bytes(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::managed_edges(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::managed_nodes(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::managed_utf16_units(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::open_elements(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::peak_transient_bytes(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::source_map_entries(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::source_map_payload_units(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::source_units(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::token_attributes(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::tree_depth(&self) -> u64
+pub fn surgeist_html::HtmlParseLimits::work_credits(&self) -> u64
+pub struct surgeist_html::HtmlParseLimitsBuilder
+impl surgeist_html::HtmlParseLimitsBuilder
+pub fn surgeist_html::HtmlParseLimitsBuilder::atomic_layout_bytes(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::auxiliary_entries(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::buffered_utf16_units(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::context_effects(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::diagnostic_payload_units(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::diagnostics(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::finish(self) -> core::result::Result<surgeist_html::HtmlParseLimits, surgeist_html::HtmlParseLimitsError>
+pub fn surgeist_html::HtmlParseLimitsBuilder::managed_attributes(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::managed_capacity_bytes(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::managed_edges(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::managed_nodes(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::managed_utf16_units(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::open_elements(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::peak_transient_bytes(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::source_map_entries(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::source_map_payload_units(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::source_units(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::token_attributes(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::tree_depth(self, cap: u64) -> Self
+pub fn surgeist_html::HtmlParseLimitsBuilder::work_credits(self, cap: u64) -> Self
 pub struct surgeist_html::HtmlParsedDuration
 impl surgeist_html::HtmlParsedDuration
 pub fn surgeist_html::HtmlParsedDuration::new(seconds: surgeist_html::HtmlNonNegativeDecimal) -> Self

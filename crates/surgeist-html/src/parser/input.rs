@@ -2,6 +2,7 @@
 //! points are retained; newline preprocessing is separate from token recovery.
 
 use super::control::{ControlIdentity, Invariant, ParseControl, ParseStop, WorkCategory};
+use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use crate::{HtmlSource, HtmlSourceId, HtmlSourceRange};
 use std::mem::size_of;
 
@@ -410,36 +411,36 @@ impl<'source> InputCursor<'source> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::control::{Cancellation, ParseLimits, Resource};
     use super::*;
     use crate::{DocumentString, HtmlSourceCoordinates};
 
-    fn limits() -> ParseLimits {
-        ParseLimits {
-            source_units: 1000,
-            buffered_utf16_units: 1000,
-            token_attributes: 1000,
-            auxiliary_entries: 1000,
-            managed_nodes: 1000,
-            managed_edges: 1000,
-            managed_attributes: 1000,
-            managed_utf16_units: 1000,
-            source_map_entries: 1000,
-            source_map_payload_units: 1000,
-            diagnostics: 1000,
-            diagnostic_payload_units: 1000,
-            context_effects: 1000,
-            open_elements: 1000,
-            tree_depth: 1000,
-            managed_capacity_bytes: 100_000,
-            peak_transient_bytes: 100_000,
-            atomic_layout_bytes: 100_000,
-            work_credits: 100_000,
-        }
+    fn limits() -> HtmlParseLimits {
+        HtmlParseLimits::builder()
+            .source_units(1000)
+            .buffered_utf16_units(1000)
+            .token_attributes(1000)
+            .auxiliary_entries(1000)
+            .managed_nodes(1000)
+            .managed_edges(1000)
+            .managed_attributes(1000)
+            .managed_utf16_units(1000)
+            .source_map_entries(1000)
+            .source_map_payload_units(1000)
+            .diagnostics(1000)
+            .diagnostic_payload_units(1000)
+            .context_effects(1000)
+            .open_elements(1000)
+            .tree_depth(1000)
+            .managed_capacity_bytes(100_000)
+            .peak_transient_bytes(100_000)
+            .atomic_layout_bytes(100_000)
+            .work_credits(100_000)
+            .finish()
+            .unwrap()
     }
 
     fn control(source: &HtmlSource) -> ParseControl {
-        let mut control = ParseControl::new(limits(), Cancellation::new()).unwrap();
+        let mut control = ParseControl::new(limits(), HtmlParseCancellation::new());
         control.admit_source(source).unwrap();
         control
     }
@@ -610,14 +611,20 @@ mod tests {
             control.usage().work(WorkCategory::InputUnitRead) - before,
             3
         );
-        assert_eq!(control.usage().resource(Resource::SourceUnits).current, 5);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::SourceUnits)
+                .current,
+            5
+        );
     }
 
     #[test]
     fn cancellation_and_work_cap_stop_before_cursor_position_changes() {
         let source = HtmlSource::utf8("x");
-        let cancellation = Cancellation::new();
-        let mut control = ParseControl::new(limits(), cancellation.clone()).unwrap();
+        let cancellation = HtmlParseCancellation::new();
+        let mut control = ParseControl::new(limits(), cancellation.clone());
         control.admit_source(&source).unwrap();
         let mut cursor = InputCursor::new(&source, &mut control).unwrap();
         cancellation.cancel();
@@ -625,17 +632,21 @@ mod tests {
         assert_eq!(cursor.position, 0);
 
         let mut caps = limits();
-        caps.work_credits = 100;
-        let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps.into_builder().work_credits(100).finish().unwrap();
+        let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
         control.admit_source(&source).unwrap();
         let mut cursor = InputCursor::new(&source, &mut control).unwrap();
-        let remaining = caps.work_credits - control.usage().resource(Resource::WorkCredits).current;
+        let remaining = caps.work_credits()
+            - control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
         control.charge(WorkCategory::StateStep, remaining).unwrap();
         let stop = cursor.consume(&mut control).unwrap_err();
         assert!(matches!(
             stop,
             ParseStop::LimitExceeded {
-                resource: Resource::WorkCredits,
+                resource: HtmlParseResource::WorkCredits,
                 ..
             }
         ));
@@ -803,14 +814,18 @@ mod tests {
         let entry = 1 + size_of::<ControlIdentity>() as u64 + 1;
         let before_endpoint =
             3 + 1 + size_of::<CodePoint>() as u64 + size_of::<HtmlSourceRange>() as u64;
-        caps.work_credits = entry + before_endpoint;
-        let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .work_credits(entry + before_endpoint)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
         control.admit_source(&source).unwrap();
         let mut cursor = InputCursor::new(&source, &mut control).unwrap();
         let stop = ParseStop::LimitExceeded {
-            resource: Resource::WorkCredits,
-            limit: caps.work_credits,
-            current: caps.work_credits,
+            resource: HtmlParseResource::WorkCredits,
+            limit: caps.work_credits(),
+            current: caps.work_credits(),
             requested_delta: 1,
         };
         assert_eq!(cursor.consume(&mut control), Err(stop));
@@ -823,8 +838,12 @@ mod tests {
 
         // The same first character succeeds at the exact complete budget: two
         // input reads, plus storing the fixed current-input record and cursor.
-        caps.work_credits = entry + before_endpoint + 1 + size_of::<InputRead>() as u64 + 1;
-        let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .work_credits(entry + before_endpoint + 1 + size_of::<InputRead>() as u64 + 1)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
         control.admit_source(&source).unwrap();
         let mut cursor = InputCursor::new(&source, &mut control).unwrap();
         let read = character(cursor.consume(&mut control).unwrap());
@@ -832,8 +851,11 @@ mod tests {
         assert_eq!(read.source(), &source.range(0, 1).unwrap());
         assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 2);
         assert_eq!(
-            control.usage().resource(Resource::WorkCredits).current,
-            caps.work_credits
+            control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            caps.work_credits()
         );
         assert_eq!(control.stop(), None);
         assert_eq!(cursor.position, 1);
@@ -847,8 +869,12 @@ mod tests {
         let range_record = 1 + size_of::<HtmlSourceRange>() as u64;
         for remaining in [1, 2] {
             let mut caps = limits();
-            caps.work_credits = entry + range_record + remaining;
-            let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+            caps = caps
+                .into_builder()
+                .work_credits(entry + range_record + remaining)
+                .finish()
+                .unwrap();
+            let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
             control.admit_source(&source).unwrap();
             let cursor = InputCursor::new(&source, &mut control).unwrap();
             let result = cursor.range(1, 1, &mut control);
@@ -856,8 +882,8 @@ mod tests {
                 assert_eq!(
                     result,
                     Err(ParseStop::LimitExceeded {
-                        resource: Resource::WorkCredits,
-                        limit: caps.work_credits,
+                        resource: HtmlParseResource::WorkCredits,
+                        limit: caps.work_credits(),
                         current: entry + range_record,
                         requested_delta: 2,
                     })
@@ -867,8 +893,11 @@ mod tests {
                 assert_eq!(result, Ok(source.range(1, 1).unwrap()));
                 assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 2);
                 assert_eq!(
-                    control.usage().resource(Resource::WorkCredits).current,
-                    caps.work_credits
+                    control
+                        .usage()
+                        .resource(HtmlParseResource::WorkCredits)
+                        .current,
+                    caps.work_credits()
                 );
             }
             assert_eq!(cursor.position, 0);
@@ -938,7 +967,13 @@ mod tests {
                     expected
                 );
             }
-            assert_eq!(control.usage().resource(Resource::SourceUnits).current, 6);
+            assert_eq!(
+                control
+                    .usage()
+                    .resource(HtmlParseResource::SourceUnits)
+                    .current,
+                6
+            );
             assert_eq!(cursor.position, 0);
             assert_eq!(cursor.current, None);
             assert_eq!(cursor.processed_through, 0);
@@ -967,7 +1002,13 @@ mod tests {
                 control.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
                 size_of::<HtmlSourceRange>() as u64
             );
-            assert_eq!(control.usage().resource(Resource::SourceUnits).current, 3);
+            assert_eq!(
+                control
+                    .usage()
+                    .resource(HtmlParseResource::SourceUnits)
+                    .current,
+                3
+            );
         }
     }
 
@@ -982,8 +1023,8 @@ mod tests {
             let stop = ParseStop::InternalInvariant(Invariant::ForeignControl);
             assert_eq!(cursor.checked_range(1, 5, &mut other), Err(stop));
             assert_eq!(
-                other.usage().resource(Resource::WorkCredits),
-                before.resource(Resource::WorkCredits)
+                other.usage().resource(HtmlParseResource::WorkCredits),
+                before.resource(HtmlParseResource::WorkCredits)
             );
             assert_eq!(other.usage().work(WorkCategory::InputUnitRead), 0);
             assert_eq!(cursor.checked_range(0, 0, &mut other), Err(stop));
@@ -994,8 +1035,8 @@ mod tests {
     #[test]
     fn checked_ranges_preserve_cancelled_and_foreign_source_stops_without_work() {
         let source = HtmlSource::utf8("a🙂b");
-        let cancellation = Cancellation::new();
-        let mut control = ParseControl::new(limits(), cancellation.clone()).unwrap();
+        let cancellation = HtmlParseCancellation::new();
+        let mut control = ParseControl::new(limits(), cancellation.clone());
         control.admit_source(&source).unwrap();
         let cursor = InputCursor::new(&source, &mut control).unwrap();
         let before = control.usage().clone();
@@ -1009,8 +1050,8 @@ mod tests {
             Err(ParseStop::Cancelled)
         );
         assert_eq!(
-            control.usage().resource(Resource::WorkCredits),
-            before.resource(Resource::WorkCredits)
+            control.usage().resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
         );
         assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
 
@@ -1021,8 +1062,8 @@ mod tests {
         let before = control.usage().clone();
         assert_eq!(cursor.checked_range(1, 5, &mut control), Err(stop));
         assert_eq!(
-            control.usage().resource(Resource::WorkCredits),
-            before.resource(Resource::WorkCredits)
+            control.usage().resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
         );
         assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
     }
@@ -1047,8 +1088,8 @@ mod tests {
             let before = control.usage().clone();
             assert_eq!(cursor.checked_range(0, 0, &mut control), Err(stop));
             assert_eq!(
-                control.usage().resource(Resource::WorkCredits),
-                before.resource(Resource::WorkCredits)
+                control.usage().resource(HtmlParseResource::WorkCredits),
+                before.resource(HtmlParseResource::WorkCredits)
             );
             assert_eq!(cursor.position, 0);
             assert_eq!(cursor.current, None);
@@ -1062,8 +1103,12 @@ mod tests {
         let copy = size_of::<HtmlSourceRange>() as u64;
         for available in [0, 1, 2, 3, 3 + copy, 4 + copy, 5 + copy] {
             let mut caps = limits();
-            caps.work_credits = entry + available;
-            let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+            caps = caps
+                .into_builder()
+                .work_credits(entry + available)
+                .finish()
+                .unwrap();
+            let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
             control.admit_source(&source).unwrap();
             let cursor = InputCursor::new(&source, &mut control).unwrap();
             let result = cursor.checked_range(1, 1, &mut control);
@@ -1072,8 +1117,11 @@ mod tests {
                 assert_eq!((range.start(), range.end()), (1, 1));
                 assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 3);
                 assert_eq!(
-                    control.usage().resource(Resource::WorkCredits).current,
-                    caps.work_credits
+                    control
+                        .usage()
+                        .resource(HtmlParseResource::WorkCredits)
+                        .current,
+                    caps.work_credits()
                 );
             } else {
                 let (current, requested_delta) = if available < 3 {
@@ -1084,8 +1132,8 @@ mod tests {
                     (entry + 3 + copy, 2)
                 };
                 let stop = ParseStop::LimitExceeded {
-                    resource: Resource::WorkCredits,
-                    limit: caps.work_credits,
+                    resource: HtmlParseResource::WorkCredits,
+                    limit: caps.work_credits(),
                     current,
                     requested_delta,
                 };

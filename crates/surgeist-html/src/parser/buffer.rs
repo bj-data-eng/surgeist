@@ -2,12 +2,11 @@
 //! the execution's accounting owner, never a second text or allocation model.
 
 use super::{
-    control::{
-        DocumentStringAllocation, OwnedVec, ParseControl, ParseStop, Resource, WorkCategory,
-    },
+    control::{DocumentStringAllocation, OwnedVec, ParseControl, ParseStop, WorkCategory},
     input::CodePoint,
 };
 use crate::DocumentString;
+use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use std::mem::size_of;
 
 pub(crate) struct Utf16Buffer {
@@ -17,7 +16,7 @@ pub(crate) struct Utf16Buffer {
 impl Utf16Buffer {
     pub(crate) fn new(control: &mut ParseControl) -> Result<Self, ParseStop> {
         control.charge(WorkCategory::RecordWrite, 1)?;
-        let mut units = OwnedVec::new(Resource::BufferedUtf16Units)?;
+        let mut units = OwnedVec::new(HtmlParseResource::BufferedUtf16Units)?;
         units.require_owner(control)?;
         Ok(Self { units })
     }
@@ -126,35 +125,35 @@ impl FrozenUtf16 {
 
 #[cfg(test)]
 mod tests {
-    use super::super::control::{Cancellation, ParseLimits};
     use super::*;
 
-    fn limits() -> ParseLimits {
-        ParseLimits {
-            source_units: 1000,
-            buffered_utf16_units: 1000,
-            token_attributes: 1000,
-            auxiliary_entries: 1000,
-            managed_nodes: 1000,
-            managed_edges: 1000,
-            managed_attributes: 1000,
-            managed_utf16_units: 1000,
-            source_map_entries: 1000,
-            source_map_payload_units: 1000,
-            diagnostics: 1000,
-            diagnostic_payload_units: 1000,
-            context_effects: 1000,
-            open_elements: 1000,
-            tree_depth: 1000,
-            managed_capacity_bytes: 100_000,
-            peak_transient_bytes: 100_000,
-            atomic_layout_bytes: 100_000,
-            work_credits: 100_000,
-        }
+    fn limits() -> HtmlParseLimits {
+        HtmlParseLimits::builder()
+            .source_units(1000)
+            .buffered_utf16_units(1000)
+            .token_attributes(1000)
+            .auxiliary_entries(1000)
+            .managed_nodes(1000)
+            .managed_edges(1000)
+            .managed_attributes(1000)
+            .managed_utf16_units(1000)
+            .source_map_entries(1000)
+            .source_map_payload_units(1000)
+            .diagnostics(1000)
+            .diagnostic_payload_units(1000)
+            .context_effects(1000)
+            .open_elements(1000)
+            .tree_depth(1000)
+            .managed_capacity_bytes(100_000)
+            .peak_transient_bytes(100_000)
+            .atomic_layout_bytes(100_000)
+            .work_credits(100_000)
+            .finish()
+            .unwrap()
     }
 
     fn control() -> ParseControl {
-        ParseControl::new(limits(), Cancellation::new()).unwrap()
+        ParseControl::new(limits(), HtmlParseCancellation::new())
     }
 
     #[test]
@@ -187,7 +186,7 @@ mod tests {
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::BufferedUtf16Units)
+                .resource(HtmlParseResource::BufferedUtf16Units)
                 .current,
             7
         );
@@ -200,14 +199,14 @@ mod tests {
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::BufferedUtf16Units)
+                .resource(HtmlParseResource::BufferedUtf16Units)
                 .current,
             0
         );
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
             0
         );
@@ -216,8 +215,12 @@ mod tests {
     #[test]
     fn unit_cap_rejects_supplementary_pair_atomically() {
         let mut caps = limits();
-        caps.buffered_utf16_units = 2;
-        let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .buffered_utf16_units(2)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
         let mut buffer = Utf16Buffer::new(&mut control).unwrap();
         buffer.push_unit(0x61, &mut control).unwrap();
         let stop = buffer
@@ -226,7 +229,7 @@ mod tests {
         assert_eq!(
             stop,
             ParseStop::LimitExceeded {
-                resource: Resource::BufferedUtf16Units,
+                resource: HtmlParseResource::BufferedUtf16Units,
                 limit: 2,
                 current: 1,
                 requested_delta: 2
@@ -237,7 +240,7 @@ mod tests {
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::BufferedUtf16Units)
+                .resource(HtmlParseResource::BufferedUtf16Units)
                 .current,
             0
         );
@@ -246,44 +249,57 @@ mod tests {
     #[test]
     fn exact_cap_clear_and_reuse_preserve_capacity_and_monotone_work() {
         let mut caps = limits();
-        caps.buffered_utf16_units = 3;
-        let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .buffered_utf16_units(3)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
         let mut buffer = Utf16Buffer::new(&mut control).unwrap();
         buffer
             .extend_units(&[0xD800, 0, 0xDC00], &mut control)
             .unwrap();
         let capacity = control
             .usage()
-            .resource(Resource::ManagedCapacityBytes)
+            .resource(HtmlParseResource::ManagedCapacityBytes)
             .current;
-        let before = control.usage().resource(Resource::WorkCredits).current;
+        let before = control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
         buffer.clear(&mut control).unwrap();
         assert_eq!(buffer.len(), 0);
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::BufferedUtf16Units)
+                .resource(HtmlParseResource::BufferedUtf16Units)
                 .current,
             0
         );
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::BufferedUtf16Units)
+                .resource(HtmlParseResource::BufferedUtf16Units)
                 .high_water,
             3
         );
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
             capacity
         );
         buffer
             .extend_units(&[0xFEFF, 0x20, 0], &mut control)
             .unwrap();
-        assert!(control.usage().resource(Resource::WorkCredits).current > before);
+        assert!(
+            control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+                > before
+        );
         buffer
             .freeze(&mut control)
             .unwrap()
@@ -292,7 +308,7 @@ mod tests {
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
             0
         );
@@ -300,8 +316,8 @@ mod tests {
 
     #[test]
     fn cancellation_prevents_append_and_failure_cleanup_retains_first_stop() {
-        let cancellation = Cancellation::new();
-        let mut control = ParseControl::new(limits(), cancellation.clone()).unwrap();
+        let cancellation = HtmlParseCancellation::new();
+        let mut control = ParseControl::new(limits(), cancellation.clone());
         let mut buffer = Utf16Buffer::new(&mut control).unwrap();
         buffer.push_unit(0xD800, &mut control).unwrap();
         cancellation.cancel();
@@ -315,7 +331,7 @@ mod tests {
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
             0
         );
@@ -324,28 +340,32 @@ mod tests {
     #[test]
     fn fixed_wrapper_cap_failure_publishes_no_frozen_text() {
         let mut caps = limits();
-        caps.atomic_layout_bytes = (size_of::<Vec<u16>>() - 1) as u64;
-        let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+        caps = caps
+            .into_builder()
+            .atomic_layout_bytes((size_of::<Vec<u16>>() - 1) as u64)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
         let mut buffer = Utf16Buffer::new(&mut control).unwrap();
         buffer.push_unit(0xD800, &mut control).unwrap();
         assert!(matches!(
             buffer.freeze(&mut control),
             Err(ParseStop::LimitExceeded {
-                resource: Resource::AtomicLayoutBytes,
+                resource: HtmlParseResource::AtomicLayoutBytes,
                 ..
             })
         ));
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
             0
         );
         assert_eq!(
             control
                 .usage()
-                .resource(Resource::BufferedUtf16Units)
+                .resource(HtmlParseResource::BufferedUtf16Units)
                 .current,
             0
         );
@@ -360,18 +380,24 @@ mod tests {
         let mut other = control();
         assert!(frozen.release(&mut other).is_err());
         assert_eq!(
-            other.usage().resource(Resource::BufferedUtf16Units).current,
+            other
+                .usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
             0
         );
         assert_eq!(
             other
                 .usage()
-                .resource(Resource::ManagedCapacityBytes)
+                .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
             0
         );
         assert_eq!(
-            first.usage().resource(Resource::BufferedUtf16Units).current,
+            first
+                .usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
             1
         );
     }
