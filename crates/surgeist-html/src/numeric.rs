@@ -5,7 +5,7 @@
 //! request limits before invoking these algorithms.
 
 use crate::DocumentString;
-use std::{error::Error, fmt, num::NonZeroU32};
+use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 
 /// An exact HTML integer, without a machine-integer magnitude limit.
 ///
@@ -269,6 +269,35 @@ pub struct HtmlNonNegativeInteger {
 }
 
 impl HtmlNonNegativeInteger {
+    fn compare(&self, other: &Self) -> Ordering {
+        self.digits
+            .len()
+            .cmp(&other.digits.len())
+            .then_with(|| self.digits.cmp(&other.digits))
+    }
+
+    // The caller proves self >= other + borrow. Digit subtraction never projects
+    // the magnitude into a machine integer. Each output byte is one ASCII digit.
+    fn subtract_with_borrow(&self, other: &Self, mut borrow: u8) -> Self {
+        let mut right = other.digits.bytes().rev();
+        let mut reversed = Vec::with_capacity(self.digits.len());
+        for digit in self.digits.bytes().rev() {
+            let difference = i16::from(digit - b'0')
+                - i16::from(right.next().map_or(0, |digit| digit - b'0'))
+                - i16::from(borrow);
+            borrow = u8::from(difference < 0);
+            reversed.push(b'0' + difference.rem_euclid(10) as u8);
+        }
+        debug_assert_eq!(borrow, 0);
+        debug_assert!(right.next().is_none());
+        while reversed.len() > 1 && reversed.last() == Some(&b'0') {
+            reversed.pop();
+        }
+        Self {
+            digits: reversed.into_iter().rev().map(char::from).collect(),
+        }
+    }
+
     /// Checks an exact sequence of one or more ASCII decimal digits.
     ///
     /// No sign, whitespace, trimming, or prefix recovery is accepted. There is
@@ -315,7 +344,14 @@ impl HtmlNonNegativeInteger {
         if multiplier == 0 || self.is_zero() {
             return Self::from(0);
         }
-        let mut reversed = Vec::new();
+        // A u32 multiplier contributes at most ten additional decimal digits.
+        let capacity = self
+            .digits
+            .len()
+            .checked_add(10)
+            .filter(|&len| len <= isize::MAX as usize / size_of::<char>())
+            .expect("integer product representation exceeds native capacity");
+        let mut reversed = Vec::with_capacity(capacity);
         let mut carry = 0_u64;
         for digit in self.digits.bytes().rev() {
             let product = u64::from(digit - b'0') * u64::from(multiplier) + carry;
@@ -334,7 +370,14 @@ impl HtmlNonNegativeInteger {
     pub(crate) fn added_to(&self, other: &Self) -> Self {
         let mut left = self.digits.bytes().rev();
         let mut right = other.digits.bytes().rev();
-        let mut reversed = Vec::new();
+        let capacity = self
+            .digits
+            .len()
+            .max(other.digits.len())
+            .checked_add(1)
+            .filter(|&len| len <= isize::MAX as usize / size_of::<char>())
+            .expect("integer sum representation exceeds native capacity");
+        let mut reversed = Vec::with_capacity(capacity);
         let mut carry = 0;
         loop {
             let a = left.next();
@@ -500,6 +543,51 @@ pub struct HtmlFloatingPointNumber {
 }
 
 impl HtmlFloatingPointNumber {
+    /// Changes representation of the actual finite binary64 bits, without
+    /// reparsing decimal serialization or introducing another rounding step.
+    pub(crate) fn exact_decimal(self) -> HtmlSignedDecimal {
+        let bits = self.value.to_bits();
+        let exponent_field = ((bits >> 52) & 0x7ff) as i32;
+        let fraction = bits & ((1_u64 << 52) - 1);
+        let (significand, exponent) = if exponent_field == 0 {
+            (fraction, -1074)
+        } else {
+            ((1_u64 << 52) | fraction, exponent_field - 1023 - 52)
+        };
+        if significand == 0 {
+            return HtmlSignedDecimal::from(HtmlInteger::from(0));
+        }
+        let mut coefficient = HtmlNonNegativeInteger::from(u128::from(significand));
+        let magnitude = if exponent >= 0 {
+            for _ in 0..exponent {
+                coefficient = coefficient.multiplied_by(2);
+            }
+            coefficient.into()
+        } else {
+            // The largest scale is 1074. n / 2^k = n * 5^k / 10^k exactly.
+            let scale = (-exponent) as usize;
+            for _ in 0..scale {
+                coefficient = coefficient.multiplied_by(5);
+            }
+            let digits = coefficient.digits;
+            let (integer, fraction) = if digits.len() > scale {
+                let split = digits.len() - scale;
+                (
+                    HtmlNonNegativeInteger {
+                        digits: digits[..split].to_owned(),
+                    },
+                    digits.as_bytes()[split..].to_vec(),
+                )
+            } else {
+                let mut fraction = vec![b'0'; scale];
+                fraction[scale - digits.len()..].copy_from_slice(digits.as_bytes());
+                (HtmlNonNegativeInteger::from(0), fraction)
+            };
+            HtmlNonNegativeDecimal::from_ascii_fraction(integer, fraction)
+        };
+        HtmlSignedDecimal::from_magnitude(magnitude, bits >> 63 != 0)
+    }
+
     /// Returns the finite binary64 value.
     pub fn value(&self) -> f64 {
         self.value
@@ -588,6 +676,50 @@ pub struct HtmlNonNegativeDecimal {
 }
 
 impl HtmlNonNegativeDecimal {
+    fn compare(&self, other: &Self) -> Ordering {
+        let integer = self.integer.compare(&other.integer);
+        if integer != Ordering::Equal {
+            return integer;
+        }
+        for index in 0..self.fraction.len().max(other.fraction.len()) {
+            let left = self.fraction.as_bytes().get(index).copied().unwrap_or(b'0');
+            let right = other
+                .fraction
+                .as_bytes()
+                .get(index)
+                .copied()
+                .unwrap_or(b'0');
+            let order = left.cmp(&right);
+            if order != Ordering::Equal {
+                return order;
+            }
+        }
+        Ordering::Equal
+    }
+
+    // Caller establishes the magnitude ordering before entering this operation.
+    fn subtracted_by(&self, other: &Self) -> Self {
+        let scale = self.fraction.len().max(other.fraction.len());
+        let mut fraction = vec![b'0'; scale];
+        let mut borrow = 0;
+        for index in (0..scale).rev() {
+            let left = self.fraction.as_bytes().get(index).copied().unwrap_or(b'0');
+            let right = other
+                .fraction
+                .as_bytes()
+                .get(index)
+                .copied()
+                .unwrap_or(b'0');
+            let difference = i16::from(left - b'0') - i16::from(right - b'0') - i16::from(borrow);
+            borrow = u8::from(difference < 0);
+            fraction[index] = b'0' + difference.rem_euclid(10) as u8;
+        }
+        Self::from_ascii_fraction(
+            self.integer.subtract_with_borrow(&other.integer, borrow),
+            fraction,
+        )
+    }
+
     /// Constructs a decimal from an exact integer and one or more fractional
     /// ASCII digits. Signs, whitespace, and recovery syntax are rejected.
     ///
@@ -698,6 +830,13 @@ impl HtmlNonNegativeDecimal {
         if self.fraction.is_empty() {
             self.integer.digits.clone()
         } else {
+            self.integer
+                .digits
+                .len()
+                .checked_add(1)
+                .and_then(|len| len.checked_add(self.fraction.len()))
+                .filter(|&len| len <= isize::MAX as usize)
+                .expect("decimal representation exceeds native capacity");
             format!("{}.{}", self.integer.digits, self.fraction)
         }
     }
@@ -709,6 +848,86 @@ impl From<HtmlNonNegativeInteger> for HtmlNonNegativeDecimal {
             integer,
             fraction: String::new(),
         }
+    }
+}
+
+/// An exact signed decimal quantity with a canonical nonnegative magnitude.
+///
+/// Zero is never negative. This native value retains arbitrary integer digits
+/// and significant fractional digits; it does not impose binary64 rounding.
+/// Native arithmetic and serialization use ordinary allocations, without an
+/// allocator-failure or cancellation guarantee.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct HtmlSignedDecimal {
+    magnitude: HtmlNonNegativeDecimal,
+    negative: bool,
+}
+
+impl HtmlSignedDecimal {
+    /// Constructs an exact quantity, normalizing either sign of zero to zero.
+    pub fn from_magnitude(magnitude: HtmlNonNegativeDecimal, negative: bool) -> Self {
+        Self {
+            negative: negative && !magnitude.is_zero(),
+            magnitude,
+        }
+    }
+
+    /// Returns the exact absolute value.
+    pub fn magnitude(&self) -> &HtmlNonNegativeDecimal {
+        &self.magnitude
+    }
+
+    /// Reports whether the mathematical quantity is below zero.
+    pub fn is_negative(&self) -> bool {
+        self.negative
+    }
+
+    /// Returns canonical decimal syntax, without an exponent or negative zero.
+    pub fn as_document_string(&self) -> DocumentString {
+        let mut result = self.magnitude.decimal_string();
+        if self.negative {
+            result
+                .len()
+                .checked_add(1)
+                .filter(|&len| len <= isize::MAX as usize)
+                .expect("signed decimal representation exceeds native capacity");
+            result.insert(0, '-');
+        }
+        result.into()
+    }
+
+    pub(crate) fn added_to(&self, other: &Self) -> Self {
+        if self.negative == other.negative {
+            return Self::from_magnitude(self.magnitude.added_to(&other.magnitude), self.negative);
+        }
+        match self.magnitude.compare(&other.magnitude) {
+            Ordering::Less => Self::from_magnitude(
+                other.magnitude.subtracted_by(&self.magnitude),
+                other.negative,
+            ),
+            Ordering::Equal => Self::from(HtmlInteger::from(0)),
+            Ordering::Greater => Self::from_magnitude(
+                self.magnitude.subtracted_by(&other.magnitude),
+                self.negative,
+            ),
+        }
+    }
+
+    pub(crate) fn multiplied_by(&self, multiplier: u32) -> Self {
+        Self::from_magnitude(self.magnitude.multiplied_by(multiplier), self.negative)
+    }
+
+    pub(crate) fn integer_difference(
+        left: HtmlNonNegativeInteger,
+        right: HtmlNonNegativeInteger,
+    ) -> Self {
+        Self::from_magnitude(left.into(), false).added_to(&Self::from_magnitude(right.into(), true))
+    }
+}
+
+impl From<HtmlInteger> for HtmlSignedDecimal {
+    fn from(value: HtmlInteger) -> Self {
+        Self::from_magnitude(value.magnitude.into(), value.negative)
     }
 }
 
@@ -1316,6 +1535,114 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn signed_decimal(integer: u128, fraction: &str, negative: bool) -> HtmlSignedDecimal {
+        HtmlSignedDecimal::from_magnitude(
+            HtmlNonNegativeDecimal::with_fraction_digits(integer.into(), &fraction.into()).unwrap(),
+            negative,
+        )
+    }
+
+    #[test]
+    fn signed_decimal_addition_handles_borrow_sign_and_cancellation_exactly() {
+        for (left, right, expected) in [
+            (
+                signed_decimal(1000, "0", true),
+                signed_decimal(999, "999999", false),
+                "-0.000001",
+            ),
+            (
+                signed_decimal(999, "999999", false),
+                signed_decimal(1000, "0", true),
+                "-0.000001",
+            ),
+            (
+                signed_decimal(0, "001", false),
+                signed_decimal(0, "0001", true),
+                "0.0009",
+            ),
+            (
+                signed_decimal(0, "001", true),
+                signed_decimal(0, "0001", false),
+                "-0.0009",
+            ),
+            (
+                signed_decimal(0, "99", false),
+                signed_decimal(0, "01", false),
+                "1",
+            ),
+            (
+                signed_decimal(0, "99", true),
+                signed_decimal(0, "01", true),
+                "-1",
+            ),
+            (
+                signed_decimal(123, "456", false),
+                signed_decimal(123, "456", true),
+                "0",
+            ),
+        ] {
+            assert_eq!(
+                left.added_to(&right).as_document_string(),
+                DocumentString::from(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn exact_magnitude_order_uses_fractional_zero_padding_and_integer_width() {
+        assert_eq!(
+            signed_decimal(1, "1", false)
+                .magnitude
+                .compare(&signed_decimal(1, "099999", false).magnitude),
+            Ordering::Greater
+        );
+        assert_eq!(
+            signed_decimal(9, "999", false)
+                .magnitude
+                .compare(&signed_decimal(10, "0", false).magnitude),
+            Ordering::Less
+        );
+        assert_eq!(
+            signed_decimal(1, "1000", false)
+                .magnitude
+                .compare(&signed_decimal(1, "1", false).magnitude),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn exact_integer_difference_never_projects_an_arbitrary_magnitude() {
+        let huge = HtmlNonNegativeInteger::from_decimal_digits(
+            &"10000000000000000000000000000000000000000".into(),
+        )
+        .unwrap();
+        assert_eq!(
+            HtmlSignedDecimal::integer_difference(huge.clone(), 1_u128.into()).as_document_string(),
+            DocumentString::from("9999999999999999999999999999999999999999")
+        );
+        assert_eq!(
+            HtmlSignedDecimal::integer_difference(1_u128.into(), huge).as_document_string(),
+            DocumentString::from("-9999999999999999999999999999999999999999")
+        );
+    }
+
+    #[test]
+    fn finite_binary64_representation_preserves_sign_zero_and_exponent_branches() {
+        for (value, expected) in [
+            (0.0, "0"),
+            (-0.0, "0"),
+            (-2.125, "-2.125"),
+            (0.5, "0.5"),
+            (9007199254740992.0, "9007199254740992"),
+        ] {
+            let number = HtmlFloatingPointNumber::try_from(value).unwrap();
+            assert_eq!(
+                number.exact_decimal().as_document_string(),
+                DocumentString::from(expected)
+            );
+        }
+    }
 
     fn text(input: &str) -> DocumentString {
         input.into()

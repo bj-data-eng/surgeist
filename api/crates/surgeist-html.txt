@@ -814,6 +814,9 @@ pub surgeist_html::HtmlInputNumericStepOrigin::Recovered
 pub enum surgeist_html::HtmlInputSizeValue
 pub surgeist_html::HtmlInputSizeValue::NoPositiveRequest
 pub surgeist_html::HtmlInputSizeValue::PositiveCharacters(surgeist_html::HtmlNonNegativeInteger)
+pub enum surgeist_html::HtmlInputTemporalCoordinateUnit
+pub surgeist_html::HtmlInputTemporalCoordinateUnit::Milliseconds
+pub surgeist_html::HtmlInputTemporalCoordinateUnit::Months
 pub enum surgeist_html::HtmlInputType
 pub surgeist_html::HtmlInputType::Button
 pub surgeist_html::HtmlInputType::Checkbox
@@ -2101,6 +2104,8 @@ pub fn surgeist_html::HtmlDate::month(&self) -> u8
 pub fn surgeist_html::HtmlDate::new(year: surgeist_html::HtmlYear, month: u8, day: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
 pub fn surgeist_html::HtmlDate::to_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlDate::year(&self) -> &surgeist_html::HtmlYear
+impl surgeist_html::HtmlDate
+pub fn surgeist_html::HtmlDate::input_coordinate(&self) -> surgeist_html::HtmlInputTemporalCoordinate
 pub struct surgeist_html::HtmlDeclarativeShadowRoot
 impl surgeist_html::HtmlDeclarativeShadowRoot
 pub fn surgeist_html::HtmlDeclarativeShadowRoot::contents(&self) -> &surgeist_html::HtmlNodeId
@@ -2436,6 +2441,22 @@ pub fn surgeist_html::HtmlInputStep::as_document_string(&self) -> surgeist_html:
 pub fn surgeist_html::HtmlInputStep::into_step_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlInputStep::number(&self) -> core::option::Option<surgeist_html::HtmlFloatingPointNumber>
 pub fn surgeist_html::HtmlInputStep::positive(number: surgeist_html::HtmlFloatingPointNumber) -> core::result::Result<Self, surgeist_html::HtmlNonPositiveInputStepError>
+pub struct surgeist_html::HtmlInputTemporalCoordinate
+impl surgeist_html::HtmlInputTemporalCoordinate
+pub fn surgeist_html::HtmlInputTemporalCoordinate::default_allowed_step(&self) -> surgeist_html::HtmlNonNegativeDecimal
+pub fn surgeist_html::HtmlInputTemporalCoordinate::default_step(&self) -> u32
+pub fn surgeist_html::HtmlInputTemporalCoordinate::default_step_base(&self) -> Self
+pub fn surgeist_html::HtmlInputTemporalCoordinate::has_periodic_domain(&self) -> bool
+pub fn surgeist_html::HtmlInputTemporalCoordinate::scale_step(&self, step: surgeist_html::HtmlFloatingPointNumber) -> core::result::Result<surgeist_html::HtmlNonNegativeDecimal, surgeist_html::HtmlInputTemporalStepError>
+pub fn surgeist_html::HtmlInputTemporalCoordinate::source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlInputTemporalCoordinate::state(&self) -> surgeist_html::HtmlInputType
+pub fn surgeist_html::HtmlInputTemporalCoordinate::step_scale_factor(&self) -> u32
+pub fn surgeist_html::HtmlInputTemporalCoordinate::unit(&self) -> surgeist_html::HtmlInputTemporalCoordinateUnit
+pub fn surgeist_html::HtmlInputTemporalCoordinate::value(&self) -> &surgeist_html::HtmlSignedDecimal
+pub struct surgeist_html::HtmlInputTemporalStepError
+impl core::error::Error for surgeist_html::HtmlInputTemporalStepError
+impl core::fmt::Display for surgeist_html::HtmlInputTemporalStepError
+pub fn surgeist_html::HtmlInputTemporalStepError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlInteger
 impl surgeist_html::HtmlInteger
 pub fn surgeist_html::HtmlInteger::as_document_string(&self) -> surgeist_html::DocumentString
@@ -2448,6 +2469,8 @@ impl surgeist_html::HtmlInteger
 pub fn surgeist_html::HtmlInteger::into_tabindex_attribute(self) -> surgeist_html::Attribute
 impl core::convert::From<i128> for surgeist_html::HtmlInteger
 pub fn surgeist_html::HtmlInteger::from(value: i128) -> Self
+impl core::convert::From<surgeist_html::HtmlInteger> for surgeist_html::HtmlSignedDecimal
+pub fn surgeist_html::HtmlSignedDecimal::from(value: surgeist_html::HtmlInteger) -> Self
 impl core::convert::TryFrom<surgeist_html::HtmlInteger> for surgeist_html::HtmlNonNegativeInteger
 pub type surgeist_html::HtmlNonNegativeInteger::Error = surgeist_html::HtmlNegativeIntegerError
 pub fn surgeist_html::HtmlNonNegativeInteger::try_from(value: surgeist_html::HtmlInteger) -> core::result::Result<Self, Self::Error>
@@ -2521,6 +2544,8 @@ pub fn surgeist_html::HtmlMeterState::minimum(&self) -> surgeist_html::HtmlFloat
 pub fn surgeist_html::HtmlMeterState::optimum(&self) -> surgeist_html::HtmlFloatingPointNumber
 pub fn surgeist_html::HtmlMeterState::value(&self) -> surgeist_html::HtmlFloatingPointNumber
 pub struct surgeist_html::HtmlMonth
+impl surgeist_html::HtmlMonth
+pub fn surgeist_html::HtmlMonth::input_coordinate(&self) -> surgeist_html::HtmlInputTemporalCoordinate
 impl surgeist_html::HtmlMonth
 pub fn surgeist_html::HtmlMonth::month(&self) -> u8
 pub fn surgeist_html::HtmlMonth::new(year: surgeist_html::HtmlYear, month: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
@@ -2697,6 +2722,8 @@ impl surgeist_html::HtmlParsedLocalDateTime
 pub fn surgeist_html::HtmlParsedLocalDateTime::date(&self) -> &surgeist_html::HtmlDate
 pub fn surgeist_html::HtmlParsedLocalDateTime::new(date: surgeist_html::HtmlDate, time: surgeist_html::HtmlParsedTime) -> Self
 pub fn surgeist_html::HtmlParsedLocalDateTime::time(&self) -> &surgeist_html::HtmlParsedTime
+impl surgeist_html::HtmlParsedLocalDateTime
+pub fn surgeist_html::HtmlParsedLocalDateTime::input_coordinate(&self) -> surgeist_html::HtmlInputTemporalCoordinate
 impl core::convert::From<surgeist_html::HtmlLocalDateTime> for surgeist_html::HtmlParsedLocalDateTime
 pub fn surgeist_html::HtmlParsedLocalDateTime::from(value: surgeist_html::HtmlLocalDateTime) -> Self
 impl core::convert::TryFrom<surgeist_html::HtmlParsedLocalDateTime> for surgeist_html::HtmlLocalDateTime
@@ -2708,6 +2735,8 @@ pub fn surgeist_html::HtmlParsedTime::hour(&self) -> u8
 pub fn surgeist_html::HtmlParsedTime::minute(&self) -> u8
 pub fn surgeist_html::HtmlParsedTime::new(hour: u8, minute: u8, second: surgeist_html::HtmlNonNegativeDecimal) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
 pub fn surgeist_html::HtmlParsedTime::second(&self) -> &surgeist_html::HtmlNonNegativeDecimal
+impl surgeist_html::HtmlParsedTime
+pub fn surgeist_html::HtmlParsedTime::input_coordinate(&self) -> surgeist_html::HtmlInputTemporalCoordinate
 impl core::convert::From<surgeist_html::HtmlTime> for surgeist_html::HtmlParsedTime
 pub fn surgeist_html::HtmlParsedTime::from(value: surgeist_html::HtmlTime) -> Self
 impl core::convert::TryFrom<surgeist_html::HtmlParsedTime> for surgeist_html::HtmlTime
@@ -2874,6 +2903,14 @@ pub fn surgeist_html::HtmlShadowRootProperties::mode(self) -> surgeist_html::Htm
 pub fn surgeist_html::HtmlShadowRootProperties::new(mode: surgeist_html::HtmlShadowRootMode, slot_assignment: surgeist_html::HtmlSlotAssignment, delegates_focus: bool, clonable: bool, serializable: bool) -> Self
 pub fn surgeist_html::HtmlShadowRootProperties::serializable(self) -> bool
 pub fn surgeist_html::HtmlShadowRootProperties::slot_assignment(self) -> surgeist_html::HtmlSlotAssignment
+pub struct surgeist_html::HtmlSignedDecimal
+impl surgeist_html::HtmlSignedDecimal
+pub fn surgeist_html::HtmlSignedDecimal::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlSignedDecimal::from_magnitude(magnitude: surgeist_html::HtmlNonNegativeDecimal, negative: bool) -> Self
+pub fn surgeist_html::HtmlSignedDecimal::is_negative(&self) -> bool
+pub fn surgeist_html::HtmlSignedDecimal::magnitude(&self) -> &surgeist_html::HtmlNonNegativeDecimal
+impl core::convert::From<surgeist_html::HtmlInteger> for surgeist_html::HtmlSignedDecimal
+pub fn surgeist_html::HtmlSignedDecimal::from(value: surgeist_html::HtmlInteger) -> Self
 pub struct surgeist_html::HtmlSlotAssignedNodes
 impl surgeist_html::HtmlSlotAssignedNodes
 pub fn surgeist_html::HtmlSlotAssignedNodes::new(slot: surgeist_html::HtmlCaptureSubjectId, nodes: core::option::Option<alloc::vec::Vec<surgeist_html::HtmlCaptureSubjectId>>) -> Self
@@ -3173,6 +3210,8 @@ pub fn surgeist_html::HtmlValueReport<A, R>::raw(&self) -> core::option::Option<
 pub fn surgeist_html::HtmlValueReport<A, R>::recovery(&self) -> &surgeist_html::HtmlValueRecoveryState<R>
 pub fn surgeist_html::HtmlValueReport<A, R>::syntax(&self) -> surgeist_html::HtmlValueSyntax
 pub struct surgeist_html::HtmlWeek
+impl surgeist_html::HtmlWeek
+pub fn surgeist_html::HtmlWeek::input_coordinate(&self) -> surgeist_html::HtmlInputTemporalCoordinate
 impl surgeist_html::HtmlWeek
 pub fn surgeist_html::HtmlWeek::new(year: surgeist_html::HtmlYear, week: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
 pub fn surgeist_html::HtmlWeek::to_document_string(&self) -> surgeist_html::DocumentString

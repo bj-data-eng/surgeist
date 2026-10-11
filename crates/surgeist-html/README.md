@@ -101,6 +101,19 @@ with day zero at Gregorian `0001-01-01`; this representation permits an offset
 to carry recovery into the preceding day without extending HTML's author-year
 grammar. No host clock or time zone is inferred.
 
+Native date, month, week, parsed time and parsed local date/time values provide
+exact input coordinates. Month uses signed whole months from January 1970;
+the other states use their specified millisecond coordinates. Significant
+fractional digits and arbitrary years survive conversion, including pre-epoch
+local fractions. Each result identifies its state, source clause, units, step
+scale, default step and base; Time retains its periodic-domain designation.
+Scaling a recovered positive finite step preserves its actual binary64 value
+exactly before mathematical multiplication. These native methods use ordinary
+allocations without cancellation or allocator-failure recovery. They do not
+complete raw temporal constraints, current validity, inverse conversions or
+stepping; the attribute constraint interpreter still reports that capability
+as unsupported.
+
 Token authoring preserves exact spelling and order. Unique ordered or unordered
 sets require an explicit case-sensitive or ASCII-insensitive comparison.
 Comma tokens can be empty and retain internal whitespace. These common values
