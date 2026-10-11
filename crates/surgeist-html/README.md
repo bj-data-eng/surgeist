@@ -276,6 +276,17 @@ canonical emitted decimals and preserves absent attributes. These operations use
 ordinary allocation and per-value raw UTF-16 admission; captured Progress below
 owns effective quantities and determinate state.
 
+`meter_attributes` checks the six authored number roles, retaining each original
+attribute, strict grammar and common floating-point report. Its nine independent
+exact comparisons use zero and one only for absent min/max; malformed present
+bounds remain unavailable. Value is required and must lie within the bounds,
+as must present low/high/optimum values. Low must not exceed high when both exist.
+Optimum may lie outside the low/high band. `HtmlMeterAttributes::from_syntax`
+checks a coupled native bundle and preserves accepted decimal spellings exactly,
+including numbers beyond binary64 range or precision. Emission moves those strings
+into ordered attributes. Both operations use ordinary allocation; raw interpretation
+uses per-value admission. Captured Meter below owns processing defaults and clamping.
+
 `HtmlAuthoredArea` supplies exact circle, rectangle and polygon values or a
 symbolic whole-image area. Native rectangles require increasing x and y edges;
 polygons require at least three vertices. Circle radius may be zero. Canonical

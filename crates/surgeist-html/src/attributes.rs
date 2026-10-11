@@ -2009,6 +2009,9 @@ pub use area::*;
 mod progress;
 pub use progress::*;
 
+mod meter;
+pub use meter::*;
+
 #[cfg(test)]
 mod stylesheet_context_tests {
     use super::*;

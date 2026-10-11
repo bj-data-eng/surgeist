@@ -974,6 +974,49 @@ pub surgeist_html::HtmlMachineReadableTime::TimeZoneOffset(surgeist_html::HtmlTi
 pub surgeist_html::HtmlMachineReadableTime::Week(surgeist_html::HtmlWeek)
 pub surgeist_html::HtmlMachineReadableTime::Year(surgeist_html::HtmlYear)
 pub surgeist_html::HtmlMachineReadableTime::YearlessDate(surgeist_html::HtmlYearlessDate)
+pub enum surgeist_html::HtmlMeterAuthorRelation
+pub surgeist_html::HtmlMeterAuthorRelation::HighMaximum
+pub surgeist_html::HtmlMeterAuthorRelation::LowHigh
+pub surgeist_html::HtmlMeterAuthorRelation::LowMaximum
+pub surgeist_html::HtmlMeterAuthorRelation::MinimumHigh
+pub surgeist_html::HtmlMeterAuthorRelation::MinimumLow
+pub surgeist_html::HtmlMeterAuthorRelation::MinimumOptimum
+pub surgeist_html::HtmlMeterAuthorRelation::MinimumValue
+pub surgeist_html::HtmlMeterAuthorRelation::OptimumMaximum
+pub surgeist_html::HtmlMeterAuthorRelation::ValueMaximum
+pub enum surgeist_html::HtmlMeterNativeError
+pub surgeist_html::HtmlMeterNativeError::RelationViolation(surgeist_html::HtmlMeterAuthorRelation)
+pub surgeist_html::HtmlMeterNativeError::RepresentationUnavailable
+pub surgeist_html::HtmlMeterNativeError::Syntax
+pub surgeist_html::HtmlMeterNativeError::Syntax::error: surgeist_html::HtmlValueSyntaxError
+pub surgeist_html::HtmlMeterNativeError::Syntax::role: surgeist_html::HtmlMeterNumberRole
+impl core::error::Error for surgeist_html::HtmlMeterNativeError
+impl core::fmt::Display for surgeist_html::HtmlMeterNativeError
+pub fn surgeist_html::HtmlMeterNativeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlMeterNumberAuthorState
+pub surgeist_html::HtmlMeterNumberAuthorState::Conforming
+pub surgeist_html::HtmlMeterNumberAuthorState::MissingOptional
+pub surgeist_html::HtmlMeterNumberAuthorState::MissingRequired
+pub surgeist_html::HtmlMeterNumberAuthorState::Nonconforming(surgeist_html::HtmlValueSyntaxError)
+pub surgeist_html::HtmlMeterNumberAuthorState::RepresentationUnavailable
+pub surgeist_html::HtmlMeterNumberAuthorState::Unapplied
+pub enum surgeist_html::HtmlMeterNumberRole
+pub surgeist_html::HtmlMeterNumberRole::High
+pub surgeist_html::HtmlMeterNumberRole::Low
+pub surgeist_html::HtmlMeterNumberRole::Maximum
+pub surgeist_html::HtmlMeterNumberRole::Minimum
+pub surgeist_html::HtmlMeterNumberRole::Optimum
+pub surgeist_html::HtmlMeterNumberRole::Value
+pub enum surgeist_html::HtmlMeterRelationState
+pub surgeist_html::HtmlMeterRelationState::Conforming
+pub surgeist_html::HtmlMeterRelationState::NotRequired
+pub surgeist_html::HtmlMeterRelationState::Unapplied
+pub surgeist_html::HtmlMeterRelationState::Unavailable(surgeist_html::HtmlMeterRelationUnavailable)
+pub surgeist_html::HtmlMeterRelationState::Violated
+pub enum surgeist_html::HtmlMeterRelationUnavailable
+pub surgeist_html::HtmlMeterRelationUnavailable::MissingRequiredValue
+pub surgeist_html::HtmlMeterRelationUnavailable::Representation
+pub surgeist_html::HtmlMeterRelationUnavailable::Syntax(surgeist_html::HtmlMeterNumberRole)
 pub enum surgeist_html::HtmlModificationTimestamp<'a>
 pub surgeist_html::HtmlModificationTimestamp::Date(&'a surgeist_html::HtmlDate)
 pub surgeist_html::HtmlModificationTimestamp::Global(&'a surgeist_html::HtmlParsedGlobalDateTime)
@@ -2963,6 +3006,37 @@ pub fn surgeist_html::HtmlParsedLocalDateTime::from(value: surgeist_html::HtmlLo
 impl core::convert::TryFrom<surgeist_html::HtmlParsedLocalDateTime> for surgeist_html::HtmlLocalDateTime
 pub type surgeist_html::HtmlLocalDateTime::Error = surgeist_html::HtmlTemporalPrecisionError
 pub fn surgeist_html::HtmlLocalDateTime::try_from(value: surgeist_html::HtmlParsedLocalDateTime) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlMeterAttributeInput<'a>
+pub surgeist_html::HtmlMeterAttributeInput::high: core::option::Option<&'a surgeist_html::Attribute>
+pub surgeist_html::HtmlMeterAttributeInput::low: core::option::Option<&'a surgeist_html::Attribute>
+pub surgeist_html::HtmlMeterAttributeInput::maximum: core::option::Option<&'a surgeist_html::Attribute>
+pub surgeist_html::HtmlMeterAttributeInput::minimum: core::option::Option<&'a surgeist_html::Attribute>
+pub surgeist_html::HtmlMeterAttributeInput::optimum: core::option::Option<&'a surgeist_html::Attribute>
+pub surgeist_html::HtmlMeterAttributeInput::value: core::option::Option<&'a surgeist_html::Attribute>
+pub struct surgeist_html::HtmlMeterAttributeReport
+impl surgeist_html::HtmlMeterAttributeReport
+pub fn surgeist_html::HtmlMeterAttributeReport::high(&self) -> &surgeist_html::HtmlMeterNumberReport
+pub fn surgeist_html::HtmlMeterAttributeReport::low(&self) -> &surgeist_html::HtmlMeterNumberReport
+pub fn surgeist_html::HtmlMeterAttributeReport::maximum(&self) -> &surgeist_html::HtmlMeterNumberReport
+pub fn surgeist_html::HtmlMeterAttributeReport::minimum(&self) -> &surgeist_html::HtmlMeterNumberReport
+pub fn surgeist_html::HtmlMeterAttributeReport::optimum(&self) -> &surgeist_html::HtmlMeterNumberReport
+pub fn surgeist_html::HtmlMeterAttributeReport::relation(&self, relation: surgeist_html::HtmlMeterAuthorRelation) -> surgeist_html::HtmlMeterRelationState
+pub fn surgeist_html::HtmlMeterAttributeReport::value(&self) -> &surgeist_html::HtmlMeterNumberReport
+pub struct surgeist_html::HtmlMeterAttributes
+impl surgeist_html::HtmlMeterAttributes
+pub fn surgeist_html::HtmlMeterAttributes::from_syntax(value: surgeist_html::DocumentString, minimum: core::option::Option<surgeist_html::DocumentString>, maximum: core::option::Option<surgeist_html::DocumentString>, low: core::option::Option<surgeist_html::DocumentString>, high: core::option::Option<surgeist_html::DocumentString>, optimum: core::option::Option<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlMeterNativeError>
+pub fn surgeist_html::HtmlMeterAttributes::high(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlMeterAttributes::into_attributes(self) -> alloc::vec::Vec<surgeist_html::Attribute>
+pub fn surgeist_html::HtmlMeterAttributes::low(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlMeterAttributes::maximum(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlMeterAttributes::minimum(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlMeterAttributes::optimum(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlMeterAttributes::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlMeterNumberReport
+impl surgeist_html::HtmlMeterNumberReport
+pub fn surgeist_html::HtmlMeterNumberReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
+pub fn surgeist_html::HtmlMeterNumberReport::author(&self) -> surgeist_html::HtmlMeterNumberAuthorState
+pub fn surgeist_html::HtmlMeterNumberReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>>
 pub struct surgeist_html::HtmlMeterState
 impl surgeist_html::HtmlMeterState
 pub fn surgeist_html::HtmlMeterState::high(&self) -> surgeist_html::HtmlFloatingPointNumber
@@ -3803,6 +3877,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::inputmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputMode>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::meter_attributes(&self, element: &surgeist_html::QualifiedName, input: surgeist_html::HtmlMeterAttributeInput<'_>) -> core::result::Result<surgeist_html::HtmlMeterAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::modification_datetime(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlModificationDatetimeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
