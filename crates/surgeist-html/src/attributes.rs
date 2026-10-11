@@ -181,6 +181,8 @@ pub enum HtmlAttributeRecognition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAttributeConformanceError {
     UnrecognizedKeyword,
+    /// A source-recognized alias is forbidden in authored markup.
+    NonconformingKeyword,
     BooleanSpelling,
     BdoDirectionRequired,
     BdoDirectionMustBeLtrOrRtl,
@@ -516,6 +518,7 @@ struct Keyword<T> {
     spelling: &'static str,
     canonical: &'static str,
     state: T,
+    conforming: bool,
 }
 
 struct EnumRule<T: 'static> {
@@ -706,7 +709,7 @@ macro_rules! enum_rule {
             metadata: RuleMetadata { attribute: KnownHtmlAttribute::$attribute, rows: &[$($row),+],
                 source: source!($source), context: $context,
                 vocabulary_source: enum_rule!(@vocabulary $($vocabulary)?) },
-            keywords: &[$(Keyword { spelling: $spelling, canonical: $canonical, state: $state }),+],
+            keywords: &[$(Keyword { spelling: $spelling, canonical: $canonical, state: $state, conforming: true }),+],
             missing: $missing, invalid: $invalid, empty: $empty, exact_keywords: false,
         };
     };
@@ -868,26 +871,31 @@ const OL_TYPE: EnumRule<HtmlOlType> = EnumRule {
         Keyword {
             spelling: "1",
             canonical: "1",
+            conforming: true,
             state: HtmlOlType::Decimal,
         },
         Keyword {
             spelling: "a",
             canonical: "a",
+            conforming: true,
             state: HtmlOlType::LowerAlpha,
         },
         Keyword {
             spelling: "A",
             canonical: "A",
+            conforming: true,
             state: HtmlOlType::UpperAlpha,
         },
         Keyword {
             spelling: "i",
             canonical: "i",
+            conforming: true,
             state: HtmlOlType::LowerRoman,
         },
         Keyword {
             spelling: "I",
             canonical: "I",
+            conforming: true,
             state: HtmlOlType::UpperRoman,
         },
     ],
@@ -1490,7 +1498,13 @@ impl HtmlValueInterpreter {
                         matched: keyword.spelling,
                         canonical: keyword.canonical,
                     };
-                    result.author = HtmlAttributeAuthorState::Conforming;
+                    result.author = if keyword.conforming {
+                        HtmlAttributeAuthorState::Conforming
+                    } else {
+                        HtmlAttributeAuthorState::Nonconforming(
+                            HtmlAttributeConformanceError::NonconformingKeyword,
+                        )
+                    };
                     result.intrinsic = Some(keyword.state);
                 } else if value.is_empty() {
                     result.recognition = HtmlAttributeRecognition::Empty;
@@ -1988,6 +2002,9 @@ pub use srcset::*;
 
 mod modification;
 pub use modification::*;
+
+mod area;
+pub use area::*;
 
 #[cfg(test)]
 mod stylesheet_context_tests {

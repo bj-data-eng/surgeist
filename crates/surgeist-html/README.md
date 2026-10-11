@@ -232,6 +232,28 @@ current-value sanitization, periodic membership, constraint validation or
 stepping. Raw admission is per supplied value; native conversion retains its
 ordinary allocation contract.
 
+`HtmlAuthoredArea` supplies exact circle, rectangle and polygon values or a
+symbolic whole-image area. Native rectangles require increasing x and y edges;
+polygons require at least three vertices. Circle radius may be zero. Canonical
+attributes serialize arbitrary integers directly, without a floating projection.
+
+`area_coordinates` retains both supplied attributes, the shape report, common
+floating-point-list evidence and separate shape-specific author constraints.
+Missing or invalid shape selects Rectangle. The recognized circ, polygon and
+rectangle recovery aliases remain explicitly nonconforming. Author coordinates
+require exact mathematical integers: decimal and exponent spellings can qualify,
+while a fraction rounded to an integer by binary64 cannot. Rectangle ordering is
+also checked exactly without expanding large exponents.
+
+The processing descriptor reuses the common recovery list, including zero
+substitution for scalar parse failures. It ignores excess circle/rectangle
+coordinates, normalizes reversed rectangle edges, drops an unmatched final
+polygon coordinate and reports insufficient coordinates or nonpositive circle
+radius as Empty. WholeImage stays symbolic. These descriptors do not resolve
+image dimensions, map association, layering or hit testing. Native values and
+reports use ordinary Rust allocation and the interpreter's per-value UTF-16
+admission cap; they supply no semantic-session ledger or cancellation guarantee.
+
 `modification_datetime` interprets `datetime` on HTML `ins` and `del` using the
 [pinned modification clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#attr-mod-datetime).
 Its report keeps strict date-with-optional-time authorship separate from common

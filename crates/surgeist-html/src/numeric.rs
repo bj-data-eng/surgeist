@@ -821,6 +821,16 @@ impl HtmlInteger {
         }
     }
 
+    /// Exact signed ordering without a machine-integer projection.
+    pub(crate) fn compare(&self, other: &Self) -> Ordering {
+        match (self.negative, other.negative) {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => self.magnitude.compare(&other.magnitude),
+            (true, true) => self.magnitude.compare(&other.magnitude).reverse(),
+        }
+    }
+
     /// Reports whether the mathematical value is below zero.
     pub fn is_negative(&self) -> bool {
         self.negative
@@ -1881,6 +1891,67 @@ impl HtmlScientificDecimalKey {
     pub(crate) fn is_positive(&self) -> bool {
         !self.negative && !self.is_zero()
     }
+
+    /// Canonical nonzero significands have no trailing zeroes, so a negative
+    /// normalized exponent cannot describe an integer. Exact zero is integral.
+    pub(crate) fn is_integer(&self) -> bool {
+        self.is_zero() || !self.exponent.is_negative()
+    }
+
+    /// Compares mathematical decimals with storage bounded by authored digits.
+    /// Decimal orders use one checked exact integer adjustment; significands
+    /// are compared with virtual trailing zeroes, never exponent expansion.
+    pub(crate) fn compare(&self, other: &Self) -> Result<Ordering, ScientificDecimalKeyError> {
+        if self.is_zero() || other.is_zero() {
+            return Ok(match (self.is_zero(), other.is_zero()) {
+                (true, true) => Ordering::Equal,
+                (true, false) => {
+                    if other.negative {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
+                }
+                (false, true) => {
+                    if self.negative {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
+                }
+                (false, false) => unreachable!(),
+            });
+        }
+        if self.negative != other.negative {
+            return Ok(if self.negative {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            });
+        }
+        let left = self.significand.decimal_digits();
+        let right = other.significand.decimal_digits();
+        let left_order = adjust_scientific_exponent(self.exponent.clone(), 0, left.len())?;
+        let right_order = adjust_scientific_exponent(other.exponent.clone(), 0, right.len())?;
+        let mut order = left_order.compare(&right_order);
+        if order == Ordering::Equal {
+            order = left
+                .bytes()
+                .chain(std::iter::repeat(b'0'))
+                .take(left.len().max(right.len()))
+                .cmp(
+                    right
+                        .bytes()
+                        .chain(std::iter::repeat(b'0'))
+                        .take(left.len().max(right.len())),
+                );
+        }
+        Ok(if self.negative {
+            order.reverse()
+        } else {
+            order
+        })
+    }
 }
 
 /// Native representation exhaustion is not a rejection of decimal grammar.
@@ -1900,7 +1971,15 @@ pub(crate) enum ScientificDecimalKeyError {
 pub(crate) fn strict_scientific_decimal_key(
     input: &DocumentString,
 ) -> Result<HtmlScientificDecimalKey, ScientificDecimalKeyError> {
-    let prefix = floating_point_prefix(input.code_units(), FloatingPointParseMode::Author)
+    strict_scientific_decimal_key_units(input.code_units())
+}
+
+/// Borrowed token entry for common-list consumers; the scanner is shared with
+/// scalar author parsing and no substring DocumentString allocation is needed.
+pub(crate) fn strict_scientific_decimal_key_units(
+    input: &[u16],
+) -> Result<HtmlScientificDecimalKey, ScientificDecimalKeyError> {
+    let prefix = floating_point_prefix(input, FloatingPointParseMode::Author)
         .map_err(ScientificDecimalKeyError::Syntax)?;
     let digit_count = prefix
         .integer_digits
@@ -4176,6 +4255,80 @@ mod tests {
         assert_eq!(
             parse_dimension_list(&text(huge)).as_document_string(),
             text("340282366920938463463374607431768211456.00012*")
+        );
+    }
+    #[test]
+    fn scientific_integer_constraint_is_exact_before_float_rounding() {
+        for input in ["0", "-0e999", "1.0", "100e-2", "1e999", "-42"] {
+            assert!(
+                strict_scientific_decimal_key(&text(input))
+                    .unwrap()
+                    .is_integer(),
+                "{input}"
+            );
+        }
+        for input in ["1.00000000000000001", "1e-999", "100e-3", "-.01"] {
+            assert!(
+                !strict_scientific_decimal_key(&text(input))
+                    .unwrap()
+                    .is_integer(),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn scientific_order_handles_sign_zero_virtual_digits_and_unbounded_exponents() {
+        for (a, b, expected) in [
+            ("-0", "0e999", Ordering::Equal),
+            ("-1", "0", Ordering::Less),
+            ("0", "-1", Ordering::Greater),
+            ("0", "1", Ordering::Less),
+            ("1", "0", Ordering::Greater),
+            ("1", "1.00000000000000001", Ordering::Less),
+            ("1.2", "1.20", Ordering::Equal),
+            ("12e-1", "1.19", Ordering::Greater),
+            ("-12e-1", "-1.19", Ordering::Less),
+            ("999", "1e3", Ordering::Less),
+            (
+                "9e999999999999999999999999",
+                "1e1000000000000000000000000",
+                Ordering::Less,
+            ),
+            ("9007199254740992", "9007199254740993", Ordering::Less),
+        ] {
+            let left = strict_scientific_decimal_key(&text(a)).unwrap();
+            let right = strict_scientific_decimal_key(&text(b)).unwrap();
+            assert_eq!(left.compare(&right), Ok(expected), "{a} vs {b}");
+            assert_eq!(right.compare(&left), Ok(expected.reverse()));
+            assert_eq!(
+                strict_scientific_decimal_key_units(text(a).code_units()).unwrap(),
+                left
+            );
+        }
+    }
+
+    #[test]
+    fn signed_integer_order_uses_arbitrary_magnitudes() {
+        let magnitude = HtmlNonNegativeInteger::from_decimal_digits(&text(
+            "340282366920938463463374607431768211456",
+        ))
+        .unwrap();
+        let positive = HtmlInteger::from_magnitude(magnitude.clone(), false);
+        let negative = HtmlInteger::from_magnitude(magnitude, true);
+        assert_eq!(
+            negative.compare(&HtmlInteger::from(i128::MIN)),
+            Ordering::Less
+        );
+        assert_eq!(
+            positive.compare(&HtmlInteger::from(i128::MAX)),
+            Ordering::Greater
+        );
+        assert_eq!(negative.compare(&positive), Ordering::Less);
+        assert_eq!(positive.compare(&positive), Ordering::Equal);
+        assert_eq!(
+            HtmlInteger::from(-2).compare(&HtmlInteger::from(-1)),
+            Ordering::Less
         );
     }
 }

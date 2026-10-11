@@ -30,6 +30,48 @@ pub surgeist_html::HtmlAcceptSpecifierKind::Extension
 pub surgeist_html::HtmlAcceptSpecifierKind::Image
 pub surgeist_html::HtmlAcceptSpecifierKind::SymbolicMime
 pub surgeist_html::HtmlAcceptSpecifierKind::Video
+pub enum surgeist_html::HtmlAreaCoordinatesAuthorError
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::Cardinality
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::ForbiddenPresence
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::InvalidListSyntax
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::MissingRequired
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::NegativeRadius
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonincreasingX
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonincreasingY
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonintegerItem
+pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonintegerItem::index: usize
+pub enum surgeist_html::HtmlAreaCoordinatesAuthorState
+pub surgeist_html::HtmlAreaCoordinatesAuthorState::Conforming
+pub surgeist_html::HtmlAreaCoordinatesAuthorState::Nonconforming(surgeist_html::HtmlAreaCoordinatesAuthorError)
+pub surgeist_html::HtmlAreaCoordinatesAuthorState::RepresentationUnavailable
+pub surgeist_html::HtmlAreaCoordinatesAuthorState::Unapplied
+pub enum surgeist_html::HtmlAreaEmptyReason
+pub surgeist_html::HtmlAreaEmptyReason::NonpositiveRadius
+pub surgeist_html::HtmlAreaEmptyReason::TooFewCoordinates
+pub surgeist_html::HtmlAreaEmptyReason::TooFewCoordinates::actual: usize
+pub surgeist_html::HtmlAreaEmptyReason::TooFewCoordinates::required: usize
+pub enum surgeist_html::HtmlAreaNativeError
+pub surgeist_html::HtmlAreaNativeError::NonincreasingX
+pub surgeist_html::HtmlAreaNativeError::NonincreasingY
+pub surgeist_html::HtmlAreaNativeError::TooFewVertices
+impl core::error::Error for surgeist_html::HtmlAreaNativeError
+impl core::fmt::Display for surgeist_html::HtmlAreaNativeError
+pub fn surgeist_html::HtmlAreaNativeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlAreaProcessedShape<'a>
+pub surgeist_html::HtmlAreaProcessedShape::Circle(surgeist_html::HtmlAreaProcessedCircle)
+pub surgeist_html::HtmlAreaProcessedShape::Empty(surgeist_html::HtmlAreaEmptyReason)
+pub surgeist_html::HtmlAreaProcessedShape::Polygon(surgeist_html::HtmlAreaProcessedPolygon<'a>)
+pub surgeist_html::HtmlAreaProcessedShape::Rectangle(surgeist_html::HtmlAreaProcessedRectangle)
+pub surgeist_html::HtmlAreaProcessedShape::Unapplied(surgeist_html::HtmlAttributeApplicability)
+pub surgeist_html::HtmlAreaProcessedShape::WholeImage
+pub enum surgeist_html::HtmlAreaShape
+pub surgeist_html::HtmlAreaShape::Circle
+pub surgeist_html::HtmlAreaShape::Polygon
+pub surgeist_html::HtmlAreaShape::Rectangle
+pub surgeist_html::HtmlAreaShape::WholeImage
+impl surgeist_html::HtmlAreaShape
+pub fn surgeist_html::HtmlAreaShape::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlAreaShape::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlAttributeApplicability
 pub surgeist_html::HtmlAttributeApplicability::Applicable
 pub surgeist_html::HtmlAttributeApplicability::CustomControlContextRequired
@@ -49,6 +91,7 @@ pub enum surgeist_html::HtmlAttributeConformanceError
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionMustBeLtrOrRtl
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
+pub surgeist_html::HtmlAttributeConformanceError::NonconformingKeyword
 pub surgeist_html::HtmlAttributeConformanceError::UnrecognizedKeyword
 pub enum surgeist_html::HtmlAttributeContextAuthorState
 pub surgeist_html::HtmlAttributeContextAuthorState::Conforming
@@ -79,6 +122,14 @@ pub surgeist_html::HtmlAttributeRecognition::Keyword::matched: &'static str
 pub surgeist_html::HtmlAttributeRecognition::Missing
 pub surgeist_html::HtmlAttributeRecognition::Unapplied
 pub surgeist_html::HtmlAttributeRecognition::Unrecognized
+pub enum surgeist_html::HtmlAuthoredArea
+pub surgeist_html::HtmlAuthoredArea::Circle(surgeist_html::HtmlAreaCircle)
+pub surgeist_html::HtmlAuthoredArea::Polygon(surgeist_html::HtmlAreaPolygon)
+pub surgeist_html::HtmlAuthoredArea::Rectangle(surgeist_html::HtmlAreaRectangle)
+pub surgeist_html::HtmlAuthoredArea::WholeImage
+impl surgeist_html::HtmlAuthoredArea
+pub fn surgeist_html::HtmlAuthoredArea::into_attributes(self) -> (surgeist_html::Attribute, core::option::Option<surgeist_html::Attribute>)
+pub fn surgeist_html::HtmlAuthoredArea::shape(&self) -> surgeist_html::HtmlAreaShape
 pub enum surgeist_html::HtmlAutocapitalize
 pub surgeist_html::HtmlAutocapitalize::Characters
 pub surgeist_html::HtmlAutocapitalize::None
@@ -2011,6 +2062,49 @@ pub fn surgeist_html::HtmlAcceptValue::as_document_string(&self) -> surgeist_htm
 pub fn surgeist_html::HtmlAcceptValue::mime_conformance(&self) -> surgeist_html::HtmlAcceptMimeConformance
 pub fn surgeist_html::HtmlAcceptValue::new(specifiers: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlAcceptSpecifier>) -> core::result::Result<Self, surgeist_html::HtmlAcceptDuplicate>
 pub fn surgeist_html::HtmlAcceptValue::specifiers(&self) -> &[surgeist_html::HtmlAcceptSpecifier]
+pub struct surgeist_html::HtmlAreaCircle
+impl surgeist_html::HtmlAreaCircle
+pub fn surgeist_html::HtmlAreaCircle::center(&self) -> &surgeist_html::HtmlAreaIntegerPoint
+pub fn surgeist_html::HtmlAreaCircle::new(center: surgeist_html::HtmlAreaIntegerPoint, radius: surgeist_html::HtmlNonNegativeInteger) -> Self
+pub fn surgeist_html::HtmlAreaCircle::radius(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub struct surgeist_html::HtmlAreaCoordinatesReport
+impl surgeist_html::HtmlAreaCoordinatesReport
+pub fn surgeist_html::HtmlAreaCoordinatesReport::author(&self) -> surgeist_html::HtmlAreaCoordinatesAuthorState
+pub fn surgeist_html::HtmlAreaCoordinatesReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointList, surgeist_html::HtmlFloatingPointList>>
+pub fn surgeist_html::HtmlAreaCoordinatesReport::coords(&self) -> &surgeist_html::HtmlAttributeReport<()>
+pub fn surgeist_html::HtmlAreaCoordinatesReport::processed_shape(&self) -> surgeist_html::HtmlAreaProcessedShape<'_>
+pub fn surgeist_html::HtmlAreaCoordinatesReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlAreaCoordinatesReport::shape(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAreaShape>
+pub struct surgeist_html::HtmlAreaIntegerPoint
+impl surgeist_html::HtmlAreaIntegerPoint
+pub fn surgeist_html::HtmlAreaIntegerPoint::new(x: surgeist_html::HtmlInteger, y: surgeist_html::HtmlInteger) -> Self
+pub fn surgeist_html::HtmlAreaIntegerPoint::x(&self) -> &surgeist_html::HtmlInteger
+pub fn surgeist_html::HtmlAreaIntegerPoint::y(&self) -> &surgeist_html::HtmlInteger
+pub struct surgeist_html::HtmlAreaPolygon
+impl surgeist_html::HtmlAreaPolygon
+pub fn surgeist_html::HtmlAreaPolygon::new(vertices: alloc::vec::Vec<surgeist_html::HtmlAreaIntegerPoint>) -> core::result::Result<Self, surgeist_html::HtmlAreaNativeError>
+pub fn surgeist_html::HtmlAreaPolygon::vertices(&self) -> &[surgeist_html::HtmlAreaIntegerPoint]
+pub struct surgeist_html::HtmlAreaProcessedCircle
+impl surgeist_html::HtmlAreaProcessedCircle
+pub fn surgeist_html::HtmlAreaProcessedCircle::center(&self) -> surgeist_html::HtmlAreaProcessedPoint
+pub fn surgeist_html::HtmlAreaProcessedCircle::radius(&self) -> surgeist_html::HtmlFloatingPointNumber
+pub struct surgeist_html::HtmlAreaProcessedPoint
+impl surgeist_html::HtmlAreaProcessedPoint
+pub fn surgeist_html::HtmlAreaProcessedPoint::x(&self) -> surgeist_html::HtmlFloatingPointNumber
+pub fn surgeist_html::HtmlAreaProcessedPoint::y(&self) -> surgeist_html::HtmlFloatingPointNumber
+pub struct surgeist_html::HtmlAreaProcessedPolygon<'a>
+impl<'a> surgeist_html::HtmlAreaProcessedPolygon<'a>
+pub fn surgeist_html::HtmlAreaProcessedPolygon<'a>::coordinates(&self) -> &'a [surgeist_html::HtmlFloatingPointNumber]
+pub fn surgeist_html::HtmlAreaProcessedPolygon<'a>::vertices(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::HtmlAreaProcessedPoint> + 'a
+pub struct surgeist_html::HtmlAreaProcessedRectangle
+impl surgeist_html::HtmlAreaProcessedRectangle
+pub fn surgeist_html::HtmlAreaProcessedRectangle::bottom_right(&self) -> surgeist_html::HtmlAreaProcessedPoint
+pub fn surgeist_html::HtmlAreaProcessedRectangle::top_left(&self) -> surgeist_html::HtmlAreaProcessedPoint
+pub struct surgeist_html::HtmlAreaRectangle
+impl surgeist_html::HtmlAreaRectangle
+pub fn surgeist_html::HtmlAreaRectangle::bottom_right(&self) -> &surgeist_html::HtmlAreaIntegerPoint
+pub fn surgeist_html::HtmlAreaRectangle::new(top_left: surgeist_html::HtmlAreaIntegerPoint, bottom_right: surgeist_html::HtmlAreaIntegerPoint) -> core::result::Result<Self, surgeist_html::HtmlAreaNativeError>
+pub fn surgeist_html::HtmlAreaRectangle::top_left(&self) -> &surgeist_html::HtmlAreaIntegerPoint
 pub struct surgeist_html::HtmlAttributeReport<T>
 impl<T> surgeist_html::HtmlAttributeReport<T>
 pub fn surgeist_html::HtmlAttributeReport<T>::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
@@ -3473,6 +3567,8 @@ impl core::error::Error for surgeist_html::HtmlValueAdmissionError
 impl core::fmt::Display for surgeist_html::HtmlValueAdmissionError
 pub fn surgeist_html::HtmlValueAdmissionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlValueInterpreter
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::area_coordinates(&self, element: &surgeist_html::QualifiedName, shape: core::option::Option<&surgeist_html::Attribute>, coords: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAreaCoordinatesReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::autocapitalize(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocapitalizeState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
