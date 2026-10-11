@@ -378,3 +378,7 @@ transitive binary-release inventory.
 ## HTML parser research references
 
 Pinned source excerpts and selected complete files are retained solely as research references. [html5ever](https://github.com/servo/html5ever) is dual-licensed MIT OR Apache-2.0; see its [local attribution and licenses](licenses/html5ever/NOTICE.md). [html5gum](https://github.com/untitaker/html5gum) is MIT-licensed; see its [local attribution and license](licenses/html5gum/NOTICE.md). This capture adds no production dependency.
+
+## Selector matching research references
+
+Pinned [Servo selectors](https://github.com/servo/stylo/tree/64416a22f9d06d07e108176d724dd20509a8c52d/selectors) source is retained as research material under MPL-2.0. See [local attribution and license](licenses/servo-selectors/NOTICE.md). This capture adds no production dependency.
