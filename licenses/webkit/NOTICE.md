@@ -14,6 +14,33 @@ with its conditions and disclaimer. Added labels and the bounded interpretation
 do not alter the excerpt. Reference source is not compiled or linked into
 Surgeist; only the identified cursor correction is selected.
 
+## Srcset density conversion witnesses
+
+The complete [HTMLParserIdioms.cpp](../../references/webkit-html-parser-idioms--73aa6c89e2cb.md)
+and [HTMLSrcsetParser.cpp](../../references/webkit-html-srcset-parser--73aa6c89e2cb.md)
+are retained at immutable revision `73aa6c89e2cb77c46184a81aec944e4ab99d114d`.
+Their complete original SHA-256 values are respectively
+`99107062a7eaec7499838aaa5fab77045d6d92348c62b260cff4daf9cbef226d` and
+`1905a2a03797d7851859f1555b2d5b3caff72f1cec18c307013391001ec0194c`.
+The existing [two-clause header](html-parser-idioms-bsd-2-clause.txt) for Idioms
+retains Copyright (C) 2010–2023 Apple Inc., 2014 Google Inc. and 2025 Samuel
+Weinig. The exact [three-clause header](html-srcset-parser-bsd-3-clause.txt) for
+Srcset retains Copyright (C) 2013 Apple Inc. and 2013 Google Inc., including its
+non-endorsement condition and complete disclaimer. Complete fenced originals
+and both standalone headers remain unchanged.
+
+The [selected correction](../../references/SOURCE-EDITIONS.md#srcset-density-conversion-overflow)
+adapts only finite complete density conversion and candidate-local rejection
+into Surgeist Rust: Idioms original lines 219–241, and Srcset lines 134–140 and
+194–205. The rest of these source files remains reference evidence. The Rust
+adaptation changes storage, exact author values and admission to Surgeist-owned
+contracts; it does not incorporate WebKit grammar differences, integer caps,
+source-set normalization or image selection. No WebKit source is compiled or
+linked as a dependency. The dimension-cursor excerpt above remains an
+additional representation of the same Idioms identity.
+
+## Container-query witnesses
+
 The [container-query source witness](../../references/webkit-cssom-container-query--73aa6c89e2cb.md) retains four complete source files from immutable commit `73aa6c89e2cb77c46184a81aec944e4ab99d114d`, acquired from the existing local checkout on 2026-10-09. Each file’s exact path/hash and complete original license notice remain in that reference. The added headings and evidence map are documentation formatting only; source bytes remain unchanged.
 
 Copyright (C) 2022 Apple Inc. All rights reserved.

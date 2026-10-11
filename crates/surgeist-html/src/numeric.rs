@@ -7,6 +7,13 @@
 use crate::DocumentString;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 
+fn integer_sum_capacity(left_digits: usize, right_digits: usize) -> Option<usize> {
+    left_digits
+        .max(right_digits)
+        .checked_add(1)
+        .filter(|&len| len <= isize::MAX as usize / size_of::<char>())
+}
+
 /// An exact HTML integer, without a machine-integer magnitude limit.
 ///
 /// Leading zeroes and negative zero are normalized. Decimal magnitude digits
@@ -370,12 +377,7 @@ impl HtmlNonNegativeInteger {
     pub(crate) fn added_to(&self, other: &Self) -> Self {
         let mut left = self.digits.bytes().rev();
         let mut right = other.digits.bytes().rev();
-        let capacity = self
-            .digits
-            .len()
-            .max(other.digits.len())
-            .checked_add(1)
-            .filter(|&len| len <= isize::MAX as usize / size_of::<char>())
+        let capacity = integer_sum_capacity(self.digits.len(), other.digits.len())
             .expect("integer sum representation exceeds native capacity");
         let mut reversed = Vec::with_capacity(capacity);
         let mut carry = 0;
@@ -1236,6 +1238,151 @@ pub(crate) enum FloatingPointAllocationError {
     },
 }
 
+/// Mathematical decimal equality before HTML's distinct binary64 conversion.
+///
+/// Nonzero significands have no leading or trailing zeroes. The value is the
+/// signed significand times ten to the exact integer exponent. Zero has one
+/// canonical key, independently of its authored sign and exponent. This is
+/// private author-constraint machinery, not another public numeric scalar.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct HtmlScientificDecimalKey {
+    negative: bool,
+    significand: HtmlNonNegativeInteger,
+    exponent: HtmlInteger,
+}
+
+impl HtmlScientificDecimalKey {
+    pub(crate) fn is_zero(&self) -> bool {
+        self.significand.is_zero()
+    }
+
+    pub(crate) fn is_positive(&self) -> bool {
+        !self.negative && !self.is_zero()
+    }
+}
+
+/// Native representation exhaustion is not a rejection of decimal grammar.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScientificDecimalKeyError {
+    Syntax(NumericParseError),
+    RepresentationExhausted,
+}
+
+/// Checks the same complete author grammar, without binary64 rounding.
+///
+/// This standalone producer uses ordinary native allocation. Checked native
+/// representation arithmetic is fallible, but allocator exhaustion is not a
+/// recoverable error here. Neither the key nor its raw-input cap establishes a
+/// physical-memory ledger, work budget, or cancellation bound. Storage depends
+/// on input digit lengths, never the mathematical exponent's magnitude.
+pub(crate) fn strict_scientific_decimal_key(
+    input: &DocumentString,
+) -> Result<HtmlScientificDecimalKey, ScientificDecimalKeyError> {
+    let prefix = floating_point_prefix(input.code_units(), FloatingPointParseMode::Author)
+        .map_err(ScientificDecimalKeyError::Syntax)?;
+    let digit_count = prefix
+        .integer_digits
+        .len()
+        .checked_add(prefix.fraction_digits.len())
+        .ok_or(ScientificDecimalKeyError::RepresentationExhausted)?;
+    let mut first = None;
+    let mut last = 0;
+    for (index, &unit) in prefix
+        .integer_digits
+        .iter()
+        .chain(prefix.fraction_digits)
+        .enumerate()
+    {
+        if unit != u16::from(b'0') {
+            first.get_or_insert(index);
+            last = index;
+        }
+    }
+    let Some(first) = first else {
+        // The whole grammar, including an arbitrarily long exponent, was
+        // checked before this shortcut. Its value cannot change exact zero.
+        return Ok(HtmlScientificDecimalKey {
+            negative: false,
+            significand: 0.into(),
+            exponent: 0.into(),
+        });
+    };
+    let required = last - first + 1;
+    if required > isize::MAX as usize {
+        return Err(ScientificDecimalKeyError::RepresentationExhausted);
+    }
+    let mut digits = String::with_capacity(required);
+    for &unit in prefix
+        .integer_digits
+        .iter()
+        .chain(prefix.fraction_digits)
+        .skip(first)
+        .take(required)
+    {
+        digits.push(char::from(unit as u8));
+    }
+    let exponent = prefix.exponent.map_or_else(
+        || HtmlInteger::from(0),
+        |exponent| {
+            HtmlInteger::from_magnitude(
+                HtmlNonNegativeInteger::from_digits(exponent.digits),
+                exponent.negative,
+            )
+        },
+    );
+    let trailing_zeroes = digit_count - last - 1;
+    let exponent =
+        adjust_scientific_exponent(exponent, prefix.fraction_digits.len(), trailing_zeroes)?;
+    Ok(HtmlScientificDecimalKey {
+        negative: prefix.negative,
+        significand: HtmlNonNegativeInteger { digits },
+        exponent,
+    })
+}
+
+fn adjust_scientific_exponent(
+    exponent: HtmlInteger,
+    fraction_digits: usize,
+    trailing_zeroes: usize,
+) -> Result<HtmlInteger, ScientificDecimalKeyError> {
+    if fraction_digits == trailing_zeroes {
+        return Ok(exponent);
+    }
+    let (negative, adjustment) = if fraction_digits > trailing_zeroes {
+        (true, fraction_digits - trailing_zeroes)
+    } else {
+        (false, trailing_zeroes - fraction_digits)
+    };
+    // usize counts are bounded native metadata; only the authored exponent has
+    // arbitrary magnitude. One exact adjustment suffices, without repeated ±1.
+    let adjustment = HtmlNonNegativeInteger::from(adjustment as u128);
+    if exponent.magnitude.is_zero() {
+        return Ok(HtmlInteger::from_magnitude(adjustment, negative));
+    }
+    if exponent.negative == negative {
+        integer_sum_capacity(
+            exponent.magnitude.decimal_digits().len(),
+            adjustment.decimal_digits().len(),
+        )
+        .ok_or(ScientificDecimalKeyError::RepresentationExhausted)?;
+        return Ok(HtmlInteger::from_magnitude(
+            exponent.magnitude.added_to(&adjustment),
+            negative,
+        ));
+    }
+    Ok(match exponent.magnitude.compare(&adjustment) {
+        Ordering::Less => HtmlInteger::from_magnitude(
+            adjustment.subtract_with_borrow(&exponent.magnitude, 0),
+            negative,
+        ),
+        Ordering::Equal => HtmlInteger::from(0),
+        Ordering::Greater => HtmlInteger::from_magnitude(
+            exponent.magnitude.subtract_with_borrow(&adjustment, 0),
+            exponent.negative,
+        ),
+    })
+}
+
 fn floating_point(
     units: &[u16],
     recover: bool,
@@ -1249,34 +1396,49 @@ fn floating_point(
     // Preserve all decimal digits until the single final binary64 conversion.
     // Intermediate floating accumulation can produce spurious overflow for a
     // long significand with a compensating exponent.
-    let token: String = prefix.iter().map(|&unit| char::from(unit as u8)).collect();
+    let token: String = prefix
+        .token
+        .iter()
+        .map(|&unit| char::from(unit as u8))
+        .collect();
     convert_floating_point_token(&token)
+}
+
+/// Borrowed components recognized by the single strict/recovery grammar owner.
+struct FloatingPointPrefix<'a> {
+    token: &'a [u16],
+    negative: bool,
+    integer_digits: &'a [u16],
+    fraction_digits: &'a [u16],
+    exponent: Option<IntegerPrefix<'a>>,
 }
 
 fn floating_point_prefix(
     units: &[u16],
     mode: FloatingPointParseMode,
-) -> Result<&[u16], NumericParseError> {
+) -> Result<FloatingPointPrefix<'_>, NumericParseError> {
     let recover = mode == FloatingPointParseMode::Recovery;
     let mut position = 0;
     if recover {
         skip_whitespace(units, &mut position);
     }
     let start = position;
-    if units.get(position) == Some(&(b'-' as u16))
-        || (recover && units.get(position) == Some(&(b'+' as u16)))
-    {
+    let negative = units.get(position) == Some(&(b'-' as u16));
+    if negative || (recover && units.get(position) == Some(&(b'+' as u16))) {
         position += 1;
     }
     let integer_start = position;
     collect_digits(units, &mut position);
     let has_integer = position > integer_start;
+    let integer_digits = &units[integer_start..position];
     let mut has_fraction = false;
+    let mut fraction_digits = &units[0..0];
     if units.get(position) == Some(&(b'.' as u16)) {
         position += 1;
         let fraction_start = position;
         collect_digits(units, &mut position);
         has_fraction = position > fraction_start;
+        fraction_digits = &units[fraction_start..position];
         if !recover && !has_fraction {
             return Err(NumericParseError::InvalidSyntax);
         }
@@ -1285,8 +1447,10 @@ fn floating_point_prefix(
         return Err(NumericParseError::InvalidSyntax);
     }
     let significand_end = position;
+    let mut exponent = None;
     if matches!(units.get(position), Some(0x45 | 0x65)) {
         position += 1;
+        let negative = units.get(position) == Some(&0x2d);
         if matches!(units.get(position), Some(0x2b | 0x2d)) {
             position += 1;
         }
@@ -1297,12 +1461,23 @@ fn floating_point_prefix(
                 return Err(NumericParseError::InvalidSyntax);
             }
             position = significand_end;
+        } else {
+            exponent = Some(IntegerPrefix {
+                negative,
+                digits: &units[exponent_start..position],
+            });
         }
     }
     if !recover && position != units.len() {
         return Err(NumericParseError::InvalidSyntax);
     }
-    Ok(&units[start..position])
+    Ok(FloatingPointPrefix {
+        token: &units[start..position],
+        negative,
+        integer_digits,
+        fraction_digits,
+        exponent,
+    })
 }
 
 fn convert_floating_point_token(token: &str) -> Result<HtmlFloatingPointNumber, NumericParseError> {
@@ -1368,7 +1543,7 @@ pub(crate) fn try_floating_point_number(
             });
         }
     };
-    let required = prefix.len();
+    let required = prefix.token.len();
     check_floating_point_requested_capacity(required, max_capacity_bytes)?;
     let mut token = String::new();
     token.try_reserve_exact(required).map_err(|_| {
@@ -1377,7 +1552,7 @@ pub(crate) fn try_floating_point_number(
         }
     })?;
     check_floating_point_actual_capacity(required, token.capacity(), max_capacity_bytes)?;
-    for &unit in prefix {
+    for &unit in prefix.token {
         token.push(char::from(unit as u8));
     }
     Ok(FloatingPointParseResult {
@@ -1544,6 +1719,180 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scientific_keys_normalize_decimal_places_and_exponent_signs_exactly() {
+        // §2.3.4.3 defines the mathematical significand times ten to the
+        // exponent, independently of the later binary64 conversion.
+        for (input, negative, significand, exponent) in [
+            ("1", false, "1", "0"),
+            ("1.0", false, "1", "0"),
+            ("10e-1", false, "1", "0"),
+            (".0100", false, "1", "-2"),
+            ("00012.0300E+00002", false, "1203", "0"),
+            ("-1200e-0001", true, "12", "1"),
+            (".001e2", false, "1", "-1"),
+            ("1000e-2", false, "1", "1"),
+            ("0.1e1", false, "1", "0"),
+            ("10e-0", false, "1", "1"),
+        ] {
+            let key = strict_scientific_decimal_key(&text(input)).unwrap();
+            assert_eq!(key.negative, negative);
+            assert_eq!(key.significand.decimal_digits(), significand);
+            assert_eq!(key.exponent.as_document_string(), text(exponent));
+            assert!(!key.is_zero());
+            assert_eq!(key.is_positive(), !negative);
+        }
+    }
+
+    #[test]
+    fn scientific_zero_discards_sign_and_exponent_only_after_full_validation() {
+        let zero = strict_scientific_decimal_key(&text("0")).unwrap();
+        for input in ["-0", "-000.000E-999999999999999999999999999999", "0e+0"] {
+            let key = strict_scientific_decimal_key(&text(input)).unwrap();
+            assert_eq!(key, zero);
+            assert!(key.is_zero());
+            assert!(!key.is_positive());
+            assert!(!key.negative);
+            assert_eq!(key.exponent.as_document_string(), text("0"));
+        }
+        for input in ["0e", "-0e+", "0e999garbage", "0.", "+0", "0 "] {
+            assert_eq!(
+                strict_scientific_decimal_key(&text(input)),
+                Err(ScientificDecimalKeyError::Syntax(
+                    NumericParseError::InvalidSyntax
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn scientific_equality_is_mathematical_instead_of_binary64_equality() {
+        let one = strict_scientific_decimal_key(&text("1")).unwrap();
+        for input in ["1.0", "10e-1", "0001000E-0003", ".01e2"] {
+            assert_eq!(strict_scientific_decimal_key(&text(input)).unwrap(), one);
+        }
+        let distinct = strict_scientific_decimal_key(&text("1.00000000000000001")).unwrap();
+        assert_ne!(distinct, one);
+        assert_eq!(
+            validate_floating_point_number(&text("1.00000000000000001")),
+            validate_floating_point_number(&text("1"))
+        );
+        for input in ["1e-999", "-1e-999"] {
+            let key = strict_scientific_decimal_key(&text(input)).unwrap();
+            assert!(!key.is_zero());
+            assert_eq!(key.is_positive(), input == "1e-999");
+            assert_eq!(
+                validate_floating_point_number(&text(input))
+                    .unwrap()
+                    .value(),
+                0.0
+            );
+        }
+        let overflow = strict_scientific_decimal_key(&text("1e999")).unwrap();
+        assert!(overflow.is_positive());
+        assert_eq!(
+            validate_floating_point_number(&text("1e999")),
+            Err(NumericParseError::FloatingPointOverflow)
+        );
+    }
+
+    #[test]
+    fn scientific_exponents_carry_borrow_and_remain_unbounded_without_expansion() {
+        for (input, exponent) in [
+            (
+                "10e9999999999999999999999999999999999999999",
+                "10000000000000000000000000000000000000000",
+            ),
+            (
+                ".1e-9999999999999999999999999999999999999999",
+                "-10000000000000000000000000000000000000000",
+            ),
+            (
+                ".1e10000000000000000000000000000000000000000",
+                "9999999999999999999999999999999999999999",
+            ),
+            (
+                "10e-10000000000000000000000000000000000000000",
+                "-9999999999999999999999999999999999999999",
+            ),
+        ] {
+            let key = strict_scientific_decimal_key(&text(input)).unwrap();
+            assert_eq!(key.significand.decimal_digits(), "1");
+            assert_eq!(key.exponent.as_document_string(), text(exponent));
+            assert!(key.is_positive());
+        }
+    }
+
+    #[test]
+    fn scientific_strict_rejection_and_float_recovery_share_the_same_scanner() {
+        for (input, recovered) in [
+            ("+1", 1.0),
+            ("1.", 1.0),
+            ("1e+", 1.0),
+            ("1E-", 1.0),
+            (" 1", 1.0),
+            ("1tail", 1.0),
+        ] {
+            assert_eq!(
+                strict_scientific_decimal_key(&text(input)),
+                Err(ScientificDecimalKeyError::Syntax(
+                    NumericParseError::InvalidSyntax
+                ))
+            );
+            assert_eq!(
+                validate_floating_point_number(&text(input)),
+                Err(NumericParseError::InvalidSyntax)
+            );
+            assert_eq!(
+                parse_floating_point_number(&text(input)).unwrap().value(),
+                recovered
+            );
+            let bounded = try_floating_point_number(
+                &text(input),
+                FloatingPointParseMode::Recovery,
+                input.len(),
+            )
+            .unwrap();
+            assert_eq!(bounded.value.unwrap().value(), recovered);
+        }
+        for input in ["", ".", "NaN", "Infinity", "1e--1", "1\u{a0}"] {
+            assert_eq!(
+                strict_scientific_decimal_key(&text(input)),
+                Err(ScientificDecimalKeyError::Syntax(
+                    NumericParseError::InvalidSyntax
+                ))
+            );
+        }
+        for units in [vec![0xd800, 49], vec![49, 0xdc00], vec![49, 101, 0xd800]] {
+            let input = DocumentString::from_utf16(units);
+            assert_eq!(
+                strict_scientific_decimal_key(&input),
+                Err(ScientificDecimalKeyError::Syntax(
+                    NumericParseError::InvalidSyntax
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn scientific_adjustment_checks_the_real_integer_sum_representation_bound() {
+        let limit = isize::MAX as usize / size_of::<char>();
+        assert_eq!(integer_sum_capacity(limit - 1, 1), Some(limit));
+        assert_eq!(integer_sum_capacity(limit, 1), None);
+        assert_eq!(integer_sum_capacity(usize::MAX, 1), None);
+        for (exponent, fraction, trailing, expected) in [
+            ("-2", 0, 3, "1"),
+            ("2", 3, 0, "-1"),
+            ("-2", 0, 2, "0"),
+            ("2", 2, 0, "0"),
+            ("0", 0, 0, "0"),
+        ] {
+            let adjusted =
+                adjust_scientific_exponent(exact_signed(exponent), fraction, trailing).unwrap();
+            assert_eq!(adjusted.as_document_string(), text(expected));
+        }
+    }
 
     #[test]
     fn signed_comparison_preserves_sign_fraction_and_unbounded_magnitude() {

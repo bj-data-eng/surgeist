@@ -1970,3 +1970,6 @@ pub use sandbox::*;
 
 mod input_bounds;
 pub use input_bounds::*;
+
+mod srcset;
+pub use srcset::*;

@@ -84,7 +84,7 @@ values use finite binary64 with the selected HTML rounding contract; native
 decimal output does not claim ECMAScript's separate best-representation
 operation. The dimension-list algorithm applies only the
 [documented decimal-cursor correction](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md).
-Other browser overflow or syntax differences are not adopted.
+Other dimension-list browser overflow or syntax differences are not adopted.
 
 Temporal authoring checks positive Gregorian years, dates, times, explicit
 offsets, ISO weeks and durations. Years and whole duration seconds have no
@@ -231,6 +231,29 @@ fractions beyond strict author precision. These observations perform no
 current-value sanitization, periodic membership, constraint validation or
 stepping. Raw admission is per supplied value; native conversion retains its
 ordinary allocation contract.
+
+Native `HtmlSrcsetValue` checks ordered image candidates for `srcset` and
+`imagesrcset`. URLs remain symbolic exact strings; widths retain arbitrary
+positive integers and authored density spelling is retained. Author positivity
+and equality use exact mathematical decimal values independently of finite
+binary64 recovery. Reports for `img`, `source` and `link` separate author
+constraints from recovered candidates. Repeated or invalid descriptors can
+leave diagnostics without suppressing later candidates;
+processing accepts density zero and positive underflow to zero even when strict
+author constraints differ. The
+[selected density-overflow correction](../../references/SOURCE-EDITIONS.md#srcset-density-conversion-overflow)
+omits only the overflowing candidate and records `DensityConversionOverflow`.
+
+Raw attributes, symbolic URLs and half-open ranges preserve exact UTF-16 units,
+including isolated surrogates. Supplied role-specific raw attributes and parent
+or following-image observations support separate contextual author checks;
+unavailable facts remain unchecked. Those observations do not establish a
+capture-qualified semantic result. Each supplied raw value has the standalone
+UTF-16 admission cap; native values and reports use ordinary allocation without
+aggregate work accounting, cancellation or allocation-failure recovery. URL
+validity and resource properties remain unchecked. These operations do not
+parse CSS `sizes`, normalize source sets, select or fetch resources, or implement
+the controlled semantic pipeline.
 
 Control autocomplete reports preserve ordered tokens, authored detail grammar,
 actual input-state and element constraints, and the separate processing result.

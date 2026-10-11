@@ -244,6 +244,40 @@ name/RGB domain; HTML owns its surrounding legacy recovery steps. This selects
 the bounded external fact table, without adding CSS color grammar validation or
 changing the color-input state's separate CSS ownership.
 
+### Srcset density conversion overflow
+
+For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), HTML
+`877d6146487f15b15bc8dd0e3c625063a37b456a` remains authoritative for
+[srcset author grammar and processing](html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md).
+Its complete original lines 22673–22675 apply the floating-point conversion and
+compare the result with zero, without specifying the conversion-error branch;
+the [common conversion rules](html-language-foundations--877d6146487f--b55e73c31978.md)
+at original lines 3325–3329 can return an error on overflow. The normative
+captures retain that text unchanged.
+
+The Architecture Coordinator's selected disposition uses WebKit revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`: complete
+[HTMLParserIdioms.cpp](webkit-html-parser-idioms--73aa6c89e2cb.md), original lines
+219–241 (finite, complete conversion at 229–231), and complete
+[HTMLSrcsetParser.cpp](webkit-html-srcset-parser--73aa6c89e2cb.md), original lines
+134–140 (failed conversion rejected at 137–139) and 194–205 (candidate skipped
+at 200–201). A failed density conversion is a recoverable candidate-local parse
+error: omit that candidate, retain a diagnostic and continue. Thus
+`a 1e999x, b 2x` retains only `b` at density 2; a lone overflow candidate
+produces an empty candidate list with a diagnostic. No infinity, clamp, default
+1x or descriptor salvage is selected. Processing still accepts density zero
+and underflow to zero. Strict author positivity and density equality
+use the mathematical decimal values independently of binary64 recovery.
+
+This determination fills only that source omission. Other WebKit descriptor
+grammar, integer limits, source-set normalization and image selection remain
+unadopted. HTMLParserIdioms.cpp upgrades the existing partial identity to full
+coverage while preserving its dimension-cursor representation; only
+HTMLSrcsetParser.cpp adds an identity. Complete original headers and the
+[file-specific legal notice](../licenses/webkit/NOTICE.md#srcset-density-conversion-witnesses)
+accompany both bodies. This is not an upstream erratum or whole-engine parity
+claim.
+
 ### Bounded referrer-policy vocabulary
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the [Referrer Policy vocabulary](referrer-policy-vocabulary--cc435b05ca4a.md) selects the finite enumeration from W3C editor-source revision `cc435b05ca4a94f7f1a139be5074b168d20014db` (20 March 2026). The complete original source SHA-256 is `a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1`. Eight nonempty keywords and the empty state are retained. Pinned HTML §2.5.5 supplies ASCII-insensitive whole-value matching without trimming and missing/invalid empty-state defaults. Empty remains unresolved; the implementation does not substitute the external draft's default policy. This selection adopts no network, Fetch, referrer-generation, policy-container, URL or header-list algorithm. The older 2017 CR's surrounding processing model is not mixed into this selection.

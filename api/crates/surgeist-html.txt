@@ -973,6 +973,10 @@ pub surgeist_html::HtmlParseResource::SourceUnits
 pub surgeist_html::HtmlParseResource::TokenAttributes
 pub surgeist_html::HtmlParseResource::TreeDepth
 pub surgeist_html::HtmlParseResource::WorkCredits
+pub enum surgeist_html::HtmlParsedSrcsetDescriptor
+pub surgeist_html::HtmlParsedSrcsetDescriptor::Density(surgeist_html::HtmlFloatingPointNumber)
+pub surgeist_html::HtmlParsedSrcsetDescriptor::Unspecified
+pub surgeist_html::HtmlParsedSrcsetDescriptor::Width(surgeist_html::HtmlSrcsetWidth)
 pub enum surgeist_html::HtmlParserScriptingMode
 pub surgeist_html::HtmlParserScriptingMode::Disabled
 pub surgeist_html::HtmlParserScriptingMode::Fragment
@@ -1306,6 +1310,101 @@ pub surgeist_html::HtmlSpellcheckDefaultBehavior::TrueByDefault
 pub enum surgeist_html::HtmlSpellcheckState
 pub surgeist_html::HtmlSpellcheckState::Default
 pub surgeist_html::HtmlSpellcheckState::Keyword(surgeist_html::HtmlSpellcheck)
+pub enum surgeist_html::HtmlSrcsetAuthorState
+pub surgeist_html::HtmlSrcsetAuthorState::HtmlConstraintsConforming
+pub surgeist_html::HtmlSrcsetAuthorState::Missing
+pub surgeist_html::HtmlSrcsetAuthorState::Nonconforming
+pub surgeist_html::HtmlSrcsetAuthorState::Unapplied
+pub enum surgeist_html::HtmlSrcsetAuthorViolation
+pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateDensity
+pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateDensity::duplicate: usize
+pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateDensity::first: usize
+pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateWidth
+pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateWidth::duplicate: usize
+pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateWidth::first: usize
+pub surgeist_html::HtmlSrcsetAuthorViolation::EmptyList
+pub surgeist_html::HtmlSrcsetAuthorViolation::FutureHeightDescriptor
+pub surgeist_html::HtmlSrcsetAuthorViolation::InvalidDescriptor
+pub surgeist_html::HtmlSrcsetAuthorViolation::InvalidUrlToken
+pub surgeist_html::HtmlSrcsetAuthorViolation::MissingCandidate
+pub surgeist_html::HtmlSrcsetAuthorViolation::MixedWidthDescriptors
+pub surgeist_html::HtmlSrcsetAuthorViolation::MultipleDescriptors
+pub surgeist_html::HtmlSrcsetAuthorViolation::NonpositiveDescriptor
+impl core::error::Error for surgeist_html::HtmlSrcsetAuthorViolation
+impl core::fmt::Display for surgeist_html::HtmlSrcsetAuthorViolation
+pub fn surgeist_html::HtmlSrcsetAuthorViolation::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlSrcsetContext
+pub surgeist_html::HtmlSrcsetContext::Img
+pub surgeist_html::HtmlSrcsetContext::Img::attributes: surgeist_html::OrderedAttributes
+pub surgeist_html::HtmlSrcsetContext::Link
+pub surgeist_html::HtmlSrcsetContext::Link::attributes: surgeist_html::OrderedAttributes
+pub surgeist_html::HtmlSrcsetContext::Source
+pub surgeist_html::HtmlSrcsetContext::Source::attributes: surgeist_html::OrderedAttributes
+pub surgeist_html::HtmlSrcsetContext::Source::following_image: surgeist_html::HtmlSrcsetFollowingImageObservation
+pub surgeist_html::HtmlSrcsetContext::Source::parent: surgeist_html::HtmlSrcsetParentObservation
+pub enum surgeist_html::HtmlSrcsetContextAuthorState
+pub surgeist_html::HtmlSrcsetContextAuthorState::Conforming
+pub surgeist_html::HtmlSrcsetContextAuthorState::Nonconforming
+pub surgeist_html::HtmlSrcsetContextAuthorState::NotRequired
+pub surgeist_html::HtmlSrcsetContextAuthorState::Unapplied
+pub surgeist_html::HtmlSrcsetContextAuthorState::Unchecked
+pub enum surgeist_html::HtmlSrcsetContextViolation
+pub surgeist_html::HtmlSrcsetContextViolation::ImageAsStateRequired
+pub surgeist_html::HtmlSrcsetContextViolation::ImagesizesRequired
+pub surgeist_html::HtmlSrcsetContextViolation::PreloadRelRequired
+pub surgeist_html::HtmlSrcsetContextViolation::SizesRequired
+pub surgeist_html::HtmlSrcsetContextViolation::SourceParentNotPicture
+pub surgeist_html::HtmlSrcsetContextViolation::SourceSrcsetRequired
+pub surgeist_html::HtmlSrcsetContextViolation::SrcOrSrcsetRequired
+pub surgeist_html::HtmlSrcsetContextViolation::WidthDescriptorsRequiredForSizes
+pub enum surgeist_html::HtmlSrcsetDensityError
+pub surgeist_html::HtmlSrcsetDensityError::InvalidSyntax
+pub surgeist_html::HtmlSrcsetDensityError::Nonpositive
+pub surgeist_html::HtmlSrcsetDensityError::RepresentationExhausted
+impl core::error::Error for surgeist_html::HtmlSrcsetDensityError
+impl core::fmt::Display for surgeist_html::HtmlSrcsetDensityError
+pub fn surgeist_html::HtmlSrcsetDensityError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlSrcsetDescriptor
+pub surgeist_html::HtmlSrcsetDescriptor::Density(surgeist_html::HtmlSrcsetDensity)
+pub surgeist_html::HtmlSrcsetDescriptor::Unspecified
+pub surgeist_html::HtmlSrcsetDescriptor::Width(surgeist_html::HtmlSrcsetWidth)
+pub enum surgeist_html::HtmlSrcsetExternalConformance
+pub surgeist_html::HtmlSrcsetExternalConformance::NotRequired
+pub surgeist_html::HtmlSrcsetExternalConformance::Unapplied
+pub surgeist_html::HtmlSrcsetExternalConformance::Unchecked
+pub enum surgeist_html::HtmlSrcsetFollowingImageObservation
+pub surgeist_html::HtmlSrcsetFollowingImageObservation::Absent
+pub surgeist_html::HtmlSrcsetFollowingImageObservation::Element
+pub surgeist_html::HtmlSrcsetFollowingImageObservation::Element::attributes: surgeist_html::OrderedAttributes
+pub surgeist_html::HtmlSrcsetFollowingImageObservation::Element::name: surgeist_html::QualifiedName
+pub surgeist_html::HtmlSrcsetFollowingImageObservation::Unavailable
+pub enum surgeist_html::HtmlSrcsetInterpretationError
+pub surgeist_html::HtmlSrcsetInterpretationError::RawAdmission(surgeist_html::HtmlValueAdmissionError)
+pub surgeist_html::HtmlSrcsetInterpretationError::RepresentationExhausted
+impl core::error::Error for surgeist_html::HtmlSrcsetInterpretationError
+impl core::fmt::Display for surgeist_html::HtmlSrcsetInterpretationError
+pub fn surgeist_html::HtmlSrcsetInterpretationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlSrcsetParentObservation
+pub surgeist_html::HtmlSrcsetParentObservation::Absent
+pub surgeist_html::HtmlSrcsetParentObservation::Element(surgeist_html::QualifiedName)
+pub surgeist_html::HtmlSrcsetParentObservation::Unavailable
+pub enum surgeist_html::HtmlSrcsetParseError
+pub surgeist_html::HtmlSrcsetParseError::DensityConversionOverflow
+pub surgeist_html::HtmlSrcsetParseError::FutureHeightDescriptor
+pub surgeist_html::HtmlSrcsetParseError::MultipleTrailingCommas
+pub surgeist_html::HtmlSrcsetParseError::RejectedCandidate
+pub surgeist_html::HtmlSrcsetParseError::SkippedCommas
+pub enum surgeist_html::HtmlSrcsetProcessingState
+pub surgeist_html::HtmlSrcsetProcessingState::Candidates
+pub surgeist_html::HtmlSrcsetProcessingState::MissingAttribute
+pub surgeist_html::HtmlSrcsetProcessingState::Unapplied
+pub enum surgeist_html::HtmlSrcsetUrlTokenError
+pub surgeist_html::HtmlSrcsetUrlTokenError::AsciiWhitespace
+pub surgeist_html::HtmlSrcsetUrlTokenError::EdgeComma
+pub surgeist_html::HtmlSrcsetUrlTokenError::Empty
+impl core::error::Error for surgeist_html::HtmlSrcsetUrlTokenError
+impl core::fmt::Display for surgeist_html::HtmlSrcsetUrlTokenError
+pub fn surgeist_html::HtmlSrcsetUrlTokenError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlSubmitterTypeObservation
 pub surgeist_html::HtmlSubmitterTypeObservation::Button(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlButtonTypeState>)
 pub surgeist_html::HtmlSubmitterTypeObservation::Input(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>)
@@ -2268,6 +2367,9 @@ pub fn surgeist_html::HtmlFloatingPointNumber::into_input_min_attribute(self) ->
 impl core::convert::TryFrom<f64> for surgeist_html::HtmlFloatingPointNumber
 pub type surgeist_html::HtmlFloatingPointNumber::Error = surgeist_html::HtmlNonFiniteNumberError
 pub fn surgeist_html::HtmlFloatingPointNumber::try_from(value: f64) -> core::result::Result<Self, Self::Error>
+impl core::convert::TryFrom<surgeist_html::HtmlFloatingPointNumber> for surgeist_html::HtmlSrcsetDensity
+pub type surgeist_html::HtmlSrcsetDensity::Error = surgeist_html::HtmlSrcsetDensityError
+pub fn surgeist_html::HtmlSrcsetDensity::try_from(value: surgeist_html::HtmlFloatingPointNumber) -> core::result::Result<Self, Self::Error>
 pub struct surgeist_html::HtmlFormAssociation
 impl surgeist_html::HtmlFormAssociation
 pub fn surgeist_html::HtmlFormAssociation::new(subject: surgeist_html::HtmlCaptureSubjectId, state: surgeist_html::HtmlFormAssociationState) -> Self
@@ -2770,6 +2872,12 @@ pub fn surgeist_html::HtmlParsedGlobalDateTime::from(value: surgeist_html::HtmlG
 impl core::convert::TryFrom<surgeist_html::HtmlParsedGlobalDateTime> for surgeist_html::HtmlGlobalDateTime
 pub type surgeist_html::HtmlGlobalDateTime::Error = surgeist_html::HtmlTemporalPrecisionError
 pub fn surgeist_html::HtmlGlobalDateTime::try_from(value: surgeist_html::HtmlParsedGlobalDateTime) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlParsedImageCandidate
+impl surgeist_html::HtmlParsedImageCandidate
+pub fn surgeist_html::HtmlParsedImageCandidate::descriptor(&self) -> &surgeist_html::HtmlParsedSrcsetDescriptor
+pub fn surgeist_html::HtmlParsedImageCandidate::range(&self) -> surgeist_html::HtmlSrcsetRawRange
+pub fn surgeist_html::HtmlParsedImageCandidate::url(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlParsedImageCandidate::url_range(&self) -> surgeist_html::HtmlSrcsetRawRange
 pub struct surgeist_html::HtmlParsedLocalDateTime
 impl surgeist_html::HtmlParsedLocalDateTime
 pub fn surgeist_html::HtmlParsedLocalDateTime::date(&self) -> &surgeist_html::HtmlDate
@@ -3013,6 +3121,81 @@ impl surgeist_html::HtmlSpellcheckDefaultFact
 pub fn surgeist_html::HtmlSpellcheckDefaultFact::behavior(&self) -> core::option::Option<surgeist_html::HtmlSpellcheckDefaultBehavior>
 pub fn surgeist_html::HtmlSpellcheckDefaultFact::new(subject: surgeist_html::HtmlCaptureSubjectId, behavior: core::option::Option<surgeist_html::HtmlSpellcheckDefaultBehavior>) -> Self
 pub fn surgeist_html::HtmlSpellcheckDefaultFact::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlSrcsetAuthorDiagnostic
+impl surgeist_html::HtmlSrcsetAuthorDiagnostic
+pub fn surgeist_html::HtmlSrcsetAuthorDiagnostic::candidate_index(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlSrcsetAuthorDiagnostic::range(&self) -> surgeist_html::HtmlSrcsetRawRange
+pub fn surgeist_html::HtmlSrcsetAuthorDiagnostic::violation(&self) -> surgeist_html::HtmlSrcsetAuthorViolation
+pub struct surgeist_html::HtmlSrcsetCandidate
+impl surgeist_html::HtmlSrcsetCandidate
+pub fn surgeist_html::HtmlSrcsetCandidate::descriptor(&self) -> &surgeist_html::HtmlSrcsetDescriptor
+pub fn surgeist_html::HtmlSrcsetCandidate::new(url: surgeist_html::HtmlSrcsetUrlToken, descriptor: surgeist_html::HtmlSrcsetDescriptor) -> Self
+pub fn surgeist_html::HtmlSrcsetCandidate::url(&self) -> &surgeist_html::HtmlSrcsetUrlToken
+pub struct surgeist_html::HtmlSrcsetDensity
+impl surgeist_html::HtmlSrcsetDensity
+pub fn surgeist_html::HtmlSrcsetDensity::from_decimal_syntax(syntax: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlSrcsetDensityError>
+pub fn surgeist_html::HtmlSrcsetDensity::syntax(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlSrcsetDensity::to_floating_point_number(&self) -> core::result::Result<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlSrcsetDensityProjectionError>
+impl core::convert::TryFrom<surgeist_html::HtmlFloatingPointNumber> for surgeist_html::HtmlSrcsetDensity
+pub type surgeist_html::HtmlSrcsetDensity::Error = surgeist_html::HtmlSrcsetDensityError
+pub fn surgeist_html::HtmlSrcsetDensity::try_from(value: surgeist_html::HtmlFloatingPointNumber) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlSrcsetDensityProjectionError
+impl core::error::Error for surgeist_html::HtmlSrcsetDensityProjectionError
+impl core::fmt::Display for surgeist_html::HtmlSrcsetDensityProjectionError
+pub fn surgeist_html::HtmlSrcsetDensityProjectionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlSrcsetParseDiagnostic
+impl surgeist_html::HtmlSrcsetParseDiagnostic
+pub fn surgeist_html::HtmlSrcsetParseDiagnostic::candidate_index(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlSrcsetParseDiagnostic::error(&self) -> surgeist_html::HtmlSrcsetParseError
+pub fn surgeist_html::HtmlSrcsetParseDiagnostic::range(&self) -> surgeist_html::HtmlSrcsetRawRange
+pub struct surgeist_html::HtmlSrcsetRawRange
+impl surgeist_html::HtmlSrcsetRawRange
+pub fn surgeist_html::HtmlSrcsetRawRange::end(self) -> usize
+pub fn surgeist_html::HtmlSrcsetRawRange::start(self) -> usize
+pub struct surgeist_html::HtmlSrcsetReport
+impl surgeist_html::HtmlSrcsetReport
+pub fn surgeist_html::HtmlSrcsetReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlSrcsetReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlSrcsetReport::author(&self) -> surgeist_html::HtmlSrcsetAuthorState
+pub fn surgeist_html::HtmlSrcsetReport::author_diagnostics(&self) -> &[surgeist_html::HtmlSrcsetAuthorDiagnostic]
+pub fn surgeist_html::HtmlSrcsetReport::author_fields(&self) -> core::option::Option<&surgeist_html::HtmlSrcsetValue>
+pub fn surgeist_html::HtmlSrcsetReport::candidates(&self) -> core::option::Option<&[surgeist_html::HtmlParsedImageCandidate]>
+pub fn surgeist_html::HtmlSrcsetReport::context(&self) -> core::option::Option<&surgeist_html::HtmlSrcsetContext>
+pub fn surgeist_html::HtmlSrcsetReport::context_author(&self) -> surgeist_html::HtmlSrcsetContextAuthorState
+pub fn surgeist_html::HtmlSrcsetReport::context_violations(&self) -> &[surgeist_html::HtmlSrcsetContextViolation]
+pub fn surgeist_html::HtmlSrcsetReport::diagnostics(&self) -> &[surgeist_html::HtmlSrcsetParseDiagnostic]
+pub fn surgeist_html::HtmlSrcsetReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlSrcsetReport::external_conformance(&self) -> surgeist_html::HtmlSrcsetExternalConformance
+pub fn surgeist_html::HtmlSrcsetReport::grammar_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlSrcsetReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlSrcsetReport::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlSrcsetReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlSrcsetReport::overflow_recovery_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlSrcsetReport::processing(&self) -> surgeist_html::HtmlSrcsetProcessingState
+pub fn surgeist_html::HtmlSrcsetReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlSrcsetReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlSrcsetReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlSrcsetReport::source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlSrcsetUrlToken
+impl surgeist_html::HtmlSrcsetUrlToken
+pub fn surgeist_html::HtmlSrcsetUrlToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlSrcsetUrlTokenError>
+pub fn surgeist_html::HtmlSrcsetUrlToken::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlSrcsetValue
+impl surgeist_html::HtmlSrcsetValue
+pub fn surgeist_html::HtmlSrcsetValue::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlSrcsetValue::candidates(&self) -> &[surgeist_html::HtmlSrcsetCandidate]
+pub fn surgeist_html::HtmlSrcsetValue::external_conformance(&self) -> surgeist_html::HtmlSrcsetExternalConformance
+pub fn surgeist_html::HtmlSrcsetValue::into_imagesrcset_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlSrcsetValue::into_srcset_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlSrcsetValue::new(candidates: impl core::convert::Into<alloc::vec::Vec<surgeist_html::HtmlSrcsetCandidate>>) -> core::result::Result<Self, surgeist_html::HtmlSrcsetAuthorViolation>
+pub struct surgeist_html::HtmlSrcsetWidth
+impl surgeist_html::HtmlSrcsetWidth
+pub fn surgeist_html::HtmlSrcsetWidth::new(value: surgeist_html::HtmlNonNegativeInteger) -> core::result::Result<Self, surgeist_html::HtmlSrcsetWidthError>
+pub fn surgeist_html::HtmlSrcsetWidth::value(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub struct surgeist_html::HtmlSrcsetWidthError
+impl core::error::Error for surgeist_html::HtmlSrcsetWidthError
+impl core::fmt::Display for surgeist_html::HtmlSrcsetWidthError
+pub fn surgeist_html::HtmlSrcsetWidthError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlStylesheetLinkAttributeContext
 impl surgeist_html::HtmlStylesheetLinkAttributeContext
 pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::contains_stylesheet(&self) -> bool
@@ -3224,6 +3407,13 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::hidden(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlHiddenState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::iframe_sandbox(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSandboxReport, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::img_srcset(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSrcsetReport, surgeist_html::HtmlSrcsetInterpretationError>
+pub fn surgeist_html::HtmlValueInterpreter::img_srcset_with_context(&self, element: &surgeist_html::QualifiedName, context: &surgeist_html::HtmlSrcsetContext) -> core::result::Result<surgeist_html::HtmlSrcsetReport, surgeist_html::HtmlSrcsetInterpretationError>
+pub fn surgeist_html::HtmlValueInterpreter::link_imagesrcset(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSrcsetReport, surgeist_html::HtmlSrcsetInterpretationError>
+pub fn surgeist_html::HtmlValueInterpreter::link_imagesrcset_with_context(&self, element: &surgeist_html::QualifiedName, context: &surgeist_html::HtmlSrcsetContext) -> core::result::Result<surgeist_html::HtmlSrcsetReport, surgeist_html::HtmlSrcsetInterpretationError>
+pub fn surgeist_html::HtmlValueInterpreter::source_srcset(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSrcsetReport, surgeist_html::HtmlSrcsetInterpretationError>
+pub fn surgeist_html::HtmlValueInterpreter::source_srcset_with_context(&self, element: &surgeist_html::QualifiedName, context: &surgeist_html::HtmlSrcsetContext) -> core::result::Result<surgeist_html::HtmlSrcsetReport, surgeist_html::HtmlSrcsetInterpretationError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::input_accept(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAcceptReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::input_accept_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAcceptReport, surgeist_html::HtmlValueAdmissionError>

@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 351 retained source identities and states their representations: 255 full documents/source witnesses, 89 partial witnesses, and 7 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 355 retained source identities and states their representations: 257 full documents/source witnesses, 90 partial witnesses, and 8 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -71,6 +71,14 @@ retains bounded WebKit and Blink excerpts, complete original file headers and
 full-source hashes for the narrow decimal-cursor determination under #1133.
 Its selected correction and unadopted browser differences remain explicit in
 the [edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline).
+
+The complete [WebKit HTMLParserIdioms.cpp](webkit-html-parser-idioms--73aa6c89e2cb.md)
+and [HTMLSrcsetParser.cpp](webkit-html-srcset-parser--73aa6c89e2cb.md) retain exact
+original bodies and file-specific licenses. Their
+[srcset determination](SOURCE-EDITIONS.md#srcset-density-conversion-overflow)
+selects only candidate-local omission after density conversion overflow; it
+adopts no other WebKit grammar, integer cap or image-selection operation. The
+earlier dimension-cursor excerpt shares the Idioms identity.
 
 The [HTML language edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline) selects one immutable WHATWG HTML snapshot, split into ten complete-section captures covering all chapter 4 element definitions and the retained language/parser/host clauses. The [supplemental html5ever witness](html5ever-parser-supplemental-contracts--d7232d746d31.md) preserves exact char-reference, tree-builder and buffer excerpts at the independently selected ingestion pin. Historical live HTML captures remain available as proof for their original determinations. Selection does not assert that the current engine already implements the newer standard.
 

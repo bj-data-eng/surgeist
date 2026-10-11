@@ -1,6 +1,6 @@
 # Exact source catalog
 
-354 retained source identities: 255 full documents/source witnesses, 91 partial witnesses, and 8 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
+355 retained source identities: 257 full documents/source witnesses, 90 partial witnesses, and 8 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -458,7 +458,7 @@ other browser differences are not selected.
 
 | Source | Exact snapshot | Complete original source SHA-256 | Representation |
 | --- | --- | --- | --- |
-| [WebKit: HTMLParserIdioms.cpp](html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md#webkitwebkit-witness) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/parser/HTMLParserIdioms.cpp) | 99107062a7eaec7499838aaa5fab77045d6d92348c62b260cff4daf9cbef226d | partial exact source witness; lines 543–684 and complete original file header |
+| [WebKit: HTMLParserIdioms.cpp](webkit-html-parser-idioms--73aa6c89e2cb.md); [dimension-cursor excerpt](html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md#webkitwebkit-witness) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/parser/HTMLParserIdioms.cpp) | 99107062a7eaec7499838aaa5fab77045d6d92348c62b260cff4daf9cbef226d | complete original source and header; additional bounded dimension-cursor representation |
 | [Blink: html_dimension.cc](html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md#chromiumchromium-witness) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/html/html_dimension.cc) | 9e5b54fa9647a5e3cc4ee6317e6cea5ff1312078d445ddf586fae04f7f866090 | partial exact source witness; lines 43–143 and complete original file header |
 
 ## Referrer-policy vocabulary — 2026-10-11
@@ -505,3 +505,13 @@ or source pin.
 | Source | Exact snapshot | Complete original source SHA-256 | Representation |
 | --- | --- | --- | --- |
 | [MIME Sniffing JavaScript essence definitions](mimesniff-javascript-essence--39aa53511b13.md) | [WHATWG MIME Sniffing commit snapshot](https://mimesniff.spec.whatwg.org/commit-snapshots/39aa53511b13953d84fef8d4131d6f61d0ccbde6/) | 11caac49505995bcef51153a827c6fe96464111c8914e2c399d9e8fe9a467cd7 | partial document: §4.6 JavaScript MIME type and essence-match definitions, all 16 strings and attached HTML hook note; original lines 838–880 |
+
+## Srcset density conversion witness — 2026-10-11
+
+The [selected overflow determination](SOURCE-EDITIONS.md#srcset-density-conversion-overflow)
+uses this complete source and the existing HTMLParserIdioms.cpp identity above.
+It adopts only candidate-local omission after failed density conversion.
+
+| Source | Exact snapshot | Complete original source SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [WebKit: HTMLSrcsetParser.cpp](webkit-html-srcset-parser--73aa6c89e2cb.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/parser/HTMLSrcsetParser.cpp) | 1905a2a03797d7851859f1555b2d5b3caff72f1cec18c307013391001ec0194c | complete original source, copyright and three-clause license header |

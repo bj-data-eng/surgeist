@@ -406,3 +406,30 @@ BSD 3-Clause only for portions incorporated into code. This representation
 does not claim browser navigation, CSP evaluation or sandbox enforcement.
 The source counts remain 354 identities: 255 full, 91 partial and eight
 metadata-only; 81 passive SVG assets and historical dated counts are unchanged.
+
+## Srcset density overflow source retention — 2026-10-11
+
+The complete [HTMLParserIdioms.cpp](webkit-html-parser-idioms--73aa6c89e2cb.md)
+upgrades its existing partial identity to full source coverage. Its complete
+original SHA-256 is
+`99107062a7eaec7499838aaa5fab77045d6d92348c62b260cff4daf9cbef226d`; the
+previous dimension-cursor excerpt remains linked as an additional representation.
+The complete [HTMLSrcsetParser.cpp](webkit-html-srcset-parser--73aa6c89e2cb.md)
+adds one full identity, complete original SHA-256
+`1905a2a03797d7851859f1555b2d5b3caff72f1cec18c307013391001ec0194c`.
+Both originals are retained UTF-8 source at WebKit revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`. Complete fenced bodies compare
+byte-for-byte with the retained originals, including their original headers.
+The existing Idioms two-clause header and newly retained Srcset three-clause
+header compare byte-for-byte with their respective original file headers.
+Added source/legal links resolve locally; documentation uses UTF-8 and LF.
+No source scripts execute and no additional acquisition is involved.
+
+The [edition determination](SOURCE-EDITIONS.md#srcset-density-conversion-overflow)
+selects only candidate-local omission after density conversion overflow. HTML's
+existing normative identity and unchanged captures remain authoritative for
+other grammar and recovery. This conversion does not establish complete
+WebKit behavior, source-set normalization, URL validation or image selection.
+The catalog now contains **355 identities: 257 full, 90 partial and eight
+metadata-only**. Historical dated counts and **81 passive SVG assets** remain
+unchanged.

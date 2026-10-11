@@ -98,6 +98,27 @@ retained verbatim, with separate adaptation notes and origin hashes. The same
 MIT OR Apache-2.0 attribution applies; see the
 [tree-source notice](../../licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).
 
+## Srcset density overflow adaptation
+
+The intrinsic srcset producer follows the pinned HTML author grammar and
+processing algorithm under the WHATWG attribution above. Its sole selected
+WebKit correction treats failed density conversion as a candidate-local parse
+error, omits that candidate and continues. The
+[source determination](../../references/SOURCE-EDITIONS.md#srcset-density-conversion-overflow)
+identifies the complete files at WebKit revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d` and the adapted branches.
+HTMLParserIdioms.cpp retains the exact
+[two-clause header](../../licenses/webkit/html-parser-idioms-bsd-2-clause.txt),
+Copyright (C) 2010–2023 Apple Inc., 2014 Google Inc. and 2025 Samuel Weinig.
+HTMLSrcsetParser.cpp retains the exact
+[three-clause header](../../licenses/webkit/html-srcset-parser-bsd-3-clause.txt),
+Copyright (C) 2013 Apple Inc. and 2013 Google Inc. Both complete conditions and
+disclaimers are retained in the
+[WebKit notice](../../licenses/webkit/NOTICE.md#srcset-density-conversion-witnesses).
+The Rust adaptation incorporates only this recovery disposition, with native
+exact values and standalone admission. It imports no WebKit dependency or
+other grammar, integer bound, normalization or resource-selection pipeline.
+
 ## Dependencies
 
 This notice covers the 16 registry packages in this crate’s default-feature
