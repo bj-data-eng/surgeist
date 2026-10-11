@@ -247,6 +247,16 @@ keyword_type!(HtmlFormMethod, Method, [Get => "get", Post => "post", Dialog => "
 keyword_type!(HtmlFormEnctype, Enctype, [UrlEncoded => "application/x-www-form-urlencoded", MultipartFormData => "multipart/form-data", PlainText => "text/plain"]);
 keyword_type!(HtmlTrackKind, Kind, [Subtitles => "subtitles", Captions => "captions", Descriptions => "descriptions", Chapters => "chapters", Metadata => "metadata"]);
 keyword_type!(HtmlOlType, Type, [Decimal => "1", LowerAlpha => "a", UpperAlpha => "A", LowerRoman => "i", UpperRoman => "I"]);
+keyword_type!(HtmlInputType, Type, [
+    Hidden => "hidden", Text => "text", Search => "search", Telephone => "tel",
+    Url => "url", Email => "email", Password => "password", Date => "date",
+    Month => "month", Week => "week", Time => "time", LocalDateTime => "datetime-local",
+    Number => "number", Range => "range", Color => "color", Checkbox => "checkbox",
+    Radio => "radio", File => "file", Submit => "submit", Image => "image",
+    Reset => "reset", Button => "button"
+]);
+keyword_type!(HtmlButtonType, Type, [Submit => "submit", Reset => "reset", Button => "button"]);
+default_state!(HtmlButtonTypeState, HtmlButtonType, Auto);
 
 impl HtmlShadowRootMode {
     /// Constructs a conforming template shadowrootmode keyword attribute.
@@ -385,6 +395,24 @@ enum_rule!(TRACK_KIND, HtmlTrackKind, Kind, Context::Elements(&[KnownHtmlElement
     Some(HtmlTrackKind::Subtitles), Some(HtmlTrackKind::Metadata), None,
     ["subtitles" => ("subtitles", HtmlTrackKind::Subtitles), "captions" => ("captions", HtmlTrackKind::Captions),
      "descriptions" => ("descriptions", HtmlTrackKind::Descriptions), "chapters" => ("chapters", HtmlTrackKind::Chapters), "metadata" => ("metadata", HtmlTrackKind::Metadata)]);
+enum_rule!(INPUT_TYPE, HtmlInputType, Type, Context::Elements(&[KnownHtmlElement::Input]), [169], "attr-input-type",
+    Some(HtmlInputType::Text), Some(HtmlInputType::Text), None,
+    ["hidden" => ("hidden", HtmlInputType::Hidden), "text" => ("text", HtmlInputType::Text),
+     "search" => ("search", HtmlInputType::Search), "tel" => ("tel", HtmlInputType::Telephone),
+     "url" => ("url", HtmlInputType::Url), "email" => ("email", HtmlInputType::Email),
+     "password" => ("password", HtmlInputType::Password), "date" => ("date", HtmlInputType::Date),
+     "month" => ("month", HtmlInputType::Month), "week" => ("week", HtmlInputType::Week),
+     "time" => ("time", HtmlInputType::Time), "datetime-local" => ("datetime-local", HtmlInputType::LocalDateTime),
+     "number" => ("number", HtmlInputType::Number), "range" => ("range", HtmlInputType::Range),
+     "color" => ("color", HtmlInputType::Color), "checkbox" => ("checkbox", HtmlInputType::Checkbox),
+     "radio" => ("radio", HtmlInputType::Radio), "file" => ("file", HtmlInputType::File),
+     "submit" => ("submit", HtmlInputType::Submit), "image" => ("image", HtmlInputType::Image),
+     "reset" => ("reset", HtmlInputType::Reset), "button" => ("button", HtmlInputType::Button)]);
+enum_rule!(BUTTON_TYPE, HtmlButtonTypeState, Type, Context::Elements(&[KnownHtmlElement::Button]), [167], "attr-button-type",
+    Some(HtmlButtonTypeState::Auto), Some(HtmlButtonTypeState::Auto), None,
+    ["submit" => ("submit", HtmlButtonTypeState::Keyword(HtmlButtonType::Submit)),
+     "reset" => ("reset", HtmlButtonTypeState::Keyword(HtmlButtonType::Reset)),
+     "button" => ("button", HtmlButtonTypeState::Keyword(HtmlButtonType::Button))]);
 
 // ol[type] is an exact character table, not an ASCII-insensitive enumeration.
 const OL_TYPE: EnumRule<HtmlOlType> = EnumRule {
@@ -821,3 +849,5 @@ interpret_method!(form_method, FORM_METHOD, HtmlFormMethod);
 interpret_method!(form_enctype, FORM_ENCTYPE, HtmlFormEnctype);
 interpret_method!(track_kind, TRACK_KIND, HtmlTrackKind);
 interpret_method!(ol_type, OL_TYPE, HtmlOlType);
+interpret_method!(input_type, INPUT_TYPE, HtmlInputType);
+interpret_method!(button_type, BUTTON_TYPE, HtmlButtonTypeState);

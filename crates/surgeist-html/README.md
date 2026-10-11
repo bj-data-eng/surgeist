@@ -129,8 +129,10 @@ See the [dependency notice](NOTICE.md) and [source selection](../../references/S
 `HtmlAttributeReport` separates exact presence, expanded-name applicability,
 keyword recognition, author conformance and the selected intrinsic state. The
 implemented overlays cover twelve global enumerated attributes, template
-shadow mode/slot assignment, nine element-specific keyword rules and twenty
-Boolean contexts. Media preload retains implementation-defined missing/invalid
+shadow mode/slot assignment, eleven element-specific keyword rules and twenty
+Boolean contexts. Input types retain all twenty-two standard keywords and their
+Text fallback; button types retain the distinct Auto fallback without treating
+it as an authored keyword. Media preload retains implementation-defined missing/invalid
 policy separately from its recognized keywords; ordered-list marker types use
 exact case comparison, and track kinds retain their distinct missing/invalid
 defaults. It preserves invalid

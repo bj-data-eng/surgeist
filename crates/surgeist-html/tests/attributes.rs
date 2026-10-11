@@ -3,13 +3,14 @@ use surgeist_html::{
     HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
     HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
     HtmlAutocapitalize, HtmlAutocapitalizeState, HtmlAutocorrect, HtmlBooleanAttribute,
-    HtmlClosedBy, HtmlClosedByState, HtmlContentEditable, HtmlContentEditableState, HtmlDecoding,
-    HtmlDir, HtmlDirState, HtmlDraggable, HtmlDraggableState, HtmlEnterKeyHint,
-    HtmlFormAutocomplete, HtmlFormEnctype, HtmlFormMethod, HtmlHidden, HtmlHiddenState,
-    HtmlInputMode, HtmlLoading, HtmlOlType, HtmlPopover, HtmlPopoverState, HtmlPreload,
-    HtmlPreloadState, HtmlShadowRootMode, HtmlSlotAssignment, HtmlSpellcheck, HtmlSpellcheckState,
-    HtmlTrackKind, HtmlTranslate, HtmlTranslateState, HtmlValueInterpreter, HtmlWritingSuggestions,
-    HtmlWritingSuggestionsState, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
+    HtmlButtonType, HtmlButtonTypeState, HtmlClosedBy, HtmlClosedByState, HtmlContentEditable,
+    HtmlContentEditableState, HtmlDecoding, HtmlDir, HtmlDirState, HtmlDraggable,
+    HtmlDraggableState, HtmlEnterKeyHint, HtmlFormAutocomplete, HtmlFormEnctype, HtmlFormMethod,
+    HtmlHidden, HtmlHiddenState, HtmlInputMode, HtmlInputType, HtmlLoading, HtmlOlType,
+    HtmlPopover, HtmlPopoverState, HtmlPreload, HtmlPreloadState, HtmlShadowRootMode,
+    HtmlSlotAssignment, HtmlSpellcheck, HtmlSpellcheckState, HtmlTrackKind, HtmlTranslate,
+    HtmlTranslateState, HtmlValueInterpreter, HtmlWritingSuggestions, HtmlWritingSuggestionsState,
+    KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
 };
 
 fn element(local: &str) -> QualifiedName {
@@ -17,6 +18,297 @@ fn element(local: &str) -> QualifiedName {
 }
 fn attr(local: &str, value: &str) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, local), value)
+}
+
+#[test]
+fn complete_input_keyword_table_selects_source_states_and_authors_canonical_values() {
+    // Independent table from attr-input-type-keywords in the pinned edition.
+    let cases = [
+        ("hidden", HtmlInputType::Hidden),
+        ("text", HtmlInputType::Text),
+        ("search", HtmlInputType::Search),
+        ("tel", HtmlInputType::Telephone),
+        ("url", HtmlInputType::Url),
+        ("email", HtmlInputType::Email),
+        ("password", HtmlInputType::Password),
+        ("date", HtmlInputType::Date),
+        ("month", HtmlInputType::Month),
+        ("week", HtmlInputType::Week),
+        ("time", HtmlInputType::Time),
+        ("datetime-local", HtmlInputType::LocalDateTime),
+        ("number", HtmlInputType::Number),
+        ("range", HtmlInputType::Range),
+        ("color", HtmlInputType::Color),
+        ("checkbox", HtmlInputType::Checkbox),
+        ("radio", HtmlInputType::Radio),
+        ("file", HtmlInputType::File),
+        ("submit", HtmlInputType::Submit),
+        ("image", HtmlInputType::Image),
+        ("reset", HtmlInputType::Reset),
+        ("button", HtmlInputType::Button),
+    ];
+    let interpreter = HtmlValueInterpreter::new(100);
+    for (canonical, state) in cases {
+        assert_eq!(state.canonical_keyword(), canonical);
+        assert_eq!(state.into_attribute(), attr("type", canonical));
+        for literal in [canonical.to_owned(), canonical.to_ascii_uppercase()] {
+            let raw = attr("type", &literal);
+            let report = interpreter
+                .input_type(&element("input"), Some(&raw))
+                .unwrap();
+            assert_eq!(report.intrinsic(), Some(&state));
+            assert_eq!(report.author(), Author::Conforming);
+            assert_eq!(
+                report.recognition(),
+                Recognition::Keyword {
+                    matched: canonical,
+                    canonical
+                }
+            );
+            assert_eq!(report.raw_attribute(), Some(&raw));
+        }
+    }
+}
+
+#[test]
+fn input_text_fallback_preserves_missing_empty_and_unrecognized_authorship() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let context = element("input");
+    let omitted = interpreter.input_type(&context, None).unwrap();
+    assert_eq!(omitted.intrinsic(), Some(&HtmlInputType::Text));
+    assert_eq!(omitted.observation(), Observation::Missing);
+    assert_eq!(omitted.recognition(), Recognition::Missing);
+    assert_eq!(omitted.author(), Author::Missing);
+    // Neither historic datetime nor English state names are admitted aliases.
+    for literal in [
+        "",
+        "datetime",
+        "telephone",
+        "localdatetime",
+        "auto",
+        " text",
+        "text ",
+        "\u{ff34}\u{ff25}\u{ff38}\u{ff34}",
+    ] {
+        let raw = attr("type", literal);
+        let report = interpreter.input_type(&context, Some(&raw)).unwrap();
+        assert_eq!(report.intrinsic(), Some(&HtmlInputType::Text));
+        assert_eq!(
+            report.observation(),
+            if literal.is_empty() {
+                Observation::PresentEmpty
+            } else {
+                Observation::PresentNonempty
+            }
+        );
+        assert_eq!(
+            report.recognition(),
+            if literal.is_empty() {
+                Recognition::Empty
+            } else {
+                Recognition::Unrecognized
+            }
+        );
+        assert_eq!(
+            report.author(),
+            Author::Nonconforming(Conformance::UnrecognizedKeyword)
+        );
+        assert_eq!(report.raw_attribute(), Some(&raw));
+    }
+}
+
+#[test]
+fn button_type_keywords_do_not_turn_auto_fallback_into_a_valid_keyword() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let context = element("button");
+    for (canonical, native) in [
+        ("submit", HtmlButtonType::Submit),
+        ("reset", HtmlButtonType::Reset),
+        ("button", HtmlButtonType::Button),
+    ] {
+        assert_eq!(native.canonical_keyword(), canonical);
+        assert_eq!(native.into_attribute(), attr("type", canonical));
+        let raw = attr("type", &canonical.to_ascii_uppercase());
+        let report = interpreter.button_type(&context, Some(&raw)).unwrap();
+        assert_eq!(
+            report.intrinsic(),
+            Some(&HtmlButtonTypeState::Keyword(native))
+        );
+        assert_eq!(report.author(), Author::Conforming);
+        assert_eq!(
+            report.recognition(),
+            Recognition::Keyword {
+                matched: canonical,
+                canonical
+            }
+        );
+        assert_eq!(report.raw_attribute(), Some(&raw));
+    }
+    let missing = interpreter.button_type(&context, None).unwrap();
+    assert_eq!(missing.intrinsic(), Some(&HtmlButtonTypeState::Auto));
+    assert_eq!(missing.author(), Author::Missing);
+    assert_eq!(missing.recognition(), Recognition::Missing);
+    assert_eq!(missing.observation(), Observation::Missing);
+    for literal in ["", "auto", "menu", "unknown", "submit "] {
+        let raw = attr("type", literal);
+        let report = interpreter.button_type(&context, Some(&raw)).unwrap();
+        assert_eq!(report.intrinsic(), Some(&HtmlButtonTypeState::Auto));
+        assert_eq!(
+            report.author(),
+            Author::Nonconforming(Conformance::UnrecognizedKeyword)
+        );
+        assert_eq!(
+            report.recognition(),
+            if literal.is_empty() {
+                Recognition::Empty
+            } else {
+                Recognition::Unrecognized
+            }
+        );
+        assert_eq!(
+            report.observation(),
+            if literal.is_empty() {
+                Observation::PresentEmpty
+            } else {
+                Observation::PresentNonempty
+            }
+        );
+        assert_eq!(report.raw_attribute(), Some(&raw));
+    }
+}
+
+#[test]
+fn input_and_button_type_have_separate_exact_contexts_and_defining_sources() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let raw = attr("type", "submit");
+    let input = interpreter
+        .input_type(&element("input"), Some(&raw))
+        .unwrap();
+    let button = interpreter
+        .button_type(&element("button"), Some(&raw))
+        .unwrap();
+    assert_eq!(input.attribute(), KnownHtmlAttribute::Type);
+    assert_eq!(input.inventory_rows(), &[169]);
+    assert!(input.source_clause().ends_with("#attr-input-type"));
+    assert_eq!(button.inventory_rows(), &[167]);
+    assert!(button.source_clause().ends_with("#attr-button-type"));
+    for local in ["div", "x-control", "INPUT", "BUTTON", "ol", "script"] {
+        assert_eq!(
+            interpreter
+                .input_type(&element(local), Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::DifferentElement
+        );
+        assert_eq!(
+            interpreter
+                .button_type(&element(local), Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::DifferentElement
+        );
+    }
+    assert_eq!(
+        interpreter
+            .input_type(&element("button"), Some(&raw))
+            .unwrap()
+            .intrinsic(),
+        None
+    );
+    assert_eq!(
+        interpreter
+            .button_type(&element("input"), Some(&raw))
+            .unwrap()
+            .intrinsic(),
+        None
+    );
+    for (namespace, local) in [(Namespace::svg(), "input"), (Namespace::mathml(), "button")] {
+        let foreign = QualifiedName::new(namespace, None, local);
+        assert_eq!(
+            interpreter
+                .input_type(&foreign, Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::ForeignElementNamespace
+        );
+        assert_eq!(
+            interpreter
+                .button_type(&foreign, Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::ForeignElementNamespace
+        );
+    }
+    for name in [
+        QualifiedName::new(Namespace::none(), None, "TYPE"),
+        QualifiedName::new(Namespace::html(), None, "type"),
+    ] {
+        let raw = Attribute::new(name, "submit");
+        assert_eq!(
+            interpreter
+                .input_type(&element("input"), Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::DifferentAttribute
+        );
+        assert_eq!(
+            interpreter
+                .button_type(&element("button"), Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::DifferentAttribute
+        );
+    }
+}
+
+#[test]
+fn control_type_admission_and_reports_preserve_exact_utf16_and_prefixes() {
+    let interpreter = HtmlValueInterpreter::new(2);
+    let input = QualifiedName::new(Namespace::html(), Some("h".into()), "input");
+    let button = QualifiedName::new(Namespace::html(), Some("h".into()), "button");
+    let raw = Attribute::new(
+        QualifiedName::new(Namespace::none(), Some("p".into()), "type"),
+        DocumentString::from_utf16(vec![0xd800, 0x0054]),
+    );
+    let input_report = interpreter.input_type(&input, Some(&raw)).unwrap();
+    assert_eq!(input_report.element(), &input);
+    assert_eq!(input_report.raw_attribute(), Some(&raw));
+    assert_eq!(input_report.input_code_units(), 2);
+    assert_eq!(input_report.intrinsic(), Some(&HtmlInputType::Text));
+    assert_eq!(input_report.recognition(), Recognition::Unrecognized);
+    let button_report = interpreter.button_type(&button, Some(&raw)).unwrap();
+    assert_eq!(button_report.element(), &button);
+    assert_eq!(button_report.raw_attribute(), Some(&raw));
+    assert_eq!(button_report.intrinsic(), Some(&HtmlButtonTypeState::Auto));
+    let limited = HtmlValueInterpreter::new(1);
+    for error in [
+        limited.input_type(&element("div"), Some(&raw)).unwrap_err(),
+        limited
+            .button_type(&element("div"), Some(&raw))
+            .unwrap_err(),
+    ] {
+        assert_eq!(error.capacity(), 1);
+        assert_eq!(error.required(), 2);
+    }
+    let interpreter = HtmlValueInterpreter::new(100);
+    let native = Attribute::new(
+        QualifiedName::new(Namespace::none(), Some("p".into()), "type"),
+        "SUBMIT",
+    );
+    assert_eq!(
+        interpreter
+            .input_type(&input, Some(&native))
+            .unwrap()
+            .intrinsic(),
+        Some(&HtmlInputType::Submit)
+    );
+    assert_eq!(
+        interpreter
+            .button_type(&button, Some(&native))
+            .unwrap()
+            .intrinsic(),
+        Some(&HtmlButtonTypeState::Keyword(HtmlButtonType::Submit))
+    );
 }
 
 #[test]

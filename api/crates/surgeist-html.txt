@@ -71,6 +71,16 @@ pub surgeist_html::HtmlBooleanAttribute::TrackDefault
 impl surgeist_html::HtmlBooleanAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::attribute(self) -> surgeist_html::KnownHtmlAttribute
 pub fn surgeist_html::HtmlBooleanAttribute::into_attribute(self, present: bool) -> core::option::Option<surgeist_html::Attribute>
+pub enum surgeist_html::HtmlButtonType
+pub surgeist_html::HtmlButtonType::Button
+pub surgeist_html::HtmlButtonType::Reset
+pub surgeist_html::HtmlButtonType::Submit
+impl surgeist_html::HtmlButtonType
+pub fn surgeist_html::HtmlButtonType::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlButtonType::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlButtonTypeState
+pub surgeist_html::HtmlButtonTypeState::Auto
+pub surgeist_html::HtmlButtonTypeState::Keyword(surgeist_html::HtmlButtonType)
 pub enum surgeist_html::HtmlCaptureError
 pub surgeist_html::HtmlCaptureError::AssociationAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::CannotBeOrdinaryChild(surgeist_html::HtmlCaptureSubjectKind)
@@ -342,6 +352,32 @@ pub surgeist_html::HtmlInputMode::Url
 impl surgeist_html::HtmlInputMode
 pub fn surgeist_html::HtmlInputMode::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputMode::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlInputType
+pub surgeist_html::HtmlInputType::Button
+pub surgeist_html::HtmlInputType::Checkbox
+pub surgeist_html::HtmlInputType::Color
+pub surgeist_html::HtmlInputType::Date
+pub surgeist_html::HtmlInputType::Email
+pub surgeist_html::HtmlInputType::File
+pub surgeist_html::HtmlInputType::Hidden
+pub surgeist_html::HtmlInputType::Image
+pub surgeist_html::HtmlInputType::LocalDateTime
+pub surgeist_html::HtmlInputType::Month
+pub surgeist_html::HtmlInputType::Number
+pub surgeist_html::HtmlInputType::Password
+pub surgeist_html::HtmlInputType::Radio
+pub surgeist_html::HtmlInputType::Range
+pub surgeist_html::HtmlInputType::Reset
+pub surgeist_html::HtmlInputType::Search
+pub surgeist_html::HtmlInputType::Submit
+pub surgeist_html::HtmlInputType::Telephone
+pub surgeist_html::HtmlInputType::Text
+pub surgeist_html::HtmlInputType::Time
+pub surgeist_html::HtmlInputType::Url
+pub surgeist_html::HtmlInputType::Week
+impl surgeist_html::HtmlInputType
+pub fn surgeist_html::HtmlInputType::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlInputType::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlLoading
 pub surgeist_html::HtmlLoading::Eager
 pub surgeist_html::HtmlLoading::Lazy
@@ -1414,6 +1450,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::boolean_attribute(&self, selected: surgeist_html::HtmlBooleanAttribute, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::dir(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDirState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::button_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlButtonTypeState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::closedby(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlClosedByState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::comma_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlCommaSeparatedTokens, surgeist_html::HtmlCommaSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
@@ -1456,6 +1494,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::form_method(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::hidden(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlHiddenState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::input_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::inputmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputMode>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
