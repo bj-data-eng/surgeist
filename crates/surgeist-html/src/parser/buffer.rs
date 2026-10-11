@@ -87,13 +87,7 @@ impl Utf16Buffer {
             self.units.release(control)?;
             return Err(stop);
         }
-        let (units, allocation) = control.admit_document_string_wrapper(self.units)?;
-        let text = DocumentString::from_utf16(units);
-        if let Err(stop) = control.checkpoint() {
-            drop(text);
-            control.release_document_string(allocation)?;
-            return Err(stop);
-        }
+        let (text, allocation) = control.freeze_document_string(self.units)?;
         Ok(FrozenUtf16 { text, allocation })
     }
 }
@@ -106,6 +100,9 @@ pub(crate) struct FrozenUtf16 {
 }
 
 impl FrozenUtf16 {
+    pub(crate) fn allocation(&self) -> &DocumentStringAllocation {
+        &self.allocation
+    }
     pub(crate) fn text(&self) -> &DocumentString {
         &self.text
     }

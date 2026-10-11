@@ -1,13 +1,14 @@
 # Parser source origins
 
-The private tokenizer adapts html5ever 0.40.1 at
+The private tokenizer and bounded tree-insertion kernel adapt html5ever 0.40.1 at
 [`d7232d746d3112f08926d169591576bd12fe2fdf`](https://github.com/servo/html5ever/tree/d7232d746d3112f08926d169591576bd12fe2fdf).
 The behavioral authority is the separate
 [pinned HTML edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline),
 `877d6146487f15b15bc8dd0e3c625063a37b456a`. The implementation revision records
-provenance, not a different HTML dialect. The tokenizer currently compiles only
-for tests; tree construction and public parse execution are not supplied by this
-source ingestion.
+provenance, not a different HTML dialect. This machinery currently compiles only
+for tests. The tree kernel implements adjusted insertion locations, element/text
+insertion and stack/scope operations over actual controlled native storage.
+Complete insertion-mode dispatch and public parse execution remain unfinished.
 
 ## Original source and incorporated files
 
@@ -21,6 +22,8 @@ before adaptation.
 | `html5ever/src/tokenizer/states.rs` | `35ea888082a92b77a428af263224169b05ff5740bd519efdace90e44858a0b7d` | `src/parser/tokenizer/states.rs` |
 | `html5ever/src/tokenizer/interface.rs` | `cdab80709a6e27663b9a349a607cf85da93fcc9ee3b3a54cf97ee635a9ae7cf4` | `src/parser/tokenizer/token.rs` |
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
+| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location and stack/scope adaptation in `src/parser/tree_builder/mod.rs` |
+| `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope-list adaptation in `src/parser/tree_builder/tag_sets.rs` |
 
 The following hashes record the initial adapted source checkpoint on
 2026-10-11. Later implementation changes remain discoverable in Git; these are
@@ -34,9 +37,17 @@ historical incorporation hashes, not a claim that subsequent source is unchanged
 | `src/parser/tokenizer/token.rs` | `1383aca3882c68a3a69c727acbf24b224f2bd7437e99edaaf135881e701a3a03` |
 | `src/parser/tokenizer/char_ref.rs` | `9a419843984560258ebd57aff9f1a20199f7bb3e3892836983d3423f8690cbb4` |
 
-The accompanying `src/parser/tokenizer/tests.rs` is Surgeist-authored
-verification, not an imported upstream test file. The existing input, buffer,
-controller and arena modules are Surgeist-owned providers.
+The tree-insertion kernel's separate initial adapted checkpoint is recorded
+below. The earlier tokenizer incorporation hashes remain historical.
+
+| Incorporated file | Initial adapted SHA-256 |
+| --- | --- |
+| `src/parser/tree_builder/mod.rs` | `139d6ce69a6f47e179969cbc4ca99e25df44126498eeac7a375bc11d29eececb` |
+| `src/parser/tree_builder/tag_sets.rs` | `1d50c10ad6e4b3f8a6a086e47bb65226fa4a6d76c33dc3337aafe49db6d7a76f` |
+
+The accompanying tokenizer and tree-builder tests are Surgeist-authored
+verification, not imported upstream test files. The input, buffer, controller,
+managed-payload factories and native arena providers are Surgeist-owned.
 
 ## Modifications
 
@@ -65,10 +76,23 @@ syntax capture. The generator’s optional original-table comparison uses
 html5ever only as a witness; no upstream atom generator, generated PHF table,
 Tendril implementation or external dependency is incorporated here.
 
-The upstream tree builder, driver, encoding implementation, serializer, XML
-parser and RcDom are not part of this tokenizer checkpoint. Research prototypes
-and their measurements establish suitability evidence; they do not certify
-this adapted implementation or provide a public parsing contract.
+The tree adaptation implements HTML §13.2.6.1 adjusted insertion, including
+foster locations, fragment-root substitution and the source's three ignored
+element-placement guards. It routes newly created, unpatched templates through
+their actual contents association; imported content-patching state remains
+explicitly unavailable. Scope predicates use exact namespaces and the selected
+HTML edition's lists, including MathML `annotation-xml`. A controller-owned
+open-elements vector admits actual stack storage and visits. Managed factories
+consume exact tokenizer payloads into the existing native arena; aliases and
+foreign ownership cannot certify a transfer. Terminal cleanup disposes retained
+fields and physical capacity even when the final active visit latches a stop.
+
+Complete insertion modes, formatting reconstruction/adoption, foreign dispatch,
+processing-instruction tree operations, context effects and report publication
+remain required engine work. The driver, encoding implementation, serializer,
+XML parser and RcDom are not incorporated here. Research prototypes and their
+measurements do not certify this adapted implementation or supply a public
+parsing contract.
 
 ## Attribution and verification
 
@@ -86,9 +110,11 @@ Focused verification uses the repository’s bounded command runner:
 ```sh
 pisct run --timeout-seconds 180 -- cargo test --offline --locked -j 1 -p surgeist-html --lib parser::tokenizer::tests
 pisct run --timeout-seconds 180 -- cargo test --offline --locked -j 1 -p surgeist-html --lib parser::input::tests
+pisct run --timeout-seconds 180 -- cargo test --offline --locked -j 1 -p surgeist-html --lib parser::tree_builder::tests
+pisct run --timeout-seconds 180 -- cargo test --offline --locked -j 1 -p surgeist-html --lib construction::parser_session::tests
 pisct run --timeout-seconds 180 -- cargo clippy --offline --locked -j 1 -p surgeist-html --all-targets -- -F unsafe-code -D warnings
 ```
 
-These checks exercise the private tokenizer and its providers. Full parser
+These checks exercise the private tokenizer, bounded tree kernel and providers. Full parser
 conformance, tree effects, diagnostics/report publication and complete resource
 accounting remain obligations of the enclosing parser contribution.

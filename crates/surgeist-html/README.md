@@ -247,7 +247,13 @@ wall-clock time, process memory or allocator headers.
 
 Private parser mechanics currently compile for tests while engine integration
 continues. Source decoding, UTF-16 buffering, reference lookup, the adapted
-tokenizer and controlled arena mutations share one resource controller.
+tokenizer and controlled arena mutations share one resource controller. The
+bounded tree kernel now supplies adjusted element/text insertion, foster and
+template locations, source-required ignored-placement guards and exact scope
+predicates over an admitted open-elements stack. Actual tokenizer payloads
+transfer into the existing immutable-result storage under owner and backing
+checks; terminal cleanup retains no lost capacity ticket. Complete insertion
+modes, context effects and parse-report publication remain unfinished.
 The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,
 modifications and attribution separately from the normative HTML edition.
 The offline `tools/generate_character_references.py --check`

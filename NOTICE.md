@@ -409,6 +409,12 @@ revision, exact original files and modifications. The retained
 [MIT OR Apache-2.0 notice and legal material](licenses/html5ever/NOTICE.md#incorporated-tokenizer-source)
 cover this adaptation; it adds no external parser Cargo dependency.
 
+The same private machinery also incorporates bounded tree-insertion and scope
+operations under the [tree-source notice](licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).
+Its origin record preserves a separate initial adaptation checkpoint and the
+complete original notices. This does not assert complete tree-mode dispatch or
+public parsing.
+
 ## Selector matching research references
 
 Pinned [Servo selectors](https://github.com/servo/stylo/tree/64416a22f9d06d07e108176d724dd20509a8c52d/selectors) source is retained as research material under MPL-2.0. See [local attribution and license](licenses/servo-selectors/NOTICE.md). This capture adds no production dependency.

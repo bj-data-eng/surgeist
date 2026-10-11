@@ -17,3 +17,15 @@ source files to five adapted implementation files and records their
 modifications on 2026-10-11. Exact original copyright and license headers remain
 in those files; the copyright, authorship and MIT OR Apache-2.0 material above
 applies to the adaptation. No html5ever Cargo package is added by this ingestion.
+
+## Incorporated tree-insertion source
+
+The same selected revision supplies a bounded adaptation of tree-builder
+insertion-location and stack/scope operations plus selected tag sets. The
+[origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies the two
+complete original file hashes and the separate initial adapted checkpoint.
+The original eight-line copyright/license notices are retained verbatim;
+adaptation notes identify the changed source and selected HTML authority.
+The exact copyright, authorship and MIT OR Apache-2.0 material above applies.
+This test-compiled kernel uses Surgeist-owned controlled storage. It does not
+claim complete insertion modes or public parser execution.

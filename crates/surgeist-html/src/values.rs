@@ -19,6 +19,11 @@ impl DocumentString {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn backing(&self) -> &Arc<Vec<u16>> {
+        &self.code_units
+    }
+
     /// Returns the exact stored UTF-16 sequence.
     pub fn code_units(&self) -> &[u16] {
         &self.code_units
@@ -229,7 +234,7 @@ impl Attribute {
 /// construction rejects duplicates; parser recovery belongs to the parser.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OrderedAttributes {
-    attributes: Arc<[Attribute]>,
+    attributes: Arc<Vec<Attribute>>,
 }
 
 impl OrderedAttributes {
@@ -252,8 +257,53 @@ impl OrderedAttributes {
             }
         }
         Ok(Self {
-            attributes: attributes.into(),
+            attributes: Arc::new(attributes),
         })
+    }
+
+    /// Consumes the actual admitted vector wrapper only after independently
+    /// checking expanded names. No hash table, scalar conversion, or second
+    /// attribute collection is allocated by this private parser producer.
+    #[cfg(test)]
+    pub(crate) fn from_parser_storage(
+        attributes: Arc<Vec<Attribute>>,
+        control: &mut crate::parser::control::ParseControl,
+    ) -> Result<Self, (ParserAttributeError, Arc<Vec<Attribute>>)> {
+        use crate::parser::control::WorkCategory;
+        let checked = (|| {
+            for duplicate in 0..attributes.len() {
+                for first in 0..duplicate {
+                    control.charge(WorkCategory::RecordVisit, 2)?;
+                    let left = attributes[first].name();
+                    let right = attributes[duplicate].name();
+                    let same_namespace = match (left.namespace().uri(), right.namespace().uri()) {
+                        (None, None) => true,
+                        (Some(left), Some(right)) => parser_string_equal(left, right, control)?,
+                        _ => false,
+                    };
+                    if same_namespace
+                        && parser_string_equal(left.local_name(), right.local_name(), control)?
+                    {
+                        return Err(ParserAttributeError::Duplicate { first, duplicate });
+                    }
+                }
+            }
+            Ok(())
+        })();
+        match checked {
+            Ok(()) => Ok(Self { attributes }),
+            Err(error) => Err((error, attributes)),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn backing(&self) -> &Arc<Vec<Attribute>> {
+        &self.attributes
+    }
+
+    #[cfg(test)]
+    pub(crate) fn into_parser_storage(self) -> Arc<Vec<Attribute>> {
+        self.attributes
     }
 
     /// Returns all attributes in their original order.
@@ -326,3 +376,35 @@ impl fmt::Display for DuplicateAttributeError {
 }
 
 impl Error for DuplicateAttributeError {}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ParserAttributeError {
+    Stop(crate::parser::control::ParseStop),
+    Duplicate { first: usize, duplicate: usize },
+}
+#[cfg(test)]
+impl From<crate::parser::control::ParseStop> for ParserAttributeError {
+    fn from(stop: crate::parser::control::ParseStop) -> Self {
+        Self::Stop(stop)
+    }
+}
+#[cfg(test)]
+fn parser_string_equal(
+    left: &DocumentString,
+    right: &DocumentString,
+    control: &mut crate::parser::control::ParseControl,
+) -> Result<bool, ParserAttributeError> {
+    use crate::parser::control::WorkCategory;
+    control.charge(WorkCategory::RecordVisit, 2)?;
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for index in 0..left.len() {
+        control.charge(WorkCategory::InspectByte, 4)?;
+        if left.code_units()[index] != right.code_units()[index] {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}

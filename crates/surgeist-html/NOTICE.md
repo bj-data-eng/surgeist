@@ -35,6 +35,12 @@ notices and the choice of [MIT](../../licenses/html5ever/LICENSE-MIT) or
 modifications. This source adaptation adds no Cargo dependency on html5ever,
 markup5ever, Tendril or web_atoms and does not yet expose a complete parser.
 
+The private tree-insertion kernel additionally adapts bounded operations and
+scope lists from two files at that same revision. Their original notices are
+retained verbatim, with separate adaptation notes and origin hashes. The same
+MIT OR Apache-2.0 attribution applies; see the
+[tree-source notice](../../licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).
+
 ## Dependencies
 
 This notice covers the 16 registry packages in this crate’s default-feature

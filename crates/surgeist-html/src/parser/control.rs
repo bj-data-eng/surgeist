@@ -811,7 +811,7 @@ impl ParseControl {
     /// Admits only the known fixed Arc payload. Arc headers, allocator metadata,
     /// and its infallible setup are provider limitations, not measured capacity.
     /// The consumer polls after the actual shared-wrapper construction.
-    pub(crate) fn admit_document_string_wrapper(
+    fn admit_document_string_wrapper(
         &mut self,
         mut buffer: OwnedVec<u16>,
     ) -> Result<(Vec<u16>, DocumentStringAllocation), ParseStop> {
@@ -836,6 +836,9 @@ impl ParseControl {
             units: buffer.len() as u64,
             vector_capacity: buffer.capacity(),
             wrapper_bytes: bytes,
+            resource: HtmlParseResource::BufferedUtf16Units,
+            data_pointer: buffer.as_slice().as_ptr() as usize,
+            backing: None,
         };
         Ok((buffer.into_vec(), allocation))
     }
@@ -871,6 +874,106 @@ impl ParseControl {
         self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
         Ok(bytes)
     }
+    /// Owns actual wrapper construction, including the empty-vector case where
+    /// a dangling data pointer cannot by itself prove backing provenance.
+    /// Arc's fixed known Vec payload is admitted; opaque headers, allocator
+    /// bookkeeping and infallible std Arc setup remain explicit limitations.
+    pub(crate) fn freeze_document_string(
+        &mut self,
+        buffer: OwnedVec<u16>,
+    ) -> Result<(crate::DocumentString, DocumentStringAllocation), ParseStop> {
+        let (units, mut allocation) = self.admit_document_string_wrapper(buffer)?;
+        let text = crate::DocumentString::from_utf16(units);
+        if let Err(stop) = self.bind_document_string(&mut allocation, &text) {
+            drop(text);
+            self.release_document_string(allocation)?;
+            return Err(stop);
+        }
+        Ok((text, allocation))
+    }
+    /// Binds the actual immutable wrapper to the vector admitted by the sole
+    /// producer. Pointer equality observes identity only; no pointer is read.
+    fn bind_document_string(
+        &mut self,
+        allocation: &mut DocumentStringAllocation,
+        value: &crate::DocumentString,
+    ) -> Result<(), ParseStop> {
+        self.checkpoint()?;
+        self.charge_many(&[
+            (WorkCategory::RecordVisit, 1),
+            (WorkCategory::ProviderCall, 1),
+        ])?;
+        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        if allocation.backing.is_some()
+            || value.len() as u64 != allocation.units
+            || value.backing().capacity() != allocation.vector_capacity
+            || value.code_units().as_ptr() as usize != allocation.data_pointer
+        {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        allocation.backing = Some(Arc::downgrade(value.backing()));
+        Ok(())
+    }
+    pub(crate) fn require_document_string(
+        &mut self,
+        allocation: &DocumentStringAllocation,
+        value: &crate::DocumentString,
+    ) -> Result<(), ParseStop> {
+        self.checkpoint()?;
+        self.charge(WorkCategory::RecordVisit, 1)?;
+        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        if allocation
+            .backing
+            .as_ref()
+            .is_none_or(|backing| backing.as_ptr() != Arc::as_ptr(value.backing()))
+            || value.len() as u64 != allocation.units
+            || value.backing().capacity() != allocation.vector_capacity
+        {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        Ok(())
+    }
+    /// One atomic logical domain transition; real capacity and the immutable
+    /// backing are unchanged. A failed cap or poll leaves both currents and the
+    /// ticket phase unchanged.
+    pub(crate) fn move_document_string_to_managed(
+        &mut self,
+        allocation: &mut DocumentStringAllocation,
+        value: &crate::DocumentString,
+    ) -> Result<(), ParseStop> {
+        self.require_document_string(allocation, value)?;
+        if allocation.resource != HtmlParseResource::BufferedUtf16Units {
+            return self.fail(ParseStop::InternalInvariant(Invariant::NonStorageResource));
+        }
+        let buffered = self
+            .usage
+            .resource(HtmlParseResource::BufferedUtf16Units)
+            .current;
+        let managed = self
+            .usage
+            .resource(HtmlParseResource::ManagedUtf16Units)
+            .current;
+        let Some(buffered) = buffered.checked_sub(allocation.units) else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        };
+        let Some(managed) = managed.checked_add(allocation.units) else {
+            return self.representation(HtmlParseResource::ManagedUtf16Units);
+        };
+        self.check_value(
+            HtmlParseResource::ManagedUtf16Units,
+            managed,
+            allocation.units,
+        )?;
+        self.set(HtmlParseResource::BufferedUtf16Units, buffered);
+        self.set(HtmlParseResource::ManagedUtf16Units, managed);
+        allocation.resource = HtmlParseResource::ManagedUtf16Units;
+        Ok(())
+    }
+
     pub(crate) fn release_document_string(
         &mut self,
         allocation: DocumentStringAllocation,
@@ -886,11 +989,16 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        self.cleanup_storage(
-            HtmlParseResource::BufferedUtf16Units,
-            allocation.units,
-            bytes,
-        )
+        if allocation
+            .backing
+            .as_ref()
+            .is_some_and(|backing| backing.strong_count() != 0)
+        {
+            return self.fail(ParseStop::InternalInvariant(
+                Invariant::SharedAllocationAliased,
+            ));
+        }
+        self.cleanup_storage(allocation.resource, allocation.units, bytes)
     }
 }
 
@@ -954,6 +1062,9 @@ pub(crate) struct DocumentStringAllocation {
     units: u64,
     vector_capacity: usize,
     wrapper_bytes: u64,
+    resource: HtmlParseResource,
+    data_pointer: usize,
+    backing: Option<Weak<Vec<u16>>>,
 }
 impl DocumentStringAllocation {
     pub(crate) fn units(&self) -> u64 {
@@ -1301,6 +1412,161 @@ mod tests {
     }
     fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+
+    fn bound_string(
+        control: &mut ParseControl,
+        units: &[u16],
+    ) -> (DocumentString, DocumentStringAllocation) {
+        let mut buffer = OwnedVec::new(HtmlParseResource::BufferedUtf16Units).unwrap();
+        buffer.try_extend_from_slice(control, units).unwrap();
+        let (units, mut ticket) = control.admit_document_string_wrapper(buffer).unwrap();
+        let text = DocumentString::from_utf16(units);
+        control.bind_document_string(&mut ticket, &text).unwrap();
+        (text, ticket)
+    }
+    #[test]
+    fn exact_bound_backing_moves_domains_without_capacity_or_second_copy() {
+        let mut c = control();
+        let (text, mut ticket) = bound_string(&mut c, &[0xd800, 0xd83d, 0xde00, 0]);
+        let capacity = c.usage().actual_capacity_bytes;
+        let copies = c.usage().work(WorkCategory::CopyByte);
+        c.move_document_string_to_managed(&mut ticket, &text)
+            .unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            0
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedUtf16Units)
+                .current,
+            4
+        );
+        assert_eq!(c.usage().actual_capacity_bytes, capacity);
+        assert_eq!(c.usage().work(WorkCategory::CopyByte), copies);
+        assert_eq!(text.code_units(), &[0xd800, 0xd83d, 0xde00, 0]);
+        drop(text);
+        c.release_document_string(ticket).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedUtf16Units)
+                .current,
+            0
+        );
+    }
+    #[test]
+    fn one_short_managed_domain_cap_preserves_buffered_ticket_and_both_currents() {
+        let caps = limits()
+            .into_builder()
+            .managed_utf16_units(1)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let (text, mut ticket) = bound_string(&mut c, &[0x61, 0x62]);
+        let capacity = c.usage().actual_capacity_bytes;
+        assert_eq!(
+            c.move_document_string_to_managed(&mut ticket, &text),
+            Err(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedUtf16Units,
+                limit: 1,
+                current: 0,
+                requested_delta: 2,
+            })
+        );
+        assert_eq!(ticket.resource, HtmlParseResource::BufferedUtf16Units);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            2
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedUtf16Units)
+                .current,
+            0
+        );
+        assert_eq!(c.usage().actual_capacity_bytes, capacity);
+        let stop = c.stop();
+        drop(text);
+        c.release_document_string(ticket).unwrap();
+        assert_eq!(c.stop(), stop);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn matching_units_wrong_backing_and_foreign_owner_cannot_move_ticket() {
+        let mut c = control();
+        let (text, mut ticket) = bound_string(&mut c, &[0x61]);
+        let mut foreign = control();
+        assert_eq!(
+            foreign.move_document_string_to_managed(&mut ticket, &text),
+            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            1
+        );
+        let other = DocumentString::from_utf16(vec![0x61]);
+        assert_eq!(
+            c.require_document_string(&ticket, &other),
+            Err(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+        );
+        drop(text);
+        c.release_document_string(ticket).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn duplicate_transfer_and_cancellation_reject_atomically_and_managed_cleanup_is_terminal() {
+        let cancel = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancel.clone());
+        let (text, mut ticket) = bound_string(&mut c, &[0x61]);
+        c.move_document_string_to_managed(&mut ticket, &text)
+            .unwrap();
+        assert_eq!(
+            c.move_document_string_to_managed(&mut ticket, &text),
+            Err(ParseStop::InternalInvariant(Invariant::NonStorageResource))
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedUtf16Units)
+                .current,
+            1
+        );
+        let work = c.usage().work;
+        drop(text);
+        c.release_document_string(ticket).unwrap();
+        assert_eq!(c.usage().work, work);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedUtf16Units)
+                .current,
+            0
+        );
+
+        let mut c = ParseControl::new(limits(), cancel.clone());
+        let (text, mut ticket) = bound_string(&mut c, &[0x62]);
+        cancel.cancel();
+        assert_eq!(
+            c.move_document_string_to_managed(&mut ticket, &text),
+            Err(ParseStop::Cancelled)
+        );
+        assert_eq!(ticket.resource, HtmlParseResource::BufferedUtf16Units);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            1
+        );
+        drop(text);
+        c.release_document_string(ticket).unwrap();
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
     }
 
     #[test]
