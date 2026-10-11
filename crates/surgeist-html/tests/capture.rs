@@ -1165,7 +1165,7 @@ fn captured_processing_instructions_do_not_apply_native_authoring_checks() {
     let d = document(&mut b, HtmlScriptingStatus::Disabled);
     let target = DocumentString::from("xml:é");
     let data = DocumentString::from_utf16([0xd800, b'>' as u16, b'?' as u16].as_slice());
-    assert!(HtmlProcessingInstruction::new(target.clone(), data.clone()).is_err());
+    assert!(HtmlAuthoredProcessingInstruction::new(target.clone(), data.clone()).is_err());
     let pi = b
         .add_processing_instruction(&d, target.clone(), data.clone())
         .unwrap();

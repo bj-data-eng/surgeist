@@ -923,6 +923,16 @@ pub fn surgeist_html::HtmlAttributeReport<T>::raw(&self) -> core::option::Option
 pub fn surgeist_html::HtmlAttributeReport<T>::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
 pub fn surgeist_html::HtmlAttributeReport<T>::recognition(&self) -> surgeist_html::HtmlAttributeRecognition
 pub fn surgeist_html::HtmlAttributeReport<T>::source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlAuthoredProcessingInstruction
+impl surgeist_html::HtmlAuthoredProcessingInstruction
+pub fn surgeist_html::HtmlAuthoredProcessingInstruction::data(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlAuthoredProcessingInstruction::new(target: impl core::convert::Into<surgeist_html::DocumentString>, data: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlProcessingInstructionError>
+pub fn surgeist_html::HtmlAuthoredProcessingInstruction::target(&self) -> &surgeist_html::DocumentString
+impl core::convert::From<surgeist_html::HtmlAuthoredProcessingInstruction> for surgeist_html::HtmlProcessingInstruction
+pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::HtmlAuthoredProcessingInstruction) -> Self
+impl core::convert::TryFrom<surgeist_html::HtmlProcessingInstruction> for surgeist_html::HtmlAuthoredProcessingInstruction
+pub type surgeist_html::HtmlAuthoredProcessingInstruction::Error = surgeist_html::HtmlProcessingInstructionError
+pub fn surgeist_html::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
 pub struct surgeist_html::HtmlBuilderNode
 pub struct surgeist_html::HtmlCapture(_)
 impl surgeist_html::HtmlCapture
@@ -1108,7 +1118,7 @@ impl surgeist_html::HtmlDocumentBuilder
 pub fn surgeist_html::HtmlDocumentBuilder::append_comment(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlDocumentBuilder::append_doctype(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: surgeist_html::HtmlDoctype) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlDocumentBuilder::append_element(&mut self, parent: &surgeist_html::HtmlBuilderNode, name: surgeist_html::QualifiedName, attributes: surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::HtmlDocumentBuilder::append_processing_instruction(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::HtmlDocumentBuilder::append_processing_instruction(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: surgeist_html::HtmlAuthoredProcessingInstruction) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlDocumentBuilder::append_text(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlDocumentBuilder::attach_declarative_shadow(&mut self, host: &surgeist_html::HtmlBuilderNode, properties: surgeist_html::HtmlShadowRootProperties) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlDocumentBuilder::finish(self) -> surgeist_html::HtmlDocument
@@ -1163,7 +1173,7 @@ impl surgeist_html::HtmlFragmentBuilder
 pub fn surgeist_html::HtmlFragmentBuilder::append_comment(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::append_doctype(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: surgeist_html::HtmlDoctype) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::append_element(&mut self, parent: &surgeist_html::HtmlBuilderNode, name: surgeist_html::QualifiedName, attributes: surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::HtmlFragmentBuilder::append_processing_instruction(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::HtmlFragmentBuilder::append_processing_instruction(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: surgeist_html::HtmlAuthoredProcessingInstruction) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::append_text(&mut self, parent: &surgeist_html::HtmlBuilderNode, value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::attach_declarative_shadow(&mut self, host: &surgeist_html::HtmlBuilderNode, properties: surgeist_html::HtmlShadowRootProperties) -> core::result::Result<surgeist_html::HtmlBuilderNode, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::finish(self) -> surgeist_html::HtmlFragment
@@ -1352,8 +1362,12 @@ pub fn surgeist_html::HtmlTime::try_from(value: surgeist_html::HtmlParsedTime) -
 pub struct surgeist_html::HtmlProcessingInstruction
 impl surgeist_html::HtmlProcessingInstruction
 pub fn surgeist_html::HtmlProcessingInstruction::data(&self) -> &surgeist_html::DocumentString
-pub fn surgeist_html::HtmlProcessingInstruction::new(target: impl core::convert::Into<surgeist_html::DocumentString>, data: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlProcessingInstructionError>
 pub fn surgeist_html::HtmlProcessingInstruction::target(&self) -> &surgeist_html::DocumentString
+impl core::convert::From<surgeist_html::HtmlAuthoredProcessingInstruction> for surgeist_html::HtmlProcessingInstruction
+pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::HtmlAuthoredProcessingInstruction) -> Self
+impl core::convert::TryFrom<surgeist_html::HtmlProcessingInstruction> for surgeist_html::HtmlAuthoredProcessingInstruction
+pub type surgeist_html::HtmlAuthoredProcessingInstruction::Error = surgeist_html::HtmlProcessingInstructionError
+pub fn surgeist_html::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
 pub struct surgeist_html::HtmlShadowRootProperties
 impl surgeist_html::HtmlShadowRootProperties
 pub fn surgeist_html::HtmlShadowRootProperties::clonable(self) -> bool

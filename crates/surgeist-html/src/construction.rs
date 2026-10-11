@@ -219,24 +219,75 @@ impl HtmlDoctype {
     }
 }
 
-/// A strict native processing instruction according to the pinned HTML syntax.
+/// Exact immutable processing-instruction data in construction output.
 ///
-/// These authoring restrictions do not define parser recovery or generic DOM
-/// representability. Stored strings retain their exact original code units.
+/// Stored strings retain every original code unit. Parser recovery can produce
+/// data that fails native authoring syntax, so this record is not checked input
+/// for a native builder. [`HtmlAuthoredProcessingInstruction`] owns that check.
+///
+/// ```compile_fail,E0308
+/// use surgeist_html::{HtmlAuthoredProcessingInstruction, HtmlConstructionLimits,
+///     HtmlFragment, HtmlProcessingInstruction};
+/// let stored: HtmlProcessingInstruction =
+///     HtmlAuthoredProcessingInstruction::new("x", "data").unwrap().into();
+/// let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(2, 1, 0, 5, 1)).unwrap();
+/// let root = builder.root();
+/// builder.append_processing_instruction(&root, stored);
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlProcessingInstruction {
     target: DocumentString,
     data: DocumentString,
 }
 impl HtmlProcessingInstruction {
+    /// Exact target.
+    pub fn target(&self) -> &DocumentString {
+        &self.target
+    }
+    /// Exact data.
+    pub fn data(&self) -> &DocumentString {
+        &self.data
+    }
+}
+
+/// Checked native PI input according to the pinned HTML authoring syntax.
+///
+/// This wraps the shared exact record without duplicating its fields. Recovery
+/// does not relax native authoring: conversion from a stored record is fallible.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlAuthoredProcessingInstruction {
+    instruction: HtmlProcessingInstruction,
+}
+impl HtmlAuthoredProcessingInstruction {
     /// Checks ASCII target syntax, excluded XML forms, and HTML PI data syntax.
     pub fn new(
         target: impl Into<DocumentString>,
         data: impl Into<DocumentString>,
     ) -> Result<Self, HtmlProcessingInstructionError> {
-        let target = target.into();
-        let data = data.into();
-        let units = target.code_units();
+        Self::try_from(HtmlProcessingInstruction {
+            target: target.into(),
+            data: data.into(),
+        })
+    }
+    /// Exact checked target.
+    pub fn target(&self) -> &DocumentString {
+        self.instruction.target()
+    }
+    /// Exact checked data.
+    pub fn data(&self) -> &DocumentString {
+        self.instruction.data()
+    }
+}
+impl From<HtmlAuthoredProcessingInstruction> for HtmlProcessingInstruction {
+    fn from(value: HtmlAuthoredProcessingInstruction) -> Self {
+        value.instruction
+    }
+}
+impl TryFrom<HtmlProcessingInstruction> for HtmlAuthoredProcessingInstruction {
+    type Error = HtmlProcessingInstructionError;
+
+    fn try_from(instruction: HtmlProcessingInstruction) -> Result<Self, Self::Error> {
+        let units = instruction.target.code_units();
         let alpha = |unit: u16| matches!(unit, 65..=90 | 97..=122);
         if !units
             .first()
@@ -257,21 +308,13 @@ impl HtmlProcessingInstruction {
         if reserved("xml") || reserved("xml-stylesheet") {
             return Err(HtmlProcessingInstructionError::ReservedTarget);
         }
-        if data.code_units().contains(&62) {
+        if instruction.data.code_units().contains(&62) {
             return Err(HtmlProcessingInstructionError::DataContainsGreaterThan);
         }
-        if data.code_units().last() == Some(&63) {
+        if instruction.data.code_units().last() == Some(&63) {
             return Err(HtmlProcessingInstructionError::DataEndsWithQuestionMark);
         }
-        Ok(Self { target, data })
-    }
-    /// Exact target.
-    pub fn target(&self) -> &DocumentString {
-        &self.target
-    }
-    /// Exact data.
-    pub fn data(&self) -> &DocumentString {
-        &self.data
+        Ok(Self { instruction })
     }
 }
 /// A strict processing-instruction authoring violation.
@@ -889,10 +932,10 @@ macro_rules! authoring_methods {
         pub fn append_processing_instruction(
             &mut self,
             parent: &HtmlBuilderNode,
-            value: HtmlProcessingInstruction,
+            value: HtmlAuthoredProcessingInstruction,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
             self.builder
-                .append(parent, HtmlNodeKind::ProcessingInstruction(value))
+                .append(parent, HtmlNodeKind::ProcessingInstruction(value.into()))
         }
         /// Appends exact doctype data without deriving document mode.
         pub fn append_doctype(
@@ -937,6 +980,83 @@ impl HtmlFragmentBuilder {
         HtmlFragment {
             arena: self.builder.finish(),
             root: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_recovered_pi_data_is_stored_without_becoming_checked_author_input() {
+        // The five pinned PI states produce x/a? from <?x a??>. This is a
+        // construction-record witness, not a substitute parser or public factory.
+        let recovered = HtmlProcessingInstruction {
+            target: DocumentString::from("x"),
+            data: DocumentString::from("a?"),
+        };
+        let record = Record::new(
+            HtmlNodeKind::ProcessingInstruction(recovered.clone()),
+            None,
+            0,
+        );
+        let HtmlNodeKind::ProcessingInstruction(stored) = record.kind else {
+            panic!("expected exact processing-instruction record");
+        };
+        assert_eq!(stored.target().code_units(), [120]);
+        assert_eq!(stored.data().code_units(), [97, 63]);
+        let builder = HtmlFragment::builder(HtmlConstructionLimits::new(2, 1, 0, 3, 1)).unwrap();
+        let before = builder.usage();
+        assert_eq!(
+            HtmlAuthoredProcessingInstruction::try_from(stored),
+            Err(HtmlProcessingInstructionError::DataEndsWithQuestionMark)
+        );
+        assert_eq!(builder.usage(), before);
+        assert_eq!(builder.finish().root().children().len(), 0);
+        assert_eq!(recovered.data().code_units(), [97, 63]);
+    }
+
+    #[test]
+    fn conversion_from_exact_pi_records_uses_the_same_typed_authoring_checks() {
+        for (target, data, error) in [
+            (
+                "9start",
+                "data",
+                HtmlProcessingInstructionError::InvalidTarget,
+            ),
+            (
+                "Xml-StYlEsHeEt",
+                "data",
+                HtmlProcessingInstructionError::ReservedTarget,
+            ),
+            (
+                "x",
+                "a>b",
+                HtmlProcessingInstructionError::DataContainsGreaterThan,
+            ),
+            (
+                "x",
+                "a?",
+                HtmlProcessingInstructionError::DataEndsWithQuestionMark,
+            ),
+        ] {
+            let stored = HtmlProcessingInstruction {
+                target: DocumentString::from(target),
+                data: DocumentString::from(data),
+            };
+            assert_eq!(
+                HtmlAuthoredProcessingInstruction::try_from(stored.clone()),
+                Err(error)
+            );
+            assert_eq!(
+                stored.target().code_units(),
+                target.encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                stored.data().code_units(),
+                data.encode_utf16().collect::<Vec<_>>()
+            );
         }
     }
 }

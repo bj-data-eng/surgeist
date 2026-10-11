@@ -45,8 +45,11 @@ Traversal preserves mixed sibling order and exact native values without
 serialization or reparsing. Node IDs are qualified by their immutable result;
 foreign-result lookup returns a typed error. Template contents and native shadow
 contents have separate fragment roots and reverse owner associations. Native
-processing instructions validate the selected HTML target/data syntax; raw
-shared names remain available without generic DOM name validation.
+processing-instruction append accepts `HtmlAuthoredProcessingInstruction`,
+whose checked constructor owns the selected target/data syntax. The shared
+`HtmlProcessingInstruction` stored payload preserves exact data; converting it
+to authored input explicitly revalidates it. Raw shared names remain available
+without generic DOM name validation.
 
 These native construction artifacts perform no parsing. They do not claim parser
 metadata, context effects, diagnostics, source mapping, full content-conformance

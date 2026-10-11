@@ -1,9 +1,9 @@
 use surgeist_html::{
-    Attribute, DocumentString, ForeignHtmlResult, HtmlConstructionError, HtmlConstructionLimits,
-    HtmlConstructionResource, HtmlDoctype, HtmlDocument, HtmlDocumentMode, HtmlFragment,
-    HtmlFragmentOwner, HtmlNodeKind, HtmlProcessingInstruction, HtmlProcessingInstructionError,
-    HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes,
-    QualifiedName,
+    Attribute, DocumentString, ForeignHtmlResult, HtmlAuthoredProcessingInstruction,
+    HtmlConstructionError, HtmlConstructionLimits, HtmlConstructionResource, HtmlDoctype,
+    HtmlDocument, HtmlDocumentMode, HtmlFragment, HtmlFragmentOwner, HtmlNodeKind,
+    HtmlProcessingInstruction, HtmlProcessingInstructionError, HtmlShadowRootMode,
+    HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
 };
 
 fn limits() -> HtmlConstructionLimits {
@@ -133,26 +133,26 @@ fn document_mode_and_doctype_identifiers_are_explicit_and_exact() {
 fn strict_pi_authoring_follows_html_target_and_data_rules() {
     for target in ["", "9start", "-start", "a:b", "é", "a.b"] {
         assert_eq!(
-            HtmlProcessingInstruction::new(target, "data"),
+            HtmlAuthoredProcessingInstruction::new(target, "data"),
             Err(HtmlProcessingInstructionError::InvalidTarget)
         );
     }
     for target in ["xml", "XML", "Xml-StYlEsHeEt"] {
         assert_eq!(
-            HtmlProcessingInstruction::new(target, "data"),
+            HtmlAuthoredProcessingInstruction::new(target, "data"),
             Err(HtmlProcessingInstructionError::ReservedTarget)
         );
     }
     assert_eq!(
-        HtmlProcessingInstruction::new("x", "a>b"),
+        HtmlAuthoredProcessingInstruction::new("x", "a>b"),
         Err(HtmlProcessingInstructionError::DataContainsGreaterThan)
     );
     assert_eq!(
-        HtmlProcessingInstruction::new("x", "a?"),
+        HtmlAuthoredProcessingInstruction::new("x", "a?"),
         Err(HtmlProcessingInstructionError::DataEndsWithQuestionMark)
     );
     let data = DocumentString::from_utf16(vec![32, 0xD800, 63, 97]);
-    let pi = HtmlProcessingInstruction::new("_Target-9", data.clone()).unwrap();
+    let pi = HtmlAuthoredProcessingInstruction::new("_Target-9", data.clone()).unwrap();
     assert_eq!(
         pi.target().code_units(),
         "_Target-9".encode_utf16().collect::<Vec<_>>()
@@ -167,7 +167,35 @@ fn strict_pi_authoring_follows_html_target_and_data_rules() {
     let id = fragment.root().children().next().unwrap();
     assert_eq!(
         fragment.node(&id).unwrap().kind(),
-        &HtmlNodeKind::ProcessingInstruction(pi)
+        &HtmlNodeKind::ProcessingInstruction(pi.into())
+    );
+}
+
+#[test]
+fn authored_pi_roundtrip_and_native_append_preserve_one_exact_record() {
+    let target = DocumentString::from("_Target-9");
+    let data = DocumentString::from_utf16(vec![0, 32, 0xD800, 63, 97, 0xDC00]);
+    let target_pointer = target.code_units().as_ptr();
+    let data_pointer = data.code_units().as_ptr();
+    let authored = HtmlAuthoredProcessingInstruction::new(target.clone(), data.clone()).unwrap();
+    let stored: HtmlProcessingInstruction = authored.into();
+    assert_eq!(stored.target(), &target);
+    assert_eq!(stored.data(), &data);
+    assert_eq!(stored.target().code_units().as_ptr(), target_pointer);
+    assert_eq!(stored.data().code_units().as_ptr(), data_pointer);
+    let authored = HtmlAuthoredProcessingInstruction::try_from(stored.clone()).unwrap();
+    assert_eq!(authored.target(), &target);
+    assert_eq!(authored.data(), &data);
+    let mut builder = HtmlFragment::builder(limits()).unwrap();
+    let root = builder.root();
+    builder
+        .append_processing_instruction(&root, authored)
+        .unwrap();
+    let fragment = builder.finish();
+    let id = fragment.root().children().next().unwrap();
+    assert_eq!(
+        fragment.node(&id).unwrap().kind(),
+        &HtmlNodeKind::ProcessingInstruction(stored)
     );
 }
 
@@ -432,7 +460,10 @@ fn all_stored_string_slots_consume_exact_unit_budget_and_zero_nodes_rejects_root
         .unwrap();
     assert_eq!(builder.usage().utf16_units(), 25);
     builder
-        .append_processing_instruction(&root, HtmlProcessingInstruction::new("x", "ab").unwrap())
+        .append_processing_instruction(
+            &root,
+            HtmlAuthoredProcessingInstruction::new("x", "ab").unwrap(),
+        )
         .unwrap();
     builder.append_comment(&root, "c").unwrap();
     builder
