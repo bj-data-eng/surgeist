@@ -11,6 +11,19 @@ retains all 2,231 names, 93 two-scalar values and 27 C1 replacements; it also
 compares them with the acquired html5ever tables as independent witnesses.
 Those engine files are not imported source or required generation inputs.
 
+## Adapted parser source
+
+The private, test-compiled tokenizer adapts four source files from
+[html5ever](https://github.com/servo/html5ever), revision
+`d7232d746d3112f08926d169591576bd12fe2fdf`. It preserves the upstream file
+notices and the choice of [MIT](../../licenses/html5ever/LICENSE-MIT) or
+[Apache-2.0](../../licenses/html5ever/LICENSE-APACHE), with exact
+[copyright](../../licenses/html5ever/COPYRIGHT) and
+[authorship](../../licenses/html5ever/AUTHORS) material. The
+[origin record](PARSER-ORIGINS.md) identifies the incorporated files and their
+modifications. This source adaptation adds no Cargo dependency on html5ever,
+markup5ever, Tendril or web_atoms and does not yet expose a complete parser.
+
 ## Dependencies
 
 This notice covers the 16 registry packages in this crate’s default-feature

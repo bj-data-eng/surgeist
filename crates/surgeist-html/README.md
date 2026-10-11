@@ -187,8 +187,11 @@ publication. The parser still owns recovered metadata, contextual construction
 effects, diagnostics, provenance and its separate execution controls.
 
 Private parser mechanics currently compile for tests while engine integration
-continues. Source decoding, UTF-16 buffering and reference lookup share one
-resource controller. The offline `tools/generate_character_references.py --check`
+continues. Source decoding, UTF-16 buffering, reference lookup, the adapted
+tokenizer and controlled arena mutations share one resource controller.
+The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,
+modifications and attribution separately from the normative HTML edition.
+The offline `tools/generate_character_references.py --check`
 verifies every named-reference and C1 data record from the tracked pinned syntax
 capture; optional `--verify-origins` also compares the retained original HTML
 and acquired implementation witnesses. Normal generation needs no ignored

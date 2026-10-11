@@ -251,6 +251,37 @@ impl<'source> InputCursor<'source> {
             .ok_or_else(|| control.fail_invariant(Invariant::InputCursorState))
     }
 
+    /// Produces an exact supplied-input range through this cursor's owner.
+    /// Arbitrary offsets require a separately admitted start-boundary check:
+    /// the safe source provider stops after an invalid start, whereas the shared
+    /// producer admits both endpoints atomically. For a valid interior UTF-8
+    /// start, the provider checks that byte again; both actual reads are charged.
+    /// Decoding's already-proved starts continue using the shared producer
+    /// directly. This operation does not read or preprocess range payload.
+    pub(crate) fn checked_range(
+        &self,
+        start: usize,
+        end: usize,
+        control: &mut ParseControl,
+    ) -> Result<HtmlSourceRange, ParseStop> {
+        control.require_identity(&self.owner)?;
+        control.require_source(self.source)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if start > end || end > self.source.len() {
+            return Err(control.fail_invariant(Invariant::InputCursorState));
+        }
+        if let Some(text) = self.source.as_utf8()
+            && start > 0
+            && start < text.len()
+        {
+            control.charge(WorkCategory::InputUnitRead, 1)?;
+            if !text.is_char_boundary(start) {
+                return Err(control.fail_invariant(Invariant::InputCursorState));
+            }
+        }
+        self.range(start, end, control)
+    }
+
     fn decode_at(
         &self,
         position: usize,
@@ -871,6 +902,207 @@ mod tests {
                 bytes as u64
             );
             assert_eq!(source.as_utf8(), Some(text));
+        }
+    }
+
+    #[test]
+    fn checked_utf8_ranges_charge_start_preflight_and_each_provider_endpoint() {
+        let source = HtmlSource::utf8("a🙂b");
+        let mut control = control(&source);
+        let cursor = InputCursor::new(&source, &mut control).unwrap();
+        for (start, end, reads) in [
+            (0, 0, 0),
+            (0, 1, 1),
+            (1, 1, 3),
+            (1, 5, 3),
+            (5, 6, 2),
+            (6, 6, 0),
+        ] {
+            let before = control.usage().clone();
+            let range = cursor.checked_range(start, end, &mut control).unwrap();
+            assert_eq!(range.source(), source.identity());
+            assert_eq!(range.coordinates(), HtmlSourceCoordinates::Utf8Bytes);
+            assert_eq!((range.start(), range.end()), (start, end));
+            for (category, expected) in [
+                (WorkCategory::InputUnitRead, reads),
+                (WorkCategory::RecordVisit, 2),
+                (WorkCategory::CopyByte, size_of::<HtmlSourceRange>() as u64),
+                (WorkCategory::InspectByte, 0),
+                (WorkCategory::StateStep, 0),
+                (WorkCategory::RecordWrite, 0),
+                (WorkCategory::ReserveByte, 0),
+                (WorkCategory::ProviderCall, 0),
+            ] {
+                assert_eq!(
+                    control.usage().work(category) - before.work(category),
+                    expected
+                );
+            }
+            assert_eq!(control.usage().resource(Resource::SourceUnits).current, 6);
+            assert_eq!(cursor.position, 0);
+            assert_eq!(cursor.current, None);
+            assert_eq!(cursor.processed_through, 0);
+        }
+    }
+
+    #[test]
+    fn checked_utf16_ranges_allow_surrogate_unit_boundaries_without_payload_reads() {
+        let source = HtmlSource::utf16(DocumentString::from_utf16(vec![0xD83D, 0xDE42, 0xD800]));
+        let mut control = control(&source);
+        let cursor = InputCursor::new(&source, &mut control).unwrap();
+        for (start, end) in [(0, 1), (1, 2), (2, 3), (1, 1), (3, 3)] {
+            let before = control.usage().clone();
+            let range = cursor.checked_range(start, end, &mut control).unwrap();
+            assert_eq!(range.source(), source.identity());
+            assert_eq!(range.coordinates(), HtmlSourceCoordinates::Utf16CodeUnits);
+            assert_eq!((range.start(), range.end()), (start, end));
+            assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
+            assert_eq!(control.usage().work(WorkCategory::InspectByte), 0);
+            assert_eq!(
+                control.usage().work(WorkCategory::RecordVisit)
+                    - before.work(WorkCategory::RecordVisit),
+                2
+            );
+            assert_eq!(
+                control.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+                size_of::<HtmlSourceRange>() as u64
+            );
+            assert_eq!(control.usage().resource(Resource::SourceUnits).current, 3);
+        }
+    }
+
+    #[test]
+    fn checked_ranges_reject_foreign_controls_before_work_or_source_access() {
+        let source = HtmlSource::utf8("a🙂b");
+        let mut owner = control(&source);
+        let cursor = InputCursor::new(&source, &mut owner).unwrap();
+        for other_source in [source.clone(), HtmlSource::utf8("a🙂b")] {
+            let mut other = control(&other_source);
+            let before = other.usage().clone();
+            let stop = ParseStop::InternalInvariant(Invariant::ForeignControl);
+            assert_eq!(cursor.checked_range(1, 5, &mut other), Err(stop));
+            assert_eq!(
+                other.usage().resource(Resource::WorkCredits),
+                before.resource(Resource::WorkCredits)
+            );
+            assert_eq!(other.usage().work(WorkCategory::InputUnitRead), 0);
+            assert_eq!(cursor.checked_range(0, 0, &mut other), Err(stop));
+        }
+        assert_eq!(owner.stop(), None);
+    }
+
+    #[test]
+    fn checked_ranges_preserve_cancelled_and_foreign_source_stops_without_work() {
+        let source = HtmlSource::utf8("a🙂b");
+        let cancellation = Cancellation::new();
+        let mut control = ParseControl::new(limits(), cancellation.clone()).unwrap();
+        control.admit_source(&source).unwrap();
+        let cursor = InputCursor::new(&source, &mut control).unwrap();
+        let before = control.usage().clone();
+        cancellation.cancel();
+        assert_eq!(
+            cursor.checked_range(1, 5, &mut control),
+            Err(ParseStop::Cancelled)
+        );
+        assert_eq!(
+            cursor.checked_range(0, 0, &mut control),
+            Err(ParseStop::Cancelled)
+        );
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits),
+            before.resource(Resource::WorkCredits)
+        );
+        assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
+
+        let mut control = self::control(&source);
+        let cursor = InputCursor::new(&source, &mut control).unwrap();
+        let stop = ParseStop::InternalInvariant(Invariant::ForeignSource);
+        assert_eq!(control.admit_source(&HtmlSource::utf8("a🙂b")), Err(stop));
+        let before = control.usage().clone();
+        assert_eq!(cursor.checked_range(1, 5, &mut control), Err(stop));
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits),
+            before.resource(Resource::WorkCredits)
+        );
+        assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
+    }
+
+    #[test]
+    fn checked_ranges_reject_bounds_and_stop_at_the_first_invalid_scalar_endpoint() {
+        let source = HtmlSource::utf8("a🙂b");
+        for (start, end, reads) in [
+            (5, 1, 0),
+            (0, 7, 0),
+            (usize::MAX, usize::MAX, 0),
+            (0, 2, 1),
+            (1, 2, 3),
+            (2, 5, 1),
+            (2, 2, 1),
+        ] {
+            let mut control = control(&source);
+            let cursor = InputCursor::new(&source, &mut control).unwrap();
+            let stop = ParseStop::InternalInvariant(Invariant::InputCursorState);
+            assert_eq!(cursor.checked_range(start, end, &mut control), Err(stop));
+            assert_eq!(control.usage().work(WorkCategory::InputUnitRead), reads);
+            let before = control.usage().clone();
+            assert_eq!(cursor.checked_range(0, 0, &mut control), Err(stop));
+            assert_eq!(
+                control.usage().resource(Resource::WorkCredits),
+                before.resource(Resource::WorkCredits)
+            );
+            assert_eq!(cursor.position, 0);
+            assert_eq!(cursor.current, None);
+        }
+    }
+
+    #[test]
+    fn checked_ranges_stop_at_entry_or_before_both_endpoint_reads_with_exact_caps() {
+        let source = HtmlSource::utf8("ab");
+        let entry = 1 + size_of::<ControlIdentity>() as u64 + 1;
+        let copy = size_of::<HtmlSourceRange>() as u64;
+        for available in [0, 1, 2, 3, 3 + copy, 4 + copy, 5 + copy] {
+            let mut caps = limits();
+            caps.work_credits = entry + available;
+            let mut control = ParseControl::new(caps, Cancellation::new()).unwrap();
+            control.admit_source(&source).unwrap();
+            let cursor = InputCursor::new(&source, &mut control).unwrap();
+            let result = cursor.checked_range(1, 1, &mut control);
+            if available == 5 + copy {
+                let range = result.unwrap();
+                assert_eq!((range.start(), range.end()), (1, 1));
+                assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 3);
+                assert_eq!(
+                    control.usage().resource(Resource::WorkCredits).current,
+                    caps.work_credits
+                );
+            } else {
+                let (current, requested_delta) = if available < 3 {
+                    (entry + available, 1)
+                } else if available == 3 {
+                    (entry + 3, copy)
+                } else {
+                    (entry + 3 + copy, 2)
+                };
+                let stop = ParseStop::LimitExceeded {
+                    resource: Resource::WorkCredits,
+                    limit: caps.work_credits,
+                    current,
+                    requested_delta,
+                };
+                assert_eq!(result, Err(stop));
+                assert_eq!(
+                    control.usage().work(WorkCategory::InputUnitRead),
+                    u64::from(available >= 2)
+                );
+                assert_eq!(
+                    control.usage().work(WorkCategory::RecordVisit),
+                    1 + u64::from(available > 0) + u64::from(available >= 3)
+                );
+                assert_eq!(cursor.checked_range(0, 0, &mut control), Err(stop));
+            }
+            assert_eq!(cursor.position, 0);
+            assert_eq!(cursor.current, None);
+            assert_eq!(cursor.processed_through, 0);
         }
     }
 }

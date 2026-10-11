@@ -7,3 +7,13 @@ The [source witness](../../references/html5ever-parser-contracts--d7232d746d31.m
 Copyright and authors are preserved in [COPYRIGHT](COPYRIGHT) and [AUTHORS](AUTHORS). Distributed under the upstream choice of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE).
 
 The [supplemental parser witness](../../references/html5ever-parser-supplemental-contracts--d7232d746d31.md) adds exact bounded excerpts from `html5ever/src/tokenizer/char_ref/mod.rs`, `html5ever/src/tree_builder/rules.rs` and `markup5ever/util/buffer_queue.rs` at the same revision. Complete-file hashes and original line ranges identify the retained code; each file’s complete original notice remains verbatim. Changes on 2026-10-11 are selection, provenance headings and inert Markdown fencing only. These source references do not themselves incorporate the parser into production. The existing upstream MIT OR Apache-2.0 licensing and full copyright/authorship material apply.
+
+## Incorporated tokenizer source
+
+Separately from those research captures, Surgeist incorporates an adapted,
+private tokenizer compiled for tests in `crates/surgeist-html/src/parser/tokenizer/`.
+The [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) maps four original
+source files to five adapted implementation files and records their
+modifications on 2026-10-11. Exact original copyright and license headers remain
+in those files; the copyright, authorship and MIT OR Apache-2.0 material above
+applies to the adaptation. No html5ever Cargo package is added by this ingestion.
