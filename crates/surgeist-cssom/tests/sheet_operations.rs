@@ -38,6 +38,24 @@ fn construct(store: &mut CssomStore) -> CssomSheetId {
         .unwrap()
         .clone()
 }
+fn captured_sheet(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    id: &CssomSheetId,
+) -> CssomCapture<CssStyleSheet> {
+    store
+        .css_style_sheet(id)
+        .unwrap()
+        .capture(snapshot)
+        .unwrap()
+}
+fn captured_list(store: &CssomStore, snapshot: &CssomSnapshot) -> CssomCapture<StyleSheetList> {
+    store
+        .style_sheet_list(snapshot.sheet_list())
+        .unwrap()
+        .capture(snapshot)
+        .unwrap()
+}
 fn rules(store: &CssomStore, sheet: &CssomSheetId) -> Vec<CssomRuleId> {
     let snapshot = store.snapshot();
     snapshot
@@ -75,17 +93,41 @@ fn constructor_defaults_fixed_location_and_explicit_ordered_host_membership() {
     let first = committed.sheet(first.ticket()).unwrap().clone();
     let second = committed.sheet(second.ticket()).unwrap().clone();
     let captured = owner.snapshot();
-    assert_eq!(captured.sheet_type(&first).unwrap(), "text/css");
     assert_eq!(
-        captured.sheet_href(&first).unwrap(),
+        captured_sheet(&owner, &captured, &first).r#type().unwrap(),
+        "text/css"
+    );
+    assert_eq!(
+        captured_sheet(&owner, &captured, &first).href().unwrap(),
         Some("https://host.example/current/base")
     );
-    assert_eq!(captured.sheet_owner_node(&first).unwrap(), None);
-    assert_eq!(captured.sheet_title(&first).unwrap(), None);
-    assert_eq!(captured.sheet_owner_rule(&first).unwrap(), None);
+    assert_eq!(
+        captured_sheet(&owner, &captured, &first)
+            .owner_node()
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        captured_sheet(&owner, &captured, &first).title().unwrap(),
+        None
+    );
+    assert!(
+        captured_sheet(&owner, &captured, &first)
+            .owner_rule()
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(captured.parent_sheet(&first).unwrap(), None);
-    assert!(!captured.sheet_disabled(&first).unwrap());
-    assert!(captured.sheet_disabled(&second).unwrap());
+    assert!(
+        !captured_sheet(&owner, &captured, &first)
+            .disabled()
+            .unwrap()
+    );
+    assert!(
+        captured_sheet(&owner, &captured, &second)
+            .disabled()
+            .unwrap()
+    );
     let facts = captured.sheet(&first).unwrap().inputs();
     assert_eq!(facts.base_url, None);
     assert_eq!(
@@ -97,21 +139,29 @@ fn constructor_defaults_fixed_location_and_explicit_ordered_host_membership() {
         facts.origin_clean && facts.constructed && !facts.disallow_modification && !facts.alternate
     );
     assert_eq!(
-        captured.sheet_css_rules(&first).unwrap(),
-        captured.sheet_legacy_rules(&first).unwrap()
+        captured_sheet(&owner, &captured, &first)
+            .css_rules()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap(),
+        captured_sheet(&owner, &captured, &first)
+            .rules()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap()
     );
     assert!(captured.sheet_rules(&first).unwrap().is_empty());
     assert!(
         captured
-            .media(captured.sheet_media(&first).unwrap())
+            .media(
+                &captured_sheet(&owner, &captured, &first)
+                    .media()
+                    .map(|capture| capture.handle().id().clone())
+                    .unwrap()
+            )
             .unwrap()
             .queries()
             .is_empty()
     );
-    assert_eq!(
-        captured.sheet_list_length(captured.sheet_list()).unwrap(),
-        0
-    );
+    assert_eq!(captured_list(&owner, &captured).length().unwrap(), 0);
     let mut edit = batch(&owner);
     assert!(
         edit.set_sheet_list_membership(captured.sheet_list(), &[second.clone(), first.clone()])
@@ -120,15 +170,24 @@ fn constructor_defaults_fixed_location_and_explicit_ordered_host_membership() {
     owner.commit(edit).unwrap();
     let selected = owner.snapshot();
     assert_eq!(
-        selected.sheet_list_item(selected.sheet_list(), 0).unwrap(),
-        Some(&second)
+        captured_list(&owner, &selected)
+            .item(0)
+            .map(|value| value.map(|capture| capture.handle().id().clone()))
+            .unwrap(),
+        Some(second.clone())
     );
     assert_eq!(
-        selected.sheet_list_item(selected.sheet_list(), 1).unwrap(),
-        Some(&first)
+        captured_list(&owner, &selected)
+            .item(1)
+            .map(|value| value.map(|capture| capture.handle().id().clone()))
+            .unwrap(),
+        Some(first.clone())
     );
     assert_eq!(
-        selected.sheet_list_item(selected.sheet_list(), 2).unwrap(),
+        captured_list(&owner, &selected)
+            .item(2)
+            .map(|value| value.map(|capture| capture.handle().id().clone()))
+            .unwrap(),
         None
     );
     assert_eq!(selected.sheet_list(), before.sheet_list());
@@ -166,10 +225,13 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
         .unwrap()
         .clone();
     let original = source.snapshot();
-    let original_id = original.sheet_media(&source_sheet).unwrap();
+    let original_id = captured_sheet(&source, &original, &source_sheet)
+        .media()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap();
     assert_eq!(
         original
-            .media(original_id)
+            .media(&original_id)
             .unwrap()
             .serialize_cssom()
             .unwrap()
@@ -184,7 +246,7 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
             CssomSheetInit {
                 media: CssomInitialMedia::List {
                     snapshot: &original,
-                    id: original_id,
+                    id: &original_id,
                 },
                 ..Default::default()
             },
@@ -198,9 +260,12 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
         .unwrap()
         .clone();
     let capture = owner.snapshot();
-    let copied_id = capture.sheet_media(&sheet).unwrap();
+    let copied_id = captured_sheet(&owner, &capture, &sheet)
+        .media()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap();
     assert_ne!(copied_id, original_id);
-    let copied = capture.media(copied_id).unwrap();
+    let copied = capture.media(&copied_id).unwrap();
     assert_eq!(copied.serialize_cssom().unwrap().as_css(), "not all, print");
     assert!(!copied.queries()[0].is_guaranteed_false());
     assert!(
@@ -211,7 +276,7 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
     drop(owner);
     assert_eq!(
         capture
-            .media(copied_id)
+            .media(&copied_id)
             .unwrap()
             .serialize_cssom()
             .unwrap()
@@ -233,13 +298,21 @@ fn owner_attributes_and_disabled_do_not_inherit_css_rules_security_guards() {
     let ticket = edit.create_parsed_sheet("a {}", facts).unwrap();
     let sheet = owner.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
     let before = owner.snapshot();
-    let media = before.sheet_media(&sheet).unwrap().clone();
+    let media = captured_sheet(&owner, &before, &sheet)
+        .media()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap()
+        .clone();
     assert!(matches!(
-        before.sheet_css_rules(&sheet),
+        captured_sheet(&owner, &before, &sheet)
+            .css_rules()
+            .map(|capture| capture.handle().id().clone()),
         Err(CssomError::Source(CssomException::Security))
     ));
     assert!(matches!(
-        before.sheet_legacy_rules(&sheet),
+        captured_sheet(&owner, &before, &sheet)
+            .rules()
+            .map(|capture| capture.handle().id().clone()),
         Err(CssomError::Source(CssomException::Security))
     ));
     let mut edit = batch(&owner);
@@ -259,17 +332,32 @@ fn owner_attributes_and_disabled_do_not_inherit_css_rules_security_guards() {
     );
     owner.commit(edit).unwrap();
     let after = owner.snapshot();
-    assert_eq!(after.sheet_title(&sheet).unwrap(), None);
-    assert!(after.media(&media).unwrap().queries().is_empty());
-    assert_eq!(after.sheet_media(&sheet).unwrap(), &media);
     assert_eq!(
-        after.sheet_href(&sheet).unwrap(),
-        before.sheet_href(&sheet).unwrap()
+        captured_sheet(&owner, &after, &sheet).title().unwrap(),
+        None
     );
-    assert_eq!(after.sheet_owner_node(&sheet).unwrap(), Some("style"));
-    assert!(after.sheet_disabled(&sheet).unwrap());
-    assert_eq!(before.sheet_title(&sheet).unwrap(), Some("old"));
-    assert!(!before.sheet_disabled(&sheet).unwrap());
+    assert!(after.media(&media).unwrap().queries().is_empty());
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet)
+            .media()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap(),
+        media
+    );
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet).href().unwrap(),
+        captured_sheet(&owner, &before, &sheet).href().unwrap()
+    );
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet).owner_node().unwrap(),
+        Some("style")
+    );
+    assert!(captured_sheet(&owner, &after, &sheet).disabled().unwrap());
+    assert_eq!(
+        captured_sheet(&owner, &before, &sheet).title().unwrap(),
+        Some("old")
+    );
+    assert!(!captured_sheet(&owner, &before, &sheet).disabled().unwrap());
     let mut edit = batch(&owner);
     assert!(matches!(
         edit.update_sheet_owner_attributes(
@@ -298,13 +386,33 @@ fn synchronous_replacement_recovers_filters_imports_and_detaches_only_old_roots(
         .rules(before.rule(&old_root).unwrap().data().children().unwrap())
         .unwrap()[0]
         .clone();
-    let rule_list = before.sheet_css_rules(&sheet).unwrap().clone();
-    let media = before.sheet_media(&sheet).unwrap().clone();
+    let rule_list = captured_sheet(&owner, &before, &sheet)
+        .css_rules()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap()
+        .clone();
+    let media = captured_sheet(&owner, &before, &sheet)
+        .media()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap()
+        .clone();
     let source = "@import 'discard.css'; @unknown; b {color:blue; invalid: ;} c { color: green; }";
     replace(&mut owner, &sheet, source);
     let after = owner.snapshot();
-    assert_eq!(after.sheet_css_rules(&sheet).unwrap(), &rule_list);
-    assert_eq!(after.sheet_media(&sheet).unwrap(), &media);
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet)
+            .css_rules()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap(),
+        rule_list
+    );
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet)
+            .media()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap(),
+        media
+    );
     assert_eq!(after.sheet_rules(&sheet).unwrap().len(), 2);
     assert!(!after.sheet(&sheet).unwrap().diagnostics().is_empty());
     assert_eq!(
@@ -335,8 +443,16 @@ fn exclusive_async_replacement_keeps_stable_objects_and_exact_tokens() {
     let sheet = construct(&mut owner);
     replace(&mut owner, &sheet, "a {color:red;}");
     let before = owner.snapshot();
-    let list = before.sheet_css_rules(&sheet).unwrap().clone();
-    let media = before.sheet_media(&sheet).unwrap().clone();
+    let list = captured_sheet(&owner, &before, &sheet)
+        .css_rules()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap()
+        .clone();
+    let media = captured_sheet(&owner, &before, &sheet)
+        .media()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap()
+        .clone();
     let job = owner
         .begin_replace_sheet(guard(&owner), &sheet, "@import 'ignored'; b {color:blue;}")
         .unwrap();
@@ -371,8 +487,20 @@ fn exclusive_async_replacement_keeps_stable_objects_and_exact_tokens() {
     let after = owner.snapshot();
     assert!(!after.sheet(&sheet).unwrap().inputs().disallow_modification);
     assert!(owner.pending_sheet_replacement(&sheet).unwrap().is_none());
-    assert_eq!(after.sheet_css_rules(&sheet).unwrap(), &list);
-    assert_eq!(after.sheet_media(&sheet).unwrap(), &media);
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet)
+            .css_rules()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap(),
+        list
+    );
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet)
+            .media()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap(),
+        media
+    );
     assert_eq!(after.sheet_rules(&sheet).unwrap().len(), 1);
     assert_eq!(before.sheet_rules(&sheet).unwrap().len(), 1);
     let newer = owner
@@ -465,7 +593,11 @@ fn correct_token_stale_guard_failure_cleans_up_while_preserving_old_rules() {
             .inputs()
             .disallow_modification
     );
-    assert!(owner.snapshot().sheet_disabled(&sheet).unwrap());
+    assert!(
+        captured_sheet(&owner, &owner.snapshot(), &sheet)
+            .disabled()
+            .unwrap()
+    );
     assert!(owner.pending_sheet_replacement(&sheet).unwrap().is_none());
     let job = owner
         .begin_replace_sheet(guard(&owner), &sheet, "c {}")
@@ -790,7 +922,9 @@ fn replacement_source_guards_precede_parsing_without_an_origin_clean_guard() {
         CssomReplaceOutcome::Replaced
     ));
     assert!(matches!(
-        owner.snapshot().sheet_css_rules(&constructed),
+        captured_sheet(&owner, &owner.snapshot(), &constructed)
+            .css_rules()
+            .map(|capture| capture.handle().id().clone()),
         Err(CssomError::Source(CssomException::Security))
     ));
     let mut bounded = store(CssomLimits {
@@ -866,7 +1000,11 @@ fn shared_insertion_retains_the_actual_occurrence_and_recovered_declaration_neig
     let mut owner = store(CssomLimits::default());
     let sheet = construct(&mut owner);
     let before = owner.snapshot();
-    let list = before.sheet_css_rules(&sheet).unwrap().clone();
+    let list = captured_sheet(&owner, &before, &sheet)
+        .css_rules()
+        .map(|capture| capture.handle().id().clone())
+        .unwrap()
+        .clone();
     let source = String::from("a {color:red; invalid: ; width:2px;}");
     let mut edit = batch(&owner);
     let (index, ticket) = edit.insert_sheet_rule(&sheet, &source, 0).unwrap();
@@ -875,7 +1013,13 @@ fn shared_insertion_retains_the_actual_occurrence_and_recovered_declaration_neig
     let rule = committed.rule(&ticket).unwrap().clone();
     drop(source);
     let after = owner.snapshot();
-    assert_eq!(after.sheet_css_rules(&sheet).unwrap(), &list);
+    assert_eq!(
+        captured_sheet(&owner, &after, &sheet)
+            .css_rules()
+            .map(|capture| capture.handle().id().clone())
+            .unwrap(),
+        list
+    );
     assert_eq!(
         after.rule(&rule).unwrap().parent(),
         &CssomParent::Sheet(sheet.clone())

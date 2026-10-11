@@ -40,6 +40,9 @@ pub struct CssomSheetConstruction {
     media_diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssomSheetConstruction {
+    pub(crate) fn into_parts(self) -> (CssomSheetTicket, Vec<CssRecoveryDiagnostic>) {
+        (self.ticket, self.media_diagnostics)
+    }
     pub fn ticket(&self) -> &CssomSheetTicket {
         &self.ticket
     }
@@ -69,37 +72,38 @@ impl CssomSheetAttributeEdit {
 }
 
 impl CssomSnapshot {
-    pub fn sheet_type(&self, id: &CssomSheetId) -> Result<&'static str, CssomError> {
+    pub(crate) fn sheet_type(&self, id: &CssomSheetId) -> Result<&'static str, CssomError> {
         self.sheet(id)?;
         Ok("text/css")
     }
-    pub fn sheet_href(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
-        Ok(self.sheet(id)?.inputs.location.as_deref())
+    pub(crate) fn sheet_href(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+        self.state.sheet_href(id)
     }
-    pub fn sheet_owner_node(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
-        Ok(self.sheet(id)?.inputs.owner.as_deref())
+    pub(crate) fn sheet_owner_node(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+        self.state.sheet_owner_node(id)
     }
-    pub fn sheet_title(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
-        let title = &self.sheet(id)?.inputs.title;
-        Ok((!title.is_empty()).then_some(title.as_str()))
+    pub(crate) fn sheet_title(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+        self.state.sheet_title(id)
     }
-    pub fn sheet_media(&self, id: &CssomSheetId) -> Result<&CssomMediaListId, CssomError> {
+    pub(crate) fn sheet_media(&self, id: &CssomSheetId) -> Result<&CssomMediaListId, CssomError> {
         Ok(self.sheet(id)?.media())
     }
-    pub fn sheet_disabled(&self, id: &CssomSheetId) -> Result<bool, CssomError> {
+    pub(crate) fn sheet_disabled(&self, id: &CssomSheetId) -> Result<bool, CssomError> {
         Ok(self.sheet(id)?.inputs.disabled)
     }
-    pub fn sheet_owner_rule(&self, id: &CssomSheetId) -> Result<Option<&CssomRuleId>, CssomError> {
+    pub(crate) fn sheet_owner_rule(
+        &self,
+        id: &CssomSheetId,
+    ) -> Result<Option<&CssomRuleId>, CssomError> {
         Ok(self.sheet(id)?.owner_rule())
     }
     /// Same live list identity, guarded independently of trusted snapshot transport.
-    pub fn sheet_css_rules(&self, id: &CssomSheetId) -> Result<&CssomRuleListId, CssomError> {
+    pub(crate) fn sheet_css_rules(
+        &self,
+        id: &CssomSheetId,
+    ) -> Result<&CssomRuleListId, CssomError> {
         self.sheet_rules(id)?;
         Ok(self.sheet(id)?.rules())
-    }
-    /// CSS-defined deprecated alias; returns the same guarded list identity.
-    pub fn sheet_legacy_rules(&self, id: &CssomSheetId) -> Result<&CssomRuleListId, CssomError> {
-        self.sheet_css_rules(id)
     }
     fn sheet_list_members(&self, id: &CssomSheetListId) -> Result<&[CssomSheetId], CssomError> {
         if id.owner() != self.owner() {
@@ -110,10 +114,10 @@ impl CssomSnapshot {
         }
         Ok(self.sheets())
     }
-    pub fn sheet_list_length(&self, id: &CssomSheetListId) -> Result<usize, CssomError> {
+    pub(crate) fn sheet_list_length(&self, id: &CssomSheetListId) -> Result<usize, CssomError> {
         Ok(self.sheet_list_members(id)?.len())
     }
-    pub fn sheet_list_item(
+    pub(crate) fn sheet_list_item(
         &self,
         id: &CssomSheetListId,
         index: usize,
@@ -326,6 +330,13 @@ pub struct CssomReplaceWork {
     result: Result<(CssSheet, Vec<CssRecoveryDiagnostic>), CssomError>,
 }
 impl CssomReplaceWork {
+    /// Recovery from completed detached parsing; a parse failure has no successful report.
+    pub fn diagnostics(&self) -> &[CssRecoveryDiagnostic] {
+        match &self.result {
+            Ok((_, diagnostics)) => diagnostics,
+            Err(_) => &[],
+        }
+    }
     pub fn token(&self) -> &CssomReplaceToken {
         &self.token
     }
@@ -340,8 +351,24 @@ pub struct CssomReplaceCompletion {
     sheet: CssomSheetId,
     publication: CssomPublication,
     outcome: CssomReplaceOutcome,
+    diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssomReplaceCompletion {
+    /// Preserve the actual terminal publication even when adoption failed.
+    pub fn into_parts(
+        self,
+    ) -> (
+        CssomSheetId,
+        CssomPublication,
+        CssomReplaceOutcome,
+        Vec<CssRecoveryDiagnostic>,
+    ) {
+        (self.sheet, self.publication, self.outcome, self.diagnostics)
+    }
+    /// Original completed parse report, including a report whose adoption failed.
+    pub fn diagnostics(&self) -> &[CssRecoveryDiagnostic] {
+        &self.diagnostics
+    }
     pub fn sheet(&self) -> &CssomSheetId {
         &self.sheet
     }
@@ -494,6 +521,10 @@ impl CssomStore {
         work: CssomReplaceWork,
     ) -> Result<CssomReplaceCompletion, CssomError> {
         self.checked_replacement(&work.token)?;
+        let (parsed, diagnostics) = match work.result {
+            Ok((authored, diagnostics)) => (Ok(authored), diagnostics),
+            Err(error) => (Err(error), Vec::new()),
+        };
         let attempt = (|| {
             self.check_guard(&guard)?;
             let pending = self.checked_replacement(&work.token)?;
@@ -506,10 +537,20 @@ impl CssomStore {
             {
                 return Err(CssomError::StaleContext);
             }
-            let (authored, diagnostics) = work.result?;
+            let authored = parsed?;
+            // The terminal result owns the original report. Reserve its staged
+            // sheet copy inside the native failure/cleanup boundary, before commit.
+            let mut stored_diagnostics = Vec::new();
+            stored_diagnostics
+                .try_reserve_exact(diagnostics.len())
+                .map_err(|_| CssomError::Limit {
+                    resource: "replacement diagnostics capacity",
+                    maximum: diagnostics.len(),
+                })?;
+            stored_diagnostics.extend_from_slice(&diagnostics);
             let mut edit = self.batch(guard)?;
             edit.apply(|this| {
-                this.replace(&work.token.sheet, authored, diagnostics)?;
+                this.replace(&work.token.sheet, authored, stored_diagnostics)?;
                 this.staged
                     .sheets
                     .get_mut(&work.token.sheet)
@@ -530,8 +571,13 @@ impl CssomStore {
                 sheet: work.token.sheet,
                 publication: committed.publication().clone(),
                 outcome: CssomReplaceOutcome::Replaced,
+                diagnostics,
             }),
-            Err(error) => self.end_replacement(&work.token, CssomReplaceOutcome::Failed(error)),
+            Err(error) => self.end_replacement_with_diagnostics(
+                &work.token,
+                CssomReplaceOutcome::Failed(error),
+                diagnostics,
+            ),
         }
     }
 
@@ -548,6 +594,14 @@ impl CssomStore {
         &mut self,
         token: &CssomReplaceToken,
         outcome: CssomReplaceOutcome,
+    ) -> Result<CssomReplaceCompletion, CssomError> {
+        self.end_replacement_with_diagnostics(token, outcome, Vec::new())
+    }
+    fn end_replacement_with_diagnostics(
+        &mut self,
+        token: &CssomReplaceToken,
+        outcome: CssomReplaceOutcome,
+        diagnostics: Vec<CssRecoveryDiagnostic>,
     ) -> Result<CssomReplaceCompletion, CssomError> {
         self.checked_replacement(token)?;
         let mut edit = self.batch(CssomEditGuard::from_snapshot(&self.snapshot()))?;
@@ -570,6 +624,7 @@ impl CssomStore {
             sheet: token.sheet.clone(),
             publication: committed.publication().clone(),
             outcome,
+            diagnostics,
         })
     }
 
@@ -703,5 +758,18 @@ impl CssomBatch {
         source: &str,
     ) -> Result<(), CssomError> {
         self.replace_sheet_text(sheet, source)
+    }
+}
+
+impl crate::model::State {
+    pub(crate) fn sheet_href(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+        Ok(self.sheet(id)?.inputs.location.as_deref())
+    }
+    pub(crate) fn sheet_owner_node(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+        Ok(self.sheet(id)?.inputs.owner.as_deref())
+    }
+    pub(crate) fn sheet_title(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+        let title = &self.sheet(id)?.inputs.title;
+        Ok((!title.is_empty()).then_some(title.as_str()))
     }
 }

@@ -1,4 +1,29 @@
+fn map_capture(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    id: &CssomFeatureMapId,
+) -> CssomCapture<CssFontFeatureValuesMap> {
+    store
+        .css_font_feature_values_map(id)
+        .unwrap()
+        .capture(snapshot)
+        .unwrap()
+}
+fn font_style(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    rule: &CssomRuleId,
+) -> CssomCapture<CssFontFaceDescriptors> {
+    store
+        .css_font_face_rule(rule)
+        .unwrap()
+        .style(store)
+        .unwrap()
+        .capture(snapshot)
+        .unwrap()
+}
 use surgeist_css::*;
+use surgeist_cssom::CssFontFaceDescriptors;
 use surgeist_cssom::*;
 
 fn batch(store: &CssomStore) -> CssomBatch {
@@ -35,15 +60,15 @@ fn create(text: &str) -> (CssomStore, CssomSheetId, Vec<CssomRuleId>) {
 fn seven_named_maps_scalar_empty_sequence_and_raw_keys_are_source_distinct() {
     let (mut store, _, rules) = create("@font-feature-values A {}");
     let before = store.snapshot();
-    let view = before.font_feature_values(&rules[0]).unwrap();
+    let view = before.inspect_font_feature_values(&rules[0]).unwrap();
     let maps = [
-        view.annotation(),
-        view.ornaments(),
-        view.stylistic(),
-        view.swash(),
-        view.character_variant(),
-        view.styleset(),
-        view.historical_forms(),
+        view.map(CssFontFeatureValueKind::Annotation),
+        view.map(CssFontFeatureValueKind::Ornaments),
+        view.map(CssFontFeatureValueKind::Stylistic),
+        view.map(CssFontFeatureValueKind::Swash),
+        view.map(CssFontFeatureValueKind::CharacterVariant),
+        view.map(CssFontFeatureValueKind::Styleset),
+        view.map(CssFontFeatureValueKind::HistoricalForms),
     ];
     assert_eq!(
         maps.iter().collect::<std::collections::HashSet<_>>().len(),
@@ -65,25 +90,28 @@ fn seven_named_maps_scalar_empty_sequence_and_raw_keys_are_source_distinct() {
         );
         store.commit(edit).unwrap();
         let after = store.snapshot();
-        let map = after.feature_map(id).unwrap();
-        assert_eq!(map.get("").unwrap(), Some([u32::MAX].as_slice()));
-        assert_eq!(map.get("\\\\ A\0").unwrap(), Some([].as_slice()));
+        let map = map_capture(&store, &after, id);
+        assert_eq!(map.get("").unwrap(), Some(vec![u32::MAX]));
+        assert_eq!(map.get("\\\\ A\0").unwrap(), Some(vec![]));
         assert_eq!(map.get("absent").unwrap(), None);
-        assert!(map.has("\\\\ A\0"));
-        assert_eq!(map.size(), 2);
-        assert_eq!(map.keys().collect::<Vec<_>>(), ["", "\\\\ A\0"]);
+        assert!(map.has("\\\\ A\0").unwrap());
+        assert_eq!(map.size().unwrap(), 2);
+        assert_eq!(map.keys().unwrap().collect::<Vec<_>>(), ["", "\\\\ A\0"]);
         assert_eq!(
-            map.values().collect::<Result<Vec<_>, _>>().unwrap(),
+            map.values()
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
             [vec![u32::MAX], vec![]]
         );
         assert_eq!(
             after
-                .font_feature_values(&rules[0])
+                .inspect_font_feature_values(&rules[0])
                 .unwrap()
-                .map(map.kind()),
+                .map(after.feature_map(id).unwrap().kind()),
             id
         );
-        assert!(!before.feature_map(id).unwrap().has(""));
+        assert!(!map_capture(&store, &before, id).has("").unwrap());
     }
 }
 #[test]
@@ -98,7 +126,7 @@ fn independent_map_cardinalities_reject_without_changing_entry_or_publication() 
     ] {
         let before = store.snapshot();
         let id = before
-            .font_feature_values(&rules[0])
+            .inspect_font_feature_values(&rules[0])
             .unwrap()
             .map(kind)
             .clone();
@@ -116,10 +144,10 @@ fn independent_map_cardinalities_reject_without_changing_entry_or_publication() 
         let after = store.snapshot();
         assert_eq!(after.revision(), before.revision());
         assert_eq!(
-            after.feature_map(&id).unwrap().get("key").unwrap(),
-            Some(vec![0; maximum].as_slice())
+            map_capture(&store, &after, &id).get("key").unwrap(),
+            Some(vec![0; maximum])
         );
-        assert!(!after.feature_map(&id).unwrap().has("unrelated"));
+        assert!(!map_capture(&store, &after, &id).has("unrelated").unwrap());
     }
     for kind in [
         CssFontFeatureValueKind::Styleset,
@@ -127,7 +155,7 @@ fn independent_map_cardinalities_reject_without_changing_entry_or_publication() 
     ] {
         let snapshot = store.snapshot();
         let id = snapshot
-            .font_feature_values(&rules[0])
+            .inspect_font_feature_values(&rules[0])
             .unwrap()
             .map(kind)
             .clone();
@@ -136,10 +164,7 @@ fn independent_map_cardinalities_reject_without_changing_entry_or_publication() 
             .unwrap();
         store.commit(edit).unwrap();
         assert_eq!(
-            store
-                .snapshot()
-                .feature_map(&id)
-                .unwrap()
+            map_capture(&store, &store.snapshot(), &id)
                 .get("long")
                 .unwrap()
                 .unwrap()
@@ -154,21 +179,22 @@ fn exact_unrepresentable_authored_value_stays_present_then_live_clear_retains_oc
         create("@font-feature-values A { @styleset { exact: 4294967296; } }");
     let before = store.snapshot();
     let id = before
-        .font_feature_values(&rules[0])
+        .inspect_font_feature_values(&rules[0])
         .unwrap()
-        .styleset()
+        .map(CssFontFeatureValueKind::Styleset)
         .clone();
     let map = before.feature_map(&id).unwrap();
-    assert!(map.has("exact"));
+    let projected = map_capture(&store, &before, &id);
+    assert!(projected.has("exact").unwrap());
     assert!(matches!(
-        map.get("exact"),
+        projected.get("exact"),
         Err(CssomError::AuthoredFeatureConversion)
     ));
     assert!(matches!(
-        map.values().next().unwrap(),
+        projected.values().unwrap().next().unwrap(),
         Err(CssomError::AuthoredFeatureConversion)
     ));
-    let CssomFeatureValue::Authored(value) = &map.entries()[0].value else {
+    let CssomFeatureValue::Authored(value) = &map.raw_entries()[0].value else {
         panic!("exact authored value required")
     };
     let CssFontFeatureValueRef::Indexes(indexes) = value.view() else {
@@ -184,12 +210,12 @@ fn exact_unrepresentable_authored_value_stays_present_then_live_clear_retains_oc
     assert!(!edit.clear_feature_map(&id).unwrap());
     store.commit(edit).unwrap();
     let after = store.snapshot();
-    assert_eq!(after.feature_map(&id).unwrap().size(), 0);
+    assert_eq!(map_capture(&store, &after, &id).size().unwrap(), 0);
     assert_eq!(
         after.feature_map(&id).unwrap().authored(),
         before.feature_map(&id).unwrap().authored()
     );
-    assert!(before.feature_map(&id).unwrap().has("exact"));
+    assert!(map_capture(&store, &before, &id).has("exact").unwrap());
     let revision = after.revision().clone();
     let mut edit = batch(&store);
     assert!(!edit.clear_feature_map(&id).unwrap());
@@ -201,9 +227,9 @@ fn typed_family_replacement_preserves_maps_and_authored_rule_capture() {
     let (mut store, _, rules) = create("@font-feature-values A { @annotation { x: 1; } }");
     let before = store.snapshot();
     let map = before
-        .font_feature_values(&rules[0])
+        .inspect_font_feature_values(&rules[0])
         .unwrap()
-        .annotation()
+        .map(CssFontFeatureValueKind::Annotation)
         .clone();
     let mut edit = batch(&store);
     assert!(
@@ -219,20 +245,31 @@ fn typed_family_replacement_preserves_maps_and_authored_rule_capture() {
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        after.font_feature_values(&rules[0]).unwrap().families()[0].as_str(),
+        after
+            .inspect_font_feature_values(&rules[0])
+            .unwrap()
+            .families()[0]
+            .as_str(),
         "B C"
     );
     assert_eq!(
-        before.font_feature_values(&rules[0]).unwrap().families()[0].as_str(),
+        before
+            .inspect_font_feature_values(&rules[0])
+            .unwrap()
+            .families()[0]
+            .as_str(),
         "A"
     );
     assert_eq!(
-        after.font_feature_values(&rules[0]).unwrap().annotation(),
+        after
+            .inspect_font_feature_values(&rules[0])
+            .unwrap()
+            .map(CssFontFeatureValueKind::Annotation),
         &map
     );
     assert_eq!(
-        after.feature_map(&map).unwrap().get("x").unwrap(),
-        Some([1].as_slice())
+        map_capture(&store, &after, &map).get("x").unwrap(),
+        Some(vec![1])
     );
     let revision = after.revision().clone();
     let mut edit = batch(&store);
@@ -280,9 +317,9 @@ fn mutable_families_share_exact_utf8_quota_and_release_only_current_values() {
     let before = store.snapshot();
     let rule = before.rules(before.sheet(&sheet).unwrap().rules()).unwrap()[0].clone();
     let map = before
-        .font_feature_values(&rule)
+        .inspect_font_feature_values(&rule)
         .unwrap()
-        .styleset()
+        .map(CssFontFeatureValueKind::Styleset)
         .clone();
     let mut edit = batch(&store);
     assert!(matches!(
@@ -313,19 +350,23 @@ fn mutable_families_share_exact_utf8_quota_and_release_only_current_values() {
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        after.font_feature_values(&rule).unwrap().families()[0].as_str(),
+        after.inspect_font_feature_values(&rule).unwrap().families()[0].as_str(),
         "A"
     );
     assert_eq!(
-        after.feature_map(&map).unwrap().get("x").unwrap(),
-        Some([].as_slice())
+        map_capture(&store, &after, &map).get("x").unwrap(),
+        Some(vec![])
     );
     // Independent immutable captures retain old values without being current live state.
     assert_eq!(
-        before.font_feature_values(&rule).unwrap().families()[0].as_str(),
+        before
+            .inspect_font_feature_values(&rule)
+            .unwrap()
+            .families()[0]
+            .as_str(),
         "é"
     );
-    assert!(!before.feature_map(&map).unwrap().has("x"));
+    assert!(!map_capture(&store, &before, &map).has("x").unwrap());
 }
 #[test]
 fn readonly_palette_attributes_use_effective_checked_descriptors_and_honest_empty_absence() {
@@ -333,8 +374,12 @@ fn readonly_palette_attributes_use_effective_checked_descriptors_and_honest_empt
         "@font-palette-values --Palette { font-family: A; base-palette:light; base-palette:dark; override-colors:0 red, 1 blue; } @font-palette-values --Empty {font-family:B;}",
     );
     let snapshot = store.snapshot();
-    let view = snapshot.font_palette_values(&rules[0]).unwrap();
-    assert_eq!(view.name(), "--Palette");
+    let view = store
+        .css_font_palette_values_rule(&rules[0])
+        .unwrap()
+        .capture(&snapshot)
+        .unwrap();
+    assert_eq!(view.name().unwrap(), "--Palette");
     assert_eq!(view.font_family(Default::default()).unwrap(), "A");
     assert_eq!(view.base_palette(Default::default()).unwrap(), "dark");
     assert_eq!(
@@ -345,7 +390,11 @@ fn readonly_palette_attributes_use_effective_checked_descriptors_and_honest_empt
         view.base_palette(CssSpecifiedValueSerializationLimits::new(100, 100, 0)),
         Err(CssomError::Value(_))
     ));
-    let empty = snapshot.font_palette_values(&rules[1]).unwrap();
+    let empty = store
+        .css_font_palette_values_rule(&rules[1])
+        .unwrap()
+        .capture(&snapshot)
+        .unwrap();
     assert_eq!(
         empty
             .base_palette(CssSpecifiedValueSerializationLimits::new(0, 0, 0))
@@ -354,7 +403,7 @@ fn readonly_palette_attributes_use_effective_checked_descriptors_and_honest_empt
     );
     assert_eq!(empty.override_colors(Default::default()).unwrap(), "");
     assert!(matches!(
-        snapshot.font_feature_values(&rules[0]),
+        snapshot.inspect_font_feature_values(&rules[0]),
         Err(CssomError::WrongKind)
     ));
 }
@@ -364,9 +413,9 @@ fn map_order_replace_delete_reinsert_and_detached_retention_have_distinct_effect
     let (mut store, sheet, rules) = create("@font-feature-values A {}");
     let snapshot = store.snapshot();
     let id = snapshot
-        .font_feature_values(&rules[0])
+        .inspect_font_feature_values(&rules[0])
         .unwrap()
-        .styleset()
+        .map(CssFontFeatureValueKind::Styleset)
         .clone();
     let mut edit = batch(&store);
     edit.set_feature(&id, "a", &[1]).unwrap();
@@ -375,7 +424,10 @@ fn map_order_replace_delete_reinsert_and_detached_retention_have_distinct_effect
     store.commit(edit).unwrap();
     let before = store.snapshot();
     assert_eq!(
-        before.feature_map(&id).unwrap().keys().collect::<Vec<_>>(),
+        map_capture(&store, &before, &id)
+            .keys()
+            .unwrap()
+            .collect::<Vec<_>>(),
         ["a", "b"]
     );
     let mut edit = batch(&store);
@@ -386,22 +438,24 @@ fn map_order_replace_delete_reinsert_and_detached_retention_have_distinct_effect
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        after.feature_map(&id).unwrap().keys().collect::<Vec<_>>(),
+        map_capture(&store, &after, &id)
+            .keys()
+            .unwrap()
+            .collect::<Vec<_>>(),
         ["b", "a"]
     );
     assert_eq!(
-        after.font_feature_values(&rules[0]).unwrap().styleset(),
+        after
+            .inspect_font_feature_values(&rules[0])
+            .unwrap()
+            .map(CssFontFeatureValueKind::Styleset),
         &id
     );
+    let before_map = map_capture(&store, &before, &id);
+    let after_map = map_capture(&store, &after, &id);
     drop(store);
-    assert_eq!(
-        before.feature_map(&id).unwrap().get("a").unwrap(),
-        Some([3].as_slice())
-    );
-    assert_eq!(
-        after.feature_map(&id).unwrap().get("a").unwrap(),
-        Some([4].as_slice())
-    );
+    assert_eq!(before_map.get("a").unwrap(), Some(vec![3]));
+    assert_eq!(after_map.get("a").unwrap(), Some(vec![4]));
 }
 #[test]
 fn font_views_and_clear_enforce_real_owner_identity() {
@@ -409,15 +463,15 @@ fn font_views_and_clear_enforce_real_owner_identity() {
     let (b, _, brules) = create("@font-feature-values B {}");
     let bsnapshot = b.snapshot();
     let foreign = bsnapshot
-        .font_feature_values(&brules[0])
+        .inspect_font_feature_values(&brules[0])
         .unwrap()
-        .styleset();
+        .map(CssFontFeatureValueKind::Styleset);
     assert!(matches!(
-        a.snapshot().font_feature_values(&brules[0]),
+        a.snapshot().inspect_font_feature_values(&brules[0]),
         Err(CssomError::ForeignOwner)
     ));
     assert!(matches!(
-        a.snapshot().font_palette_values(&arules[0]),
+        a.css_font_palette_values_rule(&arules[0]),
         Err(CssomError::WrongKind)
     ));
     let before = a.snapshot();
@@ -436,7 +490,11 @@ fn readonly_palette_pending_values_retain_literal_substitution_and_case() {
         "@font-palette-values --p {font-family:var(--Family);base-palette:var(--Base);override-colors:var(--Colors)}",
     );
     let snapshot = store.snapshot();
-    let view = snapshot.font_palette_values(&rules[0]).unwrap();
+    let view = store
+        .css_font_palette_values_rule(&rules[0])
+        .unwrap()
+        .capture(&snapshot)
+        .unwrap();
     assert_eq!(
         view.font_family(Default::default()).unwrap(),
         "var(--Family)"
@@ -513,25 +571,25 @@ fn font_face_store(conditional: bool) -> (CssomStore, CssomRuleId) {
 fn font_face_reflections_same_object_and_putforwards_share_selected_owner() {
     let (mut store, rule) = font_face_store(false);
     let before = store.snapshot();
-    let view = before.font_face(&rule, Default::default()).unwrap();
-    let style = view.style_id().clone();
-    assert_eq!(view.style().parent_rule(), Some(&rule));
-    assert_eq!(view.font_family().unwrap(), "A");
-    assert_eq!(view.font_width().unwrap(), "80%");
-    assert_eq!(view.font_stretch().unwrap(), "80%");
-    assert_eq!(view.src().unwrap(), "local(\"A\")");
-    assert_eq!(view.font_display().unwrap(), "swap");
+    let view = font_style(&store, &before, &rule);
+    let style = view.handle().id().clone();
+    assert_eq!(view.parent_rule().unwrap().unwrap().handle().id(), &rule);
+    assert_eq!(view.font_family(Default::default()).unwrap(), "A");
+    assert_eq!(view.font_width(Default::default()).unwrap(), "80%");
+    assert_eq!(view.font_stretch(Default::default()).unwrap(), "80%");
+    assert_eq!(view.src(Default::default()).unwrap(), "local(\"A\")");
+    assert_eq!(view.font_display(Default::default()).unwrap(), "swap");
     for absent in [
-        view.font_style(),
-        view.font_weight(),
-        view.unicode_range(),
-        view.font_feature_settings(),
-        view.font_variation_settings(),
-        view.font_named_instance(),
-        view.font_language_override(),
-        view.ascent_override(),
-        view.descent_override(),
-        view.line_gap_override(),
+        view.font_style(Default::default()),
+        view.font_weight(Default::default()),
+        view.unicode_range(Default::default()),
+        view.font_feature_settings(Default::default()),
+        view.font_variation_settings(Default::default()),
+        view.font_named_instance(Default::default()),
+        view.font_language_override(Default::default()),
+        view.ascent_override(Default::default()),
+        view.descent_override(Default::default()),
+        view.line_gap_override(Default::default()),
     ] {
         assert_eq!(absent.unwrap(), "");
     }
@@ -550,14 +608,12 @@ fn font_face_reflections_same_object_and_putforwards_share_selected_owner() {
     );
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
-    let view = snapshot.font_face(&rule, Default::default()).unwrap();
-    assert_eq!(view.style_id(), &style);
-    assert_eq!(view.font_stretch().unwrap(), "90%");
+    let view = font_style(&store, &snapshot, &rule);
+    assert_eq!(view.handle().id(), &style);
+    assert_eq!(view.font_stretch(Default::default()).unwrap(), "90%");
     assert_eq!(
-        before
-            .font_face(&rule, Default::default())
-            .unwrap()
-            .font_width()
+        font_style(&store, &before, &rule)
+            .font_width(Default::default())
             .unwrap(),
         "80%"
     );
@@ -573,13 +629,13 @@ fn font_face_reflections_same_object_and_putforwards_share_selected_owner() {
     edit.apply_declaration(prepared, &[]).unwrap();
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
-    let view = snapshot.font_face(&rule, Default::default()).unwrap();
-    assert_eq!(view.style_id(), &style);
-    assert_eq!(view.font_family().unwrap(), "B");
-    assert_eq!(view.font_display().unwrap(), "block");
-    assert_eq!(view.font_width().unwrap(), "");
+    let view = font_style(&store, &snapshot, &rule);
+    assert_eq!(view.handle().id(), &style);
+    assert_eq!(view.font_family(Default::default()).unwrap(), "B");
+    assert_eq!(view.font_display(Default::default()).unwrap(), "block");
+    assert_eq!(view.font_width(Default::default()).unwrap(), "");
     assert_eq!(
-        view.style().css_text().unwrap(),
+        view.css_text(Default::default()).unwrap(),
         "font-family: B; font-display: block; src: local(\"B\");"
     );
 }
@@ -631,20 +687,16 @@ fn font_face_partial_support_uses_actual_correlated_decision_and_source_invalid_
     );
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
-    let view = snapshot.font_face(&rule, Default::default()).unwrap();
-    assert_eq!(view.font_family().unwrap(), "A");
-    assert_eq!(view.font_stretch().unwrap(), "90%");
+    let view = font_style(&store, &snapshot, &rule);
+    assert_eq!(view.font_family(Default::default()).unwrap(), "A");
+    assert_eq!(view.font_stretch(Default::default()).unwrap(), "90%");
 }
 
 #[test]
 fn font_face_pending_descriptor_mutation_keeps_current_style_id_and_owning_origin() {
     let (mut store, rule) = font_face_store(false);
     let before = store.snapshot();
-    let style = before
-        .font_face(&rule, Default::default())
-        .unwrap()
-        .style_id()
-        .clone();
+    let style = font_style(&store, &before, &rule).handle().id().clone();
     let mut edit = batch(&store);
     let prepared = edit
         .prepare_font_face_descriptor(
@@ -657,9 +709,12 @@ fn font_face_pending_descriptor_mutation_keeps_current_style_id_and_owning_origi
     edit.apply_declaration(prepared, &[]).unwrap();
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
-    let view = snapshot.font_face(&rule, Default::default()).unwrap();
-    assert_eq!(view.style_id(), &style);
-    assert_eq!(view.font_width().unwrap(), "env(width, 90%)");
+    let view = font_style(&store, &snapshot, &rule);
+    assert_eq!(view.handle().id(), &style);
+    assert_eq!(
+        view.font_width(Default::default()).unwrap(),
+        "env(width, 90%)"
+    );
     let selected = snapshot
         .block(&style)
         .unwrap()
@@ -681,21 +736,12 @@ fn font_face_pending_descriptor_mutation_keeps_current_style_id_and_owning_origi
         panic!("actual parsed component origin")
     };
     assert_eq!(origin.source().as_str(), "env(width, 90%)");
+    let old_style = font_style(&store, &before, &rule);
+    let new_style = font_style(&store, &snapshot, &rule);
     drop(store);
+    assert_eq!(old_style.font_width(Default::default()).unwrap(), "80%");
     assert_eq!(
-        before
-            .font_face(&rule, Default::default())
-            .unwrap()
-            .font_width()
-            .unwrap(),
-        "80%"
-    );
-    assert_eq!(
-        snapshot
-            .font_face(&rule, Default::default())
-            .unwrap()
-            .font_width()
-            .unwrap(),
+        new_style.font_width(Default::default()).unwrap(),
         "env(width, 90%)"
     );
 }

@@ -13,7 +13,7 @@ pub enum CssomCustomMediaQuery {
 
 impl CssomSnapshot {
     /// Returns the decoded extension name from the associated current rule.
-    pub fn custom_media_name(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
+    pub(crate) fn custom_media_name(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         let CssomRuleData::CustomMedia { name, .. } = self.rule(id)?.data() else {
             return Err(CssomError::WrongKind);
         };
@@ -21,7 +21,7 @@ impl CssomSnapshot {
     }
     /// Returns the authored boolean or associated same-identity MediaList.
     /// Inspect its contents with this snapshot's existing MediaList getters.
-    pub fn custom_media_query(
+    pub(crate) fn custom_media_query(
         &self,
         id: &CssomRuleId,
     ) -> Result<&CssomCustomMediaQuery, CssomError> {
@@ -31,7 +31,7 @@ impl CssomSnapshot {
         Ok(query)
     }
     /// Serializes the associated current profile identity through the CSS writer.
-    pub fn color_profile_name(
+    pub(crate) fn color_profile_name(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -44,7 +44,7 @@ impl CssomSnapshot {
         serialize_css_identifier_with_limits(name, limits).map_err(CssomError::Value)
     }
     /// Returns serialized src or empty text when the descriptor is absent.
-    pub fn color_profile_src(
+    pub(crate) fn color_profile_src(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -52,7 +52,7 @@ impl CssomSnapshot {
         self.color_profile_descriptor(id, CssColorProfileDescriptorKind::Src, limits)
     }
     /// Returns the specified descriptor, without fabricating its initial value.
-    pub fn color_profile_rendering_intent(
+    pub(crate) fn color_profile_rendering_intent(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -60,7 +60,7 @@ impl CssomSnapshot {
         self.color_profile_descriptor(id, CssColorProfileDescriptorKind::RenderingIntent, limits)
     }
     /// Returns serialized channel names or empty text when absent; performs no computation.
-    pub fn color_profile_components(
+    pub(crate) fn color_profile_components(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,

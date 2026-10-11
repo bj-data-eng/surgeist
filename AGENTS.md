@@ -53,6 +53,7 @@ manifests, and implementation behavior from current source.
 | Domain front doors and focused checks | Each crate's `AGENTS.md`, `src/lib.rs`, README, tests, and tracked scripts |
 | Public facade and root package tests | `src/lib.rs` |
 | API generator, target discovery, rendering, and tests | `api/generator/Cargo.toml` and `api/generator/src/` |
+| Offline CSSOM property reflection generation | `tools/cssom-reflections/`; checked-in CSSOM reflection source |
 | Shared CSS and browser-corpus generation | `crates/surgeist-generator/Cargo.toml`, `src/`, and documentation |
 | Optional layout Dylint audit catalog | `crates/surgeist-layout/tools/surgeist-layout-audits/` |
 | Generated API audits | `api/public-api.txt` and `api/crates/`; source remains authoritative |
@@ -144,6 +145,12 @@ describes default-feature and CSS corpus profile artifacts. Use the
 [audit procedures](docs/how-to.md#check-public-api-audits) for checks and
 authorized refreshes. No external crate publication or pointer update is required.
 Keep the generator in its root owner; do not copy it into crates.
+
+The separate root-owned [CSSOM reflection tool](tools/cssom-reflections/README.md)
+generates checked-in ordinary property accessors from public CSS metadata.
+It is a workspace tool outside default members and production dependencies.
+Its check mode verifies reproducibility and the actual audited structural-method
+inventories; API freshness remains the separate auditor's responsibility.
 
 Corpus generators and inputs remain distinct from API auditing. Use
 `$pisct:invariants` for generated-artifact handling and acquisition authority,

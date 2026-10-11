@@ -42,7 +42,12 @@ fn live_and_captured_parent_chains_retain_identity_but_observe_distinct_states()
     );
     let original = owner.snapshot();
     let child = original
-        .rules(original.child_rules(&rules[0]).unwrap())
+        .rules(
+            original
+                .rule(&rules[0])
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap()[0]
         .clone();
     let parent = owner.css_style_rule(&rules[0]).unwrap();
@@ -190,7 +195,12 @@ fn grouping_is_capability_not_numeric_type_or_list_presence() {
     ));
     let snapshot = owner.snapshot();
     let child = &snapshot
-        .rules(snapshot.child_rules(&rules[0]).unwrap())
+        .rules(
+            snapshot
+                .rule(&rules[0])
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap()[0];
     assert_eq!(
         owner
@@ -222,7 +232,12 @@ fn declaration_factories_validate_actual_domains_without_counter_style_alias() {
     );
     assert_eq!(rules.len(), 5);
     let snapshot = owner.snapshot();
-    let block = |rule: &CssomRuleId| snapshot.rule_style(rule).unwrap();
+    let block = |rule: &CssomRuleId| {
+        snapshot
+            .rule(rule)
+            .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+            .unwrap()
+    };
     assert!(owner.css_style_rule(&rules[0]).is_ok());
     assert!(owner.css_page_rule(&rules[1]).is_ok());
     assert!(owner.css_font_face_rule(&rules[2]).is_ok());
@@ -247,7 +262,12 @@ fn declaration_factories_validate_actual_domains_without_counter_style_alias() {
             .is_none()
     );
     let margin = &snapshot
-        .rules(snapshot.child_rules(&rules[1]).unwrap())
+        .rules(
+            snapshot
+                .rule(&rules[1])
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap()[0];
     assert!(owner.css_margin_rule(margin).is_ok());
     let margin = owner.css_margin_descriptors(block(margin)).unwrap();
@@ -270,7 +290,12 @@ fn declaration_factories_validate_actual_domains_without_counter_style_alias() {
         &face
     );
     let keyframe = &snapshot
-        .rules(snapshot.child_rules(&rules[3]).unwrap())
+        .rules(
+            snapshot
+                .rule(&rules[3])
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap()[0];
     assert!(owner.css_style_declaration(block(keyframe)).is_ok());
     assert!(matches!(
@@ -448,20 +473,33 @@ fn scoped_leaf_and_nested_declaration_shells_preserve_their_actual_kinds() {
     );
     let snapshot = owner.snapshot();
     let scoped = snapshot
-        .rules(snapshot.child_rules(&roots[0]).unwrap())
+        .rules(
+            snapshot
+                .rule(&roots[0])
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap();
     assert_eq!(scoped.len(), 3);
     assert!(owner.css_layer_statement_rule(&scoped[0]).is_ok());
     assert!(owner.css_font_palette_values_rule(&scoped[1]).is_ok());
     assert!(owner.css_color_profile_rule(&scoped[2]).is_ok());
     let children = snapshot
-        .rules(snapshot.child_rules(&roots[1]).unwrap())
+        .rules(
+            snapshot
+                .rule(&roots[1])
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap();
     assert_eq!(children.len(), 2);
     let nested = owner.css_nested_declarations(&children[1]).unwrap();
     assert_eq!(nested.r#type(&owner).unwrap(), 0);
     assert!(nested.as_rule().as_grouping_rule(&owner).unwrap().is_none());
-    let block = snapshot.rule_style(nested.id()).unwrap();
+    let block = snapshot
+        .rule(nested.id())
+        .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+        .unwrap();
     assert!(owner.css_style_properties(block).is_ok());
     assert_eq!(nested.parent_rule(&owner).unwrap().unwrap().id(), &roots[1]);
 }

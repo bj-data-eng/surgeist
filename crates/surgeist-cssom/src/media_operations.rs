@@ -11,6 +11,9 @@ pub struct CssomMediaEdit {
     diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssomMediaEdit {
+    pub(crate) fn into_diagnostics(self) -> Vec<CssRecoveryDiagnostic> {
+        self.diagnostics
+    }
     pub const fn changed(&self) -> bool {
         self.changed
     }
@@ -21,7 +24,7 @@ impl CssomMediaEdit {
 
 impl CssomSnapshot {
     /// Canonical CSSOM text of the associated current collection.
-    pub fn media_text(
+    pub(crate) fn media_text(
         &self,
         id: &CssomMediaListId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -31,11 +34,11 @@ impl CssomSnapshot {
             .map(|text| text.as_css().to_owned())
             .map_err(CssomError::Media)
     }
-    pub fn media_length(&self, id: &CssomMediaListId) -> Result<usize, CssomError> {
+    pub(crate) fn media_length(&self, id: &CssomMediaListId) -> Result<usize, CssomError> {
         Ok(self.media(id)?.queries().len())
     }
     /// Returns null out of range, independently of the output allowance.
-    pub fn media_item(
+    pub(crate) fn media_item(
         &self,
         id: &CssomMediaListId,
         index: usize,

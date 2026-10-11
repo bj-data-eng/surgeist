@@ -49,7 +49,7 @@ impl CssomBlock {
 
 impl CssomSnapshot {
     /// Serializes the live decoded name as an identifier, without authored-name validation.
-    pub fn counter_name(
+    pub(crate) fn counter_name(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -61,7 +61,7 @@ impl CssomSnapshot {
     }
     /// Specified effective descriptor text; an unspecified descriptor is empty.
     /// This remains independent of whole-rule output and definition validity.
-    pub fn counter_descriptor(
+    pub(crate) fn counter_descriptor(
         &self,
         id: &CssomRuleId,
         kind: CssCounterStyleDescriptorKind,
@@ -101,7 +101,18 @@ impl CssomBatch {
         source: &str,
         limits: CssomDeclarationRequestLimits,
     ) -> Result<bool, CssomError> {
-        self.apply(|this| {
+        self.set_counter_descriptor_operation(id, kind, source, limits)
+            .map(|(changed, _)| changed)
+    }
+    pub(crate) fn set_counter_descriptor_operation(
+        &mut self,
+        id: &CssomRuleId,
+        kind: CssCounterStyleDescriptorKind,
+        source: &str,
+        limits: CssomDeclarationRequestLimits,
+    ) -> Result<(bool, Vec<CssRecoveryDiagnostic>), CssomError> {
+        let mut operation_diagnostics = Vec::new();
+        let changed = self.apply(|this| {
             let CssomRuleData::CounterStyle { block, .. } = this.staged.rule(id)?.data() else {
                 return Err(CssomError::WrongKind);
             };
@@ -119,6 +130,7 @@ impl CssomBatch {
             let (value, diagnostics) =
                 parse_counter_style_descriptor_value(source, kind).into_parts();
             check_resource_diagnostics(&diagnostics)?;
+            operation_diagnostics = diagnostics;
             let Some(value) = value else {
                 return Ok(false);
             };
@@ -168,7 +180,8 @@ impl CssomBatch {
                 &[CssomChange::Descriptors, CssomChange::Provenance],
             );
             Ok(true)
-        })
+        })?;
+        Ok((changed, operation_diagnostics))
     }
 }
 

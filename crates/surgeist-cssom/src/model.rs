@@ -544,7 +544,7 @@ impl CssomFeatureMap {
     pub const fn kind(&self) -> CssFontFeatureValueKind {
         self.kind
     }
-    pub fn entries(&self) -> &[CssomFeatureEntry] {
+    pub fn raw_entries(&self) -> &[CssomFeatureEntry] {
         &self.entries
     }
     pub fn authored(&self) -> &[CssFontFeatureValueDefinition] {
@@ -552,11 +552,10 @@ impl CssomFeatureMap {
     }
     /// `Some(&[])` is present-empty; `None` is absent. Exact unrepresentable or
     /// symbolic authored values report a capability failure, not absence.
-    pub fn get(&self, key: &str) -> Result<Option<&[u32]>, CssomError> {
+    pub(crate) fn get(&self, key: &str) -> Result<Option<&[u32]>, CssomError> {
         match self.entries.iter().find(|v| v.key == key).map(|v| &v.value) {
             None => Ok(None),
-            Some(CssomFeatureValue::Unsigned(v)) => Ok(Some(v)),
-            Some(CssomFeatureValue::Authored(_)) => Err(CssomError::AuthoredFeatureConversion),
+            Some(value) => value.projected().map(Some),
         }
     }
 }

@@ -20,20 +20,10 @@ fn main() -> Result<(), CssomError> {
     let sheet = store.commit(edit)?.sheet(&ticket)?.clone();
     let before = store.snapshot();
     let rule = before.sheet_rules(&sheet)?[0].clone();
-    let mut edit = store.batch(CssomEditGuard::from_snapshot(&before))?;
-    assert!(edit.set_counter_descriptor(
-        &rule,
-        CssCounterStyleDescriptorKind::System,
-        "fixed 4",
-        Default::default()
-    )?);
-    assert!(edit.set_counter_descriptor(
-        &rule,
-        CssCounterStyleDescriptorKind::Prefix,
-        "'§ '",
-        Default::default()
-    )?);
-    store.commit(edit)?;
+    let object = store.css_counter_style_rule(&rule)?;
+    let historical = object.capture(&before)?;
+    let _system = object.set_system(&mut store, "fixed 4", Default::default())?;
+    let _prefix = object.set_prefix(&mut store, "'§ '", Default::default())?;
     let after = store.snapshot();
     let block = after.rule(&rule)?.data().block().expect("counter block");
     let values = after
@@ -52,26 +42,13 @@ fn main() -> Result<(), CssomError> {
             .as_str(),
         "'§ '"
     );
+    let current = object.capture(&after)?;
     drop(store);
-    assert_eq!(
-        before.counter_descriptor(
-            &rule,
-            CssCounterStyleDescriptorKind::Prefix,
-            Default::default()
-        )?,
-        ""
-    );
-    assert_eq!(
-        after.counter_descriptor(
-            &rule,
-            CssCounterStyleDescriptorKind::Prefix,
-            Default::default()
-        )?,
-        "\"§ \""
-    );
+    assert_eq!(historical.prefix(Default::default())?, "");
+    assert_eq!(current.prefix(Default::default())?, "\"§ \"");
     println!(
         "{}: fixed → fixed 4, prefix → § ",
-        after.counter_name(&rule, Default::default())?
+        current.name(Default::default())?
     );
     Ok(())
 }

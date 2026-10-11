@@ -249,11 +249,16 @@ fn raw_counter_names_and_all_seven_maps_do_not_weaken_authored_grammar() {
         .find(|id| before.feature_map(id).unwrap().kind() == CssFontFeatureValueKind::Styleset)
         .unwrap();
     assert!(matches!(
-        before.feature_map(styleset).unwrap().get("huge"),
+        store
+            .css_font_feature_values_map(styleset)
+            .unwrap()
+            .capture(&before)
+            .unwrap()
+            .get("huge"),
         Err(CssomError::AuthoredFeatureConversion)
     ));
     let CssomFeatureValue::Authored(value) =
-        &before.feature_map(styleset).unwrap().entries()[0].value
+        &before.feature_map(styleset).unwrap().raw_entries()[0].value
     else {
         panic!("exact authored")
     };
@@ -276,14 +281,20 @@ fn raw_counter_names_and_all_seven_maps_do_not_weaken_authored_grammar() {
         matches!(after.rule(&counter).unwrap().data(),CssomRuleData::CounterStyle{name,..} if name.is_empty())
     );
     for id in &maps {
-        let map = after.feature_map(id).unwrap();
-        assert_eq!(map.get("").unwrap(), Some([].as_slice()));
-        assert_eq!(map.get("absent").unwrap(), None);
-        assert_eq!(map.get("A!?").unwrap(), Some([0].as_slice()));
+        let map = store.css_font_feature_values_map(id).unwrap();
+        assert_eq!(map.get(&store, "").unwrap(), Some(vec![]));
+        assert_eq!(map.get(&store, "absent").unwrap(), None);
+        assert_eq!(map.get(&store, "A!?").unwrap(), Some(vec![0]));
     }
     assert_eq!(
-        after.feature_map(styleset).unwrap().get("huge").unwrap(),
-        Some([u32::MAX].as_slice())
+        store
+            .css_font_feature_values_map(styleset)
+            .unwrap()
+            .capture(&after)
+            .unwrap()
+            .get("huge")
+            .unwrap(),
+        Some(vec![u32::MAX])
     );
     assert_eq!(
         after.feature_map(styleset).unwrap().authored()[0].value(),
@@ -342,12 +353,11 @@ fn map_cardinality_failure_poisoning_and_order_are_atomic() {
     store.commit(edit).unwrap();
     assert_eq!(
         store
-            .snapshot()
-            .feature_map(id)
+            .css_font_feature_values_map(id)
             .unwrap()
-            .entries()
-            .iter()
-            .map(|v| v.key.as_str())
+            .entries(&store)
+            .unwrap()
+            .map(|v| v.unwrap().0)
             .collect::<Vec<_>>(),
         ["a", "x"]
     );
@@ -835,12 +845,14 @@ fn domain_payloads_and_font_display_are_current_checked_capture_facts() {
         })
         .unwrap();
     assert_eq!(
-        snapshot
-            .feature_map(historical)
+        store
+            .css_font_feature_values_map(historical)
+            .unwrap()
+            .capture(&snapshot)
             .unwrap()
             .get("old")
             .unwrap(),
-        Some([1, 2].as_slice())
+        Some(vec![1, 2])
     );
 }
 

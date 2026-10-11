@@ -62,6 +62,7 @@ members = [
     "crates/surgeist-test",
     "crates/surgeist-text",
     "crates/surgeist-window",
+    "tools/cssom-reflections",
 ]
 exclude = [
     "api/generator",

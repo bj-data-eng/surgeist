@@ -39,9 +39,30 @@ fn rules(snapshot: &CssomSnapshot, sheet: &CssomSheetId) -> Vec<CssomRuleId> {
         .unwrap()
         .to_vec()
 }
-fn media(snapshot: &CssomSnapshot, rule: &CssomRuleId) -> CssomMediaListId {
-    match snapshot.custom_media_query(rule).unwrap() {
-        CssomCustomMediaQuery::MediaList(id) => id.clone(),
+fn custom(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    rule: &CssomRuleId,
+) -> Result<CssomCapture<surgeist_cssom::CssCustomMediaRule>, CssomError> {
+    store.css_custom_media_rule(rule)?.capture(snapshot)
+}
+fn profile_capture(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    rule: &CssomRuleId,
+) -> Result<CssomCapture<surgeist_cssom::CssColorProfileRule>, CssomError> {
+    store.css_color_profile_rule(rule)?.capture(snapshot)
+}
+fn list_capture(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    id: &CssomMediaListId,
+) -> Result<CssomCapture<MediaList>, CssomError> {
+    store.media_list(id)?.capture(snapshot)
+}
+fn media(store: &CssomStore, snapshot: &CssomSnapshot, rule: &CssomRuleId) -> CssomMediaListId {
+    match custom(store, snapshot, rule).unwrap().query().unwrap() {
+        CapturedCustomMediaQuery::MediaList(value) => value.handle().id().clone(),
         other => panic!("MediaList branch: {other:?}"),
     }
 }
@@ -56,22 +77,49 @@ fn authored_boolean_branches_and_decoded_names_do_not_evaluate_or_default() {
     let snapshot = store.snapshot();
     let rules = rules(&snapshot, &sheet);
     assert_eq!(rules.len(), 4); // An authored empty query list is not a boolean fallback.
-    assert_eq!(snapshot.custom_media_name(&rules[0]).unwrap(), "--A B");
     assert_eq!(
-        snapshot.custom_media_query(&rules[0]).unwrap(),
-        &CssomCustomMediaQuery::Boolean(true)
+        custom(&store, &snapshot, &rules[0])
+            .and_then(|value| value.name().map(str::to_owned))
+            .unwrap(),
+        "--A B"
     );
+    assert!(matches!(
+        custom(&store, &snapshot, &rules[0])
+            .and_then(|value| value.query())
+            .unwrap(),
+        CapturedCustomMediaQuery::Boolean(true)
+    ));
+    assert!(matches!(
+        custom(&store, &snapshot, &rules[1])
+            .and_then(|value| value.query())
+            .unwrap(),
+        CapturedCustomMediaQuery::Boolean(false)
+    ));
+    let id = media(&store, &snapshot, &rules[2]);
     assert_eq!(
-        snapshot.custom_media_query(&rules[1]).unwrap(),
-        &CssomCustomMediaQuery::Boolean(false)
+        list_capture(&store, &snapshot, &id)
+            .unwrap()
+            .media_text(limits())
+            .unwrap(),
+        "screen"
     );
-    let id = media(&snapshot, &rules[2]);
-    assert_eq!(snapshot.media_text(&id, limits()).unwrap(), "screen");
     assert_eq!(id.owner(), snapshot.owner());
-    let empty = media(&snapshot, &rules[3]);
+    let empty = media(&store, &snapshot, &rules[3]);
     assert_ne!(id, empty);
-    assert_eq!(snapshot.media_length(&empty).unwrap(), 0);
-    assert_eq!(snapshot.media_text(&empty, limits()).unwrap(), "");
+    assert_eq!(
+        list_capture(&store, &snapshot, &empty)
+            .unwrap()
+            .length()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        list_capture(&store, &snapshot, &empty)
+            .unwrap()
+            .media_text(limits())
+            .unwrap(),
+        ""
+    );
 
     let mut edit = batch(&store);
     edit.set_rule_css_text(&rules[0], "@custom-media --Changed false;")
@@ -81,7 +129,11 @@ fn authored_boolean_branches_and_decoded_names_do_not_evaluate_or_default() {
         CssomPublication::Unchanged { .. }
     ));
     assert_eq!(
-        store.snapshot().custom_media_name(&rules[0]).unwrap(),
+        store
+            .css_custom_media_rule(&rules[0])
+            .unwrap()
+            .name(&store)
+            .unwrap(),
         "--A B"
     );
 }
@@ -93,7 +145,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     let sheet = create(&mut store, &source);
     let before = store.snapshot();
     let rule = rules(&before, &sheet)[0].clone();
-    let id = media(&before, &rule);
+    let id = media(&store, &before, &rule);
     let mut edit = batch(&store);
     assert!(
         edit.set_media_text(&id, "screen,,speech")
@@ -102,12 +154,19 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     );
     store.commit(edit).unwrap();
     let after = store.snapshot();
-    assert_eq!(media(&after, &rule), id);
+    let current_list = list_capture(&store, &after, &id).unwrap();
+    assert_eq!(media(&store, &after, &rule), id);
     assert_eq!(
-        after.media_text(&id, limits()).unwrap(),
+        current_list.media_text(limits()).unwrap(),
         "screen, not all, speech"
     );
-    assert_eq!(before.media_text(&id, limits()).unwrap(), "print");
+    assert_eq!(
+        list_capture(&store, &before, &id)
+            .unwrap()
+            .media_text(limits())
+            .unwrap(),
+        "print"
+    );
     let CssValueOrigin::Parsed(current_origin) = after.media(&id).unwrap().queries()[0].origin()
     else {
         panic!("current genuine media input")
@@ -143,30 +202,36 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     store.commit(edit).unwrap();
     let detached = store.snapshot();
     assert_eq!(detached.parent_style_sheet(&rule).unwrap(), None);
-    assert_eq!(media(&detached, &rule), id);
+    assert_eq!(media(&store, &detached, &rule), id);
     let mut edit = batch(&store);
     assert!(edit.set_media_text(&id, "").unwrap().changed());
     store.commit(edit).unwrap();
     let empty = store.snapshot();
-    assert_eq!(media(&empty, &rule), id);
-    assert_eq!(empty.media_length(&id).unwrap(), 0);
+    assert_eq!(media(&store, &empty, &rule), id);
     assert_eq!(
-        empty
-            .media_item(&id, 0, CssSpecifiedValueSerializationLimits::new(0, 0, 0))
+        list_capture(&store, &empty, &id).unwrap().length().unwrap(),
+        0
+    );
+    assert_eq!(
+        list_capture(&store, &empty, &id)
+            .unwrap()
+            .item(0, CssSpecifiedValueSerializationLimits::new(0, 0, 0))
             .unwrap(),
         None
     );
+    let historical_custom = custom(&store, &before, &rule).unwrap();
+    let empty_custom = custom(&store, &empty, &rule).unwrap();
     drop(source);
     drop(store);
     assert_eq!(
-        after.media_text(&id, limits()).unwrap(),
+        current_list.media_text(limits()).unwrap(),
         "screen, not all, speech"
     );
-    assert_eq!(before.custom_media_name(&rule).unwrap(), "--Alias");
-    assert_eq!(
-        empty.custom_media_query(&rule).unwrap(),
-        &CssomCustomMediaQuery::MediaList(id)
-    );
+    assert_eq!(historical_custom.name().unwrap(), "--Alias");
+    assert!(matches!(
+        empty_custom.query().unwrap(),
+        CapturedCustomMediaQuery::MediaList(value) if value.handle().id() == &id
+    ));
 }
 
 #[test]
@@ -180,38 +245,43 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
     let ids = rules(&snapshot, &sheet);
     assert_eq!(ids.len(), 3);
     assert_eq!(
-        snapshot.color_profile_name(&ids[0], limits()).unwrap(),
+        profile_capture(&store, &snapshot, &ids[0])
+            .and_then(|value| value.name(limits()))
+            .unwrap(),
         r"--A\ B"
     );
     assert_eq!(
-        snapshot.color_profile_src(&ids[0], limits()).unwrap(),
+        profile_capture(&store, &snapshot, &ids[0])
+            .and_then(|value| value.src(limits()))
+            .unwrap(),
         "url(\"\")"
     );
     assert_eq!(
-        snapshot
-            .color_profile_rendering_intent(&ids[0], limits())
+        profile_capture(&store, &snapshot, &ids[0])
+            .and_then(|value| value.rendering_intent(limits()))
             .unwrap(),
         "saturation"
     );
     assert_eq!(
-        snapshot
-            .color_profile_components(&ids[0], limits())
+        profile_capture(&store, &snapshot, &ids[0])
+            .and_then(|value| value.components(limits()))
             .unwrap(),
         r"A, a\+b, 日本, A"
     );
     assert_eq!(
-        snapshot.color_profile_name(&ids[1], limits()).unwrap(),
+        profile_capture(&store, &snapshot, &ids[1])
+            .and_then(|value| value.name(limits()))
+            .unwrap(),
         "device-cmyk"
     );
     for getter in [
-        CssomSnapshot::color_profile_src,
-        CssomSnapshot::color_profile_rendering_intent,
-        CssomSnapshot::color_profile_components,
+        CssomCapture::<surgeist_cssom::CssColorProfileRule>::src,
+        CssomCapture::<surgeist_cssom::CssColorProfileRule>::rendering_intent,
+        CssomCapture::<surgeist_cssom::CssColorProfileRule>::components,
     ] {
         assert_eq!(
             getter(
-                &snapshot,
-                &ids[1],
+                &profile_capture(&store, &snapshot, &ids[1]).unwrap(),
                 CssSpecifiedValueSerializationLimits::new(0, 0, 0)
             )
             .unwrap(),
@@ -219,8 +289,8 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
         );
     }
     assert_eq!(
-        snapshot
-            .color_profile_components(&ids[2], limits())
+        profile_capture(&store, &snapshot, &ids[2])
+            .and_then(|value| value.components(limits()))
             .unwrap(),
         "env(channels)"
     );
@@ -251,10 +321,22 @@ fn profile_replacement_keeps_detached_old_objects_and_original_value_coordinates
     let new = rules(&after, &sheet)[0].clone();
     assert_ne!(old, new);
     assert_eq!(after.parent_style_sheet(&old).unwrap(), None);
-    assert_eq!(after.color_profile_name(&new, limits()).unwrap(), "--New");
-    assert_eq!(after.color_profile_src(&new, limits()).unwrap(), "");
     assert_eq!(
-        after.color_profile_src(&old, limits()).unwrap(),
+        profile_capture(&store, &after, &new)
+            .and_then(|value| value.name(limits()))
+            .unwrap(),
+        "--New"
+    );
+    assert_eq!(
+        profile_capture(&store, &after, &new)
+            .and_then(|value| value.src(limits()))
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        profile_capture(&store, &after, &old)
+            .and_then(|value| value.src(limits()))
+            .unwrap(),
         "url(\"relative.icc\")"
     );
     let CssomRuleData::Leaf {
@@ -274,13 +356,13 @@ fn profile_replacement_keeps_detached_old_objects_and_original_value_coordinates
         origin.span().start().byte_offset().value(),
         source.find("url(").unwrap()
     );
+    let historical_profile = profile_capture(&store, &before, &old).unwrap();
+    let current_profile = profile_capture(&store, &after, &new).unwrap();
     drop(source);
     drop(store);
-    assert_eq!(before.color_profile_name(&old, limits()).unwrap(), "--Old");
+    assert_eq!(historical_profile.name(limits()).unwrap(), "--Old");
     assert_eq!(
-        after
-            .color_profile_rendering_intent(&new, limits())
-            .unwrap(),
+        current_profile.rendering_intent(limits()).unwrap(),
         "absolute-colorimetric"
     );
 }
@@ -298,16 +380,22 @@ fn scoped_and_programmatic_checked_payloads_use_the_same_facets() {
         .rules(snapshot.rule(&scope).unwrap().data().children().unwrap())
         .unwrap();
     assert_eq!(children.len(), 2);
-    assert_eq!(snapshot.custom_media_name(&children[0]).unwrap(), "--Inner");
     assert_eq!(
-        snapshot
-            .media_text(&media(&snapshot, &children[0]), limits())
+        custom(&store, &snapshot, &children[0])
+            .and_then(|value| value.name().map(str::to_owned))
+            .unwrap(),
+        "--Inner"
+    );
+    assert_eq!(
+        list_capture(&store, &snapshot, &media(&store, &snapshot, &children[0]))
+            .unwrap()
+            .media_text(limits())
             .unwrap(),
         "print"
     );
     assert_eq!(
-        snapshot
-            .color_profile_components(&children[1], limits())
+        profile_capture(&store, &snapshot, &children[1])
+            .and_then(|value| value.components(limits()))
             .unwrap(),
         "A"
     );
@@ -332,12 +420,16 @@ fn scoped_and_programmatic_checked_payloads_use_the_same_facets() {
     let sheet = store.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
     let snapshot = store.snapshot();
     let ids = rules(&snapshot, &sheet);
+    assert!(matches!(
+        custom(&store, &snapshot, &ids[0])
+            .and_then(|value| value.query())
+            .unwrap(),
+        CapturedCustomMediaQuery::Boolean(true)
+    ));
     assert_eq!(
-        snapshot.custom_media_query(&ids[0]).unwrap(),
-        &CssomCustomMediaQuery::Boolean(true)
-    );
-    assert_eq!(
-        snapshot.color_profile_name(&ids[1], limits()).unwrap(),
+        profile_capture(&store, &snapshot, &ids[1])
+            .and_then(|value| value.name(limits()))
+            .unwrap(),
         r"--Made\ profile"
     );
     let CssomRuleData::CustomMedia { name, .. } = snapshot.rule(&ids[0]).unwrap().data() else {
@@ -357,34 +449,38 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
     let snapshot = store.snapshot();
     let ids = rules(&snapshot, &sheet);
     assert!(matches!(
-        snapshot.custom_media_name(&ids[2]),
+        custom(&store, &snapshot, &ids[2]).and_then(|value| value.name().map(str::to_owned)),
         Err(CssomError::WrongKind)
     ));
     assert!(matches!(
-        snapshot.custom_media_query(&ids[1]),
+        custom(&store, &snapshot, &ids[1]).and_then(|value| value.query()),
         Err(CssomError::WrongKind)
     ));
     assert!(matches!(
-        snapshot.color_profile_src(&ids[0], limits()),
+        profile_capture(&store, &snapshot, &ids[0]).and_then(|value| value.src(limits())),
         Err(CssomError::WrongKind)
     ));
     assert!(matches!(
-        before_creation.custom_media_query(&ids[0]),
+        custom(&store, &before_creation, &ids[0]).and_then(|value| value.query()),
         Err(CssomError::MissingObject)
     ));
     let foreign = new_store();
     assert!(matches!(
-        foreign.snapshot().custom_media_name(&ids[0]),
+        custom(&store, &foreign.snapshot(), &ids[0])
+            .and_then(|value| value.name().map(str::to_owned)),
         Err(CssomError::ForeignOwner)
     ));
     assert!(matches!(
-        foreign.snapshot().color_profile_name(&ids[1], limits()),
+        profile_capture(&store, &foreign.snapshot(), &ids[1])
+            .and_then(|value| value.name(limits())),
         Err(CssomError::ForeignOwner)
     ));
     let expected = r"A, a\+b";
     let exact = CssSpecifiedValueSerializationLimits::new(2, 2, expected.len());
     assert_eq!(
-        snapshot.color_profile_components(&ids[1], exact).unwrap(),
+        profile_capture(&store, &snapshot, &ids[1])
+            .and_then(|value| value.components(exact))
+            .unwrap(),
         expected
     );
     for (policy, kind) in [
@@ -402,19 +498,23 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
         ),
     ] {
         assert!(
-            matches!(snapshot.color_profile_components(&ids[1], policy), Err(CssomError::Value(error)) if error.kind() == kind)
+            matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.components(policy)), Err(CssomError::Value(error)) if error.kind() == kind)
         );
     }
     assert!(
-        matches!(snapshot.color_profile_name(&ids[1], CssSpecifiedValueSerializationLimits::new(0,1,99)), Err(CssomError::Value(error)) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit)
+        matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.name(CssSpecifiedValueSerializationLimits::new(0,1,99))), Err(CssomError::Value(error)) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit)
     );
-    let media = media(&snapshot, &ids[0]);
+    let media = media(&store, &snapshot, &ids[0]);
     assert!(matches!(
-        snapshot.media_text(&media, CssSpecifiedValueSerializationLimits::new(99, 99, 0)),
+        list_capture(&store, &snapshot, &media)
+            .unwrap()
+            .media_text(CssSpecifiedValueSerializationLimits::new(99, 99, 0)),
         Err(CssomError::Media(_))
     ));
     assert_eq!(
-        snapshot.color_profile_components(&ids[1], exact).unwrap(),
+        profile_capture(&store, &snapshot, &ids[1])
+            .and_then(|value| value.components(exact))
+            .unwrap(),
         expected
     );
     assert_eq!(snapshot.revision(), store.snapshot().revision());
@@ -442,12 +542,13 @@ fn query_identity_allocation_obeys_store_limits_and_failed_adoption_publishes_no
     assert!(owner.snapshot().sheets().is_empty());
     let sheet = create(&mut owner, "@custom-media --m false;");
     let snapshot = owner.snapshot();
-    assert_eq!(
-        snapshot
-            .custom_media_query(&rules(&snapshot, &sheet)[0])
+    assert!(matches!(
+        custom(&owner, &snapshot, &rules(&snapshot, &sheet)[0])
+            .unwrap()
+            .query()
             .unwrap(),
-        &CssomCustomMediaQuery::Boolean(false)
-    );
+        CapturedCustomMediaQuery::Boolean(false)
+    ));
     let mut owner = CssomStore::new(
         CssomLimits {
             max_objects: 6,
@@ -459,9 +560,14 @@ fn query_identity_allocation_obeys_store_limits_and_failed_adoption_publishes_no
     let sheet = create(&mut owner, "@custom-media --m screen;");
     let snapshot = owner.snapshot();
     assert_eq!(
-        snapshot
-            .media_text(&media(&snapshot, &rules(&snapshot, &sheet)[0]), limits())
-            .unwrap(),
+        list_capture(
+            &owner,
+            &snapshot,
+            &media(&owner, &snapshot, &rules(&snapshot, &sheet)[0])
+        )
+        .unwrap()
+        .media_text(limits())
+        .unwrap(),
         "screen"
     );
 }

@@ -28,7 +28,12 @@ fn fixture(
         .unwrap()[0]
         .clone();
     let children = snapshot
-        .rules(snapshot.child_rules(&root).unwrap())
+        .rules(
+            snapshot
+                .rule(&root)
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap()
         .to_vec();
     (store, sheet, root, children)
@@ -43,28 +48,46 @@ fn ordered_full_sequence_last_match_is_independent_of_counts_duplicates_and_sing
     let before = store.snapshot();
     let limits = CssomLimits::default();
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, " from , to ", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule(" from , to ", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[1])
+        Some(children[1].clone())
     );
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, "to, from", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("to, from", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[2])
+        Some(children[2].clone())
     );
     assert_eq!(
-        before.find_keyframe_rule(&root, "from", &limits).unwrap(),
-        Some(&children[3])
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("from", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
+            .unwrap(),
+        Some(children[3].clone())
     );
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, "from, to, to", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("from, to, to", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[4])
+        Some(children[4].clone())
     );
-    let block = before.rule_style(&children[1]).unwrap().clone();
+    let block = before
+        .rule(&children[1])
+        .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+        .unwrap()
+        .clone();
     let list = before
         .rule(&root)
         .unwrap()
@@ -87,22 +110,34 @@ fn ordered_full_sequence_last_match_is_independent_of_counts_duplicates_and_sing
         &list
     );
     assert_eq!(
-        current
-            .find_keyframe_rule(&root, "0%,100%", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&current))
+            .and_then(|capture| capture.find_rule("0%,100%", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[0])
+        Some(children[0].clone())
     );
     assert_eq!(current.parent_rule(&children[1]).unwrap(), None);
     assert_eq!(current.parent_style_sheet(&children[1]).unwrap(), None);
-    assert_eq!(current.rule_style(&children[1]).unwrap(), &block);
+    assert_eq!(
+        current
+            .rule(&children[1])
+            .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+            .unwrap(),
+        &block
+    );
     assert!(summary.categories().contains(&CssomChange::RuleMembership));
     assert!(summary.categories().contains(&CssomChange::Order));
     assert!(summary.categories().contains(&CssomChange::Ancestry));
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, "from,to", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("from,to", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[1])
+        Some(children[1].clone())
     );
 }
 
@@ -115,43 +150,75 @@ fn current_key_text_and_specified_calculation_phase_control_matching_without_tex
     let before = store.snapshot();
     let limits = CssomLimits::default();
     assert_eq!(
-        before.find_keyframe_rule(&root, "10%", &limits).unwrap(),
-        Some(&children[0])
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("10%", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
+            .unwrap(),
+        Some(children[0].clone())
     );
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, "calc( 10% )", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("calc( 10% )", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[2])
+        Some(children[2].clone())
     );
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, "calc(25% * sign(1em + 1px))", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("calc(25% * sign(1em + 1px))", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[3])
+        Some(children[3].clone())
     );
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, "calc(25% * sign(1px + 1em))", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("calc(25% * sign(1px + 1em))", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[4])
+        Some(children[4].clone())
     );
-    let block = before.rule_style(&children[2]).unwrap().clone();
+    let block = before
+        .rule(&children[2])
+        .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+        .unwrap()
+        .clone();
     let mut edit = batch(&store);
     edit.set_keyframe_key_text(&children[2], "20%").unwrap();
     store.commit(edit).unwrap();
     let current = store.snapshot();
     assert_eq!(
-        current
-            .find_keyframe_rule(&root, "calc(10%)", &limits)
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&current))
+            .and_then(|capture| capture.find_rule("calc(10%)", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[1])
+        Some(children[1].clone())
     );
     assert_eq!(
-        current.find_keyframe_rule(&root, "20%", &limits).unwrap(),
-        Some(&children[2])
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&current))
+            .and_then(|capture| capture.find_rule("20%", &limits))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
+            .unwrap(),
+        Some(children[2].clone())
     );
-    assert_eq!(current.rule_style(&children[2]).unwrap(), &block);
+    assert_eq!(
+        current
+            .rule(&children[2])
+            .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+            .unwrap(),
+        &block
+    );
 }
 
 #[test]
@@ -162,7 +229,12 @@ fn invalid_or_unmatched_key_queries_are_noops_in_a_mixed_batch() {
     let limits = CssomLimits::default();
     for query in [")", "50% garbage", "from,", "50%"] {
         assert_eq!(
-            before.find_keyframe_rule(&root, query, &limits).unwrap(),
+            store
+                .css_keyframes_rule(&root)
+                .and_then(|handle| handle.capture(&before))
+                .and_then(|capture| capture.find_rule(query, &limits))
+                .map(|found| found.map(|rule| rule.handle().id().clone()))
+                .unwrap(),
             None
         );
     }
@@ -174,11 +246,25 @@ fn invalid_or_unmatched_key_queries_are_noops_in_a_mixed_batch() {
     let current = store.snapshot();
     assert!(current.sheet(&sheet).unwrap().inputs().disabled);
     assert_eq!(
-        current.rules(current.child_rules(&root).unwrap()).unwrap(),
+        current
+            .rules(
+                current
+                    .rule(&root)
+                    .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                    .unwrap()
+            )
+            .unwrap(),
         children
     );
     assert_eq!(
-        before.rules(before.child_rules(&root).unwrap()).unwrap(),
+        before
+            .rules(
+                before
+                    .rule(&root)
+                    .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                    .unwrap()
+            )
+            .unwrap(),
         children
     );
 }
@@ -210,8 +296,11 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
                 .is_ok()
         );
     }
-    let Err(CssomError::KeyframeComparison(error)) =
-        before.find_keyframe_rule(&root, "10%", &limits)
+    let Err(CssomError::KeyframeComparison(error)) = store
+        .css_keyframes_rule(&root)
+        .and_then(|handle| handle.capture(&before))
+        .and_then(|capture| capture.find_rule("10%", &limits))
+        .map(|found| found.map(|rule| rule.handle().id().clone()))
     else {
         panic!("whole search quota");
     };
@@ -224,10 +313,13 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
         CssKeyframeSelectorComparisonStage::RightNormalization
     );
     assert_eq!(
-        before
-            .find_keyframe_rule(&root, "10%", &CssomLimits::default())
+        store
+            .css_keyframes_rule(&root)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.find_rule("10%", &CssomLimits::default()))
+            .map(|found| found.map(|rule| rule.handle().id().clone()))
             .unwrap(),
-        Some(&children[0])
+        Some(children[0].clone())
     );
     let mut edit = batch(&store);
     edit.set_disabled(&sheet, true).unwrap();
@@ -240,7 +332,14 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
     assert_eq!(current.revision(), before.revision());
     assert!(!current.sheet(&sheet).unwrap().inputs().disabled);
     assert_eq!(
-        current.rules(current.child_rules(&root).unwrap()).unwrap(),
+        current
+            .rules(
+                current
+                    .rule(&root)
+                    .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                    .unwrap()
+            )
+            .unwrap(),
         children
     );
     assert_eq!(current.parent_rule(&children[0]).unwrap(), Some(&root));
@@ -253,7 +352,12 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
     let final_snapshot = store.snapshot();
     assert_eq!(
         final_snapshot
-            .rules(final_snapshot.child_rules(&root).unwrap())
+            .rules(
+                final_snapshot
+                    .rule(&root)
+                    .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                    .unwrap()
+            )
             .unwrap(),
         &children[..2]
     );

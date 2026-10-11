@@ -40,10 +40,11 @@ fn parsed_source(input: &CssomFontFamilyInput) -> &str {
 #[test]
 fn family_text_uses_current_mode_and_retains_actual_member_origins_and_input_versions() {
     let (mut store, rule) = create(Default::default());
+    let object = store.css_font_feature_values_rule(&rule).unwrap();
     let before = store.snapshot();
     assert!(
         before
-            .font_feature_values(&rule)
+            .inspect_font_feature_values(&rule)
             .unwrap()
             .family_input()
             .is_none()
@@ -69,9 +70,10 @@ fn family_text_uses_current_mode_and_retains_actual_member_origins_and_input_ver
     drop(source);
     let commit = store.commit(edit).unwrap();
     let after = store.snapshot();
-    let view = after.font_feature_values(&rule).unwrap();
+    let view = after.inspect_font_feature_values(&rule).unwrap();
+    let captured = object.capture(&after).unwrap();
     assert_eq!(
-        view.font_family(Default::default()).unwrap(),
+        captured.font_family(Default::default()).unwrap(),
         "\"serif\", A B, \"1Face\""
     );
     let input = view.family_input().unwrap();
@@ -95,34 +97,24 @@ fn family_text_uses_current_mode_and_retains_actual_member_origins_and_input_ver
     let mut edit = batch(&store);
     edit.update_context(Default::default()).unwrap();
     store.commit(edit).unwrap();
+    let old_capture = object.capture(&before).unwrap();
     drop(store);
     assert_eq!(
         after
-            .font_feature_values(&rule)
+            .inspect_font_feature_values(&rule)
             .unwrap()
             .family_input()
             .unwrap()
             .parser_context(),
         mode
     );
-    assert_eq!(
-        before
-            .font_feature_values(&rule)
-            .unwrap()
-            .font_family(Default::default())
-            .unwrap(),
-        "A"
-    );
+    assert_eq!(old_capture.font_family(Default::default()).unwrap(), "A");
 }
 #[test]
 fn syntax_noops_preserve_staged_map_edits_and_valid_eof_recovery_is_retained() {
     let (mut store, rule) = create(Default::default());
-    let before = store.snapshot();
-    let map = before
-        .font_feature_values(&rule)
-        .unwrap()
-        .annotation()
-        .clone();
+    let object = store.css_font_feature_values_rule(&rule).unwrap();
+    let map = object.annotation(&store).unwrap().id().clone();
     let mut edit = batch(&store);
     edit.set_feature(&map, "kept", &[3]).unwrap();
     for source in [
@@ -148,11 +140,21 @@ fn syntax_noops_preserve_staged_map_edits_and_valid_eof_recovery_is_retained() {
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        after.feature_map(&map).unwrap().get("kept").unwrap(),
-        Some([3].as_slice())
+        store
+            .css_font_feature_values_map(&map)
+            .unwrap()
+            .capture(&after)
+            .unwrap()
+            .get("kept")
+            .unwrap(),
+        Some(vec![3])
     );
-    let view = after.font_feature_values(&rule).unwrap();
-    assert_eq!(view.font_family(Default::default()).unwrap(), "Recovered");
+    let view = after.inspect_font_feature_values(&rule).unwrap();
+    let captured = object.capture(&after).unwrap();
+    assert_eq!(
+        captured.font_family(Default::default()).unwrap(),
+        "Recovered"
+    );
     assert!(!view.family_input().unwrap().diagnostics().is_empty());
     assert_eq!(parsed_source(view.family_input().unwrap()), "'Recovered");
     let mut edit = batch(&store);
@@ -165,7 +167,10 @@ fn syntax_noops_preserve_staged_map_edits_and_valid_eof_recovery_is_retained() {
     let unchanged = store.snapshot();
     assert_eq!(unchanged.revision(), after.revision());
     assert_eq!(
-        unchanged.font_feature_values(&rule).unwrap().family_input(),
+        unchanged
+            .inspect_font_feature_values(&rule)
+            .unwrap()
+            .family_input(),
         view.family_input()
     );
 }
@@ -175,12 +180,9 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
         max_input_bytes: 40,
         ..Default::default()
     });
+    let object = store.css_font_feature_values_rule(&rule).unwrap();
     let before = store.snapshot();
-    let map = before
-        .font_feature_values(&rule)
-        .unwrap()
-        .styleset()
-        .clone();
+    let map = object.styleset(&store).unwrap().id().clone();
     let mut edit = batch(&store);
     edit.set_feature(&map, "earlier", &[4]).unwrap();
     assert!(matches!(
@@ -189,7 +191,13 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(store.snapshot().revision(), before.revision());
-    assert!(!store.snapshot().feature_map(&map).unwrap().has("earlier"));
+    assert!(
+        !store
+            .css_font_feature_values_map(&map)
+            .unwrap()
+            .has(&store, "earlier")
+            .unwrap()
+    );
     let value = parse_font_feature_values_family_list("/*actual*/ B")
         .into_parts()
         .0
@@ -198,7 +206,7 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
     assert!(edit.set_font_feature_families(&rule, value).unwrap());
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
-    let view = snapshot.font_feature_values(&rule).unwrap();
+    let view = snapshot.inspect_font_feature_values(&rule).unwrap();
     assert_eq!(parsed_source(view.family_input().unwrap()), "/*actual*/ B");
     let value =
         CssFontFeatureValuesFamilyList::try_new(vec![CssFontFaceFamily::try_new("C").unwrap()])
@@ -207,7 +215,7 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
     assert!(edit.set_font_feature_families(&rule, value).unwrap());
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
-    let view = snapshot.font_feature_values(&rule).unwrap();
+    let view = snapshot.inspect_font_feature_values(&rule).unwrap();
     let input = view.family_input().unwrap();
     assert_eq!(input.value().origin(), &CssValueOrigin::Programmatic);
     assert!(input.value().family_origin(0).is_none());
@@ -233,9 +241,11 @@ fn family_output_budget_is_cumulative_and_raw_input_storage_joins_the_global_all
     edit.set_font_feature_family_text(&rule, "A, B").unwrap();
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
-    let view = snapshot.font_feature_values(&rule).unwrap();
+    let object = store.css_font_feature_values_rule(&rule).unwrap();
+    let captured = object.capture(&snapshot).unwrap();
     assert_eq!(
-        view.font_family(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+        captured
+            .font_family(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "A, B"
     );
@@ -245,7 +255,7 @@ fn family_output_budget_is_cumulative_and_raw_input_storage_joins_the_global_all
         CssSpecifiedValueSerializationLimits::new(2, 2, 3),
     ] {
         assert!(matches!(
-            view.font_family(limits),
+            captured.font_family(limits),
             Err(CssomError::Value(_))
         ));
     }

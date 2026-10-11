@@ -61,11 +61,46 @@ fn live_list_resolves_same_identity_while_capture_and_detached_links_stay_fixed(
         .insert_group_rule(&root, "b { width: 1px }", 1)
         .unwrap();
     let new = owner.commit(edit).unwrap().rule(&ticket).unwrap().clone();
-    assert_eq!(owner.rule_list_length(&list).unwrap(), 2);
-    assert_eq!(owner.rule_list_item(&list, 1).unwrap(), Some(new.clone()));
-    assert_eq!(owner.rule_list_item(&list, usize::MAX).unwrap(), None);
-    assert_eq!(before.rule_list_length(&list).unwrap(), 1);
-    assert_eq!(before.rule_list_item(&list, 1).unwrap(), None);
+    assert_eq!(
+        owner
+            .css_rule_list(&list)
+            .and_then(|list| list.length(&owner))
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        owner
+            .css_rule_list(&list)
+            .and_then(|list| list.item(&owner, 1))
+            .map(|item| item.map(|rule| rule.id().clone()))
+            .unwrap(),
+        Some(new.clone())
+    );
+    assert_eq!(
+        owner
+            .css_rule_list(&list)
+            .and_then(|list| list.item(&owner, usize::MAX))
+            .map(|item| item.map(|rule| rule.id().clone()))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        owner
+            .css_rule_list(&list)
+            .and_then(|list| list.capture(&before))
+            .and_then(|list| list.length())
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        owner
+            .css_rule_list(&list)
+            .and_then(|list| list.capture(&before))
+            .and_then(|list| list.item(1))
+            .map(|item| item.map(|rule| rule.handle().id().clone()))
+            .unwrap(),
+        None
+    );
     let mut edit = batch(&owner);
     edit.delete_sheet_rule(&sheet, 0).unwrap();
     owner.commit(edit).unwrap();
@@ -73,7 +108,13 @@ fn live_list_resolves_same_identity_while_capture_and_detached_links_stay_fixed(
     assert_eq!(detached.parent_rule(&old).unwrap(), Some(&root));
     assert_eq!(detached.parent_style_sheet(&old).unwrap(), None);
     assert_eq!(detached.parent_rule(&new).unwrap(), Some(&root));
-    assert_eq!(owner.rule_list_length(&list).unwrap(), 2);
+    assert_eq!(
+        owner
+            .css_rule_list(&list)
+            .and_then(|list| list.length(&owner))
+            .unwrap(),
+        2
+    );
 }
 #[test]
 fn sheet_preliminary_checks_and_group_index_have_distinct_source_precedence() {
@@ -180,7 +221,14 @@ fn page_insertion_uses_same_detached_candidate_and_rejects_nonmargin_hierarchy()
     let ticket = edit.insert_group_rule(&page, text, 0).unwrap();
     let id = owner.commit(edit).unwrap().rule(&ticket).unwrap().clone();
     let snapshot = owner.snapshot();
-    assert_eq!(snapshot.rule_type(&id).unwrap(), 9);
+    assert_eq!(
+        owner
+            .css_rule(&id)
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.r#type())
+            .unwrap(),
+        9
+    );
     let CssomAuthoredRule::Margin(authored) = snapshot.rule(&id).unwrap().authored() else {
         panic!("margin");
     };
@@ -206,8 +254,12 @@ fn selector_success_keeps_block_and_children_and_records_new_occurrence_even_sam
     owner.commit(edit).unwrap();
     let first = owner.snapshot();
     assert_eq!(
-        first
-            .style_selector_text(&root, CssSpecifiedValueSerializationLimits::default())
+        owner
+            .css_style_rule(&root)
+            .unwrap()
+            .capture(&first)
+            .unwrap()
+            .selector_text(CssSpecifiedValueSerializationLimits::default())
             .unwrap(),
         ".changed"
     );
@@ -274,12 +326,35 @@ fn partial_getters_remain_independent_of_unavailable_wrappers_and_host_links() {
     let snapshot = owner.snapshot();
     let roots = roots(&snapshot, &sheet);
     assert_eq!(roots.len(), 6);
-    assert_eq!(snapshot.import_href(&roots[0]).unwrap(), "x");
-    assert_eq!(snapshot.import_style_sheet(&roots[0]).unwrap(), None);
-    let media = snapshot.import_media(&roots[0]).unwrap();
+    assert_eq!(
+        owner
+            .css_import_rule(&roots[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.href())
+            .unwrap(),
+        "x"
+    );
+    assert_eq!(
+        owner
+            .css_import_rule(&roots[0])
+            .unwrap()
+            .capture(&snapshot)
+            .unwrap()
+            .style_sheet()
+            .unwrap()
+            .map(|sheet| sheet.handle().id().clone()),
+        None
+    );
+    let media = owner
+        .css_import_rule(&roots[0])
+        .unwrap()
+        .capture(&snapshot)
+        .unwrap()
+        .media()
+        .unwrap();
     assert_eq!(
         snapshot
-            .media(media)
+            .media(media.handle().id())
             .unwrap()
             .serialize_cssom()
             .unwrap()
@@ -287,36 +362,110 @@ fn partial_getters_remain_independent_of_unavailable_wrappers_and_host_links() {
         "screen"
     );
     assert_eq!(
-        snapshot
-            .import_supports_text(&roots[0], 1024)
+        owner
+            .css_import_rule(&roots[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.supports_text(1024))
             .unwrap()
             .as_deref(),
         Some("(display: grid)")
     );
-    assert_eq!(snapshot.namespace_uri(&roots[1]).unwrap(), "urn:default");
-    assert_eq!(snapshot.namespace_prefix(&roots[1]).unwrap(), "");
+    assert_eq!(
+        owner
+            .css_namespace_rule(&roots[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.namespace_uri())
+            .unwrap(),
+        "urn:default"
+    );
+    assert_eq!(
+        owner
+            .css_namespace_rule(&roots[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.prefix())
+            .unwrap(),
+        ""
+    );
     let limits = CssSpecifiedValueSerializationLimits::default();
     assert_eq!(
-        snapshot.scope_start(&roots[2], limits).unwrap().as_deref(),
+        owner
+            .css_scope_rule(&roots[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.start(limits))
+            .unwrap()
+            .as_deref(),
         Some(".start")
     );
     assert_eq!(
-        snapshot.scope_end(&roots[2], limits).unwrap().as_deref(),
+        owner
+            .css_scope_rule(&roots[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.end(limits))
+            .unwrap()
+            .as_deref(),
         Some(".end")
     );
-    assert_eq!(snapshot.rule_type(&roots[2]).unwrap(), 0);
-    assert_eq!(snapshot.condition_text(&roots[3], limits).unwrap(), "print");
-    assert_eq!(snapshot.rule_type(&roots[3]).unwrap(), 4);
     assert_eq!(
-        snapshot.condition_text(&roots[4], limits).unwrap(),
+        owner
+            .css_rule(&roots[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.r#type())
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        owner
+            .css_condition_rule(&roots[3])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.condition_text(limits))
+            .unwrap(),
+        "print"
+    );
+    assert_eq!(
+        owner
+            .css_rule(&roots[3])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.r#type())
+            .unwrap(),
+        4
+    );
+    assert_eq!(
+        owner
+            .css_condition_rule(&roots[4])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.condition_text(limits))
+            .unwrap(),
         " (display: grid) "
     );
-    assert_eq!(snapshot.rule_type(&roots[4]).unwrap(), 12);
+    assert_eq!(
+        owner
+            .css_rule(&roots[4])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.r#type())
+            .unwrap(),
+        12
+    );
     let margin = children(&snapshot, &roots[5])[0].clone();
-    assert_eq!(snapshot.margin_name(&margin).unwrap(), "bottom-right");
-    let block = snapshot.rule_style(&margin).unwrap();
+    assert_eq!(
+        owner
+            .css_margin_rule(&margin)
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name())
+            .unwrap(),
+        "bottom-right"
+    );
+    let block = snapshot
+        .rule(&margin)
+        .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+        .unwrap();
     assert_eq!(snapshot.block(block).unwrap().parent(), Some(&margin));
-    assert!(snapshot.import_href(&roots[2]).is_err());
+    assert!(
+        owner
+            .css_import_rule(&roots[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.href())
+            .is_err()
+    );
 }
 #[test]
 fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
@@ -325,7 +474,11 @@ fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
     let before = owner.snapshot();
     let keys = roots(&before, &sheet)[0].clone();
     let first = children(&before, &keys)[0].clone();
-    let list = before.child_rules(&keys).unwrap().clone();
+    let list = before
+        .rule(&keys)
+        .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+        .unwrap()
+        .clone();
     let mut edit = batch(&owner);
     let ticket = edit
         .append_keyframe_rule(&keys, "0% { opacity: 1 }")
@@ -334,15 +487,36 @@ fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
     let appended = owner.commit(edit).unwrap().rule(&ticket).unwrap().clone();
     assert_ne!(first, appended);
     let after = owner.snapshot();
-    assert_eq!(after.keyframes_length(&keys).unwrap(), 2);
-    assert_eq!(after.child_rules(&keys).unwrap(), &list);
     assert_eq!(
-        after.keyframes_index(&keys, 2).unwrap(),
+        owner
+            .css_keyframes_rule(&keys)
+            .and_then(|handle| handle.capture(&after))
+            .and_then(|capture| capture.length())
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        after
+            .rule(&keys)
+            .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+            .unwrap(),
+        &list
+    );
+    assert_eq!(
+        owner
+            .css_keyframes_rule(&keys)
+            .unwrap()
+            .indexed(&owner, 2)
+            .unwrap(),
         CssomKeyframeIndex::Undefined
     );
     assert_eq!(
-        after.keyframes_index(&keys, 1).unwrap(),
-        CssomKeyframeIndex::Rule(appended.clone())
+        owner
+            .css_keyframes_rule(&keys)
+            .unwrap()
+            .indexed(&owner, 1)
+            .unwrap(),
+        CssomKeyframeIndex::Rule(owner.css_keyframe_rule(&appended).unwrap())
     );
     let mut edit = batch(&owner);
     assert!(
@@ -354,7 +528,11 @@ fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
         owner.commit(edit).unwrap().publication(),
         CssomPublication::Unchanged { .. }
     ));
-    let block = after.rule_style(&first).unwrap().clone();
+    let block = after
+        .rule(&first)
+        .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+        .unwrap()
+        .clone();
     let mut edit = batch(&owner);
     edit.set_keyframes_name(&keys, "temporary").unwrap();
     source_error(
@@ -364,11 +542,26 @@ fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
     assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
     let unchanged = owner.snapshot();
     assert_eq!(unchanged.revision(), after.revision());
-    assert_eq!(unchanged.keyframes_name(&keys).unwrap(), "first");
-    assert_eq!(unchanged.rule_style(&first).unwrap(), &block);
+    assert_eq!(
+        owner
+            .css_keyframes_rule(&keys)
+            .and_then(|handle| handle.capture(&unchanged))
+            .and_then(|capture| capture.name())
+            .unwrap(),
+        "first"
+    );
     assert_eq!(
         unchanged
-            .keyframe_key_text(&first, CssSpecifiedValueSerializationLimits::default())
+            .rule(&first)
+            .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+            .unwrap(),
+        &block
+    );
+    assert_eq!(
+        owner
+            .css_keyframe_rule(&first)
+            .and_then(|handle| handle.capture(&unchanged))
+            .and_then(|capture| capture.key_text(CssSpecifiedValueSerializationLimits::default()))
             .unwrap(),
         "0%"
     );
@@ -378,15 +571,38 @@ fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
     edit.set_keyframe_key_text(&first, "from, 10%, to").unwrap();
     owner.commit(edit).unwrap();
     let after = owner.snapshot();
-    assert_eq!(after.keyframes_name(&keys).unwrap(), "raw name with spaces");
     assert_eq!(
-        after
-            .keyframe_key_text(&first, CssSpecifiedValueSerializationLimits::default())
+        owner
+            .css_keyframes_rule(&keys)
+            .and_then(|handle| handle.capture(&after))
+            .and_then(|capture| capture.name())
+            .unwrap(),
+        "raw name with spaces"
+    );
+    assert_eq!(
+        owner
+            .css_keyframe_rule(&first)
+            .and_then(|handle| handle.capture(&after))
+            .and_then(|capture| capture.key_text(CssSpecifiedValueSerializationLimits::default()))
             .unwrap(),
         "0%, 10%, 100%"
     );
-    assert_eq!(before.keyframes_name(&keys).unwrap(), "first");
-    assert_eq!(before.keyframes_length(&keys).unwrap(), 1);
+    assert_eq!(
+        owner
+            .css_keyframes_rule(&keys)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.name())
+            .unwrap(),
+        "first"
+    );
+    assert_eq!(
+        owner
+            .css_keyframes_rule(&keys)
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.length())
+            .unwrap(),
+        1
+    );
 }
 #[test]
 fn insertion_uses_actual_parent_depth_and_failed_batch_cannot_publish_earlier_edits() {
@@ -439,8 +655,12 @@ fn nested_and_scoped_selector_contexts_follow_real_ancestry_without_synthetic_so
     owner.commit(edit).unwrap();
     let after = owner.snapshot();
     assert_eq!(
-        after
-            .style_selector_text(&nested, CssSpecifiedValueSerializationLimits::default())
+        owner
+            .css_style_rule(&nested)
+            .and_then(|handle| handle.capture(&after))
+            .and_then(
+                |capture| capture.selector_text(CssSpecifiedValueSerializationLimits::default())
+            )
             .unwrap(),
         "& > .changed"
     );
@@ -490,7 +710,11 @@ fn page_selector_success_and_syntax_noop_preserve_current_descriptor_and_margin_
     );
     let before = owner.snapshot();
     let page = roots(&before, &sheet)[0].clone();
-    let block = before.rule_style(&page).unwrap().clone();
+    let block = before
+        .rule(&page)
+        .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+        .unwrap()
+        .clone();
     let margin = children(&before, &page);
     let mut edit = batch(&owner);
     assert!(
@@ -500,12 +724,22 @@ fn page_selector_success_and_syntax_noop_preserve_current_descriptor_and_margin_
     owner.commit(edit).unwrap();
     let after = owner.snapshot();
     assert_eq!(
-        after
-            .page_selector_text(&page, CssSpecifiedValueSerializationLimits::default())
+        owner
+            .css_page_rule(&page)
+            .and_then(|handle| handle.capture(&after))
+            .and_then(
+                |capture| capture.selector_text(CssSpecifiedValueSerializationLimits::default())
+            )
             .unwrap(),
         "chapter:recto, appendix:verso"
     );
-    assert_eq!(after.rule_style(&page).unwrap(), &block);
+    assert_eq!(
+        after
+            .rule(&page)
+            .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+            .unwrap(),
+        &block
+    );
     assert_eq!(children(&after, &page), margin);
     let mut edit = batch(&owner);
     assert!(!edit.set_page_selector_text(&page, "a > b").unwrap());
@@ -521,8 +755,9 @@ fn page_selector_success_and_syntax_noop_preserve_current_descriptor_and_margin_
     ));
     assert_eq!(
         owner
-            .snapshot()
-            .page_selector_text(&page, CssSpecifiedValueSerializationLimits::default())
+            .css_page_rule(&page)
+            .unwrap()
+            .selector_text(&owner, CssSpecifiedValueSerializationLimits::default())
             .unwrap(),
         ""
     );
@@ -547,7 +782,14 @@ fn input_and_live_name_limits_abort_without_identity_or_revision_changes_and_ret
     assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
     let unchanged = owner.snapshot();
     assert_eq!(unchanged.revision(), before.revision());
-    assert_eq!(unchanged.keyframes_name(&roots[0]).unwrap(), "short");
+    assert_eq!(
+        owner
+            .css_keyframes_rule(&roots[0])
+            .and_then(|handle| handle.capture(&unchanged))
+            .and_then(|capture| capture.name())
+            .unwrap(),
+        "short"
+    );
     assert!(!unchanged.sheet(&sheet).unwrap().inputs().disabled);
     let mut edit = batch(&owner);
     assert!(matches!(
@@ -560,8 +802,9 @@ fn input_and_live_name_limits_abort_without_identity_or_revision_changes_and_ret
     owner.commit(edit).unwrap();
     assert_eq!(
         owner
-            .snapshot()
-            .style_selector_text(&roots[1], CssSpecifiedValueSerializationLimits::default())
+            .css_style_rule(&roots[1])
+            .unwrap()
+            .selector_text(&owner, CssSpecifiedValueSerializationLimits::default())
             .unwrap(),
         ".ok"
     );
@@ -597,7 +840,10 @@ fn raw_nested_fallback_uses_actual_quirks_mode_and_retains_recovered_occurrences
     assert_eq!(
         after
             .specified_property_css_text(
-                after.rule_style(&id).unwrap(),
+                after
+                    .rule(&id)
+                    .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+                    .unwrap(),
                 CssSpecifiedValueSerializationLimits::default()
             )
             .unwrap(),
@@ -680,16 +926,40 @@ fn deprecated_type_numbers_and_associated_style_objects_follow_checked_kinds() {
     assert_eq!(roots.len(), 12);
     let expected = [3, 10, 1, 4, 5, 6, 7, 11, 12, 14, 0, 0];
     for (id, expected) in roots.iter().zip(expected) {
-        assert_eq!(snapshot.rule_type(id).unwrap(), expected);
+        assert_eq!(
+            owner
+                .css_rule(id)
+                .and_then(|handle| handle.capture(&snapshot))
+                .and_then(|capture| capture.r#type())
+                .unwrap(),
+            expected
+        );
         assert_eq!(snapshot.parent_rule(id).unwrap(), None);
         assert_eq!(snapshot.parent_style_sheet(id).unwrap(), Some(&sheet));
     }
     let margin = children(&snapshot, &roots[5])[0].clone();
     let keyframe = children(&snapshot, &roots[6])[0].clone();
-    assert_eq!(snapshot.rule_type(&margin).unwrap(), 9);
-    assert_eq!(snapshot.rule_type(&keyframe).unwrap(), 8);
+    assert_eq!(
+        owner
+            .css_rule(&margin)
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.r#type())
+            .unwrap(),
+        9
+    );
+    assert_eq!(
+        owner
+            .css_rule(&keyframe)
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.r#type())
+            .unwrap(),
+        8
+    );
     for id in [&roots[2], &roots[4], &roots[5], &margin, &keyframe] {
-        let block = snapshot.rule_style(id).unwrap();
+        let block = snapshot
+            .rule(id)
+            .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
+            .unwrap();
         assert_eq!(snapshot.block(block).unwrap().parent(), Some(id));
         assert_eq!(snapshot.block(block).unwrap().owner(), None);
         assert_eq!(
@@ -698,7 +968,9 @@ fn deprecated_type_numbers_and_associated_style_objects_follow_checked_kinds() {
         );
     }
     assert!(matches!(
-        snapshot.rule_style(&roots[0]),
+        snapshot
+            .rule(&roots[0])
+            .and_then(|record| record.data().block().ok_or(CssomError::WrongKind)),
         Err(CssomError::WrongKind)
     ));
 }
@@ -718,12 +990,23 @@ fn component_syntax_uses_source_noop_or_syntax_without_poisoning_successful_noop
     let after = owner.snapshot();
     assert!(after.sheet(&sheet).unwrap().inputs().disabled);
     assert_eq!(
-        after
-            .page_selector_text(&roots[0], CssSpecifiedValueSerializationLimits::default())
+        owner
+            .css_page_rule(&roots[0])
+            .and_then(|handle| handle.capture(&after))
+            .and_then(
+                |capture| capture.selector_text(CssSpecifiedValueSerializationLimits::default())
+            )
             .unwrap(),
         "old"
     );
-    assert_eq!(after.keyframes_length(&roots[1]).unwrap(), 1);
+    assert_eq!(
+        owner
+            .css_keyframes_rule(&roots[1])
+            .and_then(|handle| handle.capture(&after))
+            .and_then(|capture| capture.length())
+            .unwrap(),
+        1
+    );
     let mut edit = batch(&owner);
     edit.set_disabled(&sheet, false).unwrap();
     source_error(

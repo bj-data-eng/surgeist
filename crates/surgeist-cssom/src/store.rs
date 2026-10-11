@@ -282,6 +282,9 @@ pub struct CssomCommit {
     publication: CssomPublication,
 }
 impl CssomCommit {
+    pub(crate) fn into_operation_parts(self) -> (CssomPublication, Vec<CssomOwnerEffect>) {
+        (self.publication, self.effects)
+    }
     pub fn owner_effects(&self) -> &[CssomOwnerEffect] {
         &self.effects
     }
@@ -338,6 +341,19 @@ pub struct CssomBatch {
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
 impl CssomBatch {
+    /// Resolve a construction ticket against this exact staged owner before publication.
+    pub(crate) fn created_sheet_id(
+        &self,
+        ticket: &CssomSheetTicket,
+    ) -> Result<&CssomSheetId, CssomError> {
+        if !Arc::ptr_eq(&self.token, &ticket.token) {
+            return Err(CssomError::ForeignTicket);
+        }
+        match self.created.get(ticket.index) {
+            Some(Created::Sheet(id)) => Ok(id),
+            _ => Err(CssomError::ForeignTicket),
+        }
+    }
     pub(crate) fn apply<T>(
         &mut self,
         operation: impl FnOnce(&mut Self) -> Result<T, CssomError>,

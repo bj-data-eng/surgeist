@@ -36,11 +36,10 @@ fn main() -> Result<(), CssomError> {
     let rules = before.rules(before.sheet(&sheet)?.rules())?;
     let face = rules[0].clone();
     let features = rules[1].clone();
-    let map = before.font_feature_values(&features)?.styleset().clone();
-    let style = before
-        .font_face(&face, Default::default())?
-        .style_id()
-        .clone();
+    let features_object = store.css_font_feature_values_rule(&features)?;
+    let map = features_object.styleset(&store)?.id().clone();
+    let style = store.css_font_face_rule(&face)?.style(&store)?;
+    let before_style = style.capture(&before)?;
     let mut edit = store.batch(CssomEditGuard::from_snapshot(&before))?;
     edit.set_feature(&map, "raw key", CssomFeatureValues::Scalar(7).as_sequence())?;
     edit.set_feature(&map, "present empty", &[])?;
@@ -55,37 +54,29 @@ fn main() -> Result<(), CssomError> {
     store.commit(edit)?;
     let after = store.snapshot();
     assert_eq!(
-        after.font_face(&face, Default::default())?.style_id(),
-        &style
+        store.css_font_face_rule(&face)?.style(&store)?.id(),
+        style.id()
     );
-    assert_eq!(
-        after.feature_map(&map)?.get("raw key")?,
-        Some([7].as_slice())
-    );
-    assert_eq!(
-        after.feature_map(&map)?.get("present empty")?,
-        Some([].as_slice())
-    );
+    let after_map = store.css_font_feature_values_map(&map)?.capture(&after)?;
+    assert_eq!(after_map.get("raw key")?, Some(vec![7]));
+    assert_eq!(after_map.get("present empty")?, Some(vec![]));
+    let after_style = style.capture(&after)?;
+    let after_features = features_object.capture(&after)?;
     drop(store);
     assert_eq!(
-        after
-            .font_feature_values(&features)?
-            .font_family(Default::default())?,
+        after_features.font_family(Default::default())?,
         "\"serif\", Demo"
     );
     assert!(
         after
-            .font_feature_values(&features)?
+            .inspect_font_feature_values(&features)?
             .family_input()
             .is_some()
     );
-    assert_eq!(
-        before.font_face(&face, Default::default())?.font_family()?,
-        "A"
-    );
+    assert_eq!(before_style.font_family(Default::default())?, "A");
     println!(
         "current font family: {}",
-        after.font_face(&face, Default::default())?.font_family()?
+        after_style.font_family(Default::default())?
     );
     Ok(())
 }

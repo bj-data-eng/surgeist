@@ -68,6 +68,7 @@ Dependencies still retain their own manifest-defined defaults.
 | Crate source and domain guides | [crates/](../crates/); each package's manifest, `AGENTS.md`, README, and `src/lib.rs` |
 | Crate ownership and integration boundaries | [Explanation](explanation.md#one-repository-distinct-crate-boundaries) |
 | Shared corpus tooling | [surgeist-generator](../crates/surgeist-generator/README.md) |
+| Offline CSSOM property reflection generation | [tools/cssom-reflections](../tools/cssom-reflections/README.md) |
 | API-generator CLI and target discovery | [api/generator/src/lib.rs](../api/generator/src/lib.rs) |
 | Facade API audit | [api/public-api.txt](../api/public-api.txt) |
 | Crate API audits | [api/crates/](../api/crates/) |

@@ -21,6 +21,34 @@ forward identifier escaping to CSS; CSS support evaluation remains outside this
 authored-state crate. [Object foundation tests](tests/object_foundation.rs) cover
 the live/captured distinction, checked conversions and retained ancestry.
 
+Concrete interfaces inherit standard members through private dispatch. Keyframes
+rules have their own collection operations rather than grouping-rule inheritance.
+Style and nested-declaration rules expose `CssStyleProperties`; Page and Margin
+rules expose `CssPageDescriptors` and `CssMarginDescriptors`; FontFace exposes
+`CssFontFaceDescriptors`. Keyframe rules expose the common `CssStyleDeclaration`
+base, and CounterStyle has its specialized descriptor operations. Descriptor
+objects have no ordinary property reflections. Captures keep the same interface
+membership and add no setters.
+
+An immediate object mutation stages one native batch and constructs its result
+before publication. `CssomOperationOutcome<T>` owns the standard result,
+publication, ordered recovery diagnostics and single-use owner effects. Read all
+four through accessors or consume `into_parts`; the binding handles effects after
+publication. Declaration setters take a borrowed `FnOnce` admission resolver,
+called once only when actual checked candidates need decisions. It returns those
+decisions with the independently sampled current input inventory. CSSOM stores
+no resolver or host callback. An error or unwind aborts staging; an advanced
+declaration editor lets a caller stage multiple operations in its own batch.
+
+`CssStyleProperties` provides generated Rust getters/setters for CSS-owned
+canonical spellings, vendor aliases and distinct legacy grammars. Captures have
+only getters. Reflections delegate the common declaration operations with empty
+priority; their existence does not grant composed-owner support. Custom properties
+use the string API, and `float` uses `css_float`. The root-owned
+[reflection tool](../../tools/cssom-reflections/README.md) records metadata origins,
+reproducible generation and checked naming rules. Production consumes checked-in
+Rust without depending on that tool.
+
 Create a `CssomStore`, capture a snapshot and acquire an edit guard from that
 capture. Stage parsed or checked typed sheets in a batch; commit resolves private
 creation tickets to owner-qualified live IDs. One successful publication advances
@@ -29,8 +57,8 @@ that restore the original observable state preserve the revision. IDs are never
 reused within an owner. Dropping a staged ticket/batch cannot publish an identity.
 Constructed initial ingestion and recovered replacement filter import roots;
 external ingestion retains them. Original checked occurrences stay separately owned.
-This convenience product ingress is distinct from `construct_sheet`, which starts
-empty with new rule-list/media identities. Its explicit Document capture supplies
+The standard `CssStyleSheet::new` starts empty with new rule-list/media identities
+through the existing construction owner. Its explicit Document capture supplies
 fixed location and constructor identity; nullable base URL remains separate.
 MediaList constructor input is copied through its actual CSSOM text and reparsed,
 including recovered `not all` text. Construction does not assert membership in a
@@ -58,11 +86,11 @@ Valid symbolic inputs can retain a typed unavailable projection rather than beco
 an empty or partial block. Storage does not imply
 that every authored property or whole-rule format is supported.
 
-Live counter names are raw strings. `counter_name` applies the CSS identifier
-writer; `counter_descriptor` reads any of the ten specified effective descriptor
-values and returns empty text for an unspecified descriptor. These partial reads
+Live counter names are raw strings. `CssCounterStyleRule::name` applies the CSS
+identifier writer; its ten descriptor getters read the specified effective
+values and return empty text for an unspecified descriptor. These partial reads
 remain available for intrinsically undefined rules, independently of the selected
-whole-rule format's unavailability. `set_counter_descriptor` parses a complete raw
+whole-rule format's unavailability. Each descriptor setter parses a complete raw
 value and validates the prospective current collection through CSS. Grammar or
 undefined-definition rejection and a changed system algorithm are source no-ops;
 fixed-system first values can change. Undefined existing rules can be repaired.
@@ -105,17 +133,17 @@ resource failures remain observable. Append/delete charge the candidate and
 all current members through one cumulative CSS input, projection and output
 budget.
 
-Readonly extension facets expose `custom_media_name` and `custom_media_query`
-from the checked current rule. The query is an authored boolean or a stable
-`CssomMediaListId`, including a genuine empty list; it never defaults to false
+`CssCustomMediaRule::name` and `query` expose readonly facets of the checked
+current rule. The query is an authored boolean or a typed `MediaList`, including
+a genuine empty list; it never defaults to false
 or evaluates an alias. Existing MediaList operations edit that associated
 collection while old snapshots and original rule occurrences remain immutable.
 The readonly query slot and name have no replacement setters. Ordinary and
 scoped rule ingress use the same association owner, and retained media objects,
 entries and live-name bytes obey product quotas.
 
-`color_profile_name`, `color_profile_src`, `color_profile_rendering_intent` and
-`color_profile_components` read checked current ordinary/scoped profile data.
+`CssColorProfileRule::name`, `src`, `rendering_intent` and `components` read
+checked current ordinary/scoped profile data.
 They use the CSS identifier and effective descriptor-value writers with explicit
 output limits. Absent descriptors return empty text before emission; a present
 empty URL emits `url("")`, and an absent intent does not fabricate its initial
@@ -157,7 +185,8 @@ delete nothing. A successful deletion detaches only the matched root, preserving
 its ID, declaration object and earlier captures. Resource failure aborts a batch
 without publishing earlier edits; a read can retry unchanged with larger limits.
 
-`rule_css_text` reads current selectors, selected declaration survivors, ordered
+`CssRule::css_text` and its inherited concrete members read current selectors,
+selected declaration survivors, ordered
 membership, keyframe names, Page margins, FontFace descriptors and Import media.
 It never rebuilds a selected block from historical shorthand occurrences.
 Request-local borrowed child buffers feed one CSS-owned graph traversal. Each
@@ -183,8 +212,9 @@ is shared across emitted names.
 Conditional matches consume an explicitly supplied evaluator result. Call
 `capture_query_result` with the actual rule, required independently revised input
 versions and evaluator boolean, then pass that immutable transport to
-`condition_matches`. The transport retains its owning immutable snapshot rather
-than copying the complete captured input inventories. Media requires an
+the captured Media or Supports object's `matches`. The transport retains its
+owning immutable snapshot rather than copying the complete captured input
+inventories. Media requires an
 associated sheet, a Document input and a Window input carrying that Document's
 identity. A constructed sheet's supplied
 constructor-document fact must agree. Supports requires the actual captured
@@ -245,15 +275,16 @@ qualified unavailable result; the product path explicitly opts into this policy.
 This does not implement named-condition evaluation or certify other whole-rule
 wrappers or root Window/IDL bindings.
 
-`replace_sheet_sync` delegates the recovered replacement algorithm. Asynchronous
-replacement is a finite core lifecycle: `begin_replace_sheet` publishes the
-exclusive modification lock and returns detached bounded CSS parse work;
-`finish_replace_sheet` publishes recovered replacement and unlocks together.
+`CssStyleSheet::replace_sync` delegates the recovered replacement algorithm.
+Asynchronous replacement is a finite core lifecycle: `replace` publishes the
+exclusive modification lock and returns a must-use `CssomStylesheetReplacement`.
+Consuming `parse` produces detached, Send-capable bounded CSS parse work;
+`finish` publishes recovered replacement and unlocks together.
 The exact owner/sheet/operation token is checked independently of publication
 revision. A matching completion with stale guard/parser facts, parse resource
 failure or adoption failure preserves old rules and returns `Failed(error)` with
 the cleanup publication. Foreign/reused work returns an error and cannot release
-an active operation. `cancel_replace_sheet` releases only the matching operation.
+an active operation. Consuming `cancel` releases only the matching operation.
 Pending records consume object/string quotas; begin reserves a terminal revision
 and actual history capacity, and unrelated commits preserve those reservations.
 No-op publications consume none of that capacity. Successful replacement can
@@ -263,9 +294,10 @@ Dropping detached work leaves an explicit owner-side record visible through
 access from drop, Promise, scheduler or resource loader is implied. Owner drop
 removes the live operation; already captured snapshots remain historical values.
 
-Common source declaration operations provide `length`, `item`, `parent_rule`,
-`css_text`, property value/priority and `css_float` reads, together with prepared
-`cssText`/property/float setters and direct source removal. These operations are
+`CssStyleDeclaration` and its inherited descriptor/property interfaces provide
+`length`, `item`, `parent_rule`, `css_text` and property value/priority reads,
+together with source `set_css_text`, `set_property` and `remove_property`. Only
+`CssStyleProperties` provides `css_float`. These operations are
 separate from the foundation's direct selected-terminal product primitive.
 Ordinary/keyframe/margin properties, mixed Page descriptors/properties and FontFace
 descriptors use their existing CSS owners. Page `size` is a descriptor; ordinary
@@ -317,9 +349,9 @@ the lease always clears updating and releases the reservation; canceling/droppin
 an unused token releases it too. Host failure never rolls back committed CSS.
 CSSOM runs no host callback and constructs no Window, Document or runtime adapter.
 
-Trusted snapshot inspection is Rust transport for downstream styling. Source
-`sheet_rules` enforces the origin-clean security guard. A binding must call that
-operation instead of exposing trusted snapshot membership as its IDL cssRules.
+Trusted snapshot inspection is Rust transport for downstream styling.
+`CssStyleSheet::css_rules` and its `rules` alias enforce the origin-clean security
+guard. A binding must use this guarded operation when exposing the collection.
 Computed and readonly flags are independent; computed specified-block text is
 empty, while readonly independently guards edits. Null base URL differs from an
 explicit empty base. Host adapters supply facts, not fabricated document objects.
@@ -362,14 +394,16 @@ supplied evaluator-result correlation independently of query evaluation.
 [Keyframes tests](tests/keyframe_operations.rs) cover normalized reverse-last
 matching, current keyText, invalid no-ops and cumulative search failure/rollback.
 
-Fonts views expose the font-face rule's stable declaration identity and its named
-descriptor reflections, including the fontStretch/fontWidth alias. Reflected
+`CssFontFaceRule::style` exposes the font-face rule's stable declaration identity
+and its named descriptor reflections, including the font_stretch/font_width
+alias. Reflected
 setters and style's PutForwards cssText prepare through the same checked declaration
 owner, support profile, source guards, candidate decisions and atomic publication.
 Font loading and host IDL conversion remain separate binding work.
 
-Font feature views expose all seven maps, including historical forms. Map setters
-reuse the existing ordered live map owner. `CssomFeatureValues` converts a scalar
+`CssFontFeatureValuesRule` exposes all seven typed maps, including historical
+forms. Map setters reuse the existing ordered live map owner.
+`CssomFeatureValues` converts a scalar
 to one unsigned-long value; empty sequences remain present entries, and map
 cardinality checks do not apply the authored descriptor's integer grammar.
 The maps retain raw decoded keys, including empty strings and punctuation. Stable
@@ -377,9 +411,12 @@ map identities are a product guarantee; the selected source IDL has no SameObjec
 annotation for these attributes. Clear/delete retain original authored definitions
 and prior owning captures. Exact authored values outside u32 remain present and
 report a typed conversion limitation instead of narrowing or disappearing.
+`keys`, `values` and `entries` return owning ordered iterators; entry conversion
+failures remain explicit. Trusted raw records expose `kind`, `raw_entries` and
+`authored` separately from projected map operations.
 
 The feature rule's `font_family` getter formats the actual current literal list
-with one cumulative CSS writer. `set_font_feature_family_text` consumes the native
+with one cumulative CSS writer. `set_font_family` consumes the native
 nongeneric family prelude using current staged parser facts: invalid syntax is a
 successful no-op, valid EOF recovery remains admitted, and typed resource failure
 aborts the batch. `set_font_feature_families` accepts the CSS checked list carrier
@@ -392,8 +429,9 @@ already carried by typed input. Family admission versions also appear in snapsho
 and publication input manifests. Current/detached family entries, decoded UTF-8
 bytes and retained new admission data share the store's global product allowance.
 
-Palette views expose readonly name and specified descriptor strings through their
-CSS owner. Pending values retain their literal substitution text; missing
+`CssFontPaletteValuesRule` exposes readonly name and specified descriptor
+strings through its CSS owner. Pending values retain their literal substitution
+text; missing
 optional descriptors return empty. Complete feature-rule wrapper formatting is
 not fabricated when the selected source leaves historical-forms or font-display
 placement unresolved.

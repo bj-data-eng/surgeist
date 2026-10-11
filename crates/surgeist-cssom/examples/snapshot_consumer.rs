@@ -18,7 +18,14 @@ fn main() -> Result<(), CssomError> {
     let result = owner.commit(batch)?;
     let sheet = result.sheet(&ticket)?.clone();
     let original = owner.snapshot();
-    let rule = original.sheet_rules(&sheet)?[0].clone();
+    let captured_sheet = owner.css_style_sheet(&sheet)?.capture(&original)?;
+    let rule = captured_sheet
+        .css_rules()?
+        .item(0)?
+        .ok_or(CssomError::MissingObject)?
+        .handle()
+        .id()
+        .clone();
     let block = original
         .rule(&rule)?
         .data()

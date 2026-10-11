@@ -39,6 +39,9 @@ enum PreparedAction {
     Remove(String),
 }
 impl CssomPreparedDeclaration {
+    pub(crate) fn captured_context(&self) -> &CssomContext {
+        &self.context
+    }
     pub fn candidates(&self) -> &[CssomDeclarationCandidate] {
         &self.candidates
     }
@@ -53,29 +56,17 @@ impl CssomPreparedDeclaration {
             .map(|input| &input.version)
     }
 }
-/// One source read view; flags and payloads belong to the owning immutable capture.
-pub struct CssomDeclarationView<'a> {
+/// Borrowed engine over a genuinely resolved current or captured block.
+pub(crate) struct DeclarationRead<'a> {
     block: &'a CssomBlock,
     limits: CssomDeclarationRequestLimits,
 }
-impl CssomSnapshot {
-    pub fn declarations(
-        &self,
-        id: &CssomBlockId,
-        limits: CssomDeclarationRequestLimits,
-    ) -> Result<CssomDeclarationView<'_>, CssomError> {
-        Ok(CssomDeclarationView {
-            block: self.block(id)?,
-            limits,
-        })
+impl<'a> DeclarationRead<'a> {
+    pub(crate) fn new(block: &'a CssomBlock, limits: CssomDeclarationRequestLimits) -> Self {
+        Self { block, limits }
     }
-}
-impl CssomDeclarationView<'_> {
     pub fn parent_rule(&self) -> Option<&CssomRuleId> {
         self.block.parent()
-    }
-    pub fn flags(&self) -> CssomBlockFlags {
-        self.block.flags()
     }
     pub fn length(&self) -> Result<usize, CssomError> {
         let mut budget = DeclarationBudget::new(self.limits, 1);
@@ -134,9 +125,6 @@ impl CssomDeclarationView<'_> {
         };
         budget.scalar_output(priority)?;
         Ok(priority.to_owned())
-    }
-    pub fn css_float(&self) -> Result<String, CssomError> {
-        self.get_property_value("float")
     }
 }
 #[derive(Clone)]

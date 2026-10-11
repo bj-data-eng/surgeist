@@ -1,4 +1,5 @@
 use surgeist_css::*;
+use surgeist_cssom::CssCounterStyleRule;
 use surgeist_cssom::*;
 
 fn batch(store: &CssomStore) -> CssomBatch {
@@ -31,15 +32,46 @@ fn store(source: &str) -> (CssomStore, CssomSheetId, CssomRuleId) {
     let (sheet, rule) = create(&mut store, source);
     (store, sheet, rule)
 }
+fn counter(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    rule: &CssomRuleId,
+) -> CssomCapture<CssCounterStyleRule> {
+    store
+        .css_counter_style_rule(rule)
+        .unwrap()
+        .capture(snapshot)
+        .unwrap()
+}
+fn descriptor(
+    capture: &CssomCapture<CssCounterStyleRule>,
+    kind: CssCounterStyleDescriptorKind,
+    limits: CssSpecifiedValueSerializationLimits,
+) -> Result<String, CssomError> {
+    use CssCounterStyleDescriptorKind::*;
+    match kind {
+        System => capture.system(limits),
+        Symbols => capture.symbols(limits),
+        AdditiveSymbols => capture.additive_symbols(limits),
+        Negative => capture.negative(limits),
+        Prefix => capture.prefix(limits),
+        Suffix => capture.suffix(limits),
+        Range => capture.range(limits),
+        Pad => capture.pad(limits),
+        SpeakAs => capture.speak_as(limits),
+        Fallback => capture.fallback(limits),
+        _ => panic!("fixture contains only the selected ten descriptor kinds"),
+    }
+}
 fn read(
     snapshot: &CssomSnapshot,
     rule: &CssomRuleId,
     kind: CssCounterStyleDescriptorKind,
+    store: &CssomStore,
 ) -> String {
-    snapshot
-        .counter_descriptor(rule, kind, CssSpecifiedValueSerializationLimits::default())
-        .unwrap()
+    descriptor(&counter(store, snapshot, rule), kind, Default::default()).unwrap()
 }
+
 fn set(
     edit: &mut CssomBatch,
     rule: &CssomRuleId,
@@ -54,7 +86,7 @@ fn set(
 fn ten_literal_attributes_use_specified_values_without_defaults_or_whole_wrapper() {
     use CssCounterStyleDescriptorKind::*;
     let (mut store, _, rule) = store("@counter-style custom { system: fixed; symbols: 'a'; }");
-    assert_eq!(read(&store.snapshot(), &rule, Prefix), "");
+    assert_eq!(read(&store.snapshot(), &rule, Prefix, &store), "");
     let cases = [
         (System, "fixed 3", "fixed 3"),
         (Symbols, "'x' 'y'", "\"x\" \"y\""),
@@ -77,12 +109,12 @@ fn ten_literal_attributes_use_specified_values_without_defaults_or_whole_wrapper
     assert!(commit.owner_effects().is_empty());
     let after = store.snapshot();
     for (kind, _, expected) in cases {
-        assert_eq!(read(&after, &rule, kind), expected);
+        assert_eq!(read(&after, &rule, kind, &store), expected);
     }
     assert_eq!(after.rule(&rule).unwrap().data().block(), Some(&block));
-    assert_eq!(read(&before, &rule, System), "fixed");
-    assert_eq!(read(&before, &rule, Symbols), "\"a\"");
-    assert_eq!(read(&before, &rule, AdditiveSymbols), "");
+    assert_eq!(read(&before, &rule, System, &store), "fixed");
+    assert_eq!(read(&before, &rule, Symbols, &store), "\"a\"");
+    assert_eq!(read(&before, &rule, AdditiveSymbols, &store), "");
     assert!(
         matches!(after.block(&block).unwrap().data(), CssomBlockData::CounterStyle(original)
         if original.occurrences().len() == 2)
@@ -119,11 +151,11 @@ fn undefined_rules_remain_readable_and_can_be_repaired() {
                 .definition_status(),
             CssCounterStyleDefinitionStatus::Undefined(_)
         ));
-        assert_eq!(read(&before, &rule, Prefix), "");
+        assert_eq!(read(&before, &rule, Prefix, &store), "");
         let mut edit = batch(&store);
         assert!(set(&mut edit, &rule, kind, repair));
         store.commit(edit).unwrap();
-        assert_eq!(read(&store.snapshot(), &rule, kind), expected);
+        assert_eq!(read(&store.snapshot(), &rule, kind, &store), expected);
     }
 }
 
@@ -151,16 +183,19 @@ fn noops_preserve_prior_changes_and_algorithm_identity_including_default_system(
     assert!(set(&mut edit, &rule, Prefix, "'P'"));
     assert!(!set(&mut edit, &rule, Symbols, "'x'"));
     store.commit(edit).unwrap();
-    assert_eq!(read(&store.snapshot(), &rule, Prefix), "\"P\"");
-    assert_eq!(read(&store.snapshot(), &rule, Symbols), "\"0\" \"1\"");
+    assert_eq!(read(&store.snapshot(), &rule, Prefix, &store), "\"P\"");
+    assert_eq!(
+        read(&store.snapshot(), &rule, Symbols, &store),
+        "\"0\" \"1\""
+    );
 
     let (mut store, _, rule) = self::store("@counter-style custom { symbols:'a' 'b'; }");
-    assert_eq!(read(&store.snapshot(), &rule, System), "");
+    assert_eq!(read(&store.snapshot(), &rule, System, &store), "");
     let mut edit = batch(&store);
     assert!(!set(&mut edit, &rule, System, "numeric"));
     assert!(set(&mut edit, &rule, System, "symbolic"));
     store.commit(edit).unwrap();
-    assert_eq!(read(&store.snapshot(), &rule, System), "symbolic");
+    assert_eq!(read(&store.snapshot(), &rule, System, &store), "symbolic");
 }
 
 #[test]
@@ -198,7 +233,7 @@ fn native_symbolic_status_is_typed_unavailability_and_aborts_prior_staged_work()
         );
         assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(store.snapshot().revision(), before.revision());
-        assert_eq!(read(&store.snapshot(), &rule, Prefix), "");
+        assert_eq!(read(&store.snapshot(), &rule, Prefix, &store), "");
     }
 }
 
@@ -218,7 +253,7 @@ fn original_duplicates_keep_actual_named_origins_and_edits_keep_only_raw_value_o
     let symbols = original.effective(Symbols).unwrap();
     let named = symbols.occurrence().unwrap();
     assert_eq!(named.parsed_value().unwrap().source().as_str(), text);
-    assert_eq!(read(&before, &rule, Prefix), "\"winner\"");
+    assert_eq!(read(&before, &rule, Prefix, &store), "\"winner\"");
     let mut edit = batch(&store);
     assert!(set(&mut edit, &rule, Prefix, " /* raw */ 'é' "));
     store.commit(edit).unwrap();
@@ -251,9 +286,17 @@ fn original_duplicates_keep_actual_named_origins_and_edits_keep_only_raw_value_o
             .source()
             .same_snapshot(named.parsed_value().unwrap().source())
     );
+    let after_counter = counter(&store, &after, &rule);
+    let before_counter = counter(&store, &before, &rule);
     drop(store);
-    assert_eq!(read(&after, &rule, Prefix), "\"é\"");
-    assert_eq!(read(&before, &rule, Prefix), "\"winner\"");
+    assert_eq!(
+        descriptor(&after_counter, Prefix, Default::default()).unwrap(),
+        "\"é\""
+    );
+    assert_eq!(
+        descriptor(&before_counter, Prefix, Default::default()).unwrap(),
+        "\"winner\""
+    );
 }
 
 #[test]
@@ -277,8 +320,9 @@ fn live_name_readout_escapes_raw_content_and_existing_reserved_guards_remain_noo
     store.commit(edit).unwrap();
     assert_eq!(
         store
-            .snapshot()
-            .counter_name(&rule, Default::default())
+            .css_counter_style_rule(&rule)
+            .unwrap()
+            .name(&store, Default::default())
             .unwrap(),
         "upper-roman"
     );
@@ -287,8 +331,9 @@ fn live_name_readout_escapes_raw_content_and_existing_reserved_guards_remain_noo
     store.commit(edit).unwrap();
     assert_eq!(
         store
-            .snapshot()
-            .counter_name(&rule, Default::default())
+            .css_counter_style_rule(&rule)
+            .unwrap()
+            .name(&store, Default::default())
             .unwrap(),
         "\\31 \\!\\?�"
     );
@@ -297,8 +342,9 @@ fn live_name_readout_escapes_raw_content_and_existing_reserved_guards_remain_noo
     store.commit(edit).unwrap();
     assert_eq!(
         store
-            .snapshot()
-            .counter_name(&rule, Default::default())
+            .css_counter_style_rule(&rule)
+            .unwrap()
+            .name(&store, Default::default())
             .unwrap(),
         ""
     );
@@ -320,8 +366,8 @@ fn detached_rule_and_block_remain_editable_and_old_captures_keep_liveness() {
     assert!(after.parent_style_sheet(&rule).unwrap().is_none());
     assert_eq!(before.parent_style_sheet(&rule).unwrap(), Some(&sheet));
     assert_eq!(after.block(&block).unwrap().parent(), Some(&rule));
-    assert_eq!(read(&after, &rule, Prefix), "\"detached\"");
-    assert_eq!(read(&before, &rule, Prefix), "");
+    assert_eq!(read(&after, &rule, Prefix, &store), "\"detached\"");
+    assert_eq!(read(&before, &rule, Prefix, &store), "");
 }
 
 #[test]
@@ -363,20 +409,17 @@ fn request_resources_fail_atomically_and_retry_uses_same_current_state() {
         ));
         assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(store.snapshot().revision(), before.revision());
-        assert_eq!(read(&store.snapshot(), &rule, Suffix), "");
+        assert_eq!(read(&store.snapshot(), &rule, Suffix, &store), "");
     }
     assert!(matches!(
-        before.counter_descriptor(
-            &rule,
-            Symbols,
-            CssSpecifiedValueSerializationLimits::new(1000, 1000, 1)
-        ),
+        counter(&store, &before, &rule)
+            .symbols(CssSpecifiedValueSerializationLimits::new(1000, 1000, 1)),
         Err(CssomError::Value(_))
     ));
     let mut edit = batch(&store);
     assert!(set(&mut edit, &rule, Prefix, "'P'"));
     store.commit(edit).unwrap();
-    assert_eq!(read(&store.snapshot(), &rule, Prefix), "\"P\"");
+    assert_eq!(read(&store.snapshot(), &rule, Prefix, &store), "\"P\"");
 }
 
 #[test]
@@ -385,24 +428,20 @@ fn foreign_owner_wrong_kind_and_stale_context_never_publish_descriptor_changes()
     let (mut store, _, rule) = store("@counter-style custom { symbols:'x'; }");
     let (other, _, foreign) = self::store("@counter-style custom { symbols:'x'; }");
     assert!(matches!(
-        store
-            .snapshot()
-            .counter_descriptor(&foreign, Prefix, Default::default()),
+        store.css_counter_style_rule(&foreign),
         Err(CssomError::ForeignOwner)
     ));
     assert!(matches!(
-        other.snapshot().counter_name(&rule, Default::default()),
+        other.css_counter_style_rule(&rule),
         Err(CssomError::ForeignOwner)
     ));
     let (_, style) = create(&mut store, "a {}");
     assert!(matches!(
-        store.snapshot().counter_name(&style, Default::default()),
+        store.css_counter_style_rule(&style),
         Err(CssomError::WrongKind)
     ));
     assert!(matches!(
-        store
-            .snapshot()
-            .counter_descriptor(&style, Prefix, Default::default()),
+        store.css_counter_style_rule(&style),
         Err(CssomError::WrongKind)
     ));
     let mut edit = batch(&store);
@@ -432,7 +471,7 @@ fn foreign_owner_wrong_kind_and_stale_context_never_publish_descriptor_changes()
         .unwrap();
     store.commit(context_edit).unwrap();
     assert!(matches!(store.commit(edit), Err(CssomError::StaleRevision)));
-    assert_eq!(read(&store.snapshot(), &rule, Prefix), "");
+    assert_eq!(read(&store.snapshot(), &rule, Prefix, &store), "");
 }
 
 #[test]
@@ -440,7 +479,7 @@ fn only_definition_relevant_pending_values_require_resolution() {
     use CssCounterStyleDescriptorKind::*;
     let (mut store, _, rule) = store("@counter-style custom { symbols:env(counter-symbols); }");
     assert_eq!(
-        read(&store.snapshot(), &rule, Symbols),
+        read(&store.snapshot(), &rule, Symbols, &store),
         "env(counter-symbols)"
     );
     let mut edit = batch(&store);
@@ -448,13 +487,13 @@ fn only_definition_relevant_pending_values_require_resolution() {
     assert!(set(&mut edit, &rule, Prefix, "env(counter-prefix)"));
     store.commit(edit).unwrap();
     assert_eq!(
-        read(&store.snapshot(), &rule, Prefix),
+        read(&store.snapshot(), &rule, Prefix, &store),
         "env(counter-prefix)"
     );
     let (mut store, _, rule) =
         self::store("@counter-style custom { system:env(counter-system); symbols:'x'; }");
     assert_eq!(
-        read(&store.snapshot(), &rule, System),
+        read(&store.snapshot(), &rule, System, &store),
         "env(counter-system)"
     );
     let mut edit = batch(&store);
@@ -508,8 +547,8 @@ fn edited_utf8_storage_is_global_retains_detached_rules_and_excludes_old_capture
     assert!(set(&mut edit, &rule, Prefix, "''"));
     assert!(set(&mut edit, &second, Prefix, "''"));
     store.commit(edit).unwrap();
-    assert_eq!(read(&store.snapshot(), &rule, Prefix), "\"\"");
-    assert_eq!(read(&old, &rule, Prefix), "\"é\"");
+    assert_eq!(read(&store.snapshot(), &rule, Prefix, &store), "\"\"");
+    assert_eq!(read(&old, &rule, Prefix, &store), "\"é\"");
 }
 
 #[test]
@@ -543,8 +582,8 @@ fn edited_entries_are_bounded_and_replacement_reuses_the_current_slot() {
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(store.snapshot().revision(), before.revision());
-    assert_eq!(read(&before, &rule, Prefix), "\"replacement\"");
-    assert_eq!(read(&old, &rule, Prefix), "\"first\"");
+    assert_eq!(read(&before, &rule, Prefix, &store), "\"replacement\"");
+    assert_eq!(read(&old, &rule, Prefix, &store), "\"first\"");
 }
 
 #[test]
@@ -574,10 +613,7 @@ fn each_descriptor_uses_its_native_complete_grammar_and_undefined_old_algorithm_
     assert_eq!(store.snapshot().revision(), before.revision());
     let block = before.rule(&rule).unwrap().data().block().unwrap();
     assert!(matches!(
-        before
-            .declarations(block, Default::default())
-            .unwrap()
-            .length(),
+        store.css_style_declaration(block),
         Err(CssomError::WrongKind)
     ));
     let (mut store, _, rule) =
@@ -588,7 +624,7 @@ fn each_descriptor_uses_its_native_complete_grammar_and_undefined_old_algorithm_
     assert!(!set(&mut edit, &rule, System, "cyclic"));
     assert!(set(&mut edit, &rule, Symbols, "'0' '1'"));
     store.commit(edit).unwrap();
-    assert_eq!(read(&store.snapshot(), &rule, System), "numeric");
+    assert_eq!(read(&store.snapshot(), &rule, System, &store), "numeric");
 }
 
 #[test]
@@ -596,8 +632,8 @@ fn name_and_current_collection_preserve_native_resource_errors() {
     let (store, _, rule) = store("@counter-style custom { symbols:'x'; }");
     let snapshot = store.snapshot();
     assert_eq!(
-        snapshot
-            .counter_name(&rule, CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+        counter(&store, &snapshot, &rule)
+            .name(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "custom"
     );
@@ -607,7 +643,7 @@ fn name_and_current_collection_preserve_native_resource_errors() {
         CssSpecifiedValueSerializationLimits::new(1, 1, 5),
     ] {
         assert!(matches!(
-            snapshot.counter_name(&rule, limits),
+            counter(&store, &snapshot, &rule).name(limits),
             Err(CssomError::Value(_))
         ));
     }

@@ -73,11 +73,18 @@ fn create(
         .unwrap();
     store.commit(edit).unwrap().block(&ticket).unwrap().clone()
 }
-fn view<'a>(snapshot: &'a CssomSnapshot, id: &CssomBlockId) -> CssomDeclarationView<'a> {
-    snapshot
-        .declarations(id, CssomDeclarationRequestLimits::default())
+fn view(
+    snapshot: &CssomSnapshot,
+    id: &CssomBlockId,
+    store: &CssomStore,
+) -> CssomCapture<CssStyleDeclaration> {
+    store
+        .css_style_declaration(id)
+        .unwrap()
+        .capture(snapshot)
         .unwrap()
 }
+
 fn set(
     edit: &mut CssomBatch,
     id: &CssomBlockId,
@@ -160,13 +167,23 @@ fn replacement_priority_pairs_keep_winning_encounter_order_and_losing_raw_occurr
         let commit = live.commit(edit).unwrap();
         assert!(commit.owner_effects().is_empty());
         let after = live.snapshot();
-        let read = view(&after, &id);
-        assert_eq!(read.get_property_value("width").unwrap(), value);
-        assert_eq!(read.get_property_value("--A").unwrap(), "one");
-        assert_eq!(read.get_property_value("--a").unwrap(), "two");
+        let read = view(&after, &id, &live);
         assert_eq!(
-            (0..read.length().unwrap())
-                .map(|i| read.item(i).unwrap())
+            read.get_property_value("width", Default::default())
+                .unwrap(),
+            value
+        );
+        assert_eq!(
+            read.get_property_value("--A", Default::default()).unwrap(),
+            "one"
+        );
+        assert_eq!(
+            read.get_property_value("--a", Default::default()).unwrap(),
+            "two"
+        );
+        assert_eq!(
+            (0..read.length(Default::default()).unwrap())
+                .map(|i| read.item(i, Default::default()).unwrap())
                 .collect::<Vec<_>>(),
             names
         );
@@ -180,7 +197,12 @@ fn replacement_priority_pairs_keep_winning_encounter_order_and_losing_raw_occurr
                 .source,
             text
         );
-        assert_eq!(view(&old, &id).get_property_value("height").unwrap(), "9px");
+        assert_eq!(
+            view(&old, &id, &live)
+                .get_property_value("height", Default::default())
+                .unwrap(),
+            "9px"
+        );
         let winner = selected(&after, &id)
             .iter()
             .find(|entry| {
@@ -246,18 +268,30 @@ fn rejected_domain_occurrences_do_not_mask_admitted_duplicate_neighbors() {
     live.commit(edit).unwrap();
     let after = live.snapshot();
     assert_eq!(
-        view(&after, &frame).css_text().unwrap(),
+        view(&after, &frame, &live)
+            .css_text(Default::default())
+            .unwrap(),
         "width: 2px; opacity: 0.3;"
     );
     assert_eq!(
-        view(&after, &margin).css_text().unwrap(),
+        view(&after, &margin, &live)
+            .css_text(Default::default())
+            .unwrap(),
         "color: red; width: 4px;"
     );
     for (id, rule, text) in [
         (&frame, &frame_rule, frame_text),
         (&margin, &margin_rule, margin_text),
     ] {
-        assert_eq!(view(&after, id).parent_rule(), Some(rule));
+        assert_eq!(
+            view(&after, id, &live)
+                .parent_rule()
+                .unwrap()
+                .unwrap()
+                .handle()
+                .id(),
+            rule
+        );
         assert_eq!(rule_block(&after, rule), *id);
         assert_eq!(replacement_occurrences(&after, id).len(), 3);
         assert_eq!(
@@ -266,11 +300,15 @@ fn rejected_domain_occurrences_do_not_mask_admitted_duplicate_neighbors() {
         );
     }
     assert_eq!(
-        view(&before, &frame).get_property_value("opacity").unwrap(),
+        view(&before, &frame, &live)
+            .get_property_value("opacity", Default::default())
+            .unwrap(),
         "0"
     );
     assert_eq!(
-        view(&before, &margin).get_property_value("width").unwrap(),
+        view(&before, &margin, &live)
+            .get_property_value("width", Default::default())
+            .unwrap(),
         "1px"
     );
 }
@@ -309,7 +347,9 @@ fn winning_pending_group_retains_original_members_and_owner_output() {
     );
     let after = live.snapshot();
     assert_eq!(
-        view(&after, &id).get_property_value("overflow").unwrap(),
+        view(&after, &id, &live)
+            .get_property_value("overflow", Default::default())
+            .unwrap(),
         "var(--new)"
     );
     assert_eq!(replacement_occurrences(&after, &id).len(), 4);
@@ -335,7 +375,10 @@ fn winning_pending_group_retains_original_members_and_owner_output() {
             text.find("overflow:var(--new)").unwrap()
         );
     }
-    assert_eq!(view(&old, &id).css_text().unwrap(), "width: 1px;");
+    assert_eq!(
+        view(&old, &id, &live).css_text(Default::default()).unwrap(),
+        "width: 1px;"
+    );
 }
 
 #[test]
@@ -387,7 +430,9 @@ fn unusable_important_occurrence_is_filtered_before_winner_selection() {
     live.commit(edit).unwrap();
     let after = live.snapshot();
     assert_eq!(
-        view(&after, &id).css_text().unwrap(),
+        view(&after, &id, &live)
+            .css_text(Default::default())
+            .unwrap(),
         "--x: var(--v); width: 2px;"
     );
     assert_eq!(replacement_occurrences(&after, &id).len(), 2);
@@ -440,9 +485,16 @@ fn replacement_candidate_resource_failure_aborts_staged_changes_and_fresh_retry_
     assert!(matches!(live.commit(edit), Err(CssomError::BatchAborted)));
     let unchanged = live.snapshot();
     assert_eq!(unchanged.revision(), before.revision());
-    assert_eq!(view(&unchanged, &id).css_text().unwrap(), "width: 1px;");
     assert_eq!(
-        view(&unchanged, &unrelated).css_text().unwrap(),
+        view(&unchanged, &id, &live)
+            .css_text(Default::default())
+            .unwrap(),
+        "width: 1px;"
+    );
+    assert_eq!(
+        view(&unchanged, &unrelated, &live)
+            .css_text(Default::default())
+            .unwrap(),
         "height: 1px;"
     );
     let mut retry = batch(&live);
@@ -508,8 +560,8 @@ fn pending_replacement_reserves_cleanup_against_owner_declaration_publication() 
     ));
     assert_eq!(store.snapshot().revision(), pending.revision());
     assert_eq!(
-        view(&store.snapshot(), &block)
-            .get_property_value("width")
+        view(&store.snapshot(), &block, &store)
+            .get_property_value("width", Default::default())
             .unwrap(),
         "1px"
     );
@@ -532,7 +584,9 @@ fn pending_replacement_reserves_cleanup_against_owner_declaration_publication() 
             .disallow_modification
     );
     assert_eq!(
-        view(&pending, &block).get_property_value("width").unwrap(),
+        view(&pending, &block, &store)
+            .get_property_value("width", Default::default())
+            .unwrap(),
         "1px"
     );
 }
@@ -548,16 +602,21 @@ fn canonical_getter_physical_priority_and_remove_ignore_logical_only_members() {
         false,
     );
     let before = store.snapshot();
-    let read = view(&before, &id);
+    let read = view(&before, &id, &store);
     assert_eq!(
-        read.get_property_value("MARGIN").unwrap(),
+        read.get_property_value("MARGIN", Default::default())
+            .unwrap(),
         "1px 2px 3px 4px"
     );
-    assert_eq!(read.get_property_priority("margin").unwrap(), "important");
-    assert_eq!(read.length().unwrap(), 5);
-    assert_eq!(read.item(0).unwrap(), "margin-top");
-    assert_eq!(read.item(99).unwrap(), "");
-    assert_eq!(read.parent_rule(), None);
+    assert_eq!(
+        read.get_property_priority("margin", Default::default())
+            .unwrap(),
+        "important"
+    );
+    assert_eq!(read.length(Default::default()).unwrap(), 5);
+    assert_eq!(read.item(0, Default::default()).unwrap(), "margin-top");
+    assert_eq!(read.item(99, Default::default()).unwrap(), "");
+    assert!(read.parent_rule().unwrap().is_none());
     let mut edit = batch(&store);
     assert_eq!(
         edit.remove_property(&id, "margin", CssomDeclarationRequestLimits::default())
@@ -567,12 +626,21 @@ fn canonical_getter_physical_priority_and_remove_ignore_logical_only_members() {
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        view(&after, &id).css_text().unwrap(),
+        view(&after, &id, &store)
+            .css_text(Default::default())
+            .unwrap(),
         "margin-inline-start: 9px;"
     );
-    assert_eq!(view(&after, &id).get_property_value("margin").unwrap(), "");
     assert_eq!(
-        view(&after, &id).get_property_priority("margin").unwrap(),
+        view(&after, &id, &store)
+            .get_property_value("margin", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        view(&after, &id, &store)
+            .get_property_priority("margin", Default::default())
+            .unwrap(),
         ""
     );
     let mut edit = batch(&store);
@@ -597,9 +665,16 @@ fn mixed_priority_shorthand_is_empty_but_removal_removes_survivors() {
         false,
     );
     let before = store.snapshot();
-    assert_eq!(view(&before, &id).get_property_value("margin").unwrap(), "");
     assert_eq!(
-        view(&before, &id).get_property_priority("margin").unwrap(),
+        view(&before, &id, &store)
+            .get_property_value("margin", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        view(&before, &id, &store)
+            .get_property_priority("margin", Default::default())
+            .unwrap(),
         ""
     );
     let custom = selected(&before, &id)[2].source().clone();
@@ -612,7 +687,12 @@ fn mixed_priority_shorthand_is_empty_but_removal_removes_survivors() {
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert!(selected(&after, &id)[0].source().same_occurrence(&custom));
-    assert_eq!(view(&after, &id).css_text().unwrap(), "--X: var(--a);");
+    assert_eq!(
+        view(&after, &id, &store)
+            .css_text(Default::default())
+            .unwrap(),
+        "--X: var(--a);"
+    );
 }
 #[test]
 fn setting_existing_physical_target_moves_after_logical_conflicts_only() {
@@ -634,11 +714,14 @@ fn setting_existing_physical_target_moves_after_logical_conflicts_only() {
     );
     store.commit(edit).unwrap();
     let after = store.snapshot();
-    let read = view(&after, &id);
-    assert_eq!(read.item(0).unwrap(), "color");
-    assert_eq!(read.item(1).unwrap(), "margin-inline-start");
-    assert_eq!(read.item(2).unwrap(), "margin-left");
-    assert_eq!(read.item(3).unwrap(), "width");
+    let read = view(&after, &id, &store);
+    assert_eq!(read.item(0, Default::default()).unwrap(), "color");
+    assert_eq!(
+        read.item(1, Default::default()).unwrap(),
+        "margin-inline-start"
+    );
+    assert_eq!(read.item(2, Default::default()).unwrap(), "margin-left");
+    assert_eq!(read.item(3, Default::default()).unwrap(), "width");
     assert!(selected(&after, &id)[0].source().same_occurrence(&color));
     assert!(selected(&after, &id)[3].source().same_occurrence(&width));
 }
@@ -697,7 +780,12 @@ fn empty_set_preparation_is_abandonable_and_precedes_invalid_priority() {
     let mut edit = batch(&store);
     set(&mut edit, &id, "width", "", "garbage");
     store.commit(edit).unwrap();
-    assert_eq!(view(&store.snapshot(), &id).length().unwrap(), 0);
+    assert_eq!(
+        view(&store.snapshot(), &id, &store)
+            .length(Default::default())
+            .unwrap(),
+        0
+    );
 }
 #[test]
 fn equal_value_set_has_new_honest_provenance_without_owner_update() {
@@ -734,12 +822,30 @@ fn recovery_replaces_and_custom_names_bypass_capability_membership() {
     edit.apply_declaration(prepared, &[]).unwrap();
     store.commit(edit).unwrap();
     let after = store.snapshot();
-    let read = view(&after, &id);
-    assert_eq!(read.get_property_value("width").unwrap(), "2px");
-    assert_eq!(read.get_property_value("height").unwrap(), "");
-    assert_eq!(read.get_property_value("--X").unwrap(), "var(--x)");
-    assert_eq!(read.get_property_value("--x").unwrap(), "");
-    assert_eq!(read.get_property_value("color").unwrap(), "");
+    let read = view(&after, &id, &store);
+    assert_eq!(
+        read.get_property_value("width", Default::default())
+            .unwrap(),
+        "2px"
+    );
+    assert_eq!(
+        read.get_property_value("height", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        read.get_property_value("--X", Default::default()).unwrap(),
+        "var(--x)"
+    );
+    assert_eq!(
+        read.get_property_value("--x", Default::default()).unwrap(),
+        ""
+    );
+    assert_eq!(
+        read.get_property_value("color", Default::default())
+            .unwrap(),
+        ""
+    );
     assert_eq!(
         selected(&after, &id)[0]
             .source()
@@ -788,15 +894,21 @@ fn whole_declaration_decision_drops_compound_as_one_and_retains_input_versions()
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        view(&after, &id).get_property_value("background").unwrap(),
+        view(&after, &id, &store)
+            .get_property_value("background", Default::default())
+            .unwrap(),
         ""
     );
     assert_eq!(
-        view(&after, &id).get_property_value("width").unwrap(),
+        view(&after, &id, &store)
+            .get_property_value("width", Default::default())
+            .unwrap(),
         "2px"
     );
     assert_eq!(
-        view(&after, &id).get_property_value("--x").unwrap(),
+        view(&after, &id, &store)
+            .get_property_value("--x", Default::default())
+            .unwrap(),
         "linear-gradient(red,blue)"
     );
     assert!(
@@ -862,11 +974,15 @@ fn computed_and_readonly_flags_have_source_branch_precedence() {
             let id = create(&mut store, "width:1px", computed, readonly, false);
             let before = store.snapshot();
             assert_eq!(
-                view(&before, &id).css_text().unwrap(),
+                view(&before, &id, &store)
+                    .css_text(Default::default())
+                    .unwrap(),
                 if computed { "" } else { "width: 1px;" }
             );
             assert_eq!(
-                view(&before, &id).get_property_value("width").unwrap(),
+                view(&before, &id, &store)
+                    .get_property_value("width", Default::default())
+                    .unwrap(),
                 "1px"
             );
             let mut edit = batch(&store);
@@ -919,7 +1035,14 @@ fn css_float_internal_set_get_and_request_resource_failure_are_atomic() {
         .unwrap();
     edit.apply_declaration(prepared, &[]).unwrap();
     store.commit(edit).unwrap();
-    assert_eq!(view(&store.snapshot(), &id).css_float().unwrap(), "left");
+    assert_eq!(
+        store
+            .css_style_properties(&id)
+            .unwrap()
+            .css_float(&store, Default::default())
+            .unwrap(),
+        "left"
+    );
     let before = store.snapshot();
     let mut edit = batch(&store);
     set(&mut edit, &id, "width", "3px", "");
@@ -934,8 +1057,8 @@ fn css_float_internal_set_get_and_request_resource_failure_are_atomic() {
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(store.snapshot().revision(), before.revision());
     assert_eq!(
-        view(&store.snapshot(), &id)
-            .get_property_value("width")
+        view(&store.snapshot(), &id, &store)
+            .get_property_value("width", Default::default())
             .unwrap(),
         "1px"
     );
@@ -1022,8 +1145,8 @@ fn host_failure_unwind_and_abandonment_clear_updating_without_rollback() {
         assert!(!store.declaration_flags(&id).unwrap().updating);
         assert_eq!(store.snapshot().revision(), &revision);
         assert_eq!(
-            view(&store.snapshot(), &id)
-                .get_property_value("width")
+            view(&store.snapshot(), &id, &store)
+                .get_property_value("width", Default::default())
                 .unwrap(),
             "2px"
         );
@@ -1127,8 +1250,24 @@ fn keyframe_and_margin_source_domains_reject_invalid_members_preserve_ids_and_pa
         .to_vec();
     let frame = rule_block(&before, &frames[0]);
     let margin = rule_block(&before, &margins[0]);
-    assert_eq!(view(&before, &frame).parent_rule(), Some(&frames[0]));
-    assert_eq!(view(&before, &margin).parent_rule(), Some(&margins[0]));
+    assert_eq!(
+        view(&before, &frame, &store)
+            .parent_rule()
+            .unwrap()
+            .unwrap()
+            .handle()
+            .id(),
+        &frames[0]
+    );
+    assert_eq!(
+        view(&before, &margin, &store)
+            .parent_rule()
+            .unwrap()
+            .unwrap()
+            .handle()
+            .id(),
+        &margins[0]
+    );
     let mut edit = batch(&store);
     assert_eq!(
         set(&mut edit, &frame, "opacity", ".5", "important"),
@@ -1143,19 +1282,27 @@ fn keyframe_and_margin_source_domains_reject_invalid_members_preserve_ids_and_pa
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        view(&after, &frame).css_text().unwrap(),
+        view(&after, &frame, &store)
+            .css_text(Default::default())
+            .unwrap(),
         "width: 4px; opacity: 0.25;"
     );
     assert_eq!(
-        view(&after, &margin).get_property_value("width").unwrap(),
+        view(&after, &margin, &store)
+            .get_property_value("width", Default::default())
+            .unwrap(),
         "5px"
     );
     assert_eq!(
-        view(&after, &margin).get_property_value("opacity").unwrap(),
+        view(&after, &margin, &store)
+            .get_property_value("opacity", Default::default())
+            .unwrap(),
         ""
     );
     assert_eq!(
-        view(&after, &margin).get_property_value("--x").unwrap(),
+        view(&after, &margin, &store)
+            .get_property_value("--x", Default::default())
+            .unwrap(),
         "var(--a)"
     );
     assert_eq!(
@@ -1191,15 +1338,22 @@ fn page_property_edits_preserve_interspersed_descriptor_slots_and_margin_childre
         .unwrap();
     store.commit(edit).unwrap();
     let after = store.snapshot();
-    let read = view(&after, &id);
+    let read = view(&after, &id, &store);
     assert_eq!(
-        (0..read.length().unwrap())
-            .map(|i| read.item(i).unwrap())
+        (0..read.length(Default::default()).unwrap())
+            .map(|i| read.item(i, Default::default()).unwrap())
             .collect::<Vec<_>>(),
         ["width", "size", "marks", "height"]
     );
-    assert_eq!(read.get_property_value("width").unwrap(), "8px");
-    assert_eq!(read.get_property_value("size").unwrap(), "a4");
+    assert_eq!(
+        read.get_property_value("width", Default::default())
+            .unwrap(),
+        "8px"
+    );
+    assert_eq!(
+        read.get_property_value("size", Default::default()).unwrap(),
+        "a4"
+    );
     assert_eq!(
         after
             .rules(after.rule(&page).unwrap().data().children().unwrap())
@@ -1227,8 +1381,8 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
     let commit = store.commit(edit).unwrap();
     assert!(commit.owner_effects().is_empty());
     assert_eq!(
-        view(&store.snapshot(), &id)
-            .get_property_value("width")
+        view(&store.snapshot(), &id, &store)
+            .get_property_value("width", Default::default())
             .unwrap(),
         "4px"
     );
@@ -1241,7 +1395,12 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
         .unwrap();
     edit.apply_declaration(prepared, &[]).unwrap();
     store.commit(edit).unwrap();
-    assert_eq!(view(&store.snapshot(), &id).length().unwrap(), 0);
+    assert_eq!(
+        view(&store.snapshot(), &id, &store)
+            .length(Default::default())
+            .unwrap(),
+        0
+    );
 }
 #[test]
 fn nonqualifying_inline_notifications_do_not_parse_and_stale_owner_is_atomic() {
@@ -1332,7 +1491,12 @@ fn effect_identity_and_byte_exhaustion_have_real_limits_and_no_publication() {
                 })
         ));
         assert_eq!(store.snapshot().revision(), before.revision());
-        assert_eq!(view(&store.snapshot(), &id).length().unwrap(), 0);
+        assert_eq!(
+            view(&store.snapshot(), &id, &store)
+                .length(Default::default())
+                .unwrap(),
+            0
+        );
     }
 }
 #[test]
@@ -1340,17 +1504,16 @@ fn read_request_limits_and_parser_resources_remain_typed() {
     let mut store = store();
     let id = create(&mut store, "width:1px", false, false, false);
     let before = store.snapshot();
-    let read = before
-        .declarations(
-            &id,
-            CssomDeclarationRequestLimits {
-                max_entries: 0,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    assert!(matches!(read.length(), Err(CssomError::Limit { .. })));
-    assert!(matches!(read.item(0), Err(CssomError::Limit { .. })));
+    let read = view(&before, &id, &store);
+    let limits = CssomDeclarationRequestLimits {
+        max_entries: 0,
+        ..Default::default()
+    };
+    assert!(matches!(read.length(limits), Err(CssomError::Limit { .. })));
+    assert!(matches!(
+        read.item(0, limits),
+        Err(CssomError::Limit { .. })
+    ));
     let mut edit = batch(&store);
     let limits = CssomDeclarationRequestLimits {
         max_input_components: 0,
@@ -1375,11 +1538,25 @@ fn custom_queries_compare_semantic_supplied_names_without_authored_escape_aliase
         false,
     );
     let before = store.snapshot();
-    let read = view(&before, &id);
-    assert_eq!(read.get_property_value("--x").unwrap(), "one");
-    assert_eq!(read.get_property_value("--\\78").unwrap(), "");
-    assert_eq!(read.get_property_value("--a b").unwrap(), "two");
-    assert_eq!(read.get_property_value("--X").unwrap(), "three");
+    let read = view(&before, &id, &store);
+    assert_eq!(
+        read.get_property_value("--x", Default::default()).unwrap(),
+        "one"
+    );
+    assert_eq!(
+        read.get_property_value("--\\78", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        read.get_property_value("--a b", Default::default())
+            .unwrap(),
+        "two"
+    );
+    assert_eq!(
+        read.get_property_value("--X", Default::default()).unwrap(),
+        "three"
+    );
     let mut edit = batch(&store);
     assert_eq!(
         edit.remove_property(&id, "--\\78", CssomDeclarationRequestLimits::default())
@@ -1394,10 +1571,22 @@ fn custom_queries_compare_semantic_supplied_names_without_authored_escape_aliase
     set(&mut edit, &id, "--x", "four", "");
     store.commit(edit).unwrap();
     let after = store.snapshot();
-    assert_eq!(view(&after, &id).get_property_value("--x").unwrap(), "four");
-    assert_eq!(view(&after, &id).get_property_value("--a b").unwrap(), "");
     assert_eq!(
-        view(&after, &id).get_property_value("--X").unwrap(),
+        view(&after, &id, &store)
+            .get_property_value("--x", Default::default())
+            .unwrap(),
+        "four"
+    );
+    assert_eq!(
+        view(&after, &id, &store)
+            .get_property_value("--a b", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        view(&after, &id, &store)
+            .get_property_value("--X", Default::default())
+            .unwrap(),
         "three"
     );
 }
@@ -1433,8 +1622,8 @@ fn independent_svg_terminal_has_supplied_support_and_uses_existing_metadata_iden
     let id = store.commit(edit).unwrap().block(&ticket).unwrap().clone();
     let before = store.snapshot();
     assert_eq!(
-        view(&before, &id)
-            .get_property_value("GLYPH-ORIENTATION-VERTICAL")
+        view(&before, &id, &store)
+            .get_property_value("GLYPH-ORIENTATION-VERTICAL", Default::default())
             .unwrap(),
         "45deg"
     );
@@ -1456,14 +1645,14 @@ fn independent_svg_terminal_has_supplied_support_and_uses_existing_metadata_iden
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        view(&after, &id)
-            .get_property_priority("glyph-orientation-vertical")
+        view(&after, &id, &store)
+            .get_property_priority("glyph-orientation-vertical", Default::default())
             .unwrap(),
         "important"
     );
     assert_eq!(
-        view(&after, &id)
-            .get_property_value("glyph-orientation-vertical")
+        view(&after, &id, &store)
+            .get_property_value("glyph-orientation-vertical", Default::default())
             .unwrap(),
         "60deg"
     );
@@ -1478,7 +1667,12 @@ fn independent_svg_terminal_has_supplied_support_and_uses_existing_metadata_iden
         "60deg"
     );
     store.commit(edit).unwrap();
-    assert_eq!(view(&store.snapshot(), &id).length().unwrap(), 0);
+    assert_eq!(
+        view(&store.snapshot(), &id, &store)
+            .length(Default::default())
+            .unwrap(),
+        0
+    );
 }
 
 fn descriptor_store(conditional: bool) -> CssomStore {
@@ -1540,9 +1734,16 @@ fn page_descriptor_names_use_page_owner_and_keep_children_and_properties() {
         .rules(before.rule(&rule).unwrap().data().children().unwrap())
         .unwrap()
         .to_vec();
-    assert_eq!(view(&before, &id).get_property_value("SIZE").unwrap(), "a4");
     assert_eq!(
-        view(&before, &id).get_property_priority("size").unwrap(),
+        view(&before, &id, &store)
+            .get_property_value("SIZE", Default::default())
+            .unwrap(),
+        "a4"
+    );
+    assert_eq!(
+        view(&before, &id, &store)
+            .get_property_priority("size", Default::default())
+            .unwrap(),
         "important"
     );
     let mut edit = batch(&store);
@@ -1554,9 +1755,16 @@ fn page_descriptor_names_use_page_owner_and_keep_children_and_properties() {
     store.commit(edit).unwrap();
     let removed = store.snapshot();
     // Ordinary width/height cannot masquerade as this missing Page size descriptor.
-    assert_eq!(view(&removed, &id).get_property_value("size").unwrap(), "");
     assert_eq!(
-        view(&removed, &id).get_property_value("width").unwrap(),
+        view(&removed, &id, &store)
+            .get_property_value("size", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        view(&removed, &id, &store)
+            .get_property_value("width", Default::default())
+            .unwrap(),
         "2px"
     );
     let mut edit = batch(&store);
@@ -1571,11 +1779,15 @@ fn page_descriptor_names_use_page_owner_and_keep_children_and_properties() {
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        view(&after, &id).get_property_value("size").unwrap(),
+        view(&after, &id, &store)
+            .get_property_value("size", Default::default())
+            .unwrap(),
         "letter landscape"
     );
     assert_eq!(
-        view(&after, &id).get_property_priority("size").unwrap(),
+        view(&after, &id, &store)
+            .get_property_priority("size", Default::default())
+            .unwrap(),
         "important"
     );
     assert_eq!(
@@ -1584,7 +1796,12 @@ fn page_descriptor_names_use_page_owner_and_keep_children_and_properties() {
             .unwrap(),
         children
     );
-    assert_eq!(view(&before, &id).get_property_value("size").unwrap(), "a4");
+    assert_eq!(
+        view(&before, &id, &store)
+            .get_property_value("size", Default::default())
+            .unwrap(),
+        "a4"
+    );
 }
 #[test]
 fn font_face_current_selection_retains_raw_occurrences_aliases_and_domain_noops() {
@@ -1596,12 +1813,27 @@ fn font_face_current_selection_retains_raw_occurrences_aliases_and_domain_noops(
     let before = store.snapshot();
     let rule = before.sheet_rules(&sheet).unwrap()[0].clone();
     let id = rule_block(&before, &rule);
-    assert_eq!(view(&before, &id).length().unwrap(), 3);
-    assert_eq!(view(&before, &id).item(0).unwrap(), "src");
-    assert_eq!(view(&before, &id).item(1).unwrap(), "font-weight");
     assert_eq!(
-        view(&before, &id)
-            .get_property_value("FONT-STRETCH")
+        view(&before, &id, &store)
+            .length(Default::default())
+            .unwrap(),
+        3
+    );
+    assert_eq!(
+        view(&before, &id, &store)
+            .item(0, Default::default())
+            .unwrap(),
+        "src"
+    );
+    assert_eq!(
+        view(&before, &id, &store)
+            .item(1, Default::default())
+            .unwrap(),
+        "font-weight"
+    );
+    assert_eq!(
+        view(&before, &id, &store)
+            .get_property_value("FONT-STRETCH", Default::default())
             .unwrap(),
         "condensed"
     );
@@ -1631,12 +1863,14 @@ fn font_face_current_selection_retains_raw_occurrences_aliases_and_domain_noops(
     store.commit(edit).unwrap();
     let after = store.snapshot();
     assert_eq!(
-        view(&after, &id).css_text().unwrap(),
+        view(&after, &id, &store)
+            .css_text(Default::default())
+            .unwrap(),
         "src: local(\"A\"); font-weight: 300;"
     );
     assert_eq!(
-        view(&after, &id)
-            .get_property_priority("font-weight")
+        view(&after, &id, &store)
+            .get_property_priority("font-weight", Default::default())
             .unwrap(),
         ""
     );
@@ -1647,8 +1881,8 @@ fn font_face_current_selection_retains_raw_occurrences_aliases_and_domain_noops(
     assert!(selected.entries()[0].position().is_some());
     assert!(selected.entries()[1].position().is_none());
     assert_eq!(
-        view(&before, &id)
-            .get_property_value("font-weight")
+        view(&before, &id, &store)
+            .get_property_value("font-weight", Default::default())
             .unwrap(),
         "200"
     );
@@ -1701,9 +1935,16 @@ fn descriptor_whole_decisions_are_correlated_and_recovery_keeps_real_raw_input()
     edit.apply_declaration(prepared, &[decision]).unwrap();
     store.commit(edit).unwrap();
     let after = store.snapshot();
-    assert_eq!(view(&after, &font).css_text().unwrap(), "font-family: B;");
     assert_eq!(
-        view(&after, &page).get_property_value("size").unwrap(),
+        view(&after, &font, &store)
+            .css_text(Default::default())
+            .unwrap(),
+        "font-family: B;"
+    );
+    assert_eq!(
+        view(&after, &page, &store)
+            .get_property_value("size", Default::default())
+            .unwrap(),
         "letter"
     );
     let input = after.block(&font).unwrap().replacement_input().unwrap();
@@ -1714,8 +1955,10 @@ fn descriptor_whole_decisions_are_correlated_and_recovery_keeps_real_raw_input()
     replace(&mut edit, &font, "font-family:;width:2px;}");
     store.commit(edit).unwrap();
     let empty = store.snapshot();
+    let empty_read = view(&empty, &font, &store);
+    let after_read = view(&after, &font, &store);
     drop(store);
-    assert_eq!(view(&empty, &font).css_text().unwrap(), "");
+    assert_eq!(empty_read.css_text(Default::default()).unwrap(), "");
     assert_eq!(
         empty
             .block(&font)
@@ -1734,7 +1977,10 @@ fn descriptor_whole_decisions_are_correlated_and_recovery_keeps_real_raw_input()
             .diagnostics
             .is_empty()
     );
-    assert_eq!(view(&after, &font).css_text().unwrap(), "font-family: B;");
+    assert_eq!(
+        after_read.css_text(Default::default()).unwrap(),
+        "font-family: B;"
+    );
 }
 
 #[test]
@@ -1752,16 +1998,31 @@ fn supplied_custom_names_keep_literal_characters_and_nul_identity_across_edits()
     let before = store.snapshot();
     for name in ["--bad name", r"--\78", "--a:b;c{}", "--a\0Z", "--a�Z"] {
         assert_eq!(
-            view(&before, &id).get_property_value(name).unwrap(),
+            view(&before, &id, &store)
+                .get_property_value(name, Default::default())
+                .unwrap(),
             "MiXeD"
         );
         assert_eq!(
-            view(&before, &id).get_property_priority(name).unwrap(),
+            view(&before, &id, &store)
+                .get_property_priority(name, Default::default())
+                .unwrap(),
             "important"
         );
     }
-    assert_eq!(view(&before, &id).get_property_value("--x").unwrap(), "old");
-    assert_eq!(view(&before, &id).item(4).unwrap().as_bytes(), b"--a\0Z");
+    assert_eq!(
+        view(&before, &id, &store)
+            .get_property_value("--x", Default::default())
+            .unwrap(),
+        "old"
+    );
+    assert_eq!(
+        view(&before, &id, &store)
+            .item(4, Default::default())
+            .unwrap()
+            .as_bytes(),
+        b"--a\0Z"
+    );
     let mut edit = batch(&store);
     assert_eq!(
         edit.remove_property(&id, "--a\0Z", Default::default())
@@ -1775,15 +2036,31 @@ fn supplied_custom_names_keep_literal_characters_and_nul_identity_across_edits()
     );
     store.commit(edit).unwrap();
     let after = store.snapshot();
+    let after_read = view(&after, &id, &store);
+    let before_read = view(&before, &id, &store);
     drop(store);
-    assert_eq!(view(&after, &id).get_property_value("--a\0Z").unwrap(), "");
     assert_eq!(
-        view(&after, &id).get_property_value("--a�Z").unwrap(),
+        after_read
+            .get_property_value("--a\0Z", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        after_read
+            .get_property_value("--a�Z", Default::default())
+            .unwrap(),
         "MiXeD"
     );
-    assert_eq!(view(&after, &id).get_property_value("--x").unwrap(), "old");
     assert_eq!(
-        view(&before, &id).get_property_value(r"--\78").unwrap(),
+        after_read
+            .get_property_value("--x", Default::default())
+            .unwrap(),
+        "old"
+    );
+    assert_eq!(
+        before_read
+            .get_property_value(r"--\78", Default::default())
+            .unwrap(),
         "MiXeD"
     );
 }
@@ -1816,12 +2093,24 @@ fn descriptor_support_is_supplied_not_inferred_and_resource_failures_abort_whole
     replace(&mut edit, &font, "font-family:B;src:local(B)");
     unsupported.commit(edit).unwrap();
     let after = unsupported.snapshot();
-    assert_eq!(view(&after, &page).get_property_value("size").unwrap(), "");
     assert_eq!(
-        view(&after, &page).get_property_value("--custom").unwrap(),
+        view(&after, &page, &unsupported)
+            .get_property_value("size", Default::default())
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        view(&after, &page, &unsupported)
+            .get_property_value("--custom", Default::default())
+            .unwrap(),
         "kept"
     );
-    assert_eq!(view(&after, &font).css_text().unwrap(), "");
+    assert_eq!(
+        view(&after, &font, &unsupported)
+            .css_text(Default::default())
+            .unwrap(),
+        ""
+    );
     let mut supported = descriptor_store(false);
     let sheet = sheet(&mut supported, "@page{size:A4} @font-face{font-family:A}");
     let before = supported.snapshot();
@@ -1855,12 +2144,14 @@ fn descriptor_support_is_supplied_not_inferred_and_resource_failures_abort_whole
     let after = supported.snapshot();
     assert_eq!(after.revision(), before.revision());
     assert_eq!(
-        view(&after, &page).get_property_value("size").unwrap(),
+        view(&after, &page, &supported)
+            .get_property_value("size", Default::default())
+            .unwrap(),
         "a4"
     );
     assert_eq!(
-        view(&after, &font)
-            .get_property_value("font-family")
+        view(&after, &font, &supported)
+            .get_property_value("font-family", Default::default())
             .unwrap(),
         "A"
     );
@@ -1925,12 +2216,19 @@ fn malformed_complete_value_is_noop(value: &str, domain: usize) {
         );
         let commit = live.commit(edit).unwrap();
         let after = live.snapshot();
-        assert_eq!(view(&after, id).get_property_value(name).unwrap(), expected);
+        assert_eq!(
+            view(&after, id, &live)
+                .get_property_value(name, Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(after.sheet_rules(&sheet).unwrap(), rules);
         assert_ne!(after.revision(), original.revision());
         assert_eq!(commit.owner_effects().len(), usize::from(id == &ordinary));
         assert_eq!(
-            view(&original, id).get_property_value(name).unwrap(),
+            view(&original, id, &live)
+                .get_property_value(name, Default::default())
+                .unwrap(),
             if id == &ordinary {
                 "1px"
             } else if id == &page {
@@ -1985,8 +2283,8 @@ fn complete_value_component_resource_failure_remains_atomic_error() {
         assert!(matches!(live.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(live.snapshot().revision(), before.revision());
         assert_eq!(
-            view(&live.snapshot(), &ordinary)
-                .get_property_value("width")
+            view(&live.snapshot(), &ordinary, &live)
+                .get_property_value("width", Default::default())
                 .unwrap(),
             "1px"
         );

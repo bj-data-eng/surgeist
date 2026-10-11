@@ -29,24 +29,21 @@ fn main() -> Result<(), CssomError> {
         None,
     )?;
     let id = store.commit(batch)?.block(&ticket)?.clone();
-    let before = store.snapshot();
-    let mut batch = store.batch(CssomEditGuard::from_snapshot(&before))?;
-    let prepared = batch.prepare_set_property(&id, "width", "2px", "", Default::default())?;
-    batch.apply_declaration(prepared, &[])?;
-    let commit = store.commit(batch)?;
-    assert!(commit.owner_effects().is_empty()); // This block has a null owner.
-    let after = store.snapshot();
+    let declaration = store.css_style_properties(&id)?;
+    let before = declaration.capture(&store.snapshot())?;
+    let outcome =
+        declaration.set_property(&mut store, "width", "2px", None, Default::default(), |_| {
+            unreachable!("all checked values need no decision")
+        })?;
+    assert!(outcome.owner_effects().is_empty()); // Null owner.
+    let after = declaration.capture(&store.snapshot())?;
     drop(store);
     assert_eq!(
-        before
-            .declarations(&id, Default::default())?
-            .get_property_value("width")?,
+        before.get_property_value("width", Default::default())?,
         "1px"
     );
     assert_eq!(
-        after
-            .declarations(&id, Default::default())?
-            .get_property_value("width")?,
+        after.get_property_value("width", Default::default())?,
         "2px"
     );
     println!("owning old/new declaration captures: 1px → 2px");

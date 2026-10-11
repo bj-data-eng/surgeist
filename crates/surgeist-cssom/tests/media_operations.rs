@@ -30,8 +30,17 @@ fn create(store: &mut CssomStore, source: &str, inputs: CssomSheetInputs) -> Css
 fn new_store() -> CssomStore {
     CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap()
 }
-fn text(snapshot: &CssomSnapshot, id: &CssomMediaListId) -> String {
-    snapshot.media_text(id, limits()).unwrap()
+fn captured_media(
+    store: &CssomStore,
+    snapshot: &CssomSnapshot,
+    id: &CssomMediaListId,
+) -> CssomCapture<MediaList> {
+    store.media_list(id).unwrap().capture(snapshot).unwrap()
+}
+fn text(store: &CssomStore, snapshot: &CssomSnapshot, id: &CssomMediaListId) -> String {
+    captured_media(store, snapshot, id)
+        .media_text(limits())
+        .unwrap()
 }
 fn unchanged(commit: &CssomCommit) {
     assert!(matches!(
@@ -87,12 +96,12 @@ fn current_associations_share_stable_media_ids_without_sheet_guards() {
     assert!(
         matches!(after.rule(&group).unwrap().data(), CssomRuleData::Group {prelude:CssomGroupPrelude::Media(media), ..} if media == &group_media)
     );
-    assert_eq!(text(&after, &sheet_media), "speech");
-    assert_eq!(text(&after, &import_media), "print");
-    assert_eq!(text(&after, &group_media), "screen");
-    assert_eq!(text(&before, &sheet_media), "");
-    assert_eq!(text(&before, &import_media), "screen");
-    assert_eq!(text(&before, &group_media), "print");
+    assert_eq!(text(&store, &after, &sheet_media), "speech");
+    assert_eq!(text(&store, &after, &import_media), "print");
+    assert_eq!(text(&store, &after, &group_media), "screen");
+    assert_eq!(text(&store, &before, &sheet_media), "");
+    assert_eq!(text(&store, &before, &import_media), "screen");
+    assert_eq!(text(&store, &before, &group_media), "print");
 }
 
 #[test]
@@ -116,8 +125,13 @@ fn exact_empty_setter_clears_before_any_parser_or_serialization_work() {
     assert!(result.changed());
     assert!(result.diagnostics().is_empty());
     store.commit(edit).unwrap();
-    assert_eq!(store.snapshot().media_length(&id).unwrap(), 0);
-    assert_eq!(before.media_length(&id).unwrap(), 1);
+    assert_eq!(
+        captured_media(&store, &store.snapshot(), &id)
+            .length()
+            .unwrap(),
+        0
+    );
+    assert_eq!(captured_media(&store, &before, &id).length().unwrap(), 1);
     let mut edit = batch(&store);
     assert!(!edit.set_media_text(&id, "").unwrap().changed());
     unchanged(&store.commit(edit).unwrap());
@@ -151,30 +165,47 @@ fn recovered_setter_keeps_owned_origins_and_item_null_then_empty_clears() {
     let origin = after.media(&id).unwrap().queries()[1].origin().clone();
     assert!(matches!(origin, CssValueOrigin::Parsed(_)));
     drop(source);
-    assert_eq!(text(&after, &id), "screen, not all, print");
-    assert_eq!(after.media_length(&id).unwrap(), 3);
+    assert_eq!(text(&store, &after, &id), "screen, not all, print");
+    assert_eq!(captured_media(&store, &after, &id).length().unwrap(), 3);
     for (index, expected) in ["screen", "not all", "print"].into_iter().enumerate() {
         assert_eq!(
-            after.media_item(&id, index, limits()).unwrap().as_deref(),
+            captured_media(&store, &after, &id)
+                .item(index, limits())
+                .unwrap()
+                .as_deref(),
             Some(expected)
         );
     }
     assert_eq!(
-        after
-            .media_item(&id, 3, CssSpecifiedValueSerializationLimits::new(0, 0, 0))
+        captured_media(&store, &after, &id)
+            .item(3, CssSpecifiedValueSerializationLimits::new(0, 0, 0))
             .unwrap(),
         None
     );
-    assert_eq!(after.media_item(&id, usize::MAX, limits()).unwrap(), None);
+    assert_eq!(
+        captured_media(&store, &after, &id)
+            .item(usize::MAX, limits())
+            .unwrap(),
+        None
+    );
     let mut edit = batch(&store);
     assert!(edit.set_media_text(&id, "").unwrap().changed());
     store.commit(edit).unwrap();
-    assert_eq!(text(&store.snapshot(), &id), "");
-    assert_eq!(store.snapshot().media_length(&id).unwrap(), 0);
-    assert_eq!(before.media_length(&id).unwrap(), 0);
+    assert_eq!(text(&store, &store.snapshot(), &id), "");
+    assert_eq!(
+        captured_media(&store, &store.snapshot(), &id)
+            .length()
+            .unwrap(),
+        0
+    );
+    assert_eq!(captured_media(&store, &before, &id).length().unwrap(), 0);
+    let retained_media = captured_media(&store, &after, &id);
     drop(store);
     assert_eq!(after.media(&id).unwrap().queries()[1].origin(), &origin);
-    assert_eq!(text(&after, &id), "screen, not all, print");
+    assert_eq!(
+        retained_media.media_text(limits()).unwrap(),
+        "screen, not all, print"
+    );
 }
 
 #[test]
@@ -204,7 +235,7 @@ fn append_ignores_null_and_canonical_duplicates_but_accepts_single_recovered_nev
     assert_eq!(result.diagnostics().len(), 1);
     store.commit(edit).unwrap();
     let with_recovered = store.snapshot();
-    assert_eq!(text(&with_recovered, &id), "screen, not all");
+    assert_eq!(text(&store, &with_recovered, &id), "screen, not all");
     let mut edit = batch(&store);
     assert!(
         !edit
@@ -217,7 +248,7 @@ fn append_ignores_null_and_canonical_duplicates_but_accepts_single_recovered_nev
         store.snapshot().media(&id).unwrap(),
         with_recovered.media(&id).unwrap()
     );
-    assert_eq!(text(&original, &id), "screen");
+    assert_eq!(text(&store, &original, &id), "screen");
 }
 
 #[test]
@@ -237,7 +268,7 @@ fn append_uses_case_sensitive_serialized_values_without_query_evaluation() {
     );
     store.commit(edit).unwrap();
     assert_eq!(
-        text(&store.snapshot(), &id),
+        text(&store, &store.snapshot(), &id),
         "(future: AbC), (resolution: 96dpi), (future: abc), (resolution: 1dppx)"
     );
 }
@@ -261,7 +292,7 @@ fn delete_removes_all_serialized_matches_and_not_found_aborts_then_retry_succeed
     assert!(edit.delete_medium(&id, "SCREEN").unwrap().changed());
     assert!(edit.delete_medium(&id, "???").unwrap().changed());
     store.commit(edit).unwrap();
-    assert_eq!(text(&store.snapshot(), &id), "print");
+    assert_eq!(text(&store, &store.snapshot(), &id), "print");
     let mut edit = batch(&store);
     edit.append_medium(&id, "speech").unwrap();
     assert!(matches!(
@@ -269,13 +300,13 @@ fn delete_removes_all_serialized_matches_and_not_found_aborts_then_retry_succeed
         Err(CssomError::Source(CssomException::NotFound))
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
-    assert_eq!(text(&store.snapshot(), &id), "print");
+    assert_eq!(text(&store, &store.snapshot(), &id), "print");
     let mut retry = batch(&store);
     assert!(retry.delete_medium(&id, "PRINT").unwrap().changed());
     store.commit(retry).unwrap();
-    assert_eq!(text(&store.snapshot(), &id), "");
+    assert_eq!(text(&store, &store.snapshot(), &id), "");
     assert_eq!(
-        text(&before, &id),
+        text(&store, &before, &id),
         "screen, print, screen, not all, not all"
     );
 }
@@ -318,12 +349,12 @@ fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
         assert_eq!(error.kind(), expected);
         assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(store.snapshot().revision(), before.revision());
-        assert_eq!(text(&store.snapshot(), &id), "screen, print");
+        assert_eq!(text(&store, &store.snapshot(), &id), "screen, print");
         let mut retry = batch(&store);
         retry.set_media_text(&id, "print").unwrap();
         assert!(retry.delete_medium(&id, "PRINT").unwrap().changed());
         store.commit(retry).unwrap();
-        assert_eq!(text(&store.snapshot(), &id), "");
+        assert_eq!(text(&store, &store.snapshot(), &id), "");
     }
 }
 
@@ -367,11 +398,11 @@ fn parser_and_input_resource_failures_never_publish_recovered_empty_state() {
         Err(CssomError::ParseResource(_))
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
-    assert_eq!(text(&store.snapshot(), &id), "print");
+    assert_eq!(text(&store, &store.snapshot(), &id), "print");
     let mut retry = batch(&store);
     retry.append_medium(&id, "screen").unwrap();
     store.commit(retry).unwrap();
-    assert_eq!(text(&store.snapshot(), &id), "print, screen");
+    assert_eq!(text(&store, &store.snapshot(), &id), "print, screen");
 }
 
 #[test]
@@ -384,15 +415,16 @@ fn snapshot_output_errors_are_typed_and_do_not_change_the_owner() {
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
     for result in [
-        snapshot.media_text(&id, CssSpecifiedValueSerializationLimits::new(2, 2, 5)),
-        snapshot
-            .media_item(&id, 0, CssSpecifiedValueSerializationLimits::new(2, 2, 5))
+        captured_media(&store, &snapshot, &id)
+            .media_text(CssSpecifiedValueSerializationLimits::new(2, 2, 5)),
+        captured_media(&store, &snapshot, &id)
+            .item(0, CssSpecifiedValueSerializationLimits::new(2, 2, 5))
             .map(|v| v.unwrap()),
     ] {
         assert!(
             matches!(result, Err(CssomError::Media(CssMediaCssomSerializationError::Resource { error, .. })) if error.kind() == CssSpecifiedValueSerializationErrorKind::ByteLimit)
         );
     }
-    assert_eq!(text(&snapshot, &id), "screen");
+    assert_eq!(text(&store, &snapshot, &id), "screen");
     assert_eq!(store.snapshot().revision(), snapshot.revision());
 }

@@ -1,0 +1,12 @@
+[package]
+name = "surgeist-cssom-reflections"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Offline CSSOM property reflection source generation from CSS metadata"
+
+[dependencies]
+surgeist-css = { path = "../../crates/surgeist-css", version = "=0.1.0" }

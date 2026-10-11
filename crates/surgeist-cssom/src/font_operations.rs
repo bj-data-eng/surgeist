@@ -68,7 +68,7 @@ impl<'a> CssomFontFeatureValuesView<'a> {
         self.input
     }
     /// One native cumulative list writer over the current literal families.
-    pub fn font_family(
+    pub(crate) fn font_family(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssomError> {
@@ -85,31 +85,10 @@ impl<'a> CssomFontFeatureValuesView<'a> {
             .find(|id| self.snapshot.feature_map(id).expect("owned map").kind() == kind)
             .expect("all seven maps are retained")
     }
-    pub fn annotation(&self) -> &'a CssomFeatureMapId {
-        self.map(CssFontFeatureValueKind::Annotation)
-    }
-    pub fn ornaments(&self) -> &'a CssomFeatureMapId {
-        self.map(CssFontFeatureValueKind::Ornaments)
-    }
-    pub fn stylistic(&self) -> &'a CssomFeatureMapId {
-        self.map(CssFontFeatureValueKind::Stylistic)
-    }
-    pub fn swash(&self) -> &'a CssomFeatureMapId {
-        self.map(CssFontFeatureValueKind::Swash)
-    }
-    pub fn character_variant(&self) -> &'a CssomFeatureMapId {
-        self.map(CssFontFeatureValueKind::CharacterVariant)
-    }
-    pub fn styleset(&self) -> &'a CssomFeatureMapId {
-        self.map(CssFontFeatureValueKind::Styleset)
-    }
-    pub fn historical_forms(&self) -> &'a CssomFeatureMapId {
-        self.map(CssFontFeatureValueKind::HistoricalForms)
-    }
 }
 
 /// Readonly palette attributes retain the current checked descriptor owner.
-pub struct CssomFontPaletteValuesView<'a> {
+pub(crate) struct CssomFontPaletteValuesView<'a> {
     value: &'a CssFontPaletteValuesRule,
 }
 impl CssomFontPaletteValuesView<'_> {
@@ -155,7 +134,7 @@ impl CssomFontPaletteValuesView<'_> {
 }
 
 impl CssomSnapshot {
-    pub fn font_feature_values(
+    pub fn inspect_font_feature_values(
         &self,
         id: &CssomRuleId,
     ) -> Result<CssomFontFeatureValuesView<'_>, CssomError> {
@@ -176,7 +155,7 @@ impl CssomSnapshot {
             display: font_display,
         })
     }
-    pub fn font_palette_values(
+    pub(crate) fn palette_values(
         &self,
         id: &CssomRuleId,
     ) -> Result<CssomFontPaletteValuesView<'_>, CssomError> {
@@ -191,24 +170,23 @@ impl CssomSnapshot {
         Ok(CssomFontPaletteValuesView { value })
     }
 }
-impl CssomFeatureMap {
-    pub fn size(&self) -> usize {
-        self.entries().len()
-    }
-    /// Presence is independent of whether an exact authored value fits u32.
-    pub fn has(&self, key: &str) -> bool {
-        self.entries().iter().any(|entry| entry.key == key)
-    }
-    pub fn keys(&self) -> impl ExactSizeIterator<Item = &str> {
-        self.entries().iter().map(|entry| entry.key.as_str())
-    }
-    pub fn values(&self) -> impl ExactSizeIterator<Item = Result<&[u32], CssomError>> {
-        self.entries().iter().map(|entry| match &entry.value {
-            CssomFeatureValue::Unsigned(values) => Ok(values.as_slice()),
-            CssomFeatureValue::Authored(_) => Err(CssomError::AuthoredFeatureConversion),
-        })
+impl CssomFeatureValue {
+    pub(crate) fn projected(&self) -> Result<&[u32], CssomError> {
+        match self {
+            Self::Unsigned(values) => Ok(values),
+            Self::Authored(_) => Err(CssomError::AuthoredFeatureConversion),
+        }
     }
 }
+impl CssomFeatureMap {
+    pub(crate) fn size(&self) -> usize {
+        self.raw_entries().len()
+    }
+    pub(crate) fn has(&self, key: &str) -> bool {
+        self.raw_entries().iter().any(|entry| entry.key == key)
+    }
+}
+
 impl CssomBatch {
     /// Atomic maplike clear; original authored occurrences remain independently retained.
     pub fn clear_feature_map(&mut self, id: &CssomFeatureMapId) -> Result<bool, CssomError> {
@@ -246,7 +224,16 @@ impl CssomBatch {
         id: &CssomRuleId,
         source: &str,
     ) -> Result<bool, CssomError> {
-        self.apply(|this| {
+        self.set_font_feature_family_operation(id, source)
+            .map(|(changed, _)| changed)
+    }
+    pub(crate) fn set_font_feature_family_operation(
+        &mut self,
+        id: &CssomRuleId,
+        source: &str,
+    ) -> Result<(bool, Vec<CssRecoveryDiagnostic>), CssomError> {
+        let mut operation_diagnostics = Vec::new();
+        let changed = self.apply(|this| {
             let CssomRuleData::FontFeatureValues { .. } = this.staged.rule(id)?.data() else {
                 return Err(CssomError::WrongKind);
             };
@@ -260,11 +247,21 @@ impl CssomBatch {
                 )
                 .into_parts();
             crate::parser_resources::check_resource_diagnostics(&diagnostics)?;
+            operation_diagnostics = diagnostics;
             let Some(value) = value else {
                 return Ok(false);
             };
-            this.assign_font_families(id, value, diagnostics)
-        })
+            let mut retained_diagnostics = Vec::new();
+            retained_diagnostics
+                .try_reserve_exact(operation_diagnostics.len())
+                .map_err(|_| CssomError::Limit {
+                    resource: "font family diagnostics capacity",
+                    maximum: operation_diagnostics.len(),
+                })?;
+            retained_diagnostics.extend_from_slice(&operation_diagnostics);
+            this.assign_font_families(id, value, retained_diagnostics)
+        })?;
+        Ok((changed, operation_diagnostics))
     }
     fn assign_font_families(
         &mut self,
@@ -333,59 +330,6 @@ impl CssomBatch {
     }
 }
 
-/// A font-face rule's same-object declaration carrier and descriptor reflections.
-/// All scalar values and complete replacements use the common declaration owner.
-pub struct CssomFontFaceView<'a> {
-    style_id: &'a CssomBlockId,
-    style: CssomDeclarationView<'a>,
-}
-macro_rules! font_face_attributes {
-    ($($method:ident => $kind:ident),+ $(,)?) => {$(
-        pub fn $method(&self) -> Result<String, CssomError> {
-            self.style.get_property_value(CssFontFaceDescriptorKind::$kind.css_name())
-        }
-    )+};
-}
-impl<'a> CssomFontFaceView<'a> {
-    pub fn style_id(&self) -> &'a CssomBlockId {
-        self.style_id
-    }
-    pub fn style(&self) -> &CssomDeclarationView<'a> {
-        &self.style
-    }
-    font_face_attributes! {
-        src => Src,
-        font_family => FontFamily,
-        font_style => FontStyle,
-        font_weight => FontWeight,
-        font_stretch => FontWidth,
-        font_width => FontWidth,
-        unicode_range => UnicodeRange,
-        font_feature_settings => FontFeatureSettings,
-        font_variation_settings => FontVariationSettings,
-        font_named_instance => FontNamedInstance,
-        font_display => FontDisplay,
-        font_language_override => FontLanguageOverride,
-        ascent_override => AscentOverride,
-        descent_override => DescentOverride,
-        line_gap_override => LineGapOverride,
-    }
-}
-impl CssomSnapshot {
-    pub fn font_face(
-        &self,
-        id: &CssomRuleId,
-        limits: CssomDeclarationRequestLimits,
-    ) -> Result<CssomFontFaceView<'_>, CssomError> {
-        let CssomRuleData::FontFace { block } = self.rule(id)?.data() else {
-            return Err(CssomError::WrongKind);
-        };
-        Ok(CssomFontFaceView {
-            style_id: block,
-            style: self.declarations(block, limits)?,
-        })
-    }
-}
 impl CssomBatch {
     /// Prepares a reflected descriptor setter using the same support decisions,
     /// source guards, pending selection, request budget and atomic owner as #835.

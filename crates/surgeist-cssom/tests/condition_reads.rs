@@ -1,3 +1,4 @@
+use surgeist_css::CssSpecifiedValueSerializationLimits;
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str) -> CssomInputVersion {
@@ -109,42 +110,116 @@ fn container_plural_getters_preserve_order_duplicates_opaque_queries_and_name_on
         },
     ];
     assert_eq!(
-        snapshot.container_conditions(&rules[0], 1024).unwrap(),
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.conditions(1024))
+            .unwrap(),
         expected
     );
     let text = r"alpha, (width > 1px), alpha, beta future(foo), \31 escaped";
     assert_eq!(
-        snapshot
-            .container_condition_text(&rules[0], text.len())
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(
+                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::new(
+                    usize::MAX,
+                    usize::MAX,
+                    text.len()
+                ))
+            )
             .unwrap(),
         text
     );
     assert!(
-        snapshot
-            .container_condition_text(&rules[0], text.len() - 1)
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(
+                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::new(
+                    usize::MAX,
+                    usize::MAX,
+                    text.len() - 1
+                ))
+            )
             .is_err()
     );
-    assert_eq!(snapshot.container_name(&rules[0], 0).unwrap(), "");
-    assert_eq!(snapshot.container_query(&rules[0], 0).unwrap(), "");
     assert_eq!(
-        snapshot.container_name(&rules[1], 1024).unwrap(),
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_name(0))
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_query(0))
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        owner
+            .css_container_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_name(1024))
+            .unwrap(),
         r"\31 escaped"
     );
-    assert_eq!(snapshot.container_query(&rules[1], 0).unwrap(), "");
     assert_eq!(
-        snapshot.container_condition_text(&rules[1], 1024).unwrap(),
+        owner
+            .css_container_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_query(0))
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        owner
+            .css_container_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(
+                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::new(
+                    usize::MAX,
+                    usize::MAX,
+                    1024
+                ))
+            )
+            .unwrap(),
         r"\31 escaped"
     );
-    assert_eq!(snapshot.container_name(&rules[2], 0).unwrap(), "");
+    assert_eq!(
+        owner
+            .css_container_rule(&rules[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_name(0))
+            .unwrap(),
+        ""
+    );
     // Specified token meaning permits the provider's retained trailing trivia.
     assert_eq!(
-        snapshot.container_query(&rules[2], 1024).unwrap(),
+        owner
+            .css_container_rule(&rules[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_query(1024))
+            .unwrap(),
         "(width > 1px) "
     );
-    let mut local = snapshot.container_conditions(&rules[0], 1024).unwrap();
+    let mut local = owner
+        .css_container_rule(&rules[0])
+        .and_then(|handle| handle.capture(&snapshot))
+        .and_then(|capture| capture.conditions(1024))
+        .unwrap();
     local[0].name = "locally modified dictionary".into();
     assert_eq!(
-        snapshot.container_conditions(&rules[0], 1024).unwrap(),
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.conditions(1024))
+            .unwrap(),
         expected
     );
     let fields_len: usize = expected
@@ -152,14 +227,18 @@ fn container_plural_getters_preserve_order_duplicates_opaque_queries_and_name_on
         .map(|entry| entry.name.len() + entry.query.len())
         .sum();
     assert_eq!(
-        snapshot
-            .container_conditions(&rules[0], fields_len)
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.conditions(fields_len))
             .unwrap(),
         expected
     );
     assert!(
-        snapshot
-            .container_conditions(&rules[0], fields_len - 1)
+        owner
+            .css_container_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.conditions(fields_len - 1))
             .is_err()
     );
     assert_eq!(snapshot.revision(), owner.snapshot().revision());
@@ -174,22 +253,59 @@ fn omitted_scope_bounds_and_defined_named_support_name_do_not_require_whole_wrap
     let snapshot = owner.snapshot();
     assert_eq!(rules.len(), 2);
     let zero = surgeist_css::CssSpecifiedValueSerializationLimits::new(0, 0, 0);
-    assert_eq!(snapshot.scope_start(&rules[0], zero).unwrap(), None);
-    assert_eq!(snapshot.scope_end(&rules[0], zero).unwrap(), None);
     assert_eq!(
-        snapshot.named_support_condition_name(&rules[1]).unwrap(),
+        owner
+            .css_scope_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.start(zero))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        owner
+            .css_scope_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.end(zero))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        owner
+            .css_supports_condition_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name())
+            .unwrap(),
         "--feature"
     );
-    let named_list = snapshot.child_rules(&rules[1]).unwrap();
+    let named_list = snapshot
+        .rule(&rules[1])
+        .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+        .unwrap();
     let tests = snapshot.rules(named_list).unwrap();
     assert_eq!(tests.len(), 2);
     assert_ne!(tests[0], tests[1]);
-    assert_eq!(snapshot.child_rules(&rules[1]).unwrap(), named_list);
+    assert_eq!(
+        snapshot
+            .rule(&rules[1])
+            .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+            .unwrap(),
+        named_list
+    );
     for child in tests {
-        assert_eq!(snapshot.rule_type(child).unwrap(), 0);
+        assert_eq!(
+            owner
+                .css_rule(child)
+                .and_then(|handle| handle.capture(&snapshot))
+                .and_then(|capture| capture.r#type())
+                .unwrap(),
+            0
+        );
     }
     assert!(matches!(
-        snapshot.named_support_condition_name(&rules[0]),
+        owner
+            .css_supports_condition_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name()),
         Err(CssomError::WrongKind)
     ));
 }
@@ -202,14 +318,37 @@ fn local_layer_names_use_native_escaping_without_ancestor_prefixes_or_wrapper_su
     );
     let snapshot = owner.snapshot();
     let nested = snapshot
-        .rules(snapshot.child_rules(&rules[0]).unwrap())
+        .rules(
+            snapshot
+                .rule(&rules[0])
+                .and_then(|record| record.data().children().ok_or(CssomError::WrongKind))
+                .unwrap(),
+        )
         .unwrap();
-    assert_eq!(snapshot.layer_block_name(&rules[0], 1024).unwrap(), "outer");
     assert_eq!(
-        snapshot.layer_block_name(&nested[0], 1024).unwrap(),
+        owner
+            .css_layer_block_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name(1024))
+            .unwrap(),
+        "outer"
+    );
+    assert_eq!(
+        owner
+            .css_layer_block_rule(&nested[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name(1024))
+            .unwrap(),
         "inner"
     );
-    assert_eq!(snapshot.layer_block_name(&nested[1], 0).unwrap(), "");
+    assert_eq!(
+        owner
+            .css_layer_block_rule(&nested[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name(0))
+            .unwrap(),
+        ""
+    );
     let expected = vec![
         "outer.inner".to_owned(),
         r"\31 edge".to_owned(),
@@ -217,30 +356,53 @@ fn local_layer_names_use_native_escaping_without_ancestor_prefixes_or_wrapper_su
     ];
     let bytes = expected.iter().map(String::len).sum();
     assert_eq!(
-        snapshot.layer_statement_names(&rules[1], bytes).unwrap(),
+        owner
+            .css_layer_statement_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name_list(bytes))
+            .unwrap(),
         expected
     );
     assert!(
-        snapshot
-            .layer_statement_names(&rules[1], bytes - 1)
+        owner
+            .css_layer_statement_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name_list(bytes - 1))
             .is_err()
     );
-    let mut local = snapshot.layer_statement_names(&rules[1], bytes).unwrap();
+    let mut local = owner
+        .css_layer_statement_rule(&rules[1])
+        .and_then(|handle| handle.capture(&snapshot))
+        .and_then(|capture| capture.name_list(bytes))
+        .unwrap();
     local[0].clear();
     assert_eq!(
-        snapshot.layer_statement_names(&rules[1], bytes).unwrap(),
+        owner
+            .css_layer_statement_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name_list(bytes))
+            .unwrap(),
         expected
     );
     assert!(matches!(
-        snapshot.layer_block_name(&rules[1], 1024),
+        owner
+            .css_layer_block_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name(1024)),
         Err(CssomError::WrongKind)
     ));
     assert!(matches!(
-        snapshot.layer_statement_names(&rules[0], 1024),
+        owner
+            .css_layer_statement_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.name_list(1024)),
         Err(CssomError::WrongKind)
     ));
     assert!(matches!(
-        snapshot.rule_css_text(&rules[0], &CssomRuleFormatLimits::default()),
+        owner
+            .css_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.css_text(&CssomRuleFormatLimits::default())),
         Err(CssomError::Format(_))
     ));
     let mut owner = CssomStore::new(CssomLimits::default(), context()).unwrap();
@@ -263,17 +425,28 @@ fn local_layer_names_use_native_escaping_without_ancestor_prefixes_or_wrapper_su
         .rules(snapshot.sheet(&sheet).unwrap().rules())
         .unwrap();
     assert_eq!(imports.len(), 3);
-    assert_eq!(snapshot.import_layer_name(&imports[0], 0).unwrap(), None);
     assert_eq!(
-        snapshot
-            .import_layer_name(&imports[1], 0)
+        owner
+            .css_import_rule(&imports[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.layer_name(0))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        owner
+            .css_import_rule(&imports[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.layer_name(0))
             .unwrap()
             .as_deref(),
         Some("")
     );
     assert_eq!(
-        snapshot
-            .import_layer_name(&imports[2], 1024)
+        owner
+            .css_import_rule(&imports[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.layer_name(1024))
             .unwrap()
             .as_deref(),
         Some(r"outer.\31 edge")
@@ -296,10 +469,18 @@ fn supplied_query_results_keep_actual_role_rule_and_owning_capture() {
     let supports = snapshot
         .capture_query_result(&rules[1], supports_facts(), false)
         .unwrap();
-    assert!(snapshot.condition_matches(&rules[0], Some(&media)).unwrap());
     assert!(
-        !snapshot
-            .condition_matches(&rules[1], Some(&supports))
+        owner
+            .css_media_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.matches(Some(&media)))
+            .unwrap()
+    );
+    assert!(
+        !owner
+            .css_supports_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.matches(Some(&supports)))
             .unwrap()
     );
     assert_eq!(media.owner(), snapshot.owner());
@@ -309,15 +490,24 @@ fn supplied_query_results_keep_actual_role_rule_and_owning_capture() {
     assert_eq!(media.context(), snapshot.context());
     assert_eq!(media.facts(), &media_facts());
     query_error(
-        snapshot.condition_matches(&rules[0], None),
+        owner
+            .css_media_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.matches(None)),
         CssomQueryMatchError::MissingResult,
     );
     query_error(
-        snapshot.condition_matches(&rules[1], Some(&media)),
+        owner
+            .css_supports_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.matches(Some(&media))),
         CssomQueryMatchError::WrongRole,
     );
     query_error(
-        snapshot.condition_matches(&rules[2], Some(&media)),
+        owner
+            .css_media_rule(&rules[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.matches(Some(&media))),
         CssomQueryMatchError::WrongRule,
     );
     query_error(
@@ -330,11 +520,19 @@ fn supplied_query_results_keep_actual_role_rule_and_owning_capture() {
         .capture_query_result(&foreign_rules[0], media_facts(), true)
         .unwrap();
     query_error(
-        snapshot.condition_matches(&rules[0], Some(&foreign_result)),
+        owner
+            .css_media_rule(&rules[0])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.matches(Some(&foreign_result))),
         CssomQueryMatchError::ForeignOwner,
     );
+    let captured_media = owner
+        .css_media_rule(&rules[0])
+        .unwrap()
+        .capture(&snapshot)
+        .unwrap();
     drop(owner);
-    assert!(snapshot.condition_matches(&rules[0], Some(&media)).unwrap());
+    assert!(captured_media.matches(Some(&media)).unwrap());
 }
 
 #[test]
@@ -348,10 +546,18 @@ fn result_rejects_state_and_input_drift_without_invalidating_older_capture() {
     edit.set_disabled(&sheet, true).unwrap();
     owner.commit(edit).unwrap();
     query_error(
-        owner.snapshot().condition_matches(&rules[0], Some(&old)),
+        owner
+            .css_media_rule(&rules[0])
+            .and_then(|handle| handle.matches(&owner, Some(&old))),
         CssomQueryMatchError::StaleRevision,
     );
-    assert!(before.condition_matches(&rules[0], Some(&old)).unwrap());
+    assert!(
+        owner
+            .css_media_rule(&rules[0])
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.matches(Some(&old)))
+            .unwrap()
+    );
     let current = owner.snapshot();
     let support = current
         .capture_query_result(&rules[1], supports_facts(), true)
@@ -363,13 +569,15 @@ fn result_rejects_state_and_input_drift_without_invalidating_older_capture() {
     owner.commit(edit).unwrap();
     query_error(
         owner
-            .snapshot()
-            .condition_matches(&rules[1], Some(&support)),
+            .css_supports_rule(&rules[1])
+            .and_then(|handle| handle.matches(&owner, Some(&support))),
         CssomQueryMatchError::StaleContext,
     );
     assert!(
-        current
-            .condition_matches(&rules[1], Some(&support))
+        owner
+            .css_supports_rule(&rules[1])
+            .and_then(|handle| handle.capture(&current))
+            .and_then(|capture| capture.matches(Some(&support)))
             .unwrap()
     );
 }
@@ -401,10 +609,18 @@ fn result_requires_one_actual_fact_and_rejects_payload_drift_even_at_same_versio
     edit.update_context(changed).unwrap();
     owner.commit(edit).unwrap();
     query_error(
-        owner.snapshot().condition_matches(&rules[1], Some(&result)),
+        owner
+            .css_supports_rule(&rules[1])
+            .and_then(|handle| handle.matches(&owner, Some(&result))),
         CssomQueryMatchError::StaleContext,
     );
-    assert!(!before.condition_matches(&rules[1], Some(&result)).unwrap());
+    assert!(
+        !owner
+            .css_supports_rule(&rules[1])
+            .and_then(|handle| handle.capture(&before))
+            .and_then(|capture| capture.matches(Some(&result)))
+            .unwrap()
+    );
     let (owner, _, rules) = source_fixture(context(), ".style {}");
     assert!(matches!(
         owner

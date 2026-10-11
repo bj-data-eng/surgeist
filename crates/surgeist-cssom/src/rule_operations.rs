@@ -166,7 +166,7 @@ impl CssomSnapshot {
     }
     /// Returns only a matching result from this exact immutable capture. Absence,
     /// stale input/state, a foreign owner or another rule are typed failures.
-    pub fn condition_matches(
+    pub(crate) fn condition_matches(
         &self,
         id: &CssomRuleId,
         result: Option<&CssomQueryResult>,
@@ -241,7 +241,7 @@ impl CssomSnapshot {
     }
     /// Byte-bounded lexical fields, with one allowance for the aggregate emitted
     /// field bytes. Admitted checked CSS payload constraints remain independent.
-    pub fn container_conditions(
+    pub(crate) fn container_conditions(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,
@@ -266,13 +266,17 @@ impl CssomSnapshot {
     }
     /// A multi-entry rule has no singular name; this branch emits no text and
     /// never asks the query serializer to produce an unrelated field.
-    pub fn container_name(&self, id: &CssomRuleId, max_bytes: usize) -> Result<String, CssomError> {
+    pub(crate) fn container_name(
+        &self,
+        id: &CssomRuleId,
+        max_bytes: usize,
+    ) -> Result<String, CssomError> {
         match self.container_prelude(id)?.entries() {
             [entry] => container_name_text(entry, max_bytes),
             _ => Ok(String::new()),
         }
     }
-    pub fn container_query(
+    pub(crate) fn container_query(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,
@@ -284,7 +288,7 @@ impl CssomSnapshot {
     }
     /// The selected plural algorithm composes already serialized fields through
     /// CSS-owned whitespace/comma joiners. Omitted queries add no trailing space.
-    pub fn container_condition_text(
+    pub(crate) fn container_condition_text(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,
@@ -313,7 +317,10 @@ impl CssomSnapshot {
             .map_err(CssomError::Serialization)
     }
     /// Readonly decoded name under Surgeist's inert named-support grouping policy.
-    pub fn named_support_condition_name(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
+    pub(crate) fn named_support_condition_name(
+        &self,
+        id: &CssomRuleId,
+    ) -> Result<&str, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::NamedSupports { name, .. } => Ok(name.as_str()),
             _ => Err(CssomError::WrongKind),
@@ -325,6 +332,20 @@ impl CssomSnapshot {
 pub(crate) enum RuleDestination {
     Sheet(CssomSheetId),
     Group(CssomRuleId),
+}
+
+pub(crate) fn copy_rule_diagnostics(
+    source: &[CssRecoveryDiagnostic],
+) -> Result<Vec<CssRecoveryDiagnostic>, CssomError> {
+    let mut result = Vec::new();
+    result
+        .try_reserve_exact(source.len())
+        .map_err(|_| CssomError::Limit {
+            resource: "object rule diagnostics capacity",
+            maximum: source.len(),
+        })?;
+    result.extend_from_slice(source);
+    Ok(result)
 }
 
 fn syntax() -> CssomError {
@@ -718,29 +739,12 @@ fn ordered_phase(
     Ok(())
 }
 
-impl CssomStore {
-    /// Resolves the stable collection ID against the current live publication.
-    pub fn rule_list_length(&self, list: &CssomRuleListId) -> Result<usize, CssomError> {
-        self.snapshot().rule_list_length(list)
-    }
-    /// CSSRuleList.item returns null outside the current membership, without
-    /// changing the collection identity. A separately captured snapshot stays fixed.
-    pub fn rule_list_item(
-        &self,
-        list: &CssomRuleListId,
-        index: usize,
-    ) -> Result<Option<CssomRuleId>, CssomError> {
-        self.snapshot()
-            .rule_list_item(list, index)
-            .map(|value| value.cloned())
-    }
-}
 impl CssomSnapshot {
     /// Length in this immutable capture; use Store for live observations.
-    pub fn rule_list_length(&self, list: &CssomRuleListId) -> Result<usize, CssomError> {
+    pub(crate) fn rule_list_length(&self, list: &CssomRuleListId) -> Result<usize, CssomError> {
         Ok(self.rules(list)?.len())
     }
-    pub fn rule_list_item(
+    pub(crate) fn rule_list_item(
         &self,
         list: &CssomRuleListId,
         index: usize,
@@ -748,7 +752,7 @@ impl CssomSnapshot {
         Ok(self.rules(list)?.get(index))
     }
     /// Deprecated CSSRule type values are determined from concrete typed kinds.
-    pub fn rule_type(&self, id: &CssomRuleId) -> Result<u16, CssomError> {
+    pub(crate) fn rule_type(&self, id: &CssomRuleId) -> Result<u16, CssomError> {
         Ok(match self.rule(id)?.data() {
             CssomRuleData::Style { .. } => 1,
             CssomRuleData::Import { .. } => 3,
@@ -773,7 +777,7 @@ impl CssomSnapshot {
             _ => 0,
         })
     }
-    pub fn style_selector_text(
+    pub(crate) fn style_selector_text(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -793,7 +797,7 @@ impl CssomSnapshot {
         }
         .map_err(CssomError::Serialization)
     }
-    pub fn page_selector_text(
+    pub(crate) fn page_selector_text(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -805,7 +809,7 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn keyframe_key_text(
+    pub(crate) fn keyframe_key_text(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -825,6 +829,14 @@ impl CssomBatch {
         id: &CssomRuleId,
         source: &str,
     ) -> Result<bool, CssomError> {
+        self.set_style_selector_text_with_diagnostics(id, source)
+            .map(|(value, _)| value)
+    }
+    pub(crate) fn set_style_selector_text_with_diagnostics(
+        &mut self,
+        id: &CssomRuleId,
+        source: &str,
+    ) -> Result<(bool, Vec<CssRecoveryDiagnostic>), CssomError> {
         self.apply(|this| {
             if !matches!(this.staged.rule(id)?.data, CssomRuleData::Style { .. }) {
                 return Err(CssomError::WrongKind);
@@ -840,7 +852,7 @@ impl CssomBatch {
             .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let Some(parsed) = parsed else {
-                return Ok(false);
+                return Ok((false, diagnostics));
             };
             let inputs = this.staged.context.clone();
             let rule = this.staged.rules.get_mut(id).expect("owned rule");
@@ -853,7 +865,7 @@ impl CssomBatch {
                 }
                 CssAdmittedStyleSelectors::Scoped(value) => CssomSelectors::Scoped(value.clone()),
             };
-            rule.admission_diagnostics = diagnostics;
+            rule.admission_diagnostics = copy_rule_diagnostics(&diagnostics)?;
             rule.selector_input = Some(parsed.origin().clone());
             rule.selector_inputs = Some(inputs);
             rule.selector_namespaces = Some(namespaces);
@@ -861,7 +873,7 @@ impl CssomBatch {
                 CssomObjectId::Rule(id.clone()),
                 &[CssomChange::Selectors, CssomChange::Provenance],
             );
-            Ok(true)
+            Ok((true, diagnostics))
         })
     }
     /// Page selector admission uses its independent complete-list grammar.
@@ -870,6 +882,14 @@ impl CssomBatch {
         id: &CssomRuleId,
         source: &str,
     ) -> Result<bool, CssomError> {
+        self.set_page_selector_text_with_diagnostics(id, source)
+            .map(|(value, _)| value)
+    }
+    pub(crate) fn set_page_selector_text_with_diagnostics(
+        &mut self,
+        id: &CssomRuleId,
+        source: &str,
+    ) -> Result<(bool, Vec<CssRecoveryDiagnostic>), CssomError> {
         self.apply(|this| {
             if !matches!(this.staged.rule(id)?.data, CssomRuleData::Page { .. }) {
                 return Err(CssomError::WrongKind);
@@ -879,7 +899,7 @@ impl CssomBatch {
             let (parsed, diagnostics) = parse_page_selector_list(source).into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let Some(parsed) = parsed else {
-                return Ok(false);
+                return Ok((false, diagnostics));
             };
             let origin = parsed.origin().cloned();
             let inputs = this.staged.context.clone();
@@ -888,14 +908,14 @@ impl CssomBatch {
                 unreachable!()
             };
             *selectors = parsed;
-            rule.admission_diagnostics = diagnostics;
+            rule.admission_diagnostics = copy_rule_diagnostics(&diagnostics)?;
             rule.selector_input = origin;
             rule.selector_inputs = Some(inputs);
             this.affect(
                 CssomObjectId::Rule(id.clone()),
                 &[CssomChange::Selectors, CssomChange::Provenance],
             );
-            Ok(true)
+            Ok((true, diagnostics))
         })
     }
     pub fn set_keyframe_key_text(
@@ -931,12 +951,12 @@ impl CssomBatch {
 
 /// The indexed Keyframes getter has undefined absence, distinct from item(null).
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CssomKeyframeIndex {
-    Rule(CssomRuleId),
+pub enum CssomKeyframeIndex<T> {
+    Rule(T),
     Undefined,
 }
 impl CssomSnapshot {
-    pub fn keyframes_name(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
+    pub(crate) fn keyframes_name(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Keyframes { name, .. } => Ok(match name {
                 CssKeyframesName::Ident(value) => value.as_str(),
@@ -946,17 +966,17 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn keyframes_length(&self, id: &CssomRuleId) -> Result<usize, CssomError> {
+    pub(crate) fn keyframes_length(&self, id: &CssomRuleId) -> Result<usize, CssomError> {
         let CssomRuleData::Keyframes { children, .. } = &self.rule(id)?.data else {
             return Err(CssomError::WrongKind);
         };
         self.rule_list_length(children)
     }
-    pub fn keyframes_index(
+    pub(crate) fn keyframes_index(
         &self,
         id: &CssomRuleId,
         index: usize,
-    ) -> Result<CssomKeyframeIndex, CssomError> {
+    ) -> Result<CssomKeyframeIndex<CssomRuleId>, CssomError> {
         let CssomRuleData::Keyframes { children, .. } = &self.rule(id)?.data else {
             return Err(CssomError::WrongKind);
         };
@@ -1007,6 +1027,14 @@ impl CssomBatch {
         id: &CssomRuleId,
         source: &str,
     ) -> Result<Option<CssomRuleTicket>, CssomError> {
+        self.append_keyframe_rule_with_diagnostics(id, source)
+            .map(|(value, _)| value)
+    }
+    pub(crate) fn append_keyframe_rule_with_diagnostics(
+        &mut self,
+        id: &CssomRuleId,
+        source: &str,
+    ) -> Result<(Option<CssomRuleTicket>, Vec<CssRecoveryDiagnostic>), CssomError> {
         self.apply(|this| {
             let CssomRuleData::Keyframes { children, .. } = &this.staged.rule(id)?.data else {
                 return Err(CssomError::WrongKind);
@@ -1021,7 +1049,7 @@ impl CssomBatch {
                 .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let Some(parsed) = parsed else {
-                return Ok(None);
+                return Ok((None, diagnostics));
             };
             let parent = CssomParent::Rule(id.clone());
             let depth = this.staged.insertion_depth(&parent)?;
@@ -1035,7 +1063,7 @@ impl CssomBatch {
                 .rules
                 .get_mut(&child)
                 .expect("adopted keyframe")
-                .admission_diagnostics = diagnostics;
+                .admission_diagnostics = copy_rule_diagnostics(&diagnostics)?;
             this.staged
                 .lists
                 .get_mut(&list)
@@ -1049,14 +1077,14 @@ impl CssomBatch {
                 CssomObjectId::Rule(child.clone()),
                 &[CssomChange::Ancestry, CssomChange::Provenance],
             );
-            Ok(Some(this.retain_rule_ticket(child)))
+            Ok((Some(this.retain_rule_ticket(child)), diagnostics))
         })
     }
 }
 
 impl CssomSnapshot {
     /// Authored location only; resolved location is a separately supplied import fact.
-    pub fn import_href(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
+    pub(crate) fn import_href(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Import { target, .. } => Ok(match target {
                 CssImportTarget::String(value) => value.as_str(),
@@ -1066,13 +1094,13 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn import_media(&self, id: &CssomRuleId) -> Result<&CssomMediaListId, CssomError> {
+    pub(crate) fn import_media(&self, id: &CssomRuleId) -> Result<&CssomMediaListId, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Import { media, .. } => Ok(media),
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn import_style_sheet(
+    pub(crate) fn import_style_sheet(
         &self,
         id: &CssomRuleId,
     ) -> Result<Option<&CssomSheetId>, CssomError> {
@@ -1081,7 +1109,7 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn import_supports_text(
+    pub(crate) fn import_supports_text(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,
@@ -1100,7 +1128,7 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn namespace_uri(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
+    pub(crate) fn namespace_uri(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Leaf {
                 current: CssomAuthoredRule::Ordinary(CssRule::Namespace(rule)),
@@ -1108,7 +1136,7 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn namespace_prefix(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
+    pub(crate) fn namespace_prefix(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Leaf {
                 current: CssomAuthoredRule::Ordinary(CssRule::Namespace(rule)),
@@ -1116,13 +1144,13 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn margin_name(&self, id: &CssomRuleId) -> Result<&'static str, CssomError> {
+    pub(crate) fn margin_name(&self, id: &CssomRuleId) -> Result<&'static str, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Margin { name, .. } => Ok(name.css_name()),
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn group_media(&self, id: &CssomRuleId) -> Result<&CssomMediaListId, CssomError> {
+    pub(crate) fn group_media(&self, id: &CssomRuleId) -> Result<&CssomMediaListId, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Media(media),
@@ -1131,7 +1159,7 @@ impl CssomSnapshot {
             _ => Err(CssomError::WrongKind),
         }
     }
-    pub fn supports_condition_text(
+    pub(crate) fn supports_condition_text(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,
@@ -1148,7 +1176,7 @@ impl CssomSnapshot {
         }
     }
     /// Omitted Scope bounds remain null; reads never require a whole-rule format.
-    pub fn scope_start(
+    pub(crate) fn scope_start(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -1182,7 +1210,7 @@ impl CssomSnapshot {
             })
             .transpose()
     }
-    pub fn scope_end(
+    pub(crate) fn scope_end(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -1211,7 +1239,7 @@ impl CssomSnapshot {
 impl CssomSnapshot {
     /// The same collection handle is retained through insertion, deletion and detach.
     /// Keyframes uses its own operations even though it also has a rule list.
-    pub fn child_rules(&self, id: &CssomRuleId) -> Result<&CssomRuleListId, CssomError> {
+    pub(crate) fn child_rules(&self, id: &CssomRuleId) -> Result<&CssomRuleListId, CssomError> {
         match &self.rule(id)?.data {
             CssomRuleData::Style { children, .. }
             | CssomRuleData::Group { children, .. }
@@ -1223,10 +1251,10 @@ impl CssomSnapshot {
     }
     /// Associated declaration identity; validity domain and special flags remain
     /// in that owning block rather than being converted to ordinary properties.
-    pub fn rule_style(&self, id: &CssomRuleId) -> Result<&CssomBlockId, CssomError> {
+    pub(crate) fn rule_style(&self, id: &CssomRuleId) -> Result<&CssomBlockId, CssomError> {
         self.rule(id)?.data.block().ok_or(CssomError::WrongKind)
     }
-    pub fn condition_text(
+    pub(crate) fn condition_text(
         &self,
         id: &CssomRuleId,
         limits: CssSpecifiedValueSerializationLimits,
@@ -1255,7 +1283,7 @@ impl CssomSnapshot {
 
 impl CssomSnapshot {
     /// Declared local name only: absent is null, anonymous is an empty string.
-    pub fn import_layer_name(
+    pub(crate) fn import_layer_name(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,
@@ -1274,7 +1302,7 @@ impl CssomSnapshot {
         }
     }
     /// Rule-local checked name, without ancestor layer prefixes.
-    pub fn layer_block_name(
+    pub(crate) fn layer_block_name(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,
@@ -1295,7 +1323,7 @@ impl CssomSnapshot {
     }
     /// A newly owned array of local names, retaining order and duplicates. The
     /// byte allowance is shared across emitted names; no ancestor qualification.
-    pub fn layer_statement_names(
+    pub(crate) fn layer_statement_names(
         &self,
         id: &CssomRuleId,
         max_bytes: usize,

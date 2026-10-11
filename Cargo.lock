@@ -3659,6 +3659,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-cssom-reflections"
+version = "0.1.0"
+dependencies = [
+ "surgeist-css",
+]
+
+[[package]]
 name = "surgeist-dialog"
 version = "0.1.0"
 dependencies = [

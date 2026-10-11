@@ -387,7 +387,7 @@ impl State {
 
 impl CssomSnapshot {
     /// Formats committed current payloads under one bounded native CSS operation.
-    pub fn rule_css_text(
+    pub(crate) fn rule_css_text(
         &self,
         id: &CssomRuleId,
         limits: &CssomRuleFormatLimits,

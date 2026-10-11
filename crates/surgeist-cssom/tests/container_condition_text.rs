@@ -46,19 +46,60 @@ fn inherited_container_condition_text_preserves_order_duplicates_and_empty_field
     ];
     for (rule, expected) in rules.iter().zip(expected) {
         assert_eq!(
-            snapshot
-                .container_condition_text(rule, expected.len())
+            store
+                .css_container_rule(rule)
+                .and_then(|handle| handle.capture(&snapshot))
+                .and_then(|capture| capture.condition_text(
+                    CssSpecifiedValueSerializationLimits::new(
+                        usize::MAX,
+                        usize::MAX,
+                        expected.len()
+                    )
+                ))
                 .unwrap(),
             expected,
             "the owning native provider is an independent passing control"
         );
     }
-    assert_eq!(snapshot.container_query(&rules[2], 0).unwrap(), "");
-    assert_eq!(snapshot.container_name(&rules[3], 0).unwrap(), "");
-    assert_eq!(snapshot.container_name(&rules[1], 0).unwrap(), "");
-    assert_eq!(snapshot.container_query(&rules[1], 0).unwrap(), "");
+    assert_eq!(
+        store
+            .css_container_rule(&rules[2])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_query(0))
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        store
+            .css_container_rule(&rules[3])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_name(0))
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        store
+            .css_container_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_name(0))
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        store
+            .css_container_rule(&rules[1])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(|capture| capture.container_query(0))
+            .unwrap(),
+        ""
+    );
     assert!(matches!(
-        snapshot.condition_text(&rules[4], CssSpecifiedValueSerializationLimits::default()),
+        store
+            .css_condition_rule(&rules[4])
+            .and_then(|handle| handle.capture(&snapshot))
+            .and_then(
+                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::default())
+            ),
         Err(CssomError::WrongKind)
     ));
 
@@ -66,10 +107,16 @@ fn inherited_container_condition_text_preserves_order_duplicates_and_empty_field
         .iter()
         .zip(expected)
         .map(|(rule, text)| {
-            snapshot.condition_text(
-                rule,
-                CssSpecifiedValueSerializationLimits::new(1000, 1000, text.len()),
-            )
+            store
+                .css_condition_rule(rule)
+                .and_then(|handle| handle.capture(&snapshot))
+                .and_then(|capture| {
+                    capture.condition_text(CssSpecifiedValueSerializationLimits::new(
+                        1000,
+                        1000,
+                        text.len(),
+                    ))
+                })
         })
         .collect();
     assert_eq!(snapshot.revision(), store.snapshot().revision());

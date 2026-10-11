@@ -85,6 +85,14 @@ review. Missing prerequisites or an unexplained delta stop the refresh handoff.
 
 ## Locate Corpus And Audit Tooling
 
+Ordinary CSSOM property accessors have a separate root-owned
+[offline reflection generator](../tools/cssom-reflections/README.md). Run
+`cargo run --offline --locked -j 1 -p surgeist-cssom-reflections` to regenerate
+its checked-in Rust, refresh the owning CSSOM API audit, then append `-- --check`
+to the reflection command to check reproducibility and live/captured member
+inventories. Production builds consume the checked-in source and do not run the
+generator. CSS metadata remains the property/grammar authority.
+
 [surgeist-generator](../crates/surgeist-generator/README.md) supplies shared CSS
 and browser-corpus infrastructure; it is a product workspace member, with
 feature-gated tools. [Layout's guide](../crates/surgeist-layout/AGENTS.md) locates
