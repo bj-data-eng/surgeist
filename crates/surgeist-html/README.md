@@ -163,18 +163,34 @@ content and usage. Document self identity is covered by the subject count;
 relationships count references to other retained records.
 
 `HtmlSemanticSession` borrows one capture and a matching `HtmlSemanticContext`
-to answer hidden-state and actual disabledness queries. Disabledness includes
+to answer hidden-state, disabledness, list and table queries. Disabledness includes
 the fieldset’s first-legend exception and the option/optgroup/select rules;
 custom controls use the supplied form-associated classifications. Results
 distinguish known values, inapplicable subjects, missing captured facts and
-unsupported cases. The session admits finite work and output capacity, observes
+unsupported cases. The session admits finite work, output, scratch, integer-digit,
+allocation-byte and nested-output capacities, observes
 cancellation and returns a complete batch or a sticky terminal failure.
 Reports and admitted query failures retain the same immutable qualification:
 HTML revision, capture, context, host-facts revision and selected limits.
 Constructor rejection has no admitted-session qualification. Dependency results
 currently request conservative recomputation. These operations borrow captured
-relationships without constructing a live tree; language, direction, inertness,
-lists and tables remain part of the semantic contribution.
+relationships without constructing a live tree; language, direction and inertness
+remain part of the semantic contribution.
+
+List ownership and ordinals consume `HtmlListParticipation`, qualified by the
+capture and separate style and box-participation producer revisions. Computed
+list-item behavior, being rendered and producing a CSS box remain distinct facts.
+The algorithm traverses every owned computed list item in ordinary tree order;
+an implicit reversed-list start counts owned HTML `li` elements specifically.
+Start/value recovery and ordinal steps preserve arbitrary admitted integer
+magnitudes. Missing participation cannot become a guessed box or partial ordinal.
+
+`HtmlTableModel` retains semantic cell rectangles, row/column and group records,
+header associations and table-model errors. It handles delayed footers, implied
+rows, zero row spans, overlap recovery, explicit header IDs and automatic header
+assignment from the captured tree. These are semantic slots, without layout
+geometry. Conditional missing inputs remain explicit; the complete model uses
+the same session qualification and bounded batch admission as other queries.
 
 `HtmlFragmentContext` selects an actual captured element or hosted fragment,
 retaining its context and target documents, integration facts and nearest form.

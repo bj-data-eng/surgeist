@@ -17,6 +17,97 @@ pub struct HtmlInteger {
     magnitude: HtmlNonNegativeInteger,
 }
 
+/// The two exact arithmetic operations used by HTML's ordinal-value algorithm.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum IntegerUnitStep {
+    Increment,
+    Decrement,
+}
+
+/// One canonical integer and the actual capacity of its sole digit allocation.
+#[derive(Debug)]
+pub(crate) struct IntegerUnitStepResult {
+    pub(crate) value: HtmlInteger,
+    pub(crate) capacity_bytes: usize,
+}
+
+/// Numeric allocation boundaries; the semantic session owns their admission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum IntegerUnitStepError {
+    RepresentationExhausted,
+    DigitLimitExceeded {
+        limit: usize,
+        required: usize,
+    },
+    RequestedCapacityLimitExceeded {
+        limit: usize,
+        required: usize,
+    },
+    ActualCapacityLimitExceeded {
+        limit: usize,
+        requested: usize,
+        capacity_bytes: usize,
+    },
+    AllocationFailed {
+        requested: usize,
+    },
+}
+
+fn reserve_integer_digits(
+    required: usize,
+    max_result_digits: usize,
+    max_capacity_bytes: usize,
+) -> Result<String, IntegerUnitStepError> {
+    check_integer_digit_capacity(required, max_result_digits, max_capacity_bytes)?;
+    let mut digits = String::new();
+    digits
+        .try_reserve_exact(required)
+        .map_err(|_| IntegerUnitStepError::AllocationFailed {
+            requested: required,
+        })?;
+    check_integer_actual_capacity(required, digits.capacity(), max_capacity_bytes)?;
+    Ok(digits)
+}
+
+fn check_integer_digit_capacity(
+    required: usize,
+    max_result_digits: usize,
+    max_capacity_bytes: usize,
+) -> Result<(), IntegerUnitStepError> {
+    if required > isize::MAX as usize {
+        return Err(IntegerUnitStepError::RepresentationExhausted);
+    }
+    if required > max_result_digits {
+        return Err(IntegerUnitStepError::DigitLimitExceeded {
+            limit: max_result_digits,
+            required,
+        });
+    }
+    if required > max_capacity_bytes {
+        return Err(IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            limit: max_capacity_bytes,
+            required,
+        });
+    }
+    Ok(())
+}
+
+fn check_integer_actual_capacity(
+    requested: usize,
+    capacity_bytes: usize,
+    max_capacity_bytes: usize,
+) -> Result<(), IntegerUnitStepError> {
+    if capacity_bytes > max_capacity_bytes {
+        Err(IntegerUnitStepError::ActualCapacityLimitExceeded {
+            limit: max_capacity_bytes,
+            requested,
+            capacity_bytes,
+        })
+    } else {
+        Ok(())
+    }
+}
+
 impl HtmlInteger {
     /// Constructs an integer from an intrinsically valid magnitude and sign.
     /// A zero magnitude always produces zero, regardless of `negative`.
@@ -35,6 +126,106 @@ impl HtmlInteger {
     /// Returns the exact absolute value.
     pub fn magnitude(&self) -> &HtmlNonNegativeInteger {
         &self.magnitude
+    }
+
+    /// Exact ordinal increment/decrement using one fallible digit allocation.
+    ///
+    /// The caller precharges its bounded inspection/write envelope and owns
+    /// cancellation/admission. This atomic operation inspects at most the input
+    /// digit count and writes at most that count plus one; it has no internal
+    /// cancellation poll or parser-quantum promise. The sign occupies no digit
+    /// capacity. Logical digits and actual requested allocation are separate.
+    pub(crate) fn try_unit_step(
+        &self,
+        step: IntegerUnitStep,
+        max_result_digits: usize,
+        max_capacity_bytes: usize,
+    ) -> Result<IntegerUnitStepResult, IntegerUnitStepError> {
+        let input = self.magnitude.decimal_digits();
+        let zero = self.magnitude.is_zero();
+        let grow = zero || (step == IntegerUnitStep::Increment) != self.negative;
+        let negative = if zero {
+            step == IntegerUnitStep::Decrement
+        } else {
+            self.negative
+        };
+        let pivot = input
+            .as_bytes()
+            .iter()
+            .rposition(|&digit| digit != if grow { b'9' } else { b'0' });
+        let required = if grow && pivot.is_none() {
+            input
+                .len()
+                .checked_add(1)
+                .ok_or(IntegerUnitStepError::RepresentationExhausted)?
+        } else if !grow && pivot == Some(0) && input.as_bytes()[0] == b'1' && input.len() > 1 {
+            input.len() - 1
+        } else {
+            input.len()
+        };
+        let mut digits = reserve_integer_digits(required, max_result_digits, max_capacity_bytes)?;
+        if grow {
+            if let Some(pivot) = pivot {
+                digits.push_str(&input[..pivot]);
+                digits.push(char::from(input.as_bytes()[pivot] + 1));
+                for _ in pivot + 1..input.len() {
+                    digits.push('0');
+                }
+            } else {
+                digits.push('1');
+                for _ in 0..input.len() {
+                    digits.push('0');
+                }
+            }
+        } else {
+            // The private magnitude invariant is canonical decimal, and zero
+            // selected the growing branch above. A nonzero digit therefore exists.
+            let pivot = pivot.expect("canonical nonzero magnitude has a nonzero digit");
+            if pivot == 0 && input.as_bytes()[0] == b'1' && input.len() > 1 {
+                for _ in 1..input.len() {
+                    digits.push('9');
+                }
+            } else {
+                digits.push_str(&input[..pivot]);
+                digits.push(char::from(input.as_bytes()[pivot] - 1));
+                for _ in pivot + 1..input.len() {
+                    digits.push('9');
+                }
+            }
+        }
+        let capacity_bytes = digits.capacity();
+        Ok(IntegerUnitStepResult {
+            value: Self::from_magnitude(HtmlNonNegativeInteger { digits }, negative),
+            capacity_bytes,
+        })
+    }
+
+    /// Constructs the source's reversed-list count without infallible formatting.
+    /// Both fixed-width scans and the write are bounded by `usize` decimal width.
+    pub(crate) fn try_from_usize(
+        value: usize,
+        max_result_digits: usize,
+        max_capacity_bytes: usize,
+    ) -> Result<IntegerUnitStepResult, IntegerUnitStepError> {
+        let mut divisor = 1_usize;
+        let mut required = 1;
+        while divisor <= value / 10 {
+            divisor *= 10;
+            required += 1;
+        }
+        let mut digits = reserve_integer_digits(required, max_result_digits, max_capacity_bytes)?;
+        loop {
+            digits.push(char::from(b'0' + ((value / divisor) % 10) as u8));
+            divisor /= 10;
+            if divisor == 0 {
+                break;
+            }
+        }
+        let capacity_bytes = digits.capacity();
+        Ok(IntegerUnitStepResult {
+            value: Self::from_magnitude(HtmlNonNegativeInteger { digits }, false),
+            capacity_bytes,
+        })
     }
 
     /// Returns normalized author syntax, with no leading zeroes or plus sign.
@@ -645,7 +836,13 @@ pub(crate) fn parse_integer(input: &DocumentString) -> Result<HtmlInteger, Numer
     integer(input.code_units(), true)
 }
 
-fn integer(units: &[u16], recover: bool) -> Result<HtmlInteger, NumericParseError> {
+/// A borrowed digit prefix, prior to canonicalization or numeric projection.
+struct IntegerPrefix<'a> {
+    negative: bool,
+    digits: &'a [u16],
+}
+
+fn integer_prefix(units: &[u16], recover: bool) -> Result<IntegerPrefix<'_>, NumericParseError> {
     let mut position = 0;
     if recover {
         skip_whitespace(units, &mut position);
@@ -659,10 +856,88 @@ fn integer(units: &[u16], recover: bool) -> Result<HtmlInteger, NumericParseErro
     if start == position || (!recover && position != units.len()) {
         return Err(NumericParseError::InvalidSyntax);
     }
-    Ok(HtmlInteger::from_magnitude(
-        HtmlNonNegativeInteger::from_digits(&units[start..position]),
+    Ok(IntegerPrefix {
         negative,
+        digits: &units[start..position],
+    })
+}
+
+fn integer(units: &[u16], recover: bool) -> Result<HtmlInteger, NumericParseError> {
+    let prefix = integer_prefix(units, recover)?;
+    Ok(HtmlInteger::from_magnitude(
+        HtmlNonNegativeInteger::from_digits(prefix.digits),
+        prefix.negative,
     ))
+}
+
+/// Recovery rejection and allocation admission are separate source outcomes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum IntegerRecoveryError {
+    Syntax(NumericParseError),
+    Allocation(IntegerUnitStepError),
+}
+
+/// §2.3.4.1 recovery with one fallible canonical digit allocation.
+///
+/// The caller admits raw UTF-16 units, precharges a three-input-length envelope
+/// plus fixed work, and owns cancellation. This atomic helper scans the prefix,
+/// scans its leading zeroes, and writes at most the input length. It performs no
+/// intermediate integer construction, formatting, or unchecked string clone.
+pub(crate) fn try_parse_integer(
+    input: &DocumentString,
+    max_result_digits: usize,
+    max_capacity_bytes: usize,
+) -> Result<IntegerUnitStepResult, IntegerRecoveryError> {
+    let prefix = integer_prefix(input.code_units(), true).map_err(IntegerRecoveryError::Syntax)?;
+    // The scanner proves at least one ASCII digit. All-zero input retains its
+    // last zero, so canonical zero also requires exactly one output digit.
+    let first = prefix
+        .digits
+        .iter()
+        .position(|&unit| unit != b'0' as u16)
+        .unwrap_or(prefix.digits.len() - 1);
+    let canonical = &prefix.digits[first..];
+    let mut digits = reserve_integer_digits(canonical.len(), max_result_digits, max_capacity_bytes)
+        .map_err(IntegerRecoveryError::Allocation)?;
+    for &unit in canonical {
+        digits.push(char::from(unit as u8));
+    }
+    let capacity_bytes = digits.capacity();
+    Ok(IntegerUnitStepResult {
+        value: HtmlInteger::from_magnitude(HtmlNonNegativeInteger { digits }, prefix.negative),
+        capacity_bytes,
+    })
+}
+
+/// §2.3.4.2 recovery projected to `min(exact_value, cap)` without allocation.
+///
+/// Negative nonzero input is rejected before projection, including when the cap
+/// is zero. The caller admits and precharges raw input inspection; two scans of
+/// its units suffice, and the fixed-width arithmetic cannot overflow.
+pub(crate) fn parse_nonnegative_integer_capped(
+    input: &DocumentString,
+    cap: usize,
+) -> Result<usize, NumericParseError> {
+    let prefix = integer_prefix(input.code_units(), true)?;
+    if prefix.negative {
+        return if prefix.digits.iter().all(|&unit| unit == b'0' as u16) {
+            Ok(0)
+        } else {
+            Err(NumericParseError::Negative)
+        };
+    }
+    let mut value = 0_usize;
+    for &unit in prefix.digits {
+        let digit = usize::from(unit - b'0' as u16);
+        value = value
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(digit))
+            .map_or(cap, |value| value.min(cap));
+        if value == cap {
+            return Ok(cap);
+        }
+    }
+    Ok(value)
 }
 
 /// Author grammar: one or more ASCII digits, without either sign.
@@ -922,6 +1197,331 @@ mod tests {
 
     fn text(input: &str) -> DocumentString {
         input.into()
+    }
+
+    fn exact_signed(input: &str) -> HtmlInteger {
+        let negative = input.starts_with('-');
+        let magnitude = HtmlNonNegativeInteger::from_decimal_digits(&text(
+            input.strip_prefix('-').unwrap_or(input),
+        ))
+        .unwrap();
+        HtmlInteger::from_magnitude(magnitude, negative)
+    }
+
+    #[test]
+    fn fallible_unit_steps_cross_zero_carry_borrow_and_unbounded_magnitudes() {
+        // Independent exact decimal expectations for ordinal-value step 7,
+        // HTML 877d6146487f `ordinal-value`; no machine projection is involved.
+        for (input, incremented, decremented) in [
+            ("0", "1", "-1"),
+            ("1", "2", "0"),
+            ("-1", "0", "-2"),
+            ("9", "10", "8"),
+            ("-9", "-8", "-10"),
+            ("10", "11", "9"),
+            ("-10", "-9", "-11"),
+            ("99", "100", "98"),
+            ("1000", "1001", "999"),
+            ("-1000", "-999", "-1001"),
+            (
+                "340282366920938463463374607431768211456",
+                "340282366920938463463374607431768211457",
+                "340282366920938463463374607431768211455",
+            ),
+            (
+                "-340282366920938463463374607431768211456",
+                "-340282366920938463463374607431768211455",
+                "-340282366920938463463374607431768211457",
+            ),
+        ] {
+            let value = exact_signed(input);
+            for (step, expected) in [
+                (IntegerUnitStep::Increment, incremented),
+                (IntegerUnitStep::Decrement, decremented),
+            ] {
+                let stepped = value.try_unit_step(step, 100, 100).unwrap();
+                assert_eq!(stepped.value.as_document_string(), text(expected));
+                assert!(stepped.capacity_bytes >= stepped.value.magnitude().decimal_digits().len());
+                assert!(stepped.capacity_bytes <= 100);
+                assert_eq!(value.as_document_string(), text(input));
+            }
+        }
+        let nines = exact_signed("9999999999999999999999999999999999999999");
+        assert_eq!(
+            nines
+                .try_unit_step(IntegerUnitStep::Increment, 41, 41)
+                .unwrap()
+                .value
+                .as_document_string(),
+            text("10000000000000000000000000000000000000000")
+        );
+        let minus_one = exact_signed("-1")
+            .try_unit_step(IntegerUnitStep::Increment, 1, 1)
+            .unwrap();
+        assert!(!minus_one.value.is_negative());
+        assert!(minus_one.value.magnitude().is_zero());
+    }
+
+    #[test]
+    fn fallible_unit_step_checks_exact_result_digits_and_capacity_before_writing() {
+        let value = exact_signed("999");
+        assert_eq!(
+            value
+                .try_unit_step(IntegerUnitStep::Increment, 3, 100)
+                .unwrap_err(),
+            IntegerUnitStepError::DigitLimitExceeded {
+                limit: 3,
+                required: 4,
+            }
+        );
+        assert_eq!(
+            value
+                .try_unit_step(IntegerUnitStep::Increment, 4, 3)
+                .unwrap_err(),
+            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                limit: 3,
+                required: 4,
+            }
+        );
+        assert_eq!(
+            value
+                .try_unit_step(IntegerUnitStep::Increment, 4, 4)
+                .unwrap()
+                .value
+                .as_document_string(),
+            text("1000")
+        );
+        assert_eq!(
+            exact_signed("1000")
+                .try_unit_step(IntegerUnitStep::Decrement, 3, 3)
+                .unwrap()
+                .value
+                .as_document_string(),
+            text("999")
+        );
+        assert_eq!(
+            exact_signed("1")
+                .try_unit_step(IntegerUnitStep::Decrement, 0, 1)
+                .unwrap_err(),
+            IntegerUnitStepError::DigitLimitExceeded {
+                limit: 0,
+                required: 1,
+            }
+        );
+        assert_eq!(value.as_document_string(), text("999"));
+    }
+
+    #[test]
+    fn native_reversed_list_counts_use_the_same_fallible_allocation() {
+        for (count, expected) in [(0, "0"), (1, "1"), (9, "9"), (10, "10"), (1000, "1000")] {
+            let result = HtmlInteger::try_from_usize(count, 100, 100).unwrap();
+            assert_eq!(result.value.as_document_string(), text(expected));
+            assert!(!result.value.is_negative());
+            assert!(result.capacity_bytes >= expected.len());
+        }
+        let expected = match usize::BITS {
+            16 => "65535",
+            32 => "4294967295",
+            64 => "18446744073709551615",
+            _ => panic!("test expectation requires an independently specified pointer width"),
+        };
+        assert_eq!(
+            HtmlInteger::try_from_usize(usize::MAX, expected.len(), expected.len())
+                .unwrap()
+                .value
+                .as_document_string(),
+            text(expected)
+        );
+        assert_eq!(
+            HtmlInteger::try_from_usize(10, 1, 2).unwrap_err(),
+            IntegerUnitStepError::DigitLimitExceeded {
+                limit: 1,
+                required: 2,
+            }
+        );
+        assert_eq!(
+            HtmlInteger::try_from_usize(0, 1, 0).unwrap_err(),
+            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                limit: 0,
+                required: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn integer_reserve_boundaries_reject_representation_and_observed_overshoot() {
+        // Exercise the real private post-reserve boundary with independently
+        // supplied observed capacities, without replacing the allocator/provider.
+        assert_eq!(check_integer_actual_capacity(3, 3, 3), Ok(()));
+        assert_eq!(check_integer_actual_capacity(3, 4, 4), Ok(()));
+        assert_eq!(
+            check_integer_actual_capacity(3, 4, 3),
+            Err(IntegerUnitStepError::ActualCapacityLimitExceeded {
+                limit: 3,
+                requested: 3,
+                capacity_bytes: 4,
+            })
+        );
+        assert_eq!(
+            check_integer_digit_capacity(isize::MAX as usize + 1, usize::MAX, usize::MAX),
+            Err(IntegerUnitStepError::RepresentationExhausted)
+        );
+        assert_eq!(
+            check_integer_digit_capacity(isize::MAX as usize, usize::MAX, usize::MAX),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn fallible_recovery_preserves_signed_prefixes_and_exact_utf16_boundaries() {
+        // HTML 877d §2.3.4.1 permits ASCII whitespace/plus and ignores the
+        // suffix after the first digit run; no author-conformance claim follows.
+        for (input, expected) in [
+            ("0", "0"),
+            ("\t\n\u{c}\r +00012suffix", "12"),
+            ("-000", "0"),
+            (" -0010.2", "-10"),
+            (
+                "340282366920938463463374607431768211456tail",
+                "340282366920938463463374607431768211456",
+            ),
+            (
+                "-9999999999999999999999999999999999999999!",
+                "-9999999999999999999999999999999999999999",
+            ),
+        ] {
+            let raw = text(input);
+            let recovered = try_parse_integer(&raw, 100, 100).unwrap();
+            assert_eq!(recovered.value.as_document_string(), text(expected));
+            assert_eq!(
+                recovered.capacity_bytes,
+                recovered.value.magnitude.digits.capacity()
+            );
+            assert!(recovered.capacity_bytes >= recovered.value.magnitude.decimal_digits().len());
+            assert_eq!(recovered.value, parse_integer(&raw).unwrap());
+        }
+        let raw = DocumentString::from_utf16(vec![b'1' as u16, 0xd800, b'2' as u16]);
+        assert_eq!(try_parse_integer(&raw, 1, 1).unwrap().value.to_i64(), Ok(1));
+        assert_eq!(raw.code_units(), &[b'1' as u16, 0xd800, b'2' as u16]);
+    }
+
+    #[test]
+    fn fallible_recovery_distinguishes_rejection_from_canonical_allocation_limits() {
+        for input in ["", " \t", "+", "-", "+ 1", "--1", "\u{a0}1", "١", "x1"] {
+            assert_eq!(
+                try_parse_integer(&text(input), 0, 0).unwrap_err(),
+                IntegerRecoveryError::Syntax(NumericParseError::InvalidSyntax)
+            );
+        }
+        let raw = text(" -000123suffix");
+        assert_eq!(
+            try_parse_integer(&raw, 3, 3).unwrap().value.to_i64(),
+            Ok(-123)
+        );
+        assert_eq!(
+            try_parse_integer(&raw, 2, 3).unwrap_err(),
+            IntegerRecoveryError::Allocation(IntegerUnitStepError::DigitLimitExceeded {
+                limit: 2,
+                required: 3,
+            })
+        );
+        assert_eq!(
+            try_parse_integer(&raw, 3, 2).unwrap_err(),
+            IntegerRecoveryError::Allocation(
+                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                    limit: 2,
+                    required: 3,
+                }
+            )
+        );
+        assert_eq!(
+            try_parse_integer(&text("-00000"), 1, 1)
+                .unwrap()
+                .value
+                .to_i64(),
+            Ok(0)
+        );
+        assert_eq!(
+            try_parse_integer(&text("-00000"), 0, 1).unwrap_err(),
+            IntegerRecoveryError::Allocation(IntegerUnitStepError::DigitLimitExceeded {
+                limit: 0,
+                required: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn capped_nonnegative_recovery_clamps_exact_values_without_machine_overflow() {
+        // Source-specific span defaults remain with the table owner. The numeric
+        // contract is just §2.3.4.2 recovery followed by a bounded projection.
+        for (input, cap, expected) in [
+            ("0", 1000, 0),
+            ("0001", 1000, 1),
+            ("  +0999tail", 1000, 999),
+            ("1000", 1000, 1000),
+            ("1001", 1000, 1000),
+            ("65535", 65534, 65534),
+            ("-000tail", 0, 0),
+            ("42", 0, 0),
+            (
+                "99999999999999999999999999999999999999999999999999",
+                65534,
+                65534,
+            ),
+            (
+                "340282366920938463463374607431768211456",
+                usize::MAX,
+                usize::MAX,
+            ),
+            ("-000", usize::MAX, 0),
+        ] {
+            assert_eq!(
+                parse_nonnegative_integer_capped(&text(input), cap),
+                Ok(expected)
+            );
+        }
+        let maximum = match usize::BITS {
+            16 => "65535",
+            32 => "4294967295",
+            64 => "18446744073709551615",
+            _ => panic!("test expectation requires an independently specified pointer width"),
+        };
+        assert_eq!(
+            parse_nonnegative_integer_capped(&text(maximum), usize::MAX),
+            Ok(usize::MAX)
+        );
+    }
+
+    #[test]
+    fn capped_nonnegative_recovery_rejects_negative_nonzero_before_zero_projection() {
+        for input in [
+            "-1",
+            "-0001tail",
+            "-99999999999999999999999999999999999999999",
+        ] {
+            for cap in [0, 1, 1000, usize::MAX] {
+                assert_eq!(
+                    parse_nonnegative_integer_capped(&text(input), cap),
+                    Err(NumericParseError::Negative)
+                );
+            }
+        }
+        for input in ["", "+", " -", "- 0", "x1", "\u{a0}1"] {
+            assert_eq!(
+                parse_nonnegative_integer_capped(&text(input), 0),
+                Err(NumericParseError::InvalidSyntax)
+            );
+        }
+        let leading_surrogate = DocumentString::from_utf16(vec![0xd800, b'1' as u16]);
+        assert_eq!(
+            parse_nonnegative_integer_capped(&leading_surrogate, 1000),
+            Err(NumericParseError::InvalidSyntax)
+        );
+        let suffix_surrogate = DocumentString::from_utf16(vec![b'7' as u16, 0xdc00]);
+        assert_eq!(
+            parse_nonnegative_integer_capped(&suffix_surrogate, 1000),
+            Ok(7)
+        );
     }
 
     #[test]

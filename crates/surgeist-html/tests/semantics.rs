@@ -41,14 +41,14 @@ fn element(
     .unwrap()
 }
 fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(c, c.host_facts_revision().clone(), vec![], 0).unwrap()
+    HtmlSemanticContext::new(c, c.host_facts_revision().clone(), vec![], 0, None, None).unwrap()
 }
 fn session<'a>(c: &'a HtmlCapture, cx: &'a HtmlSemanticContext) -> HtmlSemanticSession<'a> {
     HtmlSemanticSession::new(
         c,
         cx,
         HtmlValueInterpreter::new(10000),
-        HtmlSemanticLimits::new(1000000, 100),
+        HtmlSemanticLimits::new(1000000, 100, 10000, 10000, 1000000, 100000),
         HtmlSemanticCancellation::new(),
     )
     .unwrap()
@@ -354,10 +354,18 @@ fn custom_control_participation_requires_explicit_matching_host_revision() {
         HtmlCustomControlClassification::new(c.subject_id(&no).unwrap(), false),
     ];
     assert!(matches!(
-        HtmlSemanticContext::new(&c, HtmlHostFactsRevision::fresh(), facts.clone(), 2),
+        HtmlSemanticContext::new(
+            &c,
+            HtmlHostFactsRevision::fresh(),
+            facts.clone(),
+            2,
+            None,
+            None
+        ),
         Err(HtmlSemanticContextError::HostRevisionMismatch)
     ));
-    let cx = HtmlSemanticContext::new(&c, c.host_facts_revision().clone(), facts, 2).unwrap();
+    let cx = HtmlSemanticContext::new(&c, c.host_facts_revision().clone(), facts, 2, None, None)
+        .unwrap();
     let r = session(&c, &cx)
         .query(&[&yes, &no, &unknown].map(|e| request(&c, e, HtmlSemanticQuery::Disabledness)))
         .unwrap();
@@ -391,7 +399,7 @@ fn complete_batch_limits_and_first_terminal_failure_are_sticky() {
         &c,
         &cx,
         HtmlValueInterpreter::new(10000),
-        HtmlSemanticLimits::new(exact - 1, 2),
+        HtmlSemanticLimits::new(exact - 1, 2, 10000, 10000, 1000000, 100000),
         cancel.clone(),
     )
     .unwrap();
@@ -409,7 +417,7 @@ fn complete_batch_limits_and_first_terminal_failure_are_sticky() {
         &c,
         &cx,
         HtmlValueInterpreter::new(10000),
-        HtmlSemanticLimits::new(exact, 1),
+        HtmlSemanticLimits::new(exact, 1, 10000, 10000, 1000000, 100000),
         HtmlSemanticCancellation::new(),
     )
     .unwrap();
@@ -441,7 +449,7 @@ fn cancellation_empty_batch_and_foreign_capture_fail_without_results() {
         &c,
         &cx,
         HtmlValueInterpreter::new(0),
-        HtmlSemanticLimits::new(0, 0),
+        HtmlSemanticLimits::new(0, 0, 10000, 10000, 1000000, 100000),
         cancel,
     )
     .unwrap();
@@ -457,7 +465,7 @@ fn cancellation_empty_batch_and_foreign_capture_fail_without_results() {
             &c2,
             &cx,
             HtmlValueInterpreter::new(0),
-            HtmlSemanticLimits::new(10, 1),
+            HtmlSemanticLimits::new(10, 1, 10000, 10000, 1000000, 100000),
             HtmlSemanticCancellation::new()
         ),
         Err(HtmlSemanticFailure { .. })
@@ -519,6 +527,8 @@ fn completed_results_survive_later_cancellation_and_qualify_context_changes() {
         c.host_facts_revision().clone(),
         vec![HtmlCustomControlClassification::new(id.clone(), true)],
         1,
+        None,
+        None,
     )
     .unwrap();
     let no = HtmlSemanticContext::new(
@@ -526,6 +536,8 @@ fn completed_results_survive_later_cancellation_and_qualify_context_changes() {
         c.host_facts_revision().clone(),
         vec![HtmlCustomControlClassification::new(id, false)],
         1,
+        None,
+        None,
     )
     .unwrap();
     let cancel = HtmlSemanticCancellation::new();
@@ -533,7 +545,7 @@ fn completed_results_survive_later_cancellation_and_qualify_context_changes() {
         &c,
         &yes,
         HtmlValueInterpreter::new(10),
-        HtmlSemanticLimits::new(100000, 1),
+        HtmlSemanticLimits::new(100000, 1, 10000, 10000, 1000000, 100000),
         cancel.clone(),
     )
     .unwrap();
@@ -583,7 +595,7 @@ fn late_batch_failure_publishes_no_prefix_and_intrinsic_admission_is_retained() 
         &c,
         &cx,
         HtmlValueInterpreter::new(1),
-        HtmlSemanticLimits::new(100000, 1),
+        HtmlSemanticLimits::new(100000, 1, 10000, 10000, 1000000, 100000),
         HtmlSemanticCancellation::new(),
     )
     .unwrap();
@@ -603,7 +615,14 @@ fn producer_context_rejects_duplicate_foreign_and_over_capacity_records() {
     let c = b.finish().unwrap();
     let fact = HtmlCustomControlClassification::new(c.subject_id(&e).unwrap(), true);
     assert!(matches!(
-        HtmlSemanticContext::new(&c, c.host_facts_revision().clone(), vec![fact.clone()], 0),
+        HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            vec![fact.clone()],
+            0,
+            None,
+            None
+        ),
         Err(HtmlSemanticContextError::ClassificationLimit { .. })
     ));
     assert!(matches!(
@@ -611,14 +630,24 @@ fn producer_context_rejects_duplicate_foreign_and_over_capacity_records() {
             &c,
             c.host_facts_revision().clone(),
             vec![fact.clone(), fact.clone()],
-            2
+            2,
+            None,
+            None
         ),
         Err(HtmlSemanticContextError::DuplicateSubject(_))
     ));
     let (other, _) = builder();
     let oc = other.finish().unwrap();
     assert_eq!(
-        HtmlSemanticContext::new(&oc, oc.host_facts_revision().clone(), vec![fact], 1).unwrap_err(),
+        HtmlSemanticContext::new(
+            &oc,
+            oc.host_facts_revision().clone(),
+            vec![fact],
+            1,
+            None,
+            None
+        )
+        .unwrap_err(),
         HtmlSemanticContextError::Capture(HtmlCaptureError::ForeignCapture)
     );
 }
@@ -654,6 +683,8 @@ fn retained_cancellation_identifies_exact_capture_context_host_and_configuration
         c.host_facts_revision().clone(),
         vec![HtmlCustomControlClassification::new(subject.clone(), true)],
         1,
+        None,
+        None,
     )
     .unwrap();
     let no = HtmlSemanticContext::new(
@@ -661,13 +692,25 @@ fn retained_cancellation_identifies_exact_capture_context_host_and_configuration
         c.host_facts_revision().clone(),
         vec![HtmlCustomControlClassification::new(subject, false)],
         1,
+        None,
+        None,
     )
     .unwrap();
-    let limits = HtmlSemanticLimits::new(1000, 2);
+    let limits = HtmlSemanticLimits::new(1000, 2, 10000, 10000, 1000000, 100000);
     let first = cancelled_failure(&c, &yes, limits, 10);
     let changed_context = cancelled_failure(&c, &no, limits, 10);
-    let changed_work = cancelled_failure(&c, &yes, HtmlSemanticLimits::new(1001, 2), 10);
-    let changed_output = cancelled_failure(&c, &yes, HtmlSemanticLimits::new(1000, 3), 10);
+    let changed_work = cancelled_failure(
+        &c,
+        &yes,
+        HtmlSemanticLimits::new(1001, 2, 10000, 10000, 1000000, 100000),
+        10,
+    );
+    let changed_output = cancelled_failure(
+        &c,
+        &yes,
+        HtmlSemanticLimits::new(1000, 3, 10000, 10000, 1000000, 100000),
+        10,
+    );
     let changed_attribute_limit = cancelled_failure(&c, &yes, limits, 11);
     let key = first.qualification().unwrap();
     assert_eq!(key.capture(), c.identity());
@@ -754,7 +797,7 @@ fn successful_batch_and_sticky_limit_failure_share_original_qualification() {
     let e = element(&mut b, &d, "div", &[]);
     let c = b.finish().unwrap();
     let cx = context(&c);
-    let limits = HtmlSemanticLimits::new(100000, 1);
+    let limits = HtmlSemanticLimits::new(100000, 1, 10000, 10000, 1000000, 100000);
     let cancellation = HtmlSemanticCancellation::new();
     let mut s = HtmlSemanticSession::new(
         &c,
@@ -808,12 +851,12 @@ fn work_and_attribute_failures_are_qualified_but_constructor_rejection_is_not() 
     let cx = context(&c);
     for (limits, attribute_limit, expected) in [
         (
-            HtmlSemanticLimits::new(0, 1),
+            HtmlSemanticLimits::new(0, 1, 10000, 10000, 1000000, 100000),
             10,
             HtmlSemanticResource::Work,
         ),
         (
-            HtmlSemanticLimits::new(100000, 0),
+            HtmlSemanticLimits::new(100000, 0, 10000, 10000, 1000000, 100000),
             10,
             HtmlSemanticResource::OutputRecords,
         ),
@@ -838,7 +881,7 @@ fn work_and_attribute_failures_are_qualified_but_constructor_rejection_is_not() 
         assert_eq!(key.limits(), limits);
         assert_eq!(key.attribute_input_limit(), attribute_limit);
     }
-    let limits = HtmlSemanticLimits::new(100000, 1);
+    let limits = HtmlSemanticLimits::new(100000, 1, 10000, 10000, 1000000, 100000);
     let mut s = HtmlSemanticSession::new(
         &c,
         &cx,
@@ -873,4 +916,843 @@ fn work_and_attribute_failures_are_qualified_but_constructor_rejection_is_not() 
         &HtmlSemanticFailureKind::ContextCaptureMismatch
     );
     assert!(rejected.qualification().is_none());
+}
+
+fn participation_revision() -> HtmlListParticipationRevision {
+    HtmlListParticipationRevision::new(
+        HtmlParticipationProducerId::fresh(),
+        3,
+        17,
+        HtmlParticipationProducerId::fresh(),
+        5,
+        29,
+    )
+}
+fn list_context(
+    c: &HtmlCapture,
+    revision: HtmlListParticipationRevision,
+    facts: Vec<HtmlListParticipationFact>,
+) -> HtmlSemanticContext {
+    let cap = facts.capacity();
+    let participation = HtmlListParticipation::new(c, revision.clone(), facts, cap).unwrap();
+    HtmlSemanticContext::new(
+        c,
+        c.host_facts_revision().clone(),
+        vec![],
+        0,
+        Some(revision),
+        Some(participation),
+    )
+    .unwrap()
+}
+fn list_fact(
+    c: &HtmlCapture,
+    e: &HtmlCaptureBuilderSubject,
+    item: bool,
+    rendered: bool,
+    css: bool,
+) -> HtmlListParticipationFact {
+    HtmlListParticipationFact::new(
+        c.subject_id(e).unwrap(),
+        Some(item),
+        Some(rendered),
+        Some(css),
+    )
+}
+fn list_fixture(
+    local: &str,
+    attrs: &[(&str, &str)],
+    specs: &[(&str, Option<&str>)],
+) -> (
+    HtmlCapture,
+    HtmlCaptureBuilderSubject,
+    Vec<HtmlCaptureBuilderSubject>,
+) {
+    let (mut b, d) = builder();
+    let owner = element(&mut b, &d, local, attrs);
+    b.establish_root(&owner).unwrap();
+    let mut items = Vec::new();
+    for (local, value) in specs {
+        let attrs = value
+            .map(|value| vec![("value", value)])
+            .unwrap_or_default();
+        let item = element(&mut b, &d, local, &attrs);
+        b.establish_children(&item, &[]).unwrap();
+        items.push(item);
+    }
+    b.establish_children(&owner, &items).unwrap();
+    (b.finish().unwrap(), owner, items)
+}
+fn complete_list_context(
+    c: &HtmlCapture,
+    owner: &HtmlCaptureBuilderSubject,
+    items: &[HtmlCaptureBuilderSubject],
+) -> HtmlSemanticContext {
+    let facts = std::iter::once(list_fact(c, owner, false, true, true))
+        .chain(items.iter().map(|e| list_fact(c, e, true, true, true)))
+        .collect();
+    list_context(c, participation_revision(), facts)
+}
+fn assert_ordinals(
+    c: &HtmlCapture,
+    cx: &HtmlSemanticContext,
+    items: &[HtmlCaptureBuilderSubject],
+    expected: &[&str],
+) {
+    let requests: Vec<_> = items
+        .iter()
+        .map(|e| request(c, e, HtmlSemanticQuery::ListOrdinal))
+        .collect();
+    let report = session(c, cx).query(&requests).unwrap();
+    assert_eq!(report.results().len(), expected.len());
+    for (result, expected) in report.results().iter().zip(expected) {
+        let HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Known(Some(value))) = result.fact()
+        else {
+            panic!("unexpected ordinal: {:?}", result.fact());
+        };
+        assert_eq!(value.as_document_string(), DocumentString::from(*expected));
+    }
+}
+
+#[test]
+fn source_list_ordinals_include_value_reset_for_general_owners() {
+    let (c, owner, items) =
+        list_fixture("ol", &[], &[("li", None), ("li", Some("3")), ("li", None)]);
+    assert_ordinals(
+        &c,
+        &complete_list_context(&c, &owner, &items),
+        &items,
+        &["1", "3", "4"],
+    );
+    // The selected ordinal algorithm's value-reset step applies to HTML li
+    // even when the source owner is not ol.
+    let (c, owner, items) = list_fixture(
+        "div",
+        &[],
+        &[("li", None), ("li", Some("-2")), ("div", None)],
+    );
+    assert_ordinals(
+        &c,
+        &complete_list_context(&c, &owner, &items),
+        &items,
+        &["1", "-2", "-1"],
+    );
+}
+
+#[test]
+fn list_integer_recovery_uses_exact_prefixes_signs_and_arbitrary_magnitudes() {
+    let (c, owner, items) = list_fixture(
+        "ol",
+        &[("start", " \t+9999999999999999999999999999999999999999tail")],
+        &[
+            ("li", None),
+            ("li", None),
+            ("li", Some(" \n-2suffix")),
+            ("li", Some("nope")),
+            ("LI", Some("80")),
+        ],
+    );
+    assert_ordinals(
+        &c,
+        &complete_list_context(&c, &owner, &items),
+        &items,
+        &[
+            "9999999999999999999999999999999999999999",
+            "10000000000000000000000000000000000000000",
+            "-2",
+            "-1",
+            "0",
+        ],
+    );
+    let (c, owner, items) = list_fixture(
+        "ol",
+        &[
+            ("start", "-9999999999999999999999999999999999999999"),
+            ("reversed", "false"),
+        ],
+        &[("li", None), ("li", None)],
+    );
+    assert_ordinals(
+        &c,
+        &complete_list_context(&c, &owner, &items),
+        &items,
+        &[
+            "-9999999999999999999999999999999999999999",
+            "-10000000000000000000000000000000000000000",
+        ],
+    );
+}
+
+#[test]
+fn reversed_start_counts_owned_html_li_but_numbers_all_owned_items() {
+    let (c, owner, items) = list_fixture(
+        "ol",
+        &[("reversed", "")],
+        &[("li", None), ("div", None), ("li", None)],
+    );
+    let cx = complete_list_context(&c, &owner, &items);
+    assert_ordinals(&c, &cx, &items, &["2", "1", "0"]);
+    let report = session(&c, &cx)
+        .query(&[request(&c, &owner, HtmlSemanticQuery::ListStartingValue)])
+        .unwrap();
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Known(HtmlInteger::from(2i128)))
+    );
+    let (c, owner, items) = list_fixture("ol", &[("reversed", "")], &[("div", None)]);
+    assert_ordinals(
+        &c,
+        &complete_list_context(&c, &owner, &items),
+        &items,
+        &["0"],
+    );
+}
+
+#[test]
+fn known_non_items_and_unrendered_items_are_excluded_without_inferred_hidden_state() {
+    let (c, owner, items) = list_fixture(
+        "ol",
+        &[("reversed", "")],
+        &[("li", None), ("li", None), ("div", None), ("li", None)],
+    );
+    let facts = vec![
+        list_fact(&c, &owner, false, true, true),
+        list_fact(&c, &items[0], true, true, true),
+        HtmlListParticipationFact::new(c.subject_id(&items[1]).unwrap(), Some(false), None, None),
+        list_fact(&c, &items[2], true, false, false),
+        list_fact(&c, &items[3], true, true, true),
+    ];
+    let cx = list_context(&c, participation_revision(), facts);
+    let requests: Vec<_> = items
+        .iter()
+        .map(|e| request(&c, e, HtmlSemanticQuery::ListOrdinal))
+        .collect();
+    let report = session(&c, &cx).query(&requests).unwrap();
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Known(Some(HtmlInteger::from(2i128))))
+    );
+    assert_eq!(
+        report.results()[1].fact(),
+        &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Inapplicable)
+    );
+    assert_eq!(
+        report.results()[2].fact(),
+        &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Known(None))
+    );
+    assert_eq!(
+        report.results()[3].fact(),
+        &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Known(Some(HtmlInteger::from(1i128))))
+    );
+}
+
+#[test]
+fn explicit_or_ascending_start_uses_only_source_required_facts() {
+    let (mut b, d) = builder();
+    let explicit = element(&mut b, &d, "ol", &[("start", " +7tail"), ("reversed", "")]);
+    let ascending = element(&mut b, &d, "ol", &[("start", "bad")]);
+    let reversed = element(&mut b, &d, "ol", &[("start", ""), ("reversed", "")]);
+    let other = element(&mut b, &d, "ul", &[("start", "5")]);
+    let c = b.finish().unwrap();
+    let cx = context(&c);
+    let report = session(&c, &cx)
+        .query(
+            &[&explicit, &ascending, &reversed, &other]
+                .map(|e| request(&c, e, HtmlSemanticQuery::ListStartingValue)),
+        )
+        .unwrap();
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Known(HtmlInteger::from(7i128)))
+    );
+    assert_eq!(
+        report.results()[1].fact(),
+        &HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Known(HtmlInteger::from(1i128)))
+    );
+    assert_eq!(
+        report.results()[2].fact(),
+        &HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::OrderedChildren(c.subject_id(&reversed).unwrap())
+        ))
+    );
+    assert_eq!(
+        report.results()[3].fact(),
+        &HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Inapplicable)
+    );
+}
+
+#[test]
+fn nearest_list_ancestor_then_css_box_controls_boxless_and_nested_ownership() {
+    for inner_box in [false, true] {
+        let (mut b, d) = builder();
+        let outer = element(&mut b, &d, "ol", &[("reversed", "")]);
+        let first = element(&mut b, &d, "li", &[]);
+        let inner = element(&mut b, &d, "ul", &[]);
+        let wrapper = element(&mut b, &d, "div", &[]);
+        let second = element(&mut b, &d, "li", &[]);
+        let non_li = element(&mut b, &d, "div", &[]);
+        b.establish_root(&outer).unwrap();
+        b.establish_children(&outer, &[first.clone(), inner.clone(), non_li.clone()])
+            .unwrap();
+        b.establish_children(&inner, std::slice::from_ref(&wrapper))
+            .unwrap();
+        b.establish_children(&wrapper, std::slice::from_ref(&second))
+            .unwrap();
+        for leaf in [&first, &second, &non_li] {
+            b.establish_children(leaf, &[]).unwrap();
+        }
+        let c = b.finish().unwrap();
+        let cx = list_context(
+            &c,
+            participation_revision(),
+            vec![
+                list_fact(&c, &outer, false, true, true),
+                list_fact(&c, &first, true, true, true),
+                list_fact(&c, &inner, false, inner_box, inner_box),
+                list_fact(&c, &wrapper, false, true, true),
+                list_fact(&c, &second, true, true, true),
+                list_fact(&c, &non_li, true, true, true),
+            ],
+        );
+        let owner = session(&c, &cx)
+            .query(&[request(&c, &second, HtmlSemanticQuery::ListOwner)])
+            .unwrap();
+        assert_eq!(
+            owner.results()[0].fact(),
+            &HtmlSemanticFact::ListOwner(HtmlSemanticValue::Known(Some(
+                c.subject_id(if inner_box { &inner } else { &outer })
+                    .unwrap()
+            )))
+        );
+        let all = vec![first, second, non_li];
+        assert_ordinals(
+            &c,
+            &cx,
+            &all,
+            if inner_box {
+                &["1", "1", "0"]
+            } else {
+                &["2", "1", "0"]
+            },
+        );
+    }
+}
+
+#[test]
+fn foreign_computed_items_and_svg_rendering_use_supplied_css_box_ancestors() {
+    let (mut b, d) = builder();
+    let owner = element(&mut b, &d, "menu", &[]);
+    let wrapper = b
+        .add_element(
+            &d,
+            name(Namespace::svg(), "ol"),
+            attributes(&[]),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Unavailable,
+        )
+        .unwrap();
+    let item = b
+        .add_element(
+            &d,
+            name(Namespace::svg(), "li"),
+            attributes(&[("value", "99"), ("hidden", "")]),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Unavailable,
+        )
+        .unwrap();
+    b.establish_root(&owner).unwrap();
+    b.establish_children(&owner, std::slice::from_ref(&wrapper))
+        .unwrap();
+    b.establish_children(&wrapper, std::slice::from_ref(&item))
+        .unwrap();
+    b.establish_children(&item, &[]).unwrap();
+    let c = b.finish().unwrap();
+    let cx = list_context(
+        &c,
+        participation_revision(),
+        vec![
+            list_fact(&c, &owner, false, true, true),
+            list_fact(&c, &wrapper, false, true, false),
+            list_fact(&c, &item, true, true, false),
+        ],
+    );
+    assert_ordinals(&c, &cx, std::slice::from_ref(&item), &["1"]);
+    let r = session(&c, &cx)
+        .query(&[request(&c, &item, HtmlSemanticQuery::ListOwner)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListOwner(HtmlSemanticValue::Known(Some(
+            c.subject_id(&owner).unwrap()
+        )))
+    );
+}
+
+#[test]
+fn missing_participation_and_null_owner_are_distinct_and_late_coverage_is_not_partial() {
+    let (c, owner, items) = list_fixture("div", &[], &[("li", None), ("li", None)]);
+    let first = c.subject_id(&items[0]).unwrap();
+    let second = c.subject_id(&items[1]).unwrap();
+    let no_input = context(&c);
+    let r = session(&c, &no_input)
+        .query(&[request(&c, &items[0], HtmlSemanticQuery::ListOwner)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListOwner(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::ComputedListItem(first.clone())
+        ))
+    );
+    let cx = list_context(
+        &c,
+        participation_revision(),
+        vec![
+            list_fact(&c, &owner, false, true, true),
+            list_fact(&c, &items[0], true, true, true),
+            HtmlListParticipationFact::new(second.clone(), Some(true), None, None),
+        ],
+    );
+    let r = session(&c, &cx)
+        .query(&[request(&c, &items[0], HtmlSemanticQuery::ListOrdinal)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::BeingRendered(second)
+        ))
+    );
+    let cx = list_context(
+        &c,
+        participation_revision(),
+        vec![
+            list_fact(&c, &owner, false, true, false),
+            list_fact(&c, &items[0], true, true, false),
+        ],
+    );
+    let r = session(&c, &cx)
+        .query(&[request(&c, &items[0], HtmlSemanticQuery::ListOwner)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListOwner(HtmlSemanticValue::Known(None))
+    );
+}
+
+#[test]
+fn participation_input_rejects_foreign_duplicate_stale_and_contradictory_records() {
+    let (c, owner, items) = list_fixture("ol", &[], &[("li", None)]);
+    let revision = participation_revision();
+    let fact = list_fact(&c, &items[0], true, true, true);
+    assert!(matches!(
+        HtmlListParticipation::new(&c, revision.clone(), vec![fact.clone()], 0),
+        Err(HtmlSemanticContextError::ParticipationLimit { .. })
+    ));
+    assert_eq!(
+        HtmlListParticipation::new(&c, revision.clone(), vec![fact.clone(), fact.clone()], 2)
+            .unwrap_err(),
+        HtmlSemanticContextError::DuplicateSubject(c.subject_id(&items[0]).unwrap())
+    );
+    assert!(matches!(
+        HtmlListParticipation::new(
+            &c,
+            revision.clone(),
+            vec![list_fact(&c, &owner, false, false, true)],
+            1
+        ),
+        Err(HtmlSemanticContextError::ContradictoryParticipation(_))
+    ));
+    let (other, _, _) = list_fixture("ol", &[], &[]);
+    assert!(matches!(
+        HtmlListParticipation::new(&other, revision.clone(), vec![fact], 1),
+        Err(HtmlSemanticContextError::Capture(
+            HtmlCaptureError::ForeignCapture
+        ))
+    ));
+    let input = HtmlListParticipation::new(&c, revision.clone(), vec![], 0).unwrap();
+    assert_eq!(
+        HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            vec![],
+            0,
+            Some(participation_revision()),
+            Some(input)
+        )
+        .unwrap_err(),
+        HtmlSemanticContextError::ParticipationRevisionMismatch
+    );
+    let input = HtmlListParticipation::new(&other, revision.clone(), vec![], 0).unwrap();
+    assert_eq!(
+        HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            vec![],
+            0,
+            Some(revision),
+            Some(input)
+        )
+        .unwrap_err(),
+        HtmlSemanticContextError::ParticipationCaptureMismatch
+    );
+}
+
+#[test]
+fn participation_keys_qualify_results_and_sticky_failures_across_producer_changes() {
+    let (c, owner, items) = list_fixture("ol", &[], &[("li", None)]);
+    let base = participation_revision();
+    let changed = [
+        HtmlListParticipationRevision::new(
+            HtmlParticipationProducerId::fresh(),
+            3,
+            17,
+            base.box_producer().clone(),
+            5,
+            29,
+        ),
+        HtmlListParticipationRevision::new(
+            base.style_producer().clone(),
+            4,
+            17,
+            base.box_producer().clone(),
+            5,
+            29,
+        ),
+        HtmlListParticipationRevision::new(
+            base.style_producer().clone(),
+            3,
+            18,
+            base.box_producer().clone(),
+            5,
+            29,
+        ),
+        HtmlListParticipationRevision::new(
+            base.style_producer().clone(),
+            3,
+            17,
+            HtmlParticipationProducerId::fresh(),
+            5,
+            29,
+        ),
+        HtmlListParticipationRevision::new(
+            base.style_producer().clone(),
+            3,
+            17,
+            base.box_producer().clone(),
+            6,
+            29,
+        ),
+        HtmlListParticipationRevision::new(
+            base.style_producer().clone(),
+            3,
+            17,
+            base.box_producer().clone(),
+            5,
+            30,
+        ),
+    ];
+    let cx = list_context(
+        &c,
+        base.clone(),
+        vec![
+            list_fact(&c, &owner, false, true, true),
+            list_fact(&c, &items[0], true, true, true),
+        ],
+    );
+    let requested = request(&c, &items[0], HtmlSemanticQuery::ListOrdinal);
+    let report = session(&c, &cx)
+        .query(std::slice::from_ref(&requested))
+        .unwrap();
+    assert_eq!(report.qualification().participation_revision(), Some(&base));
+    for key in changed {
+        let cx2 = list_context(
+            &c,
+            key.clone(),
+            vec![
+                list_fact(&c, &owner, false, true, true),
+                list_fact(&c, &items[0], true, true, true),
+            ],
+        );
+        let cancel = HtmlSemanticCancellation::new();
+        cancel.cancel();
+        let mut query = HtmlSemanticSession::new(
+            &c,
+            &cx2,
+            HtmlValueInterpreter::new(10000),
+            HtmlSemanticLimits::new(1000000, 100, 10000, 10000, 1000000, 100000),
+            cancel,
+        )
+        .unwrap();
+        let failure = query.query(std::slice::from_ref(&requested)).unwrap_err();
+        assert_eq!(
+            failure.qualification().unwrap().participation_revision(),
+            Some(&key)
+        );
+        assert_ne!(failure.qualification().unwrap(), report.qualification());
+        assert_eq!(query.query(&[]).unwrap_err(), failure);
+    }
+}
+
+#[test]
+fn exact_list_resource_admission_and_late_failure_leave_no_scratch_or_result_prefix() {
+    let (c, owner, items) = list_fixture("ol", &[("start", "99")], &[("li", None), ("li", None)]);
+    let cx = complete_list_context(&c, &owner, &items);
+    let requests: Vec<_> = items
+        .iter()
+        .map(|e| request(&c, e, HtmlSemanticQuery::ListOrdinal))
+        .collect();
+    let baseline = session(&c, &cx).query(&requests).unwrap();
+    let usage = baseline.usage();
+    assert_eq!(usage.scratch_records(), 0);
+    assert!(usage.peak_scratch_records() >= 3);
+    assert!(usage.allocated_bytes() > 0);
+    let exact = HtmlSemanticLimits::new(
+        usage.work(),
+        usage.output_records(),
+        usage.peak_scratch_records(),
+        3,
+        usage.allocated_bytes(),
+        0,
+    );
+    let mut query = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(10000),
+        exact,
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let report = query.query(&requests).unwrap();
+    assert_eq!(report.usage(), usage);
+    for (limits, resource) in [
+        (
+            HtmlSemanticLimits::new(
+                usage.work() - 1,
+                usage.output_records(),
+                usage.peak_scratch_records(),
+                3,
+                usage.allocated_bytes(),
+                0,
+            ),
+            HtmlSemanticResource::Work,
+        ),
+        (
+            HtmlSemanticLimits::new(
+                usage.work(),
+                usage.output_records(),
+                usage.peak_scratch_records() - 1,
+                3,
+                usage.allocated_bytes(),
+                0,
+            ),
+            HtmlSemanticResource::ScratchRecords,
+        ),
+        (
+            HtmlSemanticLimits::new(
+                usage.work(),
+                usage.output_records(),
+                usage.peak_scratch_records(),
+                2,
+                usage.allocated_bytes(),
+                0,
+            ),
+            HtmlSemanticResource::IntegerDigits,
+        ),
+        (
+            HtmlSemanticLimits::new(
+                usage.work(),
+                usage.output_records(),
+                usage.peak_scratch_records(),
+                3,
+                usage.allocated_bytes() - 1,
+                0,
+            ),
+            HtmlSemanticResource::AllocatedBytes,
+        ),
+    ] {
+        let cancellation = HtmlSemanticCancellation::new();
+        let mut query = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(10000),
+            limits,
+            cancellation.clone(),
+        )
+        .unwrap();
+        let failure = query.query(&requests).unwrap_err();
+        assert!(
+            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if actual == &resource)
+        );
+        assert_eq!(query.usage().scratch_records(), 0);
+        assert_eq!(
+            failure.qualification().unwrap().participation_revision(),
+            cx.participation_revision()
+        );
+        cancellation.cancel();
+        assert_eq!(query.query(&[]).unwrap_err(), failure);
+    }
+}
+
+#[test]
+fn missing_parent_and_css_box_coverage_are_required_for_owner_proof() {
+    let (mut b, d) = builder();
+    let wrapper = element(&mut b, &d, "div", &[]);
+    let item = element(&mut b, &d, "li", &[]);
+    b.establish_children(&wrapper, std::slice::from_ref(&item))
+        .unwrap();
+    let c = b.finish().unwrap();
+    let cx = list_context(
+        &c,
+        participation_revision(),
+        vec![
+            list_fact(&c, &item, true, true, true),
+            list_fact(&c, &wrapper, false, true, true),
+        ],
+    );
+    let r = session(&c, &cx)
+        .query(&[request(&c, &item, HtmlSemanticQuery::ListOwner)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListOwner(HtmlSemanticValue::Missing(HtmlSemanticMissing::Parent(
+            c.subject_id(&wrapper).unwrap()
+        )))
+    );
+    let (c, owner, items) = list_fixture("ol", &[], &[("li", None)]);
+    let cx = list_context(
+        &c,
+        participation_revision(),
+        vec![list_fact(&c, &items[0], true, true, true)],
+    );
+    let r = session(&c, &cx)
+        .query(&[request(&c, &items[0], HtmlSemanticQuery::ListOwner)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListOwner(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::ProducesCssBox(c.subject_id(&owner).unwrap())
+        ))
+    );
+}
+
+#[test]
+fn exact_utf16_invalid_integer_recovery_and_present_empty_start_follow_fallback() {
+    let (mut b, d) = builder();
+    let owner = b
+        .add_element(
+            &d,
+            name(Namespace::html(), "ol"),
+            OrderedAttributes::new([
+                Attribute::new(
+                    name(Namespace::none(), "start"),
+                    DocumentString::from_utf16(vec![0xd800]),
+                ),
+                Attribute::new(name(Namespace::none(), "reversed"), ""),
+            ])
+            .unwrap(),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Unavailable,
+        )
+        .unwrap();
+    let item = element(&mut b, &d, "li", &[("value", "")]);
+    b.establish_root(&owner).unwrap();
+    b.establish_children(&owner, std::slice::from_ref(&item))
+        .unwrap();
+    b.establish_children(&item, &[]).unwrap();
+    let c = b.finish().unwrap();
+    let cx = complete_list_context(&c, &owner, std::slice::from_ref(&item));
+    assert_ordinals(&c, &cx, std::slice::from_ref(&item), &["1"]);
+    let HtmlCapturedNodeKind::Element(element) =
+        c.node(&c.subject_id(&owner).unwrap()).unwrap().kind()
+    else {
+        panic!("element expected")
+    };
+    assert_eq!(
+        element
+            .attributes()
+            .iter()
+            .next()
+            .unwrap()
+            .value()
+            .code_units(),
+        &[0xd800]
+    );
+}
+
+#[test]
+fn reversed_start_does_not_require_non_li_classification_or_nested_box_subtree() {
+    let (mut b, d) = builder();
+    let owner = element(&mut b, &d, "ol", &[("reversed", "")]);
+    let li = element(&mut b, &d, "li", &[]);
+    let other = element(&mut b, &d, "div", &[]);
+    let nested = element(&mut b, &d, "ul", &[]);
+    b.establish_root(&owner).unwrap();
+    b.establish_children(&owner, &[li.clone(), other.clone(), nested.clone()])
+        .unwrap();
+    b.establish_children(&li, &[]).unwrap();
+    b.establish_children(&other, &[]).unwrap();
+    // The nested list's ordered children are unavailable. Its established CSS
+    // box still proves that its descendants cannot be owned by the outer ol.
+    let c = b.finish().unwrap();
+    let cx = list_context(
+        &c,
+        participation_revision(),
+        vec![
+            list_fact(&c, &owner, false, true, true),
+            list_fact(&c, &li, true, true, true),
+            HtmlListParticipationFact::new(
+                c.subject_id(&nested).unwrap(),
+                None,
+                Some(true),
+                Some(true),
+            ),
+        ],
+    );
+    let r = session(&c, &cx)
+        .query(&[request(&c, &owner, HtmlSemanticQuery::ListStartingValue)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Known(HtmlInteger::from(1i128)))
+    );
+    // Ordinal enumeration needs possible non-li contributors as well.
+    let r = session(&c, &cx)
+        .query(&[request(&c, &li, HtmlSemanticQuery::ListOrdinal)])
+        .unwrap();
+    assert_eq!(
+        r.results()[0].fact(),
+        &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::ComputedListItem(c.subject_id(&other).unwrap())
+        ))
+    );
+}
+
+#[test]
+fn html_hidden_and_offscreen_do_not_replace_supplied_rendering_participation() {
+    let (mut b, d) = builder();
+    let owner = element(&mut b, &d, "ol", &[]);
+    let item = element(&mut b, &d, "li", &[("hidden", "")]);
+    b.establish_root(&owner).unwrap();
+    b.establish_children(&owner, std::slice::from_ref(&item))
+        .unwrap();
+    b.establish_children(&item, &[]).unwrap();
+    let c = b.finish().unwrap();
+    // A producer can establish boxes even when hidden is authored (stylesheet
+    // override), or while the box is offscreen. Neither is an exclusion input.
+    let cx = complete_list_context(&c, &owner, std::slice::from_ref(&item));
+    let report = session(&c, &cx)
+        .query(&[
+            request(&c, &item, HtmlSemanticQuery::Hidden),
+            request(&c, &item, HtmlSemanticQuery::ListOrdinal),
+        ])
+        .unwrap();
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::Hidden(HtmlSemanticValue::Known(HtmlHiddenState::Keyword(
+            HtmlHidden::Hidden
+        )))
+    );
+    assert_eq!(
+        report.results()[1].fact(),
+        &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Known(Some(HtmlInteger::from(1i128))))
+    );
 }

@@ -532,8 +532,14 @@ pub surgeist_html::HtmlSemanticContextError::Capture(surgeist_html::HtmlCaptureE
 pub surgeist_html::HtmlSemanticContextError::ClassificationLimit
 pub surgeist_html::HtmlSemanticContextError::ClassificationLimit::limit: usize
 pub surgeist_html::HtmlSemanticContextError::ClassificationLimit::retained_capacity: usize
+pub surgeist_html::HtmlSemanticContextError::ContradictoryParticipation(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticContextError::DuplicateSubject(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticContextError::HostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::ParticipationCaptureMismatch
+pub surgeist_html::HtmlSemanticContextError::ParticipationLimit
+pub surgeist_html::HtmlSemanticContextError::ParticipationLimit::limit: usize
+pub surgeist_html::HtmlSemanticContextError::ParticipationLimit::retained_capacity: usize
+pub surgeist_html::HtmlSemanticContextError::ParticipationRevisionMismatch
 impl core::error::Error for surgeist_html::HtmlSemanticContextError
 impl core::fmt::Display for surgeist_html::HtmlSemanticContextError
 pub fn surgeist_html::HtmlSemanticContextError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -542,6 +548,10 @@ pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
 pub surgeist_html::HtmlSemanticFact::Disabledness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
+pub surgeist_html::HtmlSemanticFact::ListOrdinal(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlInteger>>)
+pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
+pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
 pub enum surgeist_html::HtmlSemanticFailureKind
 pub surgeist_html::HtmlSemanticFailureKind::AllocationFailed
 pub surgeist_html::HtmlSemanticFailureKind::Attribute(surgeist_html::HtmlValueAdmissionError)
@@ -555,16 +565,27 @@ pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::required: usize
 pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::resource: surgeist_html::HtmlSemanticResource
 pub surgeist_html::HtmlSemanticFailureKind::RepresentationExhausted
 pub enum surgeist_html::HtmlSemanticMissing
+pub surgeist_html::HtmlSemanticMissing::BeingRendered(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::ComputedListItem(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::CustomControlClassification(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OrderedChildren(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::Parent(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::ProducesCssBox(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlSemanticQuery
 pub surgeist_html::HtmlSemanticQuery::Disabledness
 pub surgeist_html::HtmlSemanticQuery::Hidden
+pub surgeist_html::HtmlSemanticQuery::ListOrdinal
+pub surgeist_html::HtmlSemanticQuery::ListOwner
+pub surgeist_html::HtmlSemanticQuery::ListStartingValue
+pub surgeist_html::HtmlSemanticQuery::TableModel
 impl surgeist_html::HtmlSemanticQuery
 pub fn surgeist_html::HtmlSemanticQuery::source_clause(self) -> &'static str
 pub enum surgeist_html::HtmlSemanticResource
+pub surgeist_html::HtmlSemanticResource::AllocatedBytes
+pub surgeist_html::HtmlSemanticResource::IntegerDigits
+pub surgeist_html::HtmlSemanticResource::NestedOutputRecords
 pub surgeist_html::HtmlSemanticResource::OutputRecords
+pub surgeist_html::HtmlSemanticResource::ScratchRecords
 pub surgeist_html::HtmlSemanticResource::Work
 pub enum surgeist_html::HtmlSemanticUnsupported
 pub surgeist_html::HtmlSemanticUnsupported::ForeignNamespace
@@ -613,6 +634,19 @@ pub fn surgeist_html::HtmlSpellcheck::into_attribute(self) -> surgeist_html::Att
 pub enum surgeist_html::HtmlSpellcheckState
 pub surgeist_html::HtmlSpellcheckState::Default
 pub surgeist_html::HtmlSpellcheckState::Keyword(surgeist_html::HtmlSpellcheck)
+pub enum surgeist_html::HtmlTableCellKind
+pub surgeist_html::HtmlTableCellKind::Data
+pub surgeist_html::HtmlTableCellKind::Header
+pub enum surgeist_html::HtmlTableModelError
+pub surgeist_html::HtmlTableModelError::Overlap
+pub surgeist_html::HtmlTableModelError::Overlap::cell: surgeist_html::HtmlCaptureSubjectId
+pub surgeist_html::HtmlTableModelError::Overlap::other: surgeist_html::HtmlCaptureSubjectId
+pub surgeist_html::HtmlTableModelError::Overlap::x: usize
+pub surgeist_html::HtmlTableModelError::Overlap::y: usize
+pub surgeist_html::HtmlTableModelError::UnanchoredColumn
+pub surgeist_html::HtmlTableModelError::UnanchoredColumn::x: usize
+pub surgeist_html::HtmlTableModelError::UnanchoredRow
+pub surgeist_html::HtmlTableModelError::UnanchoredRow::y: usize
 pub enum surgeist_html::HtmlTemporalError
 pub surgeist_html::HtmlTemporalError::DayOutOfRange
 pub surgeist_html::HtmlTemporalError::HourOutOfRange
@@ -1405,6 +1439,28 @@ pub const fn surgeist_html::HtmlLegacyColor::channels(&self) -> [u8; 3]
 pub const fn surgeist_html::HtmlLegacyColor::green(&self) -> u8
 pub const fn surgeist_html::HtmlLegacyColor::new(red: u8, green: u8, blue: u8) -> Self
 pub const fn surgeist_html::HtmlLegacyColor::red(&self) -> u8
+pub struct surgeist_html::HtmlListParticipation
+impl surgeist_html::HtmlListParticipation
+pub fn surgeist_html::HtmlListParticipation::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlListParticipation::facts(&self) -> &[surgeist_html::HtmlListParticipationFact]
+pub fn surgeist_html::HtmlListParticipation::new(capture: &surgeist_html::HtmlCapture, revision: surgeist_html::HtmlListParticipationRevision, facts: alloc::vec::Vec<surgeist_html::HtmlListParticipationFact>, max_facts: usize) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
+pub fn surgeist_html::HtmlListParticipation::revision(&self) -> &surgeist_html::HtmlListParticipationRevision
+pub struct surgeist_html::HtmlListParticipationFact
+impl surgeist_html::HtmlListParticipationFact
+pub fn surgeist_html::HtmlListParticipationFact::being_rendered(&self) -> core::option::Option<bool>
+pub fn surgeist_html::HtmlListParticipationFact::computed_list_item(&self) -> core::option::Option<bool>
+pub fn surgeist_html::HtmlListParticipationFact::new(subject: surgeist_html::HtmlCaptureSubjectId, computed_list_item: core::option::Option<bool>, being_rendered: core::option::Option<bool>, produces_css_box: core::option::Option<bool>) -> Self
+pub fn surgeist_html::HtmlListParticipationFact::produces_css_box(&self) -> core::option::Option<bool>
+pub fn surgeist_html::HtmlListParticipationFact::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlListParticipationRevision
+impl surgeist_html::HtmlListParticipationRevision
+pub fn surgeist_html::HtmlListParticipationRevision::box_configuration(&self) -> u64
+pub fn surgeist_html::HtmlListParticipationRevision::box_producer(&self) -> &surgeist_html::HtmlParticipationProducerId
+pub fn surgeist_html::HtmlListParticipationRevision::box_revision(&self) -> u64
+pub fn surgeist_html::HtmlListParticipationRevision::new(style_producer: surgeist_html::HtmlParticipationProducerId, style_configuration: u64, style_revision: u64, box_producer: surgeist_html::HtmlParticipationProducerId, box_configuration: u64, box_revision: u64) -> Self
+pub fn surgeist_html::HtmlListParticipationRevision::style_configuration(&self) -> u64
+pub fn surgeist_html::HtmlListParticipationRevision::style_producer(&self) -> &surgeist_html::HtmlParticipationProducerId
+pub fn surgeist_html::HtmlListParticipationRevision::style_revision(&self) -> u64
 pub struct surgeist_html::HtmlLocalDateTime
 impl surgeist_html::HtmlLocalDateTime
 pub fn surgeist_html::HtmlLocalDateTime::date(&self) -> &surgeist_html::HtmlDate
@@ -1574,6 +1630,12 @@ pub fn surgeist_html::HtmlParsedTime::from(value: surgeist_html::HtmlTime) -> Se
 impl core::convert::TryFrom<surgeist_html::HtmlParsedTime> for surgeist_html::HtmlTime
 pub type surgeist_html::HtmlTime::Error = surgeist_html::HtmlTemporalPrecisionError
 pub fn surgeist_html::HtmlTime::try_from(value: surgeist_html::HtmlParsedTime) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlParticipationProducerId(_)
+impl surgeist_html::HtmlParticipationProducerId
+pub fn surgeist_html::HtmlParticipationProducerId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlParticipationProducerId
+impl core::cmp::PartialEq for surgeist_html::HtmlParticipationProducerId
+pub fn surgeist_html::HtmlParticipationProducerId::eq(&self, other: &Self) -> bool
 pub struct surgeist_html::HtmlProcessingInstruction
 impl surgeist_html::HtmlProcessingInstruction
 pub fn surgeist_html::HtmlProcessingInstruction::data(&self) -> &surgeist_html::DocumentString
@@ -1594,7 +1656,9 @@ pub fn surgeist_html::HtmlSemanticContext::capture(&self) -> &surgeist_html::Htm
 pub fn surgeist_html::HtmlSemanticContext::classifications(&self) -> &[surgeist_html::HtmlCustomControlClassification]
 pub fn surgeist_html::HtmlSemanticContext::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlSemanticContext::identity(&self) -> &surgeist_html::HtmlSemanticContextId
-pub fn surgeist_html::HtmlSemanticContext::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, classifications: alloc::vec::Vec<surgeist_html::HtmlCustomControlClassification>, max_classifications: usize) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
+pub fn surgeist_html::HtmlSemanticContext::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, classifications: alloc::vec::Vec<surgeist_html::HtmlCustomControlClassification>, max_classifications: usize, participation_revision: core::option::Option<surgeist_html::HtmlListParticipationRevision>, participation: core::option::Option<surgeist_html::HtmlListParticipation>) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
+pub fn surgeist_html::HtmlSemanticContext::participation(&self) -> core::option::Option<&surgeist_html::HtmlListParticipation>
+pub fn surgeist_html::HtmlSemanticContext::participation_revision(&self) -> core::option::Option<&surgeist_html::HtmlListParticipationRevision>
 pub struct surgeist_html::HtmlSemanticContextId(_)
 impl core::cmp::Eq for surgeist_html::HtmlSemanticContextId
 impl core::cmp::PartialEq for surgeist_html::HtmlSemanticContextId
@@ -1609,8 +1673,12 @@ impl core::fmt::Display for surgeist_html::HtmlSemanticFailure
 pub fn surgeist_html::HtmlSemanticFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlSemanticLimits
 impl surgeist_html::HtmlSemanticLimits
-pub fn surgeist_html::HtmlSemanticLimits::new(work: usize, output_records: usize) -> Self
+pub fn surgeist_html::HtmlSemanticLimits::allocated_bytes(self) -> usize
+pub fn surgeist_html::HtmlSemanticLimits::integer_digits(self) -> usize
+pub fn surgeist_html::HtmlSemanticLimits::nested_output_records(self) -> usize
+pub fn surgeist_html::HtmlSemanticLimits::new(work: usize, output_records: usize, scratch_records: usize, integer_digits: usize, allocated_bytes: usize, nested_output_records: usize) -> Self
 pub fn surgeist_html::HtmlSemanticLimits::output_records(self) -> usize
+pub fn surgeist_html::HtmlSemanticLimits::scratch_records(self) -> usize
 pub fn surgeist_html::HtmlSemanticLimits::work(self) -> usize
 pub struct surgeist_html::HtmlSemanticQualification
 impl surgeist_html::HtmlSemanticQualification
@@ -1619,6 +1687,7 @@ pub fn surgeist_html::HtmlSemanticQualification::capture(&self) -> &surgeist_htm
 pub fn surgeist_html::HtmlSemanticQualification::context(&self) -> &surgeist_html::HtmlSemanticContextId
 pub fn surgeist_html::HtmlSemanticQualification::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlSemanticQualification::limits(&self) -> surgeist_html::HtmlSemanticLimits
+pub fn surgeist_html::HtmlSemanticQualification::participation_revision(&self) -> core::option::Option<&surgeist_html::HtmlListParticipationRevision>
 pub fn surgeist_html::HtmlSemanticQualification::source_revision(&self) -> &'static str
 pub struct surgeist_html::HtmlSemanticReport
 impl surgeist_html::HtmlSemanticReport
@@ -1649,7 +1718,11 @@ pub fn surgeist_html::HtmlSemanticSession<'a>::query(&mut self, requests: &[surg
 pub fn surgeist_html::HtmlSemanticSession<'a>::usage(&self) -> surgeist_html::HtmlSemanticUsage
 pub struct surgeist_html::HtmlSemanticUsage
 impl surgeist_html::HtmlSemanticUsage
+pub fn surgeist_html::HtmlSemanticUsage::allocated_bytes(self) -> usize
+pub fn surgeist_html::HtmlSemanticUsage::nested_output_records(self) -> usize
 pub fn surgeist_html::HtmlSemanticUsage::output_records(self) -> usize
+pub fn surgeist_html::HtmlSemanticUsage::peak_scratch_records(self) -> usize
+pub fn surgeist_html::HtmlSemanticUsage::scratch_records(self) -> usize
 pub fn surgeist_html::HtmlSemanticUsage::work(self) -> usize
 pub struct surgeist_html::HtmlShadowRootProperties
 impl surgeist_html::HtmlShadowRootProperties
@@ -1694,6 +1767,47 @@ pub struct surgeist_html::HtmlSpaceToken
 impl surgeist_html::HtmlSpaceToken
 pub fn surgeist_html::HtmlSpaceToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlTokenError>
 pub fn surgeist_html::HtmlSpaceToken::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlTableCell
+impl surgeist_html::HtmlTableCell
+pub fn surgeist_html::HtmlTableCell::height(&self) -> usize
+pub fn surgeist_html::HtmlTableCell::kind(&self) -> surgeist_html::HtmlTableCellKind
+pub fn surgeist_html::HtmlTableCell::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlTableCell::width(&self) -> usize
+pub fn surgeist_html::HtmlTableCell::x(&self) -> usize
+pub fn surgeist_html::HtmlTableCell::y(&self) -> usize
+pub struct surgeist_html::HtmlTableColumn
+impl surgeist_html::HtmlTableColumn
+pub fn surgeist_html::HtmlTableColumn::source(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub struct surgeist_html::HtmlTableColumnGroup
+impl surgeist_html::HtmlTableColumnGroup
+pub fn surgeist_html::HtmlTableColumnGroup::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlTableColumnGroup::width(&self) -> usize
+pub fn surgeist_html::HtmlTableColumnGroup::x(&self) -> usize
+pub struct surgeist_html::HtmlTableHeaderAssociation
+impl surgeist_html::HtmlTableHeaderAssociation
+pub fn surgeist_html::HtmlTableHeaderAssociation::cell(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlTableHeaderAssociation::header(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlTableModel
+impl surgeist_html::HtmlTableModel
+pub fn surgeist_html::HtmlTableModel::caption(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlTableModel::cells(&self) -> &[surgeist_html::HtmlTableCell]
+pub fn surgeist_html::HtmlTableModel::column_groups(&self) -> &[surgeist_html::HtmlTableColumnGroup]
+pub fn surgeist_html::HtmlTableModel::columns(&self) -> &[surgeist_html::HtmlTableColumn]
+pub fn surgeist_html::HtmlTableModel::errors(&self) -> &[surgeist_html::HtmlTableModelError]
+pub fn surgeist_html::HtmlTableModel::headers(&self) -> &[surgeist_html::HtmlTableHeaderAssociation]
+pub fn surgeist_html::HtmlTableModel::height(&self) -> usize
+pub fn surgeist_html::HtmlTableModel::row_groups(&self) -> &[surgeist_html::HtmlTableRowGroup]
+pub fn surgeist_html::HtmlTableModel::rows(&self) -> &[surgeist_html::HtmlTableRow]
+pub fn surgeist_html::HtmlTableModel::table(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlTableModel::width(&self) -> usize
+pub struct surgeist_html::HtmlTableRow
+impl surgeist_html::HtmlTableRow
+pub fn surgeist_html::HtmlTableRow::source(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub struct surgeist_html::HtmlTableRowGroup
+impl surgeist_html::HtmlTableRowGroup
+pub fn surgeist_html::HtmlTableRowGroup::height(&self) -> usize
+pub fn surgeist_html::HtmlTableRowGroup::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlTableRowGroup::y(&self) -> usize
 pub struct surgeist_html::HtmlTemporalPrecisionError
 impl core::error::Error for surgeist_html::HtmlTemporalPrecisionError
 impl core::fmt::Display for surgeist_html::HtmlTemporalPrecisionError

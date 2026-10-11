@@ -1,15 +1,25 @@
-//! Capture-qualified hidden state and actual disabledness, HTML 877d6146487f.
+//! Capture-qualified intrinsic semantic queries, HTML 877d6146487f.
 //!
 //! These queries implement `attr-hidden`, `concept-element-disabled`,
 //! `concept-fe-disabled`, `concept-fieldset-disabled`, `concept-option-disabled`
-//! and `option-element-nearest-ancestor-select`. They do not compute rendering,
-//! focus, inertness, validation, event dispatch or custom-element execution.
+//! and `option-element-nearest-ancestor-select`, plus `list-owner`,
+//! `concept-ol-start`, `ordinal-value` and the table model. Rendering and computed
+//! list-item classification are supplied capture-qualified facts. These queries
+//! do not compute style, layout, focus, inertness or custom-element execution.
 
+mod table;
+pub use table::*;
+
+use crate::numeric::{
+    IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
+    try_parse_integer,
+};
 use crate::{
-    Attribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId, HtmlCaptureSubjectId,
-    HtmlCapturedChildren, HtmlCapturedElement, HtmlCapturedNode, HtmlCapturedNodeKind,
-    HtmlCapturedParent, HtmlCustomControlAttributeContext, HtmlHiddenState, HtmlHostFactsRevision,
-    HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
+    Attribute, HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedChildren, HtmlCapturedElement,
+    HtmlCapturedNode, HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCustomControlAttributeContext,
+    HtmlHiddenState, HtmlHostFactsRevision, HtmlInteger, HtmlValueAdmissionError,
+    HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
 };
 use std::{
     error::Error,
@@ -52,13 +62,171 @@ impl PartialEq for HtmlSemanticContextId {
 }
 impl Eq for HtmlSemanticContextId {}
 
-/// Checked custom-control facts, shared by many queries over one capture.
+/// Abstract producer identity, independent of Style, Layout or host types.
+#[derive(Clone, Debug)]
+pub struct HtmlParticipationProducerId(Arc<()>);
+impl HtmlParticipationProducerId {
+    pub fn fresh() -> Self {
+        Self(Arc::new(()))
+    }
+}
+impl PartialEq for HtmlParticipationProducerId {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for HtmlParticipationProducerId {}
+
+/// Exact computed-classification and CSS/SVG/equivalent box-production inputs.
+/// Configuration and revision tokens are supplied by the coordinating host.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlListParticipationRevision {
+    style_producer: HtmlParticipationProducerId,
+    style_configuration: u64,
+    style_revision: u64,
+    box_producer: HtmlParticipationProducerId,
+    box_configuration: u64,
+    box_revision: u64,
+}
+impl HtmlListParticipationRevision {
+    pub fn new(
+        style_producer: HtmlParticipationProducerId,
+        style_configuration: u64,
+        style_revision: u64,
+        box_producer: HtmlParticipationProducerId,
+        box_configuration: u64,
+        box_revision: u64,
+    ) -> Self {
+        Self {
+            style_producer,
+            style_configuration,
+            style_revision,
+            box_producer,
+            box_configuration,
+            box_revision,
+        }
+    }
+    pub fn style_producer(&self) -> &HtmlParticipationProducerId {
+        &self.style_producer
+    }
+    pub fn style_configuration(&self) -> u64 {
+        self.style_configuration
+    }
+    pub fn style_revision(&self) -> u64 {
+        self.style_revision
+    }
+    pub fn box_producer(&self) -> &HtmlParticipationProducerId {
+        &self.box_producer
+    }
+    pub fn box_configuration(&self) -> u64 {
+        self.box_configuration
+    }
+    pub fn box_revision(&self) -> u64 {
+        self.box_revision
+    }
+}
+
+/// Producer-established facts. `None` is unavailable; `Some(false)` is evidence.
+/// Being rendered means associated CSS, SVG or equivalent boxes, regardless of
+/// viewport, hidden content attributes, positive geometry or marker geometry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlListParticipationFact {
+    subject: HtmlCaptureSubjectId,
+    computed_list_item: Option<bool>,
+    being_rendered: Option<bool>,
+    produces_css_box: Option<bool>,
+}
+impl HtmlListParticipationFact {
+    pub fn new(
+        subject: HtmlCaptureSubjectId,
+        computed_list_item: Option<bool>,
+        being_rendered: Option<bool>,
+        produces_css_box: Option<bool>,
+    ) -> Self {
+        Self {
+            subject,
+            computed_list_item,
+            being_rendered,
+            produces_css_box,
+        }
+    }
+    pub fn subject(&self) -> &HtmlCaptureSubjectId {
+        &self.subject
+    }
+    pub fn computed_list_item(&self) -> Option<bool> {
+        self.computed_list_item
+    }
+    pub fn being_rendered(&self) -> Option<bool> {
+        self.being_rendered
+    }
+    pub fn produces_css_box(&self) -> Option<bool> {
+        self.produces_css_box
+    }
+}
+
+/// Checked immutable participation supplement for one exact ordinary topology.
+#[derive(Debug)]
+pub struct HtmlListParticipation {
+    capture: HtmlCaptureId,
+    revision: HtmlListParticipationRevision,
+    facts: Vec<HtmlListParticipationFact>,
+}
+impl HtmlListParticipation {
+    /// Retains the supplied vector, validating membership and uniqueness under
+    /// its explicit capacity cap. No tree projection or inferred defaults.
+    pub fn new(
+        capture: &HtmlCapture,
+        revision: HtmlListParticipationRevision,
+        facts: Vec<HtmlListParticipationFact>,
+        max_facts: usize,
+    ) -> Result<Self, HtmlSemanticContextError> {
+        if facts.capacity() > max_facts {
+            return Err(HtmlSemanticContextError::ParticipationLimit {
+                limit: max_facts,
+                retained_capacity: facts.capacity(),
+            });
+        }
+        for (i, fact) in facts.iter().enumerate() {
+            capture
+                .element_id(&fact.subject)
+                .map_err(HtmlSemanticContextError::Capture)?;
+            if facts[..i].iter().any(|other| other.subject == fact.subject) {
+                return Err(HtmlSemanticContextError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
+            }
+            if fact.produces_css_box == Some(true) && fact.being_rendered == Some(false) {
+                return Err(HtmlSemanticContextError::ContradictoryParticipation(
+                    fact.subject.clone(),
+                ));
+            }
+        }
+        Ok(Self {
+            capture: capture.identity().clone(),
+            revision,
+            facts,
+        })
+    }
+    pub fn capture(&self) -> &HtmlCaptureId {
+        &self.capture
+    }
+    pub fn revision(&self) -> &HtmlListParticipationRevision {
+        &self.revision
+    }
+    pub fn facts(&self) -> &[HtmlListParticipationFact] {
+        &self.facts
+    }
+}
+
+/// Checked custom-control and optional list-participation facts for one capture.
 #[derive(Debug)]
 pub struct HtmlSemanticContext {
     identity: HtmlSemanticContextId,
     capture: HtmlCaptureId,
     host_revision: HtmlHostFactsRevision,
     classifications: Vec<HtmlCustomControlClassification>,
+    participation_revision: Option<HtmlListParticipationRevision>,
+    participation: Option<HtmlListParticipation>,
 }
 /// Rejected producer context; no query result is created.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -70,6 +238,13 @@ pub enum HtmlSemanticContextError {
         retained_capacity: usize,
     },
     DuplicateSubject(HtmlCaptureSubjectId),
+    ParticipationLimit {
+        limit: usize,
+        retained_capacity: usize,
+    },
+    ParticipationCaptureMismatch,
+    ParticipationRevisionMismatch,
+    ContradictoryParticipation(HtmlCaptureSubjectId),
 }
 impl fmt::Display for HtmlSemanticContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -86,9 +261,19 @@ impl HtmlSemanticContext {
         host_revision: HtmlHostFactsRevision,
         classifications: Vec<HtmlCustomControlClassification>,
         max_classifications: usize,
+        participation_revision: Option<HtmlListParticipationRevision>,
+        participation: Option<HtmlListParticipation>,
     ) -> Result<Self, HtmlSemanticContextError> {
         if &host_revision != capture.host_facts_revision() {
             return Err(HtmlSemanticContextError::HostRevisionMismatch);
+        }
+        if let Some(input) = &participation {
+            if input.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::ParticipationCaptureMismatch);
+            }
+            if participation_revision.as_ref() != Some(input.revision()) {
+                return Err(HtmlSemanticContextError::ParticipationRevisionMismatch);
+            }
         }
         if classifications.capacity() > max_classifications {
             return Err(HtmlSemanticContextError::ClassificationLimit {
@@ -114,6 +299,8 @@ impl HtmlSemanticContext {
             capture: capture.identity().clone(),
             host_revision,
             classifications,
+            participation_revision,
+            participation,
         })
     }
     pub fn identity(&self) -> &HtmlSemanticContextId {
@@ -128,24 +315,51 @@ impl HtmlSemanticContext {
     pub fn classifications(&self) -> &[HtmlCustomControlClassification] {
         &self.classifications
     }
+    pub fn participation_revision(&self) -> Option<&HtmlListParticipationRevision> {
+        self.participation_revision.as_ref()
+    }
+    pub fn participation(&self) -> Option<&HtmlListParticipation> {
+        self.participation.as_ref()
+    }
 }
 
 /// Finite cumulative admission for one semantic session.
 ///
 /// Work charges visits, result writes, inspected UTF-16 units and conservative
 /// inspection envelopes for the existing intrinsic producers. Output counts
-/// result records reserved across all batches, including failed batches. These
-/// are semantic-query controls, independent of capture retention and parsing.
+/// result records reserved across batches. Scratch bounds simultaneous retained
+/// temporary vector capacity; nested output counts cumulative model capacities.
+/// Allocated bytes count cumulative vector capacity growth bytes and exact
+/// integer allocation capacities, including discarded intermediate values.
+/// Integer digits bound each numeric output. Numeric scans/writes and allocator
+/// calls are finite atomic operations with cancellation polls before and after;
+/// these controls do not promise parser cancellation quanta or allocator-internal
+/// memory bounds. Capture retention and parsing have their separate controls.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticLimits {
     work: usize,
     output_records: usize,
+    scratch_records: usize,
+    integer_digits: usize,
+    allocated_bytes: usize,
+    nested_output_records: usize,
 }
 impl HtmlSemanticLimits {
-    pub fn new(work: usize, output_records: usize) -> Self {
+    pub fn new(
+        work: usize,
+        output_records: usize,
+        scratch_records: usize,
+        integer_digits: usize,
+        allocated_bytes: usize,
+        nested_output_records: usize,
+    ) -> Self {
         Self {
             work,
             output_records,
+            scratch_records,
+            integer_digits,
+            allocated_bytes,
+            nested_output_records,
         }
     }
     pub fn work(self) -> usize {
@@ -154,11 +368,27 @@ impl HtmlSemanticLimits {
     pub fn output_records(self) -> usize {
         self.output_records
     }
+    pub fn scratch_records(self) -> usize {
+        self.scratch_records
+    }
+    pub fn integer_digits(self) -> usize {
+        self.integer_digits
+    }
+    pub fn allocated_bytes(self) -> usize {
+        self.allocated_bytes
+    }
+    pub fn nested_output_records(self) -> usize {
+        self.nested_output_records
+    }
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlSemanticUsage {
     work: usize,
     output_records: usize,
+    scratch_records: usize,
+    allocated_bytes: usize,
+    peak_scratch_records: usize,
+    nested_output_records: usize,
 }
 impl HtmlSemanticUsage {
     pub fn work(self) -> usize {
@@ -166,6 +396,18 @@ impl HtmlSemanticUsage {
     }
     pub fn output_records(self) -> usize {
         self.output_records
+    }
+    pub fn scratch_records(self) -> usize {
+        self.scratch_records
+    }
+    pub fn allocated_bytes(self) -> usize {
+        self.allocated_bytes
+    }
+    pub fn peak_scratch_records(self) -> usize {
+        self.peak_scratch_records
+    }
+    pub fn nested_output_records(self) -> usize {
+        self.nested_output_records
     }
 }
 /// Caller-owned cancellation; already returned completed reports remain valid.
@@ -186,6 +428,10 @@ impl HtmlSemanticCancellation {
 pub enum HtmlSemanticQuery {
     Hidden,
     Disabledness,
+    ListOwner,
+    ListStartingValue,
+    ListOrdinal,
+    TableModel,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
@@ -195,6 +441,18 @@ impl HtmlSemanticQuery {
             }
             Self::Disabledness => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-element-disabled"
+            }
+            Self::ListOwner => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#list-owner"
+            }
+            Self::ListStartingValue => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-ol-start"
+            }
+            Self::ListOrdinal => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#ordinal-value"
+            }
+            Self::TableModel => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#table-processing-model"
             }
         }
     }
@@ -221,8 +479,11 @@ pub enum HtmlSemanticMissing {
     Parent(HtmlCaptureSubjectId),
     OrderedChildren(HtmlCaptureSubjectId),
     CustomControlClassification(HtmlCaptureSubjectId),
+    ComputedListItem(HtmlCaptureSubjectId),
+    BeingRendered(HtmlCaptureSubjectId),
+    ProducesCssBox(HtmlCaptureSubjectId),
 }
-/// This checkpoint has no foreign-language semantic implementation.
+/// Hidden and disabledness do not implement foreign-language semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticUnsupported {
     ForeignNamespace,
@@ -234,10 +495,25 @@ pub enum HtmlSemanticValue<T> {
     Missing(HtmlSemanticMissing),
     Unsupported(HtmlSemanticUnsupported),
 }
+impl<T> HtmlSemanticValue<T> {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> HtmlSemanticValue<U> {
+        match self {
+            Self::Known(value) => HtmlSemanticValue::Known(f(value)),
+            Self::Inapplicable => HtmlSemanticValue::Inapplicable,
+            Self::Missing(value) => HtmlSemanticValue::Missing(value),
+            Self::Unsupported(value) => HtmlSemanticValue::Unsupported(value),
+        }
+    }
+}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticFact {
     Hidden(HtmlSemanticValue<HtmlHiddenState>),
     Disabledness(HtmlSemanticValue<bool>),
+    ListOwner(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    ListStartingValue(HtmlSemanticValue<HtmlInteger>),
+    /// `Known(None)` is a computed list item whose source list owner is null.
+    ListOrdinal(HtmlSemanticValue<Option<HtmlInteger>>),
+    TableModel(HtmlSemanticValue<HtmlTableModel>),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticResult {
@@ -266,6 +542,7 @@ pub struct HtmlSemanticQualification {
     host_revision: HtmlHostFactsRevision,
     limits: HtmlSemanticLimits,
     attribute_input_limit: usize,
+    participation_revision: Option<HtmlListParticipationRevision>,
 }
 impl HtmlSemanticQualification {
     pub fn source_revision(&self) -> &'static str {
@@ -285,6 +562,9 @@ impl HtmlSemanticQualification {
     }
     pub fn attribute_input_limit(&self) -> usize {
         self.attribute_input_limit
+    }
+    pub fn participation_revision(&self) -> Option<&HtmlListParticipationRevision> {
+        self.participation_revision.as_ref()
     }
 }
 /// Complete ordered results, qualified by every influencing input.
@@ -330,6 +610,10 @@ impl HtmlSemanticReport {
 pub enum HtmlSemanticResource {
     Work,
     OutputRecords,
+    ScratchRecords,
+    IntegerDigits,
+    AllocatedBytes,
+    NestedOutputRecords,
 }
 /// Terminal failure returns usage and no requested result prefix.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -384,6 +668,12 @@ pub struct HtmlSemanticSession<'a> {
     usage: HtmlSemanticUsage,
     failure: Option<HtmlSemanticFailure>,
 }
+#[derive(Clone, Copy)]
+enum HtmlParticipationField {
+    ListItem,
+    Rendered,
+    CssBox,
+}
 impl<'a> HtmlSemanticSession<'a> {
     pub fn new(
         capture: &'a HtmlCapture,
@@ -413,6 +703,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 host_revision: context.host_revision.clone(),
                 limits,
                 attribute_input_limit: interpreter.max_input_code_units(),
+                participation_revision: context.participation_revision.clone(),
             }),
             usage: HtmlSemanticUsage::default(),
             failure: None,
@@ -794,6 +1085,508 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
     }
+    fn reserve_records<T>(
+        &mut self,
+        values: &mut Vec<T>,
+        additional: usize,
+        resource: HtmlSemanticResource,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.poll()?;
+        let needed = values
+            .len()
+            .checked_add(additional)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        if needed <= values.capacity() {
+            return if additional == 0 {
+                Ok(())
+            } else {
+                self.charge(1)
+            };
+        }
+        let (retained, limit) = match resource {
+            HtmlSemanticResource::ScratchRecords => {
+                (self.usage.scratch_records, self.limits.scratch_records)
+            }
+            HtmlSemanticResource::NestedOutputRecords => (
+                self.usage.nested_output_records,
+                self.limits.nested_output_records,
+            ),
+            _ => (self.usage.output_records, self.limits.output_records),
+        };
+        let growth = needed - values.capacity();
+        let required = retained
+            .checked_add(growth)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        if required > limit {
+            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
+                resource,
+                limit,
+                required,
+            }));
+        }
+        let requested_bytes = growth
+            .checked_mul(std::mem::size_of::<T>())
+            .and_then(|n| n.checked_add(self.usage.allocated_bytes))
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        if requested_bytes > self.limits.allocated_bytes {
+            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::AllocatedBytes,
+                limit: self.limits.allocated_bytes,
+                required: requested_bytes,
+            }));
+        }
+        let before = values.capacity();
+        self.charge(1)?;
+        values
+            .try_reserve_exact(needed - values.len())
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::AllocationFailed))?;
+        let actual_growth = values.capacity() - before;
+        let actual = retained
+            .checked_add(actual_growth)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        let bytes = actual_growth
+            .checked_mul(std::mem::size_of::<T>())
+            .and_then(|n| n.checked_add(self.usage.allocated_bytes))
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        self.usage.allocated_bytes = bytes;
+        match resource {
+            HtmlSemanticResource::ScratchRecords => {
+                self.usage.scratch_records = actual;
+                self.usage.peak_scratch_records = self.usage.peak_scratch_records.max(actual);
+            }
+            HtmlSemanticResource::NestedOutputRecords => self.usage.nested_output_records = actual,
+            _ => self.usage.output_records = actual,
+        }
+        if actual > limit {
+            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
+                resource,
+                limit,
+                required: actual,
+            }));
+        }
+        if bytes > self.limits.allocated_bytes {
+            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::AllocatedBytes,
+                limit: self.limits.allocated_bytes,
+                required: bytes,
+            }));
+        }
+        self.poll()
+    }
+    fn reserve_scratch<T>(
+        &mut self,
+        values: &mut Vec<T>,
+        additional: usize,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.reserve_records(values, additional, HtmlSemanticResource::ScratchRecords)
+    }
+    fn reserve_nested_output<T>(
+        &mut self,
+        values: &mut Vec<T>,
+        additional: usize,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.reserve_records(
+            values,
+            additional,
+            HtmlSemanticResource::NestedOutputRecords,
+        )
+    }
+    fn release_scratch(&mut self, capacity: usize) {
+        // Only capacities previously recorded by reserve_scratch are released.
+        // Cleanup is unconditional, including after a sticky terminal stop.
+        self.usage.scratch_records -= capacity;
+    }
+    fn numeric_budget(&mut self, digits: usize) -> Result<usize, HtmlSemanticFailure> {
+        // One bounded atomic numeric operation: scan, canonical write, and
+        // allocation. Poll immediately before and after, without claiming the
+        // parser's 256-unit cancellation quantum for String operations.
+        let work = digits
+            .checked_add(1)
+            .and_then(|n| n.checked_mul(3))
+            .and_then(|n| n.checked_add(8))
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        self.charge(work)?;
+        Ok(self
+            .limits
+            .allocated_bytes
+            .saturating_sub(self.usage.allocated_bytes))
+    }
+    fn numeric_result(
+        &mut self,
+        result: Result<IntegerUnitStepResult, IntegerUnitStepError>,
+    ) -> Result<HtmlInteger, HtmlSemanticFailure> {
+        let capacity = match &result {
+            Ok(result) => result.capacity_bytes,
+            Err(IntegerUnitStepError::ActualCapacityLimitExceeded { capacity_bytes, .. }) => {
+                *capacity_bytes
+            }
+            _ => 0,
+        };
+        self.usage.allocated_bytes = self
+            .usage
+            .allocated_bytes
+            .checked_add(capacity)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        let result = result.map_err(|error| {
+            let kind = match error {
+                IntegerUnitStepError::RepresentationExhausted => {
+                    HtmlSemanticFailureKind::RepresentationExhausted
+                }
+                IntegerUnitStepError::AllocationFailed { .. } => {
+                    HtmlSemanticFailureKind::AllocationFailed
+                }
+                IntegerUnitStepError::DigitLimitExceeded { limit, required } => {
+                    HtmlSemanticFailureKind::LimitExceeded {
+                        resource: HtmlSemanticResource::IntegerDigits,
+                        limit,
+                        required,
+                    }
+                }
+                IntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
+                    HtmlSemanticFailureKind::LimitExceeded {
+                        resource: HtmlSemanticResource::AllocatedBytes,
+                        limit: self.limits.allocated_bytes,
+                        required: self.usage.allocated_bytes.saturating_add(required),
+                    }
+                }
+                IntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
+                    HtmlSemanticFailureKind::LimitExceeded {
+                        resource: HtmlSemanticResource::AllocatedBytes,
+                        limit: self.limits.allocated_bytes,
+                        required: self.usage.allocated_bytes,
+                    }
+                }
+            };
+            self.stop(kind)
+        })?;
+        self.poll()?;
+        Ok(result.value)
+    }
+    fn integer_count(&mut self, count: usize) -> Result<HtmlInteger, HtmlSemanticFailure> {
+        let remaining = self.numeric_budget(usize::BITS as usize)?;
+        self.numeric_result(HtmlInteger::try_from_usize(
+            count,
+            self.limits.integer_digits,
+            remaining,
+        ))
+    }
+    fn step_integer(
+        &mut self,
+        value: &HtmlInteger,
+        reversed: bool,
+    ) -> Result<HtmlInteger, HtmlSemanticFailure> {
+        let remaining = self.numeric_budget(value.magnitude().decimal_digits().len())?;
+        self.numeric_result(value.try_unit_step(
+            if reversed {
+                IntegerUnitStep::Decrement
+            } else {
+                IntegerUnitStep::Increment
+            },
+            self.limits.integer_digits,
+            remaining,
+        ))
+    }
+    fn parsed_integer(
+        &mut self,
+        element: &'a HtmlCapturedElement,
+        attribute: &str,
+    ) -> Result<Option<HtmlInteger>, HtmlSemanticFailure> {
+        let Some(raw) = self.attribute(element, attribute)? else {
+            return Ok(None);
+        };
+        self.interpreter
+            .admit_attribute_raw(Some(raw.value()))
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
+        let remaining = self.numeric_budget(raw.value().len())?;
+        match try_parse_integer(raw.value(), self.limits.integer_digits, remaining) {
+            Ok(value) => self.numeric_result(Ok(value)).map(Some),
+            Err(IntegerRecoveryError::Syntax(_)) => {
+                self.poll()?;
+                Ok(None)
+            }
+            Err(IntegerRecoveryError::Allocation(error)) => {
+                self.numeric_result(Err(error)).map(Some)
+            }
+        }
+    }
+
+    fn reversed(&mut self, element: &'a HtmlCapturedElement) -> Result<bool, HtmlSemanticFailure> {
+        let raw = self.attribute(element, "reversed")?;
+        self.admit_intrinsic(element, raw, 1)?;
+        let report = self
+            .interpreter
+            .boolean_attribute(HtmlBooleanAttribute::Reversed, element.name(), raw)
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
+        report
+            .intrinsic()
+            .copied()
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
+    }
+    fn participation(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        field: HtmlParticipationField,
+    ) -> Result<Result<bool, HtmlSemanticMissing>, HtmlSemanticFailure> {
+        if let Some(input) = &self.context.participation {
+            for fact in &input.facts {
+                self.charge(1)?;
+                if &fact.subject == subject {
+                    self.charge(1)?;
+                    let value = match field {
+                        HtmlParticipationField::ListItem => fact.computed_list_item,
+                        HtmlParticipationField::Rendered => fact.being_rendered,
+                        HtmlParticipationField::CssBox => fact.produces_css_box,
+                    };
+                    if let Some(value) = value {
+                        return Ok(Ok(value));
+                    }
+                    break;
+                }
+            }
+        }
+        Ok(Err(match field {
+            HtmlParticipationField::ListItem => {
+                HtmlSemanticMissing::ComputedListItem(subject.clone())
+            }
+            HtmlParticipationField::Rendered => HtmlSemanticMissing::BeingRendered(subject.clone()),
+            HtmlParticipationField::CssBox => HtmlSemanticMissing::ProducesCssBox(subject.clone()),
+        }))
+    }
+    fn list_owner(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        match self.participation(subject, HtmlParticipationField::ListItem)? {
+            Ok(false) => return Ok(HtmlSemanticValue::Inapplicable),
+            Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+            Ok(true) => {}
+        }
+        match self.participation(subject, HtmlParticipationField::Rendered)? {
+            Ok(false) => return Ok(HtmlSemanticValue::Known(None)),
+            Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+            Ok(true) => {}
+        }
+        let node = self.node(subject)?;
+        let first = match self.parent(node)? {
+            Ok(parent) => parent,
+            Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+        };
+        let mut ancestor = first.clone();
+        let mut selected = first;
+        while let Some(id) = ancestor {
+            let node = self.node(&id)?;
+            if let HtmlCapturedNodeKind::Element(element) = node.kind()
+                && matches!(
+                    self.known(element)?,
+                    Some(KnownHtmlElement::Ol | KnownHtmlElement::Ul | KnownHtmlElement::Menu)
+                )
+            {
+                selected = Some(id);
+                break;
+            }
+            ancestor = match self.parent(node)? {
+                Ok(parent) => parent,
+                Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+            };
+        }
+        while let Some(id) = selected {
+            let node = self.node(&id)?;
+            if matches!(node.kind(), HtmlCapturedNodeKind::Element(_)) {
+                match self.participation(&id, HtmlParticipationField::CssBox)? {
+                    Ok(true) => return Ok(HtmlSemanticValue::Known(Some(id))),
+                    Ok(false) => {}
+                    Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+                }
+            }
+            selected = match self.parent(node)? {
+                Ok(parent) => parent,
+                Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+            };
+        }
+        Ok(HtmlSemanticValue::Known(None))
+    }
+    fn owned_items(
+        &mut self,
+        owner: &HtmlCaptureSubjectId,
+        html_li_only: bool,
+    ) -> Result<HtmlSemanticValue<Vec<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        let mut stack: Vec<HtmlCapturedChildIds<'a>> = Vec::new();
+        let mut items = Vec::new();
+        let outcome = (|| {
+            let node = self.node(owner)?;
+            self.charge(1)?;
+            match node.children() {
+                HtmlCapturedChildren::Complete(children) => {
+                    self.reserve_scratch(&mut stack, 1)?;
+                    stack.push(children);
+                }
+                HtmlCapturedChildren::Unavailable => {
+                    return Ok(Some(HtmlSemanticMissing::OrderedChildren(owner.clone())));
+                }
+            }
+            while !stack.is_empty() {
+                self.charge(1)?;
+                let next = stack.last_mut().and_then(Iterator::next);
+                let Some(id) = next else {
+                    stack.pop();
+                    continue;
+                };
+                let node = self.node(&id)?;
+                let mut skip_children = false;
+                if let HtmlCapturedNodeKind::Element(element) = node.kind() {
+                    let known = self.known(element)?;
+                    if !html_li_only || known == Some(KnownHtmlElement::Li) {
+                        match self.list_owner(&id)? {
+                            HtmlSemanticValue::Known(Some(candidate)) if &candidate == owner => {
+                                self.reserve_scratch(&mut items, 1)?;
+                                items.push(id.clone());
+                            }
+                            HtmlSemanticValue::Missing(missing) => {
+                                return Ok(Some(missing));
+                            }
+                            _ => {}
+                        }
+                    }
+                    // A nested HTML list that itself produces a CSS box owns
+                    // every descendant candidate selected through that list;
+                    // none can fall through to the outer owner. Its unavailable
+                    // subtree need not be consulted for this owner's items.
+                    if matches!(
+                        known,
+                        Some(KnownHtmlElement::Ol | KnownHtmlElement::Ul | KnownHtmlElement::Menu)
+                    ) {
+                        skip_children = matches!(
+                            self.participation(&id, HtmlParticipationField::CssBox)?,
+                            Ok(true)
+                        );
+                    }
+                }
+                if skip_children {
+                    continue;
+                }
+                self.charge(1)?;
+                match node.children() {
+                    HtmlCapturedChildren::Complete(children) if children.len() > 0 => {
+                        self.reserve_scratch(&mut stack, 1)?;
+                        stack.push(children);
+                    }
+                    HtmlCapturedChildren::Complete(_) => {}
+                    HtmlCapturedChildren::Unavailable => {
+                        return Ok(Some(HtmlSemanticMissing::OrderedChildren(id)));
+                    }
+                }
+            }
+            Ok(None)
+        })();
+        self.release_scratch(stack.capacity());
+        match outcome {
+            Ok(None) => Ok(HtmlSemanticValue::Known(items)),
+            Ok(Some(missing)) => {
+                self.release_scratch(items.capacity());
+                Ok(HtmlSemanticValue::Missing(missing))
+            }
+            Err(error) => {
+                self.release_scratch(items.capacity());
+                Err(error)
+            }
+        }
+    }
+    fn count_owned_li(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+    ) -> Result<HtmlInteger, HtmlSemanticFailure> {
+        let mut count = 0usize;
+        for id in items {
+            let node = self.node(id)?;
+            if let HtmlCapturedNodeKind::Element(element) = node.kind()
+                && self.known(element)? == Some(KnownHtmlElement::Li)
+            {
+                count = count
+                    .checked_add(1)
+                    .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+            }
+        }
+        self.integer_count(count)
+    }
+    fn starting_value(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+        owned: Option<&[HtmlCaptureSubjectId]>,
+    ) -> Result<HtmlSemanticValue<HtmlInteger>, HtmlSemanticFailure> {
+        if self.known(element)? != Some(KnownHtmlElement::Ol) {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        if let Some(value) = self.parsed_integer(element, "start")? {
+            return Ok(HtmlSemanticValue::Known(value));
+        }
+        if !self.reversed(element)? {
+            return self.integer_count(1).map(HtmlSemanticValue::Known);
+        }
+        if let Some(items) = owned {
+            return self.count_owned_li(items).map(HtmlSemanticValue::Known);
+        }
+        match self.owned_items(subject, true)? {
+            HtmlSemanticValue::Known(items) => {
+                let result = self.count_owned_li(&items).map(HtmlSemanticValue::Known);
+                self.release_scratch(items.capacity());
+                result
+            }
+            HtmlSemanticValue::Missing(missing) => Ok(HtmlSemanticValue::Missing(missing)),
+            HtmlSemanticValue::Inapplicable => Ok(HtmlSemanticValue::Inapplicable),
+            HtmlSemanticValue::Unsupported(unsupported) => {
+                Ok(HtmlSemanticValue::Unsupported(unsupported))
+            }
+        }
+    }
+    fn ordinal(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlInteger>>, HtmlSemanticFailure> {
+        let owner = match self.list_owner(subject)? {
+            HtmlSemanticValue::Known(Some(owner)) => owner,
+            value => return Ok(value.map(|_| None)),
+        };
+        // Complete ownership coverage is established before any ordinal is
+        // published; an unavailable later subtree cannot produce a prefix.
+        let items = match self.owned_items(&owner, false)? {
+            HtmlSemanticValue::Known(items) => items,
+            value => return Ok(value.map(|_| None)),
+        };
+        let outcome = (|| {
+            let node = self.node(&owner)?;
+            let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+                return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+            };
+            let ol = self.known(element)? == Some(KnownHtmlElement::Ol);
+            let mut numbering = if ol {
+                match self.starting_value(&owner, element, Some(&items))? {
+                    HtmlSemanticValue::Known(value) => value,
+                    value => return Ok(value.map(Some)),
+                }
+            } else {
+                self.integer_count(1)?
+            };
+            let reversed = ol && self.reversed(element)?;
+            for id in &items {
+                let node = self.node(id)?;
+                if let HtmlCapturedNodeKind::Element(element) = node.kind()
+                    && self.known(element)? == Some(KnownHtmlElement::Li)
+                    && let Some(value) = self.parsed_integer(element, "value")?
+                {
+                    numbering = value;
+                }
+                self.charge(1)?;
+                if id == subject {
+                    return Ok(HtmlSemanticValue::Known(Some(numbering)));
+                }
+                numbering = self.step_integer(&numbering, reversed)?;
+            }
+            Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
+        })();
+        self.release_scratch(items.capacity());
+        outcome
+    }
     /// Requests are retained in input order, including duplicates. Any terminal
     /// failure discards this whole batch; unavailable semantic evidence is a
     /// complete typed fact, not an interrupted query.
@@ -802,38 +1595,12 @@ impl<'a> HtmlSemanticSession<'a> {
         requests: &[HtmlSemanticRequest],
     ) -> Result<HtmlSemanticReport, HtmlSemanticFailure> {
         self.poll()?;
-        let Some(required) = self.usage.output_records.checked_add(requests.len()) else {
-            return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
-        };
-        if required > self.limits.output_records {
-            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                resource: HtmlSemanticResource::OutputRecords,
-                limit: self.limits.output_records,
-                required,
-            }));
-        }
-        self.usage.output_records = required;
         let mut results = Vec::new();
-        results
-            .try_reserve_exact(requests.len())
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::AllocationFailed))?;
-        if results.capacity() > requests.len() {
-            let Some(actual) = self
-                .usage
-                .output_records
-                .checked_add(results.capacity() - requests.len())
-            else {
-                return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
-            };
-            if actual > self.limits.output_records {
-                return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                    resource: HtmlSemanticResource::OutputRecords,
-                    limit: self.limits.output_records,
-                    required: actual,
-                }));
-            }
-            self.usage.output_records = actual;
-        }
+        self.reserve_records(
+            &mut results,
+            requests.len(),
+            HtmlSemanticResource::OutputRecords,
+        )?;
         for request in requests {
             let node = self.node(&request.subject)?;
             let fact = match node.kind() {
@@ -867,6 +1634,22 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.disabledness(&request.subject, element)?
                             })
                         }
+                        HtmlSemanticQuery::ListOwner => {
+                            HtmlSemanticFact::ListOwner(self.list_owner(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::ListStartingValue => {
+                            HtmlSemanticFact::ListStartingValue(self.starting_value(
+                                &request.subject,
+                                element,
+                                None,
+                            )?)
+                        }
+                        HtmlSemanticQuery::ListOrdinal => {
+                            HtmlSemanticFact::ListOrdinal(self.ordinal(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::TableModel => {
+                            HtmlSemanticFact::TableModel(self.table_model(&request.subject)?)
+                        }
                     }
                 }
                 _ => match request.query {
@@ -875,6 +1658,18 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Disabledness => {
                         HtmlSemanticFact::Disabledness(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ListOwner => {
+                        HtmlSemanticFact::ListOwner(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ListStartingValue => {
+                        HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ListOrdinal => {
+                        HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableModel => {
+                        HtmlSemanticFact::TableModel(HtmlSemanticValue::Inapplicable)
                     }
                 },
             };
