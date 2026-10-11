@@ -25,10 +25,13 @@ mod owner_effect;
 mod parser_resources;
 mod property_reflections;
 mod publication;
+mod query_results;
 mod readonly_extensions;
 mod rule_operations;
 mod rule_serialization;
 mod sheet_operations;
+mod sheet_replacement;
+mod state_limits;
 mod store;
 
 pub use declaration::*;
@@ -39,16 +42,18 @@ pub use identity::*;
 pub use media_operations::CssomMediaEdit;
 pub use model::*;
 pub use object_collections::*;
+pub use object_declarations::{CssomAdmission, CssomAdmissionRequest, CssomDeclarationEdit};
 pub use object_extensions::*;
 pub use object_operations::*;
 pub use objects::*;
 pub use owner_effect::*;
 pub use publication::*;
-pub use readonly_extensions::*;
-pub use rule_operations::{
-    CssomContainerCondition, CssomKeyframeIndex, CssomQueryFacts, CssomQueryMatchError,
-    CssomQueryResult, CssomQueryResultRole,
+pub use query_results::{
+    CssomQueryFacts, CssomQueryMatchError, CssomQueryResult, CssomQueryResultRole,
 };
+pub use readonly_extensions::*;
+pub use rule_operations::{CssomContainerCondition, CssomKeyframeIndex};
 pub use rule_serialization::CssomRuleFormatLimits;
 pub use sheet_operations::*;
+pub use sheet_replacement::*;
 pub use store::*;

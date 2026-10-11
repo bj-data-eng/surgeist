@@ -579,6 +579,21 @@ impl State {
     pub(crate) fn sheet(&self, id: &CssomSheetId) -> Result<&CssomSheet, CssomError> {
         lookup(&self.sheets, id, &id.owner, &self.owner)
     }
+    /// Admit stylesheet rule edits after owner/identity (or creation-ticket)
+    /// admission, preserving Security before NotAllowed exception precedence.
+    pub(crate) fn editable_sheet_rules(
+        &self,
+        id: &CssomSheetId,
+    ) -> Result<&CssomSheet, CssomError> {
+        let sheet = self.sheet(id)?;
+        if !sheet.inputs.origin_clean {
+            return Err(CssomError::Source(CssomException::Security));
+        }
+        if sheet.inputs.disallow_modification {
+            return Err(CssomError::Source(CssomException::NotAllowed));
+        }
+        Ok(sheet)
+    }
     pub(crate) fn rule(&self, id: &CssomRuleId) -> Result<&CssomRule, CssomError> {
         lookup(&self.rules, id, &id.owner, &self.owner)
     }

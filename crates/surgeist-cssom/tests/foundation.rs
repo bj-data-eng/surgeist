@@ -510,6 +510,43 @@ fn security_modification_index_namespace_and_product_guards_keep_precedence() {
 }
 
 #[test]
+fn created_sheet_deletion_admits_ticket_before_security_modification_and_index() {
+    let mut owner = new_store();
+    for (origin_clean, locked, expected) in [
+        (false, true, CssomException::Security),
+        (true, true, CssomException::NotAllowed),
+        (true, false, CssomException::IndexSize),
+    ] {
+        let mut facts =
+            CssomSheetInputs::external(version(CssomInputRole::Origin, "sheet", 1), origin_clean);
+        facts.disallow_modification = locked;
+        let mut edit = batch(&owner);
+        let ticket = edit.create_parsed_sheet("a {}", facts).unwrap();
+        assert!(matches!(
+            edit.delete_created_sheet_rule(&ticket, usize::MAX),
+            Err(CssomError::Source(actual)) if actual == expected
+        ));
+        assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
+        assert_eq!(owner.snapshot().revision().value(), 0);
+    }
+    let mut first = batch(&owner);
+    let mut facts =
+        CssomSheetInputs::external(version(CssomInputRole::Origin, "blocked-sheet", 1), false);
+    facts.disallow_modification = true;
+    let foreign_ticket = first.create_parsed_sheet("a {}", facts).unwrap();
+    let mut second = batch(&owner);
+    assert!(matches!(
+        second.delete_created_sheet_rule(&foreign_ticket, usize::MAX),
+        Err(CssomError::ForeignTicket)
+    ));
+    assert!(matches!(
+        owner.commit(second),
+        Err(CssomError::BatchAborted)
+    ));
+    assert_eq!(owner.snapshot().revision().value(), 0);
+}
+
+#[test]
 fn noops_stale_foreign_failed_and_created_then_detached_batches_publish_correctly() {
     let mut store = new_store();
     let sheet = create(&mut store, "a {}");
