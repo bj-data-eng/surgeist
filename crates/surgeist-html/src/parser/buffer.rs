@@ -21,6 +21,11 @@ impl Utf16Buffer {
         Ok(Self { units })
     }
 
+    /// Preflight actual destination ownership without copying or mutating units.
+    pub(crate) fn require_owner(&mut self, control: &mut ParseControl) -> Result<(), ParseStop> {
+        self.units.require_owner(control)
+    }
+
     pub(crate) fn units(&self) -> &[u16] {
         self.units.as_slice()
     }
@@ -151,6 +156,40 @@ mod tests {
 
     fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+
+    #[test]
+    fn destination_owner_preflight_preserves_units_and_rejects_foreign_control() {
+        let mut first = control();
+        let mut destination = Utf16Buffer::new(&mut first).unwrap();
+        destination.push_unit(0xD800, &mut first).unwrap();
+        destination.require_owner(&mut first).unwrap();
+        assert_eq!(destination.units(), [0xD800]);
+        let mut other = control();
+        assert!(destination.require_owner(&mut other).is_err());
+        assert_eq!(destination.units(), [0xD800]);
+        assert_eq!(
+            first
+                .usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            1
+        );
+        assert_eq!(
+            other
+                .usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            0
+        );
+        destination.release(&mut first).unwrap();
+        assert_eq!(
+            first
+                .usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            0
+        );
     }
 
     #[test]

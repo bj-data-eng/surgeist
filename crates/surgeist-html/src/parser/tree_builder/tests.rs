@@ -5903,7 +5903,6 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
 fn ordinary_form_control_and_template_continuations_preserve_pointer_and_original_token() {
     for (name, expected) in [
         ("input", super::head::HeadBoundary::Form),
-        ("output", super::head::HeadBoundary::Form),
         ("template", super::head::HeadBoundary::Template),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
@@ -8823,5 +8822,140 @@ fn ordinary_output_descendant_text_and_form_sibling_order_preserve_native_struct
             ),
             (html_namespace, vec![115, 112, 97, 110], vec![]),
         ]
+    );
+}
+
+struct OutputNativeObservation {
+    shape: Vec<(usize, Vec<u16>)>,
+    values: Vec<Vec<u16>>,
+    owners: Vec<bool>,
+}
+fn output_native_observation(source: HtmlSource) -> OutputNativeObservation {
+    use crate::construction::parser_session::{FormAssociationKind, OutputDefaultValueOverride};
+    let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let shape = outline(document);
+    let mut stack: Vec<_> = document.root().children().collect();
+    let mut outputs = Vec::new();
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        stack.extend(node.children());
+        if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().namespace()==&Namespace::html()
+                    && e.name().local_name().code_units()==[111,117,116,112,117,116])
+        {
+            outputs.push(id);
+        }
+    }
+    let mut values = Vec::new();
+    let mut owners = Vec::new();
+    for id in &outputs {
+        assert_eq!(
+            frozen
+                .output_state(&mut c, id)
+                .unwrap()
+                .default_value_override,
+            OutputDefaultValueOverride::Null
+        );
+        assert_eq!(
+            frozen.form_association_state(&mut c, id).unwrap().kind,
+            FormAssociationKind::Output
+        );
+        owners.push(frozen.form_association_owner(&mut c, id).unwrap().is_some());
+        let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
+        frozen.append_output_value(&mut c, id, &mut buffer).unwrap();
+        let units = buffer.units().to_vec();
+        buffer.clear(&mut c).unwrap();
+        frozen
+            .append_output_default_value(&mut c, id, &mut buffer)
+            .unwrap();
+        assert_eq!(buffer.units(), units);
+        buffer.release(&mut c).unwrap();
+        values.push(units);
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    OutputNativeObservation {
+        shape,
+        values,
+        owners,
+    }
+}
+
+#[test]
+fn ordinary_output_values_retain_utf16_and_entity_cr_in_nested_text_but_omit_data_null() {
+    let mut units: Vec<u16> = "<!doctype html><form id=f><output>A\r\nB&#13;C<span>"
+        .encode_utf16()
+        .collect();
+    units.extend_from_slice(&[0xD800, 0x20, 0xD83D, 0xDE42, 0xDC00, 0]);
+    units.extend("</span><!--ignored--><?ok ignored?></output>Z</form>".encode_utf16());
+    let observed =
+        output_native_observation(HtmlSource::utf16(crate::DocumentString::from_utf16(units)));
+    assert_eq!(
+        observed.values,
+        vec![vec![
+            65, 10, 66, 13, 67, 0xD800, 0x20, 0xD83D, 0xDE42, 0xDC00
+        ]]
+    );
+    assert_eq!(observed.owners, vec![true]);
+    assert_eq!(observed.shape[0], (0, vec![104, 116, 109, 108]));
+}
+
+#[test]
+fn ordinary_table_output_fosters_actual_container_and_restores_cell_dispatch() {
+    let observed = output_native_observation(HtmlSource::utf8(
+        "<!doctype html><table><output id=o>A<span>B</span>C</output><tr><td>D</table>E",
+    ));
+    assert_eq!(observed.values, vec![vec![65, 66, 67]]);
+    assert_eq!(observed.owners, vec![false]);
+    assert_eq!(
+        observed.shape,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "output"),
+            (3, "#A"),
+            (3, "span"),
+            (4, "#B"),
+            (3, "#C"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#D"),
+            (2, "#E"),
+        ])
+    );
+}
+
+#[test]
+fn ordinary_output_explicit_form_resolves_late_id_and_formatting_reconstruction_keeps_descendants()
+{
+    let observed = output_native_observation(HtmlSource::utf8(
+        "<!doctype html><b><output form=f>A<i>B</output>C</i></b><form id=f></form>",
+    ));
+    assert_eq!(observed.values, vec![vec![65, 66]]);
+    assert_eq!(observed.owners, vec![true]);
+    assert_eq!(
+        observed.shape,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "b"),
+            (3, "output"),
+            (4, "#A"),
+            (4, "i"),
+            (5, "#B"),
+            (3, "i"),
+            (4, "#C"),
+            (2, "form"),
+        ])
     );
 }

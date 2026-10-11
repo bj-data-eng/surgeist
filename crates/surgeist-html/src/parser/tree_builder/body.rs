@@ -397,7 +397,7 @@ impl HeadState<'_> {
         }
         for (names, boundary) in [
             (&["template"][..], HeadBoundary::Template),
-            (&["input", "output"][..], HeadBoundary::Form),
+            (&["input"][..], HeadBoundary::Form),
             (&["select", "option", "optgroup"][..], HeadBoundary::Select),
             (&["math", "svg"][..], HeadBoundary::Foreign),
         ] {

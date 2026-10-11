@@ -186,7 +186,7 @@ impl HeadState<'_> {
     ) -> Result<Option<HeadStep>, HeadError> {
         if let Some((TagKind::Start, _)) = self.kind(c)? {
             for (names, boundary) in [
-                (&["input", "output"][..], HeadBoundary::Form),
+                (&["input"][..], HeadBoundary::Form),
                 (&["select", "option", "optgroup"][..], HeadBoundary::Select),
                 (&["template"][..], HeadBoundary::Template),
                 (&["math", "svg"][..], HeadBoundary::Foreign),

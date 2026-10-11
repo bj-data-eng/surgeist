@@ -927,6 +927,19 @@ copies and scans may be quadratic; all variable work remains charged and polled.
 User interactions, value setters, API-value normalization, submission wrapping and
 public parse completion remain separate work.
 
+Ordinary output parsing now uses the same native insertion and listed form
+association operations. Fresh creation completes its actual empty reset before
+parser association and retains the null default-value override in the existing
+controlled payload registry. Current and default observations both read ordinary
+descendant Text in tree order, including nested elements; they retain actual
+arena/controller qualification and validate destination ownership before copying.
+They share the canonical ordinary traversal, charge variable visits and copies,
+and admit actual UTF-16 buffer capacity. Text merges and moves need no output
+value cache. Stops preserve any owned partial scratch and refuse observation or
+freeze; terminal cleanup performs no useful reset. General setters, nonnull
+overrides, form reset, hosted initialization and public parse completion remain
+separate work.
+
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
 the actual original tag into independently owned controlled storage, preserving

@@ -21,6 +21,8 @@ associations use that same fresh driver and controlled arena. Seven structural t
 including pending text and implied column-group, section and row creation.
 Ordinary frameset entry and its three insertion modes also use that driver.
 Ordinary textarea creation, RCDATA and raw/reset hooks now use it as well.
+Fresh ordinary output creation also completes its empty reset before association;
+null-default and current observations read actual ordinary descendant text.
 Other resettable control creation, unsupported table rows, select
 transitions, templates and foreign dispatch retain explicit unfinished
 continuations. Construction EOF is not completed stop-parsing or a public report.
@@ -250,8 +252,8 @@ The selected HTML edition governs button diagnostic-before-pop ordering,
 fieldset block recovery and object reconstruction/marker clearing. These rows
 delegate through the existing structural table modes rather than introducing
 another driver. Button, fieldset and object have no resettable initialization
-step; input, output and select remain pre-effect continuations. Textarea is
-extended below with its own resettable initialization.
+step; input and select remain pre-effect continuations. Textarea and output
+are extended below with their own resettable initialization.
 
 Surgeist-owned providers generalize the existing image association registry to
 one kind-qualified record. Borrowed source/controller/arena/name/attribute and
@@ -300,6 +302,27 @@ disposal. Terminal cleanup performs no useful reset. Repeated raw copies and
 registry scans may be quadratic and remain charged and polled. This checkpoint
 adds no user interaction, API-value normalization, hosted execution or completed
 public parse/report lifecycle.
+
+The output extension removes only the existing output Form borders in the
+ordinary body and structural table drivers. It ingests no additional html5ever
+source; the original notices and complete upstream hashes remain unchanged.
+The selected HTML edition governs fresh creation reset before association and
+current/default value observation through
+[ordinary descendant text](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-output-element).
+Fresh empty reset follows the selected
+[DOM string replace-all and replace-all operations](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md#string-replace-all):
+no children are removed or added, and no mutation record is queued.
+
+Surgeist-owned output metadata retains the actual null override in the same
+controlled registry, before canonical listed association. Active and frozen
+observations share the existing ordinary traversal and copy actual descendant
+Text into owner-qualified admitted buffers; they introduce no output value cache
+or children-change/pop reset hook. The traversal factoring preserves virtual
+removal branches and charges used by canonical form effects. Terminal stops keep
+partial scratch owned by its caller and prohibit observations/freeze until
+disposal. Repeated scans may be superlinear and stay charged and polled. This
+checkpoint adds no setters, nonnull overrides, general form reset, hosted
+initialization or completed public ingestion/report lifecycle.
 
 The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
 `mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry
