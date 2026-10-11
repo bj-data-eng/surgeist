@@ -194,8 +194,9 @@ relationships count references to other retained records.
 
 `HtmlSemanticSession` borrows one capture and a matching `HtmlSemanticContext`
 to answer hidden-state, disabledness, language, directionality, list, table,
-meter, progress, inertness, form-owner, labeled-control and current control-flag
-queries. Disabledness includes
+meter, progress, inertness, form-owner, labeled-control, current control-flag,
+editing-host, editable, isContentEditable, translation-mode, spellcheck IDL and
+computed-heading-level queries. Disabledness includes
 the fieldset’s first-legend exception and the option/optgroup/select rules;
 custom controls use the supplied form-associated classifications. Results
 distinguish known values, inapplicable subjects, missing captured facts and
@@ -233,6 +234,20 @@ distinct from unavailable slots; attributes do not substitute for current state.
 These operations observe facts and execute no form reset, activation or control
 state transition. Actual control strings remain owned by the language/direction
 supplement.
+
+`HtmlGlobalInheritanceFacts` supplies actual document design-mode states and
+per-element spellcheck default behaviors. The checked supplement joins one
+capture and host revision to its producer, configuration and revision; reports
+and admitted failures retain that qualification. Missing facts remain unavailable.
+An editing host differs from an editable descendant; isContentEditable is their
+union. HTML defines editing hosts, while editable follows the
+[selected delegated definition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline).
+Translation and spellcheck inheritance follow ordinary parent relationships.
+Computed heading levels also follow the specifically defined shadow-host path
+and bounded headingoffset recovery. These observations execute no editing
+commands, document-mode changes, translation service or per-text spellchecking.
+The spellcheck query preserves unsupported foreign-namespace inheritance as an
+explicit capability limit.
 
 Language selection preserves the exact tag and its origin, including XML
 language precedence, inheritance, explicitly unknown empty language and

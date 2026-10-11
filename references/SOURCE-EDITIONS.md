@@ -281,3 +281,20 @@ unavailable context. An own applicable `inert` attribute can establish true
 without that ancestry. Disconnection removes document modal blocking, not all
 inertness causes. This is a producer capability limit, not a new HTML flattening
 rule or a successful false result.
+
+### Bounded HTML editability and spellcheck readback
+
+For [#1134](https://github.com/bj-data-eng/surgeist/issues/1134), the
+[complete selected editing/design-mode/spellcheck sections](html-editability--877d6146487f.md)
+retain the existing HTML revision. HTML owns editing-host classification and
+spellcheck IDL readback. The delegated editable definition selects only the
+[bounded execCommand definitions](execcommand-editability--85de9ff4a981.md) at
+w3c/editing `85de9ff4a9816139d06fc2dc39d5dacdc456fddc`, complete source SHA-256
+`da222a4ea70349eba9d9036a20708f1fa63690118f6c657da3f7f06c56fa78cf`.
+An editing host is distinct from editable; isContentEditable is their union.
+Actual captured document design mode and established per-element spellcheck
+defaults are supplied facts, never inferred from scripting state or text
+preferences. Ordinary parent relations govern editability; source-defined
+heading-offset traversal separately crosses a shadow root to its captured host.
+This source selection implements no editing command, selection mutation,
+spelling service or JavaScript runtime.

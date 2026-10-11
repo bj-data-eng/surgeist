@@ -421,3 +421,13 @@ public parsing.
 Pinned [Servo selectors](https://github.com/servo/stylo/tree/64416a22f9d06d07e108176d724dd20509a8c52d/selectors) source is retained as research material under MPL-2.0. See [local attribution and license](licenses/servo-selectors/NOTICE.md). This capture adds no production dependency.
 
 The [pinned HTML language sources](references/SOURCE-EDITIONS.md#pinned-html-language-baseline) retain complete selected chapters from an immutable WHATWG HTML snapshot, with [WHATWG attribution and exact license](licenses/whatwg/NOTICE.md#pinned-html-language-snapshot--2026-10-11). The [supplemental html5ever reference](references/html5ever-parser-supplemental-contracts--d7232d746d31.md) retains bounded upstream code excerpts under the existing [MIT OR Apache-2.0 attribution](licenses/html5ever/NOTICE.md). These additions select source evidence and do not change Surgeist’s license or add a production dependency.
+
+## HTML-delegated editability material
+
+The bounded [execCommand definitions](references/execcommand-editability--85de9ff4a981.md)
+retain the original document notice and immutable w3c/editing source identity,
+with the exact [repository license declaration](licenses/w3c/editing/LICENSE.md)
+and [W3C Software and Document License](licenses/w3c/software-license-2023.txt).
+The [attribution and modification notice](licenses/w3c/NOTICE.md#html-delegated-editability-definitions)
+identifies the selected paragraphs and Markdown conversion. HTML retains its
+separate WHATWG behavioral authority; no editing-command runtime is incorporated.

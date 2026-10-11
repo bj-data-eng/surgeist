@@ -77,3 +77,16 @@ revision. No html5ever atom implementation or generation machinery is copied.
 The unchanged [upstream LICENSE](LICENSE) supplies the original copyright,
 conditions and disclaimer. Lookup data alone does not assert full tokenization
 or browser conformance.
+
+## HTML editability, design mode and spellcheck — 2026-10-11
+
+The [bounded complete-section capture](../../references/html-editability--877d6146487f.md)
+adds §§6.8.1, 6.8.2, 6.8.4 and 6.8.5 from the same immutable HTML snapshot
+`877d6146487f15b15bc8dd0e3c625063a37b456a`. Copyright © WHATWG
+(Apple, Google, Mozilla, Microsoft). The exact [upstream license](LICENSE)
+continues to cover specification prose under CC BY 4.0 and portions incorporated
+into source code under BSD 3-Clause. Changes by Surgeist on 2026-10-11:
+selected sections converted to Markdown, source links made absolute and
+script/style/MDN annotations removed without executing source scripts.
+The capture retains the complete selected algorithms and interface text; no
+editing-command runtime or spelling service is incorporated.

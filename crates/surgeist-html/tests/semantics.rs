@@ -2250,3 +2250,179 @@ fn late_inert_attribute_stop_publishes_no_completed_control_prefix() {
     assert_eq!(failure.qualification().unwrap().attribute_input_limit(), 0);
     assert_eq!(live.query(&[]).unwrap_err(), failure);
 }
+
+fn global_input(
+    c: &HtmlCapture,
+    revision: HtmlGlobalInheritanceRevision,
+) -> HtmlGlobalInheritanceFacts {
+    HtmlGlobalInheritanceFacts::new(
+        c,
+        c.host_facts_revision().clone(),
+        revision,
+        vec![],
+        vec![],
+        HtmlGlobalInheritanceLimits::new(0, 0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn aggregate_global_context_rejects_foreign_capture_and_stale_producer_key() {
+    let (b, _) = builder();
+    let c = b.finish().unwrap();
+    let (b, _) = builder();
+    let other = b.finish().unwrap();
+    let producer = HtmlGlobalInheritanceProducerId::fresh();
+    let expected = HtmlGlobalInheritanceRevision::new(producer.clone(), 4, 5);
+    let stale = HtmlGlobalInheritanceRevision::new(producer, 4, 4);
+    for (input, error) in [
+        (
+            HtmlSemanticContextInput::new(vec![]).with_global_inheritance(
+                expected.clone(),
+                Some(global_input(&other, expected.clone())),
+            ),
+            HtmlSemanticContextError::GlobalInheritanceCaptureMismatch,
+        ),
+        (
+            HtmlSemanticContextInput::new(vec![])
+                .with_global_inheritance(expected, Some(global_input(&c, stale))),
+            HtmlSemanticContextError::GlobalInheritanceRevisionMismatch,
+        ),
+    ] {
+        assert_eq!(
+            HtmlSemanticContext::new(&c, c.host_facts_revision().clone(), input, 0).unwrap_err(),
+            error
+        );
+    }
+}
+
+#[test]
+fn global_producer_keys_and_actual_document_payloads_qualify_complete_and_terminal_results() {
+    let (mut b, d) = builder();
+    let html = element(&mut b, &d, "html", &[("contenteditable", "false")]);
+    b.establish_parent(&html, &d).unwrap();
+    let c = b.finish().unwrap();
+    let producer = HtmlGlobalInheritanceProducerId::fresh();
+    let keys = [
+        HtmlGlobalInheritanceRevision::new(producer.clone(), 3, 4),
+        HtmlGlobalInheritanceRevision::new(producer.clone(), 9, 4),
+        HtmlGlobalInheritanceRevision::new(producer, 3, 5),
+        HtmlGlobalInheritanceRevision::new(HtmlGlobalInheritanceProducerId::fresh(), 3, 4),
+    ];
+    let limits = HtmlSemanticLimits::new(1000000, 100, 10000, 10000, 1000000, 100000);
+    let mut failures = Vec::new();
+    for (key, state, want) in keys
+        .iter()
+        .map(|k| (k, HtmlDesignMode::Enabled, true))
+        .chain([(&keys[0], HtmlDesignMode::Disabled, false)])
+    {
+        let facts = HtmlGlobalInheritanceFacts::new(
+            &c,
+            c.host_facts_revision().clone(),
+            key.clone(),
+            vec![HtmlDocumentDesignModeFact::new(
+                c.subject_id(&d).unwrap(),
+                state,
+            )],
+            vec![],
+            HtmlGlobalInheritanceLimits::new(1, 2),
+        )
+        .unwrap();
+        let cx = HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]).with_global_inheritance(key.clone(), Some(facts)),
+            0,
+        )
+        .unwrap();
+        let report = session(&c, &cx)
+            .query(&[
+                request(&c, &html, HtmlSemanticQuery::IsContentEditable),
+                request(&c, &html, HtmlSemanticQuery::Hidden),
+            ])
+            .unwrap();
+        assert_eq!(
+            report.results()[0].fact(),
+            &HtmlSemanticFact::IsContentEditable(HtmlSemanticValue::Known(want))
+        );
+        assert_eq!(
+            report.results()[1].fact(),
+            &HtmlSemanticFact::Hidden(HtmlSemanticValue::Known(HtmlHiddenState::NotHidden))
+        );
+        assert_eq!(
+            report.qualification().global_inheritance_revision(),
+            Some(key)
+        );
+        let failure = cancelled_failure(&c, &cx, limits, 10000);
+        assert_eq!(failure.qualification(), Some(report.qualification()));
+        assert_eq!(
+            report.qualification().editability_source().revision(),
+            "85de9ff4a9816139d06fc2dc39d5dacdc456fddc"
+        );
+        failures.push(failure);
+    }
+    for changed in &failures[1..] {
+        assert_ne!(changed.qualification(), failures[0].qualification());
+    }
+    assert_eq!(
+        failures[4]
+            .qualification()
+            .unwrap()
+            .global_inheritance_revision(),
+        failures[0]
+            .qualification()
+            .unwrap()
+            .global_inheritance_revision()
+    );
+    assert_ne!(
+        failures[4].qualification().unwrap().context(),
+        failures[0].qualification().unwrap().context()
+    );
+}
+
+#[test]
+fn expected_global_key_without_payload_keeps_old_and_explicit_queries_independent() {
+    let (mut b, d) = builder();
+    let e = element(
+        &mut b,
+        &d,
+        "div",
+        &[
+            ("contenteditable", ""),
+            ("spellcheck", "true"),
+            ("translate", "no"),
+            ("disabled", ""),
+        ],
+    );
+    let c = b.finish().unwrap();
+    let expected =
+        HtmlGlobalInheritanceRevision::new(HtmlGlobalInheritanceProducerId::fresh(), 1, 1);
+    let cx = HtmlSemanticContext::new(
+        &c,
+        c.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_global_inheritance(expected.clone(), None),
+        0,
+    )
+    .unwrap();
+    let report = session(&c, &cx)
+        .query(&[
+            request(&c, &e, HtmlSemanticQuery::Hidden),
+            request(&c, &e, HtmlSemanticQuery::IsContentEditable),
+            request(&c, &e, HtmlSemanticQuery::Spellcheck),
+            request(&c, &e, HtmlSemanticQuery::TranslationMode),
+        ])
+        .unwrap();
+    let expected_facts = [
+        HtmlSemanticFact::Hidden(HtmlSemanticValue::Known(HtmlHiddenState::NotHidden)),
+        HtmlSemanticFact::IsContentEditable(HtmlSemanticValue::Known(true)),
+        HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Known(true)),
+        HtmlSemanticFact::TranslationMode(HtmlSemanticValue::Known(HtmlTranslationMode::Disabled)),
+    ];
+    for (result, expected) in report.results().iter().zip(&expected_facts) {
+        assert_eq!(result.fact(), expected);
+    }
+    assert_eq!(
+        report.qualification().global_inheritance_revision(),
+        Some(&expected)
+    );
+}

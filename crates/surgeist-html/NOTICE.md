@@ -22,6 +22,21 @@ UAX #9 revision 52 remains an external normative citation; its report text is
 not bundled. This lookup supplies HTML directionality rather than a full
 bidirectional text-layout implementation.
 
+## Delegated editable definition
+
+The immutable editable predicate adapts the HTML-delegated definition from
+[w3c/editing](https://github.com/w3c/editing), revision
+`85de9ff4a9816139d06fc2dc39d5dacdc456fddc`. The source's original CC0 and
+contributor-agreement notice and its separately declared W3C Software and
+Document License are retained in the
+[source notice](../../licenses/w3c/NOTICE.md#html-delegated-editability-definitions),
+[repository license declaration](../../licenses/w3c/editing/LICENSE.md) and
+[complete license text](../../licenses/w3c/software-license-2023.txt).
+Surgeist adapts the definition to bounded immutable captures and explicit
+document-state facts. It does not incorporate editing-command execution.
+HTML itself remains the owner of editing-host classification, under the
+separate WHATWG attribution above.
+
 ## Adapted parser source
 
 The private, test-compiled tokenizer adapts four source files from

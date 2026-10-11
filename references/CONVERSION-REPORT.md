@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **351 source identities: 255 full documents/source witnesses, 89 partial witnesses and 7 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **352 source identities: 255 full documents/source witnesses, 90 partial witnesses and 7 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -313,3 +313,18 @@ identities, not additional Markdown renderings. Local links and the new source
 anchors are checked; historical conversion records remain unchanged. These
 checks establish provenance and publication handling rather than HTML behavior
 or whole-parser conformance.
+
+## HTML editability source selection — 2026-10-11
+
+The [HTML editability capture](html-editability--877d6146487f.md) retains complete
+§§6.8.1, 6.8.2, 6.8.4 and 6.8.5 from the existing immutable HTML snapshot.
+It adds a bounded representation of that existing source identity. The
+[delegated editable definition](execcommand-editability--85de9ff4a981.md) adds one
+partial source identity from w3c/editing revision
+`85de9ff4a9816139d06fc2dc39d5dacdc456fddc`, complete original SHA-256
+`da222a4ea70349eba9d9036a20708f1fa63690118f6c657da3f7f06c56fa78cf`.
+Original notice, exact repository license declaration and linked full W3C
+Software and Document License are retained. Selected paragraphs were converted
+with Pandoc 3.1.11.1, retaining authored unresolved Bikeshed tokens and absolute
+source links. Source scripts were not executed. Scope selects HTML-delegated
+editability only; command execution and editing UI are outside it.

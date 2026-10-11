@@ -2,9 +2,9 @@
 //!
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
-//! form owners, label targets and supplied current control flags. Computed list
-//! participation, flat-tree/modal facts and current control state are concrete
-//! capture-qualified inputs. Style, layout, focus and runtime state transitions
+//! form owners, label targets, current control flags and global inheritance.
+//! Computed list participation, flat-tree/modal facts, document design mode and
+//! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
 
 mod table;
@@ -17,6 +17,8 @@ mod inert;
 pub use inert::*;
 mod control;
 pub use control::*;
+mod inheritance;
+pub use inheritance::*;
 
 use crate::numeric::{
     IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
@@ -238,6 +240,8 @@ pub struct HtmlSemanticContextInput {
     inert_revision: Option<HtmlFlatTreeRevision>,
     inert: Option<HtmlInertFacts>,
     controls: Option<HtmlControlFacts>,
+    global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
+    global_inheritance: Option<HtmlGlobalInheritanceFacts>,
 }
 impl HtmlSemanticContextInput {
     pub fn new(classifications: Vec<HtmlCustomControlClassification>) -> Self {
@@ -249,6 +253,8 @@ impl HtmlSemanticContextInput {
             inert_revision: None,
             inert: None,
             controls: None,
+            global_inheritance_revision: None,
+            global_inheritance: None,
         }
     }
     pub fn with_list_participation(
@@ -267,6 +273,15 @@ impl HtmlSemanticContextInput {
     ) -> Self {
         self.inert_revision = Some(expected);
         self.inert = facts;
+        self
+    }
+    pub fn with_global_inheritance(
+        mut self,
+        expected: HtmlGlobalInheritanceRevision,
+        facts: Option<HtmlGlobalInheritanceFacts>,
+    ) -> Self {
+        self.global_inheritance_revision = Some(expected);
+        self.global_inheritance = facts;
         self
     }
     pub fn with_controls(mut self, facts: HtmlControlFacts) -> Self {
@@ -292,6 +307,8 @@ pub struct HtmlSemanticContext {
     inert_revision: Option<HtmlFlatTreeRevision>,
     inert: Option<HtmlInertFacts>,
     controls: Option<HtmlControlFacts>,
+    global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
+    global_inheritance: Option<HtmlGlobalInheritanceFacts>,
     empty_language: DocumentString,
 }
 /// Rejected producer context; no query result is created.
@@ -318,6 +335,9 @@ pub enum HtmlSemanticContextError {
     InertRevisionMismatch,
     ControlsCaptureMismatch,
     ControlsHostRevisionMismatch,
+    GlobalInheritanceCaptureMismatch,
+    GlobalInheritanceHostRevisionMismatch,
+    GlobalInheritanceRevisionMismatch,
     ContradictoryCustomControlAssociation(HtmlCaptureSubjectId),
     ControlsFacts(HtmlControlFactsError),
 }
@@ -349,7 +369,20 @@ impl HtmlSemanticContext {
             inert_revision,
             inert,
             controls,
+            global_inheritance_revision,
+            global_inheritance,
         } = input;
+        if let Some(facts) = &global_inheritance {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::GlobalInheritanceCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::GlobalInheritanceHostRevisionMismatch);
+            }
+            if global_inheritance_revision.as_ref() != Some(facts.revision()) {
+                return Err(HtmlSemanticContextError::GlobalInheritanceRevisionMismatch);
+            }
+        }
         if let Some(facts) = &inert {
             if facts.capture() != capture.identity() {
                 return Err(HtmlSemanticContextError::InertCaptureMismatch);
@@ -424,6 +457,8 @@ impl HtmlSemanticContext {
             inert_revision,
             inert,
             controls,
+            global_inheritance_revision,
+            global_inheritance,
             empty_language: DocumentString::default(),
         })
     }
@@ -456,6 +491,12 @@ impl HtmlSemanticContext {
     }
     pub fn controls(&self) -> Option<&HtmlControlFacts> {
         self.controls.as_ref()
+    }
+    pub fn global_inheritance_revision(&self) -> Option<&HtmlGlobalInheritanceRevision> {
+        self.global_inheritance_revision.as_ref()
+    }
+    pub fn global_inheritance(&self) -> Option<&HtmlGlobalInheritanceFacts> {
+        self.global_inheritance.as_ref()
     }
     fn empty_language(&self) -> &DocumentString {
         &self.empty_language
@@ -587,6 +628,12 @@ pub enum HtmlSemanticQuery {
     DirtyCheckednessFlag,
     OptionDirtiness,
     Indeterminateness,
+    EditingHost,
+    Editable,
+    IsContentEditable,
+    TranslationMode,
+    Spellcheck,
+    ComputedHeadingLevel,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
@@ -648,6 +695,24 @@ impl HtmlSemanticQuery {
             Self::Indeterminateness => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-input-indeterminate"
             }
+            Self::EditingHost => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#editing-host"
+            }
+            Self::Editable => {
+                "https://github.com/w3c/editing/blob/85de9ff4a9816139d06fc2dc39d5dacdc456fddc/docs/execCommand/index.html#L1053"
+            }
+            Self::IsContentEditable => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-iscontenteditable"
+            }
+            Self::TranslationMode => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-translate"
+            }
+            Self::Spellcheck => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-spellcheck"
+            }
+            Self::ComputedHeadingLevel => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-level"
+            }
         }
     }
 }
@@ -684,6 +749,8 @@ pub enum HtmlSemanticMissing {
     InertAncestry(HtmlCaptureSubjectId),
     Connectedness(HtmlCaptureSubjectId),
     ModalBlocking(HtmlCaptureSubjectId),
+    DocumentDesignMode(HtmlCaptureSubjectId),
+    SpellcheckDefault(HtmlCaptureSubjectId),
     FormAssociation(HtmlCaptureSubjectId),
     ControlState {
         subject: HtmlCaptureSubjectId,
@@ -734,6 +801,12 @@ pub enum HtmlSemanticFact {
     DirtyCheckednessFlag(HtmlSemanticValue<bool>),
     OptionDirtiness(HtmlSemanticValue<bool>),
     Indeterminateness(HtmlSemanticValue<bool>),
+    EditingHost(HtmlSemanticValue<bool>),
+    Editable(HtmlSemanticValue<bool>),
+    IsContentEditable(HtmlSemanticValue<bool>),
+    TranslationMode(HtmlSemanticValue<HtmlTranslationMode>),
+    Spellcheck(HtmlSemanticValue<bool>),
+    ComputedHeadingLevel(HtmlSemanticValue<HtmlComputedHeadingLevel>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlSemanticResult {
@@ -782,6 +855,8 @@ pub struct HtmlSemanticQualification {
     attribute_input_limit: usize,
     participation_revision: Option<HtmlListParticipationRevision>,
     directionality_source: HtmlDirectionalitySource,
+    editability_source: HtmlEditabilitySource,
+    global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     inert_revision: Option<HtmlFlatTreeRevision>,
 }
 impl HtmlSemanticQualification {
@@ -808,6 +883,12 @@ impl HtmlSemanticQualification {
     }
     pub fn inert_revision(&self) -> Option<&HtmlFlatTreeRevision> {
         self.inert_revision.as_ref()
+    }
+    pub fn global_inheritance_revision(&self) -> Option<&HtmlGlobalInheritanceRevision> {
+        self.global_inheritance_revision.as_ref()
+    }
+    pub fn editability_source(&self) -> HtmlEditabilitySource {
+        self.editability_source
     }
     pub fn directionality_source(&self) -> HtmlDirectionalitySource {
         self.directionality_source
@@ -904,8 +985,9 @@ impl fmt::Display for HtmlSemanticFailure {
 impl Error for HtmlSemanticFailure {}
 
 /// Reusable borrowed boundary for the implemented capture-qualified queries.
-/// Supplements provide current control, flat-tree and modal evidence; this
-/// session neither mutates those states nor computes their producer transitions.
+/// Supplements provide current control, document design mode, default policy,
+/// flat-tree and modal evidence; this session neither mutates those states nor
+/// computes their producer transitions.
 /// The first terminal failure is sticky and retains the original qualification.
 pub struct HtmlSemanticSession<'a> {
     capture: &'a HtmlCapture,
@@ -954,6 +1036,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 attribute_input_limit: interpreter.max_input_code_units(),
                 participation_revision: context.participation_revision.clone(),
                 inert_revision: context.inert_revision.clone(),
+                global_inheritance_revision: context.global_inheritance_revision.clone(),
+                editability_source: HtmlEditabilitySource,
                 directionality_source: HtmlDirectionalitySource {
                     unicode_version: crate::bidi::UCD_VERSION,
                     uax9_revision: crate::bidi::UAX9_REVISION,
@@ -1955,6 +2039,28 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Progress => {
                             HtmlSemanticFact::Progress(self.progress_state(element)?)
                         }
+                        HtmlSemanticQuery::EditingHost => {
+                            HtmlSemanticFact::EditingHost(self.editing_host(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::Editable => {
+                            HtmlSemanticFact::Editable(self.editable(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::IsContentEditable => {
+                            HtmlSemanticFact::IsContentEditable(
+                                self.is_content_editable(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::TranslationMode => HtmlSemanticFact::TranslationMode(
+                            self.translation_mode(&request.subject)?,
+                        ),
+                        HtmlSemanticQuery::Spellcheck => {
+                            HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::ComputedHeadingLevel => {
+                            HtmlSemanticFact::ComputedHeadingLevel(
+                                self.computed_heading_level(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::Inertness => {
                             HtmlSemanticFact::Inertness(self.inertness(&request.subject)?)
                         }
@@ -2024,6 +2130,24 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Progress => {
                         HtmlSemanticFact::Progress(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::EditingHost => {
+                        HtmlSemanticFact::EditingHost(self.editing_host(&request.subject)?)
+                    }
+                    HtmlSemanticQuery::Editable => {
+                        HtmlSemanticFact::Editable(self.editable(&request.subject)?)
+                    }
+                    HtmlSemanticQuery::IsContentEditable => {
+                        HtmlSemanticFact::IsContentEditable(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TranslationMode => {
+                        HtmlSemanticFact::TranslationMode(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::Spellcheck => {
+                        HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ComputedHeadingLevel => {
+                        HtmlSemanticFact::ComputedHeadingLevel(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::Inertness => {
                         HtmlSemanticFact::Inertness(self.inertness(&request.subject)?)

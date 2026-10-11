@@ -1413,3 +1413,20 @@ The [additional CSSWG discussion witness](../../references/additional-selectors-
 * Changes: bounded selection, readable Markdown, provenance and implementation-scope wrapper; no source algorithm is modified.
 
 The original has no pre-existing copyright statement. The bundled wrapper supplies the document-license fallback notice using the selected source edition's year, and the required “Copyright © 2023 W3C®” derivative notice. These license-prescribed notices are not transcribed upstream copyright statements. The source selection adds only the finite vocabulary required by pinned HTML; network behavior is not adopted.
+
+## HTML-delegated editability definitions
+
+The [bounded execCommand definitions](../../references/execcommand-editability--85de9ff4a981.md)
+retain selected paragraphs from [w3c/editing](https://github.com/w3c/editing) at
+`85de9ff4a9816139d06fc2dc39d5dacdc456fddc`. The original document declares
+Copyright © 2015 and CC0 1.0 / W3C Community Contributor License Agreement terms;
+its complete original notice remains in the capture. The exact repository
+[LICENSE.md](editing/LICENSE.md) separately licenses documents under the
+[W3C Software and Document License](software-license-2023.txt), retained in full.
+
+This work includes material copied from or derived from
+[execCommand](https://github.com/w3c/editing/blob/85de9ff4a9816139d06fc2dc39d5dacdc456fddc/docs/execCommand/index.html).
+Copyright © 2015 World Wide Web Consortium. Changes by Surgeist on 2026-10-11:
+bounded selection, Markdown presentation, absolute links and provenance/scope
+notes. Source algorithms were not edited. The selection covers the delegated
+editable definition, not command execution or a complete editing API.
