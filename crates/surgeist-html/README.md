@@ -428,6 +428,13 @@ These operations observe facts and execute no form reset, activation or control
 state transition. Actual control strings remain owned by the language/direction
 supplement.
 
+`LabelFormOwner` returns the actual form owner of the labeled control. No labeled
+control, a control that is not form-associated, or an established null form owner
+returns known null. Unavailable target or association evidence remains missing.
+The query reuses labeled-control targeting and form-owner resolution; a label’s
+ancestor form or authored `form` spelling does not supply this result.
+It observes one immutable capture and performs no association mutation.
+
 `FormControls` returns listed elements in the form’s ordinary tree whose actual
 form owner is that form, excluding Image Button inputs. `FormLength` counts the
 same membership without retaining a member vector. External controls participate

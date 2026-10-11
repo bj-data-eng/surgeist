@@ -2,7 +2,7 @@
 //!
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
-//! form owners, form/fieldset listed collections and form length, label targets and control labels, current control flags, global inheritance, select
+//! form owners, form/fieldset listed collections and form length, label targets, label form owners and control labels, current control flags, global inheritance, select
 //! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
@@ -665,6 +665,8 @@ pub enum HtmlSemanticQuery {
     Inertness,
     FormOwner,
     LabeledControl,
+    /// Form owner of the labeled control; this does not associate the label.
+    LabelFormOwner,
     ControlLabels,
     FormControls,
     FormLength,
@@ -817,6 +819,9 @@ impl HtmlSemanticQuery {
             }
             Self::FormOwner => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-owner"
+            }
+            Self::LabelFormOwner => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-label-form"
             }
             Self::LabeledControl => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#labeled-control"
@@ -977,6 +982,8 @@ pub enum HtmlSemanticFact {
     Inertness(HtmlSemanticValue<bool>),
     FormOwner(HtmlSemanticValue<HtmlFormOwner>),
     LabeledControl(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    /// Known(None) is established null; unavailable association remains Missing.
+    LabelFormOwner(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     /// Known(None) is the source Hidden-input null; Some(empty) is a complete empty list.
     ControlLabels(HtmlSemanticValue<Option<HtmlControlLabels>>),
     FormControls(HtmlSemanticValue<HtmlListedControlCollection>),
@@ -2413,6 +2420,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::FormOwner => {
                             HtmlSemanticFact::FormOwner(self.form_owner(&request.subject)?)
                         }
+                        HtmlSemanticQuery::LabelFormOwner => HtmlSemanticFact::LabelFormOwner(
+                            self.label_form_owner(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::LabeledControl => HtmlSemanticFact::LabeledControl(
                             self.labeled_control(&request.subject)?,
                         ),
@@ -2601,6 +2611,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::FormOwner => {
                         HtmlSemanticFact::FormOwner(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::LabelFormOwner => {
+                        HtmlSemanticFact::LabelFormOwner(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::LabeledControl => {
                         HtmlSemanticFact::LabeledControl(HtmlSemanticValue::Inapplicable)

@@ -1174,6 +1174,34 @@ impl<'a> HtmlSemanticSession<'a> {
             Err(ControlStop::Failure(failure)) => Err(failure),
         }
     }
+    pub(super) fn label_form_owner(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        match self.labeled_control(subject)? {
+            HtmlSemanticValue::Known(None) => Ok(HtmlSemanticValue::Known(None)),
+            HtmlSemanticValue::Known(Some(control)) => {
+                let owner = self.form_owner(&control)?;
+                self.charge(1)?;
+                Ok(match owner {
+                    HtmlSemanticValue::Known(owner) => {
+                        HtmlSemanticValue::Known(owner.owner().cloned())
+                    }
+                    // Labelable meter/progress are not form-associated. The
+                    // existing category gate proves this without host facts.
+                    HtmlSemanticValue::Inapplicable => HtmlSemanticValue::Known(None),
+                    HtmlSemanticValue::Missing(missing) => HtmlSemanticValue::Missing(missing),
+                    HtmlSemanticValue::Unsupported(reason) => {
+                        HtmlSemanticValue::Unsupported(reason)
+                    }
+                })
+            }
+            HtmlSemanticValue::Missing(missing) => Ok(HtmlSemanticValue::Missing(missing)),
+            HtmlSemanticValue::Inapplicable => Ok(HtmlSemanticValue::Inapplicable),
+            HtmlSemanticValue::Unsupported(reason) => Ok(HtmlSemanticValue::Unsupported(reason)),
+        }
+    }
+
     fn control_label_inner(
         &mut self,
         subject: &HtmlCaptureSubjectId,
