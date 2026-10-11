@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **352 source identities: 255 full documents/source witnesses, 90 partial witnesses and 7 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **353 source identities: 255 full documents/source witnesses, 90 partial witnesses and 8 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
