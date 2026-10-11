@@ -11,6 +11,8 @@ mod color;
 mod construction;
 mod interpretation;
 mod numeric;
+#[cfg(test)]
+mod parser;
 mod source;
 mod temporal;
 mod tokens;
