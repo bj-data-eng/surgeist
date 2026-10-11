@@ -695,6 +695,23 @@ impl HtmlValueInterpreter {
         }
         Ok(report)
     }
+
+    /// Assembles the same source report from admitted controlled native attempts.
+    /// Numeric and temporal materialization remain with their actual owners.
+    pub(crate) fn time_element_report_from_attempts(
+        &self,
+        raw: &DocumentString,
+        author: Result<HtmlTimeElementValue, HtmlTemporalError>,
+        recovery: Result<HtmlMachineReadableTime, HtmlTemporalError>,
+    ) -> Result<
+        HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>,
+        HtmlValueAdmissionError,
+    > {
+        let mut report = self.admit(Some(raw), HtmlValueSyntax::TimeElement)?;
+        report.author = temporal_author(author);
+        report.recovery = temporal_recovery(recovery);
+        Ok(report)
+    }
 }
 
 fn numeric_failure(error: NumericParseError) -> HtmlValueFailure {

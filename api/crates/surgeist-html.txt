@@ -1230,6 +1230,7 @@ pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSema
 pub surgeist_html::HtmlSemanticFact::SubmitterNoValidate(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterNoValidate>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
 pub surgeist_html::HtmlSemanticFact::TextareaDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
+pub surgeist_html::HtmlSemanticFact::TimeElement(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTimeElementReadback>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
 pub enum surgeist_html::HtmlSemanticFailureKind
 pub surgeist_html::HtmlSemanticFailureKind::AllocationFailed
@@ -1312,6 +1313,7 @@ pub surgeist_html::HtmlSemanticQuery::SubmitterFormMethod
 pub surgeist_html::HtmlSemanticQuery::SubmitterNoValidate
 pub surgeist_html::HtmlSemanticQuery::TableModel
 pub surgeist_html::HtmlSemanticQuery::TextareaDefaultValue
+pub surgeist_html::HtmlSemanticQuery::TimeElement
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
 impl surgeist_html::HtmlSemanticQuery
 pub fn surgeist_html::HtmlSemanticQuery::source_clause(self) -> &'static str
@@ -1503,6 +1505,10 @@ pub surgeist_html::HtmlTemporalError::ZeroYear
 impl core::error::Error for surgeist_html::HtmlTemporalError
 impl core::fmt::Display for surgeist_html::HtmlTemporalError
 pub fn surgeist_html::HtmlTemporalError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlTimeElementDescendantAuthorState
+pub surgeist_html::HtmlTimeElementDescendantAuthorState::Conforming
+pub surgeist_html::HtmlTimeElementDescendantAuthorState::Nonconforming(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlTimeElementDescendantAuthorState::NotRequired
 pub enum surgeist_html::HtmlTimeElementValue
 pub surgeist_html::HtmlTimeElementValue::Date(surgeist_html::HtmlDate)
 pub surgeist_html::HtmlTimeElementValue::Duration(surgeist_html::HtmlDuration)
@@ -1517,6 +1523,9 @@ pub surgeist_html::HtmlTimeElementValue::YearlessDate(surgeist_html::HtmlYearles
 impl surgeist_html::HtmlTimeElementValue
 pub fn surgeist_html::HtmlTimeElementValue::into_datetime_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlTimeElementValue::to_document_string(&self) -> surgeist_html::DocumentString
+pub enum surgeist_html::HtmlTimeElementValueOrigin
+pub surgeist_html::HtmlTimeElementValueOrigin::ChildText
+pub surgeist_html::HtmlTimeElementValueOrigin::DatetimeAttribute
 pub enum surgeist_html::HtmlTokenComparison
 pub surgeist_html::HtmlTokenComparison::AsciiCaseInsensitive
 pub surgeist_html::HtmlTokenComparison::CaseSensitive
@@ -3397,6 +3406,12 @@ pub fn surgeist_html::HtmlParsedTime::from(value: surgeist_html::HtmlTime) -> Se
 impl core::convert::TryFrom<surgeist_html::HtmlParsedTime> for surgeist_html::HtmlTime
 pub type surgeist_html::HtmlTime::Error = surgeist_html::HtmlTemporalPrecisionError
 pub fn surgeist_html::HtmlTime::try_from(value: surgeist_html::HtmlParsedTime) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlTimeElementReadback
+impl surgeist_html::HtmlTimeElementReadback
+pub fn surgeist_html::HtmlTimeElementReadback::datetime_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlTimeElementReadback::descendant_author_state(&self) -> &surgeist_html::HtmlTimeElementDescendantAuthorState
+pub fn surgeist_html::HtmlTimeElementReadback::origin(&self) -> surgeist_html::HtmlTimeElementValueOrigin
+pub fn surgeist_html::HtmlTimeElementReadback::value_report(&self) -> &surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeElementValue, surgeist_html::HtmlMachineReadableTime>
 pub struct surgeist_html::HtmlTimeZoneOffset
 impl surgeist_html::HtmlTimeZoneOffset
 pub fn surgeist_html::HtmlTimeZoneOffset::minutes(self) -> i16

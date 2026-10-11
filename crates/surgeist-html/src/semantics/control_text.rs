@@ -278,7 +278,7 @@ impl<'a> HtmlSemanticSession<'a> {
             .map(|value| HtmlControlTextReadback { value, origin }))
     }
 
-    fn control_text_content(
+    pub(super) fn control_text_content(
         &mut self,
         subject: &HtmlCaptureSubjectId,
         origin: HtmlControlTextOrigin,

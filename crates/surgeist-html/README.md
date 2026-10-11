@@ -266,12 +266,12 @@ exact long fractions, arbitrary years and explicit global offsets without a host
 time zone. Reports preserve the whole raw UTF-16 value and distinguish missing
 input from present invalid input, with admission before the format attempts.
 
-This standalone value operation uses ordinary allocation, including failed
-alternatives and exact temporal arithmetic. Its per-value raw-unit cap supplies
-no work ledger, cancellation, physical-memory limit or allocator-failure recovery.
-Captured `TimeElement` interpretation, absent-attribute child-text fallback and
-contextual descendant checks remain pending. Lexical acceptance does not certify
-that the value represents the human-readable contents of an element.
+This standalone value operation uses ordinary allocation for materialized
+values and exact temporal arithmetic. Its per-value raw-unit cap supplies no work
+ledger, cancellation, physical-memory limit or allocator-failure recovery.
+Capture-qualified `TimeElement` interpretation uses the semantic session described
+below. Lexical acceptance does not certify that the value represents the
+human-readable contents of an element.
 
 Native `HtmlSrcsetValue` checks ordered image candidates for `srcset` and
 `imagesrcset`. URLs remain symbolic exact strings; widths retain arbitrary
@@ -432,6 +432,31 @@ follow the session contract. Existing immutable override backing and fixed
 shared wrappers remain outside that variable-allocation accounting. These
 readbacks execute no setters or reset and do not supply textarea current value
 or complete source-conformance checking.
+
+`TimeElement` selects a present null-namespace `datetime` attribute, including an
+empty value. When the attribute is absent, it concatenates exact Text data from
+immediate ordinary children. Namespaced or case-distinct attributes do not select
+the value. Unknown child coverage produces a typed missing result; shadow and
+template contents do not contribute. The
+[pinned time clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-time-element)
+defines this selection and its independent author restriction.
+
+`HtmlTimeElementReadback` retains the selecting attribute or child-text origin,
+the raw value report, strict author syntax and the first successful
+machine-readable alternative. Its descendant author state separately records
+whether absent-attribute contents contain an Element. That violation does not
+suppress the machine-readable equivalent. A present attribute needs no child
+coverage, and lexical success does not certify the human meaning of the contents.
+
+Captured interpretation uses the semantic session's work, integer-digit,
+allocation-byte and output limits. Borrowed recognition shares the temporal
+grammar with standalone operations; exact materialization admits numeric buffers
+and retains their observed capacity even when a later operation fails. Duration
+accumulation and global UTC conversion poll between bounded operations, preserving
+arbitrary years, long fractions and explicit offsets without a host time zone.
+Immutable shared input backing and fixed wrappers remain outside variable-buffer
+accounting. Terminal resource or cancellation failures preserve the session's
+sticky failure and atomic batch contract.
 
 `InputSuggestionsSource` uses the input state's source-defined `list`
 applicability and the first element in the same ordinary tree whose ID exactly

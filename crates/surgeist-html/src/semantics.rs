@@ -4,7 +4,7 @@
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets and control labels, current control flags, global inheritance, select
 //! readbacks, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
-//! defaults, textarea/output text getters and input/button form setting selection
+//! defaults, textarea/output text getters, captured time-element interpretation and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
@@ -23,6 +23,8 @@ mod control;
 pub use control::*;
 mod control_text;
 pub use control_text::*;
+mod time_element;
+pub use time_element::*;
 mod inheritance;
 pub use inheritance::*;
 mod select;
@@ -679,6 +681,7 @@ pub enum HtmlSemanticQuery {
     InputSuggestionsSource,
     DatalistOptions,
     DatalistSuggestionOptions,
+    TimeElement,
     TextareaDefaultValue,
     OutputValue,
     OutputDefaultValue,
@@ -699,6 +702,9 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::TimeElement => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-time-element"
+            }
             Self::TextareaDefaultValue => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-defaultvalue"
             }
@@ -955,6 +961,7 @@ pub enum HtmlSemanticFact {
     /// Known(None) establishes that the input has no source of suggestions.
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    TimeElement(HtmlSemanticValue<HtmlTimeElementReadback>),
     TextareaDefaultValue(HtmlSemanticValue<HtmlControlTextReadback>),
     OutputValue(HtmlSemanticValue<HtmlControlTextReadback>),
     OutputDefaultValue(HtmlSemanticValue<HtmlControlTextReadback>),
@@ -2224,6 +2231,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Spellcheck => {
                             HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
                         }
+                        HtmlSemanticQuery::TimeElement => {
+                            HtmlSemanticFact::TimeElement(self.time_element(&request.subject)?)
+                        }
                         HtmlSemanticQuery::TextareaDefaultValue => {
                             HtmlSemanticFact::TextareaDefaultValue(self.control_text_readback(
                                 &request.subject,
@@ -2415,6 +2425,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Spellcheck => {
                         HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TimeElement => {
+                        HtmlSemanticFact::TimeElement(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::TextareaDefaultValue => {
                         HtmlSemanticFact::TextareaDefaultValue(HtmlSemanticValue::Inapplicable)

@@ -10,7 +10,7 @@ use crate::{
     Attribute, DocumentString, HtmlInputType, KnownHtmlAttribute,
     numeric::{
         HtmlFloatingPointNumber, HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
-        HtmlSignedDecimal,
+        HtmlSignedDecimal, borrowed_decimal_remainder,
     },
 };
 use std::{error::Error, fmt, num::NonZeroU32};
@@ -102,8 +102,7 @@ impl HtmlYear {
 
     /// Reports the Gregorian leap-year condition.
     pub fn is_leap_year(&self) -> bool {
-        let year = self.modulo_400();
-        year == 0 || (year.is_multiple_of(4) && !year.is_multiple_of(100))
+        leap_from_remainder(self.modulo_400())
     }
 
     fn modulo_400(&self) -> u16 {
@@ -116,16 +115,7 @@ impl HtmlYear {
     }
 
     fn last_week(&self) -> u8 {
-        // Gregorian weekdays repeat every 400 years. January 1, year 1 is
-        // Monday. Count preceding common days and leap days modulo seven.
-        let year = u32::from(self.modulo_400());
-        let preceding = if year == 0 { 399 } else { year - 1 };
-        let weekday = (preceding + preceding / 4 - preceding / 100 + preceding / 400) % 7;
-        if weekday == 3 || (weekday == 2 && self.is_leap_year()) {
-            53
-        } else {
-            52
-        }
+        last_week_from_remainder(self.modulo_400())
     }
 }
 
@@ -1125,6 +1115,633 @@ impl TryFrom<HtmlParsedDuration> for HtmlDuration {
     }
 }
 
+// These private plans share the common temporal scanners with ordinary values.
+// Recognition owns no native digit buffers. Assembly is used only after the
+// actual caller materializes the plan's checked digits; it does not parse,
+// clone, serialize, or perform arbitrary-magnitude arithmetic.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TemporalPhase {
+    Author,
+    Recovery,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TemporalAlternative {
+    Month,
+    Date,
+    YearlessDate,
+    Time,
+    LocalDateTime,
+    TimeZoneOffset,
+    GlobalDateTime,
+    Week,
+    Year,
+    Duration,
+}
+impl TemporalAlternative {
+    pub(crate) const ALL: [Self; 10] = [
+        Self::Month,
+        Self::Date,
+        Self::YearlessDate,
+        Self::Time,
+        Self::LocalDateTime,
+        Self::TimeZoneOffset,
+        Self::GlobalDateTime,
+        Self::Week,
+        Self::Year,
+        Self::Duration,
+    ];
+}
+
+/// Checked upper bound for one recognition attempt, in the semantic caller's
+/// logical work units. Cursor advancement, the year modulo pass, seconds-run
+/// validation, fraction folding and calendar-zero checks visit each input unit
+/// at most four times. Sixteen units per input unit cover these reads and their
+/// fixed comparisons/updates; 256 covers component checks and at most eleven
+/// Gregorian month visits. This is not an instruction or parser-quantum bound.
+pub(crate) fn temporal_recognition_work_bound(input_len: usize) -> Option<usize> {
+    input_len.checked_mul(16)?.checked_add(256)
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedYear<'a> {
+    digits: &'a [u16],
+    remainder: u16,
+}
+impl<'a> BorrowedYear<'a> {
+    pub(crate) fn digits(self) -> &'a [u16] {
+        self.digits
+    }
+    pub(crate) fn remainder_400(self) -> u16 {
+        self.remainder
+    }
+    fn leap(self) -> bool {
+        leap_from_remainder(self.remainder)
+    }
+    pub(crate) fn assemble(self, value: HtmlNonNegativeInteger) -> HtmlYear {
+        HtmlYear { value }
+    }
+    fn ordinary(self) -> HtmlYear {
+        self.assemble(ordinary_integer(self.digits))
+    }
+}
+fn leap_from_remainder(year: u16) -> bool {
+    year == 0 || (year.is_multiple_of(4) && !year.is_multiple_of(100))
+}
+fn last_week_from_remainder(year: u16) -> u8 {
+    let preceding = u32::from(if year == 0 { 399 } else { year - 1 });
+    let weekday = (preceding + preceding / 4 - preceding / 100 + preceding / 400) % 7;
+    if weekday == 3 || (weekday == 2 && leap_from_remainder(year)) {
+        53
+    } else {
+        52
+    }
+}
+fn recognize_year_digits(digits: &[u16]) -> Result<BorrowedYear<'_>, HtmlTemporalError> {
+    if digits.is_empty() {
+        return Err(HtmlTemporalError::InvalidYearDigits);
+    }
+    let mut positive = false;
+    for &digit in digits {
+        if !(0x30..=0x39).contains(&digit) {
+            return Err(HtmlTemporalError::InvalidYearDigits);
+        }
+        let digit = digit - 0x30;
+        positive |= digit != 0;
+    }
+    if !positive {
+        return Err(HtmlTemporalError::ZeroYear);
+    }
+    let remainder =
+        borrowed_decimal_remainder(digits, NonZeroU32::new(400).expect("400 is nonzero")) as u16;
+    Ok(BorrowedYear { digits, remainder })
+}
+fn ordinary_integer(digits: &[u16]) -> HtmlNonNegativeInteger {
+    HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(digits.to_vec()))
+        .expect("borrowed recognition checked nonempty ASCII digits")
+}
+fn ordinary_decimal(integer: &[u16], fraction: &[u16]) -> HtmlNonNegativeDecimal {
+    let integer = ordinary_integer(integer);
+    if fraction.is_empty() {
+        integer.into()
+    } else {
+        HtmlNonNegativeDecimal::with_fraction_digits(
+            integer,
+            &DocumentString::from_utf16(fraction.to_vec()),
+        )
+        .expect("borrowed recognition checked fraction digits")
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedMonth<'a> {
+    year: BorrowedYear<'a>,
+    month: u8,
+}
+impl<'a> BorrowedMonth<'a> {
+    pub(crate) fn year(self) -> BorrowedYear<'a> {
+        self.year
+    }
+    pub(crate) fn assemble(self, year: HtmlYear) -> HtmlMonth {
+        HtmlMonth {
+            year,
+            month: self.month,
+        }
+    }
+    fn ordinary(self) -> HtmlMonth {
+        self.assemble(self.year.ordinary())
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedDate<'a> {
+    month: BorrowedMonth<'a>,
+    day: u8,
+}
+impl<'a> BorrowedDate<'a> {
+    pub(crate) fn year(self) -> BorrowedYear<'a> {
+        self.month.year
+    }
+    fn month(self) -> u8 {
+        self.month.month
+    }
+    /// Days inside the 400-year cycle of the preceding year, including this
+    /// date's zero-based day of year. The numeric owner supplies the quotient.
+    pub(crate) fn within_cycle_days(self) -> u32 {
+        let remainder = self.year().remainder_400();
+        let preceding = u32::from(if remainder == 0 { 399 } else { remainder - 1 });
+        let mut ordinal = u32::from(self.day) - 1;
+        for month in 1..self.month() {
+            ordinal += u32::from(days_in_month(month, self.year().leap()));
+        }
+        preceding * 365 + preceding / 4 - preceding / 100 + ordinal
+    }
+    pub(crate) fn assemble(self, year: HtmlYear) -> HtmlDate {
+        HtmlDate {
+            month: self.month.assemble(year),
+            day: self.day,
+        }
+    }
+    fn ordinary(self) -> HtmlDate {
+        self.assemble(self.year().ordinary())
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedTime<'a> {
+    hour: u8,
+    minute: u8,
+    second: u8,
+    second_digits: &'a [u16],
+    fraction_digits: &'a [u16],
+    millisecond: u16,
+}
+impl<'a> BorrowedTime<'a> {
+    pub(crate) fn second_digits(self) -> &'a [u16] {
+        self.second_digits
+    }
+    pub(crate) fn fraction_digits(self) -> &'a [u16] {
+        self.fraction_digits
+    }
+    pub(crate) fn assemble_author(self) -> HtmlTime {
+        HtmlTime {
+            hour: self.hour,
+            minute: self.minute,
+            second: self.second,
+            millisecond: self.millisecond,
+        }
+    }
+    pub(crate) fn assemble_recovery(self, second: HtmlNonNegativeDecimal) -> HtmlParsedTime {
+        HtmlParsedTime {
+            hour: self.hour,
+            minute: self.minute,
+            second,
+        }
+    }
+    fn ordinary_recovery(self) -> HtmlParsedTime {
+        self.assemble_recovery(ordinary_decimal(self.second_digits, self.fraction_digits))
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedLocalDateTime<'a> {
+    date: BorrowedDate<'a>,
+    time: BorrowedTime<'a>,
+}
+impl<'a> BorrowedLocalDateTime<'a> {
+    pub(crate) fn date(self) -> BorrowedDate<'a> {
+        self.date
+    }
+    pub(crate) fn time(self) -> BorrowedTime<'a> {
+        self.time
+    }
+    pub(crate) fn assemble_author(self, date: HtmlDate) -> HtmlLocalDateTime {
+        HtmlLocalDateTime {
+            date,
+            time: self.time.assemble_author(),
+        }
+    }
+    pub(crate) fn assemble_recovery(
+        self,
+        date: HtmlDate,
+        second: HtmlNonNegativeDecimal,
+    ) -> HtmlParsedLocalDateTime {
+        HtmlParsedLocalDateTime {
+            date,
+            time: self.time.assemble_recovery(second),
+        }
+    }
+    fn ordinary_author(self) -> HtmlLocalDateTime {
+        self.assemble_author(self.date.ordinary())
+    }
+    fn ordinary_recovery(self) -> HtmlParsedLocalDateTime {
+        self.assemble_recovery(
+            self.date.ordinary(),
+            ordinary_decimal(self.time.second_digits, self.time.fraction_digits),
+        )
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedGlobalDateTime<'a> {
+    local: BorrowedLocalDateTime<'a>,
+    offset: HtmlTimeZoneOffset,
+}
+impl<'a> BorrowedGlobalDateTime<'a> {
+    pub(crate) fn local(self) -> BorrowedLocalDateTime<'a> {
+        self.local
+    }
+    fn shifted_minutes(self) -> i32 {
+        i32::from(self.local.time.hour) * 60 + i32::from(self.local.time.minute)
+            - i32::from(self.offset.minutes)
+    }
+    pub(crate) fn utc_day_adjustment(self) -> i8 {
+        self.shifted_minutes().div_euclid(1440) as i8
+    }
+    pub(crate) fn utc_hour(self) -> u8 {
+        (self.shifted_minutes().rem_euclid(1440) / 60) as u8
+    }
+    pub(crate) fn utc_minute(self) -> u8 {
+        (self.shifted_minutes().rem_euclid(1440) % 60) as u8
+    }
+    pub(crate) fn assemble_author(self, date: HtmlDate) -> HtmlGlobalDateTime {
+        HtmlGlobalDateTime {
+            local: self.local.assemble_author(date),
+            offset: self.offset,
+        }
+    }
+    pub(crate) fn assemble_recovery(
+        self,
+        local: HtmlParsedLocalDateTime,
+        day: HtmlInteger,
+        second: HtmlNonNegativeDecimal,
+    ) -> HtmlParsedGlobalDateTime {
+        HtmlParsedGlobalDateTime {
+            local,
+            offset: self.offset,
+            utc: HtmlUtcInstant {
+                day,
+                time: HtmlParsedTime {
+                    hour: self.utc_hour(),
+                    minute: self.utc_minute(),
+                    second,
+                },
+            },
+        }
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedWeek<'a> {
+    year: BorrowedYear<'a>,
+    week: u8,
+}
+impl<'a> BorrowedWeek<'a> {
+    pub(crate) fn year(self) -> BorrowedYear<'a> {
+        self.year
+    }
+    pub(crate) fn assemble(self, year: HtmlYear) -> HtmlWeek {
+        HtmlWeek {
+            year,
+            week: self.week,
+        }
+    }
+    fn ordinary(self) -> HtmlWeek {
+        self.assemble(self.year.ordinary())
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum BorrowedTemporalPlan<'a> {
+    Month(BorrowedMonth<'a>),
+    Date(BorrowedDate<'a>),
+    YearlessDate(HtmlYearlessDate),
+    Time(BorrowedTime<'a>),
+    LocalDateTime(BorrowedLocalDateTime<'a>),
+    TimeZoneOffset(HtmlTimeZoneOffset),
+    GlobalDateTime(BorrowedGlobalDateTime<'a>),
+    Week(BorrowedWeek<'a>),
+    Year(BorrowedYear<'a>),
+    Duration(BorrowedDurationPlan<'a>),
+}
+
+pub(crate) fn recognize_time_alternative(
+    input: &[u16],
+    phase: TemporalPhase,
+    alternative: TemporalAlternative,
+) -> Result<BorrowedTemporalPlan<'_>, HtmlTemporalError> {
+    let mut cursor = Cursor { input, position: 0 };
+    let result = match alternative {
+        TemporalAlternative::Month => BorrowedTemporalPlan::Month(cursor.borrowed_month()?),
+        TemporalAlternative::Date => BorrowedTemporalPlan::Date(cursor.borrowed_date()?),
+        TemporalAlternative::YearlessDate => {
+            if cursor.take(b'-') {
+                cursor.expect(b'-')?;
+            }
+            let month = cursor.pair()?;
+            cursor.expect(b'-')?;
+            let day = cursor.pair()?;
+            cursor.end()?;
+            BorrowedTemporalPlan::YearlessDate(HtmlYearlessDate::new(month, day)?)
+        }
+        TemporalAlternative::Time => BorrowedTemporalPlan::Time(cursor.borrowed_time(phase)?),
+        TemporalAlternative::LocalDateTime => {
+            BorrowedTemporalPlan::LocalDateTime(cursor.borrowed_local(phase)?)
+        }
+        TemporalAlternative::TimeZoneOffset => {
+            BorrowedTemporalPlan::TimeZoneOffset(cursor.offset(phase == TemporalPhase::Author)?)
+        }
+        TemporalAlternative::GlobalDateTime => {
+            let local = cursor.borrowed_local(phase)?;
+            let offset = cursor.offset(phase == TemporalPhase::Author)?;
+            BorrowedTemporalPlan::GlobalDateTime(BorrowedGlobalDateTime { local, offset })
+        }
+        TemporalAlternative::Week => {
+            let year = cursor.borrowed_year()?;
+            cursor.expect(b'-')?;
+            cursor.expect(b'W')?;
+            let week = cursor.pair()?;
+            cursor.end()?;
+            if week == 0 || week > last_week_from_remainder(year.remainder) {
+                return Err(HtmlTemporalError::WeekOutOfRange);
+            }
+            BorrowedTemporalPlan::Week(BorrowedWeek { year, week })
+        }
+        TemporalAlternative::Year => {
+            if phase == TemporalPhase::Author && input.len() < 4 {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            let year = recognize_year_digits(input)?;
+            cursor.position = input.len();
+            BorrowedTemporalPlan::Year(year)
+        }
+        TemporalAlternative::Duration => {
+            let plan = BorrowedDurationPlan { input, phase };
+            let mut duration = plan.cursor();
+            while duration.next_component()?.is_some() {}
+            cursor.position = input.len();
+            BorrowedTemporalPlan::Duration(plan)
+        }
+    };
+    cursor.end()?;
+    Ok(result)
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedDurationPlan<'a> {
+    input: &'a [u16],
+    phase: TemporalPhase,
+}
+impl<'a> BorrowedDurationPlan<'a> {
+    pub(crate) fn cursor(self) -> BorrowedDurationCursor<'a> {
+        BorrowedDurationCursor::new(self)
+    }
+    pub(crate) fn assemble_author(
+        self,
+        seconds: HtmlNonNegativeInteger,
+        millisecond: u16,
+    ) -> HtmlDuration {
+        HtmlDuration {
+            seconds,
+            millisecond,
+        }
+    }
+    pub(crate) fn assemble_recovery(self, seconds: HtmlNonNegativeDecimal) -> HtmlParsedDuration {
+        HtmlParsedDuration { seconds }
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BorrowedDurationComponent<'a> {
+    integer: &'a [u16],
+    fraction: &'a [u16],
+    scale: Option<u32>,
+    millisecond: u16,
+}
+impl<'a> BorrowedDurationComponent<'a> {
+    pub(crate) fn integer_digits(self) -> &'a [u16] {
+        self.integer
+    }
+    pub(crate) fn fraction_digits(self) -> &'a [u16] {
+        self.fraction
+    }
+    pub(crate) fn scale(self) -> Option<u32> {
+        self.scale
+    }
+    pub(crate) fn millisecond(self) -> u16 {
+        self.millisecond
+    }
+}
+pub(crate) struct BorrowedDurationCursor<'a> {
+    cursor: Cursor<'a>,
+    phase: TemporalPhase,
+    iso: bool,
+    months: bool,
+    in_time: bool,
+    previous_rank: u8,
+    seen: u8,
+    present: bool,
+    time_present: bool,
+    nonzero_calendar: bool,
+    finished: bool,
+}
+impl<'a> BorrowedDurationCursor<'a> {
+    fn new(plan: BorrowedDurationPlan<'a>) -> Self {
+        Self {
+            cursor: Cursor {
+                input: plan.input,
+                position: 0,
+            },
+            phase: plan.phase,
+            iso: plan.phase == TemporalPhase::Author && plan.input.first() == Some(&0x50),
+            months: false,
+            in_time: false,
+            previous_rank: 0,
+            seen: 0,
+            present: false,
+            time_present: false,
+            nonzero_calendar: false,
+            finished: false,
+        }
+    }
+    /// Each step can consume a run of T markers, whitespace and one component.
+    /// The same checked linear envelope covers the remaining run and its digit
+    /// zero/fraction checks. The caller polls before and after each step.
+    pub(crate) fn next_work_bound(&self) -> Option<usize> {
+        temporal_recognition_work_bound(self.cursor.input.len() - self.cursor.position)
+    }
+    pub(crate) fn next_component(
+        &mut self,
+    ) -> Result<Option<BorrowedDurationComponent<'a>>, HtmlTemporalError> {
+        if self.finished {
+            return Ok(None);
+        }
+        if self.cursor.position == 0 {
+            if self.phase == TemporalPhase::Recovery {
+                self.cursor.whitespace();
+                if self.cursor.take(b'P') {
+                    self.months = true;
+                    self.cursor.whitespace();
+                }
+            } else if self.iso {
+                self.cursor.expect(b'P')?;
+            } else {
+                self.cursor.whitespace();
+            }
+        }
+        while self.cursor.take(b'T') {
+            if self.phase == TemporalPhase::Author {
+                if !self.iso || self.in_time {
+                    return Err(HtmlTemporalError::InvalidSyntax);
+                }
+                self.in_time = true;
+            } else {
+                self.months = false;
+                self.cursor.whitespace();
+            }
+        }
+        if self.cursor.peek().is_none() {
+            self.finished = true;
+            if !self.present
+                || (self.phase == TemporalPhase::Author
+                    && self.iso
+                    && self.in_time
+                    && !self.time_present)
+            {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            if self.nonzero_calendar {
+                return Err(HtmlTemporalError::NonzeroCalendarDuration);
+            }
+            return Ok(None);
+        }
+        let integer = if self.phase == TemporalPhase::Recovery && self.cursor.peek() == Some(0x2e) {
+            &[0x30][..]
+        } else {
+            let digits = self.cursor.digits();
+            if digits.is_empty() {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            digits
+        };
+        let fraction = if self.cursor.take(b'.') {
+            let digits = self.cursor.digits();
+            if digits.is_empty() || (self.phase == TemporalPhase::Author && digits.len() > 3) {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            digits
+        } else {
+            &[]
+        };
+        let has_fraction = !fraction.is_empty();
+        let mut millisecond = 0;
+        if self.phase == TemporalPhase::Author {
+            for &digit in fraction {
+                millisecond = millisecond * 10 + digit - 0x30;
+            }
+            for _ in fraction.len()..3 {
+                millisecond *= 10;
+            }
+        }
+        let scale = if self.phase == TemporalPhase::Recovery {
+            self.cursor.whitespace();
+            let unit = self.cursor.peek().ok_or(HtmlTemporalError::InvalidSyntax)?;
+            self.cursor.position += 1;
+            if has_fraction {
+                if unit != 0x53 && unit != 0x73 {
+                    return Err(HtmlTemporalError::InvalidSyntax);
+                }
+                // Fractional S preserves the source's M-disambiguator.
+                Some(1)
+            } else {
+                match unit {
+                    0x59 | 0x79 => {
+                        self.months = true;
+                        None
+                    }
+                    0x4d | 0x6d if self.months => None,
+                    0x57 | 0x77 => {
+                        self.months = false;
+                        Some(604800)
+                    }
+                    0x44 | 0x64 => {
+                        self.months = false;
+                        Some(86400)
+                    }
+                    0x48 | 0x68 => {
+                        self.months = false;
+                        Some(3600)
+                    }
+                    0x4d | 0x6d => Some(60),
+                    0x53 | 0x73 => {
+                        self.months = false;
+                        Some(1)
+                    }
+                    _ => return Err(HtmlTemporalError::InvalidSyntax),
+                }
+            }
+        } else if self.iso {
+            let (rank, scale) = if !self.in_time && self.cursor.take(b'D') {
+                (1, 86400)
+            } else if self.in_time && self.cursor.take(b'H') {
+                (2, 3600)
+            } else if self.in_time && self.cursor.take(b'M') {
+                (3, 60)
+            } else if self.in_time && self.cursor.take(b'S') {
+                (4, 1)
+            } else {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            };
+            if rank <= self.previous_rank || (has_fraction && scale != 1) {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            self.previous_rank = rank;
+            self.time_present |= self.in_time;
+            Some(scale)
+        } else {
+            self.cursor.whitespace();
+            let (bit, scale) = match self.cursor.peek() {
+                Some(0x57 | 0x77) => (1, 604800),
+                Some(0x44 | 0x64) => (2, 86400),
+                Some(0x48 | 0x68) => (4, 3600),
+                Some(0x4d | 0x6d) => (8, 60),
+                Some(0x53 | 0x73) => (16, 1),
+                _ => return Err(HtmlTemporalError::InvalidSyntax),
+            };
+            self.cursor.position += 1;
+            if self.seen & bit != 0 || (has_fraction && scale != 1) {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            self.seen |= bit;
+            Some(scale)
+        };
+        if scale.is_none() {
+            self.nonzero_calendar |= integer.iter().any(|&unit| unit != 0x30);
+        }
+        self.present = true;
+        if self.phase == TemporalPhase::Recovery || !self.iso {
+            self.cursor.whitespace();
+        }
+        Ok(Some(BorrowedDurationComponent {
+            integer,
+            fraction,
+            scale,
+            millisecond,
+        }))
+    }
+}
+
 struct Cursor<'a> {
     input: &'a [u16],
     position: usize,
@@ -1187,69 +1804,143 @@ impl<'a> Cursor<'a> {
             self.position += 1;
         }
     }
-    fn quantity(&mut self) -> Result<HtmlNonNegativeInteger, HtmlTemporalError> {
-        let digits = self.digits();
-        if digits.is_empty() {
-            return Err(HtmlTemporalError::InvalidSyntax);
-        }
-        HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(digits.to_vec()))
-            .map_err(|_| HtmlTemporalError::InvalidSyntax)
-    }
-    fn fraction(&mut self) -> Result<u16, HtmlTemporalError> {
+    fn fraction_digits(&mut self) -> Result<&'a [u16], HtmlTemporalError> {
         if !self.take(b'.') {
-            return Ok(0);
+            return Ok(&[]);
         }
         let digits = self.digits();
         if !(1..=3).contains(&digits.len()) {
             return Err(HtmlTemporalError::InvalidSyntax);
         }
-        let mut value = digits
-            .iter()
-            .fold(0, |value, digit| value * 10 + digit - u16::from(b'0'));
-        for _ in digits.len()..3 {
-            value *= 10;
-        }
-        Ok(value)
+        Ok(digits)
     }
-    fn year(&mut self) -> Result<HtmlYear, HtmlTemporalError> {
+    fn borrowed_year(&mut self) -> Result<BorrowedYear<'a>, HtmlTemporalError> {
         let digits = self.digits();
         if digits.len() < 4 {
             return Err(HtmlTemporalError::InvalidSyntax);
         }
-        let value = HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
-            digits.to_vec(),
-        ))
-        .map_err(|_| HtmlTemporalError::InvalidYearDigits)?;
-        HtmlYear::from_number(value)
+        recognize_year_digits(digits)
+    }
+    fn year(&mut self) -> Result<HtmlYear, HtmlTemporalError> {
+        self.borrowed_year().map(BorrowedYear::ordinary)
+    }
+    fn borrowed_month(&mut self) -> Result<BorrowedMonth<'a>, HtmlTemporalError> {
+        let year = self.borrowed_year()?;
+        self.expect(b'-')?;
+        let month = self.pair()?;
+        if !(1..=12).contains(&month) {
+            return Err(HtmlTemporalError::MonthOutOfRange);
+        }
+        Ok(BorrowedMonth { year, month })
     }
     fn month(&mut self) -> Result<HtmlMonth, HtmlTemporalError> {
-        let year = self.year()?;
+        self.borrowed_month().map(BorrowedMonth::ordinary)
+    }
+    fn borrowed_date(&mut self) -> Result<BorrowedDate<'a>, HtmlTemporalError> {
+        let month = self.borrowed_month()?;
         self.expect(b'-')?;
-        HtmlMonth::new(year, self.pair()?)
+        let day = self.pair()?;
+        if day == 0 || day > days_in_month(month.month, month.year.leap()) {
+            return Err(HtmlTemporalError::DayOutOfRange);
+        }
+        Ok(BorrowedDate { month, day })
     }
     fn date(&mut self) -> Result<HtmlDate, HtmlTemporalError> {
-        let month = self.month()?;
-        self.expect(b'-')?;
-        HtmlDate::new(month.year, month.month, self.pair()?)
+        self.borrowed_date().map(BorrowedDate::ordinary)
     }
-    fn time(&mut self) -> Result<HtmlTime, HtmlTemporalError> {
+    fn borrowed_time(
+        &mut self,
+        phase: TemporalPhase,
+    ) -> Result<BorrowedTime<'a>, HtmlTemporalError> {
         let hour = self.pair()?;
         self.expect(b':')?;
         let minute = self.pair()?;
-        let mut second = 0;
-        let mut millisecond = 0;
+        let mut second_digits = &[0x30][..];
+        let mut fraction_digits = &[][..];
         if self.take(b':') {
-            second = self.pair()?;
-            millisecond = self.fraction()?;
+            if phase == TemporalPhase::Author {
+                let start = self.position;
+                self.pair()?;
+                second_digits = &self.input[start..self.position];
+                fraction_digits = self.fraction_digits()?;
+            } else {
+                let start = self.position;
+                while self
+                    .peek()
+                    .is_some_and(|unit| unit == 0x2e || (0x30..=0x39).contains(&unit))
+                {
+                    self.position += 1;
+                }
+                let seconds = &self.input[start..self.position];
+                if seconds.len() < 2
+                    || seconds[..2]
+                        .iter()
+                        .any(|unit| !(0x30..=0x39).contains(unit))
+                    || seconds.len() == 3
+                    || (seconds.len() > 3 && seconds[2] != 0x2e)
+                    || seconds.iter().filter(|&&unit| unit == 0x2e).count() > 1
+                {
+                    return Err(HtmlTemporalError::InvalidSyntax);
+                }
+                second_digits = &seconds[..2];
+                if seconds.len() > 3 {
+                    fraction_digits = &seconds[3..];
+                }
+            }
         }
-        HtmlTime::new(hour, minute, second, millisecond)
+        let second = if second_digits.len() == 1 {
+            0
+        } else {
+            ((second_digits[0] - 0x30) * 10 + second_digits[1] - 0x30) as u8
+        };
+        // Preserve the common native constructor's error order after grammar.
+        if hour > 23 {
+            return Err(HtmlTemporalError::HourOutOfRange);
+        }
+        if minute > 59 {
+            return Err(HtmlTemporalError::MinuteOutOfRange);
+        }
+        if second > 59 {
+            return Err(HtmlTemporalError::SecondOutOfRange);
+        }
+        let mut millisecond = 0;
+        if phase == TemporalPhase::Author {
+            for &digit in fraction_digits {
+                millisecond = millisecond * 10 + digit - 0x30;
+            }
+            for _ in fraction_digits.len()..3 {
+                millisecond *= 10;
+            }
+        }
+        Ok(BorrowedTime {
+            hour,
+            minute,
+            second,
+            second_digits,
+            fraction_digits,
+            millisecond,
+        })
     }
-    fn local(&mut self) -> Result<HtmlLocalDateTime, HtmlTemporalError> {
-        let date = self.date()?;
+    fn time(&mut self) -> Result<HtmlTime, HtmlTemporalError> {
+        self.borrowed_time(TemporalPhase::Author)
+            .map(BorrowedTime::assemble_author)
+    }
+    fn borrowed_local(
+        &mut self,
+        phase: TemporalPhase,
+    ) -> Result<BorrowedLocalDateTime<'a>, HtmlTemporalError> {
+        let date = self.borrowed_date()?;
         if !self.take(b'T') && !self.take(b' ') {
             return Err(HtmlTemporalError::InvalidSyntax);
         }
-        Ok(HtmlLocalDateTime::new(date, self.time()?))
+        Ok(BorrowedLocalDateTime {
+            date,
+            time: self.borrowed_time(phase)?,
+        })
+    }
+    fn local(&mut self) -> Result<HtmlLocalDateTime, HtmlTemporalError> {
+        self.borrowed_local(TemporalPhase::Author)
+            .map(BorrowedLocalDateTime::ordinary_author)
     }
     fn offset(
         &mut self,
@@ -1287,56 +1978,14 @@ impl<'a> Cursor<'a> {
         HtmlTimeZoneOffset::new(if negative { -minutes } else { minutes })
     }
 
-    // §2.3.5.4 collects the entire digits/dots run for seconds. Its accepted
-    // fractions are unbounded, unlike the separate authored time grammar.
+    // §2.3.5.4's exact seconds scanner is the recovery branch above.
     fn parsed_time(&mut self) -> Result<HtmlParsedTime, HtmlTemporalError> {
-        let hour = self.pair()?;
-        self.expect(b':')?;
-        let minute = self.pair()?;
-        let second = if self.take(b':') {
-            let start = self.position;
-            while self
-                .peek()
-                .is_some_and(|unit| unit == 0x2e || (0x30..=0x39).contains(&unit))
-            {
-                self.position += 1;
-            }
-            let seconds = &self.input[start..self.position];
-            if seconds.len() < 2
-                || seconds[..2]
-                    .iter()
-                    .any(|unit| !(0x30..=0x39).contains(unit))
-                || seconds.len() == 3
-                || (seconds.len() > 3 && seconds[2] != 0x2e)
-                || seconds.iter().filter(|&&unit| unit == 0x2e).count() > 1
-            {
-                return Err(HtmlTemporalError::InvalidSyntax);
-            }
-            let integer = HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
-                seconds[..2].to_vec(),
-            ))
-            .map_err(|_| HtmlTemporalError::InvalidSyntax)?;
-            if seconds.len() == 2 {
-                integer.into()
-            } else {
-                HtmlNonNegativeDecimal::with_fraction_digits(
-                    integer,
-                    &DocumentString::from_utf16(seconds[3..].to_vec()),
-                )
-                .map_err(|_| HtmlTemporalError::InvalidSyntax)?
-            }
-        } else {
-            HtmlNonNegativeInteger::from(0_u128).into()
-        };
-        HtmlParsedTime::new(hour, minute, second)
+        self.borrowed_time(TemporalPhase::Recovery)
+            .map(BorrowedTime::ordinary_recovery)
     }
-
     fn parsed_local(&mut self) -> Result<HtmlParsedLocalDateTime, HtmlTemporalError> {
-        let date = self.date()?;
-        if !self.take(b'T') && !self.take(b' ') {
-            return Err(HtmlTemporalError::InvalidSyntax);
-        }
-        Ok(HtmlParsedLocalDateTime::new(date, self.parsed_time()?))
+        self.borrowed_local(TemporalPhase::Recovery)
+            .map(BorrowedLocalDateTime::ordinary_recovery)
     }
 }
 
@@ -1517,95 +2166,27 @@ pub(crate) fn parse_date_or_time(
 pub(crate) fn parse_duration(
     input: &DocumentString,
 ) -> Result<HtmlParsedDuration, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
+    let BorrowedTemporalPlan::Duration(plan) = recognize_time_alternative(
+        input.code_units(),
+        TemporalPhase::Recovery,
+        TemporalAlternative::Duration,
+    )?
+    else {
+        unreachable!()
+    };
+    Ok(ordinary_recovery_duration(plan))
+}
+fn ordinary_recovery_duration(plan: BorrowedDurationPlan<'_>) -> HtmlParsedDuration {
+    let mut cursor = plan.cursor();
     let mut seconds = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(0_u128));
-    let mut months = false;
-    let mut nonzero_calendar = false;
-    let mut component_present = false;
-    cursor.whitespace();
-    if cursor.take(b'P') {
-        months = true;
-        cursor.whitespace();
-    }
-    while cursor.peek().is_some() {
-        if cursor.take(b'T') {
-            months = false;
-            cursor.whitespace();
-            continue;
+    while let Some(component) = cursor.next_component().expect("recognized duration") {
+        if let Some(scale) = component.scale() {
+            let quantity =
+                ordinary_decimal(component.integer_digits(), component.fraction_digits());
+            seconds = seconds.added_to(&quantity.multiplied_by(scale));
         }
-        let integer = if cursor.peek() == Some(0x2e) {
-            0_u128.into()
-        } else {
-            cursor.quantity()?
-        };
-        let next = cursor.peek().ok_or(HtmlTemporalError::InvalidSyntax)?;
-        cursor.position += 1;
-        if next == 0x2e {
-            let digits = cursor.digits();
-            let quantity = HtmlNonNegativeDecimal::with_fraction_digits(
-                integer,
-                &DocumentString::from_utf16(digits.to_vec()),
-            )
-            .map_err(|_| HtmlTemporalError::InvalidSyntax)?;
-            cursor.whitespace();
-            if !cursor.take(b'S') && !cursor.take(b's') {
-                return Err(HtmlTemporalError::InvalidSyntax);
-            }
-            seconds = seconds.added_to(&quantity);
-            // Fractional S does not reset M-disambiguator (§2.3.5.9 step 8.9).
-        } else {
-            let unit = if matches!(next, 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
-                cursor.whitespace();
-                let unit = cursor.peek().ok_or(HtmlTemporalError::InvalidSyntax)?;
-                cursor.position += 1;
-                unit
-            } else {
-                next
-            };
-            let scale = match unit {
-                0x59 | 0x79 => {
-                    months = true;
-                    None
-                }
-                0x4d | 0x6d if months => None,
-                0x57 | 0x77 => {
-                    months = false;
-                    Some(604800)
-                }
-                0x44 | 0x64 => {
-                    months = false;
-                    Some(86400)
-                }
-                0x48 | 0x68 => {
-                    months = false;
-                    Some(3600)
-                }
-                0x4d | 0x6d => Some(60),
-                0x53 | 0x73 => {
-                    months = false;
-                    Some(1)
-                }
-                _ => return Err(HtmlTemporalError::InvalidSyntax),
-            };
-            if let Some(scale) = scale {
-                seconds =
-                    seconds.added_to(&HtmlNonNegativeDecimal::from(integer).multiplied_by(scale));
-            } else {
-                nonzero_calendar |= !integer.is_zero();
-            }
-        }
-        component_present = true;
-        cursor.whitespace();
     }
-    if !component_present {
-        return Err(HtmlTemporalError::InvalidSyntax);
-    }
-    // Calendar quantities are nonnegative, so a nonzero component implies a
-    // nonzero sum without allocating an otherwise unusable months magnitude.
-    if nonzero_calendar {
-        return Err(HtmlTemporalError::NonzeroCalendarDuration);
-    }
-    Ok(HtmlParsedDuration::new(seconds))
+    plan.assemble_recovery(seconds)
 }
 
 pub(crate) fn validate_date_with_optional_time(
@@ -1617,173 +2198,463 @@ pub(crate) fn validate_date_with_optional_time(
     validate_global_date_time(input).map(HtmlDateWithOptionalTime::Global)
 }
 
-fn parse_time_element_year(input: &DocumentString) -> Result<HtmlYear, HtmlTemporalError> {
-    let value = HtmlNonNegativeInteger::from_decimal_digits(input)
-        .map_err(|_| HtmlTemporalError::InvalidYearDigits)?;
-    HtmlYear::from_number(value)
+impl BorrowedTemporalPlan<'_> {
+    fn ordinary_author(self) -> HtmlTimeElementValue {
+        match self {
+            Self::Month(value) => HtmlTimeElementValue::Month(value.ordinary()),
+            Self::Date(value) => HtmlTimeElementValue::Date(value.ordinary()),
+            Self::YearlessDate(value) => HtmlTimeElementValue::YearlessDate(value),
+            Self::Time(value) => HtmlTimeElementValue::Time(value.assemble_author()),
+            Self::LocalDateTime(value) => {
+                HtmlTimeElementValue::LocalDateTime(value.ordinary_author())
+            }
+            Self::TimeZoneOffset(value) => HtmlTimeElementValue::TimeZoneOffset(value),
+            Self::GlobalDateTime(value) => HtmlTimeElementValue::GlobalDateTime(
+                value.assemble_author(value.local.date.ordinary()),
+            ),
+            Self::Week(value) => HtmlTimeElementValue::Week(value.ordinary()),
+            Self::Year(value) => HtmlTimeElementValue::Year(value.ordinary()),
+            Self::Duration(value) => {
+                HtmlTimeElementValue::Duration(ordinary_authored_duration(value))
+            }
+        }
+    }
+    fn ordinary_recovery(self) -> HtmlMachineReadableTime {
+        match self {
+            Self::Month(value) => HtmlMachineReadableTime::Month(value.ordinary()),
+            Self::Date(value) => HtmlMachineReadableTime::Date(value.ordinary()),
+            Self::YearlessDate(value) => HtmlMachineReadableTime::YearlessDate(value),
+            Self::Time(value) => HtmlMachineReadableTime::Time(value.ordinary_recovery()),
+            Self::LocalDateTime(value) => {
+                HtmlMachineReadableTime::LocalDateTime(value.ordinary_recovery())
+            }
+            Self::TimeZoneOffset(value) => HtmlMachineReadableTime::TimeZoneOffset(value),
+            Self::GlobalDateTime(value) => HtmlMachineReadableTime::GlobalDateTime(
+                HtmlParsedGlobalDateTime::new(value.local.ordinary_recovery(), value.offset),
+            ),
+            Self::Week(value) => HtmlMachineReadableTime::Week(value.ordinary()),
+            Self::Year(value) => HtmlMachineReadableTime::Year(value.ordinary()),
+            Self::Duration(value) => {
+                HtmlMachineReadableTime::Duration(ordinary_recovery_duration(value))
+            }
+        }
+    }
 }
-
-/// The ten author alternatives in HTML §4.5.14. Existing common grammars retain
-/// their own validators; only the separate standalone Year alternative is new.
+/// The ten author alternatives share allocation-free recognition with the
+/// controlled consumer; native materialization here uses ordinary allocation.
 pub(crate) fn validate_time_element_value(
     input: &DocumentString,
 ) -> Result<HtmlTimeElementValue, HtmlTemporalError> {
-    if let Ok(value) = validate_month(input) {
-        return Ok(HtmlTimeElementValue::Month(value));
+    let mut final_error = HtmlTemporalError::InvalidSyntax;
+    for alternative in TemporalAlternative::ALL {
+        match recognize_time_alternative(input.code_units(), TemporalPhase::Author, alternative) {
+            Ok(plan) => return Ok(plan.ordinary_author()),
+            Err(error) => final_error = error,
+        }
     }
-    if let Ok(value) = validate_date(input) {
-        return Ok(HtmlTimeElementValue::Date(value));
-    }
-    if let Ok(value) = validate_yearless_date(input) {
-        return Ok(HtmlTimeElementValue::YearlessDate(value));
-    }
-    if let Ok(value) = validate_time(input) {
-        return Ok(HtmlTimeElementValue::Time(value));
-    }
-    if let Ok(value) = validate_local_date_time(input) {
-        return Ok(HtmlTimeElementValue::LocalDateTime(value));
-    }
-    if let Ok(value) = validate_time_zone_offset(input) {
-        return Ok(HtmlTimeElementValue::TimeZoneOffset(value));
-    }
-    if let Ok(value) = validate_global_date_time(input) {
-        return Ok(HtmlTimeElementValue::GlobalDateTime(value));
-    }
-    if let Ok(value) = validate_week(input) {
-        return Ok(HtmlTimeElementValue::Week(value));
-    }
-    if input.len() >= 4
-        && let Ok(value) = parse_time_element_year(input)
-    {
-        return Ok(HtmlTimeElementValue::Year(value));
-    }
-    validate_duration(input).map(HtmlTimeElementValue::Duration)
+    Err(final_error)
 }
-
-/// Applies the literal ordered machine-readable-equivalent algorithm in
-/// §4.5.14. The Year branch deliberately has no author-only four-digit guard.
-/// This standalone producer uses ordinary allocation, including failed attempts
-/// and exact arithmetic; it is not a semantic-session controlled producer.
+/// Literal ordered machine-readable-equivalent algorithm in HTML §4.5.14.
+/// Recognition never allocates native digits for failed alternatives. Successful
+/// native materialization remains ordinary allocation, not session accounting.
 pub(crate) fn parse_time_element_value(
     input: &DocumentString,
 ) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {
-    if let Ok(value) = parse_month(input) {
-        return Ok(HtmlMachineReadableTime::Month(value));
+    let mut final_error = HtmlTemporalError::InvalidSyntax;
+    for alternative in TemporalAlternative::ALL {
+        match recognize_time_alternative(input.code_units(), TemporalPhase::Recovery, alternative) {
+            Ok(plan) => return Ok(plan.ordinary_recovery()),
+            Err(error) => final_error = error,
+        }
     }
-    if let Ok(value) = parse_date(input) {
-        return Ok(HtmlMachineReadableTime::Date(value));
-    }
-    if let Ok(value) = parse_yearless_date(input) {
-        return Ok(HtmlMachineReadableTime::YearlessDate(value));
-    }
-    if let Ok(value) = parse_time(input) {
-        return Ok(HtmlMachineReadableTime::Time(value));
-    }
-    if let Ok(value) = parse_local_date_time(input) {
-        return Ok(HtmlMachineReadableTime::LocalDateTime(value));
-    }
-    if let Ok(value) = parse_time_zone_offset(input) {
-        return Ok(HtmlMachineReadableTime::TimeZoneOffset(value));
-    }
-    if let Ok(value) = parse_global_date_time(input) {
-        return Ok(HtmlMachineReadableTime::GlobalDateTime(value));
-    }
-    if let Ok(value) = parse_week(input) {
-        return Ok(HtmlMachineReadableTime::Week(value));
-    }
-    if let Ok(value) = parse_time_element_year(input) {
-        return Ok(HtmlMachineReadableTime::Year(value));
-    }
-    parse_duration(input).map(HtmlMachineReadableTime::Duration)
+    Err(final_error)
 }
-
-pub(crate) fn validate_duration(input: &DocumentString) -> Result<HtmlDuration, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    let mut seconds = HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from("0"))
-        .map_err(|_| HtmlTemporalError::InvalidSyntax)?;
+fn ordinary_authored_duration(plan: BorrowedDurationPlan<'_>) -> HtmlDuration {
+    let mut cursor = plan.cursor();
+    let mut seconds = HtmlNonNegativeInteger::from(0_u128);
     let mut millisecond = 0;
-    let mut count = 0;
-    if cursor.take(b'P') {
-        // Valid ISO-form grammar: D, then optional T with H, M, S in order.
-        let mut in_time = false;
-        let mut previous_rank = 0;
-        let mut time_count = 0;
-        while cursor.peek().is_some() {
-            if cursor.take(b'T') {
-                if in_time {
-                    return Err(HtmlTemporalError::InvalidSyntax);
-                }
-                in_time = true;
-                continue;
-            }
-            let quantity = cursor.quantity()?;
-            let has_fraction = cursor.peek() == Some(u16::from(b'.'));
-            let fraction = cursor.fraction()?;
-            let (rank, scale) = if !in_time && cursor.take(b'D') {
-                (1, 86400)
-            } else if in_time && cursor.take(b'H') {
-                (2, 3600)
-            } else if in_time && cursor.take(b'M') {
-                (3, 60)
-            } else if in_time && cursor.take(b'S') {
-                (4, 1)
-            } else {
-                return Err(HtmlTemporalError::InvalidSyntax);
-            };
-            if rank <= previous_rank || (has_fraction && scale != 1) {
-                return Err(HtmlTemporalError::InvalidSyntax);
-            }
-            seconds = seconds.added_to(&quantity.multiplied_by(scale));
-            millisecond = fraction;
-            count += 1;
-            if in_time {
-                time_count += 1;
-            }
-            previous_rank = rank;
-        }
-        if count == 0 || (in_time && time_count == 0) {
-            return Err(HtmlTemporalError::InvalidSyntax);
-        }
-    } else {
-        // Human form permits any order but each scale occurs only once.
-        let mut seen = 0_u8;
-        cursor.whitespace();
-        while cursor.peek().is_some() {
-            let quantity = cursor.quantity()?;
-            let has_fraction = cursor.peek() == Some(u16::from(b'.'));
-            let fraction = cursor.fraction()?;
-            cursor.whitespace();
-            let (bit, scale) = match cursor.peek() {
-                Some(0x57 | 0x77) => (1, 604800),
-                Some(0x44 | 0x64) => (2, 86400),
-                Some(0x48 | 0x68) => (4, 3600),
-                Some(0x4d | 0x6d) => (8, 60),
-                Some(0x53 | 0x73) => (16, 1),
-                _ => return Err(HtmlTemporalError::InvalidSyntax),
-            };
-            cursor.position += 1;
-            if seen & bit != 0 || (has_fraction && scale != 1) {
-                return Err(HtmlTemporalError::InvalidSyntax);
-            }
-            seen |= bit;
-            seconds = seconds.added_to(&quantity.multiplied_by(scale));
-            if scale == 1 {
-                millisecond = fraction;
-            }
-            count += 1;
-            cursor.whitespace();
-        }
-        if count == 0 {
-            return Err(HtmlTemporalError::InvalidSyntax);
+    while let Some(component) = cursor
+        .next_component()
+        .expect("recognized authored duration")
+    {
+        let scale = component
+            .scale()
+            .expect("author grammar excludes calendar units");
+        seconds =
+            seconds.added_to(&ordinary_integer(component.integer_digits()).multiplied_by(scale));
+        if scale == 1 {
+            millisecond = component.millisecond();
         }
     }
-    cursor.end()?;
-    HtmlDuration::new(seconds, millisecond)
+    plan.assemble_author(seconds, millisecond)
+}
+pub(crate) fn validate_duration(input: &DocumentString) -> Result<HtmlDuration, HtmlTemporalError> {
+    let BorrowedTemporalPlan::Duration(plan) = recognize_time_alternative(
+        input.code_units(),
+        TemporalPhase::Author,
+        TemporalAlternative::Duration,
+    )?
+    else {
+        unreachable!()
+    };
+    Ok(ordinary_authored_duration(plan))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn borrowed<'a>(
+        input: &'a DocumentString,
+        phase: TemporalPhase,
+        alternative: TemporalAlternative,
+    ) -> Result<BorrowedTemporalPlan<'a>, HtmlTemporalError> {
+        recognize_time_alternative(input.code_units(), phase, alternative)
+    }
+    #[test]
+    fn borrowed_year_retains_source_slice_and_exact_gregorian_remainder() {
+        let raw = DocumentString::from("0001234567890123456789012345678900400");
+        let BorrowedTemporalPlan::Year(year) =
+            borrowed(&raw, TemporalPhase::Recovery, TemporalAlternative::Year).unwrap()
+        else {
+            panic!("year plan")
+        };
+        assert_eq!(year.digits().as_ptr(), raw.code_units().as_ptr());
+        assert_eq!(year.digits(), raw.code_units());
+        assert_eq!(year.remainder_400(), 0);
+        assert!(year.leap());
+        for (raw, error) in [
+            ("0000", HtmlTemporalError::ZeroYear),
+            ("", HtmlTemporalError::InvalidYearDigits),
+            ("1x", HtmlTemporalError::InvalidYearDigits),
+        ] {
+            assert_eq!(
+                recognize_year_digits(DocumentString::from(raw).code_units()).unwrap_err(),
+                error
+            );
+        }
+        let surrogate = DocumentString::from_utf16(vec![0x31, 0xd800]);
+        assert_eq!(
+            recognize_year_digits(surrogate.code_units()).unwrap_err(),
+            HtmlTemporalError::InvalidYearDigits
+        );
+        let short = DocumentString::from("1");
+        assert!(borrowed(&short, TemporalPhase::Recovery, TemporalAlternative::Year).is_ok());
+        assert_eq!(
+            borrowed(&short, TemporalPhase::Author, TemporalAlternative::Year).unwrap_err(),
+            HtmlTemporalError::InvalidSyntax
+        );
+    }
+    #[test]
+    fn borrowed_date_validates_arbitrary_years_without_native_year_materialization() {
+        for (raw, remainder, days) in [
+            ("0001-01-01", 1, 0),
+            ("0400-12-31", 0, 146096),
+            ("0401-01-01", 1, 0),
+            ("1234567890123456789012345678900400-12-31", 0, 146096),
+        ] {
+            let input = DocumentString::from(raw);
+            let BorrowedTemporalPlan::Date(date) =
+                borrowed(&input, TemporalPhase::Recovery, TemporalAlternative::Date).unwrap()
+            else {
+                panic!("date")
+            };
+            assert_eq!(date.year().remainder_400(), remainder);
+            assert_eq!(date.within_cycle_days(), days);
+        }
+        for raw in [
+            "1900-02-29",
+            "2100-02-29",
+            "1234567890123456789012345678900100-02-29",
+        ] {
+            assert_eq!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Recovery,
+                    TemporalAlternative::Date
+                )
+                .unwrap_err(),
+                HtmlTemporalError::DayOutOfRange
+            );
+        }
+        for raw in [
+            "2000-02-29",
+            "2400-02-29",
+            "1234567890123456789012345678900400-02-29",
+        ] {
+            assert!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Author,
+                    TemporalAlternative::Date
+                )
+                .is_ok()
+            );
+        }
+    }
+    #[test]
+    fn borrowed_clock_retains_all_recovered_fraction_digits_and_range_error_order() {
+        let input = DocumentString::from("23:59:58.000000000000000000123000");
+        let BorrowedTemporalPlan::Time(time) =
+            borrowed(&input, TemporalPhase::Recovery, TemporalAlternative::Time).unwrap()
+        else {
+            panic!("time")
+        };
+        assert_eq!((time.hour, time.minute), (23, 59));
+        assert_eq!(time.second_digits(), &[0x35, 0x38]);
+        assert_eq!(time.fraction_digits(), &input.code_units()[9..]);
+        assert_eq!(
+            time.fraction_digits().as_ptr(),
+            input.code_units()[9..].as_ptr()
+        );
+        assert_eq!(
+            borrowed(&input, TemporalPhase::Author, TemporalAlternative::Time).unwrap_err(),
+            HtmlTemporalError::InvalidSyntax
+        );
+        for (raw, error) in [
+            ("24:60:60", HtmlTemporalError::HourOutOfRange),
+            ("23:60:60", HtmlTemporalError::MinuteOutOfRange),
+            ("23:59:60", HtmlTemporalError::SecondOutOfRange),
+            ("24:00:00..1", HtmlTemporalError::InvalidSyntax),
+            ("24:00x", HtmlTemporalError::HourOutOfRange),
+            ("12:00:001", HtmlTemporalError::InvalidSyntax),
+        ] {
+            assert_eq!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Recovery,
+                    TemporalAlternative::Time
+                )
+                .unwrap_err(),
+                error,
+                "{raw}"
+            );
+        }
+        let input = DocumentString::from("12:00");
+        let BorrowedTemporalPlan::Time(time) =
+            borrowed(&input, TemporalPhase::Recovery, TemporalAlternative::Time).unwrap()
+        else {
+            panic!("time")
+        };
+        assert_eq!(time.second_digits(), &[0x30]);
+        assert!(time.fraction_digits().is_empty());
+    }
+    #[test]
+    fn borrowed_global_preserves_offset_and_supplies_exact_utc_day_carry() {
+        for (raw, offset, day, hour, minute) in [
+            ("0001-01-01T00:00:00.123456+00:01", 1, -1, 23, 59),
+            ("2000-12-31T23:59-00:01", -1, 1, 0, 0),
+            ("2000-02-29 12:34+02:30", 150, 0, 10, 4),
+            ("2000-01-01T00:00-00:00", 0, 0, 0, 0),
+        ] {
+            let input = DocumentString::from(raw);
+            let BorrowedTemporalPlan::GlobalDateTime(global) = borrowed(
+                &input,
+                TemporalPhase::Recovery,
+                TemporalAlternative::GlobalDateTime,
+            )
+            .unwrap() else {
+                panic!("global")
+            };
+            assert_eq!(global.offset.minutes(), offset);
+            assert_eq!(
+                (
+                    global.utc_day_adjustment(),
+                    global.utc_hour(),
+                    global.utc_minute()
+                ),
+                (day, hour, minute)
+            );
+        }
+        let negative_zero = DocumentString::from("2000-01-01T00:00-00:00");
+        assert_eq!(
+            borrowed(
+                &negative_zero,
+                TemporalPhase::Author,
+                TemporalAlternative::GlobalDateTime
+            )
+            .unwrap_err(),
+            HtmlTemporalError::InvalidSyntax
+        );
+        for raw in [
+            "2000-01-01T00:00Zx",
+            "2000-01-01T00:00",
+            "2000-01-01T00:00+24:00",
+        ] {
+            assert!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Recovery,
+                    TemporalAlternative::GlobalDateTime
+                )
+                .is_err()
+            );
+        }
+    }
+    #[test]
+    fn borrowed_week_rules_and_full_consumption_keep_typed_failures() {
+        for raw in [
+            "2015-W53",
+            "2020-W53",
+            "1234567890123456789012345678900004-W53",
+        ] {
+            assert!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Recovery,
+                    TemporalAlternative::Week
+                )
+                .is_ok(),
+                "{raw}"
+            );
+        }
+        for raw in ["2014-W53", "2021-W53", "2020-W00"] {
+            assert_eq!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Recovery,
+                    TemporalAlternative::Week
+                )
+                .unwrap_err(),
+                HtmlTemporalError::WeekOutOfRange
+            );
+        }
+        assert_eq!(
+            borrowed(
+                &DocumentString::from("2021-W53x"),
+                TemporalPhase::Recovery,
+                TemporalAlternative::Week
+            )
+            .unwrap_err(),
+            HtmlTemporalError::InvalidSyntax
+        );
+    }
+    #[test]
+    fn duration_cursor_preserves_components_calendar_state_and_exact_fractions() {
+        let input = DocumentString::from(" P0Y0M1.00000000000001s0M T 2m 3S ");
+        let BorrowedTemporalPlan::Duration(plan) = borrowed(
+            &input,
+            TemporalPhase::Recovery,
+            TemporalAlternative::Duration,
+        )
+        .unwrap() else {
+            panic!("duration")
+        };
+        let mut cursor = plan.cursor();
+        let mut scales = Vec::new();
+        let mut fractions = Vec::new();
+        while let Some(component) = cursor.next_component().unwrap() {
+            assert!(cursor.next_work_bound().is_some());
+            scales.push(component.scale());
+            fractions.push(component.fraction_digits().to_vec());
+        }
+        assert_eq!(scales, vec![None, None, Some(1), None, Some(60), Some(1)]);
+        assert_eq!(
+            fractions[2],
+            DocumentString::from("00000000000001").code_units()
+        );
+        assert!(cursor.next_component().unwrap().is_none());
+        let value = parse_duration(&input).unwrap();
+        assert_eq!(value.seconds().integer_part().decimal_digits(), "124");
+        assert_eq!(value.seconds().fractional_digits(), Some("00000000000001"));
+        let input = DocumentString::from(".5s");
+        let BorrowedTemporalPlan::Duration(plan) = borrowed(
+            &input,
+            TemporalPhase::Recovery,
+            TemporalAlternative::Duration,
+        )
+        .unwrap() else {
+            panic!("duration")
+        };
+        let component = plan.cursor().next_component().unwrap().unwrap();
+        assert_eq!(component.integer_digits(), &[0x30]);
+        assert_eq!(component.fraction_digits(), &[0x35]);
+    }
+    #[test]
+    fn duration_recognition_checks_later_syntax_before_calendar_rejection() {
+        for (raw, error) in [
+            ("P1Y", HtmlTemporalError::NonzeroCalendarDuration),
+            ("P0Y1.5S1M", HtmlTemporalError::NonzeroCalendarDuration),
+            ("P1Y!", HtmlTemporalError::InvalidSyntax),
+            ("P1Y1.S", HtmlTemporalError::InvalidSyntax),
+            ("PTTT", HtmlTemporalError::InvalidSyntax),
+            ("1h1h", HtmlTemporalError::InvalidSyntax),
+        ] {
+            let phase = if raw == "1h1h" {
+                TemporalPhase::Author
+            } else {
+                TemporalPhase::Recovery
+            };
+            assert_eq!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    phase,
+                    TemporalAlternative::Duration
+                )
+                .unwrap_err(),
+                error,
+                "{raw}"
+            );
+        }
+        let repeated = DocumentString::from("PT1H1H T .25s.75s");
+        assert_eq!(
+            parse_duration(&repeated)
+                .unwrap()
+                .seconds()
+                .integer_part()
+                .decimal_digits(),
+            "7201"
+        );
+        assert!(
+            borrowed(
+                &repeated,
+                TemporalPhase::Author,
+                TemporalAlternative::Duration
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn authored_duration_cursor_uses_iso_order_and_human_unique_scales() {
+        for (raw, whole, millis) in [
+            ("P1DT2H3M4.125S", "93784", 125),
+            ("4.5s 2h 1d 3m", "93784", 500),
+            (" 1h ", "3600", 0),
+            ("0.000s", "0", 0),
+        ] {
+            let input = DocumentString::from(raw);
+            let BorrowedTemporalPlan::Duration(plan) =
+                borrowed(&input, TemporalPhase::Author, TemporalAlternative::Duration).unwrap()
+            else {
+                panic!("duration")
+            };
+            let value = ordinary_authored_duration(plan);
+            assert_eq!(value.seconds().decimal_digits(), whole);
+            assert_eq!(value.millisecond(), millis);
+        }
+        for raw in [
+            "P1M", "PT1M1H", "P1DT", "PT", "PT1.5H", "1.5m", "1w1w", ".5s", "1.0000s",
+        ] {
+            assert_eq!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Author,
+                    TemporalAlternative::Duration
+                )
+                .unwrap_err(),
+                HtmlTemporalError::InvalidSyntax,
+                "{raw}"
+            );
+        }
+    }
+    #[test]
+    fn checked_recognition_and_cursor_envelopes_reject_size_arithmetic_overflow() {
+        assert_eq!(temporal_recognition_work_bound(0), Some(256));
+        assert_eq!(temporal_recognition_work_bound(10), Some(416));
+        assert_eq!(temporal_recognition_work_bound(usize::MAX), None);
+        assert!(temporal_recognition_work_bound((usize::MAX - 256) / 16).is_some());
+        assert!(temporal_recognition_work_bound((usize::MAX - 256) / 16 + 1).is_none());
+    }
 
     #[test]
     fn source_default_base_needs_no_successful_content_coordinate() {

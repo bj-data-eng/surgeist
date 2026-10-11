@@ -14,6 +14,702 @@ fn integer_sum_capacity(left_digits: usize, right_digits: usize) -> Option<usize
         .filter(|&len| len <= isize::MAX as usize / size_of::<char>())
 }
 
+// Shared decimal kernels. Callers select ordinary or fallible storage; these
+// functions perform only bounded digit/carry work on already valid ASCII digits.
+fn product_length(input: &[u8], multiplier: u32, mut carry: u64) -> usize {
+    let mut count = input.len();
+    for &digit in input.iter().rev() {
+        carry = (u64::from(digit - b'0') * u64::from(multiplier) + carry) / 10;
+    }
+    while carry != 0 {
+        count += 1;
+        carry /= 10;
+    }
+    count
+}
+
+fn write_product(input: &[u8], multiplier: u32, mut carry: u64, output: &mut Vec<u8>) {
+    for &digit in input.iter().rev() {
+        let product = u64::from(digit - b'0') * u64::from(multiplier) + carry;
+        output.push(b'0' + (product % 10) as u8);
+        carry = product / 10;
+    }
+    while carry != 0 {
+        output.push(b'0' + (carry % 10) as u8);
+        carry /= 10;
+    }
+    output.reverse();
+}
+
+fn sum_carry(left: &[u8], right: &[u8], mut carry: u8) -> u8 {
+    let mut left = left.iter().rev();
+    let mut right = right.iter().rev();
+    loop {
+        let a = left.next();
+        let b = right.next();
+        if a.is_none() && b.is_none() {
+            return carry;
+        }
+        carry =
+            (a.map_or(0, |&digit| digit - b'0') + b.map_or(0, |&digit| digit - b'0') + carry) / 10;
+    }
+}
+
+fn write_sum(left: &[u8], right: &[u8], mut carry: u8, output: &mut Vec<u8>) {
+    let mut left = left.iter().rev();
+    let mut right = right.iter().rev();
+    loop {
+        let a = left.next();
+        let b = right.next();
+        if a.is_none() && b.is_none() && carry == 0 {
+            break;
+        }
+        let sum = a.map_or(0, |&digit| digit - b'0') + b.map_or(0, |&digit| digit - b'0') + carry;
+        output.push(b'0' + sum % 10);
+        carry = sum / 10;
+    }
+    output.reverse();
+}
+
+fn write_fraction_sum(left: &[u8], right: &[u8], output: &mut [u8]) -> u8 {
+    let mut carry = 0;
+    for index in (0..output.len()).rev() {
+        let sum = left.get(index).map_or(0, |&digit| digit - b'0')
+            + right.get(index).map_or(0, |&digit| digit - b'0')
+            + carry;
+        output[index] = b'0' + sum % 10;
+        carry = sum / 10;
+    }
+    carry
+}
+
+fn write_fraction_product(input: &[u8], multiplier: u32, output: &mut [u8]) -> u64 {
+    let mut carry = 0;
+    for (index, &digit) in input.iter().enumerate().rev() {
+        let product = u64::from(digit - b'0') * u64::from(multiplier) + carry;
+        output[index] = b'0' + (product % 10) as u8;
+        carry = product / 10;
+    }
+    carry
+}
+
+fn remainder_digit(digit: u8, divisor: u64, remainder: u64) -> u64 {
+    (remainder * 10 + u64::from(digit)) % divisor
+}
+
+/// Remainder over already validated ASCII decimal digits. Syntax and positive
+/// year checks stay with the temporal recognizer; this performs one digit pass.
+pub(crate) fn borrowed_decimal_remainder(input: &[u16], divisor: NonZeroU32) -> u32 {
+    let divisor = u64::from(divisor.get());
+    input.iter().fold(0, |remainder, &unit| {
+        remainder_digit((unit - u16::from(b'0')) as u8, divisor, remainder)
+    }) as u32
+}
+
+fn division_digit(digit: u8, divisor: u64, remainder: &mut u64) -> u8 {
+    let partial = *remainder * 10 + u64::from(digit - b'0');
+    *remainder = partial % divisor;
+    (partial / divisor) as u8
+}
+
+fn write_quotient(input: &[u8], divisor: NonZeroU32, output: &mut Vec<u8>) -> u32 {
+    let divisor = u64::from(divisor.get());
+    let mut remainder = 0;
+    for &digit in input {
+        let digit = division_digit(digit, divisor, &mut remainder);
+        if digit != 0 || !output.is_empty() {
+            output.push(b'0' + digit);
+        }
+    }
+    if output.is_empty() {
+        output.push(b'0');
+    }
+    remainder as u32
+}
+
+fn ascii_digit_string(bytes: Vec<u8>) -> String {
+    // Safe ownership transfer, with UTF-8 validation but no second allocation.
+    String::from_utf8(bytes).expect("numeric owner writes only ASCII digits")
+}
+
+/// Observed cumulative capacity of every variable allocation made by one
+/// concrete operation, including intermediates that have already been dropped.
+/// The semantic session records this before interpreting either outcome.
+#[derive(Debug)]
+pub(crate) struct NumericMaterialized<T> {
+    pub(crate) value: T,
+    pub(crate) capacity_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NumericMaterializationError {
+    Digits(HtmlDecimalDigitsError),
+    Boundary(IntegerUnitStepError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NumericMaterializationFailure {
+    pub(crate) kind: NumericMaterializationError,
+    pub(crate) capacity_bytes: usize,
+}
+
+fn materialization_boundary(
+    error: IntegerUnitStepError,
+    capacity_bytes: usize,
+) -> NumericMaterializationFailure {
+    NumericMaterializationFailure {
+        kind: NumericMaterializationError::Boundary(error),
+        capacity_bytes,
+    }
+}
+
+fn materialization_digits(
+    error: HtmlDecimalDigitsError,
+    capacity_bytes: usize,
+) -> NumericMaterializationFailure {
+    NumericMaterializationFailure {
+        kind: NumericMaterializationError::Digits(error),
+        capacity_bytes,
+    }
+}
+
+fn reserve_materialization(
+    requested: usize,
+    max_integer_digits: Option<usize>,
+    max_capacity_bytes: usize,
+    observed: &mut usize,
+) -> Result<Vec<u8>, NumericMaterializationFailure> {
+    if let Some(max_digits) = max_integer_digits {
+        check_integer_digit_capacity(requested, max_digits, usize::MAX)
+            .map_err(|e| materialization_boundary(e, *observed))?;
+    } else if requested > isize::MAX as usize {
+        return Err(materialization_boundary(
+            IntegerUnitStepError::RepresentationExhausted,
+            *observed,
+        ));
+    }
+    let required = observed.checked_add(requested).ok_or_else(|| {
+        materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+    })?;
+    if required > max_capacity_bytes {
+        return Err(materialization_boundary(
+            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                limit: max_capacity_bytes,
+                required,
+            },
+            *observed,
+        ));
+    }
+    let mut bytes = Vec::new();
+    let allocation = bytes.try_reserve_exact(requested);
+    // Even an allocation failure retains any observed backing, without claiming
+    // allocator internals or old immutable inputs as new variable storage.
+    *observed = observed.checked_add(bytes.capacity()).ok_or_else(|| {
+        materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+    })?;
+    allocation.map_err(|_| {
+        materialization_boundary(
+            IntegerUnitStepError::AllocationFailed { requested },
+            *observed,
+        )
+    })?;
+    check_integer_actual_capacity(required, *observed, max_capacity_bytes)
+        .map_err(|e| materialization_boundary(e, *observed))?;
+    Ok(bytes)
+}
+
+fn controlled_digit_string(
+    input: &[u16],
+    fractional: bool,
+    max_integer_digits: usize,
+    max_capacity_bytes: usize,
+    observed: &mut usize,
+) -> Result<String, NumericMaterializationFailure> {
+    // An empty fraction is the exact integer case, not an invalid integer.
+    if fractional && input.is_empty() {
+        return Ok(String::new());
+    }
+    check_decimal_digits(input).map_err(|e| materialization_digits(e, *observed))?;
+    let canonical = if fractional {
+        let end = input
+            .iter()
+            .rposition(|&unit| unit != u16::from(b'0'))
+            .map_or(0, |i| i + 1);
+        &input[..end]
+    } else {
+        let first = input
+            .iter()
+            .position(|&unit| unit != u16::from(b'0'))
+            .unwrap_or(input.len() - 1);
+        &input[first..]
+    };
+    let mut bytes = reserve_materialization(
+        canonical.len(),
+        (!fractional).then_some(max_integer_digits),
+        max_capacity_bytes,
+        observed,
+    )?;
+    for &unit in canonical {
+        bytes.push(unit as u8);
+    }
+    Ok(ascii_digit_string(bytes))
+}
+
+// These are loop-derived pre-execution envelopes, not instruction counts or
+// cancellation quanta. Each checked sum includes the fixed branch/return work.
+fn bounded_work(parts: &[usize]) -> Option<usize> {
+    parts
+        .iter()
+        .try_fold(8usize, |sum, part| sum.checked_add(*part))
+}
+
+impl HtmlNonNegativeInteger {
+    // Validation n, zero scan n, copy reads/writes n+n, UTF-8 n.
+    pub(crate) fn from_borrowed_digits_work_bound(length: usize) -> Option<usize> {
+        bounded_work(&[length, length, length, length, length])
+    }
+    pub(crate) fn try_from_borrowed_digits(
+        input: &[u16],
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let mut observed = 0;
+        let digits = controlled_digit_string(input, false, max_digits, max_bytes, &mut observed)?;
+        Ok(NumericMaterialized {
+            value: Self { digits },
+            capacity_bytes: observed,
+        })
+    }
+    // Existing fixed-width constant owner scans/outputs at most usize's decimal
+    // width. On the supported 32/64-bit targets, four passes of 20 bound it.
+    pub(crate) fn from_u32_work_bound() -> Option<usize> {
+        bounded_work(&[20, 20, 20, 20])
+    }
+    pub(crate) fn try_from_u32(
+        value: u32,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let result = HtmlInteger::try_from_usize(value as usize, max_digits, max_bytes)
+            .map_err(unit_step_materialization_failure)?;
+        Ok(NumericMaterialized {
+            value: result.value.magnitude,
+            capacity_bytes: result.capacity_bytes,
+        })
+    }
+    // Copy reads/writes n+n and UTF-8 n; native canonical input needs no zero scan.
+    pub(crate) fn copy_work_bound(&self) -> Option<usize> {
+        bounded_work(&[self.digits.len(), self.digits.len(), self.digits.len()])
+    }
+    pub(crate) fn try_copy(
+        &self,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let mut observed = 0;
+        let mut bytes = reserve_materialization(
+            self.digits.len(),
+            Some(max_digits),
+            max_bytes,
+            &mut observed,
+        )?;
+        bytes.extend_from_slice(self.digits.as_bytes());
+        Ok(NumericMaterialized {
+            value: Self {
+                digits: ascii_digit_string(bytes),
+            },
+            capacity_bytes: observed,
+        })
+    }
+    // Division n input visits + n writes, UTF-8 n, canonical quotient length
+    // prepass n. The prepass shares write_quotient's exact recurrence below.
+    pub(crate) fn quotient_remainder_work_bound(&self) -> Option<usize> {
+        let n = self.digits.len();
+        bounded_work(&[n, n, n, n])
+    }
+    pub(crate) fn try_quotient_remainder(
+        &self,
+        divisor: NonZeroU32,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<(Self, u32)>, NumericMaterializationFailure> {
+        let mut remainder = 0u64;
+        let mut length = 0;
+        for &digit in self.digits.as_bytes() {
+            let digit = division_digit(digit, u64::from(divisor.get()), &mut remainder);
+            if digit != 0 || length != 0 {
+                length += 1;
+            }
+        }
+        let mut observed = 0;
+        let mut bytes =
+            reserve_materialization(length.max(1), Some(max_digits), max_bytes, &mut observed)?;
+        let remainder = write_quotient(self.digits.as_bytes(), divisor, &mut bytes);
+        Ok(NumericMaterialized {
+            value: (
+                Self {
+                    digits: ascii_digit_string(bytes),
+                },
+                remainder,
+            ),
+            capacity_bytes: observed,
+        })
+    }
+    // Pivot n, prefix-copy reads n, writes n; zero returns no allocation.
+    pub(crate) fn decremented_work_bound(&self) -> Option<usize> {
+        let n = self.digits.len();
+        bounded_work(&[n, n, n])
+    }
+    pub(crate) fn try_decremented(
+        &self,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Option<Self>>, NumericMaterializationFailure> {
+        if self.is_zero() {
+            return Ok(NumericMaterialized {
+                value: None,
+                capacity_bytes: 0,
+            });
+        }
+        let digits = try_unit_step_digits(&self.digits, false, max_digits, max_bytes)
+            .map_err(unit_step_materialization_failure)?;
+        let capacity_bytes = digits.capacity();
+        Ok(NumericMaterialized {
+            value: Some(Self { digits }),
+            capacity_bytes,
+        })
+    }
+    // Length pass n+10; product reads/writes n+10 each; reversal reads
+    // and writes at most n+10 each; UTF-8 validation n+10.
+    pub(crate) fn multiplied_by_work_bound(&self) -> Option<usize> {
+        let n = self.digits.len().checked_add(10)?;
+        bounded_work(&[n, n, n, n, n, n])
+    }
+    pub(crate) fn try_multiplied_by(
+        &self,
+        multiplier: u32,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        if multiplier == 0 || self.is_zero() {
+            return Self::try_from_u32(0, max_digits, max_bytes);
+        }
+        let mut observed = 0;
+        let digits = controlled_product(
+            self.digits.as_bytes(),
+            multiplier,
+            0,
+            max_digits,
+            max_bytes,
+            &mut observed,
+        )?;
+        Ok(NumericMaterialized {
+            value: Self { digits },
+            capacity_bytes: observed,
+        })
+    }
+    // Carry prepass and sum each read m+m. Output writes m+1; reversal
+    // reads/writes m+1 each; UTF-8 validation m+1.
+    pub(crate) fn added_to_work_bound(&self, other: &Self) -> Option<usize> {
+        let m = self.digits.len().max(other.digits.len());
+        let n = m.checked_add(1)?;
+        bounded_work(&[m, m, m, m, n, n, n, n])
+    }
+    pub(crate) fn try_added_to(
+        &self,
+        other: &Self,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let mut observed = 0;
+        let digits = controlled_sum(
+            self.digits.as_bytes(),
+            other.digits.as_bytes(),
+            0,
+            max_digits,
+            max_bytes,
+            &mut observed,
+        )?;
+        Ok(NumericMaterialized {
+            value: Self { digits },
+            capacity_bytes: observed,
+        })
+    }
+}
+
+fn controlled_product(
+    input: &[u8],
+    multiplier: u32,
+    carry: u64,
+    max_digits: usize,
+    max_bytes: usize,
+    observed: &mut usize,
+) -> Result<String, NumericMaterializationFailure> {
+    input.len().checked_add(10).ok_or_else(|| {
+        materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+    })?;
+    let required = product_length(input, multiplier, carry);
+    let mut bytes = reserve_materialization(required, Some(max_digits), max_bytes, observed)?;
+    write_product(input, multiplier, carry, &mut bytes);
+    Ok(ascii_digit_string(bytes))
+}
+
+fn controlled_sum(
+    left: &[u8],
+    right: &[u8],
+    carry: u8,
+    max_digits: usize,
+    max_bytes: usize,
+    observed: &mut usize,
+) -> Result<String, NumericMaterializationFailure> {
+    let required = left
+        .len()
+        .max(right.len())
+        .checked_add(usize::from(sum_carry(left, right, carry)))
+        .ok_or_else(|| {
+            materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+        })?;
+    let mut bytes = reserve_materialization(required, Some(max_digits), max_bytes, observed)?;
+    write_sum(left, right, carry, &mut bytes);
+    Ok(ascii_digit_string(bytes))
+}
+
+fn unit_step_shape(
+    input: &str,
+    grow: bool,
+) -> Result<(usize, Option<usize>), IntegerUnitStepError> {
+    let pivot = input
+        .as_bytes()
+        .iter()
+        .rposition(|&digit| digit != if grow { b'9' } else { b'0' });
+    let required = if grow && pivot.is_none() {
+        input
+            .len()
+            .checked_add(1)
+            .ok_or(IntegerUnitStepError::RepresentationExhausted)?
+    } else if !grow && pivot == Some(0) && input.as_bytes()[0] == b'1' && input.len() > 1 {
+        input.len() - 1
+    } else {
+        input.len()
+    };
+    Ok((required, pivot))
+}
+
+fn write_unit_step(input: &str, grow: bool, pivot: Option<usize>, digits: &mut String) {
+    if grow {
+        if let Some(pivot) = pivot {
+            digits.push_str(&input[..pivot]);
+            digits.push(char::from(input.as_bytes()[pivot] + 1));
+            for _ in pivot + 1..input.len() {
+                digits.push('0');
+            }
+        } else {
+            digits.push('1');
+            for _ in 0..input.len() {
+                digits.push('0');
+            }
+        }
+    } else {
+        // The private magnitude invariant is canonical decimal, and zero
+        // selected the growing branch above. A nonzero digit therefore exists.
+        let pivot = pivot.expect("canonical nonzero magnitude has a nonzero digit");
+        if pivot == 0 && input.as_bytes()[0] == b'1' && input.len() > 1 {
+            for _ in 1..input.len() {
+                digits.push('9');
+            }
+        } else {
+            digits.push_str(&input[..pivot]);
+            digits.push(char::from(input.as_bytes()[pivot] - 1));
+            for _ in pivot + 1..input.len() {
+                digits.push('9');
+            }
+        }
+    }
+}
+
+fn try_unit_step_digits(
+    input: &str,
+    grow: bool,
+    max_digits: usize,
+    max_bytes: usize,
+) -> Result<String, IntegerUnitStepError> {
+    let (required, pivot) = unit_step_shape(input, grow)?;
+    let mut digits = reserve_integer_digits(required, max_digits, max_bytes)?;
+    write_unit_step(input, grow, pivot, &mut digits);
+    Ok(digits)
+}
+
+fn unit_step_materialization_failure(error: IntegerUnitStepError) -> NumericMaterializationFailure {
+    let capacity = match error {
+        IntegerUnitStepError::ActualCapacityLimitExceeded { capacity_bytes, .. } => capacity_bytes,
+        _ => 0,
+    };
+    materialization_boundary(error, capacity)
+}
+
+impl HtmlInteger {
+    // Pivot scan n, prefix-copy reads n, writes n+1, fixed sign/zero handling.
+    pub(crate) fn materialized_unit_step_work_bound(&self) -> Option<usize> {
+        bounded_work(&[
+            self.magnitude.digits.len(),
+            self.magnitude.digits.len(),
+            self.magnitude.digits.len().checked_add(1)?,
+        ])
+    }
+    pub(crate) fn try_materialized_unit_step(
+        &self,
+        step: IntegerUnitStep,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        self.try_unit_step(step, max_digits, max_bytes)
+            .map(|r| NumericMaterialized {
+                value: r.value,
+                capacity_bytes: r.capacity_bytes,
+            })
+            .map_err(unit_step_materialization_failure)
+    }
+}
+
+impl HtmlNonNegativeDecimal {
+    // Each part uses validation, canonicalization, copy reads/writes and UTF-8.
+    pub(crate) fn from_borrowed_digits_work_bound(
+        integer: usize,
+        fraction: usize,
+    ) -> Option<usize> {
+        HtmlNonNegativeInteger::from_borrowed_digits_work_bound(integer)?.checked_add(
+            HtmlNonNegativeInteger::from_borrowed_digits_work_bound(fraction)?,
+        )
+    }
+    pub(crate) fn try_from_borrowed_digits(
+        integer: &[u16],
+        fraction: &[u16],
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let mut observed = 0;
+        let integer =
+            controlled_digit_string(integer, false, max_digits, max_bytes, &mut observed)?;
+        let fraction =
+            controlled_digit_string(fraction, true, max_digits, max_bytes, &mut observed)?;
+        Ok(NumericMaterialized {
+            value: Self {
+                integer: HtmlNonNegativeInteger { digits: integer },
+                fraction,
+            },
+            capacity_bytes: observed,
+        })
+    }
+    pub(crate) fn copy_work_bound(&self) -> Option<usize> {
+        let n = self.fraction.len();
+        self.integer
+            .copy_work_bound()?
+            .checked_add(bounded_work(&[n, n, n])?)
+    }
+    pub(crate) fn try_copy(
+        &self,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let mut observed = 0;
+        let mut integer = reserve_materialization(
+            self.integer.digits.len(),
+            Some(max_digits),
+            max_bytes,
+            &mut observed,
+        )?;
+        integer.extend_from_slice(self.integer.digits.as_bytes());
+        let mut fraction =
+            reserve_materialization(self.fraction.len(), None, max_bytes, &mut observed)?;
+        fraction.extend_from_slice(self.fraction.as_bytes());
+        Ok(NumericMaterialized {
+            value: Self {
+                integer: HtmlNonNegativeInteger {
+                    digits: ascii_digit_string(integer),
+                },
+                fraction: ascii_digit_string(fraction),
+            },
+            capacity_bytes: observed,
+        })
+    }
+    // Fraction: initialized writes f, product reads/writes f+f, trailing trim f,
+    // UTF-8 f; integer: length/read/write/reversal-read/reversal-write/UTF-8.
+    pub(crate) fn multiplied_by_work_bound(&self) -> Option<usize> {
+        let f = self.fraction.len();
+        self.integer
+            .multiplied_by_work_bound()?
+            .checked_add(bounded_work(&[f, f, f, f, f])?)
+    }
+    pub(crate) fn try_multiplied_by(
+        &self,
+        multiplier: u32,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        if multiplier == 0 || self.is_zero() {
+            return HtmlNonNegativeInteger::try_from_u32(0, max_digits, max_bytes).map(|r| {
+                NumericMaterialized {
+                    value: r.value.into(),
+                    capacity_bytes: r.capacity_bytes,
+                }
+            });
+        }
+        let mut observed = 0;
+        let mut fraction =
+            reserve_materialization(self.fraction.len(), None, max_bytes, &mut observed)?;
+        fraction.resize(self.fraction.len(), b'0');
+        let carry = write_fraction_product(self.fraction.as_bytes(), multiplier, &mut fraction);
+        let integer = controlled_product(
+            self.integer.digits.as_bytes(),
+            multiplier,
+            carry,
+            max_digits,
+            max_bytes,
+            &mut observed,
+        )?;
+        Ok(NumericMaterialized {
+            value: Self::from_ascii_fraction(HtmlNonNegativeInteger { digits: integer }, fraction),
+            capacity_bytes: observed,
+        })
+    }
+    // Fraction: initialization f, operand reads f+f, output f, trim f, UTF-8 f.
+    // Integral carry is handled inside the shared sum, without a second sum.
+    pub(crate) fn added_to_work_bound(&self, other: &Self) -> Option<usize> {
+        let f = self.fraction.len().max(other.fraction.len());
+        self.integer
+            .added_to_work_bound(&other.integer)?
+            .checked_add(bounded_work(&[f, f, f, f, f, f])?)
+    }
+    pub(crate) fn try_added_to(
+        &self,
+        other: &Self,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let mut observed = 0;
+        let scale = self.fraction.len().max(other.fraction.len());
+        let mut fraction = reserve_materialization(scale, None, max_bytes, &mut observed)?;
+        fraction.resize(scale, b'0');
+        let carry = write_fraction_sum(
+            self.fraction.as_bytes(),
+            other.fraction.as_bytes(),
+            &mut fraction,
+        );
+        let integer = controlled_sum(
+            self.integer.digits.as_bytes(),
+            other.integer.digits.as_bytes(),
+            carry,
+            max_digits,
+            max_bytes,
+            &mut observed,
+        )?;
+        Ok(NumericMaterialized {
+            value: Self::from_ascii_fraction(HtmlNonNegativeInteger { digits: integer }, fraction),
+            capacity_bytes: observed,
+        })
+    }
+}
+
 /// An exact HTML integer, without a machine-integer magnitude limit.
 ///
 /// Leading zeroes and negative zero are normalized. Decimal magnitude digits
@@ -156,50 +852,7 @@ impl HtmlInteger {
         } else {
             self.negative
         };
-        let pivot = input
-            .as_bytes()
-            .iter()
-            .rposition(|&digit| digit != if grow { b'9' } else { b'0' });
-        let required = if grow && pivot.is_none() {
-            input
-                .len()
-                .checked_add(1)
-                .ok_or(IntegerUnitStepError::RepresentationExhausted)?
-        } else if !grow && pivot == Some(0) && input.as_bytes()[0] == b'1' && input.len() > 1 {
-            input.len() - 1
-        } else {
-            input.len()
-        };
-        let mut digits = reserve_integer_digits(required, max_result_digits, max_capacity_bytes)?;
-        if grow {
-            if let Some(pivot) = pivot {
-                digits.push_str(&input[..pivot]);
-                digits.push(char::from(input.as_bytes()[pivot] + 1));
-                for _ in pivot + 1..input.len() {
-                    digits.push('0');
-                }
-            } else {
-                digits.push('1');
-                for _ in 0..input.len() {
-                    digits.push('0');
-                }
-            }
-        } else {
-            // The private magnitude invariant is canonical decimal, and zero
-            // selected the growing branch above. A nonzero digit therefore exists.
-            let pivot = pivot.expect("canonical nonzero magnitude has a nonzero digit");
-            if pivot == 0 && input.as_bytes()[0] == b'1' && input.len() > 1 {
-                for _ in 1..input.len() {
-                    digits.push('9');
-                }
-            } else {
-                digits.push_str(&input[..pivot]);
-                digits.push(char::from(input.as_bytes()[pivot] - 1));
-                for _ in pivot + 1..input.len() {
-                    digits.push('9');
-                }
-            }
-        }
+        let digits = try_unit_step_digits(input, grow, max_result_digits, max_capacity_bytes)?;
         let capacity_bytes = digits.capacity();
         Ok(IntegerUnitStepResult {
             value: Self::from_magnitude(HtmlNonNegativeInteger { digits }, negative),
@@ -343,7 +996,7 @@ impl HtmlNonNegativeInteger {
     pub fn remainder(&self, divisor: NonZeroU32) -> u32 {
         let divisor = u64::from(divisor.get());
         self.digits.bytes().fold(0_u64, |remainder, digit| {
-            (remainder * 10 + u64::from(digit - b'0')) % divisor
+            remainder_digit(digit - b'0', divisor, remainder)
         }) as u32
     }
 
@@ -351,48 +1004,31 @@ impl HtmlNonNegativeInteger {
         if multiplier == 0 || self.is_zero() {
             return Self::from(0);
         }
-        // A u32 multiplier contributes at most ten additional decimal digits.
         let capacity = self
             .digits
             .len()
             .checked_add(10)
-            .filter(|&len| len <= isize::MAX as usize / size_of::<char>())
+            .filter(|&len| len <= isize::MAX as usize)
             .expect("integer product representation exceeds native capacity");
-        let mut reversed = Vec::with_capacity(capacity);
-        let mut carry = 0_u64;
-        for digit in self.digits.bytes().rev() {
-            let product = u64::from(digit - b'0') * u64::from(multiplier) + carry;
-            reversed.push(char::from(b'0' + (product % 10) as u8));
-            carry = product / 10;
-        }
-        while carry > 0 {
-            reversed.push(char::from(b'0' + (carry % 10) as u8));
-            carry /= 10;
-        }
+        let mut output = Vec::with_capacity(capacity);
+        write_product(self.digits.as_bytes(), multiplier, 0, &mut output);
         Self {
-            digits: reversed.into_iter().rev().collect(),
+            digits: ascii_digit_string(output),
         }
     }
 
     pub(crate) fn added_to(&self, other: &Self) -> Self {
-        let mut left = self.digits.bytes().rev();
-        let mut right = other.digits.bytes().rev();
         let capacity = integer_sum_capacity(self.digits.len(), other.digits.len())
             .expect("integer sum representation exceeds native capacity");
-        let mut reversed = Vec::with_capacity(capacity);
-        let mut carry = 0;
-        loop {
-            let a = left.next();
-            let b = right.next();
-            if a.is_none() && b.is_none() && carry == 0 {
-                break;
-            }
-            let sum = a.map_or(0, |digit| digit - b'0') + b.map_or(0, |digit| digit - b'0') + carry;
-            reversed.push(char::from(b'0' + sum % 10));
-            carry = sum / 10;
-        }
+        let mut output = Vec::with_capacity(capacity);
+        write_sum(
+            self.digits.as_bytes(),
+            other.digits.as_bytes(),
+            0,
+            &mut output,
+        );
         Self {
-            digits: reversed.into_iter().rev().collect(),
+            digits: ascii_digit_string(output),
         }
     }
 
@@ -401,45 +1037,24 @@ impl HtmlNonNegativeInteger {
         if self.is_zero() {
             return None;
         }
-        let mut digits = self.digits.as_bytes().to_vec();
-        for digit in digits.iter_mut().rev() {
-            if *digit > b'0' {
-                *digit -= 1;
-                break;
-            }
-            *digit = b'9';
-        }
-        // A canonical positive magnitude can lose at most its first digit.
-        let digits = if digits.len() > 1 && digits[0] == b'0' {
-            &digits[1..]
-        } else {
-            &digits
-        };
-        Some(Self {
-            digits: digits.iter().copied().map(char::from).collect(),
-        })
+        let (required, pivot) = unit_step_shape(&self.digits, false)
+            .expect("integer decrement representation exceeds native capacity");
+        let mut digits = String::with_capacity(required);
+        write_unit_step(&self.digits, false, pivot, &mut digits);
+        Some(Self { digits })
     }
 
     /// Divides an exact magnitude by a bounded nonzero integer.
     /// The remainder is strictly less than the divisor.
     pub(crate) fn quotient_remainder(&self, divisor: NonZeroU32) -> (Self, u32) {
-        let divisor = u64::from(divisor.get());
-        let mut quotient = String::new();
-        let mut remainder = 0_u64;
-        for digit in self.digits.bytes() {
-            // remainder < divisor <= u32::MAX, so the partial dividend is
-            // below 10 * u32::MAX and the quotient digit is in 0..=9.
-            let partial = remainder * 10 + u64::from(digit - b'0');
-            let digit = (partial / divisor) as u8;
-            remainder = partial % divisor;
-            if digit != 0 || !quotient.is_empty() {
-                quotient.push(char::from(b'0' + digit));
-            }
-        }
-        if quotient.is_empty() {
-            quotient.push('0');
-        }
-        (Self { digits: quotient }, remainder as u32)
+        let mut output = Vec::with_capacity(self.digits.len());
+        let remainder = write_quotient(self.digits.as_bytes(), divisor, &mut output);
+        (
+            Self {
+                digits: ascii_digit_string(output),
+            },
+            remainder,
+        )
     }
 
     /// Returns normalized ASCII decimal magnitude digits.
@@ -750,29 +1365,27 @@ impl HtmlNonNegativeDecimal {
 
     /// Adds exact decimal quantities, preserving significant fractional zeroes.
     pub(crate) fn added_to(&self, other: &Self) -> Self {
-        let scale = self.fraction.len().max(other.fraction.len());
-        let mut fraction = vec![b'0'; scale];
-        let mut carry = 0;
-        for index in (0..scale).rev() {
-            let left = self
-                .fraction
-                .as_bytes()
-                .get(index)
-                .map_or(0, |&digit| digit - b'0');
-            let right = other
-                .fraction
-                .as_bytes()
-                .get(index)
-                .map_or(0, |&digit| digit - b'0');
-            let sum = left + right + carry;
-            fraction[index] = b'0' + sum % 10;
-            carry = sum / 10;
-        }
-        let mut integer = self.integer.added_to(&other.integer);
-        if carry != 0 {
-            integer = integer.added_to(&HtmlNonNegativeInteger::from(u128::from(carry)));
-        }
-        Self::from_ascii_fraction(integer, fraction)
+        let mut fraction = vec![b'0'; self.fraction.len().max(other.fraction.len())];
+        let carry = write_fraction_sum(
+            self.fraction.as_bytes(),
+            other.fraction.as_bytes(),
+            &mut fraction,
+        );
+        let capacity = integer_sum_capacity(self.integer.digits.len(), other.integer.digits.len())
+            .expect("decimal sum representation exceeds native capacity");
+        let mut integer = Vec::with_capacity(capacity);
+        write_sum(
+            self.integer.digits.as_bytes(),
+            other.integer.digits.as_bytes(),
+            carry,
+            &mut integer,
+        );
+        Self::from_ascii_fraction(
+            HtmlNonNegativeInteger {
+                digits: ascii_digit_string(integer),
+            },
+            fraction,
+        )
     }
 
     /// Multiplies an exact decimal quantity by a bounded nonnegative integer.
@@ -781,18 +1394,27 @@ impl HtmlNonNegativeDecimal {
             return HtmlNonNegativeInteger::from(0).into();
         }
         let mut fraction = vec![b'0'; self.fraction.len()];
-        let mut carry = 0_u64;
-        for (index, digit) in self.fraction.bytes().enumerate().rev() {
-            // Each partial product is below 10 * u32::MAX; carry fits u32.
-            let product = u64::from(digit - b'0') * u64::from(multiplier) + carry;
-            fraction[index] = b'0' + (product % 10) as u8;
-            carry = product / 10;
-        }
-        let mut integer = self.integer.multiplied_by(multiplier);
-        if carry != 0 {
-            integer = integer.added_to(&HtmlNonNegativeInteger::from(u128::from(carry)));
-        }
-        Self::from_ascii_fraction(integer, fraction)
+        let carry = write_fraction_product(self.fraction.as_bytes(), multiplier, &mut fraction);
+        let capacity = self
+            .integer
+            .digits
+            .len()
+            .checked_add(10)
+            .filter(|&len| len <= isize::MAX as usize)
+            .expect("decimal product representation exceeds native capacity");
+        let mut integer = Vec::with_capacity(capacity);
+        write_product(
+            self.integer.digits.as_bytes(),
+            multiplier,
+            carry,
+            &mut integer,
+        );
+        Self::from_ascii_fraction(
+            HtmlNonNegativeInteger {
+                digits: ascii_digit_string(integer),
+            },
+            fraction,
+        )
     }
 
     // Only the arithmetic above constructs these ASCII digit buffers. Leading
@@ -803,7 +1425,7 @@ impl HtmlNonNegativeDecimal {
         }
         Self {
             integer,
-            fraction: fraction.into_iter().map(char::from).collect(),
+            fraction: ascii_digit_string(fraction),
         }
     }
 
@@ -1719,6 +2341,395 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn digits(input: &str) -> Vec<u16> {
+        input.encode_utf16().collect()
+    }
+
+    #[test]
+    fn materialized_borrowed_digits_are_canonical_without_bounded_year_projection() {
+        for (input, expected) in [
+            ("0000", "0"),
+            ("0001", "1"),
+            (
+                "340282366920938463463374607431768211456",
+                "340282366920938463463374607431768211456",
+            ),
+        ] {
+            let value = HtmlNonNegativeInteger::try_from_borrowed_digits(
+                &digits(input),
+                expected.len(),
+                100,
+            )
+            .unwrap();
+            assert_eq!(value.value.decimal_digits(), expected);
+            assert!(value.capacity_bytes >= expected.len());
+            let copied = value.value.try_copy(expected.len(), 100).unwrap();
+            assert_eq!(copied.value.decimal_digits(), expected);
+            assert!(copied.capacity_bytes >= expected.len());
+        }
+        let invalid =
+            HtmlNonNegativeInteger::try_from_borrowed_digits(&[49, 0xd800], 2, 2).unwrap_err();
+        assert_eq!(
+            invalid.kind,
+            NumericMaterializationError::Digits(HtmlDecimalDigitsError::NonAsciiDigit {
+                code_unit_offset: 1,
+                code_unit: 0xd800
+            })
+        );
+        assert_eq!(invalid.capacity_bytes, 0);
+        assert_eq!(
+            HtmlNonNegativeInteger::try_from_borrowed_digits(&[], 0, 0)
+                .unwrap_err()
+                .kind,
+            NumericMaterializationError::Digits(HtmlDecimalDigitsError::Empty)
+        );
+    }
+
+    #[test]
+    fn materialized_fixed_constants_decrement_and_signed_day_steps_cover_zero_and_carry() {
+        for (number, expected) in [
+            (0, "0"),
+            (400, "400"),
+            (146097, "146097"),
+            (u32::MAX, "4294967295"),
+        ] {
+            let value = HtmlNonNegativeInteger::try_from_u32(number, expected.len(), 100).unwrap();
+            assert_eq!(value.value.decimal_digits(), expected);
+            assert!(value.capacity_bytes >= expected.len());
+        }
+        let zero = HtmlNonNegativeInteger::from(0);
+        let none = zero.try_decremented(0, 0).unwrap();
+        assert_eq!(none.value, None);
+        assert_eq!(none.capacity_bytes, 0);
+        for (input, expected) in [
+            ("1", "0"),
+            ("1000", "999"),
+            (
+                "340282366920938463463374607431768211456",
+                "340282366920938463463374607431768211455",
+            ),
+        ] {
+            let input = HtmlNonNegativeInteger::from_decimal_digits(&text(input)).unwrap();
+            assert_eq!(
+                input
+                    .try_decremented(expected.len(), 100)
+                    .unwrap()
+                    .value
+                    .unwrap()
+                    .decimal_digits(),
+                expected
+            );
+        }
+        let day = HtmlInteger::from_magnitude(zero, false);
+        let previous = day
+            .try_materialized_unit_step(IntegerUnitStep::Decrement, 1, 1)
+            .unwrap();
+        assert_eq!(previous.value.as_document_string(), text("-1"));
+        assert_eq!(
+            previous
+                .value
+                .try_materialized_unit_step(IntegerUnitStep::Increment, 1, 1)
+                .unwrap()
+                .value
+                .as_document_string(),
+            text("0")
+        );
+    }
+
+    #[test]
+    fn materialized_cycle_arithmetic_has_literal_unbounded_quotient_and_product() {
+        let large = HtmlNonNegativeInteger::from_decimal_digits(&text(
+            "340282366920938463463374607431768211456",
+        ))
+        .unwrap();
+        let divided = large
+            .try_quotient_remainder(NonZeroU32::new(400).unwrap(), 36, 100)
+            .unwrap();
+        assert_eq!(
+            divided.value.0.decimal_digits(),
+            "850705917302346158658436518579420528"
+        );
+        assert_eq!(divided.value.1, 256);
+        assert_eq!(
+            borrowed_decimal_remainder(
+                &digits("000340282366920938463463374607431768211456"),
+                NonZeroU32::new(400).unwrap()
+            ),
+            256
+        );
+        let cycle = HtmlNonNegativeInteger::from(400);
+        assert_eq!(
+            cycle
+                .try_multiplied_by(146097, 8, 8)
+                .unwrap()
+                .value
+                .decimal_digits(),
+            "58438800"
+        );
+        let carry = HtmlNonNegativeInteger::from(999);
+        assert_eq!(
+            carry
+                .try_added_to(&HtmlNonNegativeInteger::from(1), 4, 4)
+                .unwrap()
+                .value
+                .decimal_digits(),
+            "1000"
+        );
+        assert_eq!(
+            carry
+                .try_multiplied_by(u32::MAX, 13, 13)
+                .unwrap()
+                .value
+                .decimal_digits(),
+            "4290672327705"
+        );
+        assert_eq!(
+            large
+                .try_multiplied_by(0, 1, 1)
+                .unwrap()
+                .value
+                .decimal_digits(),
+            "0"
+        );
+        assert_eq!(
+            HtmlNonNegativeInteger::from(399)
+                .try_quotient_remainder(NonZeroU32::new(400).unwrap(), 1, 1)
+                .unwrap()
+                .value,
+            (HtmlNonNegativeInteger::from(0), 399)
+        );
+    }
+
+    #[test]
+    fn materialized_integer_digit_and_requested_byte_caps_apply_to_actual_result() {
+        let value = HtmlNonNegativeInteger::from(999);
+        assert_eq!(
+            value
+                .try_added_to(&HtmlNonNegativeInteger::from(1), 3, 100)
+                .unwrap_err(),
+            NumericMaterializationFailure {
+                kind: NumericMaterializationError::Boundary(
+                    IntegerUnitStepError::DigitLimitExceeded {
+                        limit: 3,
+                        required: 4
+                    }
+                ),
+                capacity_bytes: 0
+            }
+        );
+        assert_eq!(
+            value.try_multiplied_by(10, 4, 3).unwrap_err(),
+            NumericMaterializationFailure {
+                kind: NumericMaterializationError::Boundary(
+                    IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                        limit: 3,
+                        required: 4
+                    }
+                ),
+                capacity_bytes: 0
+            }
+        );
+        assert_eq!(
+            HtmlNonNegativeInteger::try_from_u32(0, 0, 1)
+                .unwrap_err()
+                .kind,
+            NumericMaterializationError::Boundary(IntegerUnitStepError::DigitLimitExceeded {
+                limit: 0,
+                required: 1
+            })
+        );
+        let copied = value.try_copy(3, 100).unwrap();
+        let exact = value.try_copy(3, copied.capacity_bytes).unwrap();
+        assert_eq!(exact.value.decimal_digits(), "999");
+        let short = value.try_copy(3, copied.capacity_bytes - 1).unwrap_err();
+        assert!(matches!(
+            short.kind,
+            NumericMaterializationError::Boundary(
+                IntegerUnitStepError::RequestedCapacityLimitExceeded { .. }
+                    | IntegerUnitStepError::ActualCapacityLimitExceeded { .. }
+            )
+        ));
+    }
+
+    #[test]
+    fn materialized_decimal_borrowed_fraction_and_copies_preserve_exact_places() {
+        let value = HtmlNonNegativeDecimal::try_from_borrowed_digits(
+            &digits("00012"),
+            &digits("0001234500"),
+            2,
+            100,
+        )
+        .unwrap();
+        assert_eq!(value.value.as_document_string(), text("12.00012345"));
+        assert!(value.capacity_bytes >= 10);
+        let copied = value.value.try_copy(2, 100).unwrap();
+        assert_eq!(copied.value.as_document_string(), text("12.00012345"));
+        assert!(copied.capacity_bytes >= 10);
+        let integer =
+            HtmlNonNegativeDecimal::try_from_borrowed_digits(&digits("001"), &[], 1, 1).unwrap();
+        assert_eq!(integer.value.as_document_string(), text("1"));
+        assert_eq!(integer.capacity_bytes, 1);
+        let zero = HtmlNonNegativeDecimal::try_from_borrowed_digits(
+            &digits("000"),
+            &digits("000000"),
+            1,
+            1,
+        )
+        .unwrap();
+        assert_eq!(zero.value.as_document_string(), text("0"));
+        assert_eq!(zero.capacity_bytes, 1);
+    }
+
+    #[test]
+    fn materialized_decimal_scale_and_add_keep_fractional_carry_and_zero_capacity_history() {
+        let tiny = decimal("0", "0001");
+        assert_eq!(
+            tiny.try_multiplied_by(100, 1, 100)
+                .unwrap()
+                .value
+                .as_document_string(),
+            text("0.01")
+        );
+        let integral = tiny.try_multiplied_by(10000, 1, 100).unwrap();
+        assert_eq!(integral.value.as_document_string(), text("1"));
+        assert!(integral.capacity_bytes >= 5); // discarded four-place buffer + integer
+        let carried = decimal("0", "9999")
+            .try_added_to(&decimal("0", "0001"), 1, 100)
+            .unwrap();
+        assert_eq!(carried.value.as_document_string(), text("1"));
+        assert!(carried.capacity_bytes >= 5);
+        assert_eq!(
+            decimal("0", "25")
+                .try_multiplied_by(u32::MAX, 10, 100)
+                .unwrap()
+                .value
+                .as_document_string(),
+            text("1073741823.75")
+        );
+        assert_eq!(
+            decimal("0", "0125")
+                .try_added_to(&decimal("0", "5"), 1, 100)
+                .unwrap()
+                .value
+                .as_document_string(),
+            text("0.5125")
+        );
+        let zero = tiny.try_multiplied_by(0, 1, 1).unwrap();
+        assert_eq!(zero.value.as_document_string(), text("0"));
+        assert_eq!(zero.capacity_bytes, 1);
+    }
+
+    #[test]
+    fn materialized_decimal_late_failures_retain_every_earlier_observed_buffer() {
+        let syntax =
+            HtmlNonNegativeDecimal::try_from_borrowed_digits(&digits("12"), &[0xdfff], 2, 100)
+                .unwrap_err();
+        assert_eq!(
+            syntax.kind,
+            NumericMaterializationError::Digits(HtmlDecimalDigitsError::NonAsciiDigit {
+                code_unit_offset: 0,
+                code_unit: 0xdfff
+            })
+        );
+        assert!(syntax.capacity_bytes >= 2);
+        let requested =
+            HtmlNonNegativeDecimal::try_from_borrowed_digits(&digits("1"), &digits("123"), 1, 1)
+                .unwrap_err();
+        assert!(requested.capacity_bytes >= 1);
+        assert_eq!(
+            requested.kind,
+            NumericMaterializationError::Boundary(
+                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                    limit: 1,
+                    required: requested.capacity_bytes + 3
+                }
+            )
+        );
+        let copy = decimal("1", "123").try_copy(1, 1).unwrap_err();
+        assert!(copy.capacity_bytes >= 1);
+        for failure in [
+            decimal("9", "9999")
+                .try_multiplied_by(2, 1, 100)
+                .unwrap_err(),
+            decimal("9", "9999")
+                .try_added_to(&decimal("0", "0001"), 1, 100)
+                .unwrap_err(),
+        ] {
+            assert_eq!(
+                failure.kind,
+                NumericMaterializationError::Boundary(IntegerUnitStepError::DigitLimitExceeded {
+                    limit: 1,
+                    required: 2
+                })
+            );
+            assert!(failure.capacity_bytes >= 4);
+        }
+    }
+
+    #[test]
+    fn materialization_reservation_checks_observed_overshoot_and_late_representation() {
+        // This exercises the actual capacity guard independently of an allocator
+        // whose try_reserve_exact may or may not overshoot on this host.
+        assert_eq!(
+            check_integer_actual_capacity(3, 4, 3),
+            Err(IntegerUnitStepError::ActualCapacityLimitExceeded {
+                limit: 3,
+                requested: 3,
+                capacity_bytes: 4
+            })
+        );
+        let mut observed = 7;
+        let representation =
+            reserve_materialization(usize::MAX, None, usize::MAX, &mut observed).unwrap_err();
+        assert_eq!(representation.capacity_bytes, 7);
+        assert_eq!(
+            representation.kind,
+            NumericMaterializationError::Boundary(IntegerUnitStepError::RepresentationExhausted)
+        );
+        let requested = reserve_materialization(3, Some(3), 9, &mut observed).unwrap_err();
+        assert_eq!(requested.capacity_bytes, 7);
+        assert_eq!(
+            requested.kind,
+            NumericMaterializationError::Boundary(
+                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                    limit: 9,
+                    required: 10
+                }
+            )
+        );
+        let digit = reserve_materialization(3, Some(2), 100, &mut observed).unwrap_err();
+        assert_eq!(digit.capacity_bytes, 7);
+        assert_eq!(
+            digit.kind,
+            NumericMaterializationError::Boundary(IntegerUnitStepError::DigitLimitExceeded {
+                limit: 2,
+                required: 3
+            })
+        );
+    }
+
+    #[test]
+    fn materialized_work_envelopes_are_checked_before_unrepresentable_operations() {
+        assert_eq!(
+            HtmlNonNegativeInteger::from_borrowed_digits_work_bound(usize::MAX),
+            None
+        );
+        assert_eq!(
+            HtmlNonNegativeDecimal::from_borrowed_digits_work_bound(1, usize::MAX),
+            None
+        );
+        assert!(HtmlNonNegativeInteger::from_u32_work_bound().unwrap() >= 10);
+        let integer = HtmlNonNegativeInteger::from(999);
+        assert!(integer.decremented_work_bound().unwrap() >= 6);
+        assert!(integer.quotient_remainder_work_bound().unwrap() >= 12);
+        assert!(integer.multiplied_by_work_bound().unwrap() >= 12);
+        assert!(integer.added_to_work_bound(&integer).unwrap() >= 24);
+        let decimal = decimal("9", "9999");
+        assert!(decimal.copy_work_bound().unwrap() >= 10);
+        assert!(decimal.multiplied_by_work_bound().unwrap() >= 20);
+        assert!(decimal.added_to_work_bound(&decimal).unwrap() >= 24);
+    }
 
     #[test]
     fn scientific_keys_normalize_decimal_places_and_exponent_signs_exactly() {
