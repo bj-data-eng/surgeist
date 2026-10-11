@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 314 retained source identities and states their representations: 247 full documents/source witnesses, 64 partial witnesses, and 3 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 341 retained source identities and states their representations: 254 full documents/source witnesses, 82 partial witnesses, and 5 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -59,3 +59,7 @@ The [parser suitability assessment](../docs/html-parser-suitability.md) uses pin
 The [new operative edition mapping](SOURCE-EDITIONS.md#dom-selector-execution-and-bounded-style-determinations) identifies current DOM/HTML/Web IDL/Infra foundation clauses, selector and scope execution sources, and bounded style gap determinations. Native Rust identity, admission, atomicity and host contracts remain explicit product choices. Historical authored-CSS editions are retained; a current capture does not silently replace every consumer’s source selection.
 
 The [addition verification record](CONVERSION-REPORT.md#dom-selector-execution-and-bounded-style-source-additions--2026-10-1011) distinguishes complete documents, complete selected sections, exact browser excerpts and brief resolution quotations. Complex DOM tables preserve semantic HTML rather than flattening. Conditional 5 and Content 3 renderings share complete original source identities; the Blink speak entry shares its existing complete registry witness. Dated CSSWG minutes are an ordinary metadata-only corroborating record, separate from the two rights/coverage exceptions above.
+
+## Additional source questions
+
+The [additional edition mapping](SOURCE-EDITIONS.md#additional-source-question-determinations) retains bounded color/profile, animation/keyframe, generalized-conditional, marker/pseudo-object, bookmark/accessibility and assigned media/preference/border evidence. Reused full source identities gain representation links without duplicate counting. Current published AccName 1.2 and separately pinned browser evidence remain explicitly scoped. The [verification record](CONVERSION-REPORT.md#additional-source-question-references--2026-10-1011) states the conversion checks and metadata-only discussion provenance.

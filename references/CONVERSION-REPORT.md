@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **314 source identities: 247 full documents/source witnesses, 64 partial witnesses and 3 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **341 source identities: 254 full documents/source witnesses, 82 partial witnesses and 5 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -215,3 +215,19 @@ The six DOM captures pass source-to-parsed-GFM checks for 6,705 IDs, 69 headings
 Every listed conversion reports zero errors. Counts cover retained source sections, not omitted document bodies, and are not conformance tests. Browser excerpts retain exact original line ranges, complete file-level headers and source-byte hashes; complete files retain their full bytes. Resolution witnesses retain two brief attributed comment quotations plus response/body hashes. Dated minutes have URL/hash provenance only and are therefore metadata-only without a rights exclusion. Captured upstream links are provenance, not a claim that external network availability was tested. Legal header copies are verified byte-for-byte against the selected source; existing license files are reused only where exact text matches.
 
 Final integration checks confirm 314 catalog rows, the full/partial/metadata totals above, all 40 added original-source hashes against retained raw evidence, and 13 exact legal-header copies. Conditional 5, Content 3, RenderElement.cpp and Blink css_properties.json5 each occupy one catalog row; the full RenderElement witness upgrades its earlier bounded representation without adding another identity. Parsed Markdown/SVG link checks cover 226 reference/notice files and 73,018 local link occurrences with no missing path or fragment. The owned catalog/notice edits pass `git diff --check`; quoted source-fidelity whitespace exceptions in earlier captures remain as previously disclosed.
+
+## Additional source-question references — 2026-10-10/11
+
+These additions contribute 27 distinct source identities: 7 full witnesses, 18 partial witnesses and 2 ordinary metadata-only provenance records. 6 additional representations reuse existing source identities; existing complete witnesses remain complete. Historical captures and rights/coverage exceptions are unchanged. Full original document/file/response hashes remain separate from bounded input and Markdown hashes.
+
+| Verified bounded conversion group | Captures | IDs | Headings | Literal blocks | Tables | Cells | Retained links |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| additional-style | 4 | 669 | 29 | 19 | 4 | 42 | 690 |
+| additional-selectors | 1 | 168 | 12 | 13 | 0 | 0 | 116 |
+| additional-content-host | 2 | 181 | 17 | 8 | 4 | 74 | 253 |
+| additional-media | 3 | 321 | 31 | 5 | 8 | 64 | 325 |
+| additional-animation-host | 1 | 414 | 11 | 10 | 0 | 0 | 400 |
+
+All conversion records report zero errors against their retained sections. The approved Pandoc 3.1.11.1 workflow preserves original status/notices, source IDs, literal code, links and table cell/span models; scripts/styles are omitted without execution. Browser excerpts preserve exact declared line ranges plus complete file-level legal headers. Four brief comment quotations retain response/body hashes and edit times; two additional comments retain metadata only. The source catalog counts those nonrestricted provenance records separately from the two rights/coverage exceptions. Checks concern source fidelity and identity, not implementation conformance, complete browser behavior, visual equivalence or external link availability.
+
+Final integration checks confirm 341 catalog rows and the 254 full, 82 partial and five metadata-only totals. All 33 added/reused representation records identify matching retained original source bytes; 14 accompanying legal headers match their source blocks byte-for-byte. Six representation additions reuse source identities, including the two new Web Animations renderings sharing one original document. Parsed link checks cover 243 reference/notice files and 73,732 local link occurrences without missing paths or fragments. Blink page.cc preserves its file-specific GNU Library GPL version 2-or-later header and uses the existing complete Blink license-credit text, rather than a generic Chromium BSD declaration. Owned catalog/notice edits pass `git diff --check`.
