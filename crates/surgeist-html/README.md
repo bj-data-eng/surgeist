@@ -107,8 +107,8 @@ an independent author grammar. Date-with-optional-time checks its Date/Global
 author grammar while retaining the common parser's standalone Time result;
 attribute-specific timestamp filters remain with their consuming clauses.
 Raw values remain unchanged, including isolated surrogates. Attribute
-applicability, missing/invalid/empty defaults and effective states still require
-their individual defining clauses.
+applicability, missing/invalid/empty defaults and effective states follow their
+individual defining clauses.
 This standalone input cap is not full parser accounting, cancellation or an
 allocation-failure guarantee. The parser contribution owns those controls.
 
@@ -120,3 +120,12 @@ conformance and the color-input state’s external CSS grammar. The existing
 external cssparser package supplies only the standard named-color lookup,
 without a dependency on surgeist-css or invocation of CSS tokenization.
 See the [dependency notice](NOTICE.md) and [source selection](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline).
+
+`HtmlAttributeReport` separates exact presence, expanded-name applicability,
+keyword recognition, author conformance and the selected intrinsic state. The
+implemented overlay family covers twelve global enumerated attributes, template
+shadow mode/slot assignment and eight Boolean attributes. It preserves invalid
+spelling when a clause supplies a fallback; keyboard hints retain their lack of
+a defined fallback. Native keyword values construct their canonical raw
+attributes. These views do not compute inheritance or claim runtime effects,
+and the remaining attribute families are tracked by the contribution.
