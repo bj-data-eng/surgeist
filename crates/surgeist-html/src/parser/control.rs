@@ -183,6 +183,7 @@ pub(crate) enum Invariant {
     MissingSource,
     InputCursorState,
     ForeignControl,
+    CleanupWhileRunning,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -708,6 +709,70 @@ impl<T> OwnedVec<T> {
     pub(crate) fn capacity(&self) -> usize {
         self.vector.capacity()
     }
+    /// Admits one indexed record visit, including an out-of-bounds attempt.
+    /// The borrow grants no payload-work or nested-storage admission: the caller
+    /// must charge every field inspection, write and copy before performing it,
+    /// and admit/release any nested payload and allocation tickets separately.
+    pub(crate) fn get_mut(
+        &mut self,
+        index: usize,
+        control: &mut ParseControl,
+    ) -> Result<Option<&mut T>, ParseStop> {
+        self.require_owner(control)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        Ok(self.vector.get_mut(index))
+    }
+    /// Removes one admitted slot and transfers its value without releasing its
+    /// nested payload tickets. The caller owns their separate release/transfer.
+    /// Capacity and all high-water observations are retained. An empty attempt
+    /// visits only the container; it charges no write or payload copy.
+    pub(crate) fn try_pop(&mut self, control: &mut ParseControl) -> Result<Option<T>, ParseStop> {
+        self.require_owner(control)?;
+        if self.vector.is_empty() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            return Ok(None);
+        }
+        let Ok(bytes) = u64::try_from(size_of::<T>()) else {
+            return control.representation(Resource::AtomicLayoutBytes);
+        };
+        control.charge_many(&[
+            (WorkCategory::RecordVisit, 1),
+            (WorkCategory::RecordWrite, 1),
+            (WorkCategory::CopyByte, bytes),
+        ])?;
+        if size_of::<T>() > WORK_QUANTUM - 2 {
+            control.check_value(Resource::AtomicLayoutBytes, bytes, bytes)?;
+            control.set(Resource::AtomicLayoutBytes, bytes);
+            control.usage.largest_atomic_layout = control.usage.largest_atomic_layout.max(bytes);
+        }
+        control.release(self.resource, 1)?;
+        Ok(self.vector.pop())
+    }
+    /// Failure cleanup only: a first stop must already be latched. The returned
+    /// value may only be deallocated or have its nested tickets released; this
+    /// is not successful tokenizer progress. Checks the same owner and logical
+    /// slot underflow, retaining first-stop, capacity, work and high-water use.
+    /// Cleanup is deliberately uncharged so exhaustion cannot strand tickets.
+    pub(crate) fn cleanup_pop(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<Option<T>, ParseStop> {
+        if control.stop().is_none() {
+            return Err(control.fail_invariant(Invariant::CleanupWhileRunning));
+        }
+        if self
+            .owner
+            .as_ref()
+            .is_some_and(|owner| !Arc::ptr_eq(owner, &control.identity))
+        {
+            return control.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        if self.vector.is_empty() {
+            return Ok(None);
+        }
+        control.cleanup_storage(self.resource, 1, 0)?;
+        Ok(self.vector.pop())
+    }
     pub(crate) fn require_owner(&mut self, control: &mut ParseControl) -> Result<(), ParseStop> {
         control.checkpoint()?;
         if let Some(owner) = &self.owner {
@@ -796,6 +861,35 @@ impl<T> OwnedVec<T> {
             drop(self.vector.pop());
         }
         Ok(())
+    }
+    /// Uses normal push admission, but returns the original value on every
+    /// precommit failure so its nested allocation tickets remain recoverable.
+    /// The caller must release those tickets through their original owner; this
+    /// does not refund admitted work or capacity and never resumes failed work.
+    pub(crate) fn try_push_recover(
+        &mut self,
+        control: &mut ParseControl,
+        value: T,
+    ) -> Result<(), (ParseStop, T)> {
+        let admission = (|| {
+            control.checkpoint()?;
+            let bytes = size_of::<T>() as u64;
+            self.prepare(control, 1, bytes, 1)?;
+            if size_of::<T>() >= WORK_QUANTUM {
+                control.check_value(Resource::AtomicLayoutBytes, bytes, bytes)?;
+                control.set(Resource::AtomicLayoutBytes, bytes);
+                control.usage.largest_atomic_layout =
+                    control.usage.largest_atomic_layout.max(bytes);
+            }
+            control.acquire(self.resource, 1)
+        })();
+        match admission {
+            Ok(()) => {
+                self.vector.push(value);
+                Ok(())
+            }
+            Err(stop) => Err((stop, value)),
+        }
     }
     pub(crate) fn release(self, control: &mut ParseControl) -> Result<(), ParseStop> {
         if self
@@ -1524,5 +1618,418 @@ mod tests {
                 .current,
             0
         );
+    }
+    #[test]
+    fn indexed_access_preserves_bounds_and_charges_only_its_record_visit() {
+        let mut control = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        assert_eq!(entries.get_mut(usize::MAX, &mut control).unwrap(), None);
+        entries.try_push(&mut control, 7).unwrap();
+        let before = control.usage().clone();
+        let entry = entries.get_mut(0, &mut control).unwrap().unwrap();
+        control.charge(WorkCategory::InspectByte, 2).unwrap();
+        assert_eq!(*entry, 7);
+        control
+            .charge_many(&[(WorkCategory::RecordWrite, 1), (WorkCategory::CopyByte, 2)])
+            .unwrap();
+        *entry = 9;
+        assert_eq!(entries.as_slice(), &[9]);
+        assert_eq!(
+            control.usage().work(WorkCategory::RecordVisit),
+            before.work(WorkCategory::RecordVisit) + 1
+        );
+        assert_eq!(
+            control.usage().work(WorkCategory::InspectByte),
+            before.work(WorkCategory::InspectByte) + 2
+        );
+        assert_eq!(
+            control.usage().work(WorkCategory::CopyByte),
+            before.work(WorkCategory::CopyByte) + 2
+        );
+        assert_eq!(
+            control.usage().resource(Resource::AuxiliaryEntries),
+            before.resource(Resource::AuxiliaryEntries)
+        );
+        assert_eq!(entries.get_mut(1, &mut control).unwrap(), None);
+        assert_eq!(
+            control.usage().work(WorkCategory::RecordVisit),
+            before.work(WorkCategory::RecordVisit) + 2
+        );
+    }
+    #[test]
+    fn indexed_access_rejects_foreign_owner_before_a_visit() {
+        let mut owner = control();
+        let mut foreign = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut owner, 7).unwrap();
+        let before = foreign.usage().clone();
+        assert_eq!(
+            entries.get_mut(0, &mut foreign),
+            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+        );
+        assert_eq!(foreign.usage(), &before);
+        assert_eq!(entries.as_slice(), &[7]);
+        entries.release(&mut owner).unwrap();
+    }
+    #[test]
+    fn cancellation_prevents_indexed_borrow_and_normal_pop() {
+        let mut control = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut control, 7).unwrap();
+        let before = control.usage().clone();
+        control.cancellation.cancel();
+        assert_eq!(entries.get_mut(0, &mut control), Err(ParseStop::Cancelled));
+        assert_eq!(entries.try_pop(&mut control), Err(ParseStop::Cancelled));
+        assert_eq!(control.usage(), &before);
+        assert_eq!(entries.as_slice(), &[7]);
+        entries.release(&mut control).unwrap();
+    }
+    #[test]
+    fn indexed_borrow_work_cap_is_checked_before_exposing_the_slot() {
+        let mut limits = limits();
+        limits.work_credits = 6;
+        let mut control = ParseControl::new(limits, Cancellation::new()).unwrap();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut control, 7).unwrap();
+        assert_eq!(
+            entries.get_mut(0, &mut control),
+            Err(ParseStop::LimitExceeded {
+                resource: Resource::WorkCredits,
+                limit: 6,
+                current: 6,
+                requested_delta: 1,
+            })
+        );
+        assert_eq!(control.usage().work(WorkCategory::RecordVisit), 0);
+        assert_eq!(entries.as_slice(), &[7]);
+        entries.release(&mut control).unwrap();
+    }
+    #[test]
+    fn normal_pop_empty_attempt_visits_without_write_copy_or_allocation() {
+        let mut control = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        assert_eq!(entries.try_pop(&mut control).unwrap(), None);
+        assert_eq!(control.usage().resource(Resource::WorkCredits).current, 1);
+        assert_eq!(control.usage().work(WorkCategory::RecordVisit), 1);
+        assert_eq!(control.usage().work(WorkCategory::RecordWrite), 0);
+        assert_eq!(control.usage().work(WorkCategory::CopyByte), 0);
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn normal_pop_transfers_last_slot_and_retains_capacity_and_high_water() {
+        let mut control = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries
+            .try_extend_from_slice(&mut control, &[3, 7])
+            .unwrap();
+        let before = control.usage().clone();
+        let capacity = entries.capacity();
+        assert_eq!(entries.try_pop(&mut control).unwrap(), Some(7));
+        assert_eq!(entries.as_slice(), &[3]);
+        assert_eq!(entries.capacity(), capacity);
+        assert_eq!(
+            control.usage().resource(Resource::AuxiliaryEntries),
+            ResourceUsage {
+                current: 1,
+                high_water: 2
+            }
+        );
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits).current,
+            before.resource(Resource::WorkCredits).current + 4
+        );
+        assert_eq!(
+            control.usage().work(WorkCategory::RecordVisit),
+            before.work(WorkCategory::RecordVisit) + 1
+        );
+        assert_eq!(
+            control.usage().work(WorkCategory::RecordWrite),
+            before.work(WorkCategory::RecordWrite) + 1
+        );
+        assert_eq!(
+            control.usage().work(WorkCategory::CopyByte),
+            before.work(WorkCategory::CopyByte) + 2
+        );
+        assert_eq!(
+            control.usage().actual_capacity_bytes,
+            before.actual_capacity_bytes
+        );
+        entries.release(&mut control).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(Resource::AuxiliaryEntries)
+                .high_water,
+            2
+        );
+    }
+    #[test]
+    fn normal_pop_foreign_owner_and_work_cap_leave_the_value_in_place() {
+        let mut limits = limits();
+        limits.work_credits = 6;
+        let mut owner = ParseControl::new(limits, Cancellation::new()).unwrap();
+        let mut foreign = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut owner, 7).unwrap();
+        assert_eq!(
+            entries.try_pop(&mut foreign),
+            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+        );
+        assert_eq!(foreign.usage().resource(Resource::WorkCredits).current, 0);
+        assert_eq!(
+            entries.try_pop(&mut owner),
+            Err(ParseStop::LimitExceeded {
+                resource: Resource::WorkCredits,
+                limit: 6,
+                current: 6,
+                requested_delta: 4,
+            })
+        );
+        assert_eq!(entries.as_slice(), &[7]);
+        assert_eq!(
+            owner.usage().resource(Resource::AuxiliaryEntries).current,
+            1
+        );
+        entries.release(&mut owner).unwrap();
+    }
+    #[test]
+    fn normal_pop_large_fixed_record_preserves_its_admitted_atomic_layout() {
+        let mut control = control();
+        let mut entries = OwnedVec::<[u8; 512]>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut control, [7; 512]).unwrap();
+        let before = control.usage().resource(Resource::WorkCredits).current;
+        assert_eq!(entries.try_pop(&mut control).unwrap(), Some([7; 512]));
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits).current,
+            before + 514
+        );
+        assert_eq!(control.usage().largest_atomic_layout, 512);
+        assert_eq!(
+            control
+                .usage()
+                .resource(Resource::AtomicLayoutBytes)
+                .current,
+            512
+        );
+        assert_eq!(entries.capacity(), 1);
+        entries.release(&mut control).unwrap();
+    }
+    #[test]
+    fn active_cleanup_pop_is_rejected_before_removal() {
+        let mut control = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut control, 7).unwrap();
+        let before = control.usage().clone();
+        assert_eq!(
+            entries.cleanup_pop(&mut control),
+            Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning))
+        );
+        assert_eq!(entries.as_slice(), &[7]);
+        assert_eq!(control.usage(), &before);
+        assert_eq!(
+            entries.try_pop(&mut control),
+            Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning))
+        );
+        entries.release(&mut control).unwrap();
+    }
+    #[test]
+    fn terminal_cleanup_transfers_nested_tickets_without_work_refund_or_resumption() {
+        let mut control = control();
+        let mut text = OwnedVec::<u16>::new(Resource::BufferedUtf16Units).unwrap();
+        text.try_push(&mut control, 0xD800).unwrap();
+        let (text, allocation) = control.admit_document_string_wrapper(text).unwrap();
+        let text = DocumentString::from_utf16(text);
+        let mut entries = OwnedVec::new(Resource::TokenAttributes).unwrap();
+        entries.try_push(&mut control, (text, allocation)).unwrap();
+        control.cancellation.cancel();
+        let stop = control.checkpoint().unwrap_err();
+        let before = control.usage().clone();
+        let (text, allocation) = entries.cleanup_pop(&mut control).unwrap().unwrap();
+        assert_eq!(text.code_units(), &[0xD800]);
+        assert_eq!(
+            control.usage().resource(Resource::TokenAttributes),
+            ResourceUsage {
+                current: 0,
+                high_water: 1
+            }
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(Resource::BufferedUtf16Units)
+                .current,
+            1
+        );
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits),
+            before.resource(Resource::WorkCredits)
+        );
+        assert_eq!(control.usage().work, before.work);
+        assert_eq!(
+            control.usage().actual_capacity_bytes,
+            before.actual_capacity_bytes
+        );
+        drop(text);
+        control.release_document_string(allocation).unwrap();
+        assert!(entries.cleanup_pop(&mut control).unwrap().is_none());
+        assert!(matches!(entries.get_mut(0, &mut control), Err(reason) if reason == stop));
+        assert!(matches!(entries.try_pop(&mut control), Err(reason) if reason == stop));
+        entries.release(&mut control).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.stop(), Some(stop));
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits),
+            before.resource(Resource::WorkCredits)
+        );
+    }
+    #[test]
+    fn cleanup_pop_rejects_foreign_owner_without_changing_the_first_stop() {
+        let mut owner = control();
+        let mut foreign = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut owner, 7).unwrap();
+        foreign.cancellation.cancel();
+        let stop = foreign.checkpoint().unwrap_err();
+        let before = foreign.usage().clone();
+        assert_eq!(entries.cleanup_pop(&mut foreign), Err(stop));
+        assert_eq!(entries.as_slice(), &[7]);
+        assert_eq!(foreign.usage(), &before);
+        assert_eq!(foreign.stop(), Some(stop));
+        owner.cancellation.cancel();
+        owner.checkpoint().unwrap_err();
+        assert_eq!(entries.cleanup_pop(&mut owner).unwrap(), Some(7));
+        entries.release(&mut owner).unwrap();
+    }
+    #[test]
+    fn recovering_push_has_the_same_success_accounting_as_normal_push() {
+        let mut normal = control();
+        let mut recovering = control();
+        let mut normal_entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        let mut recovering_entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        normal_entries.try_push(&mut normal, 7).unwrap();
+        assert!(
+            recovering_entries
+                .try_push_recover(&mut recovering, 7)
+                .is_ok()
+        );
+        assert_eq!(normal_entries.as_slice(), recovering_entries.as_slice());
+        assert_eq!(normal.usage(), recovering.usage());
+        normal_entries.release(&mut normal).unwrap();
+        recovering_entries.release(&mut recovering).unwrap();
+    }
+    #[test]
+    fn recovering_push_returns_nested_tickets_on_slot_cap_failure() {
+        let mut limits = limits();
+        limits.token_attributes = 0;
+        let mut control = ParseControl::new(limits, Cancellation::new()).unwrap();
+        let mut units = OwnedVec::<u16>::new(Resource::BufferedUtf16Units).unwrap();
+        units.try_push(&mut control, 0xD800).unwrap();
+        let (units, allocation) = control.admit_document_string_wrapper(units).unwrap();
+        let text = DocumentString::from_utf16(units);
+        let mut entries = OwnedVec::new(Resource::TokenAttributes).unwrap();
+        let (stop, (text, allocation)) = entries
+            .try_push_recover(&mut control, (text, allocation))
+            .unwrap_err();
+        assert_eq!(
+            stop,
+            ParseStop::LimitExceeded {
+                resource: Resource::TokenAttributes,
+                limit: 0,
+                current: 0,
+                requested_delta: 1
+            }
+        );
+        assert_eq!(text.code_units(), &[0xD800]);
+        assert_eq!(entries.len(), 0);
+        assert_eq!(entries.capacity(), 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(Resource::BufferedUtf16Units)
+                .current,
+            1
+        );
+        let work = control.usage().resource(Resource::WorkCredits).current;
+        drop(text);
+        control.release_document_string(allocation).unwrap();
+        entries.release(&mut control).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.stop(), Some(stop));
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits).current,
+            work
+        );
+    }
+    #[test]
+    fn recovering_push_returns_the_value_on_cancel_foreign_owner_and_work_failure() {
+        let mut owner = control();
+        let mut foreign = control();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        entries.try_push(&mut owner, 7).unwrap();
+        assert_eq!(
+            entries.try_push_recover(&mut foreign, 11),
+            Err((ParseStop::InternalInvariant(Invariant::ForeignControl), 11))
+        );
+        owner.cancellation.cancel();
+        assert_eq!(
+            entries.try_push_recover(&mut owner, 13),
+            Err((ParseStop::Cancelled, 13))
+        );
+        assert_eq!(entries.as_slice(), &[7]);
+        entries.release(&mut owner).unwrap();
+        let mut limits = limits();
+        limits.work_credits = 0;
+        let mut control = ParseControl::new(limits, Cancellation::new()).unwrap();
+        let mut entries = OwnedVec::<u16>::new(Resource::AuxiliaryEntries).unwrap();
+        assert_eq!(
+            entries.try_push_recover(&mut control, 17),
+            Err((
+                ParseStop::LimitExceeded {
+                    resource: Resource::WorkCredits,
+                    limit: 0,
+                    current: 0,
+                    requested_delta: 6
+                },
+                17
+            ))
+        );
+        assert_eq!(entries.len(), 0);
+        assert_eq!(entries.capacity(), 0);
+        assert_eq!(control.usage().resource(Resource::WorkCredits).current, 0);
+        entries.release(&mut control).unwrap();
+    }
+    #[test]
+    fn normal_pop_transfers_nested_tickets_without_releasing_their_payload() {
+        let mut control = control();
+        let mut units = OwnedVec::<u16>::new(Resource::BufferedUtf16Units).unwrap();
+        units.try_push(&mut control, 0xD800).unwrap();
+        let (units, allocation) = control.admit_document_string_wrapper(units).unwrap();
+        let mut entries = OwnedVec::new(Resource::TokenAttributes).unwrap();
+        entries
+            .try_push(
+                &mut control,
+                (DocumentString::from_utf16(units), allocation),
+            )
+            .unwrap();
+        let bytes = control.usage().actual_capacity_bytes;
+        let (text, allocation) = entries.try_pop(&mut control).unwrap().unwrap();
+        assert_eq!(text.code_units(), &[0xD800]);
+        assert_eq!(
+            control.usage().resource(Resource::TokenAttributes).current,
+            0
+        );
+        assert_eq!(
+            control
+                .usage()
+                .resource(Resource::BufferedUtf16Units)
+                .current,
+            1
+        );
+        assert_eq!(control.usage().actual_capacity_bytes, bytes);
+        drop(text);
+        control.release_document_string(allocation).unwrap();
+        entries.release(&mut control).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
     }
 }
