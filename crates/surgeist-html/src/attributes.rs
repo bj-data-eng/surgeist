@@ -512,6 +512,12 @@ impl InputBooleanApplicability {
     }
 }
 
+/// Shared source applicability for the captured candidacy consumer.
+/// Content Boolean presence and author-context reports remain separate.
+pub(crate) fn input_readonly_applies(state: HtmlInputType) -> bool {
+    InputBooleanApplicability::Readonly.allows(state)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuleMetadata {
     attribute: KnownHtmlAttribute,

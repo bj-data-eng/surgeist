@@ -7,7 +7,7 @@
 //! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
-//! submission conditions and the static tabIndex getter.
+//! submission conditions, static constraint-validation candidacy and the static tabIndex getter.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
@@ -700,6 +700,7 @@ pub enum HtmlSemanticQuery {
     DatalistOptions,
     /// Ordinary HTML area descendants in source tree order.
     MapAreas,
+    ConstraintValidationCandidate,
     TabIndex,
     DetailsSummary,
     SummaryForParentDetails,
@@ -758,6 +759,9 @@ impl HtmlSemanticQuery {
             }
             Self::InputSuggestionsSource => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list"
+            }
+            Self::ConstraintValidationCandidate => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#candidate-for-constraint-validation"
             }
             Self::TabIndex => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tabindex"
@@ -1055,6 +1059,7 @@ pub enum HtmlSemanticFact {
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
     MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
+    ConstraintValidationCandidate(HtmlSemanticValue<bool>),
     TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
     DetailsSummary(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     SummaryForParentDetails(HtmlSemanticValue<bool>),
@@ -2452,6 +2457,11 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.input_suggestions_source(&request.subject)?,
                             )
                         }
+                        HtmlSemanticQuery::ConstraintValidationCandidate => {
+                            HtmlSemanticFact::ConstraintValidationCandidate(
+                                self.constraint_validation_candidate(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::TabIndex => {
                             HtmlSemanticFact::TabIndex(self.tab_index(&request.subject)?)
                         }
@@ -2697,6 +2707,11 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::InputSuggestionsSource => {
                         HtmlSemanticFact::InputSuggestionsSource(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ConstraintValidationCandidate => {
+                        HtmlSemanticFact::ConstraintValidationCandidate(
+                            HtmlSemanticValue::Inapplicable,
+                        )
                     }
                     HtmlSemanticQuery::TabIndex => {
                         HtmlSemanticFact::TabIndex(HtmlSemanticValue::Inapplicable)

@@ -703,6 +703,20 @@ irrelevant facts. Reports retain the consulted raw Boolean observations and
 owner origin, including known ownership within an unresolved result. This
 readback does not execute constraint validation or submission.
 
+The constraint-validation-candidate query evaluates the static HTML candidacy
+predicate from native control category, input type, applicable readonly
+presence, submit-button classification, effective disabledness and ordinary
+datalist ancestry. Confirmed non-submittable elements return false without
+unrelated control facts. Missing custom classification or relationships remain
+unresolved unless an independent barrier proves false for every possible case.
+The operation reuses captured submitter and disabledness owners, including
+first-legend handling. Consulted type and disabled contents retain those owners'
+raw admission; direct readonly presence needs no content grammar scan.
+Terminal admission, work and cancellation failures stay terminal. Results use
+the shared qualified session and atomic batch output. This supplies native
+willValidate semantics; it does not execute validation, produce validity or
+messages, or expose a live ElementInternals object.
+
 The form-default-button query selects the first owned submit button in ordinary
 tree order across the whole tree, including controls outside the form subtree.
 A disabled first button remains the default. The implicit-submission-condition

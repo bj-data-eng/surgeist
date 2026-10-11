@@ -1332,6 +1332,7 @@ pub enum surgeist_html::HtmlSemanticDependencies
 pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
 pub surgeist_html::HtmlSemanticFact::ComputedHeadingLevel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedHeadingLevel>)
+pub surgeist_html::HtmlSemanticFact::ConstraintValidationCandidate(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::ControlAutocomplete(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlAutocomplete>)
 pub surgeist_html::HtmlSemanticFact::ControlLabels(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlControlLabels>>)
 pub surgeist_html::HtmlSemanticFact::CurrentCheckedness(surgeist_html::HtmlSemanticValue<bool>)
@@ -1433,6 +1434,7 @@ pub surgeist_html::HtmlSemanticMissing::SlotAssignment(surgeist_html::HtmlCaptur
 pub surgeist_html::HtmlSemanticMissing::SpellcheckDefault(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlSemanticQuery
 pub surgeist_html::HtmlSemanticQuery::ComputedHeadingLevel
+pub surgeist_html::HtmlSemanticQuery::ConstraintValidationCandidate
 pub surgeist_html::HtmlSemanticQuery::ControlAutocomplete
 pub surgeist_html::HtmlSemanticQuery::ControlLabels
 pub surgeist_html::HtmlSemanticQuery::CurrentCheckedness

@@ -556,6 +556,131 @@ impl From<HtmlSemanticFailure> for ControlStop {
 }
 type ControlResult<T> = Result<T, ControlStop>;
 impl<'a> HtmlSemanticSession<'a> {
+    /// Source candidacy only; this does not execute constraint validation.
+    pub(super) fn constraint_validation_candidate(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
+        let result = self.validation_candidate_inner(subject);
+        self.charge(1)?;
+        match result {
+            Ok(value) => Ok(value),
+            Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
+            Err(ControlStop::Failure(failure)) => Err(failure),
+        }
+    }
+    fn validation_candidate_inner(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> ControlResult<HtmlSemanticValue<bool>> {
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        };
+        if !self.html_namespace(element)? {
+            return Ok(HtmlSemanticValue::Unsupported(
+                HtmlSemanticUnsupported::ForeignNamespace,
+            ));
+        }
+        let kind = self.known(element)?;
+        let mut missing = None;
+        let custom = match kind {
+            Some(
+                KnownHtmlElement::Input
+                | KnownHtmlElement::Button
+                | KnownHtmlElement::Select
+                | KnownHtmlElement::Textarea,
+            ) => false,
+            Some(_) => return Ok(HtmlSemanticValue::Known(false)),
+            None => match self.control_custom(subject) {
+                Ok(false) => return Ok(HtmlSemanticValue::Known(false)),
+                Ok(true) => true,
+                Err(ControlStop::Missing(value)) => {
+                    missing = Some(value);
+                    true
+                }
+                Err(failure) => return Err(failure),
+            },
+        };
+        match kind {
+            Some(KnownHtmlElement::Input) => {
+                let state = self.control_input_type(element)?;
+                if matches!(
+                    state,
+                    HtmlInputType::Hidden | HtmlInputType::Reset | HtmlInputType::Button
+                ) {
+                    return Ok(HtmlSemanticValue::Known(false));
+                }
+                if crate::attributes::input_readonly_applies(state)
+                    && self.attribute(element, "readonly")?.is_some()
+                {
+                    return Ok(HtmlSemanticValue::Known(false));
+                }
+            }
+            Some(KnownHtmlElement::Button) => {
+                match self
+                    .form_submitter_role(subject, element, kind)?
+                    .submit_button
+                {
+                    Ok(false) => return Ok(HtmlSemanticValue::Known(false)),
+                    Ok(true) => {}
+                    Err(value) => {
+                        missing = Some(value);
+                    }
+                }
+            }
+            Some(KnownHtmlElement::Textarea) | None
+                if self.attribute(element, "readonly")?.is_some() =>
+            {
+                // Unknown custom classification cannot change this false proof:
+                // non-FACE is non-submittable; FACE readonly is barred.
+                return Ok(HtmlSemanticValue::Known(false));
+            }
+            _ => {}
+        }
+        match self.form_disabled(subject, custom)? {
+            HtmlSemanticValue::Known(true) => return Ok(HtmlSemanticValue::Known(false)),
+            HtmlSemanticValue::Known(false) => {}
+            HtmlSemanticValue::Missing(value) => {
+                if missing.is_none() {
+                    missing = Some(value);
+                }
+            }
+            _ => {
+                return Err(self
+                    .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                    .into());
+            }
+        }
+        match self.validation_datalist_ancestor(subject) {
+            Ok(true) => return Ok(HtmlSemanticValue::Known(false)),
+            Ok(false) => {}
+            Err(ControlStop::Missing(value)) => {
+                if missing.is_none() {
+                    missing = Some(value);
+                }
+            }
+            Err(failure) => return Err(failure),
+        }
+        Ok(missing.map_or(HtmlSemanticValue::Known(true), HtmlSemanticValue::Missing))
+    }
+    fn validation_datalist_ancestor(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> ControlResult<bool> {
+        let mut current = self.node(subject)?;
+        loop {
+            let Some(parent) = self.parent(current)?.map_err(ControlStop::Missing)? else {
+                return Ok(false);
+            };
+            current = self.node(&parent)?;
+            if let HtmlCapturedNodeKind::Element(element) = current.kind()
+                && self.known(element)? == Some(KnownHtmlElement::Datalist)
+            {
+                return Ok(true);
+            }
+        }
+    }
     fn control_custom(&mut self, subject: &HtmlCaptureSubjectId) -> ControlResult<bool> {
         for fact in self.context.classifications() {
             self.charge(1)?;
