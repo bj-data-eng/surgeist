@@ -8085,3 +8085,100 @@ fn frameset_finite_work_exhaustion_disposes_every_retained_transition_owner() {
         }
     }
 }
+
+#[test]
+fn ordinary_textarea_rcdata_first_lf_and_form_sibling_order_preserve_exact_native_text() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><textarea name=t>\nA&amp;B&#13;C</textarea>Z</form>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        // Dispose real tree, lexical and controller owners before the RED assertion.
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let textarea = document.node(&form).unwrap().children().next().unwrap();
+    let following_text = document.node(&form).unwrap().children().nth(1).unwrap();
+    let textarea_child_count = document.node(&textarea).unwrap().children().count();
+    let form_child_count = document.node(&form).unwrap().children().count();
+    let textarea_text = document.node(&textarea).unwrap().children().next().unwrap();
+    let HtmlNodeKind::Text(text) = document.node(&textarea_text).unwrap().kind() else {
+        panic!("textarea child must be the actual RCDATA text node");
+    };
+    let actual_text_units = text.code_units().to_vec();
+    let HtmlNodeKind::Text(text) = document.node(&following_text).unwrap().kind() else {
+        panic!("the character following textarea must be an actual form text sibling");
+    };
+    let actual_following_units = text.code_units().to_vec();
+    let attributes: Vec<_> = [&form, &textarea]
+        .into_iter()
+        .map(|id| {
+            let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                panic!("source-derived form and textarea positions must be actual elements");
+            };
+            element
+                .attributes()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute
+                            .name()
+                            .namespace()
+                            .uri()
+                            .map(|uri| uri.code_units().to_vec()),
+                        attribute.name().local_name().code_units().to_vec(),
+                        attribute.value().code_units().to_vec(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // Only plain copied units and result-qualified identities survive disposal.
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_ne!(textarea_text, following_text);
+    assert_eq!(textarea_child_count, 1);
+    assert_eq!(form_child_count, 2);
+    // Physical initial LF is omitted; reference-produced CR is retained as unit 13.
+    assert_eq!(actual_text_units, vec![65, 38, 66, 13, 67]);
+    assert_eq!(actual_following_units, vec![90]);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "textarea"),
+            (4, "#A&B\rC"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(
+        attributes,
+        vec![
+            vec![(None::<Vec<u16>>, vec![105, 100], vec![102])],
+            vec![(None::<Vec<u16>>, vec![110, 97, 109, 101], vec![116])],
+        ]
+    );
+}
