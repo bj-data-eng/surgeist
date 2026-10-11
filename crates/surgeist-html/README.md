@@ -599,17 +599,38 @@ ordinary InBody and trailing body modes. It handles block, heading, list, ruby,
 void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
-stored head entry by identity and restores the actual insertion mode. Forms,
-table/select/frameset transitions, templates and foreign dispatch retain
-untouched-token continuations when their required machinery is unavailable.
+stored head entry by identity and restores the actual insertion mode.
+Listed/resettable control creation, table/select/frameset transitions, templates
+and foreign dispatch retain untouched-token continuations when their required
+machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
 unfinished lifecycle state; these private operations produce no public parse report.
+
+The fresh ordinary Disabled driver also retains the actual current-form pointer
+and handles ordinary form starts and ends. A nested start is diagnosed and
+ignored before paragraph closing or creation. An end clears the pointer before
+null/scope checks, generates implied ends and removes only the pointed form's
+stack identity. The selected HTML order places the current-node diagnostic
+before that removal. These rules follow the
+[pinned InBody clauses](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md#parsing-main-inbody).
+
+Parser-created HTML images retain actual form-owner and parser-inserted metadata
+in the same controlled arena. Creation compares the intended parent's ordinary
+tree with the current form's tree, allowing source-defined nonancestor ownership.
+An image is neither listed nor resettable; its `form` attribute does not suppress
+this association. Synchronous tree mutations complete the whole source removal
+pass before insertion effects, including affected descendant images and
+formatting moves. A stop retains the actual source-ordered metadata prefix;
+only terminal cleanup remains available and partial publication is refused.
+Association scans are metered and can require quadratic work. Template forms,
+listed/resettable controls, table/foreign and contextual fragment execution,
+hosted parsing and full EOF/report completion remain unfinished.
 
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
 the actual original tag into independently owned controlled storage, preserving
 attributes and origins while giving each new element a distinct identity.
-Applet and marquee establish real list markers; object retains its form
+Applet and marquee establish real list markers; object retains its listed-control
 continuation. The sole parser controller admits recipe retention, replay,
 comparisons, stack/list mutations and coherent child moves before their effects.
 Child transfer can stop after a coherent partial move; a terminal failure still

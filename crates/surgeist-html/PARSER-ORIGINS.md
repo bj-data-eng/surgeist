@@ -16,9 +16,11 @@ implements script Text entry, end-tag preparation and EOF marking. The generic
 head continuation still suspends before script effects when it lacks that
 constructor proof. The fresh driver continues through AfterHead, ordinary InBody
 and the two trailing body modes, with formatting reconstruction and adoption.
-Forms, table/select/frameset
-transitions, templates and foreign dispatch retain explicit unfinished
-continuations. Construction EOF is not completed stop-parsing or a public report.
+Ordinary form recovery and parser-created image associations use that same fresh
+driver and controlled arena. Listed/resettable control creation,
+table/select/frameset transitions, templates and foreign dispatch retain explicit
+unfinished continuations. Construction EOF is not completed stop-parsing or a
+public report.
 
 ## Original source and incorporated files
 
@@ -181,7 +183,8 @@ derives from lines 1555–1585. The implied-end, heading and special-element lis
 derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected HTML
 edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
 `keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
-Form/table/foreign creation and frameset transitions remain unfinished boundaries.
+Listed/resettable control and template-form creation, table/foreign creation and
+frameset transitions remain unfinished boundaries.
 
 The sole fresh driver consumes its actual AfterHead handoff and retains current
 and return insertion modes, the stored head identity, frameset eligibility and
@@ -202,13 +205,42 @@ Earlier incorporation hashes remain historical. Body/head dispatch also adapts
 reconstruction call sites and trailing whitespace delegation. The selected HTML
 edition governs original-token association, intended parents and conditional
 adoption insertion. Actual applet/marquee markers are supported; object creation
-retains the form continuation. Original tags have controlled owners; replay
+retains the listed-control continuation. Original tags have controlled owners; replay
 deep-copies their actual payloads into distinct admitted storage, while Noah
 comparison uses exact parsed attributes independently of order. Surgeist-owned
 session providers retain source/controller/arena qualification and first-stop
 cleanup. Ordered child transfer uses coherent individual tree mutations rather
 than claiming whole-transfer atomicity; its polled order/depth maintenance and
 attribute comparison can require quadratic work.
+
+The ordinary-form extension adapts `rules.rs` lines 543–558 and 632–665 in
+`src/parser/tree_builder/body.rs`; only the ordinary branches are admitted.
+Pointer storage and creation-association handoff derive from `mod.rs` lines 121,
+166, 182–206 and 1366–1403. These use the same original source identities and
+notices above; earlier adapted hashes remain historical. The selected HTML
+[InBody rules](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md#parsing-main-inbody)
+govern the end-tag order: save and clear the pointer before null/scope checks,
+generate implied ends, diagnose a current-node mismatch, then remove only the
+pointed identity. The acquired ordinary branch instead removes before its
+current-node diagnostic; that upstream order is not adopted. Nested starts
+remain error-and-ignore before paragraph closing or form creation. The actual
+fresh ordinary constructor initializes its pointer to null; template, hosted
+and fragment initialization are not inferred from that state.
+
+Surgeist-owned creation and tree-mutation providers retain actual image owner,
+parser-inserted and established/reset evidence in the existing payload registry.
+The creation operation compares the intended parent's ordinary root with the
+current form's actual root, rather than replacing the source condition with an
+upstream sink Boolean. HTML img is form-associated but neither listed nor
+resettable, so its `form` attribute does not exclude parser association.
+Source removal and insertion effects are synchronous and visit the actual
+ordinary subtree. An entire removal pass precedes the insertion pass, including
+same-parent reordering and formatting transfers; the providers retain the real
+partial metadata prefix if the sole controller stops. Such a stop prohibits
+continued observation or freeze and leaves only owner-checked terminal disposal.
+Iterative ancestry and registry scans are charged and may require quadratic
+work. This adaptation adds no persistent association tree, external provider,
+resettable initialization or complete parser-accounting claim.
 
 Remaining insertion modes, foreign dispatch,
 context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,

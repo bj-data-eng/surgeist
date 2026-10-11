@@ -9,8 +9,9 @@
 //
 // Adapted from selected ordinary body rows in tree_builder/rules.rs:
 // 356-541,558-602,616-630,693-731,796-813,842-873,880-892,947-1004,
-// 1466-1493,1563-1583; and tree_builder/mod.rs:1043-1223,1555-1585.
-// Forms, table/foreign creation and frameset transitions are
+// 1466-1493,1563-1583, plus form rows543-558,632-665;
+// and tree_builder/mod.rs:1043-1223,1555-1585.
+// Listed/resettable form controls, table/foreign creation and frameset transitions are
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
@@ -382,16 +383,13 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<Option<HeadBoundary>, HeadError> {
         if kind == TagKind::End {
-            if self.token_in(&["form"], c)?.is_some() {
-                return Ok(Some(HeadBoundary::Form));
-            }
             return Ok(None);
         }
         for (names, boundary) in [
             (&["template"][..], HeadBoundary::Template),
             (
                 &[
-                    "form", "fieldset", "button", "input", "textarea", "output", "object",
+                    "fieldset", "button", "input", "textarea", "output", "object",
                 ][..],
                 HeadBoundary::Form,
             ),
@@ -566,6 +564,9 @@ impl HeadState<'_> {
             return Err(HeadError::MissingInput);
         };
         if kind == TagKind::Start {
+            if self.token_in(&["form"], c)?.is_some() {
+                return Ok(Some(self.form_start(close, c)?));
+            }
             if self.token_in(HEAD, c)?.is_some() {
                 return Ok(Some(self.head_delegation(false, close, c)?));
             }
@@ -577,6 +578,9 @@ impl HeadState<'_> {
             }
             return self.body_start(source, close, c);
         }
+        if self.token_in(&["form"], c)?.is_some() {
+            return Ok(Some(self.form_end(c)?));
+        }
         if self.token_in(FORMATTING, c)?.is_some() {
             self.adoption(c)?;
             return Ok(Some(self.discard(c)?));
@@ -585,6 +589,56 @@ impl HeadState<'_> {
             return Ok(Some(self.marker_end(name, c)?));
         }
         self.body_end(c)
+    }
+    fn form_start(&mut self, close: bool, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+        if self.before.kernel.contains_html_template(c)? {
+            return self.stop_at(HeadBoundary::Template, c);
+        }
+        // HTML877d4394: reject the nested opener before close-p or creation.
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.current_form.is_some() {
+            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            if close {
+                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            }
+            return self.discard(c);
+        }
+        self.close_p_in_scope(c)?;
+        let node = self.insert_tag(c)?;
+        let node = copy_node(&node, c)?;
+        write(size_of::<Option<ParserNode>>(), 1, c)?;
+        self.current_form = Some(node);
+        if close {
+            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+        }
+        self.finish(c)
+    }
+    fn form_end(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+        // Template form dispatch is a different source algorithm and remains
+        // an actual continuation before effects in this ordinary unit.
+        if self.before.kernel.contains_html_template(c)? {
+            return self.stop_at(HeadBoundary::Template, c);
+        }
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        write(size_of::<Option<ParserNode>>(), 1, c)?;
+        let node = self.current_form.take();
+        let Some(node) = node else {
+            self.emit(HeadCondition::UnexpectedEndTag, c)?;
+            return self.discard(c);
+        };
+        if !self.before.kernel.in_scope(&node, Scope::Default, c)? {
+            self.emit(HeadCondition::UnexpectedEndTag, c)?;
+            return self.discard(c);
+        }
+        self.before.kernel.implied_ends(None, c)?;
+        let current = self.before.kernel.current(c)?;
+        if !self.before.kernel.session.same_node(c, &current, &node)? {
+            // Governing HTML4516 diagnoses BEFORE4518 removes the identity;
+            // the acquired engine's reversed ordering is not carried over.
+            self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+        }
+        self.before.kernel.remove_stack_identity(&node, c)?;
+        self.discard(c)
     }
     fn body_start(
         &mut self,

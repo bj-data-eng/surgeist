@@ -13,7 +13,7 @@
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs behavior and PI.
 
 use super::{
-    KernelError, LocationKernel, StackPush, copy_node,
+    KernelError, LocationKernel, copy_node,
     formatting::FormattingEntry,
     prologue::{BeforeHead, Payload, PendingToken, PrologueError},
     tag_sets, write,
@@ -198,6 +198,8 @@ pub(super) struct HeadState<'source> {
     pub(super) pending: Option<PendingToken>,
     pub(super) mode: InsertionMode,
     pub(super) head: Option<ParserNode>,
+    // Initial ordinary document pointer; no captured/fragment form is guessed.
+    pub(super) current_form: Option<ParserNode>,
     pub(super) return_mode: Option<InsertionMode>,
     pub(super) boundary: Option<HeadBoundary>,
     pub(super) diagnostics: OwnedVec<HeadDiagnostic>,
@@ -255,10 +257,10 @@ impl<'source> HeadStage<'source> {
         diagnostics.require_owner(c)?;
         lexical.require_owner(c)?;
         formatting.require_owner(c)?;
-        // Three driver fields + twenty state fields + caller BeforeHead and
+        // Three driver fields + twenty-one state fields + caller BeforeHead and
         // Tokenizer slots + the retained BeforeHead input slot are written.
-        // Admit all twenty-six field writes before the first owning take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 26, c) {
+        // Admit all twenty-seven field writes before the first owning take.
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 27, c) {
             diagnostics.release(c)?;
             lexical.release(c)?;
             formatting.release(c)?;
@@ -281,6 +283,7 @@ impl<'source> HeadStage<'source> {
                 pending,
                 mode: InsertionMode::BeforeHead,
                 head: None,
+                current_form: None,
                 return_mode: None,
                 boundary: None,
                 diagnostics,
@@ -819,6 +822,8 @@ impl HeadState<'_> {
         self.finish(c)
     }
     pub(super) fn insert_tag(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
+        let location = self.before.kernel.adjusted_location(None, c)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
         let Payload::Tag(input) = &mut self
             .pending
             .as_mut()
@@ -827,11 +832,15 @@ impl HeadState<'_> {
         else {
             return Err(HeadError::MissingInput);
         };
-        Ok(self
-            .before
-            .kernel
-            .insert_html_tag(input, StackPush::Push, None, c)?
-            .node)
+        let node = self.before.kernel.session.allocate_html_tag_for_creation(
+            c,
+            input,
+            &location.parent,
+            self.current_form.as_ref(),
+        )?;
+        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.push(&node, c)?;
+        Ok(node)
     }
     fn set_head(&mut self, node: &ParserNode, c: &mut ParseControl) -> Result<(), HeadError> {
         let node = copy_node(node, c)?;

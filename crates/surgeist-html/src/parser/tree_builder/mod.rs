@@ -16,9 +16,10 @@
 //! over one construction arena. The fresh sealed Disabled driver handles actual
 //! scripts; a general proofless head stage suspends at script. Ordinary
 //! body/block/list/ruby, formatting/reconstruction/adoption, applet/marquee and
-//! trailing modes are admitted. Unsupported
-//! form, select, table, frameset, template and foreign rows retain
-//! owning continuations; construction EOF is not full parse/report success.
+//! trailing modes, ordinary form pointer recovery and image form associations
+//! are admitted. Listed/resettable form controls, select, table, frameset,
+//! template and foreign rows retain owning continuations; construction EOF is
+//! not full parse/report success.
 
 mod body;
 mod doctype;

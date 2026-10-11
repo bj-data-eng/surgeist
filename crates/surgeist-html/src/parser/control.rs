@@ -42,6 +42,8 @@ pub(crate) enum Invariant {
     ForeignControl,
     CleanupWhileRunning,
     SharedAllocationAliased,
+    PendingFormEffects,
+    IncompleteImageCreation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1827,6 +1829,29 @@ mod tests {
     }
     use super::*;
     use crate::DocumentString;
+
+    #[test]
+    fn pending_form_effect_stop_is_canonical_and_cannot_replace_first_failure() {
+        for invariant in [
+            Invariant::PendingFormEffects,
+            Invariant::IncompleteImageCreation,
+        ] {
+            let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+            let stop = ParseStop::InternalInvariant(invariant);
+            assert_eq!(c.fail_invariant(invariant), stop);
+            assert_eq!(c.charge(WorkCategory::RecordWrite, 1), Err(stop));
+            assert_eq!(c.fail_invariant(Invariant::ForeignSource), stop);
+            assert_eq!(c.checkpoint(), Err(stop));
+        }
+        let cancellation = HtmlParseCancellation::new();
+        let mut cancelled = ParseControl::new(limits(), cancellation.clone());
+        cancellation.cancel();
+        assert_eq!(
+            cancelled.fail_invariant(Invariant::PendingFormEffects),
+            ParseStop::Cancelled
+        );
+        assert_eq!(cancelled.stop(), Some(ParseStop::Cancelled));
+    }
 
     fn limits() -> HtmlParseLimits {
         HtmlParseLimits::builder()

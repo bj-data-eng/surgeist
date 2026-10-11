@@ -1,3 +1,4 @@
+use super::prologue::Payload;
 use super::*;
 use crate::{
     DocumentString, HtmlConstructionLimits, HtmlDocumentMode, HtmlFragment, HtmlNodeKind,
@@ -9,7 +10,7 @@ use crate::{
         tokenizer::{
             Tokenizer,
             states::State,
-            token::{Event, TokenKind},
+            token::{Event, TagKind, TokenKind},
         },
     },
 };
@@ -3522,8 +3523,10 @@ fn tokenizer_next_input_point_uses_actual_reconsume_and_reference_lookahead_posi
 fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short_terminal_admission()
  {
     // Proof: three retained qualification fields, two actual session facts,
-    // two checked node identities, one root Weak creation, then StateStep1.
-    let expected_work = 7 + 1 + size_of::<ParserNode>() as u64 + 1;
+    // two checked node identities, four real session readiness reads (document
+    // validation, root creation, both identity checks), one root Weak creation,
+    // then StateStep1.
+    let expected_work = 11 + 1 + size_of::<ParserNode>() as u64 + 1;
     for short in [false, true] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<script>x</script>"),
@@ -3546,7 +3549,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let result = proof.checkpoint(c, session);
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            7
+            11
         );
         assert_eq!(
             c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
@@ -5260,10 +5263,11 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = c.usage().clone();
     kernel.replace_stack(1, &replacement, &mut c).unwrap();
-    // Kernel identity/open preflight, actual target index, and get_mut slot.
+    // Kernel identity/open preflight, actual session readiness and target index,
+    // then the get_mut slot.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        3
+        4
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -5484,4 +5488,462 @@ fn ordinary_form_end_removes_only_the_pointed_stack_identity_and_allows_a_later_
             )],
         ]
     );
+}
+
+#[test]
+fn ordinary_form_nested_start_is_ignored_before_paragraph_closure_or_creation() {
+    assert_eq!(
+        formatting_outline("<!doctype html><form id=f><p>1<form id=ignored>2</form>3"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "p"),
+            (4, "#12"),
+            (2, "#3"),
+        ])
+    );
+}
+
+#[test]
+fn ordinary_form_null_and_out_of_scope_end_recovery_allows_the_next_form() {
+    for (source, suffix) in [
+        (
+            "<!doctype html><body></form><form id=g>2</form>",
+            vec![(2, "form"), (3, "#2")],
+        ),
+        (
+            "<!doctype html><div><form id=f>1</div></form><form id=g>2</form>",
+            vec![(2, "div"), (3, "form"), (4, "#1"), (2, "form"), (3, "#2")],
+        ),
+        (
+            "<!doctype html><form id=f><marquee></form><form id=g>2</form></marquee>",
+            vec![(2, "form"), (3, "marquee"), (4, "form"), (5, "#2")],
+        ),
+    ] {
+        let mut expected = expected_outline(&[(0, "html"), (1, "head"), (1, "body")]);
+        expected.extend(expected_outline(&suffix));
+        assert_eq!(formatting_outline(source), expected, "{source}");
+    }
+}
+
+#[test]
+fn ordinary_form_start_closes_the_paragraph_and_self_closing_does_not_close_the_form() {
+    assert_eq!(
+        formatting_outline("<!doctype html><p>1<form/>2</form>3"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "#1"),
+            (2, "form"),
+            (3, "#2"),
+            (2, "#3"),
+        ])
+    );
+}
+
+#[test]
+fn ordinary_form_end_diagnostic_cap_clears_pointer_before_error_but_keeps_stack_identity() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><form id=f><div></form>"),
+        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut failed = false;
+    for _ in 0..100 {
+        if driver.step().is_err() {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    let first = driver.control.stop();
+    assert!(first.is_some());
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(state.current_form.is_none());
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 4);
+    let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+        panic!("real end form remains owned");
+    };
+    assert_eq!(tag.kind, TagKind::End);
+    assert_eq!(
+        tag.name.value.text().code_units(),
+        &[b'f' as u16, b'o' as u16, b'r' as u16, b'm' as u16]
+    );
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), first);
+    let mut retained = Some(driver);
+    assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
+    let driver = retained.as_mut().unwrap();
+    driver.release().unwrap();
+    assert_eq!(driver.control.stop(), first);
+    assert_released(&driver.control);
+}
+
+#[test]
+fn ordinary_form_nested_diagnostic_cap_preserves_pointer_paragraph_and_original_tag() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><form><p>1<form id=kept>"),
+        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut failed = false;
+    for _ in 0..100 {
+        if driver.step().is_err() {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    let first = driver.control.stop();
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(state.current_form.is_some());
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 4);
+    assert_eq!(
+        driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::ManagedNodes)
+            .current,
+        8
+    );
+    let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+        panic!("real nested form remains owned");
+    };
+    assert_eq!(
+        tag.attributes.as_slice()[0].value.value.text().code_units(),
+        "kept".encode_utf16().collect::<Vec<_>>()
+    );
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), first);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn ordinary_form_open_slot_exhaustion_keeps_created_payload_but_cannot_set_pointer_or_publish() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><form id=kept>"),
+        limits(2),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut failed = false;
+    for _ in 0..100 {
+        if driver.step().is_err() {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    let first = driver.control.stop();
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(state.current_form.is_none());
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+    // Document, doctype, html, head, body and the actual newly created form.
+    assert_eq!(
+        driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::ManagedNodes)
+            .current,
+        6
+    );
+    assert!(matches!(
+        &state.pending.as_ref().unwrap().payload,
+        Payload::Tag(None)
+    ));
+    let mut retained = Some(driver);
+    assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
+    let driver = retained.as_mut().unwrap();
+    driver.release().unwrap();
+    assert_eq!(driver.control.stop(), first);
+    assert_released(&driver.control);
+}
+
+#[test]
+fn ordinary_form_cancellation_releases_the_real_pointer_and_lexical_owners() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><form id=f><img>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut opened = false;
+    for _ in 0..100 {
+        driver.step().unwrap();
+        if driver
+            .head
+            .as_ref()
+            .and_then(|head| head.state.as_ref())
+            .is_some_and(|state| state.current_form.is_some())
+        {
+            opened = true;
+            break;
+        }
+    }
+    assert!(opened);
+    request.cancellation().cancel();
+    assert!(driver.step().is_err());
+    let first = driver.control.stop();
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), first);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+fn form_image_observations(
+    source: &str,
+) -> Vec<(
+    Option<Vec<u16>>,
+    bool,
+    crate::construction::parser_session::ImageAssociationEvidence,
+)> {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return Vec::new();
+    }
+    let (mut c, mut frozen) = body_document(driver);
+    let result = {
+        let document = frozen.document().unwrap();
+        let mut stack: Vec<_> = document.root().children().collect();
+        stack.reverse();
+        let mut result = Vec::new();
+        while let Some(id) = stack.pop() {
+            let node = document.node(&id).unwrap();
+            if let HtmlNodeKind::Element(element) = node.kind()
+                && element.name().local_name().code_units()
+                    == [b'i' as u16, b'm' as u16, b'g' as u16]
+            {
+                let state = frozen.image_form_state(&mut c, &id).unwrap();
+                let owner = frozen.image_form_owner(&mut c, &id).unwrap();
+                let owner_id = owner.map(|owner| {
+                    let HtmlNodeKind::Element(element) = document.node(&owner).unwrap().kind()
+                    else {
+                        panic!("qualified form owner");
+                    };
+                    assert_eq!(
+                        element.name().local_name().code_units(),
+                        &[b'f' as u16, b'o' as u16, b'r' as u16, b'm' as u16]
+                    );
+                    element
+                        .attributes()
+                        .iter()
+                        .find(|attribute| {
+                            attribute.name().local_name().code_units() == [b'i' as u16, b'd' as u16]
+                        })
+                        .unwrap()
+                        .value()
+                        .code_units()
+                        .to_vec()
+                });
+                result.push((owner_id, state.parser_inserted, state.evidence));
+            }
+            let children: Vec<_> = node.children().collect();
+            stack.extend(children.into_iter().rev());
+        }
+        result
+    };
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    result
+}
+
+#[test]
+fn ordinary_form_images_preserve_known_null_ancestor_and_nonancestor_owners() {
+    use crate::construction::parser_session::ImageAssociationEvidence::{ParserAssociated, Reset};
+    for (source, owner, inserted, evidence) in [
+        ("<!doctype html><img>", None, false, Reset),
+        (
+            "<!doctype html><form id=f><img>",
+            Some("f"),
+            true,
+            ParserAssociated,
+        ),
+        (
+            "<!doctype html><form id=f><img form=other>",
+            Some("f"),
+            true,
+            ParserAssociated,
+        ),
+        (
+            "<!doctype html><form id=f><image>",
+            Some("f"),
+            true,
+            ParserAssociated,
+        ),
+        (
+            "<!doctype html><form id=f><script></form></script><img>",
+            Some("f"),
+            true,
+            ParserAssociated,
+        ),
+        (
+            "<!doctype html><form id=f><div></form><img></div>",
+            Some("f"),
+            false,
+            Reset,
+        ),
+        (
+            "<!doctype html><form id=f><div></form><form id=g></div><img>",
+            Some("g"),
+            true,
+            ParserAssociated,
+        ),
+    ] {
+        assert_eq!(
+            form_image_observations(source),
+            vec![(
+                owner.map(|id| id.encode_utf16().collect()),
+                inserted,
+                evidence
+            )],
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_form_adoption_resets_images_detached_from_their_form_owner() {
+    use crate::construction::parser_session::ImageAssociationEvidence::{ParserAssociated, Reset};
+    for (source, inserted, evidence) in [
+        (
+            "<!doctype html><form id=f><b>1<div><img></b>2</div></form>",
+            false,
+            Reset,
+        ),
+        (
+            "<!doctype html><b><div><form id=f><img>",
+            true,
+            ParserAssociated,
+        ),
+        (
+            "<!doctype html><b><div><form id=f><img></b></form></div>",
+            // The first outer pass moves the entire form subtree. The next
+            // pass makes form the furthest block and moves its img child into
+            // a new b, so removal resets the flag before insertion resolves f.
+            false,
+            Reset,
+        ),
+    ] {
+        assert_eq!(
+            form_image_observations(source),
+            vec![(Some(vec![b'f' as u16]), inserted, evidence)],
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_owner() {
+    use crate::construction::parser_session::ImageAssociationEvidence::ParserAssociated;
+    let form_id = [0xD83D, 0xDE42, 0xD800];
+    let alternative = [0xDC00, b'A' as u16, 0xD83D, 0xDE80];
+    let text = [0xD800, 0xD83D, 0xDE42, 0xDC00];
+    let mut units: Vec<u16> = "<!doctype html><form id=\"".encode_utf16().collect();
+    units.extend_from_slice(&form_id);
+    units.extend("\"><img alt=\"".encode_utf16());
+    units.extend_from_slice(&alternative);
+    units.extend("\">".encode_utf16());
+    units.extend_from_slice(&text);
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    {
+        let document = frozen.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let form = document.node(&body).unwrap().children().next().unwrap();
+        let img = document.node(&form).unwrap().children().next().unwrap();
+        let character = document.node(&form).unwrap().children().nth(1).unwrap();
+        let owner = frozen.image_form_owner(&mut c, &img).unwrap().unwrap();
+        assert_eq!(owner, form);
+        let state = frozen.image_form_state(&mut c, &img).unwrap();
+        assert!(state.parser_inserted);
+        assert_eq!(state.evidence, ParserAssociated);
+        let HtmlNodeKind::Element(form) = document.node(&form).unwrap().kind() else {
+            panic!("actual form element")
+        };
+        let HtmlNodeKind::Element(img) = document.node(&img).unwrap().kind() else {
+            panic!("actual image element")
+        };
+        assert_eq!(
+            form.attributes().as_slice()[0].value().code_units(),
+            &form_id
+        );
+        assert_eq!(
+            img.attributes().as_slice()[0].value().code_units(),
+            &alternative
+        );
+        let HtmlNodeKind::Text(character) = document.node(&character).unwrap().kind() else {
+            panic!("actual exact text")
+        };
+        assert_eq!(character.code_units(), &text);
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn ordinary_form_control_and_template_continuations_preserve_pointer_and_original_token() {
+    for (name, expected) in [
+        ("fieldset", super::head::HeadBoundary::Form),
+        ("button", super::head::HeadBoundary::Form),
+        ("input", super::head::HeadBoundary::Form),
+        ("textarea", super::head::HeadBoundary::Form),
+        ("output", super::head::HeadBoundary::Form),
+        ("object", super::head::HeadBoundary::Form),
+        ("template", super::head::HeadBoundary::Template),
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!("<!doctype html><form id=f><{name} id=kept>")),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(standalone_boundary(&mut driver), expected, "{name}");
+        {
+            let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+            assert!(state.current_form.is_some());
+            assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+            assert_eq!(
+                driver
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::ManagedNodes)
+                    .current,
+                6
+            );
+            let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+                panic!("unadmitted control retains the actual tag")
+            };
+            assert_eq!(tag.kind, TagKind::Start);
+            assert_eq!(
+                tag.name.value.text().code_units(),
+                &name.encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                tag.attributes.as_slice()[0].value.value.text().code_units(),
+                &"kept".encode_utf16().collect::<Vec<_>>()
+            );
+        }
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
 }
