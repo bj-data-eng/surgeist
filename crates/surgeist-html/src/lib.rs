@@ -5,6 +5,10 @@
 //! to the consuming DOM subsystem.
 #![forbid(unsafe_code)]
 
+mod construction;
+mod source;
 mod values;
 
+pub use construction::*;
+pub use source::*;
 pub use values::*;
