@@ -21,8 +21,12 @@ pub enum HtmlNumericAttributeAuthorState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNumericAttributeConformanceError {
     CommonValue(HtmlValueFailure),
-    /// Textarea rows/cols and select size require a positive authored integer.
+    /// Textarea rows/cols, select size and cell colspan require authored positivity.
     ZeroMustBePositive,
+    /// A whole valid integer exceeds this attribute's source-defined maximum.
+    MaximumExceeded {
+        maximum: u16,
+    },
 }
 
 /// Why the selected attribute clause produced its intrinsic content value.
@@ -31,8 +35,10 @@ pub enum HtmlNumericAttributeValueOrigin {
     Recovered,
     MissingDefault,
     ParseFailureDefault,
-    /// Successful nonnegative recovery produced zero, which rows/cols reject.
+    /// Successful recovery produced zero, which rows/cols and cell colspan default.
     ZeroDefault,
+    /// Successful recovery exceeded the source cap; common retains its exact value.
+    Clamped,
 }
 
 /// Exact tabindex content value; source-null is distinct from an unapplied rule.
@@ -84,12 +90,12 @@ impl<A, T> HtmlNumericAttributeReport<A, T> {
     pub fn source_clause(&self) -> &'static str {
         self.attribute.source_clause()
     }
-    /// Applicable tabindex additionally applies this exact source-null clause.
+    /// Returns the selected intrinsic processing clause, independently of author syntax.
     pub fn processing_source_clause(&self) -> &'static str {
-        if self.attribute() == KnownHtmlAttribute::Tabindex {
-            source!("tabindex-value")
-        } else {
-            self.source_clause()
+        match self.attribute() {
+            KnownHtmlAttribute::Tabindex => source!("tabindex-value"),
+            KnownHtmlAttribute::Colspan | KnownHtmlAttribute::Rowspan => source!("forming-a-table"),
+            _ => self.source_clause(),
         }
     }
     pub fn input_code_units(&self) -> usize {
@@ -179,6 +185,38 @@ const SELECT_SIZE: RuleMetadata = RuleMetadata {
     vocabulary_source: None,
 };
 
+// Cell author bounds and recovery caps share one source-owned declaration.
+#[derive(Clone, Copy)]
+struct CellSpanRule {
+    metadata: RuleMetadata,
+    positive: bool,
+    maximum: u16,
+}
+
+const CELL_COLSPAN: CellSpanRule = CellSpanRule {
+    metadata: RuleMetadata {
+        attribute: KnownHtmlAttribute::Colspan,
+        rows: &[27],
+        source: source!("attr-tdth-colspan"),
+        context: Context::Elements(&[KnownHtmlElement::Td, KnownHtmlElement::Th]),
+        vocabulary_source: None,
+    },
+    positive: true,
+    maximum: 1000,
+};
+
+const CELL_ROWSPAN: CellSpanRule = CellSpanRule {
+    metadata: RuleMetadata {
+        attribute: KnownHtmlAttribute::Rowspan,
+        rows: &[132],
+        source: source!("attr-tdth-rowspan"),
+        context: Context::Elements(&[KnownHtmlElement::Td, KnownHtmlElement::Th]),
+        vocabulary_source: None,
+    },
+    positive: false,
+    maximum: 65534,
+};
+
 const TABINDEX: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Tabindex,
     rows: &[156],
@@ -238,17 +276,47 @@ fn numeric_author<A>(common: &HtmlValueReport<A, A>) -> HtmlNumericAttributeAuth
     }
 }
 
+// A failed u128 projection proves the exact nonnegative magnitude exceeds
+// either cell cap; it is neither a syntax failure nor a processing error.
+fn capped_nonnegative(value: &HtmlNonNegativeInteger, maximum: u16) -> (u16, bool) {
+    match value.to_u128() {
+        Ok(value) if value <= u128::from(maximum) => (value as u16, false),
+        _ => (maximum, true),
+    }
+}
+
+fn nonnegative_constraint(
+    value: &HtmlNonNegativeInteger,
+    positive: bool,
+    maximum: Option<u16>,
+) -> Result<(), HtmlNumericAttributeConformanceError> {
+    if positive && value.is_zero() {
+        return Err(HtmlNumericAttributeConformanceError::ZeroMustBePositive);
+    }
+    if let Some(maximum) = maximum
+        && capped_nonnegative(value, maximum).1
+    {
+        return Err(HtmlNumericAttributeConformanceError::MaximumExceeded { maximum });
+    }
+    Ok(())
+}
+
 fn nonnegative_author(
     common: &HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
     positive: bool,
 ) -> HtmlNumericAttributeAuthorState {
-    if positive
-        && let HtmlValueAuthorState::Valid(value) = common.author()
-        && value.is_zero()
+    constrained_nonnegative_author(common, positive, None)
+}
+
+fn constrained_nonnegative_author(
+    common: &HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+    positive: bool,
+    maximum: Option<u16>,
+) -> HtmlNumericAttributeAuthorState {
+    if let HtmlValueAuthorState::Valid(value) = common.author()
+        && let Err(error) = nonnegative_constraint(value, positive, maximum)
     {
-        return HtmlNumericAttributeAuthorState::Nonconforming(
-            HtmlNumericAttributeConformanceError::ZeroMustBePositive,
-        );
+        return HtmlNumericAttributeAuthorState::Nonconforming(error);
     }
     numeric_author(common)
 }
@@ -299,6 +367,82 @@ impl HtmlValueInterpreter {
             author,
             origin: Some(origin),
         })
+    }
+
+    fn cell_span(
+        &self,
+        rule: CellSpanRule,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
+    {
+        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        let mut attribute = report(rule.metadata, element, raw);
+        if attribute.applicability() != HtmlAttributeApplicability::Applicable {
+            return Ok(HtmlNumericAttributeReport {
+                attribute,
+                common: None,
+                author: HtmlNumericAttributeAuthorState::Unapplied,
+                origin: None,
+            });
+        }
+        let common = self.nonnegative_integer(raw.map(Attribute::value))?;
+        let author = constrained_nonnegative_author(&common, rule.positive, Some(rule.maximum));
+        let (value, origin) = match common.recovery() {
+            HtmlValueRecoveryState::Value(value) if rule.positive && value.is_zero() => {
+                (1, HtmlNumericAttributeValueOrigin::ZeroDefault)
+            }
+            HtmlValueRecoveryState::Value(value) => {
+                let (value, clamped) = capped_nonnegative(value, rule.maximum);
+                (
+                    value,
+                    if clamped {
+                        HtmlNumericAttributeValueOrigin::Clamped
+                    } else {
+                        HtmlNumericAttributeValueOrigin::Recovered
+                    },
+                )
+            }
+            HtmlValueRecoveryState::Missing => (1, HtmlNumericAttributeValueOrigin::MissingDefault),
+            HtmlValueRecoveryState::Failed(_) => {
+                (1, HtmlNumericAttributeValueOrigin::ParseFailureDefault)
+            }
+        };
+        attribute.intrinsic = Some(value);
+        Ok(HtmlNumericAttributeReport {
+            attribute,
+            common: Some(common),
+            author,
+            origin: Some(origin),
+        })
+    }
+
+    /// Interprets exact HTML td/th colspan content: absent, failed or zero
+    /// recovery selects 1; larger recovered quantities are capped at 1000.
+    /// Author syntax independently requires an integer in 1..=1000. This does
+    /// not establish overlap conformance or reflect a WebIDL getter.
+    pub fn cell_colspan(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
+    {
+        self.cell_span(CELL_COLSPAN, element, raw)
+    }
+
+    /// Interprets exact HTML td/th rowspan content: absent or failed recovery
+    /// selects 1; successful recovery is capped at 65534 and preserves zero.
+    /// Zero symbolically means all remaining rows in the row group, not a
+    /// resolved height or the table algorithm's initial working height 1.
+    /// Author syntax requires an integer in 0..=65534. Overlap conformance,
+    /// actual table formation and WebIDL reflection are separate operations.
+    pub fn cell_rowspan(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
+    {
+        self.cell_span(CELL_ROWSPAN, element, raw)
     }
 
     /// Interprets exact canvas bitmap width content, including valid zero.
@@ -463,16 +607,41 @@ fn nonnegative_author_attribute(
     metadata: RuleMetadata,
     positive: bool,
 ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
-    if positive && value.is_zero() {
-        return Err(HtmlNumericAttributeConformanceError::ZeroMustBePositive);
-    }
+    nonnegative_constraint(&value, positive, None)?;
     Ok(Attribute::new(
         metadata.attribute.qualified_name(),
         value.decimal_digits(),
     ))
 }
 
+fn cell_span_author_attribute(
+    value: HtmlNonNegativeInteger,
+    rule: CellSpanRule,
+) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
+    nonnegative_constraint(&value, rule.positive, Some(rule.maximum))?;
+    Ok(Attribute::new(
+        rule.metadata.attribute.qualified_name(),
+        value.decimal_digits(),
+    ))
+}
+
 impl HtmlNonNegativeInteger {
+    /// Constructs canonical conforming cell colspan in 1..=1000.
+    /// Exact larger magnitudes are rejected, never clamped or called malformed.
+    pub fn into_cell_colspan_attribute(
+        self,
+    ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
+        cell_span_author_attribute(self, CELL_COLSPAN)
+    }
+
+    /// Constructs canonical conforming cell rowspan in 0..=65534.
+    /// Zero retains the source meaning of all remaining rows in the row group.
+    pub fn into_cell_rowspan_attribute(
+        self,
+    ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
+        cell_span_author_attribute(self, CELL_ROWSPAN)
+    }
+
     /// Constructs conforming select size syntax. Authored zero is rejected,
     /// independently of the source processing algorithm's recovered zero.
     pub fn into_select_size_attribute(

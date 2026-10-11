@@ -196,6 +196,18 @@ selected value; the captured form-setting queries below use the actual form
 owner for effective fallback. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
 
+`cell_colspan` and `cell_rowspan` retain exact common integer author/recovery
+reports independently of the cell-specific bounds. Checked native constructors
+require colspan in 1..=1000 and rowspan in 0..=65534; larger exact magnitudes
+are rejected for authoring. Processing defaults missing or failed content to
+one, defaults recovered colspan zero to one, and clamps larger quantities to
+the respective maximum. Rowspan zero retains the symbolic meaning of all
+remaining rows in the row group. These
+[cell attribute clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#attributes-common-to-td-and-th-elements)
+and [processing rules](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#forming-a-table)
+do not establish overlap conformance or resolve the table's height. The reports
+use the standalone per-value UTF-16 cap and ordinary native allocations.
+
 `select_size` combines exact size content with the actual multiple attribute.
 Native size construction requires a positive integer. Processing preserves every
 successful nonnegative recovery, including zero and negative zero; only missing
