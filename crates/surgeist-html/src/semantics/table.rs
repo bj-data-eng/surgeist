@@ -1,6 +1,9 @@
 //! HTML 877d6146487f §4.9.12: slots, associations and recoverable model errors.
 //! Ordinary capture relations are the only topology; no CSS or live tree occurs.
 
+mod collections;
+pub use collections::*;
+
 use super::*;
 use crate::{HtmlCapturedChildIds, numeric};
 

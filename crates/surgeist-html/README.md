@@ -713,6 +713,15 @@ assignment from the captured tree. These are semantic slots, without layout
 geometry. Conditional missing inputs remain explicit; the complete model uses
 the same session qualification and bounded batch admission as other queries.
 
+`TableBodies`, `TableRows`, `TableSectionRows` and `TableRowCells` return immutable
+collections of qualified captured subjects. Bodies, section rows and row cells
+use direct HTML children. Table rows collect header-section rows first, then
+direct rows and body-section rows in tree order, and footer-section rows last.
+These collections retain actual elements without projecting implied table slots;
+they use the semantic session's work and output limits and report missing ordered
+children explicitly. They provide captured membership rather than live collection
+access or table mutation.
+
 `HtmlFragmentContext` selects an actual captured element or hosted fragment,
 retaining its context and target documents, integration facts and nearest form.
 It derives the initial tokenizer/insertion state and checked scripting mode:

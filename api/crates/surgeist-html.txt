@@ -1339,7 +1339,11 @@ pub surgeist_html::HtmlSemanticFact::StylesheetDisabledAttribute(surgeist_html::
 pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormEnctype>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormMethod>)
 pub surgeist_html::HtmlSemanticFact::SubmitterNoValidate(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterNoValidate>)
+pub surgeist_html::HtmlSemanticFact::TableBodies(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableBodyCollection>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
+pub surgeist_html::HtmlSemanticFact::TableRowCells(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableCellCollection>)
+pub surgeist_html::HtmlSemanticFact::TableRows(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableRowCollection>)
+pub surgeist_html::HtmlSemanticFact::TableSectionRows(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableRowCollection>)
 pub surgeist_html::HtmlSemanticFact::TextareaDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::TimeElement(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTimeElementReadback>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
@@ -1432,7 +1436,11 @@ pub surgeist_html::HtmlSemanticQuery::StylesheetDisabledAttribute
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormEnctype
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormMethod
 pub surgeist_html::HtmlSemanticQuery::SubmitterNoValidate
+pub surgeist_html::HtmlSemanticQuery::TableBodies
 pub surgeist_html::HtmlSemanticQuery::TableModel
+pub surgeist_html::HtmlSemanticQuery::TableRowCells
+pub surgeist_html::HtmlSemanticQuery::TableRows
+pub surgeist_html::HtmlSemanticQuery::TableSectionRows
 pub surgeist_html::HtmlSemanticQuery::TextareaDefaultValue
 pub surgeist_html::HtmlSemanticQuery::TimeElement
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
@@ -3561,6 +3569,11 @@ pub fn surgeist_html::HtmlSubmitterNoValidate::intrinsic(&self) -> &surgeist_htm
 pub fn surgeist_html::HtmlSubmitterNoValidate::resolution(&self) -> &surgeist_html::HtmlNoValidateResolution
 pub fn surgeist_html::HtmlSubmitterNoValidate::submitter_type(&self) -> core::option::Option<&surgeist_html::HtmlSubmitterTypeObservation>
 pub fn surgeist_html::HtmlSubmitterNoValidate::value(&self) -> core::option::Option<bool>
+pub struct surgeist_html::HtmlTableBodyCollection
+impl surgeist_html::HtmlTableBodyCollection
+pub fn surgeist_html::HtmlTableBodyCollection::bodies(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub fn surgeist_html::HtmlTableBodyCollection::is_empty(&self) -> bool
+pub fn surgeist_html::HtmlTableBodyCollection::len(&self) -> usize
 pub struct surgeist_html::HtmlTableCell
 impl surgeist_html::HtmlTableCell
 pub fn surgeist_html::HtmlTableCell::height(&self) -> usize
@@ -3569,6 +3582,11 @@ pub fn surgeist_html::HtmlTableCell::subject(&self) -> &surgeist_html::HtmlCaptu
 pub fn surgeist_html::HtmlTableCell::width(&self) -> usize
 pub fn surgeist_html::HtmlTableCell::x(&self) -> usize
 pub fn surgeist_html::HtmlTableCell::y(&self) -> usize
+pub struct surgeist_html::HtmlTableCellCollection
+impl surgeist_html::HtmlTableCellCollection
+pub fn surgeist_html::HtmlTableCellCollection::cells(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub fn surgeist_html::HtmlTableCellCollection::is_empty(&self) -> bool
+pub fn surgeist_html::HtmlTableCellCollection::len(&self) -> usize
 pub struct surgeist_html::HtmlTableColumn
 impl surgeist_html::HtmlTableColumn
 pub fn surgeist_html::HtmlTableColumn::source(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
@@ -3597,6 +3615,11 @@ pub fn surgeist_html::HtmlTableModel::width(&self) -> usize
 pub struct surgeist_html::HtmlTableRow
 impl surgeist_html::HtmlTableRow
 pub fn surgeist_html::HtmlTableRow::source(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub struct surgeist_html::HtmlTableRowCollection
+impl surgeist_html::HtmlTableRowCollection
+pub fn surgeist_html::HtmlTableRowCollection::is_empty(&self) -> bool
+pub fn surgeist_html::HtmlTableRowCollection::len(&self) -> usize
+pub fn surgeist_html::HtmlTableRowCollection::rows(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
 pub struct surgeist_html::HtmlTableRowGroup
 impl surgeist_html::HtmlTableRowGroup
 pub fn surgeist_html::HtmlTableRowGroup::height(&self) -> usize

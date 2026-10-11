@@ -1,7 +1,8 @@
 //! Capture-qualified intrinsic semantic queries, HTML 877d6146487f.
 //!
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
-//! table model, language and directionality, meter and progress state, inertness,
+//! table model and immutable table collections, language and directionality,
+//! meter and progress state, inertness,
 //! form owners, form/fieldset listed collections and form length, label targets, label form owners and control labels, current control flags, global inheritance, select
 //! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, map area membership, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
@@ -660,6 +661,10 @@ pub enum HtmlSemanticQuery {
     ListStartingValue,
     ListOrdinal,
     TableModel,
+    TableBodies,
+    TableRows,
+    TableSectionRows,
+    TableRowCells,
     Language,
     Directionality,
     Meter,
@@ -805,6 +810,18 @@ impl HtmlSemanticQuery {
             }
             Self::ListOrdinal => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#ordinal-value"
+            }
+            Self::TableBodies => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tbodies"
+            }
+            Self::TableRows => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-rows"
+            }
+            Self::TableSectionRows => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-rows"
+            }
+            Self::TableRowCells => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells"
             }
             Self::TableModel => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#table-processing-model"
@@ -981,6 +998,10 @@ pub enum HtmlSemanticFact {
     ListStartingValue(HtmlSemanticValue<HtmlInteger>),
     /// `Known(None)` is a computed list item whose source list owner is null.
     ListOrdinal(HtmlSemanticValue<Option<HtmlInteger>>),
+    TableBodies(HtmlSemanticValue<HtmlTableBodyCollection>),
+    TableRows(HtmlSemanticValue<HtmlTableRowCollection>),
+    TableSectionRows(HtmlSemanticValue<HtmlTableRowCollection>),
+    TableRowCells(HtmlSemanticValue<HtmlTableCellCollection>),
     TableModel(HtmlSemanticValue<HtmlTableModel>),
     Language(HtmlSemanticValue<HtmlLanguage>),
     Directionality(HtmlSemanticValue<HtmlDirectionality>),
@@ -2296,6 +2317,18 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::ListOrdinal => {
                             HtmlSemanticFact::ListOrdinal(self.ordinal(&request.subject)?)
                         }
+                        HtmlSemanticQuery::TableBodies => {
+                            HtmlSemanticFact::TableBodies(self.table_bodies(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::TableRows => {
+                            HtmlSemanticFact::TableRows(self.table_rows(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::TableSectionRows => HtmlSemanticFact::TableSectionRows(
+                            self.table_section_rows(&request.subject)?,
+                        ),
+                        HtmlSemanticQuery::TableRowCells => {
+                            HtmlSemanticFact::TableRowCells(self.table_row_cells(&request.subject)?)
+                        }
                         HtmlSemanticQuery::TableModel => {
                             HtmlSemanticFact::TableModel(self.table_model(&request.subject)?)
                         }
@@ -2532,6 +2565,18 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::ListOrdinal => {
                         HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableBodies => {
+                        HtmlSemanticFact::TableBodies(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableRows => {
+                        HtmlSemanticFact::TableRows(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableSectionRows => {
+                        HtmlSemanticFact::TableSectionRows(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableRowCells => {
+                        HtmlSemanticFact::TableRowCells(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::TableModel => {
                         HtmlSemanticFact::TableModel(HtmlSemanticValue::Inapplicable)
