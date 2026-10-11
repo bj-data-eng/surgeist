@@ -544,6 +544,8 @@ pub enum surgeist_html::HtmlDateWithOptionalTime
 pub surgeist_html::HtmlDateWithOptionalTime::Date(surgeist_html::HtmlDate)
 pub surgeist_html::HtmlDateWithOptionalTime::Global(surgeist_html::HtmlGlobalDateTime)
 impl surgeist_html::HtmlDateWithOptionalTime
+pub fn surgeist_html::HtmlDateWithOptionalTime::into_modification_datetime_attribute(self) -> surgeist_html::Attribute
+impl surgeist_html::HtmlDateWithOptionalTime
 pub fn surgeist_html::HtmlDateWithOptionalTime::to_document_string(&self) -> surgeist_html::DocumentString
 pub enum surgeist_html::HtmlDecimalDigitsError
 pub surgeist_html::HtmlDecimalDigitsError::Empty
@@ -893,6 +895,15 @@ pub surgeist_html::HtmlLoading::Lazy
 impl surgeist_html::HtmlLoading
 pub fn surgeist_html::HtmlLoading::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlLoading::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlModificationTimestamp<'a>
+pub surgeist_html::HtmlModificationTimestamp::Date(&'a surgeist_html::HtmlDate)
+pub surgeist_html::HtmlModificationTimestamp::Global(&'a surgeist_html::HtmlParsedGlobalDateTime)
+pub surgeist_html::HtmlModificationTimestamp::Missing
+pub surgeist_html::HtmlModificationTimestamp::NoTimestamp(surgeist_html::HtmlModificationTimestampAbsence)
+pub surgeist_html::HtmlModificationTimestamp::Unapplied(surgeist_html::HtmlAttributeApplicability)
+pub enum surgeist_html::HtmlModificationTimestampAbsence
+pub surgeist_html::HtmlModificationTimestampAbsence::ParseFailed
+pub surgeist_html::HtmlModificationTimestampAbsence::RecoveredTimeOnly
 pub enum surgeist_html::HtmlNoValidateResolution
 pub surgeist_html::HtmlNoValidateResolution::FormOwner
 pub surgeist_html::HtmlNoValidateResolution::FormOwner::owner: surgeist_html::HtmlFormOwner
@@ -2696,6 +2707,19 @@ pub fn surgeist_html::HtmlMeterState::maximum(&self) -> surgeist_html::HtmlFloat
 pub fn surgeist_html::HtmlMeterState::minimum(&self) -> surgeist_html::HtmlFloatingPointNumber
 pub fn surgeist_html::HtmlMeterState::optimum(&self) -> surgeist_html::HtmlFloatingPointNumber
 pub fn surgeist_html::HtmlMeterState::value(&self) -> surgeist_html::HtmlFloatingPointNumber
+pub struct surgeist_html::HtmlModificationDatetimeReport
+impl surgeist_html::HtmlModificationDatetimeReport
+pub fn surgeist_html::HtmlModificationDatetimeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlModificationDatetimeReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlModificationDatetimeReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlDateWithOptionalTime, surgeist_html::HtmlDateOrTime>>
+pub fn surgeist_html::HtmlModificationDatetimeReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlModificationDatetimeReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlModificationDatetimeReport::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlModificationDatetimeReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlModificationDatetimeReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlModificationDatetimeReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlModificationDatetimeReport::source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlModificationDatetimeReport::timestamp(&self) -> surgeist_html::HtmlModificationTimestamp<'_>
 pub struct surgeist_html::HtmlMonth
 impl surgeist_html::HtmlMonth
 pub fn surgeist_html::HtmlMonth::input_coordinate(&self) -> surgeist_html::HtmlInputTemporalCoordinate
@@ -3431,6 +3455,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::inputmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputMode>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::modification_datetime(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlModificationDatetimeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::ol_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlOlType>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

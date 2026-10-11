@@ -232,6 +232,24 @@ current-value sanitization, periodic membership, constraint validation or
 stepping. Raw admission is per supplied value; native conversion retains its
 ordinary allocation contract.
 
+`modification_datetime` interprets `datetime` on HTML `ins` and `del` using the
+[pinned modification clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#attr-mod-datetime).
+Its report keeps strict date-with-optional-time authorship separate from common
+date-or-time recovery. Only a recovered `HtmlDate` or
+`HtmlParsedGlobalDateTime` supplies an associated timestamp. A recovered
+standalone Time remains available as common evidence but supplies no timestamp;
+failed processing has its own no-timestamp reason. Missing content and unapplied
+expanded-name rules remain distinct from both outcomes.
+
+Parsed global timestamps retain explicit source offsets, exact long fractional
+seconds and arbitrary positive years alongside local components and UTC
+instants. Dates remain dates without an inferred host time zone. Native
+`HtmlDateWithOptionalTime::into_modification_datetime_attribute` converts a
+checked author value directly to its content attribute. Raw UTF-16 values,
+expanded names and prefixes remain unchanged. Admission uses the interpreter's
+per-value raw-unit cap; native values and reports use ordinary allocation
+without physical-memory accounting, cancellation or allocation-failure recovery.
+
 Native `HtmlSrcsetValue` checks ordered image candidates for `srcset` and
 `imagesrcset`. URLs remain symbolic exact strings; widths retain arbitrary
 positive integers and authored density spelling is retained. Author positivity
