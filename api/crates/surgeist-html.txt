@@ -68,11 +68,295 @@ pub surgeist_html::HtmlSourceRangeError::Utf8Boundary::offset: usize
 impl core::error::Error for surgeist_html::HtmlSourceRangeError
 impl core::fmt::Display for surgeist_html::HtmlSourceRangeError
 pub fn surgeist_html::HtmlSourceRangeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::KnownHtmlAttribute
+pub surgeist_html::KnownHtmlAttribute::Abbr
+pub surgeist_html::KnownHtmlAttribute::Accept
+pub surgeist_html::KnownHtmlAttribute::AcceptCharset
+pub surgeist_html::KnownHtmlAttribute::Accesskey
+pub surgeist_html::KnownHtmlAttribute::Action
+pub surgeist_html::KnownHtmlAttribute::Allow
+pub surgeist_html::KnownHtmlAttribute::Allowfullscreen
+pub surgeist_html::KnownHtmlAttribute::Alpha
+pub surgeist_html::KnownHtmlAttribute::Alt
+pub surgeist_html::KnownHtmlAttribute::As
+pub surgeist_html::KnownHtmlAttribute::Async
+pub surgeist_html::KnownHtmlAttribute::Autocapitalize
+pub surgeist_html::KnownHtmlAttribute::Autocomplete
+pub surgeist_html::KnownHtmlAttribute::Autocorrect
+pub surgeist_html::KnownHtmlAttribute::Autofocus
+pub surgeist_html::KnownHtmlAttribute::Autoplay
+pub surgeist_html::KnownHtmlAttribute::Blocking
+pub surgeist_html::KnownHtmlAttribute::Charset
+pub surgeist_html::KnownHtmlAttribute::Checked
+pub surgeist_html::KnownHtmlAttribute::Cite
+pub surgeist_html::KnownHtmlAttribute::Class
+pub surgeist_html::KnownHtmlAttribute::Closedby
+pub surgeist_html::KnownHtmlAttribute::Color
+pub surgeist_html::KnownHtmlAttribute::Colorspace
+pub surgeist_html::KnownHtmlAttribute::Cols
+pub surgeist_html::KnownHtmlAttribute::Colspan
+pub surgeist_html::KnownHtmlAttribute::Command
+pub surgeist_html::KnownHtmlAttribute::Commandfor
+pub surgeist_html::KnownHtmlAttribute::Content
+pub surgeist_html::KnownHtmlAttribute::Contenteditable
+pub surgeist_html::KnownHtmlAttribute::Controls
+pub surgeist_html::KnownHtmlAttribute::Coords
+pub surgeist_html::KnownHtmlAttribute::Crossorigin
+pub surgeist_html::KnownHtmlAttribute::Data
+pub surgeist_html::KnownHtmlAttribute::Datetime
+pub surgeist_html::KnownHtmlAttribute::Decoding
+pub surgeist_html::KnownHtmlAttribute::Default
+pub surgeist_html::KnownHtmlAttribute::Defer
+pub surgeist_html::KnownHtmlAttribute::Dir
+pub surgeist_html::KnownHtmlAttribute::Dirname
+pub surgeist_html::KnownHtmlAttribute::Disabled
+pub surgeist_html::KnownHtmlAttribute::Download
+pub surgeist_html::KnownHtmlAttribute::Draggable
+pub surgeist_html::KnownHtmlAttribute::Enctype
+pub surgeist_html::KnownHtmlAttribute::Enterkeyhint
+pub surgeist_html::KnownHtmlAttribute::Fetchpriority
+pub surgeist_html::KnownHtmlAttribute::For
+pub surgeist_html::KnownHtmlAttribute::Form
+pub surgeist_html::KnownHtmlAttribute::Formaction
+pub surgeist_html::KnownHtmlAttribute::Formenctype
+pub surgeist_html::KnownHtmlAttribute::Formmethod
+pub surgeist_html::KnownHtmlAttribute::Formnovalidate
+pub surgeist_html::KnownHtmlAttribute::Formtarget
+pub surgeist_html::KnownHtmlAttribute::Headers
+pub surgeist_html::KnownHtmlAttribute::Headingoffset
+pub surgeist_html::KnownHtmlAttribute::Headingreset
+pub surgeist_html::KnownHtmlAttribute::Height
+pub surgeist_html::KnownHtmlAttribute::Hidden
+pub surgeist_html::KnownHtmlAttribute::High
+pub surgeist_html::KnownHtmlAttribute::Href
+pub surgeist_html::KnownHtmlAttribute::Hreflang
+pub surgeist_html::KnownHtmlAttribute::HttpEquiv
+pub surgeist_html::KnownHtmlAttribute::Id
+pub surgeist_html::KnownHtmlAttribute::Imagesizes
+pub surgeist_html::KnownHtmlAttribute::Imagesrcset
+pub surgeist_html::KnownHtmlAttribute::Inert
+pub surgeist_html::KnownHtmlAttribute::Inputmode
+pub surgeist_html::KnownHtmlAttribute::Integrity
+pub surgeist_html::KnownHtmlAttribute::Is
+pub surgeist_html::KnownHtmlAttribute::Ismap
+pub surgeist_html::KnownHtmlAttribute::Itemid
+pub surgeist_html::KnownHtmlAttribute::Itemprop
+pub surgeist_html::KnownHtmlAttribute::Itemref
+pub surgeist_html::KnownHtmlAttribute::Itemscope
+pub surgeist_html::KnownHtmlAttribute::Itemtype
+pub surgeist_html::KnownHtmlAttribute::Kind
+pub surgeist_html::KnownHtmlAttribute::Label
+pub surgeist_html::KnownHtmlAttribute::Lang
+pub surgeist_html::KnownHtmlAttribute::List
+pub surgeist_html::KnownHtmlAttribute::Loading
+pub surgeist_html::KnownHtmlAttribute::Loop
+pub surgeist_html::KnownHtmlAttribute::Low
+pub surgeist_html::KnownHtmlAttribute::Max
+pub surgeist_html::KnownHtmlAttribute::Maxlength
+pub surgeist_html::KnownHtmlAttribute::Media
+pub surgeist_html::KnownHtmlAttribute::Method
+pub surgeist_html::KnownHtmlAttribute::Min
+pub surgeist_html::KnownHtmlAttribute::Minlength
+pub surgeist_html::KnownHtmlAttribute::Multiple
+pub surgeist_html::KnownHtmlAttribute::Muted
+pub surgeist_html::KnownHtmlAttribute::Name
+pub surgeist_html::KnownHtmlAttribute::Nomodule
+pub surgeist_html::KnownHtmlAttribute::Nonce
+pub surgeist_html::KnownHtmlAttribute::Novalidate
+pub surgeist_html::KnownHtmlAttribute::Open
+pub surgeist_html::KnownHtmlAttribute::Optimum
+pub surgeist_html::KnownHtmlAttribute::Pattern
+pub surgeist_html::KnownHtmlAttribute::Ping
+pub surgeist_html::KnownHtmlAttribute::Placeholder
+pub surgeist_html::KnownHtmlAttribute::Playsinline
+pub surgeist_html::KnownHtmlAttribute::Popover
+pub surgeist_html::KnownHtmlAttribute::Popovertarget
+pub surgeist_html::KnownHtmlAttribute::Popovertargetaction
+pub surgeist_html::KnownHtmlAttribute::Poster
+pub surgeist_html::KnownHtmlAttribute::Preload
+pub surgeist_html::KnownHtmlAttribute::Readonly
+pub surgeist_html::KnownHtmlAttribute::Referrerpolicy
+pub surgeist_html::KnownHtmlAttribute::Rel
+pub surgeist_html::KnownHtmlAttribute::Required
+pub surgeist_html::KnownHtmlAttribute::Reversed
+pub surgeist_html::KnownHtmlAttribute::Rows
+pub surgeist_html::KnownHtmlAttribute::Rowspan
+pub surgeist_html::KnownHtmlAttribute::Sandbox
+pub surgeist_html::KnownHtmlAttribute::Scope
+pub surgeist_html::KnownHtmlAttribute::Selected
+pub surgeist_html::KnownHtmlAttribute::Shadowrootclonable
+pub surgeist_html::KnownHtmlAttribute::Shadowrootcustomelementregistry
+pub surgeist_html::KnownHtmlAttribute::Shadowrootdelegatesfocus
+pub surgeist_html::KnownHtmlAttribute::Shadowrootmode
+pub surgeist_html::KnownHtmlAttribute::Shadowrootserializable
+pub surgeist_html::KnownHtmlAttribute::Shadowrootslotassignment
+pub surgeist_html::KnownHtmlAttribute::Shape
+pub surgeist_html::KnownHtmlAttribute::Size
+pub surgeist_html::KnownHtmlAttribute::Sizes
+pub surgeist_html::KnownHtmlAttribute::Slot
+pub surgeist_html::KnownHtmlAttribute::Span
+pub surgeist_html::KnownHtmlAttribute::Spellcheck
+pub surgeist_html::KnownHtmlAttribute::Src
+pub surgeist_html::KnownHtmlAttribute::Srcdoc
+pub surgeist_html::KnownHtmlAttribute::Srclang
+pub surgeist_html::KnownHtmlAttribute::Srcset
+pub surgeist_html::KnownHtmlAttribute::Start
+pub surgeist_html::KnownHtmlAttribute::Step
+pub surgeist_html::KnownHtmlAttribute::Style
+pub surgeist_html::KnownHtmlAttribute::Tabindex
+pub surgeist_html::KnownHtmlAttribute::Target
+pub surgeist_html::KnownHtmlAttribute::Title
+pub surgeist_html::KnownHtmlAttribute::Translate
+pub surgeist_html::KnownHtmlAttribute::Type
+pub surgeist_html::KnownHtmlAttribute::Usemap
+pub surgeist_html::KnownHtmlAttribute::Value
+pub surgeist_html::KnownHtmlAttribute::Width
+pub surgeist_html::KnownHtmlAttribute::Wrap
+pub surgeist_html::KnownHtmlAttribute::Writingsuggestions
+impl surgeist_html::KnownHtmlAttribute
+pub const surgeist_html::KnownHtmlAttribute::ALL: &'static [Self]
+pub fn surgeist_html::KnownHtmlAttribute::local_name(self) -> &'static str
+pub fn surgeist_html::KnownHtmlAttribute::qualified_name(self) -> surgeist_html::QualifiedName
+impl surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::KnownHtmlAttribute::from_name(name: &surgeist_html::QualifiedName) -> core::option::Option<Self>
+pub fn surgeist_html::KnownHtmlAttribute::inventory_rows(self) -> impl core::iter::traits::iterator::Iterator<Item = &'static surgeist_html::AttributeInventoryRow>
+pub enum surgeist_html::KnownHtmlElement
+pub surgeist_html::KnownHtmlElement::A
+pub surgeist_html::KnownHtmlElement::Abbr
+pub surgeist_html::KnownHtmlElement::Address
+pub surgeist_html::KnownHtmlElement::Area
+pub surgeist_html::KnownHtmlElement::Article
+pub surgeist_html::KnownHtmlElement::Aside
+pub surgeist_html::KnownHtmlElement::Audio
+pub surgeist_html::KnownHtmlElement::B
+pub surgeist_html::KnownHtmlElement::Base
+pub surgeist_html::KnownHtmlElement::Bdi
+pub surgeist_html::KnownHtmlElement::Bdo
+pub surgeist_html::KnownHtmlElement::Blockquote
+pub surgeist_html::KnownHtmlElement::Body
+pub surgeist_html::KnownHtmlElement::Br
+pub surgeist_html::KnownHtmlElement::Button
+pub surgeist_html::KnownHtmlElement::Canvas
+pub surgeist_html::KnownHtmlElement::Caption
+pub surgeist_html::KnownHtmlElement::Cite
+pub surgeist_html::KnownHtmlElement::Code
+pub surgeist_html::KnownHtmlElement::Col
+pub surgeist_html::KnownHtmlElement::Colgroup
+pub surgeist_html::KnownHtmlElement::Data
+pub surgeist_html::KnownHtmlElement::Datalist
+pub surgeist_html::KnownHtmlElement::Dd
+pub surgeist_html::KnownHtmlElement::Del
+pub surgeist_html::KnownHtmlElement::Details
+pub surgeist_html::KnownHtmlElement::Dfn
+pub surgeist_html::KnownHtmlElement::Dialog
+pub surgeist_html::KnownHtmlElement::Div
+pub surgeist_html::KnownHtmlElement::Dl
+pub surgeist_html::KnownHtmlElement::Dt
+pub surgeist_html::KnownHtmlElement::Em
+pub surgeist_html::KnownHtmlElement::Embed
+pub surgeist_html::KnownHtmlElement::Fieldset
+pub surgeist_html::KnownHtmlElement::Figcaption
+pub surgeist_html::KnownHtmlElement::Figure
+pub surgeist_html::KnownHtmlElement::Footer
+pub surgeist_html::KnownHtmlElement::Form
+pub surgeist_html::KnownHtmlElement::H1
+pub surgeist_html::KnownHtmlElement::H2
+pub surgeist_html::KnownHtmlElement::H3
+pub surgeist_html::KnownHtmlElement::H4
+pub surgeist_html::KnownHtmlElement::H5
+pub surgeist_html::KnownHtmlElement::H6
+pub surgeist_html::KnownHtmlElement::Head
+pub surgeist_html::KnownHtmlElement::Header
+pub surgeist_html::KnownHtmlElement::Hgroup
+pub surgeist_html::KnownHtmlElement::Hr
+pub surgeist_html::KnownHtmlElement::Html
+pub surgeist_html::KnownHtmlElement::I
+pub surgeist_html::KnownHtmlElement::Iframe
+pub surgeist_html::KnownHtmlElement::Img
+pub surgeist_html::KnownHtmlElement::Input
+pub surgeist_html::KnownHtmlElement::Ins
+pub surgeist_html::KnownHtmlElement::Kbd
+pub surgeist_html::KnownHtmlElement::Label
+pub surgeist_html::KnownHtmlElement::Legend
+pub surgeist_html::KnownHtmlElement::Li
+pub surgeist_html::KnownHtmlElement::Link
+pub surgeist_html::KnownHtmlElement::Main
+pub surgeist_html::KnownHtmlElement::Map
+pub surgeist_html::KnownHtmlElement::Mark
+pub surgeist_html::KnownHtmlElement::Menu
+pub surgeist_html::KnownHtmlElement::Meta
+pub surgeist_html::KnownHtmlElement::Meter
+pub surgeist_html::KnownHtmlElement::Nav
+pub surgeist_html::KnownHtmlElement::Noscript
+pub surgeist_html::KnownHtmlElement::Object
+pub surgeist_html::KnownHtmlElement::Ol
+pub surgeist_html::KnownHtmlElement::Optgroup
+pub surgeist_html::KnownHtmlElement::Option
+pub surgeist_html::KnownHtmlElement::Output
+pub surgeist_html::KnownHtmlElement::P
+pub surgeist_html::KnownHtmlElement::Picture
+pub surgeist_html::KnownHtmlElement::Pre
+pub surgeist_html::KnownHtmlElement::Progress
+pub surgeist_html::KnownHtmlElement::Q
+pub surgeist_html::KnownHtmlElement::Rp
+pub surgeist_html::KnownHtmlElement::Rt
+pub surgeist_html::KnownHtmlElement::Ruby
+pub surgeist_html::KnownHtmlElement::S
+pub surgeist_html::KnownHtmlElement::Samp
+pub surgeist_html::KnownHtmlElement::Script
+pub surgeist_html::KnownHtmlElement::Search
+pub surgeist_html::KnownHtmlElement::Section
+pub surgeist_html::KnownHtmlElement::Select
+pub surgeist_html::KnownHtmlElement::Selectedcontent
+pub surgeist_html::KnownHtmlElement::Slot
+pub surgeist_html::KnownHtmlElement::Small
+pub surgeist_html::KnownHtmlElement::Source
+pub surgeist_html::KnownHtmlElement::Span
+pub surgeist_html::KnownHtmlElement::Strong
+pub surgeist_html::KnownHtmlElement::Style
+pub surgeist_html::KnownHtmlElement::Sub
+pub surgeist_html::KnownHtmlElement::Summary
+pub surgeist_html::KnownHtmlElement::Sup
+pub surgeist_html::KnownHtmlElement::Table
+pub surgeist_html::KnownHtmlElement::Tbody
+pub surgeist_html::KnownHtmlElement::Td
+pub surgeist_html::KnownHtmlElement::Template
+pub surgeist_html::KnownHtmlElement::Textarea
+pub surgeist_html::KnownHtmlElement::Tfoot
+pub surgeist_html::KnownHtmlElement::Th
+pub surgeist_html::KnownHtmlElement::Thead
+pub surgeist_html::KnownHtmlElement::Time
+pub surgeist_html::KnownHtmlElement::Title
+pub surgeist_html::KnownHtmlElement::Tr
+pub surgeist_html::KnownHtmlElement::Track
+pub surgeist_html::KnownHtmlElement::U
+pub surgeist_html::KnownHtmlElement::Ul
+pub surgeist_html::KnownHtmlElement::Var
+pub surgeist_html::KnownHtmlElement::Video
+pub surgeist_html::KnownHtmlElement::Wbr
+impl surgeist_html::KnownHtmlElement
+pub const surgeist_html::KnownHtmlElement::ALL: &'static [Self]
+pub fn surgeist_html::KnownHtmlElement::local_name(self) -> &'static str
+pub fn surgeist_html::KnownHtmlElement::qualified_name(self) -> surgeist_html::QualifiedName
+impl surgeist_html::KnownHtmlElement
+pub fn surgeist_html::KnownHtmlElement::from_name(name: &surgeist_html::QualifiedName) -> core::option::Option<Self>
+pub fn surgeist_html::KnownHtmlElement::inventory_row(self) -> &'static surgeist_html::ElementInventoryRow
 pub struct surgeist_html::Attribute
 impl surgeist_html::Attribute
 pub fn surgeist_html::Attribute::name(&self) -> &surgeist_html::QualifiedName
 pub fn surgeist_html::Attribute::new(name: surgeist_html::QualifiedName, value: impl core::convert::Into<surgeist_html::DocumentString>) -> Self
 pub fn surgeist_html::Attribute::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::AttributeInventoryRow
+impl surgeist_html::AttributeInventoryRow
+pub fn surgeist_html::AttributeInventoryRow::all_html_elements(self) -> bool
+pub fn surgeist_html::AttributeInventoryRow::applicability(self) -> &'static str
+pub fn surgeist_html::AttributeInventoryRow::attribute(self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::AttributeInventoryRow::description(self) -> &'static str
+pub fn surgeist_html::AttributeInventoryRow::form_associated_custom_elements(self) -> bool
+pub fn surgeist_html::AttributeInventoryRow::html_elements(self) -> &'static [surgeist_html::KnownHtmlElement]
+pub fn surgeist_html::AttributeInventoryRow::references(self) -> &'static [&'static str]
+pub fn surgeist_html::AttributeInventoryRow::row(self) -> u16
+pub fn surgeist_html::AttributeInventoryRow::value_syntax(self) -> &'static str
 pub struct surgeist_html::DocumentString
 impl surgeist_html::DocumentString
 pub fn surgeist_html::DocumentString::code_points(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + core::clone::Clone + '_
@@ -94,6 +378,18 @@ pub fn surgeist_html::DuplicateAttributeError::namespace(&self) -> &surgeist_htm
 impl core::error::Error for surgeist_html::DuplicateAttributeError
 impl core::fmt::Display for surgeist_html::DuplicateAttributeError
 pub fn surgeist_html::DuplicateAttributeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::ElementInventoryRow
+impl surgeist_html::ElementInventoryRow
+pub fn surgeist_html::ElementInventoryRow::attributes(self) -> &'static str
+pub fn surgeist_html::ElementInventoryRow::categories(self) -> &'static str
+pub fn surgeist_html::ElementInventoryRow::children(self) -> &'static str
+pub fn surgeist_html::ElementInventoryRow::description(self) -> &'static str
+pub fn surgeist_html::ElementInventoryRow::html_elements(self) -> &'static [surgeist_html::KnownHtmlElement]
+pub fn surgeist_html::ElementInventoryRow::interface(self) -> &'static str
+pub fn surgeist_html::ElementInventoryRow::name(self) -> &'static str
+pub fn surgeist_html::ElementInventoryRow::parents(self) -> &'static str
+pub fn surgeist_html::ElementInventoryRow::references(self) -> &'static [&'static str]
+pub fn surgeist_html::ElementInventoryRow::row(self) -> u16
 pub struct surgeist_html::ForeignHtmlResult
 impl core::error::Error for surgeist_html::ForeignHtmlResult
 impl core::fmt::Display for surgeist_html::ForeignHtmlResult
@@ -251,3 +547,14 @@ pub fn surgeist_html::Utf8ConversionError::surrogate(&self) -> u16
 impl core::error::Error for surgeist_html::Utf8ConversionError
 impl core::fmt::Display for surgeist_html::Utf8ConversionError
 pub fn surgeist_html::Utf8ConversionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::VocabularySource
+impl surgeist_html::VocabularySource
+pub fn surgeist_html::VocabularySource::attributes_url(self) -> &'static str
+pub fn surgeist_html::VocabularySource::elements_url(self) -> &'static str
+pub fn surgeist_html::VocabularySource::original_html_sha256(self) -> &'static str
+pub fn surgeist_html::VocabularySource::retained_capture(self) -> &'static str
+pub fn surgeist_html::VocabularySource::retained_capture_sha256(self) -> &'static str
+pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
+pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
+pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
+pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]

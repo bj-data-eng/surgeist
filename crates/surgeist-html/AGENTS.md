@@ -23,3 +23,8 @@ cargo fmt --all -- --check
 Refresh and check the HTML API through the root-owned API generator when the
 public surface changes. Select additional parser, semantic and feature checks
 from their actual source contracts as those capabilities are implemented.
+
+The offline `tools/generate_vocabulary.py` owns the marked ordinary Rust region
+in `src/vocabulary.rs`; run it with `--check` after vocabulary/source changes.
+Its non-normative inventory records retain contextual rows and defining-clause
+links without replacing intrinsic value interpretation or execution ownership.

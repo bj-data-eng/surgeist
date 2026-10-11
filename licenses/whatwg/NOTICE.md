@@ -26,6 +26,20 @@ These 2026-10-10/11 bounded captures retain the complete named clauses and origi
 
 Changes comprise offline section extraction, format conversion, provenance labels and link rewriting; complex tables preserve semantic HTML. Original text, code examples, normative/informative labels, status, copyright and notices remain in each capture. Specification prose remains Creative Commons Attribution 4.0 International; BSD 3-Clause applies only to portions incorporated into source code, not as an alternative license for these Markdown documents. Original sources remain authoritative and no endorsement or full DOM/HTML implementation conformance is implied.
 
+## HTML vocabulary incorporation — 2026-10-11
+
+The HTML crate's [vocabulary source](../../crates/surgeist-html/src/vocabulary.rs)
+incorporates portions of the selected edition's non-normative element and
+attribute indexes into ordinary Rust source under the upstream BSD 3-Clause
+provision. The [offline generator](../../crates/surgeist-html/tools/generate_vocabulary.py)
+reads the retained [index capture](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md).
+Adaptations expand the grouped heading names, collapse printed whitespace,
+preserve contextual attribute rows, and resolve local references to the exact
+HTML edition. Source revision and hashes are embedded in the generated records.
+The unchanged [upstream LICENSE](LICENSE) supplies the copyright, conditions
+and disclaimer. These inventories do not replace the defining HTML clauses or
+assert complete native HTML or browser conformance.
+
 ## Pinned HTML language snapshot — 2026-10-11
 
 The [selected HTML edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline) retains ten bounded complete-section format conversions from [immutable HTML snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/), complete original HTML SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. This snapshot directly identifies the retained edition, unlike the historical live chapter/legal-pin association above. All §4 element definitions are included; other browser runtime chapters are explicitly bounded. The [exact upstream LICENSE](LICENSE) at this commit remains unchanged, SHA-256 `85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`. Copyright © WHATWG (Apple, Google, Mozilla, Microsoft). Specification prose is Creative Commons Attribution 4.0 International; BSD 3-Clause applies only to portions incorporated into source code. Offline extraction, Markdown reformatting, semantic tables/SVG preservation, inert embedded-example retention and same-edition link rewriting are disclosed in the [conversion report](../../references/CONVERSION-REPORT.md#pinned-html-language-snapshot--2026-10-11). Source text and original classifications remain authoritative; no endorsement is implied.

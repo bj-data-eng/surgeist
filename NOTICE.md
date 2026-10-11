@@ -352,6 +352,10 @@ The complete selected upstream LICENSE is preserved byte-for-byte. Its BSD
 provision applies to the stated source-code scope; the Markdown specification
 text is covered by Creative Commons Attribution 4.0 International.
 
+The HTML crate also incorporates the selected edition's element and attribute
+indexes into its vocabulary source under that BSD provision; see the
+[incorporation and adaptation notice](licenses/whatwg/NOTICE.md#html-vocabulary-incorporation--2026-10-11).
+
 ## Crate Notices
 
 These local records accompany the imported source and describe each crate's

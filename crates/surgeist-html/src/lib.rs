@@ -8,7 +8,9 @@
 mod construction;
 mod source;
 mod values;
+mod vocabulary;
 
 pub use construction::*;
 pub use source::*;
 pub use values::*;
+pub use vocabulary::*;

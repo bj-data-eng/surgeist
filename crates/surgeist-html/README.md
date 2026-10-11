@@ -47,3 +47,24 @@ metadata, context effects, diagnostics, source mapping, full content-conformance
 checking or script execution. Their capacities count logical retained content;
 they do not establish a universal process-memory or CPU bound. General shadow-host
 conformance and live installation remain separate admission concerns.
+
+`KnownHtmlElement` and `KnownHtmlAttribute` recognize the modern index's exact
+namespace/local-name identities. The shared raw records retain unknown/custom
+and foreign names. Element metadata preserves grouped heading names and foreign
+or open-family rows; attribute metadata preserves context-specific rows and
+links to defining clauses. The printed index summaries are discovery material,
+not complete value grammars, semantic defaults or execution-owner decisions.
+
+The source inventories contain 111 element rows (113 named HTML elements after
+expanding the heading group) and 180 contextual attribute rows (144 distinct
+local names). Event handlers, obsolete names and open attribute families require
+their separate source clauses. Regenerate or check the ordinary vocabulary source
+offline with the standard-library-only tool:
+
+```sh
+python3 crates/surgeist-html/tools/generate_vocabulary.py --write
+python3 crates/surgeist-html/tools/generate_vocabulary.py --check
+```
+
+The [incorporation notice](../../licenses/whatwg/NOTICE.md#html-vocabulary-incorporation--2026-10-11)
+identifies the exact edition, upstream license and source adaptations.
