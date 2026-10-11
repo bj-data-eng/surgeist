@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 274 retained source identities and states their representations: 233 full documents/source witnesses, 39 partial witnesses, and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 314 retained source identities and states their representations: 247 full documents/source witnesses, 64 partial witnesses, and 3 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -53,3 +53,9 @@ The [layout sizing, fragmentation and overflow edition mapping](SOURCE-EDITIONS.
 ## HTML parser research
 
 The [parser suitability assessment](../docs/html-parser-suitability.md) uses pinned html5ever and html5gum implementation witnesses, listed in the [catalog](SOURCE-CATALOG.md#html-parser-research-sources). These retain selected complete files and bounded source excerpts, not complete repository copies.
+
+## DOM, selectors and bounded style determinations
+
+The [new operative edition mapping](SOURCE-EDITIONS.md#dom-selector-execution-and-bounded-style-determinations) identifies current DOM/HTML/Web IDL/Infra foundation clauses, selector and scope execution sources, and bounded style gap determinations. Native Rust identity, admission, atomicity and host contracts remain explicit product choices. Historical authored-CSS editions are retained; a current capture does not silently replace every consumer’s source selection.
+
+The [addition verification record](CONVERSION-REPORT.md#dom-selector-execution-and-bounded-style-source-additions--2026-10-1011) distinguishes complete documents, complete selected sections, exact browser excerpts and brief resolution quotations. Complex DOM tables preserve semantic HTML rather than flattening. Conditional 5 and Content 3 renderings share complete original source identities; the Blink speak entry shares its existing complete registry witness. Dated CSSWG minutes are an ordinary metadata-only corroborating record, separate from the two rights/coverage exceptions above.

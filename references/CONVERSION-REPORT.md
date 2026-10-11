@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **274 source identities: 233 full documents/source witnesses, 39 partial witnesses and two metadata-only exceptions**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **314 source identities: 247 full documents/source witnesses, 64 partial witnesses and 3 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -23,7 +23,7 @@ Pandoc's HTML writer adds text-presentation variation selectors to some arrows; 
 ## Readable representations and explicit limitations
 
 - Source Note, Example, Advisement, Issue and Warning classes become visible labels, including standalone examples and unresolved algorithm-list issues
-- Tables use readable Markdown grids, explicit span expansions, and labeled field/case/code layouts. The 808 originally flattened table transcriptions have been replaced; no raw HTML table layouts or structured row/cell dumps remain. Original HTML header-scope and span accessibility semantics are not expressible in GFM; source structural models and explicit relationships are retained as described below
+- Tables use readable Markdown grids, explicit span expansions, and labeled field/case/code layouts. The 808 originally flattened table transcriptions have been replaced; no raw HTML table layouts or structured row/cell dumps remain in that original collection. The later DOM captures preserve complex semantic HTML tables as disclosed below. Original HTML header-scope and span accessibility semantics are not expressible in GFM; source structural models and explicit relationships are retained as described below
 - 80 passive SVG assets are included: 52 extracted from captured HTML and 28 railroad diagrams generated from the pinned CSS Syntax 3 source. Source geometry, internal IDs, text labels, exact-case attributes and required passive railroad CSS are retained. XML/geometry/CSS checks pass; representative generated diagrams were raster-checked, but complete visual or browser-rendering equivalence is not certified
 - All 17 MathML expressions have checked portable fenced TeX transcriptions. Independent round trips preserve mathematical tokens, matrix dimensions/ordering and role-preserving script/fraction/root/limit structures. Exact MathML remains in private verification records; visual equivalence is not certified
 - Small semantic inline HTML anchors/emphasis/variables/subscripts/superscripts are retained where GFM otherwise corrupts delimiter or notation meaning. They are content semantics, not original website layout
@@ -196,3 +196,22 @@ Exact source/legal comparisons and bounded-conversion checks passed for the fina
 Captured 2026-10-10: 13 complete files and 2 partial files from pinned html5ever and html5gum checkouts. Markdown, TOML and Rust sources are preserved in four-backtick fences with complete-file SHA-256, immutable upstream URLs and original line ranges for excerpts. No HTML conversion or Pandoc was needed; no tables were reconstructed. Original licenses and copyright notices accompany the witnesses. These are bounded implementation evidence, not a converted HTML standard or a whole-repository snapshot.
 
 Byte comparison verified all fifteen retained file bodies/excerpts and complete-file hashes against the pinned checkouts. The upstream html5ever README contains one trailing space retained verbatim inside its source fence; this intentional source-fidelity exception is reported by `git diff --check`. Added prose and generated wrappers have no whitespace findings.
+
+## DOM, selector execution and bounded style source additions — 2026-10-10/11
+
+These additions contribute 40 distinct source identities: 14 full witnesses, 25 partial witnesses and one ordinary metadata-only minutes provenance record. Conditional 5 and Content 3 each have two bounded Markdown renderings sharing a complete original HTML hash. Blink css_properties.json5 adds a bounded rendering of its existing complete source identity. The source catalog counts identities, not Markdown files or extraction hashes.
+
+Five complete selector/cascade/scoping/pseudo HTML captures and the bounded standards captures use the approved Pandoc 3.1.11.1 conversion with source headers, original status/notices, definition IDs, normative/informative labels, literal/code/variable structure and original links retained. Original scripts/styles are omitted without execution. No compiler was acquired for these additions. Displayed live-page revision metadata and separately acquired repository sources are provenance, not additional distributed source bodies.
+
+The six DOM captures pass source-to-parsed-GFM checks for 6,705 IDs, 69 headings, 41 literal blocks, five tables, 113 cells and 5,326 retained links, with no conversion errors. Complex node-type and focus tables remain literal semantic HTML: original row/column spans, cells, anchors and inline semantics are preserved instead of flattened. Literal table code uses numeric newline/tab entities; these preserve source text under parsing. This exception to the original collection’s grid-table presentation policy is deliberate source fidelity, not a claim of browser-rendering equivalence.
+
+| Verified conversion group | Captures | IDs | Headings | Literal blocks | Tables | Table cells | Retained links |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| selectors | 5 | 3950 | 345 | 175 | 1 | 220 | 7617 |
+| style | 6 | 660 | 32 | 23 | 12 | 169 | 1604 |
+| specialized | 7 | 706 | 34 | 31 | 1 | 14 | 1039 |
+| specialized677 | 1 | 165 | 7 | 7 | 1 | 18 | 210 |
+
+Every listed conversion reports zero errors. Counts cover retained source sections, not omitted document bodies, and are not conformance tests. Browser excerpts retain exact original line ranges, complete file-level headers and source-byte hashes; complete files retain their full bytes. Resolution witnesses retain two brief attributed comment quotations plus response/body hashes. Dated minutes have URL/hash provenance only and are therefore metadata-only without a rights exclusion. Captured upstream links are provenance, not a claim that external network availability was tested. Legal header copies are verified byte-for-byte against the selected source; existing license files are reused only where exact text matches.
+
+Final integration checks confirm 314 catalog rows, the full/partial/metadata totals above, all 40 added original-source hashes against retained raw evidence, and 13 exact legal-header copies. Conditional 5, Content 3, RenderElement.cpp and Blink css_properties.json5 each occupy one catalog row; the full RenderElement witness upgrades its earlier bounded representation without adding another identity. Parsed Markdown/SVG link checks cover 226 reference/notice files and 73,018 local link occurrences with no missing path or fragment. The owned catalog/notice edits pass `git diff --check`; quoted source-fidelity whitespace exceptions in earlier captures remain as previously disclosed.

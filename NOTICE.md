@@ -65,7 +65,7 @@ records its font and notice hashes. These fonts are test assets.
 ### Chromium Blink implementation references
 
 The reference collection retains selected Blink source files as readable
-implementation evidence for CSSOM rules, text, painting, layout and content parsing, and bounded
+implementation evidence for CSSOM rules, text, painting, layout, content parsing, style substitution and container eligibility, and bounded
 implementation gaps. Each file preserves its original copyright and license notice; the accompanying legal
 material identifies the exact retained source scope.
 
@@ -306,7 +306,7 @@ authorship and status remain intact; no endorsement is implied.
 ### WebKit implementation references
 
 The reference collection retains selected WebKit source files as readable
-implementation evidence for CSSOM, text, effects, layout and content parsing. These are documentation copies,
+implementation evidence for CSSOM, text, effects, layout, content parsing, style, transitions and contextual lengths. These are documentation copies,
 not compiled or linked dependencies. Each retained file preserves its original
 copyright, redistribution conditions and disclaimer.
 
@@ -336,14 +336,16 @@ URLs. Some adapted fixtures record only an upstream path, so their exact
 adaptation revision remains unrecorded. The included license and source notices
 were checked by the leaf against the named files at the pinned revision.
 
-### WHATWG Fullscreen
+### WHATWG standards
 
 The checkout includes the Fullscreen specification snapshot at
 `7c38d773117aa1e6bfa13754afe77483f40c908f`, distributed by WHATWG
 (Apple, Google, Mozilla, Microsoft), as reformatted implementation reference text.
+The collection also retains bounded DOM, HTML, Web IDL and Infra captures with
+their original notices and independently hashed source scope.
 
 * License: [Creative Commons Attribution 4.0 International, with the upstream BSD 3-Clause provision for portions incorporated into source code](licenses/whatwg/LICENSE)
-* Homepage: [WHATWG Fullscreen](https://fullscreen.spec.whatwg.org/)
+* Homepages: [WHATWG Fullscreen](https://fullscreen.spec.whatwg.org/), [DOM](https://dom.spec.whatwg.org/), [HTML](https://html.spec.whatwg.org/), [Web IDL](https://webidl.spec.whatwg.org/) and [Infra](https://infra.spec.whatwg.org/)
 * Exact revision, copyright statement and changes: [reference attribution](licenses/whatwg/NOTICE.md)
 
 The complete selected upstream LICENSE is preserved byte-for-byte. Its BSD

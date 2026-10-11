@@ -48,3 +48,14 @@ The [flex fragmentation reference](../../references/browser-flex-fragmentation--
 | [longhands_custom.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/properties/longhands/longhands_custom.cc): complete original header and bounded source lines 3131–3211, 3215–3220; other source omitted | Copyright 2019 The Chromium Authors; [Chromium BSD-style root license](LICENSE.txt) |
 
 These sources retain their BSD-style project-license declarations and are covered by the exact existing root license from this revision. No new LGPL file or alternative is introduced. Added line labels and omission boundaries are documentation formatting; retained source bytes are unchanged. Parser-front-door evidence does not establish engine-wide leader support or absence. These copies are not compiled or linked into Surgeist.
+
+## Deferred substitution and container eligibility witnesses
+
+The [bounded style determination witness](../../references/style-source-determinations-browser--pinned-20261010.md) retains exact functions and complete original headers from the following files at immutable Chromium revision `7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2`. Both declare the Chromium BSD-style project license and reuse the exact existing [root LICENSE](LICENSE.txt). The speak-entry excerpt of css_properties.json5 is an additional bounded representation of its already retained complete source, with unchanged Copyright 2017 The Chromium Authors.
+
+| Retained source | Original copyright and scope |
+| --- | --- |
+| [third_party/blink/renderer/core/css/resolver/style_cascade.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/resolver/style_cascade.cc); [retained excerpt](../../references/style-source-determinations-browser--pinned-20261010.md#blink-style-cascade-cc) | Copyright 2019 The Chromium Authors; complete original header and explicitly bounded functions |
+| [third_party/blink/renderer/core/css/container_query_evaluator.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/container_query_evaluator.cc); [retained excerpt](../../references/style-source-determinations-browser--pinned-20261010.md#blink-container-query-evaluator-cc) | Copyright 2020 The Chromium Authors; complete original header and explicitly bounded functions |
+
+Added labels and omission boundaries are documentation formatting; retained source segments are unchanged. These copies are not compiled or linked product dependencies.
