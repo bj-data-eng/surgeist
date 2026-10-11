@@ -250,6 +250,29 @@ expanded names and prefixes remain unchanged. Admission uses the interpreter's
 per-value raw-unit cap; native values and reports use ordinary allocation
 without physical-memory accounting, cancellation or allocation-failure recovery.
 
+`HtmlTimeElementValue` provides the ten strict native alternatives defined by
+[pinned HTML for `time`](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-time-element):
+month, date, yearless date, time, local datetime, time-zone offset, global datetime,
+week, year and duration. It reuses the checked temporal components and their
+serialization; `into_datetime_attribute` creates a native datetime attribute
+without reparsing.
+
+`HtmlValueInterpreter::time_element_value` separates strict author conformance
+from `HtmlMachineReadableTime`, which retains the first successful processing
+alternative in the source-defined order. Authored Year spelling requires at least
+four ASCII digits; processing accepts any positive all-ASCII-digit year, so `1`
+has a Year equivalent despite invalid author syntax. Existing parsed types retain
+exact long fractions, arbitrary years and explicit global offsets without a host
+time zone. Reports preserve the whole raw UTF-16 value and distinguish missing
+input from present invalid input, with admission before the format attempts.
+
+This standalone value operation uses ordinary allocation, including failed
+alternatives and exact temporal arithmetic. Its per-value raw-unit cap supplies
+no work ledger, cancellation, physical-memory limit or allocator-failure recovery.
+Captured `TimeElement` interpretation, absent-attribute child-text fallback and
+contextual descendant checks remain pending. Lexical acceptance does not certify
+that the value represents the human-readable contents of an element.
+
 Native `HtmlSrcsetValue` checks ordered image candidates for `srcset` and
 `imagesrcset`. URLs remain symbolic exact strings; widths retain arbitrary
 positive integers and authored density spelling is retained. Author positivity

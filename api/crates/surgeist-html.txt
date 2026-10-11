@@ -899,6 +899,17 @@ pub surgeist_html::HtmlLoading::Lazy
 impl surgeist_html::HtmlLoading
 pub fn surgeist_html::HtmlLoading::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlLoading::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlMachineReadableTime
+pub surgeist_html::HtmlMachineReadableTime::Date(surgeist_html::HtmlDate)
+pub surgeist_html::HtmlMachineReadableTime::Duration(surgeist_html::HtmlParsedDuration)
+pub surgeist_html::HtmlMachineReadableTime::GlobalDateTime(surgeist_html::HtmlParsedGlobalDateTime)
+pub surgeist_html::HtmlMachineReadableTime::LocalDateTime(surgeist_html::HtmlParsedLocalDateTime)
+pub surgeist_html::HtmlMachineReadableTime::Month(surgeist_html::HtmlMonth)
+pub surgeist_html::HtmlMachineReadableTime::Time(surgeist_html::HtmlParsedTime)
+pub surgeist_html::HtmlMachineReadableTime::TimeZoneOffset(surgeist_html::HtmlTimeZoneOffset)
+pub surgeist_html::HtmlMachineReadableTime::Week(surgeist_html::HtmlWeek)
+pub surgeist_html::HtmlMachineReadableTime::Year(surgeist_html::HtmlYear)
+pub surgeist_html::HtmlMachineReadableTime::YearlessDate(surgeist_html::HtmlYearlessDate)
 pub enum surgeist_html::HtmlModificationTimestamp<'a>
 pub surgeist_html::HtmlModificationTimestamp::Date(&'a surgeist_html::HtmlDate)
 pub surgeist_html::HtmlModificationTimestamp::Global(&'a surgeist_html::HtmlParsedGlobalDateTime)
@@ -1492,6 +1503,20 @@ pub surgeist_html::HtmlTemporalError::ZeroYear
 impl core::error::Error for surgeist_html::HtmlTemporalError
 impl core::fmt::Display for surgeist_html::HtmlTemporalError
 pub fn surgeist_html::HtmlTemporalError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlTimeElementValue
+pub surgeist_html::HtmlTimeElementValue::Date(surgeist_html::HtmlDate)
+pub surgeist_html::HtmlTimeElementValue::Duration(surgeist_html::HtmlDuration)
+pub surgeist_html::HtmlTimeElementValue::GlobalDateTime(surgeist_html::HtmlGlobalDateTime)
+pub surgeist_html::HtmlTimeElementValue::LocalDateTime(surgeist_html::HtmlLocalDateTime)
+pub surgeist_html::HtmlTimeElementValue::Month(surgeist_html::HtmlMonth)
+pub surgeist_html::HtmlTimeElementValue::Time(surgeist_html::HtmlTime)
+pub surgeist_html::HtmlTimeElementValue::TimeZoneOffset(surgeist_html::HtmlTimeZoneOffset)
+pub surgeist_html::HtmlTimeElementValue::Week(surgeist_html::HtmlWeek)
+pub surgeist_html::HtmlTimeElementValue::Year(surgeist_html::HtmlYear)
+pub surgeist_html::HtmlTimeElementValue::YearlessDate(surgeist_html::HtmlYearlessDate)
+impl surgeist_html::HtmlTimeElementValue
+pub fn surgeist_html::HtmlTimeElementValue::into_datetime_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlTimeElementValue::to_document_string(&self) -> surgeist_html::DocumentString
 pub enum surgeist_html::HtmlTokenComparison
 pub surgeist_html::HtmlTokenComparison::AsciiCaseInsensitive
 pub surgeist_html::HtmlTokenComparison::CaseSensitive
@@ -1562,6 +1587,7 @@ pub surgeist_html::HtmlValueSyntax::NonzeroDimension
 pub surgeist_html::HtmlValueSyntax::NormalizedLocalDateTime
 pub surgeist_html::HtmlValueSyntax::SpaceSeparatedTokens
 pub surgeist_html::HtmlValueSyntax::Time
+pub surgeist_html::HtmlValueSyntax::TimeElement
 pub surgeist_html::HtmlValueSyntax::TimeZoneOffset
 pub surgeist_html::HtmlValueSyntax::Week
 pub surgeist_html::HtmlValueSyntax::YearlessDate
@@ -3452,6 +3478,7 @@ pub fn surgeist_html::HtmlValueInterpreter::nonzero_dimension(&self, raw: core::
 pub fn surgeist_html::HtmlValueInterpreter::normalized_local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime, surgeist_html::HtmlParsedLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::space_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlSpaceSeparatedTokens, surgeist_html::HtmlSpaceSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTime, surgeist_html::HtmlParsedTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::time_element_value(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeElementValue, surgeist_html::HtmlMachineReadableTime>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::time_zone_offset(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeZoneOffset, surgeist_html::HtmlTimeZoneOffset>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::week(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlWeek, surgeist_html::HtmlWeek>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlYearlessDate, surgeist_html::HtmlYearlessDate>, surgeist_html::HtmlValueAdmissionError>

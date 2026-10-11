@@ -7,7 +7,7 @@
 //! zone is consulted.
 
 use crate::{
-    DocumentString, HtmlInputType,
+    Attribute, DocumentString, HtmlInputType, KnownHtmlAttribute,
     numeric::{
         HtmlFloatingPointNumber, HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
         HtmlSignedDecimal,
@@ -503,6 +503,73 @@ impl HtmlDateWithOptionalTime {
             Self::Global(value) => value.to_document_string(),
         }
     }
+}
+
+/// An intrinsically valid authored datetime value for HTML's time element.
+///
+/// The ten alternatives are defined by §4.5.14, rather than the narrower
+/// date-with-optional-time grammar. This value does not certify that a string
+/// represents an element's human-readable contents or select child-text fallback.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum HtmlTimeElementValue {
+    Month(HtmlMonth),
+    Date(HtmlDate),
+    YearlessDate(HtmlYearlessDate),
+    Time(HtmlTime),
+    LocalDateTime(HtmlLocalDateTime),
+    TimeZoneOffset(HtmlTimeZoneOffset),
+    GlobalDateTime(HtmlGlobalDateTime),
+    Week(HtmlWeek),
+    /// A positive exact year, serialized with at least four digits.
+    Year(HtmlYear),
+    Duration(HtmlDuration),
+}
+
+impl HtmlTimeElementValue {
+    /// Serializes a conforming time-element datetime value without reparsing.
+    pub fn to_document_string(&self) -> DocumentString {
+        match self {
+            Self::Month(value) => value.to_document_string(),
+            Self::Date(value) => value.to_document_string(),
+            Self::YearlessDate(value) => value.to_document_string(),
+            Self::Time(value) => value.to_document_string(),
+            Self::LocalDateTime(value) => value.to_document_string(),
+            Self::TimeZoneOffset(value) => value.to_document_string(),
+            Self::GlobalDateTime(value) => value.to_document_string(),
+            Self::Week(value) => value.to_document_string(),
+            Self::Year(value) => value.spelling().into(),
+            Self::Duration(value) => value.to_document_string(),
+        }
+    }
+
+    /// Creates a datetime content attribute from valid native components.
+    /// Element applicability and captured-content conformance are separate.
+    pub fn into_datetime_attribute(self) -> Attribute {
+        Attribute::new(
+            KnownHtmlAttribute::Datetime.qualified_name(),
+            self.to_document_string(),
+        )
+    }
+}
+
+/// The exact machine-readable equivalent of a supplied time-element value.
+///
+/// Processing preserves fractions beyond authored millisecond precision and
+/// accepts positive all-digit years shorter than four characters. Global values
+/// retain their explicit source offset and exact UTC instant; no host zone is
+/// consulted. Raw spelling remains in the value interpreter's report.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum HtmlMachineReadableTime {
+    Month(HtmlMonth),
+    Date(HtmlDate),
+    YearlessDate(HtmlYearlessDate),
+    Time(HtmlParsedTime),
+    LocalDateTime(HtmlParsedLocalDateTime),
+    TimeZoneOffset(HtmlTimeZoneOffset),
+    GlobalDateTime(HtmlParsedGlobalDateTime),
+    Week(HtmlWeek),
+    Year(HtmlYear),
+    Duration(HtmlParsedDuration),
 }
 
 /// An exact nonnegative duration in seconds, with millisecond precision.
@@ -1548,6 +1615,86 @@ pub(crate) fn validate_date_with_optional_time(
         return Ok(HtmlDateWithOptionalTime::Date(value));
     }
     validate_global_date_time(input).map(HtmlDateWithOptionalTime::Global)
+}
+
+fn parse_time_element_year(input: &DocumentString) -> Result<HtmlYear, HtmlTemporalError> {
+    let value = HtmlNonNegativeInteger::from_decimal_digits(input)
+        .map_err(|_| HtmlTemporalError::InvalidYearDigits)?;
+    HtmlYear::from_number(value)
+}
+
+/// The ten author alternatives in HTML §4.5.14. Existing common grammars retain
+/// their own validators; only the separate standalone Year alternative is new.
+pub(crate) fn validate_time_element_value(
+    input: &DocumentString,
+) -> Result<HtmlTimeElementValue, HtmlTemporalError> {
+    if let Ok(value) = validate_month(input) {
+        return Ok(HtmlTimeElementValue::Month(value));
+    }
+    if let Ok(value) = validate_date(input) {
+        return Ok(HtmlTimeElementValue::Date(value));
+    }
+    if let Ok(value) = validate_yearless_date(input) {
+        return Ok(HtmlTimeElementValue::YearlessDate(value));
+    }
+    if let Ok(value) = validate_time(input) {
+        return Ok(HtmlTimeElementValue::Time(value));
+    }
+    if let Ok(value) = validate_local_date_time(input) {
+        return Ok(HtmlTimeElementValue::LocalDateTime(value));
+    }
+    if let Ok(value) = validate_time_zone_offset(input) {
+        return Ok(HtmlTimeElementValue::TimeZoneOffset(value));
+    }
+    if let Ok(value) = validate_global_date_time(input) {
+        return Ok(HtmlTimeElementValue::GlobalDateTime(value));
+    }
+    if let Ok(value) = validate_week(input) {
+        return Ok(HtmlTimeElementValue::Week(value));
+    }
+    if input.len() >= 4
+        && let Ok(value) = parse_time_element_year(input)
+    {
+        return Ok(HtmlTimeElementValue::Year(value));
+    }
+    validate_duration(input).map(HtmlTimeElementValue::Duration)
+}
+
+/// Applies the literal ordered machine-readable-equivalent algorithm in
+/// §4.5.14. The Year branch deliberately has no author-only four-digit guard.
+/// This standalone producer uses ordinary allocation, including failed attempts
+/// and exact arithmetic; it is not a semantic-session controlled producer.
+pub(crate) fn parse_time_element_value(
+    input: &DocumentString,
+) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {
+    if let Ok(value) = parse_month(input) {
+        return Ok(HtmlMachineReadableTime::Month(value));
+    }
+    if let Ok(value) = parse_date(input) {
+        return Ok(HtmlMachineReadableTime::Date(value));
+    }
+    if let Ok(value) = parse_yearless_date(input) {
+        return Ok(HtmlMachineReadableTime::YearlessDate(value));
+    }
+    if let Ok(value) = parse_time(input) {
+        return Ok(HtmlMachineReadableTime::Time(value));
+    }
+    if let Ok(value) = parse_local_date_time(input) {
+        return Ok(HtmlMachineReadableTime::LocalDateTime(value));
+    }
+    if let Ok(value) = parse_time_zone_offset(input) {
+        return Ok(HtmlMachineReadableTime::TimeZoneOffset(value));
+    }
+    if let Ok(value) = parse_global_date_time(input) {
+        return Ok(HtmlMachineReadableTime::GlobalDateTime(value));
+    }
+    if let Ok(value) = parse_week(input) {
+        return Ok(HtmlMachineReadableTime::Week(value));
+    }
+    if let Ok(value) = parse_time_element_year(input) {
+        return Ok(HtmlMachineReadableTime::Year(value));
+    }
+    parse_duration(input).map(HtmlMachineReadableTime::Duration)
 }
 
 pub(crate) fn validate_duration(input: &DocumentString) -> Result<HtmlDuration, HtmlTemporalError> {

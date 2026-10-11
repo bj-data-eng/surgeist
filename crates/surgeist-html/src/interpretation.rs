@@ -1,7 +1,8 @@
-//! Source-qualified common HTML value interpretation over exact raw values.
+//! Source-qualified HTML value interpretation over exact raw values.
 //!
 //! Attribute-specific applicability, defaults, ranges and effective states are
-//! separate HTML algorithms. These common operations never guess those rules.
+//! separate HTML algorithms. Standalone operations never guess those rules or
+//! select an element's captured child-text fallback.
 
 use crate::color::{HtmlLegacyColor, LegacyColorParseError};
 use crate::numeric::{
@@ -10,15 +11,15 @@ use crate::numeric::{
 };
 use crate::temporal::{
     HtmlDate, HtmlDateOrTime, HtmlDateWithOptionalTime, HtmlDuration, HtmlGlobalDateTime,
-    HtmlLocalDateTime, HtmlMonth, HtmlParsedDuration, HtmlParsedGlobalDateTime,
-    HtmlParsedLocalDateTime, HtmlParsedTime, HtmlTemporalError, HtmlTime, HtmlTimeZoneOffset,
-    HtmlWeek, HtmlYearlessDate,
+    HtmlLocalDateTime, HtmlMachineReadableTime, HtmlMonth, HtmlParsedDuration,
+    HtmlParsedGlobalDateTime, HtmlParsedLocalDateTime, HtmlParsedTime, HtmlTemporalError, HtmlTime,
+    HtmlTimeElementValue, HtmlTimeZoneOffset, HtmlWeek, HtmlYearlessDate,
 };
 use crate::tokens::{HtmlCommaSeparatedTokens, HtmlSpaceSeparatedTokens};
 use crate::{DocumentString, color, numeric, temporal, tokens};
 use std::{error::Error, fmt};
 
-/// The selected common value clause, independent of an attribute's overlay.
+/// The selected value clause, independent of an attribute's contextual overlay.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlValueSyntax {
     /// The pinned HTML legacy-color processing clause.
@@ -65,6 +66,9 @@ pub enum HtmlValueSyntax {
     DateOrTime,
     /// The pinned HTML `vaguer-moments-in-time` clause.
     DateWithOptionalTime,
+    /// The time element's ten authored syntaxes and ordered processing rule,
+    /// defined in §4.5.14 rather than a separate common microsyntax.
+    TimeElement,
 }
 
 impl HtmlValueSyntax {
@@ -139,6 +143,9 @@ impl HtmlValueSyntax {
             }
             Self::DateWithOptionalTime => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#vaguer-moments-in-time"
+            }
+            Self::TimeElement => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-time-element"
             }
         }
     }
@@ -662,6 +669,29 @@ impl HtmlValueInterpreter {
         if let Some(raw) = raw {
             report.author = temporal_author(temporal::validate_date_with_optional_time(raw));
             report.recovery = temporal_recovery(temporal::parse_date_or_time(raw));
+        }
+        Ok(report)
+    }
+
+    /// Checks all ten time-element author alternatives and separately obtains
+    /// the ordered machine-readable equivalent of a supplied exact value.
+    ///
+    /// None is missing standalone input, not an absent datetime attribute's
+    /// captured child-text fallback. This operation does not check element
+    /// descendants or that a value represents human-readable contents. The
+    /// whole raw UTF-16 value is admitted before parsing; native processing uses
+    /// ordinary allocation without a work, cancellation or physical-memory cap.
+    pub fn time_element_value(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<
+        HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>,
+        HtmlValueAdmissionError,
+    > {
+        let mut report = self.admit(raw, HtmlValueSyntax::TimeElement)?;
+        if let Some(raw) = raw {
+            report.author = temporal_author(temporal::validate_time_element_value(raw));
+            report.recovery = temporal_recovery(temporal::parse_time_element_value(raw));
         }
         Ok(report)
     }
