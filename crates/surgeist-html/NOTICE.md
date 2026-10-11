@@ -90,7 +90,10 @@ driver further adapts selected head, noscript and Text rules, including script
 insertion and EOF/end-tag dispatch for the fresh Disabled operation.
 The same source files also supply selected ordinary body and trailing-mode rows,
 generic end handling and implied-end/special-element lists, followed by active
-formatting, Noah comparison, reconstruction, adoption and applet/marquee markers.
+formatting, Noah comparison, reconstruction, adoption and applet/marquee/object
+markers. Selected button, fieldset and object rows additionally use the same
+source files and notices; their exact source ranges and association adaptations
+are recorded in the origin record.
 Surgeist-owned
 controlled providers retain actual text and recovered-tag ownership.
 Their original notices are

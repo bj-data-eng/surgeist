@@ -10,7 +10,7 @@
 // Adapted from html5ever tree_builder/rules.rs:1037-1411 and
 // tree_builder/mod.rs:1236-1320 at d7232d746d3112f08926d169591576bd12fe2fdf.
 // Governing HTML877d syntax5056-5498 controls PI, predicate differences,
-// diagnostic order and source reprocessing. Hidden/listed controls, templates,
+// diagnostic order and source reprocessing. Hidden/resettable controls, templates,
 // fragments and foreign construction remain actual pre-effect continuations.
 
 use super::head::{
@@ -186,12 +186,7 @@ impl HeadState<'_> {
     ) -> Result<Option<HeadStep>, HeadError> {
         if let Some((TagKind::Start, _)) = self.kind(c)? {
             for (names, boundary) in [
-                (
-                    &[
-                        "input", "fieldset", "button", "textarea", "output", "object",
-                    ][..],
-                    HeadBoundary::Form,
-                ),
+                (&["input", "textarea", "output"][..], HeadBoundary::Form),
                 (&["select", "option", "optgroup"][..], HeadBoundary::Select),
                 (&["template"][..], HeadBoundary::Template),
                 (&["math", "svg"][..], HeadBoundary::Foreign),

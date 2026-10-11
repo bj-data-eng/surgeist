@@ -43,7 +43,7 @@ pub(crate) enum Invariant {
     CleanupWhileRunning,
     SharedAllocationAliased,
     PendingFormEffects,
-    IncompleteImageCreation,
+    IncompleteFormAssociationCreation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1834,7 +1834,7 @@ mod tests {
     fn pending_form_effect_stop_is_canonical_and_cannot_replace_first_failure() {
         for invariant in [
             Invariant::PendingFormEffects,
-            Invariant::IncompleteImageCreation,
+            Invariant::IncompleteFormAssociationCreation,
         ] {
             let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
             let stop = ParseStop::InternalInvariant(invariant);

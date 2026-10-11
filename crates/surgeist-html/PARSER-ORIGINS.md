@@ -16,10 +16,10 @@ implements script Text entry, end-tag preparation and EOF marking. The generic
 head continuation still suspends before script effects when it lacks that
 constructor proof. The fresh driver continues through AfterHead, ordinary InBody
 and the two trailing body modes, with formatting reconstruction and adoption.
-Ordinary form recovery and parser-created image associations use that same fresh
-driver and controlled arena. Seven structural table modes now use that driver,
+Ordinary form recovery and parser-created image, button, fieldset and object
+associations use that same fresh driver and controlled arena. Seven structural table modes now use that driver,
 including pending text and implied column-group, section and row creation.
-Listed/resettable control creation, unsupported table rows, select/frameset
+Resettable control creation, unsupported table rows, select/frameset
 transitions, templates and foreign dispatch retain explicit unfinished
 continuations. Construction EOF is not completed stop-parsing or a public report.
 
@@ -184,7 +184,7 @@ derives from lines 1555–1585. The implied-end, heading and special-element lis
 derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected HTML
 edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
 `keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
-Listed/resettable control and template-form creation, unsupported table branches,
+Resettable control and template-form creation, unsupported table branches,
 foreign creation and frameset transitions remain unfinished boundaries.
 
 The sole fresh driver consumes its actual AfterHead handoff and retains current
@@ -205,8 +205,7 @@ and 1587–1604, with `rules.rs` lines 730–784, into the private
 Earlier incorporation hashes remain historical. Body/head dispatch also adapts
 reconstruction call sites and trailing whitespace delegation. The selected HTML
 edition governs original-token association, intended parents and conditional
-adoption insertion. Actual applet/marquee markers are supported; object creation
-retains the listed-control continuation. Original tags have controlled owners; replay
+adoption insertion. Actual applet/marquee/object markers are supported. Original tags have controlled owners; replay
 deep-copies their actual payloads into distinct admitted storage, while Noah
 comparison uses exact parsed attributes independently of order. Surgeist-owned
 session providers retain source/controller/arena qualification and first-stop
@@ -242,6 +241,41 @@ continued observation or freeze and leaves only owner-checked terminal disposal.
 Iterative ancestry and registry scans are charged and may require quadratic
 work. This adaptation adds no persistent association tree, external provider,
 resettable initialization or complete parser-accounting claim.
+
+The listed non-resettable extension adapts `rules.rs` lines 508–518, 604–634
+and 765–784 in the body driver, with the same original file hash and notices.
+The selected HTML edition governs button diagnostic-before-pop ordering,
+fieldset block recovery and object reconstruction/marker clearing. These rows
+delegate through the existing structural table modes rather than introducing
+another driver. Button, fieldset and object have no resettable initialization
+step; input, textarea, output and select remain pre-effect continuations.
+
+Surgeist-owned providers generalize the existing image association registry to
+one kind-qualified record. Borrowed source/controller/arena/name/attribute and
+parent/form validation plus actual metadata-slot admission precede lexical take.
+Explicit form presence suppresses parser-pointer association for listed kinds.
+Active and frozen reads preserve qualification and distinguish unavailable
+metadata from a known null owner; image reads remain kind-specific.
+
+One retained phase completes each local removal effect and its ID-trigger sweep
+before the next event, and completes all removal events before insertion. The
+removal view both detaches the moved root and excludes it from outside preorder
+scans. Document ID entry/removal visits all canonical same-node-document listed
+explicit-form records, including detached controls. Only ID-change restricts
+recipients to the changed element's ordinary tree. The
+[selected #1136 interpretation](https://github.com/bj-data-eng/surgeist/issues/1136)
+uses actual removal-hook invocation, nonempty no-namespace ID and post-removal
+non-Document root, without an old-connected guard. This is an explicit source
+interpretation, not a browser-consensus or upstream-resolution claim.
+
+Reset clears the parser-inserted flag before source early returns, owner clearing
+and connected exact-ID lookup or detached ancestor resolution. The first matching
+ID element must be an HTML form; failed connected lookup never gains ancestor
+fallback. Actual appended html/body ID slots preadmit and install their effects
+with the attribute commit, then drain before further transfer or rebinding.
+Terminal stops retain actual metadata prefixes, topology and transfer redirects
+for cleanup, and refuse useful continuation, observations and freeze. Repeated
+registry/tree scans remain charged and polled; no linear-time guarantee follows.
 
 The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
 `mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry

@@ -9,9 +9,9 @@
 //
 // Adapted from selected ordinary body rows in tree_builder/rules.rs:
 // 356-541,558-602,616-630,693-731,786-813,842-873,880-892,947-1004,
-// 1466-1493,1563-1583, plus form rows543-558,632-665;
+// 1466-1493,1563-1583, plus form/control rows508-518,543-558,604-665,765-784;
 // and tree_builder/mod.rs:1043-1223,1555-1585.
-// Listed/resettable form controls, foreign creation and frameset transitions are
+// Resettable form controls, foreign creation and frameset transitions are
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
@@ -55,6 +55,7 @@ const BLOCK: &[&str] = &[
     "dl",
     "figcaption",
     "figure",
+    "fieldset",
     "footer",
     "header",
     "hgroup",
@@ -395,12 +396,7 @@ impl HeadState<'_> {
         }
         for (names, boundary) in [
             (&["template"][..], HeadBoundary::Template),
-            (
-                &[
-                    "fieldset", "button", "input", "textarea", "output", "object",
-                ][..],
-                HeadBoundary::Form,
-            ),
+            (&["input", "textarea", "output"][..], HeadBoundary::Form),
             (&["select", "option", "optgroup"][..], HeadBoundary::Select),
             (&["frameset", "frame"][..], HeadBoundary::Frameset),
             (&["math", "svg"][..], HeadBoundary::Foreign),
@@ -574,7 +570,10 @@ impl HeadState<'_> {
             if self.token_in(FORMATTING, c)?.is_some() {
                 return Ok(Some(self.formatting_start(close, c)?));
             }
-            if self.token_in(&["applet", "marquee"], c)?.is_some() {
+            if self
+                .token_in(&["applet", "marquee", "object"], c)?
+                .is_some()
+            {
                 return Ok(Some(self.marker_start(close, c)?));
             }
             return self.body_start(source, close, c);
@@ -647,6 +646,32 @@ impl HeadState<'_> {
         close: bool,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
+        if self.token_in(&["button"], c)?.is_some() {
+            if self
+                .before
+                .kernel
+                .scoped_name("button", Scope::Default, c)?
+            {
+                // HTML877d4478-4484 requires the diagnostic before implied
+                // ends or stack removal, so rejected diagnostics retain the
+                // old button and the actual unconsumed new token.
+                self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+                self.before.kernel.implied_ends(None, c)?;
+                loop {
+                    let node = self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+                    if self.before.kernel.named(&node, "button", c)? {
+                        break;
+                    }
+                }
+            }
+            self.reconstruct_formatting(c)?;
+            self.insert_tag(c)?;
+            self.frameset(false, c)?;
+            if close {
+                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            }
+            return Ok(Some(self.finish(c)?));
+        }
         if self.token_in(&["table"], c)?.is_some() {
             if self.before.kernel.session.document_mode(c)? != crate::HtmlDocumentMode::Quirks {
                 self.close_p_in_scope(c)?;

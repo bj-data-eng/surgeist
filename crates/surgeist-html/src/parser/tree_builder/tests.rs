@@ -4023,8 +4023,6 @@ fn body_after_modes_place_comments_and_pi_under_html_then_document() {
 fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     use super::head::HeadBoundary;
     for (name, boundary) in [
-        ("object", HeadBoundary::Form),
-        ("fieldset", HeadBoundary::Form),
         ("input", HeadBoundary::Form),
         ("textarea", HeadBoundary::Form),
         ("select", HeadBoundary::Select),
@@ -5697,7 +5695,7 @@ fn form_image_observations(
 ) -> Vec<(
     Option<Vec<u16>>,
     bool,
-    crate::construction::parser_session::ImageAssociationEvidence,
+    crate::construction::parser_session::FormAssociationEvidence,
 )> {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
@@ -5756,7 +5754,7 @@ fn form_image_observations(
 
 #[test]
 fn ordinary_form_images_preserve_known_null_ancestor_and_nonancestor_owners() {
-    use crate::construction::parser_session::ImageAssociationEvidence::{ParserAssociated, Reset};
+    use crate::construction::parser_session::FormAssociationEvidence::{ParserAssociated, Reset};
     for (source, owner, inserted, evidence) in [
         ("<!doctype html><img>", None, false, Reset),
         (
@@ -5810,7 +5808,7 @@ fn ordinary_form_images_preserve_known_null_ancestor_and_nonancestor_owners() {
 
 #[test]
 fn ordinary_form_adoption_resets_images_detached_from_their_form_owner() {
-    use crate::construction::parser_session::ImageAssociationEvidence::{ParserAssociated, Reset};
+    use crate::construction::parser_session::FormAssociationEvidence::{ParserAssociated, Reset};
     for (source, inserted, evidence) in [
         (
             "<!doctype html><form id=f><b>1<div><img></b>2</div></form>",
@@ -5841,7 +5839,7 @@ fn ordinary_form_adoption_resets_images_detached_from_their_form_owner() {
 
 #[test]
 fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_owner() {
-    use crate::construction::parser_session::ImageAssociationEvidence::ParserAssociated;
+    use crate::construction::parser_session::FormAssociationEvidence::ParserAssociated;
     let form_id = [0xD83D, 0xDE42, 0xD800];
     let alternative = [0xDC00, b'A' as u16, 0xD83D, 0xDE80];
     let text = [0xD800, 0xD83D, 0xDE42, 0xDC00];
@@ -5903,12 +5901,9 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
 #[test]
 fn ordinary_form_control_and_template_continuations_preserve_pointer_and_original_token() {
     for (name, expected) in [
-        ("fieldset", super::head::HeadBoundary::Form),
-        ("button", super::head::HeadBoundary::Form),
         ("input", super::head::HeadBoundary::Form),
         ("textarea", super::head::HeadBoundary::Form),
         ("output", super::head::HeadBoundary::Form),
-        ("object", super::head::HeadBoundary::Form),
         ("template", super::head::HeadBoundary::Template),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
@@ -6803,4 +6798,389 @@ fn ordinary_listed_controls_preserve_nested_button_recovery_and_object_marker() 
             )],
         ]
     );
+}
+
+#[test]
+fn listed_controls_fieldset_closes_p_and_button_scope_preserves_outer_ancestors() {
+    assert_eq!(
+        formatting_outline(
+            "<!doctype html><p>A<fieldset>B</fieldset>C<button><span>D<button>E</button>F"
+        ),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "#A"),
+            (2, "fieldset"),
+            (3, "#B"),
+            (2, "#C"),
+            (2, "button"),
+            (3, "span"),
+            (4, "#D"),
+            (2, "button"),
+            (3, "#E"),
+            (2, "#F")
+        ])
+    );
+}
+
+#[test]
+fn listed_controls_nested_button_diagnostic_cap_retains_old_stack_and_original_tag() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><button><p>A<button id=kept>"),
+        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut failed = false;
+    for _ in 0..100 {
+        if driver.step().is_err() {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    let first = driver.control.stop();
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 4);
+    let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+        panic!("original nested button token");
+    };
+    assert_eq!(
+        tag.name.value.text().code_units(),
+        "button".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        tag.attributes.as_slice()[0].value.value.text().code_units(),
+        "kept".encode_utf16().collect::<Vec<_>>()
+    );
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), first);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn listed_controls_table_cell_delegation_and_marker_clear_keep_real_modes() {
+    assert_eq!(
+        formatting_outline(
+            "<!doctype html><table><tr><td><fieldset><button>A</button></fieldset><object><b>B</object>C</table>D"
+        ),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "fieldset"),
+            (7, "button"),
+            (8, "#A"),
+            (6, "object"),
+            (7, "b"),
+            (8, "#B"),
+            (6, "#C"),
+            (2, "#D")
+        ])
+    );
+}
+
+#[test]
+fn listed_controls_cancellation_releases_canonical_node_and_object_marker_owners() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><object><button>A"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut opened = false;
+    for _ in 0..100 {
+        driver.step().unwrap();
+        if driver
+            .head
+            .as_ref()
+            .and_then(|head| head.state.as_ref())
+            .is_some_and(|state| state.before.kernel.stack().unwrap().len() == 4)
+        {
+            opened = true;
+            break;
+        }
+    }
+    assert!(opened);
+    request.cancellation().cancel();
+    assert!(driver.step().is_err());
+    let first = driver.control.stop();
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), first);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn listed_controls_exact_utf16_text_preserves_pairs_and_isolates() {
+    let mut units: Vec<_> = "<!doctype html><button>".encode_utf16().collect();
+    units.extend([0xd83d, 0xde00, 0xd800, 13, 10, 0xdc00]);
+    units.extend("</button>".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = {
+        let document = frozen.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let button = document.node(&body).unwrap().children().next().unwrap();
+        let text = document.node(&button).unwrap().children().next().unwrap();
+        let HtmlNodeKind::Text(text) = document.node(&text).unwrap().kind() else {
+            panic!("exact text");
+        };
+        text.code_units().to_vec()
+    };
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(actual, [0xd83d, 0xde00, 0xd800, 10, 0xdc00]);
+}
+
+#[test]
+fn listed_controls_open_slot_exact_and_one_short_retains_actual_owners() {
+    for name in ["button", "fieldset", "object"] {
+        let source = format!("<!doctype html><{name}></{name}>");
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source.as_str()), limits(2));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut failed = false;
+        for _ in 0..100 {
+            if driver.step().is_err() {
+                failed = true;
+                break;
+            }
+        }
+        assert!(failed, "{name}");
+        let first = driver.control.stop();
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+        assert!(matches!(
+            &state.pending.as_ref().unwrap().payload,
+            Payload::Tag(None)
+        ));
+        assert!(driver.step().is_err());
+        assert_eq!(driver.control.stop(), first);
+        driver.release().unwrap();
+        assert_released(&driver.control);
+
+        let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(3));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn listed_controls_table_foster_delegation_restores_structural_mode_before_rows() {
+    assert_eq!(
+        formatting_outline(
+            "<!doctype html><table><button>A</button><object>B</object><fieldset>C</fieldset><tr><td>D</table>E"
+        ),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "button"),
+            (3, "#A"),
+            (2, "object"),
+            (3, "#B"),
+            (2, "fieldset"),
+            (3, "#C"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#D"),
+            (2, "#E")
+        ])
+    );
+}
+
+fn listed_control_owner_observations(source: &str) -> Vec<(Vec<u16>, Option<Vec<u16>>)> {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return Vec::new();
+    }
+    let (mut c, mut frozen) = body_document(driver);
+    let observations = {
+        let document = frozen.document().unwrap();
+        let mut stack: Vec<_> = document.root().children().collect();
+        stack.reverse();
+        let mut observations = Vec::new();
+        while let Some(id) = stack.pop() {
+            let node = document.node(&id).unwrap();
+            if let HtmlNodeKind::Element(element) = node.kind() {
+                let name = element.name().local_name().code_units();
+                if ["button", "fieldset", "object"]
+                    .iter()
+                    .any(|candidate| name.iter().copied().eq(candidate.encode_utf16()))
+                {
+                    let state = frozen.form_association_state(&mut c, &id).unwrap();
+                    use crate::construction::parser_session::FormAssociationKind;
+                    let expected = match name {
+                        [98, 117, 116, 116, 111, 110] => FormAssociationKind::Button,
+                        [102, 105, 101, 108, 100, 115, 101, 116] => FormAssociationKind::Fieldset,
+                        [111, 98, 106, 101, 99, 116] => FormAssociationKind::Object,
+                        _ => unreachable!(),
+                    };
+                    assert_eq!(state.kind, expected);
+                    let owner = frozen
+                        .form_association_owner(&mut c, &id)
+                        .unwrap()
+                        .map(|owner| {
+                            let HtmlNodeKind::Element(element) =
+                                document.node(&owner).unwrap().kind()
+                            else {
+                                panic!("qualified actual form owner");
+                            };
+                            assert_eq!(
+                                element.name().local_name().code_units(),
+                                [102, 111, 114, 109]
+                            );
+                            element
+                                .attributes()
+                                .iter()
+                                .find(|attribute| {
+                                    attribute.name().local_name().code_units() == [105, 100]
+                                })
+                                .unwrap()
+                                .value()
+                                .code_units()
+                                .to_vec()
+                        });
+                    observations.push((name.to_vec(), owner));
+                }
+            }
+            let mut children: Vec<_> = node.children().collect();
+            children.reverse();
+            stack.extend(children);
+        }
+        observations
+    };
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    observations
+}
+
+#[test]
+fn listed_controls_real_driver_resolves_forward_form_and_first_nonform_id() {
+    for (source, expected) in [
+        (
+            "<!doctype html><button form=f>A</button><fieldset form=f>B</fieldset><object form=f>C</object><form id=f></form>",
+            Some("f"),
+        ),
+        (
+            "<!doctype html><button form=f>A</button><fieldset form=f>B</fieldset><object form=f>C</object><span id=f></span><form id=f></form>",
+            None,
+        ),
+        (
+            "<!doctype html><form id=f><button form=''>A</button><fieldset form=''>B</fieldset><object form=''>C</object></form>",
+            None,
+        ),
+        (
+            "<!doctype html><form id=f><button>A</button><fieldset>B</fieldset><object>C</object></form>",
+            Some("f"),
+        ),
+        (
+            "<!doctype html><button form=F>A</button><fieldset form=F>B</fieldset><object form=F>C</object><form id=f></form>",
+            None,
+        ),
+    ] {
+        assert_eq!(
+            listed_control_owner_observations(source),
+            ["button", "fieldset", "object"]
+                .into_iter()
+                .map(|name| (
+                    name.encode_utf16().collect(),
+                    expected.map(|id| id.encode_utf16().collect())
+                ))
+                .collect::<Vec<_>>(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn listed_controls_late_body_or_html_id_merge_reconsiders_real_forward_owners() {
+    for target in ["body", "html"] {
+        let source = format!(
+            "<!doctype html><button form=f>A</button><fieldset form=f>B</fieldset><object form=f>C</object><form id=f></form><{target} id=f>"
+        );
+        assert_eq!(
+            listed_control_owner_observations(&source),
+            ["button", "fieldset", "object"]
+                .into_iter()
+                .map(|name| (name.encode_utf16().collect(), None))
+                .collect::<Vec<_>>(),
+            "{target}"
+        );
+    }
+}
+
+#[test]
+fn listed_controls_object_scope_blocks_outer_button_recovery() {
+    assert_eq!(
+        formatting_outline("<!doctype html><button>A<object><button>B</button></object>C</button>"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "button"),
+            (3, "#A"),
+            (3, "object"),
+            (4, "button"),
+            (5, "#B"),
+            (3, "#C")
+        ])
+    );
+}
+
+#[test]
+fn listed_controls_frameset_flag_follows_each_actual_start_row() {
+    for (name, expected) in [("button", false), ("fieldset", true), ("object", false)] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!("<!doctype html><{name}>")),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut opened = false;
+        for _ in 0..100 {
+            driver.step().unwrap();
+            if let Some(state) = driver.head.as_ref().and_then(|head| head.state.as_ref())
+                && state.before.kernel.stack().unwrap().len() == 3
+            {
+                assert_eq!(state.frameset_ok, expected, "{name}");
+                opened = true;
+                break;
+            }
+        }
+        assert!(opened, "{name}");
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
 }

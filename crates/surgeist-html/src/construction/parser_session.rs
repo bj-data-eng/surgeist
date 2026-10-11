@@ -8,7 +8,7 @@
 //! same arena, with controlled implied-html backing and exact whitespace splits.
 //! Preexisting immutable element inputs retain their earlier physical exclusion.
 //! Foreign-name adjustment, foster-parent selection, full patching/template
-//! metadata, listed/resettable form metadata, source reports and public parsing
+//! metadata, resettable form metadata, source reports and public parsing
 //! remain later producers; this private checkpoint makes no complete parser claim.
 //! Script facts are retained for a sealed fresh ordinary Disabled execution;
 //! preparation ends at step18 and never fabricates a loaded or executed result.
@@ -52,6 +52,7 @@ pub(crate) enum SessionError {
     AttributeStorageUnavailable,
     ScriptMetadataUnavailable,
     ImageFormMetadataUnavailable,
+    FormAssociationMetadataUnavailable,
 }
 /// Pinned element-placement guards; generic storage moves remain independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -125,7 +126,7 @@ impl FormattingCreation {
 
 struct SessionStorage {
     control: ControlIdentity,
-    image_effects: Option<ImageEffects>,
+    form_effects: Option<FormEffects>,
     #[cfg(test)]
     cancel_after_removal: Option<crate::HtmlParseCancellation>,
     standalone_ineligibility: Option<StandaloneUnsupported>,
@@ -176,39 +177,62 @@ enum RetainedPayload {
         node: usize,
         metadata: ScriptMetadata,
     },
-    ImageForm {
+    FormAssociation {
         // None is an admitted, initialized construction slot. Only an actual
         // successful allocation can bind it; a stopped slot is cleanup-only.
         node: Option<usize>,
-        state: ImageFormState,
+        state: FormAssociationState,
     },
 }
-/// Actual parser-created image association, distinct from structural owners.
+/// Actual parser-created association, distinct from structural owners.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ImageFormState {
-    owner: Option<usize>,
-    pub(crate) parser_inserted: bool,
-    pub(crate) evidence: ImageAssociationEvidence,
+pub(crate) enum FormAssociationKind {
+    Image,
+    Button,
+    Fieldset,
+    Object,
+}
+impl FormAssociationKind {
+    fn listed(self) -> bool {
+        self != Self::Image
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ImageAssociationEvidence {
+pub(crate) struct FormAssociationState {
+    pub(crate) kind: FormAssociationKind,
+    owner: Option<usize>,
+    pub(crate) parser_inserted: bool,
+    pub(crate) evidence: FormAssociationEvidence,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FormAssociationEvidence {
     Created,
     ParserAssociated,
     Reset,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ImageEffectStage {
+enum FormEffectStage {
     Removal,
     Insertion,
+    IdChange,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FormEffectPass {
+    Local,
+    Global {
+        next_slot: usize,
+        tree: Option<usize>,
+    },
 }
 /// Fixed, retained progress over the same actual tree and payload registry.
 /// A stopped prefix is for cleanup only and cannot be resumed or frozen.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ImageEffects {
+struct FormEffects {
     root: usize,
-    stage: ImageEffectStage,
+    stage: FormEffectStage,
     insert: bool,
     next: Option<usize>,
+    pass: FormEffectPass,
 }
 /// Source processing model facts retained in the actual arena owner.
 /// Document indices are private and resolved only through qualified handles.
@@ -361,7 +385,7 @@ impl PayloadStorage {
                     AttributeStorage::Building { .. } | AttributeStorage::Transferring { .. },
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
-                RetainedPayload::Script { .. } | RetainedPayload::ImageForm { .. } => {}
+                RetainedPayload::Script { .. } | RetainedPayload::FormAssociation { .. } => {}
             }
         }
         Ok(())
@@ -597,7 +621,7 @@ impl SessionStorage {
             .map_err(|(stop, _)| SessionError::Stop(stop))?;
         let mut session = Self {
             control: control.identity(),
-            image_effects: None,
+            form_effects: None,
             #[cfg(test)]
             cancel_after_removal: None,
             standalone_ineligibility: None,
@@ -619,7 +643,7 @@ impl SessionStorage {
             RootKind::Document(mode) => HtmlNodeKind::Document(mode),
             RootKind::Fragment => HtmlNodeKind::Fragment,
         };
-        let allocated = payload_write::<Option<ImageEffects>>(control, 1)
+        let allocated = payload_write::<Option<FormEffects>>(control, 1)
             .and_then(|()| session.allocate(control, kind, false, 0, 0));
         if let Err(error) = allocated {
             session.release(control);
@@ -631,7 +655,7 @@ impl SessionStorage {
     fn require(&self, control: &mut ParseControl) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if self.image_effects.is_some() {
+        if self.form_effects.is_some() {
             return Err(control
                 .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
                 .into());
@@ -1415,6 +1439,9 @@ impl SessionStorage {
         } = prepared;
         for _ in 0..count {
             self.edit_attributes(control, target, container, stage, 1, true)?;
+            if self.form_effects.is_some() {
+                self.drain_form_effects(control)?;
+            }
         }
         for index in 0..self.payloads.values.len() {
             self.rebind_attribute_location(control, index, stage, container, start)?;
@@ -1524,6 +1551,56 @@ impl SessionStorage {
         Ok(())
     }
 
+    fn prepare_id_attribute_effects(
+        &self,
+        control: &mut ParseControl,
+        target: usize,
+        stage: usize,
+    ) -> Result<Option<FormEffects>, SessionError> {
+        self.require(control)?;
+        control.charge(WorkCategory::RecordVisit, 2)?;
+        let RetainedPayload::Attributes(Some(AttributeStorage::Transferring { values, .. })) =
+            &self.payloads.values[stage]
+        else {
+            return Err(control
+                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .into());
+        };
+        let attribute = values.last().ok_or_else(|| {
+            SessionError::Stop(
+                control.fail_invariant(crate::parser::control::Invariant::PendingFormEffects),
+            )
+        })?;
+        if attribute.name().namespace().uri().is_some()
+            || !exact_ascii(control, Some(attribute.name().local_name()), "id")?
+        {
+            return Ok(None);
+        }
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if attribute.value().is_empty() {
+            return Ok(None);
+        }
+        for index in 0..self.payloads.values.len() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if let RetainedPayload::FormAssociation {
+                node: Some(node),
+                state,
+            } = &self.payloads.values[index]
+                && state.kind.listed()
+                && self.form_attribute(control, *node, "form")?.is_some()
+            {
+                return Ok(Some(FormEffects {
+                    root: target,
+                    stage: FormEffectStage::IdChange,
+                    insert: false,
+                    next: Some(target),
+                    pass: FormEffectPass::Local,
+                }));
+            }
+        }
+        Ok(None)
+    }
+
     /// Removes/restores only the registry's known strong owner. Both restoration
     /// paths are admitted before removal; no new wrapper allocation is needed.
     fn edit_attributes(
@@ -1535,6 +1612,14 @@ impl SessionStorage {
         count: usize,
         append: bool,
     ) -> Result<(), SessionError> {
+        let form_effects = if append {
+            self.prepare_id_attribute_effects(control, target, stage)?
+        } else {
+            None
+        };
+        if form_effects.is_some() {
+            payload_write::<Option<FormEffects>>(control, 1)?;
+        }
         control.charge(WorkCategory::ProviderCall, 2)?;
         control.charge(WorkCategory::RecordVisit, 3)?;
         payload_write::<Option<AttributeStorage>>(control, 2)?;
@@ -1602,6 +1687,9 @@ impl SessionStorage {
                 unreachable!()
             };
             *moved += 1;
+            if form_effects.is_some() {
+                self.form_effects = form_effects;
+            }
         }
         result.map_err(Into::into)
     }
@@ -1815,58 +1903,114 @@ impl SessionStorage {
         Err(SessionError::Cycle)
     }
 
-    fn prepare_image_effects(
+    fn prepare_form_effects(
         &self,
         control: &mut ParseControl,
         root: usize,
         remove: bool,
         insert: bool,
-    ) -> Result<Option<ImageEffects>, SessionError> {
+    ) -> Result<Option<FormEffects>, SessionError> {
         self.require(control)?;
+        let mut local = false;
+        let mut listed_explicit = false;
         for slot in 0..self.payloads.values.len() {
             control.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::ImageForm {
-                node: Some(node), ..
+            if let RetainedPayload::FormAssociation {
+                node: Some(node),
+                state,
             } = &self.payloads.values[slot]
             {
                 control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
                 if self.ordinary_descendant(control, *node, root)? {
-                    return Ok(Some(ImageEffects {
-                        root,
-                        stage: if remove {
-                            ImageEffectStage::Removal
-                        } else {
-                            ImageEffectStage::Insertion
-                        },
-                        insert,
-                        next: Some(root),
-                    }));
+                    local = true;
+                    break;
                 }
+                if state.kind.listed() && self.form_attribute(control, *node, "form")?.is_some() {
+                    listed_explicit = true;
+                }
+            }
+        }
+        if !local && listed_explicit {
+            let mut next = Some(root);
+            while let Some(node) = next {
+                if self.has_id(control, node)? {
+                    local = true;
+                    break;
+                }
+                next = self.next_effect_node(control, root, node)?;
+            }
+        }
+        if !local {
+            return Ok(None);
+        }
+        Ok(Some(FormEffects {
+            root,
+            stage: if remove {
+                FormEffectStage::Removal
+            } else {
+                FormEffectStage::Insertion
+            },
+            insert,
+            next: Some(root),
+            pass: FormEffectPass::Local,
+        }))
+    }
+
+    /// Borrowed exact attributes over the actual managed element. Neither the
+    /// value nor the installed attribute container is cloned for resolution.
+    fn form_attribute<'a>(
+        &'a self,
+        control: &mut ParseControl,
+        node: usize,
+        local: &str,
+    ) -> Result<Option<&'a DocumentString>, SessionError> {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let record = self.records.get(node).ok_or(SessionError::ForeignNode)?;
+        let HtmlNodeKind::Element(element) = &record.kind else {
+            return Ok(None);
+        };
+        for attribute in element.attributes().as_slice() {
+            control.charge(WorkCategory::RecordVisit, 2)?;
+            if attribute.name().namespace().uri().is_none()
+                && exact_ascii(control, Some(attribute.name().local_name()), local)?
+            {
+                return Ok(Some(attribute.value()));
             }
         }
         Ok(None)
     }
 
-    /// Source tree order without an auxiliary traversal stack. Every actual
-    /// child/backlink read is metered; sibling and registry searches can repeat.
-    fn next_effect_node(
+    fn has_id(&self, control: &mut ParseControl, node: usize) -> Result<bool, SessionError> {
+        let id = self.form_attribute(control, node, "id")?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        Ok(id.is_some_and(|id| !id.is_empty()))
+    }
+
+    /// Source tree order without traversal storage. The virtual removal view
+    /// both detaches the root's parent and hides that child from outside trees.
+    /// Its own subtree retains its exact internal child order.
+    fn next_view_node(
         &self,
         control: &mut ParseControl,
         root: usize,
         mut node: usize,
+        detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         control.charge(WorkCategory::RecordVisit, 1)?;
         let record = self.records.get(node).ok_or(SessionError::ForeignNode)?;
-        if !record.children.is_empty() {
+        for position in 0..record.children.len() {
             control.charge(WorkCategory::RecordVisit, 1)?;
-            return Ok(Some(record.children[0]));
+            let child = record.children[position];
+            if detached != Some(child) || root == child {
+                return Ok(Some(child));
+            }
         }
         for _ in 0..self.records.len() {
             if node == root {
                 return Ok(None);
             }
             let parent = self
-                .ordinary_parent(control, node, None)?
+                .ordinary_parent(control, node, detached)?
                 .ok_or(SessionError::WrongSibling)?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let children = &self
@@ -1879,10 +2023,10 @@ impl SessionStorage {
             while position < children.len() {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 let child = children[position];
-                if found {
+                if found && (detached != Some(child) || root == child) {
                     return Ok(Some(child));
                 }
-                found = child == node;
+                found |= child == node;
                 position += 1;
             }
             if !found {
@@ -1893,91 +2037,229 @@ impl SessionStorage {
         Err(SessionError::Cycle)
     }
 
-    fn reset_image_form(
+    fn next_effect_node(
+        &self,
+        control: &mut ParseControl,
+        root: usize,
+        node: usize,
+    ) -> Result<Option<usize>, SessionError> {
+        self.next_view_node(control, root, node, None)
+    }
+
+    fn connected(
+        &self,
+        control: &mut ParseControl,
+        node: usize,
+        detached: Option<usize>,
+    ) -> Result<bool, SessionError> {
+        let root = self.ordinary_root(control, node, detached)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        Ok(matches!(
+            self.records
+                .get(root)
+                .ok_or(SessionError::ForeignNode)?
+                .kind,
+            HtmlNodeKind::Document(_)
+        ))
+    }
+
+    fn first_id_form(
+        &self,
+        control: &mut ParseControl,
+        node: usize,
+        value: &DocumentString,
+        detached: Option<usize>,
+    ) -> Result<Option<usize>, SessionError> {
+        let root = self.ordinary_root(control, node, detached)?;
+        let mut next = Some(root);
+        while let Some(candidate) = next {
+            if let Some(id) = self.form_attribute(control, candidate, "id")? {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if !id.is_empty() && exact_string_equal(control, id, value)? {
+                    return Ok(self
+                        .html_local(control, candidate, "form")?
+                        .then_some(candidate));
+                }
+            }
+            next = self.next_view_node(control, root, candidate, detached)?;
+        }
+        Ok(None)
+    }
+
+    fn reset_form_association(
         &mut self,
         control: &mut ParseControl,
         slot: usize,
         node: usize,
-        mut state: ImageFormState,
+        mut state: FormAssociationState,
         detached: Option<usize>,
     ) -> Result<(), SessionError> {
-        // HTML reset10823 precedes all ancestor resolution. A work stop here
-        // retains the cleared flag and original owner as a real source prefix.
+        // Source reset step1 is an actual effect before any lookup work.
         state.parser_inserted = false;
-        state.evidence = ImageAssociationEvidence::Reset;
-        set_image_form_state(self, control, slot, state)?;
-        if let Some(owner) = state.owner
+        state.evidence = FormAssociationEvidence::Reset;
+        set_form_association_state(self, control, slot, state)?;
+        let explicit = if state.kind.listed() {
+            self.form_attribute(control, node, "form")?.is_some()
+        } else {
+            false
+        };
+        if !explicit
+            && let Some(owner) = state.owner
             && self.nearest_form(control, node, detached)? == Some(owner)
         {
             return Ok(());
         }
         state.owner = None;
-        set_image_form_state(self, control, slot, state)?;
-        if let Some(owner) = self.nearest_form(control, node, detached)? {
-            state.owner = Some(owner);
-            set_image_form_state(self, control, slot, state)?;
+        set_form_association_state(self, control, slot, state)?;
+        state.owner = if explicit && self.connected(control, node, detached)? {
+            let value = self
+                .form_attribute(control, node, "form")?
+                .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
+            self.first_id_form(control, node, value, detached)?
+        } else {
+            self.nearest_form(control, node, detached)?
+        };
+        if state.owner.is_some() {
+            set_form_association_state(self, control, slot, state)?;
         }
         Ok(())
     }
 
     /// Called synchronously only by the mutation that installed this phase.
     /// No consumer resume method exists. After a stop only disposal is allowed.
-    fn drain_image_effects(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+    fn drain_form_effects(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         let result = (|| {
             loop {
                 control.require_identity(&self.control)?;
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 control.charge(
                     WorkCategory::CopyByte,
-                    mem::size_of::<Option<ImageEffects>>() as u64,
+                    mem::size_of::<Option<FormEffects>>() as u64,
                 )?;
-                let Some(mut effects) = self.image_effects else {
+                let Some(mut effects) = self.form_effects else {
                     return Ok(());
                 };
                 let Some(node) = effects.next else {
-                    if effects.stage == ImageEffectStage::Removal && effects.insert {
-                        effects.stage = ImageEffectStage::Insertion;
+                    if effects.stage == FormEffectStage::Removal && effects.insert {
+                        effects.stage = FormEffectStage::Insertion;
                         effects.next = Some(effects.root);
-                        payload_write::<Option<ImageEffects>>(control, 1)?;
-                        self.image_effects = Some(effects);
-                        // Owner-test stimulus at the actual completed removal
-                        // transition. This requests real cancellation; the next
-                        // normal controller poll remains the sole stop authority.
+                        effects.pass = FormEffectPass::Local;
+                        payload_write::<Option<FormEffects>>(control, 1)?;
+                        self.form_effects = Some(effects);
                         #[cfg(test)]
                         if let Some(cancellation) = self.cancel_after_removal.take() {
                             cancellation.cancel();
                         }
                         continue;
                     }
-                    payload_write::<Option<ImageEffects>>(control, 1)?;
-                    self.image_effects = None;
+                    payload_write::<Option<FormEffects>>(control, 1)?;
+                    self.form_effects = None;
                     return Ok(());
                 };
-                if let Some((slot, state)) = find_image_form_state(&self.payloads, control, node)? {
-                    match effects.stage {
-                        ImageEffectStage::Removal => {
-                            if let Some(owner) = state.owner
-                                && self.ordinary_root(control, node, Some(effects.root))?
-                                    != self.ordinary_root(control, owner, Some(effects.root))?
-                            {
-                                self.reset_image_form(
-                                    control,
-                                    slot,
-                                    node,
-                                    state,
-                                    Some(effects.root),
-                                )?;
+                let detached = (effects.stage == FormEffectStage::Removal).then_some(effects.root);
+                match effects.pass {
+                    FormEffectPass::Local => {
+                        if let Some((slot, state)) =
+                            find_form_association_state(&self.payloads, control, node)?
+                        {
+                            match effects.stage {
+                                FormEffectStage::Removal => {
+                                    if let Some(owner) = state.owner
+                                        && self.ordinary_root(control, node, detached)?
+                                            != self.ordinary_root(control, owner, detached)?
+                                    {
+                                        self.reset_form_association(
+                                            control, slot, node, state, detached,
+                                        )?;
+                                    }
+                                }
+                                FormEffectStage::Insertion if !state.parser_inserted => {
+                                    self.reset_form_association(control, slot, node, state, None)?;
+                                }
+                                FormEffectStage::Insertion | FormEffectStage::IdChange => {}
                             }
                         }
-                        ImageEffectStage::Insertion if !state.parser_inserted => {
-                            self.reset_image_form(control, slot, node, state, None)?;
+                        let id_event = self.has_id(control, node)?
+                            && match effects.stage {
+                                // The selected source predicate requires an actual
+                                // removing hook and post-removal non-Document tree;
+                                // there is no old-connected prerequisite.
+                                FormEffectStage::Removal => {
+                                    !self.connected(control, node, detached)?
+                                }
+                                FormEffectStage::Insertion => {
+                                    self.connected(control, node, None)?
+                                }
+                                FormEffectStage::IdChange => true,
+                            };
+                        if id_event {
+                            effects.pass = FormEffectPass::Global {
+                                next_slot: 0,
+                                tree: if effects.stage == FormEffectStage::IdChange {
+                                    Some(self.ordinary_root(control, node, None)?)
+                                } else {
+                                    None
+                                },
+                            };
+                        } else {
+                            effects.next = if effects.stage == FormEffectStage::IdChange {
+                                None
+                            } else {
+                                self.next_effect_node(control, effects.root, node)?
+                            };
                         }
-                        ImageEffectStage::Insertion => {}
+                    }
+                    FormEffectPass::Global { next_slot, tree } => {
+                        if next_slot < self.payloads.values.len() {
+                            control.charge(WorkCategory::RecordVisit, 1)?;
+                            if let RetainedPayload::FormAssociation {
+                                node: Some(candidate),
+                                state,
+                            } = &self.payloads.values[next_slot]
+                            {
+                                control.charge(
+                                    WorkCategory::CopyByte,
+                                    (mem::size_of::<usize>()
+                                        + mem::size_of::<FormAssociationState>())
+                                        as u64,
+                                )?;
+                                let candidate = *candidate;
+                                let state = *state;
+                                // These records can only be issued by the same
+                                // fresh ordinary Document creation owner. A
+                                // Document ID event also affects its detached
+                                // controls; connectivity is tested by reset.
+                                if state.kind.listed()
+                                    && self.form_attribute(control, candidate, "form")?.is_some()
+                                    && match tree {
+                                        Some(tree) => {
+                                            self.ordinary_root(control, candidate, detached)?
+                                                == tree
+                                        }
+                                        None => true,
+                                    }
+                                {
+                                    self.reset_form_association(
+                                        control, next_slot, candidate, state, detached,
+                                    )?;
+                                }
+                            }
+                            effects.pass = FormEffectPass::Global {
+                                next_slot: next_slot + 1,
+                                tree,
+                            };
+                        } else {
+                            effects.pass = FormEffectPass::Local;
+                            effects.next = if effects.stage == FormEffectStage::IdChange {
+                                None
+                            } else {
+                                self.next_effect_node(control, effects.root, node)?
+                            };
+                        }
                     }
                 }
-                effects.next = self.next_effect_node(control, effects.root, node)?;
-                payload_write::<Option<ImageEffects>>(control, 1)?;
-                self.image_effects = Some(effects);
+                payload_write::<Option<FormEffects>>(control, 1)?;
+                self.form_effects = Some(effects);
             }
         })();
         match result {
@@ -2074,17 +2356,16 @@ impl SessionStorage {
                 // Pre-insert adjusts the reference child but still adopts
                 // (removes) and inserts the root. Final links/order are equal;
                 // actual managed image facts nevertheless receive both hooks.
-                if let Some(effects) = self.prepare_image_effects(control, node, true, true)? {
-                    payload_write::<Option<ImageEffects>>(control, 1)?;
-                    self.image_effects = Some(effects);
-                    self.drain_image_effects(control)?;
+                if let Some(effects) = self.prepare_form_effects(control, node, true, true)? {
+                    payload_write::<Option<FormEffects>>(control, 1)?;
+                    self.form_effects = Some(effects);
+                    self.drain_form_effects(control)?;
                 }
                 return Ok(());
             }
         }
         let old_parent = self.records[node].parent;
-        let image_effects =
-            self.prepare_image_effects(control, node, old_parent.is_some(), true)?;
+        let form_effects = self.prepare_form_effects(control, node, old_parent.is_some(), true)?;
         let depth = self.maximum_depth(control, Some((node, Some(parent))))?;
         control.observe_tree_depth(depth as u64)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -2116,8 +2397,8 @@ impl SessionStorage {
             if revoke_standalone {
                 payload_write::<Option<StandaloneUnsupported>>(control, 1)?;
             }
-            if image_effects.is_some() {
-                payload_write::<Option<ImageEffects>>(control, 1)?;
+            if form_effects.is_some() {
+                payload_write::<Option<FormEffects>>(control, 1)?;
             }
             let scratch_entries = order.len() as u64
                 + old_order
@@ -2137,8 +2418,8 @@ impl SessionStorage {
         let mut retired_old =
             old_order.map(|(old, (order, allocation))| self.swap_order(old, order, allocation));
         self.records[node].parent = Some(parent);
-        if image_effects.is_some() {
-            self.image_effects = image_effects;
+        if form_effects.is_some() {
+            self.form_effects = form_effects;
         }
         if revoke_standalone {
             self.standalone_ineligibility = Some(StandaloneUnsupported::ScriptDocument);
@@ -2157,8 +2438,8 @@ impl SessionStorage {
         if let Some((order, allocation)) = retired_old {
             release_vector(control, order, allocation)?;
         }
-        if image_effects.is_some() {
-            self.drain_image_effects(control)?;
+        if form_effects.is_some() {
+            self.drain_form_effects(control)?;
         }
         Ok(())
     }
@@ -2191,7 +2472,7 @@ impl SessionStorage {
         let Some(parent) = self.records[node].parent else {
             return Ok(());
         };
-        let image_effects = self.prepare_image_effects(control, node, true, false)?;
+        let form_effects = self.prepare_form_effects(control, node, true, false)?;
         let depth = self.maximum_depth(control, Some((node, None)))?;
         control.observe_tree_depth(depth as u64)?;
         let (order, allocation) = self.child_order(control, parent, node, None)?;
@@ -2201,8 +2482,8 @@ impl SessionStorage {
                 WorkCategory::CopyByte,
                 (mem::size_of::<Vec<usize>>() * 2) as u64,
             )?;
-            if image_effects.is_some() {
-                payload_write::<Option<ImageEffects>>(control, 1)?;
+            if form_effects.is_some() {
+                payload_write::<Option<FormEffects>>(control, 1)?;
             }
             control.commit_child_orders(&self.control, order.len() as u64, 0, 1)?;
             Ok::<_, SessionError>(())
@@ -2213,15 +2494,15 @@ impl SessionStorage {
         }
         let (mut order, allocation) = self.swap_order(parent, order, allocation);
         self.records[node].parent = None;
-        if image_effects.is_some() {
-            self.image_effects = image_effects;
+        if form_effects.is_some() {
+            self.form_effects = form_effects;
         }
         self.usage.edges -= 1;
         self.usage.depth = depth;
         order.clear();
         release_vector(control, order, allocation)?;
-        if image_effects.is_some() {
-            self.drain_image_effects(control)?;
+        if form_effects.is_some() {
+            self.drain_form_effects(control)?;
         }
         Ok(())
     }
@@ -2255,7 +2536,7 @@ impl SessionStorage {
     fn release(self, control: &mut ParseControl) {
         let Self {
             control: owner,
-            image_effects: _,
+            form_effects: _,
             #[cfg(test)]
                 cancel_after_removal: _,
             standalone_ineligibility: _,
@@ -2692,7 +2973,7 @@ impl ParserArenaSession {
         self.active_mut()?.allocate_html_tag(control, input)
     }
     /// Actual fresh ordinary parser creation context. The source form pointer
-    /// remains driver-owned; only exact img receives association metadata.
+    /// remains driver-owned; exact admitted form-associated kinds own metadata.
     pub(crate) fn allocate_html_tag_for_creation(
         &mut self,
         control: &mut ParseControl,
@@ -2738,8 +3019,30 @@ impl ParserArenaSession {
                 }
             }
         }
-        let image = exact_ascii(control, Some(tag.name.value.text()), "img")?;
-        let owner = if image {
+        let mut kind = None;
+        for (local, candidate) in [
+            ("img", FormAssociationKind::Image),
+            ("button", FormAssociationKind::Button),
+            ("fieldset", FormAssociationKind::Fieldset),
+            ("object", FormAssociationKind::Object),
+        ] {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if exact_ascii(control, Some(tag.name.value.text()), local)? {
+                kind = Some(candidate);
+                break;
+            }
+        }
+        let mut explicit_form = false;
+        if kind.is_some_and(FormAssociationKind::listed) {
+            for attribute in tag.attributes.as_slice() {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if exact_ascii(control, Some(attribute.name.value.text()), "form")? {
+                    explicit_form = true;
+                    break;
+                }
+            }
+        }
+        let owner = if kind.is_some() && !explicit_form {
             match form {
                 Some(form)
                     if storage.ordinary_root(control, parent, None)?
@@ -2753,21 +3056,25 @@ impl ParserArenaSession {
             None
         };
         let storage = self.active_mut()?;
-        let slot = if image {
+        let slot = if let Some(kind) = kind {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::ImageForm {
-                node: None,
-                state: ImageFormState {
-                    owner,
-                    parser_inserted: owner.is_some(),
-                    evidence: if owner.is_some() {
-                        ImageAssociationEvidence::ParserAssociated
-                    } else {
-                        ImageAssociationEvidence::Created
+            storage
+                .payloads
+                .values
+                .push(RetainedPayload::FormAssociation {
+                    node: None,
+                    state: FormAssociationState {
+                        kind,
+                        owner,
+                        parser_inserted: owner.is_some(),
+                        evidence: if owner.is_some() {
+                            FormAssociationEvidence::ParserAssociated
+                        } else {
+                            FormAssociationEvidence::Created
+                        },
                     },
-                },
-            });
+                });
             Some(slot)
         } else {
             None
@@ -2785,10 +3092,10 @@ impl ParserArenaSession {
             if let Some(slot) = slot {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 payload_write::<Option<usize>>(control, 1)?;
-                let Some(RetainedPayload::ImageForm { node: bound, .. }) =
+                let Some(RetainedPayload::FormAssociation { node: bound, .. }) =
                     storage.payloads.values.get_mut(slot)
                 else {
-                    return Err(SessionError::ImageFormMetadataUnavailable);
+                    return Err(SessionError::FormAssociationMetadataUnavailable);
                 };
                 *bound = Some(node.index);
             }
@@ -2797,7 +3104,9 @@ impl ParserArenaSession {
         match result {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
             Err(_) if slot.is_some() => Err(control
-                .fail_invariant(crate::parser::control::Invariant::IncompleteImageCreation)
+                .fail_invariant(
+                    crate::parser::control::Invariant::IncompleteFormAssociationCreation,
+                )
                 .into()),
             other => other,
         }
@@ -2806,12 +3115,19 @@ impl ParserArenaSession {
         &self,
         control: &mut ParseControl,
         node: &ParserNode,
-    ) -> Result<ImageFormState, SessionError> {
-        let storage = self.active()?;
-        let node = storage.index(control, node)?;
-        find_image_form_state(&storage.payloads, control, node)?
-            .map(|(_, state)| state)
-            .ok_or(SessionError::ImageFormMetadataUnavailable)
+    ) -> Result<FormAssociationState, SessionError> {
+        let state = self
+            .form_association_state(control, node)
+            .map_err(|error| match error {
+                SessionError::FormAssociationMetadataUnavailable => {
+                    SessionError::ImageFormMetadataUnavailable
+                }
+                other => other,
+            })?;
+        if state.kind != FormAssociationKind::Image {
+            return Err(SessionError::ImageFormMetadataUnavailable);
+        }
+        Ok(state)
     }
     pub(crate) fn image_form_owner(
         &self,
@@ -2819,6 +3135,27 @@ impl ParserArenaSession {
         node: &ParserNode,
     ) -> Result<Option<ParserNode>, SessionError> {
         self.image_form_state(control, node)?
+            .owner
+            .map(|owner| self.active()?.node(control, owner))
+            .transpose()
+    }
+    pub(crate) fn form_association_state(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<FormAssociationState, SessionError> {
+        let storage = self.active()?;
+        let node = storage.index(control, node)?;
+        find_form_association_state(&storage.payloads, control, node)?
+            .map(|(_, state)| state)
+            .ok_or(SessionError::FormAssociationMetadataUnavailable)
+    }
+    pub(crate) fn form_association_owner(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<Option<ParserNode>, SessionError> {
+        self.form_association_state(control, node)?
             .owner
             .map(|owner| self.active()?.node(control, owner))
             .transpose()
@@ -3414,7 +3751,7 @@ impl ParserArenaSession {
         let document = self.active_mut()?.prepare_freeze(control)?;
         let SessionStorage {
             control: owner,
-            image_effects: _,
+            form_effects: _,
             #[cfg(test)]
                 cancel_after_removal: _,
             standalone_ineligibility,
@@ -3440,7 +3777,7 @@ impl ParserArenaSession {
             Err((stop, arena)) => {
                 self.storage = Some(SessionStorage {
                     control: owner,
-                    image_effects: None,
+                    form_effects: None,
                     #[cfg(test)]
                     cancel_after_removal: None,
                     standalone_ineligibility,
@@ -3492,7 +3829,33 @@ impl FrozenArena {
         &self,
         control: &mut ParseControl,
         node: &HtmlNodeId,
-    ) -> Result<ImageFormState, SessionError> {
+    ) -> Result<FormAssociationState, SessionError> {
+        let state = self
+            .form_association_state(control, node)
+            .map_err(|error| match error {
+                SessionError::FormAssociationMetadataUnavailable => {
+                    SessionError::ImageFormMetadataUnavailable
+                }
+                other => other,
+            })?;
+        if state.kind != FormAssociationKind::Image {
+            return Err(SessionError::ImageFormMetadataUnavailable);
+        }
+        Ok(state)
+    }
+    pub(crate) fn image_form_owner(
+        &self,
+        control: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<Option<HtmlNodeId>, SessionError> {
+        let state = self.image_form_state(control, node)?;
+        self.resolve_form_owner(control, state.owner)
+    }
+    pub(crate) fn form_association_state(
+        &self,
+        control: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<FormAssociationState, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         control.require_identity(&storage.control)?;
         let arena = match &storage.view {
@@ -3504,17 +3867,24 @@ impl FrozenArena {
         if !Arc::ptr_eq(&node.identity, &arena.identity) || node.index >= arena.records.len() {
             return Err(SessionError::ForeignNode);
         }
-        find_image_form_state(&storage.payloads, control, node.index)?
+        find_form_association_state(&storage.payloads, control, node.index)?
             .map(|(_, state)| state)
-            .ok_or(SessionError::ImageFormMetadataUnavailable)
+            .ok_or(SessionError::FormAssociationMetadataUnavailable)
     }
-    pub(crate) fn image_form_owner(
+    pub(crate) fn form_association_owner(
         &self,
         control: &mut ParseControl,
         node: &HtmlNodeId,
     ) -> Result<Option<HtmlNodeId>, SessionError> {
-        let state = self.image_form_state(control, node)?;
-        let Some(owner) = state.owner else {
+        let state = self.form_association_state(control, node)?;
+        self.resolve_form_owner(control, state.owner)
+    }
+    fn resolve_form_owner(
+        &self,
+        control: &mut ParseControl,
+        owner: Option<usize>,
+    ) -> Result<Option<HtmlNodeId>, SessionError> {
+        let Some(owner) = owner else {
             return Ok(None);
         };
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
@@ -4550,34 +4920,34 @@ fn exact_ascii(
     }
     Ok(true)
 }
-fn find_image_form_state(
+fn find_form_association_state(
     payloads: &PayloadStorage,
     control: &mut ParseControl,
     node: usize,
-) -> Result<Option<(usize, ImageFormState)>, SessionError> {
+) -> Result<Option<(usize, FormAssociationState)>, SessionError> {
     for slot in 0..payloads.values.len() {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::ImageForm { node: owner, state } = &payloads.values[slot]
+        if let RetainedPayload::FormAssociation { node: owner, state } = &payloads.values[slot]
             && *owner == Some(node)
         {
             control.charge(
                 WorkCategory::CopyByte,
-                mem::size_of::<ImageFormState>() as u64,
+                mem::size_of::<FormAssociationState>() as u64,
             )?;
             return Ok(Some((slot, *state)));
         }
     }
     Ok(None)
 }
-fn set_image_form_state(
+fn set_form_association_state(
     storage: &mut SessionStorage,
     control: &mut ParseControl,
     slot: usize,
-    state: ImageFormState,
+    state: FormAssociationState,
 ) -> Result<(), SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
-    payload_write::<ImageFormState>(control, 1)?;
-    let Some(RetainedPayload::ImageForm { state: current, .. }) =
+    payload_write::<FormAssociationState>(control, 1)?;
+    let Some(RetainedPayload::FormAssociation { state: current, .. }) =
         storage.payloads.values.get_mut(slot)
     else {
         return Err(SessionError::ImageFormMetadataUnavailable);
@@ -7867,6 +8237,1056 @@ mod tests {
             inserted
         );
     }
+    fn assert_listed_owner(
+        session: &ParserArenaSession,
+        c: &mut ParseControl,
+        node: &ParserNode,
+        kind: FormAssociationKind,
+        owner: Option<&ParserNode>,
+        parser_inserted: bool,
+    ) {
+        let state = session.form_association_state(c, node).unwrap();
+        assert_eq!(state.kind, kind);
+        assert_eq!(state.parser_inserted, parser_inserted);
+        match (session.form_association_owner(c, node).unwrap(), owner) {
+            (Some(actual), Some(expected)) => {
+                assert!(session.same_node(c, &actual, expected).unwrap())
+            }
+            (None, None) => {}
+            _ => panic!("wrong actual listed form owner"),
+        }
+    }
+
+    #[test]
+    fn listed_creation_suppresses_pointer_for_present_empty_form_and_retains_qualified_kinds() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source =
+            crate::HtmlSource::utf8("<form id=f><button><fieldset form=''><object form=f>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &form, None).unwrap();
+        let button = form_creation(&mut session, &mut lexer, &mut c, &body, Some(&form));
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&form),
+            true,
+        );
+        session.insert(&mut c, &body, &button, None).unwrap();
+        let fieldset = form_creation(&mut session, &mut lexer, &mut c, &body, Some(&form));
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &fieldset,
+            FormAssociationKind::Fieldset,
+            None,
+            false,
+        );
+        session.insert(&mut c, &body, &fieldset, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &fieldset,
+            FormAssociationKind::Fieldset,
+            None,
+            false,
+        );
+        let object = form_creation(&mut session, &mut lexer, &mut c, &body, Some(&form));
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &object,
+            FormAssociationKind::Object,
+            None,
+            false,
+        );
+        session.insert(&mut c, &body, &object, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &object,
+            FormAssociationKind::Object,
+            Some(&form),
+            false,
+        );
+        assert_eq!(
+            session.image_form_state(&mut c, &button),
+            Err(SessionError::ImageFormMetadataUnavailable)
+        );
+        lexer.release(&mut c).unwrap();
+        let mut frozen = session.freeze(&mut c).unwrap();
+        let document = frozen.document().unwrap();
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().next().unwrap();
+        let id = document.node(&body).unwrap().children().nth(3).unwrap();
+        assert_eq!(
+            frozen.form_association_state(&mut c, &id).unwrap().kind,
+            FormAssociationKind::Object
+        );
+        assert!(
+            frozen
+                .form_association_owner(&mut c, &id)
+                .unwrap()
+                .is_some()
+        );
+        frozen.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_first_id_tree_order_blocks_later_form_and_id_only_removal_reassociates() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<button form=f><div id=f><form id=f><form id=f>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &button, None).unwrap();
+        let blocker = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &blocker, None).unwrap();
+        let first = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &first, None).unwrap();
+        let second = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &second, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            None,
+            false,
+        );
+        session.remove(&mut c, &blocker).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&first),
+            false,
+        );
+        session.remove(&mut c, &first).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&second),
+            false,
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_removal_id_event_resets_detached_same_document_recipient_after_local_preservation() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<div><button form=f><form id=f>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let group = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &group, None).unwrap();
+        let button = form_creation(&mut session, &mut lexer, &mut c, &group, None);
+        session.insert(&mut c, &group, &button, None).unwrap();
+        let form = form_creation(&mut session, &mut lexer, &mut c, &group, None);
+        session.insert(&mut c, &group, &form, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&form),
+            false,
+        );
+        session.remove(&mut c, &group).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            None,
+            false,
+        );
+        assert_eq!(
+            session.active().unwrap().records[button.index].parent,
+            Some(group.index)
+        );
+        assert_eq!(
+            session.active().unwrap().records[form.index].parent,
+            Some(group.index)
+        );
+        // An actual hook inside an already detached tree still runs the global
+        // reset. A parentless removal afterwards has no hook and no phase.
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        session.remove(&mut c, &form).unwrap();
+        let hook = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        session.remove(&mut c, &form).unwrap();
+        let noop = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+        assert!(hook > noop);
+        assert!(session.active().unwrap().form_effects.is_none());
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            None,
+            false,
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_connected_explicit_form_has_no_ancestor_fallback_but_detached_reset_does() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<form id=f><fieldset form=missing><object form=''>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &form, None).unwrap();
+        let fieldset = form_creation(&mut session, &mut lexer, &mut c, &form, Some(&form));
+        session.insert(&mut c, &form, &fieldset, None).unwrap();
+        let object = form_creation(&mut session, &mut lexer, &mut c, &form, Some(&form));
+        session.insert(&mut c, &form, &object, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &fieldset,
+            FormAssociationKind::Fieldset,
+            None,
+            false,
+        );
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &object,
+            FormAssociationKind::Object,
+            None,
+            false,
+        );
+        session.remove(&mut c, &form).unwrap();
+        // ID removal globally resets every explicit-form recipient in this
+        // originating document, each against its real detached ordinary tree.
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &fieldset,
+            FormAssociationKind::Fieldset,
+            Some(&form),
+            false,
+        );
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &object,
+            FormAssociationKind::Object,
+            Some(&form),
+            false,
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_late_body_id_merge_resets_exact_target_before_next_attribute_and_freezes() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=f title=after>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &button, None).unwrap();
+        let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &form, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&form),
+            false,
+        );
+        let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
+            panic!("body")
+        };
+        let mut input = Some(tag);
+        session
+            .add_body_attributes_if_missing(&mut c, &body, &mut input)
+            .unwrap();
+        assert!(input.is_none());
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            None,
+            false,
+        );
+        assert!(session.active().unwrap().form_effects.is_none());
+        let HtmlNodeKind::Element(body_record) =
+            &session.active().unwrap().records[body.index].kind
+        else {
+            panic!("body")
+        };
+        assert_eq!(
+            body_record
+                .attributes()
+                .as_slice()
+                .iter()
+                .map(|a| a.name().local_name().code_units().to_vec())
+                .collect::<Vec<_>>(),
+            vec![vec![105, 100], vec![116, 105, 116, 108, 101]]
+        );
+        lexer.release(&mut c).unwrap();
+        let mut frozen = session.freeze(&mut c).unwrap();
+        let document = frozen.document().unwrap();
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().next().unwrap();
+        let id = document.node(&body).unwrap().children().next().unwrap();
+        assert_eq!(frozen.form_association_owner(&mut c, &id).unwrap(), None);
+        frozen.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        for text in ["<button>", "<fieldset>", "<object>"] {
+            let source = crate::HtmlSource::utf8(text);
+            let mut c = ParseControl::new(
+                limits()
+                    .into_builder()
+                    .auxiliary_entries(9)
+                    .finish()
+                    .unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let root = session.root(&mut c).unwrap();
+            let html = session.allocate_implicit_html(&mut c).unwrap();
+            session.insert(&mut c, &root, &html, None).unwrap();
+            let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
+                panic!("tag")
+            };
+            // Lexical pending events precede the final retained allocation.
+            // Body stays detached: no unneeded child-order scratch is admitted.
+            let _body = session.allocate_implicit_body(&mut c).unwrap();
+            let mut input = Some(tag);
+            let original = input
+                .as_ref()
+                .unwrap()
+                .name
+                .value
+                .text()
+                .code_units()
+                .to_vec();
+            let result = session.allocate_html_tag_for_creation(&mut c, &mut input, &html, None);
+            let stop = c.stop().unwrap();
+            assert_eq!(result.err(), Some(SessionError::Stop(stop)));
+            assert!(matches!(
+                stop,
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::AuxiliaryEntries,
+                    current: 9,
+                    requested_delta: 1,
+                    ..
+                }
+            ));
+            assert_eq!(
+                input.as_ref().unwrap().name.value.text().code_units(),
+                original
+            );
+            assert_eq!(session.active().unwrap().records.len(), 3);
+            assert_eq!(session.active().unwrap().payloads.values.len(), 6);
+            assert!(session.active().unwrap().form_effects.is_none());
+            assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
+            release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), Some(stop));
+        }
+    }
+
+    #[test]
+    fn listed_getters_require_actual_active_and_frozen_arena_and_control_owners() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<button>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let node = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &node, None).unwrap();
+        let mut other = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        let foreign = other.root(&mut c).unwrap();
+        assert_eq!(
+            session.form_association_state(&mut c, &foreign),
+            Err(SessionError::ForeignNode)
+        );
+        assert_eq!(
+            session.form_association_owner(&mut c, &foreign).err(),
+            Some(SessionError::ForeignNode)
+        );
+        assert_eq!(
+            session.form_association_state(&mut c, &body),
+            Err(SessionError::FormAssociationMetadataUnavailable)
+        );
+        let mut foreign_c = control();
+        foreign_c.admit_source(&source).unwrap();
+        let before = c.usage();
+        assert!(matches!(
+            session.form_association_state(&mut foreign_c, &node),
+            Err(SessionError::Stop(_))
+        ));
+        assert_eq!(c.usage(), before);
+        lexer.release(&mut c).unwrap();
+        let mut frozen = session.freeze(&mut c).unwrap();
+        let document = frozen.document().unwrap();
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().next().unwrap();
+        let id = document.node(&body).unwrap().children().next().unwrap();
+        let mut foreign_frozen = other.freeze(&mut c).unwrap();
+        let foreign_id = foreign_frozen.fragment().unwrap().root().id();
+        assert_eq!(
+            frozen.form_association_state(&mut c, &foreign_id),
+            Err(SessionError::ForeignNode)
+        );
+        assert_eq!(
+            frozen.form_association_owner(&mut c, &foreign_id).err(),
+            Some(SessionError::ForeignNode)
+        );
+        assert_eq!(
+            frozen.form_association_state(&mut c, &id).unwrap().kind,
+            FormAssociationKind::Button
+        );
+        assert_eq!(
+            frozen.image_form_state(&mut c, &id),
+            Err(SessionError::ImageFormMetadataUnavailable)
+        );
+        frozen.release(&mut c).unwrap();
+        foreign_frozen.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_id_matching_is_exact_untrimmed_utf16_and_empty_id_never_matches_empty_form() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let mut units: Vec<u16> = "<button form='X ".encode_utf16().collect();
+        units.extend([0xd800, 0xd83d, 0xde00]);
+        units.extend("'><form id='x ".encode_utf16());
+        units.extend([0xd800, 0xd83d, 0xde00]);
+        units.extend("'><form id='X ".encode_utf16());
+        units.extend([0xd800, 0xd83d, 0xde00]);
+        units.extend("'><fieldset form=''><form id=''>".encode_utf16());
+        let source = crate::HtmlSource::utf16(DocumentString::from_utf16(units));
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &button, None).unwrap();
+        let lower = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &lower, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            None,
+            false,
+        );
+        let exact = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &exact, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&exact),
+            false,
+        );
+        let empty = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &empty, None).unwrap();
+        let empty_id = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &empty_id, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &empty,
+            FormAssociationKind::Fieldset,
+            None,
+            false,
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_detached_id_change_resets_only_same_ordinary_tree() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<form><button form=f><button form=f><body id=f>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        let in_form = form_creation(&mut session, &mut lexer, &mut c, &form, None);
+        session.insert(&mut c, &form, &in_form, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &in_form,
+            FormAssociationKind::Button,
+            Some(&form),
+            false,
+        );
+        let outside = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &outside, None).unwrap();
+        session.remove(&mut c, &body).unwrap();
+        let before = session.form_association_state(&mut c, &in_form).unwrap();
+        let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
+            panic!("body")
+        };
+        session
+            .add_body_attributes_if_missing(&mut c, &body, &mut Some(tag))
+            .unwrap();
+        assert_eq!(
+            session.form_association_state(&mut c, &in_form).unwrap(),
+            before
+        );
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &in_form,
+            FormAssociationKind::Button,
+            Some(&form),
+            false,
+        );
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &outside,
+            FormAssociationKind::Button,
+            None,
+            false,
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    fn listed_move_fixture(
+        c: &mut ParseControl,
+    ) -> (ParserArenaSession, ParserNode, ParserNode, ParserNode) {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<div><button form=f><form id=f><div>");
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, c).unwrap();
+        let (mut session, body) = form_session(c);
+        let group = form_creation(&mut session, &mut lexer, c, &body, None);
+        session.insert(c, &body, &group, None).unwrap();
+        let button = form_creation(&mut session, &mut lexer, c, &group, None);
+        session.insert(c, &group, &button, None).unwrap();
+        let form = form_creation(&mut session, &mut lexer, c, &group, None);
+        session.insert(c, &group, &form, None).unwrap();
+        let target = form_creation(&mut session, &mut lexer, c, &body, None);
+        session.insert(c, &body, &target, None).unwrap();
+        lexer.release(c).unwrap();
+        (session, group, button, target)
+    }
+
+    #[test]
+    fn listed_exact_and_one_short_effect_work_retains_cleanup_only_phase_and_first_stop() {
+        let mut measured = control();
+        let (mut session, group, _, target) = listed_move_fixture(&mut measured);
+        let start = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        session
+            .insert(&mut measured, &target, &group, None)
+            .unwrap();
+        let whole = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - start;
+        session.release(&mut measured).unwrap();
+        storage_zero(&measured);
+        for short in [false, true] {
+            let mut c = control();
+            let (mut session, group, button, target) = listed_move_fixture(&mut c);
+            let unused = limits().work_credits()
+                - c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(WorkCategory::StateStep, unused - whole + u64::from(short))
+                .unwrap();
+            let result = session.insert(&mut c, &target, &group, None);
+            if short {
+                let stop = c.stop().unwrap();
+                assert_eq!(result, Err(SessionError::Stop(stop)));
+                assert!(session.active().unwrap().form_effects.is_some());
+                assert_eq!(
+                    session.form_association_state(&mut c, &button),
+                    Err(SessionError::Stop(stop))
+                );
+                assert_eq!(
+                    session.remove(&mut c, &group),
+                    Err(SessionError::Stop(stop))
+                );
+                assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
+                let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.stop(), Some(stop));
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::WorkCredits).current,
+                    work
+                );
+            } else {
+                result.unwrap();
+                assert_eq!(
+                    session.active().unwrap().records[group.index].parent,
+                    Some(target.index)
+                );
+                assert!(session.active().unwrap().form_effects.is_none());
+                // Successful operation exhausts its exact finite budget. Latch
+                // the next real attempted credit before terminal disposal.
+                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+            }
+        }
+    }
+
+    #[test]
+    fn listed_real_cancel_between_removal_and_insertion_retains_completed_global_reset() {
+        let cancellation = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancellation.clone());
+        let (mut session, group, button, target) = listed_move_fixture(&mut c);
+        session.active_mut().unwrap().cancel_after_removal = Some(cancellation);
+        assert_eq!(
+            session.insert(&mut c, &target, &group, None),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let storage = session.active().unwrap();
+        assert_eq!(storage.records[group.index].parent, Some(target.index));
+        let phase = storage.form_effects.unwrap();
+        assert_eq!(phase.stage, FormEffectStage::Insertion);
+        assert_eq!(phase.next, Some(group.index));
+        let state = storage
+            .payloads
+            .values
+            .iter()
+            .find_map(|entry| match entry {
+                RetainedPayload::FormAssociation {
+                    node: Some(node),
+                    state,
+                } if *node == button.index => Some(*state),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(state.owner, None);
+        assert!(!state.parser_inserted);
+        assert_eq!(state.evidence, FormAssociationEvidence::Reset);
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    }
+
+    fn listed_id_slot_fixture(
+        c: &mut ParseControl,
+    ) -> (
+        ParserArenaSession,
+        ParserNode,
+        ParserNode,
+        PreparedAttributeMerge,
+    ) {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=f title=after>");
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, c).unwrap();
+        let (mut session, body) = form_session(c);
+        let button = form_creation(&mut session, &mut lexer, c, &body, None);
+        session.insert(c, &body, &button, None).unwrap();
+        let form = form_creation(&mut session, &mut lexer, c, &body, None);
+        session.insert(c, &body, &form, None).unwrap();
+        assert_listed_owner(
+            &session,
+            c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&form),
+            false,
+        );
+        let TokenKind::Tag(tag) = lexical_kind(&mut lexer, c) else {
+            panic!("body")
+        };
+        let prepared = session
+            .active_mut()
+            .unwrap()
+            .prepare_named_attribute_merge(c, &body, &mut Some(tag), AttributeMergeName::Body)
+            .unwrap()
+            .unwrap();
+        lexer.release(c).unwrap();
+        session
+            .active_mut()
+            .unwrap()
+            .edit_attributes(
+                c,
+                prepared.target,
+                prepared.container,
+                prepared.stage,
+                1,
+                true,
+            )
+            .unwrap();
+        // This is the actual fixed append producer, not an invented phase. It
+        // retains both the installed slot and incoming redirect until drain.
+        let storage = session.active().unwrap();
+        assert_eq!(
+            storage.form_effects.unwrap().stage,
+            FormEffectStage::IdChange
+        );
+        let RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
+            moved, values, ..
+        })) = &storage.payloads.values[prepared.stage]
+        else {
+            panic!("transfer")
+        };
+        assert_eq!(*moved, 1);
+        assert_eq!(values.len(), 1);
+        let HtmlNodeKind::Element(element) = &storage.records[body.index].kind else {
+            panic!("body")
+        };
+        assert_eq!(element.attributes().as_slice().len(), 1);
+        assert_eq!(
+            element.attributes().as_slice()[0]
+                .name()
+                .local_name()
+                .code_units(),
+            [105, 100]
+        );
+        (session, body, button, prepared)
+    }
+
+    #[test]
+    fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect() {
+        let mut c = control();
+        let (mut session, body, button, prepared) = listed_id_slot_fixture(&mut c);
+        let old_count = session.active().unwrap().records.len();
+        assert!(matches!(
+            session.form_association_owner(&mut c, &button),
+            Err(SessionError::Stop(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::PendingFormEffects
+            )))
+        ));
+        let stop = c.stop().unwrap();
+        assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
+        let storage = session.active().unwrap();
+        assert_eq!(storage.records.len(), old_count);
+        assert!(storage.form_effects.is_some());
+        let HtmlNodeKind::Element(element) = &storage.records[body.index].kind else {
+            panic!("body")
+        };
+        assert_eq!(element.attributes().as_slice().len(), 1);
+        assert!(matches!(
+            &storage.payloads.values[prepared.stage],
+            RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
+        ));
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(stop));
+    }
+
+    #[test]
+    fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadata_prefix() {
+        let mut measured = control();
+        let (mut session, _, _, _) = listed_id_slot_fixture(&mut measured);
+        let start = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        session
+            .active_mut()
+            .unwrap()
+            .drain_form_effects(&mut measured)
+            .unwrap();
+        let whole = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - start;
+        session.release(&mut measured).unwrap();
+        storage_zero(&measured);
+        for short in [false, true] {
+            let mut c = control();
+            let (mut session, body, button, prepared) = listed_id_slot_fixture(&mut c);
+            let unused = limits().work_credits()
+                - c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(WorkCategory::StateStep, unused - whole + u64::from(short))
+                .unwrap();
+            let result = session.active_mut().unwrap().drain_form_effects(&mut c);
+            let storage = session.active().unwrap();
+            let state = storage
+                .payloads
+                .values
+                .iter()
+                .find_map(|entry| match entry {
+                    RetainedPayload::FormAssociation {
+                        node: Some(node),
+                        state,
+                    } if *node == button.index => Some(*state),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(state.owner, None);
+            assert_eq!(state.evidence, FormAssociationEvidence::Reset);
+            assert!(!state.parser_inserted);
+            assert!(matches!(
+                &storage.payloads.values[prepared.stage],
+                RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
+            ));
+            let HtmlNodeKind::Element(element) = &storage.records[body.index].kind else {
+                panic!("body")
+            };
+            assert_eq!(element.attributes().as_slice().len(), 1);
+            if short {
+                let stop = c.stop().unwrap();
+                assert_eq!(result, Err(SessionError::Stop(stop)));
+                assert!(session.active().unwrap().form_effects.is_some());
+                assert_eq!(
+                    session.form_association_owner(&mut c, &button).err(),
+                    Some(SessionError::Stop(stop))
+                );
+                assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
+            } else {
+                result.unwrap();
+                assert!(session.active().unwrap().form_effects.is_none());
+                // No credit remains to complete the next slot/rebind. Terminal
+                // disposal must reclaim the existing redirect, not drop it.
+                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            }
+            let stop = c.stop().unwrap();
+            let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            let high = c.usage().actual_capacity_high_water;
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), Some(stop));
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::WorkCredits).current,
+                work
+            );
+            assert_eq!(c.usage().actual_capacity_high_water, high);
+        }
+    }
+
+    #[test]
+    fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partial_storage() {
+        let cancellation = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancellation.clone());
+        let (mut session, body, button, prepared) = listed_id_slot_fixture(&mut c);
+        cancellation.cancel();
+        assert_eq!(
+            session.active_mut().unwrap().drain_form_effects(&mut c),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        );
+        assert_eq!(
+            session.form_association_owner(&mut c, &button).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        assert!(session.active().unwrap().form_effects.is_some());
+        assert!(matches!(
+            &session.active().unwrap().payloads.values[prepared.stage],
+            RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
+        ));
+        let HtmlNodeKind::Element(element) = &session.active().unwrap().records[body.index].kind
+        else {
+            panic!("body")
+        };
+        assert_eq!(element.attributes().as_slice().len(), 1);
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    }
+
+    #[test]
+    fn listed_virtual_removal_excludes_moved_id_from_outside_tree_before_insertion() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let cancellation = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancellation.clone());
+        let source = crate::HtmlSource::utf8("<button form=f><div><form id=f><div>");
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &button, None).unwrap();
+        let group = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &group, None).unwrap();
+        let form = form_creation(&mut session, &mut lexer, &mut c, &group, None);
+        session.insert(&mut c, &group, &form, None).unwrap();
+        let target = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &target, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&form),
+            false,
+        );
+        lexer.release(&mut c).unwrap();
+        session.active_mut().unwrap().cancel_after_removal = Some(cancellation);
+        assert_eq!(
+            session.insert(&mut c, &target, &group, None),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let storage = session.active().unwrap();
+        assert_eq!(storage.records[group.index].parent, Some(target.index));
+        assert_eq!(storage.records[form.index].parent, Some(group.index));
+        let state = storage
+            .payloads
+            .values
+            .iter()
+            .find_map(|entry| match entry {
+                RetainedPayload::FormAssociation {
+                    node: Some(node),
+                    state,
+                } if *node == button.index => Some(*state),
+                _ => None,
+            })
+            .unwrap();
+        // Final links already expose the ID at the new destination. Removal
+        // resolution must exclude the moved root from this outside scan.
+        assert_eq!(state.owner, None);
+        assert_eq!(
+            storage.form_effects.unwrap().stage,
+            FormEffectStage::Insertion
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    }
+
+    #[test]
+    fn listed_namespaced_id_is_inapplicable_and_imported_control_metadata_is_unavailable() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<button form=f><form id=f>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &button, None).unwrap();
+        let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        // Preexisting immutable native input deliberately exercises namespace
+        // identity, not parser-created physical storage or foreign token support.
+        let native = HtmlElement {
+            name: QualifiedName::new(Namespace::html(), None, "button"),
+            attributes: OrderedAttributes::new(vec![Attribute::new(
+                QualifiedName::new(
+                    Namespace::from_uri("urn:test"),
+                    Some(DocumentString::from("p")),
+                    "id",
+                ),
+                "f",
+            )])
+            .unwrap(),
+        };
+        let imported = session.allocate_element(&mut c, native).unwrap();
+        session.insert(&mut c, &body, &imported, None).unwrap();
+        session.insert(&mut c, &body, &form, None).unwrap();
+        assert_listed_owner(
+            &session,
+            &mut c,
+            &button,
+            FormAssociationKind::Button,
+            Some(&form),
+            false,
+        );
+        assert_eq!(
+            session.form_association_state(&mut c, &imported),
+            Err(SessionError::FormAssociationMetadataUnavailable)
+        );
+        assert_eq!(
+            session.validate_standalone_document(&mut c),
+            Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Provenance
+            )))
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn listed_empty_and_ignored_duplicate_late_id_do_not_replace_existing_form_owner() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=''><body id=f>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &button, None).unwrap();
+        let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &form, None).unwrap();
+        for _ in 0..2 {
+            let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
+                panic!("body")
+            };
+            session
+                .add_body_attributes_if_missing(&mut c, &body, &mut Some(tag))
+                .unwrap();
+            assert_listed_owner(
+                &session,
+                &mut c,
+                &button,
+                FormAssociationKind::Button,
+                Some(&form),
+                false,
+            );
+            assert!(session.active().unwrap().form_effects.is_none());
+        }
+        let HtmlNodeKind::Element(element) = &session.active().unwrap().records[body.index].kind
+        else {
+            panic!("body")
+        };
+        assert_eq!(element.attributes().as_slice().len(), 1);
+        assert!(element.attributes().as_slice()[0].value().is_empty());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
     #[test]
     fn image_creation_uses_actual_same_tree_and_preserves_nonancestor_parser_owner() {
         use crate::parser::tokenizer::{Tokenizer, states::State};
@@ -7897,7 +9317,7 @@ mod tests {
                 .image_form_state(&mut c, &other_image)
                 .unwrap()
                 .evidence,
-            ImageAssociationEvidence::Reset
+            FormAssociationEvidence::Reset
         );
         tokenizer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
@@ -8120,7 +9540,10 @@ mod tests {
         tokenizer.release(c).unwrap();
         (session, image, old, new)
     }
-    fn retained_image_state(session: &ParserArenaSession, image: &ParserNode) -> ImageFormState {
+    fn retained_image_state(
+        session: &ParserArenaSession,
+        image: &ParserNode,
+    ) -> FormAssociationState {
         session
             .active()
             .unwrap()
@@ -8128,7 +9551,7 @@ mod tests {
             .values
             .iter()
             .find_map(|entry| match entry {
-                RetainedPayload::ImageForm { node, state } if *node == Some(image.index) => {
+                RetainedPayload::FormAssociation { node, state } if *node == Some(image.index) => {
                     Some(*state)
                 }
                 _ => None,
@@ -8164,7 +9587,7 @@ mod tests {
             let result = session.insert(&mut c, &target, &image, None);
             if remaining == work {
                 assert_eq!(result, Ok(()));
-                assert!(session.active().unwrap().image_effects.is_none());
+                assert!(session.active().unwrap().form_effects.is_none());
                 let state = retained_image_state(&session, &image);
                 assert_eq!(state.owner, Some(target.index));
                 assert!(!state.parser_inserted);
@@ -8188,7 +9611,7 @@ mod tests {
                 let state = retained_image_state(&session, &image);
                 assert_eq!(state.owner, Some(target.index));
                 assert!(!state.parser_inserted);
-                assert!(session.active().unwrap().image_effects.is_some());
+                assert!(session.active().unwrap().form_effects.is_some());
                 assert_eq!(
                     session.image_form_state(&mut c, &image),
                     Err(SessionError::Stop(stop))
@@ -8499,7 +9922,7 @@ mod tests {
                 .payloads
                 .values
                 .iter()
-                .any(|entry| matches!(entry, RetainedPayload::ImageForm { node: None, .. }))
+                .any(|entry| matches!(entry, RetainedPayload::FormAssociation { node: None, .. }))
         );
         assert_eq!(
             c.usage()
@@ -8600,7 +10023,7 @@ mod tests {
                         .iter()
                         .any(|entry| matches!(
                             entry,
-                            RetainedPayload::ImageForm { node: None, .. }
+                            RetainedPayload::FormAssociation { node: None, .. }
                         ))
                 );
                 assert_eq!(
@@ -8628,7 +10051,7 @@ mod tests {
             Err(SessionError::ForeignNode)
         );
         assert_eq!(retained_image_state(&session, &image), before);
-        assert!(session.active().unwrap().image_effects.is_none());
+        assert!(session.active().unwrap().form_effects.is_none());
         assert_eq!(
             session.active().unwrap().records[image.index].parent,
             Some(2)
@@ -8639,7 +10062,7 @@ mod tests {
             Err(SessionError::Stop(ParseStop::Cancelled))
         );
         assert_eq!(retained_image_state(&session, &image), before);
-        assert!(session.active().unwrap().image_effects.is_none());
+        assert!(session.active().unwrap().form_effects.is_none());
         assert_eq!(
             session.image_form_owner(&mut c, &image).unwrap_err(),
             SessionError::Stop(ParseStop::Cancelled)
@@ -8670,13 +10093,13 @@ mod tests {
         assert!(!storage.records[old.index].children.contains(&image.index));
         assert_eq!(storage.records[target.index].children, [image.index]);
         assert_eq!(
-            storage.image_effects.unwrap().stage,
-            ImageEffectStage::Insertion
+            storage.form_effects.unwrap().stage,
+            FormEffectStage::Insertion
         );
         let state = retained_image_state(&session, &image);
         assert_eq!(state.owner, None);
         assert!(!state.parser_inserted);
-        assert_eq!(state.evidence, ImageAssociationEvidence::Reset);
+        assert_eq!(state.evidence, FormAssociationEvidence::Reset);
         assert_eq!(
             session.image_form_state(&mut c, &image),
             Err(SessionError::Stop(ParseStop::Cancelled))
@@ -8725,14 +10148,15 @@ mod tests {
         // Independent submitted-work derivation after reset step1 in removal:
         // four remaining state writes (visit + copied layout + write), one
         // registry scan/copy, seven phase read/write spans, two detached-parent
-        // reads, two leaf successor reads, and the immediate HTML form ancestor
+        // reads, two leaf successor reads, two ID checks (container + empty result
+        // in each source stage), and the immediate HTML form ancestor
         // lookup: parent1 + kind/name3 + namespace1/28*3 + local1/4*3 =102.
         // Metadata is initialized before the image's name, namespace and
         // attributes: its actual lookup stops three entries before registry end.
-        let state_bytes = mem::size_of::<ImageFormState>() as u64;
-        let phase_bytes = mem::size_of::<Option<ImageEffects>>() as u64;
+        let state_bytes = mem::size_of::<FormAssociationState>() as u64;
+        let phase_bytes = mem::size_of::<Option<FormEffects>>() as u64;
         let tail =
-            4 * (state_bytes + 2) + (entries - 3) + state_bytes + 7 * (phase_bytes + 1) + 106;
+            4 * (state_bytes + 2) + (entries - 3) + state_bytes + 7 * (phase_bytes + 1) + 106 + 4;
         let mut c = control();
         let (mut session, image, old, target) = image_move_fixture(&mut c);
         let unused =
@@ -8764,10 +10188,10 @@ mod tests {
             Some(old.index),
             "later clear-owner step has not run"
         );
-        assert_eq!(retained.evidence, ImageAssociationEvidence::Reset);
+        assert_eq!(retained.evidence, FormAssociationEvidence::Reset);
         assert_eq!(
-            session.active().unwrap().image_effects.unwrap().stage,
-            ImageEffectStage::Removal
+            session.active().unwrap().form_effects.unwrap().stage,
+            FormEffectStage::Removal
         );
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         session.release(&mut c).unwrap();
@@ -8817,7 +10241,7 @@ mod tests {
             // adoption still removes the actual root before inserting it again.
             assert!(!result.parser_inserted);
             assert_eq!(result.owner, None);
-            assert_eq!(result.evidence, ImageAssociationEvidence::Reset);
+            assert_eq!(result.evidence, FormAssociationEvidence::Reset);
         }
     }
 
@@ -9341,7 +10765,8 @@ mod tests {
         // Hand-derived fixed operation: registry remove/restore, one progress
         // write, actual wrapper checks/restoration and one pop/push. There is no
         // whole-vector credit or polling assumption in this expectation.
-        (2 + 3
+        (4 + // readiness1 + staging/last-slot2 + id length mismatch1
+            2 + 3
             + mem::size_of::<Option<AttributeStorage>>()
             + 2
             + mem::size_of::<OrderedAttributes>()

@@ -733,7 +733,7 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Listed/resettable control creation, select/frameset transitions, templates
+Resettable control creation, select/frameset transitions, templates
 and foreign dispatch retain untouched-token continuations when their required
 machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
@@ -756,15 +756,34 @@ pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Template forms,
-listed/resettable controls, unfinished table rows, foreign dispatch, contextual
+resettable controls, unfinished table rows, foreign dispatch, contextual
 fragment execution, hosted parsing and full EOF/report completion remain unfinished.
+
+The same association registry now admits parser-created button, fieldset and
+object elements. These are listed and form-associated, but not resettable.
+An explicit form attribute, including empty content, suppresses pointer-based
+creation association. Connected controls resolve the first element with the
+exact nonempty ID; an earlier non-form blocks a later form, and failed lookup
+remains null. Detached controls use the source's ancestor branch.
+
+Tree effects retain one source-ordered phase. ID entry/removal sweeps include
+all canonical explicit-form controls in the same node-document domain, including
+detached recipients; ID changes instead use the changed element's ordinary tree.
+Actual removing hooks can trigger resets in already detached trees, following
+the [selected interpretation](https://github.com/bj-data-eng/surgeist/issues/1136).
+Removal resolution hides the moved root from outside traversal before insertion
+effects. Each appended html/body ID drains its effects before the next attribute
+or transfer rebinding. Stops retain topology, association prefixes and transfer
+owners for terminal disposal, while observations and freeze reject publication.
+Repeated scans remain metered and may be superlinear.
 
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
 the actual original tag into independently owned controlled storage, preserving
 attributes and origins while giving each new element a distinct identity.
-Applet and marquee establish real list markers; object retains its listed-control
-continuation. The sole parser controller admits recipe retention, replay,
+Applet, marquee and object establish real list markers. Button recovery diagnoses
+an in-scope old button before popping it; fieldset uses block recovery. The sole
+parser controller admits recipe retention, replay,
 comparisons, stack/list mutations and coherent child moves before their effects.
 Child transfer can stop after a coherent partial move; a terminal failure still
 prevents publication. Work is finite and polled, with potentially quadratic

@@ -16,9 +16,9 @@
 //! over one construction arena. The fresh sealed Disabled driver handles actual
 //! scripts; a general proofless head stage suspends at script. Ordinary
 //! body/block/list/ruby, formatting/reconstruction/adoption, applet/marquee and
-//! trailing modes, ordinary form pointer recovery and image form associations
-//! and the bounded structural table family are admitted. Listed/resettable form
-//! controls (including Hidden input), select, frameset,
+//! trailing modes, ordinary form pointer recovery, image and listed non-resettable
+//! button/fieldset/object form associations and bounded structural tables are
+//! admitted. Resettable controls (including Hidden input), select, frameset,
 //! template and foreign rows retain owning continuations; construction EOF is
 //! not full parse/report success.
 
