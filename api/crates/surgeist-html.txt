@@ -593,6 +593,13 @@ pub fn surgeist_html::HtmlFormEnctype::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlFormEnctype::into_attribute(self) -> surgeist_html::Attribute
 impl surgeist_html::HtmlFormEnctype
 pub fn surgeist_html::HtmlFormEnctype::into_formenctype_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFormEnctypeSelection
+pub surgeist_html::HtmlFormEnctypeSelection::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlFormEnctypeSelection::NoFormOwner(surgeist_html::HtmlFormOwner)
+pub surgeist_html::HtmlFormEnctypeSelection::Override(surgeist_html::HtmlFormEnctype)
+pub surgeist_html::HtmlFormEnctypeSelection::Owner
+pub surgeist_html::HtmlFormEnctypeSelection::Owner::owner: surgeist_html::HtmlFormOwner
+pub surgeist_html::HtmlFormEnctypeSelection::Owner::value: surgeist_html::HtmlFormEnctype
 pub enum surgeist_html::HtmlFormMethod
 pub surgeist_html::HtmlFormMethod::Dialog
 pub surgeist_html::HtmlFormMethod::Get
@@ -602,6 +609,13 @@ pub fn surgeist_html::HtmlFormMethod::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlFormMethod::into_attribute(self) -> surgeist_html::Attribute
 impl surgeist_html::HtmlFormMethod
 pub fn surgeist_html::HtmlFormMethod::into_formmethod_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFormMethodSelection
+pub surgeist_html::HtmlFormMethodSelection::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlFormMethodSelection::NoFormOwner(surgeist_html::HtmlFormOwner)
+pub surgeist_html::HtmlFormMethodSelection::Override(surgeist_html::HtmlFormMethod)
+pub surgeist_html::HtmlFormMethodSelection::Owner
+pub surgeist_html::HtmlFormMethodSelection::Owner::owner: surgeist_html::HtmlFormOwner
+pub surgeist_html::HtmlFormMethodSelection::Owner::value: surgeist_html::HtmlFormMethod
 pub enum surgeist_html::HtmlFormOwnerOrigin
 pub surgeist_html::HtmlFormOwnerOrigin::EstablishedCurrent
 pub surgeist_html::HtmlFormOwnerOrigin::ResetAgainstCapture
@@ -959,6 +973,8 @@ pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticVa
 pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
 pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectOptions>)
 pub surgeist_html::HtmlSemanticFact::Spellcheck(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormEnctype>)
+pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormMethod>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
 pub enum surgeist_html::HtmlSemanticFailureKind
@@ -1023,6 +1039,8 @@ pub surgeist_html::HtmlSemanticQuery::SelectOptions
 pub surgeist_html::HtmlSemanticQuery::SelectSelectedIndex
 pub surgeist_html::HtmlSemanticQuery::SelectedOptions
 pub surgeist_html::HtmlSemanticQuery::Spellcheck
+pub surgeist_html::HtmlSemanticQuery::SubmitterFormEnctype
+pub surgeist_html::HtmlSemanticQuery::SubmitterFormMethod
 pub surgeist_html::HtmlSemanticQuery::TableModel
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
 impl surgeist_html::HtmlSemanticQuery
@@ -1085,6 +1103,9 @@ pub surgeist_html::HtmlSpellcheckDefaultBehavior::TrueByDefault
 pub enum surgeist_html::HtmlSpellcheckState
 pub surgeist_html::HtmlSpellcheckState::Default
 pub surgeist_html::HtmlSpellcheckState::Keyword(surgeist_html::HtmlSpellcheck)
+pub enum surgeist_html::HtmlSubmitterTypeObservation
+pub surgeist_html::HtmlSubmitterTypeObservation::Button(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlButtonTypeState>)
+pub surgeist_html::HtmlSubmitterTypeObservation::Input(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>)
 pub enum surgeist_html::HtmlTabindexValue
 pub surgeist_html::HtmlTabindexValue::Integer(surgeist_html::HtmlInteger)
 pub surgeist_html::HtmlTabindexValue::Null
@@ -2565,6 +2586,18 @@ pub struct surgeist_html::HtmlStylesheetLinkAttributeContext
 impl surgeist_html::HtmlStylesheetLinkAttributeContext
 pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::contains_stylesheet(&self) -> bool
 pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::rel(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub struct surgeist_html::HtmlSubmitterFormEnctype
+impl surgeist_html::HtmlSubmitterFormEnctype
+pub fn surgeist_html::HtmlSubmitterFormEnctype::form_attribute(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormEnctype>>
+pub fn surgeist_html::HtmlSubmitterFormEnctype::intrinsic(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormEnctype>
+pub fn surgeist_html::HtmlSubmitterFormEnctype::selection(&self) -> &surgeist_html::HtmlFormEnctypeSelection
+pub fn surgeist_html::HtmlSubmitterFormEnctype::submitter_type(&self) -> core::option::Option<&surgeist_html::HtmlSubmitterTypeObservation>
+pub struct surgeist_html::HtmlSubmitterFormMethod
+impl surgeist_html::HtmlSubmitterFormMethod
+pub fn surgeist_html::HtmlSubmitterFormMethod::form_attribute(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>>
+pub fn surgeist_html::HtmlSubmitterFormMethod::intrinsic(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>
+pub fn surgeist_html::HtmlSubmitterFormMethod::selection(&self) -> &surgeist_html::HtmlFormMethodSelection
+pub fn surgeist_html::HtmlSubmitterFormMethod::submitter_type(&self) -> core::option::Option<&surgeist_html::HtmlSubmitterTypeObservation>
 pub struct surgeist_html::HtmlTableCell
 impl surgeist_html::HtmlTableCell
 pub fn surgeist_html::HtmlTableCell::height(&self) -> usize

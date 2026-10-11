@@ -180,8 +180,8 @@ zero. Tabindex retains an exact signed integer or source-null; its full signed-l
 IDL getter and element-specific focus defaults remain pending. Formmethod and
 formenctype overrides reuse the defining keyword rules and separate submitter
 author restrictions from their intrinsic values. A missing override retains no
-selected value; effective fallback requires the actual form owner and remains
-pending. These content operations do not allocate canvas surfaces, lay out text,
+selected value; the captured form-setting queries below use the actual form
+owner for effective fallback. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
 
 Control autocomplete reports preserve ordered tokens, authored detail grammar,
@@ -278,6 +278,16 @@ The session admits the shared producer's actual variable vector capacities,
 retained output and temporary scratch, preserving observed usage on failure.
 Fixed shared wrappers and allocator internals are outside that capacity contract.
 These observations perform no autofill or credential mediation.
+
+Captured form-method and form-enctype queries cover potential input/button
+submitters. A present override on an actual submit button selects its intrinsic
+state, including its invalid-value default, without consulting association.
+Otherwise the existing qualified form owner supplies the actual form setting.
+Established null ownership has a separate no-owner result; unavailable evidence
+remains missing. Button Auto classification uses command presence and the
+ordinary parent's select identity. Reports borrow the exact override, consulted
+type and consulted form observations. These selections do not replace an
+override's empty IDL value or perform validation, submission or navigation.
 
 `HtmlGlobalInheritanceFacts` supplies actual document design-mode states and
 per-element spellcheck default behaviors. The checked supplement joins one
