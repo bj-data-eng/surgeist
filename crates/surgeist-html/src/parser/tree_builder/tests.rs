@@ -8691,3 +8691,137 @@ fn textarea_late_form_id_reset_observes_first_element_order_without_changing_raw
         assert_released(&c);
     }
 }
+
+#[test]
+fn ordinary_output_descendant_text_and_form_sibling_order_preserve_native_structure() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><output name=o>A<span>B&amp;C</span>D</output>Z</form>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        // Dispose real tree, lexical and controller owners before the RED assertion.
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let output = document.node(&form).unwrap().children().next().unwrap();
+    let following_text = document.node(&form).unwrap().children().nth(1).unwrap();
+    let output_children: Vec<_> = document.node(&output).unwrap().children().collect();
+    let form_child_count = document.node(&form).unwrap().children().count();
+    let span = output_children[1].clone();
+    let nested_text = document.node(&span).unwrap().children().next().unwrap();
+    let text_units: Vec<_> = [
+        &output_children[0],
+        &nested_text,
+        &output_children[2],
+        &following_text,
+    ]
+    .into_iter()
+    .map(|id| {
+        let HtmlNodeKind::Text(text) = document.node(id).unwrap().kind() else {
+            panic!("source-derived output and following positions must be actual text nodes");
+        };
+        text.code_units().to_vec()
+    })
+    .collect();
+    let elements: Vec<_> = [&form, &output, &span]
+        .into_iter()
+        .map(|id| {
+            let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                panic!("source-derived form, output and span positions must be actual elements");
+            };
+            (
+                element
+                    .name()
+                    .namespace()
+                    .uri()
+                    .unwrap()
+                    .code_units()
+                    .to_vec(),
+                element.name().local_name().code_units().to_vec(),
+                element
+                    .attributes()
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            attribute
+                                .name()
+                                .namespace()
+                                .uri()
+                                .map(|uri| uri.code_units().to_vec()),
+                            attribute.name().local_name().code_units().to_vec(),
+                            attribute.value().code_units().to_vec(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+
+    // Only copied units and result-qualified identities survive owner disposal.
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_ne!(output, span);
+    assert_ne!(form, output);
+    assert_ne!(nested_text, output_children[0]);
+    assert_ne!(nested_text, output_children[2]);
+    assert_ne!(following_text, output_children[2]);
+    assert_eq!(output_children.len(), 3);
+    assert_eq!(form_child_count, 2);
+    assert_eq!(
+        text_units,
+        vec![vec![65], vec![66, 38, 67], vec![68], vec![90]]
+    );
+    // Descendant output value is AB&CD; direct-child text alone would be AD.
+    assert_eq!(text_units[..3].concat(), vec![65, 66, 38, 67, 68]);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "output"),
+            (4, "#A"),
+            (4, "span"),
+            (5, "#B&C"),
+            (4, "#D"),
+            (3, "#Z"),
+        ])
+    );
+    let html_namespace: Vec<u16> = "http://www.w3.org/1999/xhtml".encode_utf16().collect();
+    assert_eq!(
+        elements,
+        vec![
+            (
+                html_namespace.clone(),
+                vec![102, 111, 114, 109],
+                vec![(None::<Vec<u16>>, vec![105, 100], vec![102])]
+            ),
+            (
+                html_namespace.clone(),
+                vec![111, 117, 116, 112, 117, 116],
+                vec![(None::<Vec<u16>>, vec![110, 97, 109, 101], vec![111])]
+            ),
+            (html_namespace, vec![115, 112, 97, 110], vec![]),
+        ]
+    );
+}
