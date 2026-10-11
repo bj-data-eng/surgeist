@@ -3,6 +3,7 @@
 //! Attribute-specific applicability, defaults, ranges and effective states are
 //! separate HTML algorithms. These common operations never guess those rules.
 
+use crate::color::{HtmlLegacyColor, LegacyColorParseError};
 use crate::numeric::{
     HtmlDimension, HtmlDimensionList, HtmlFloatingPointList, HtmlFloatingPointNumber, HtmlInteger,
     HtmlNonNegativeInteger, NumericParseError,
@@ -13,12 +14,14 @@ use crate::temporal::{
     HtmlYearlessDate,
 };
 use crate::tokens::{HtmlCommaSeparatedTokens, HtmlSpaceSeparatedTokens};
-use crate::{DocumentString, numeric, temporal, tokens};
+use crate::{DocumentString, color, numeric, temporal, tokens};
 use std::{error::Error, fmt};
 
 /// The selected common value clause, independent of an attribute's overlay.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlValueSyntax {
+    /// The pinned HTML legacy-color processing clause.
+    LegacyColor,
     /// HTML space-separated tokens using ASCII whitespace.
     SpaceSeparatedTokens,
     /// HTML comma-separated tokens with Infra boundary trimming.
@@ -70,6 +73,9 @@ impl HtmlValueSyntax {
     /// recorded in issue #1133 and the retained dimension-list browser witness.
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::LegacyColor => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#colours"
+            }
             Self::SpaceSeparatedTokens => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#space-separated-tokens"
             }
@@ -137,9 +143,13 @@ impl HtmlValueSyntax {
     }
 }
 
-/// Failure of the selected grammar or source-defined numeric constraint.
+/// Failure of the selected grammar or a source-defined rejection condition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlValueSyntaxError {
+    /// Legacy-color processing rejects an originally empty raw value.
+    EmptyLegacyColor,
+    /// Legacy-color processing rejects the ASCII-insensitive transparent keyword.
+    TransparentLegacyColor,
     /// The selected numeric syntax could not be recognized.
     InvalidNumericSyntax,
     /// Nonnegative-integer recovery produced a negative mathematical integer.
@@ -160,7 +170,7 @@ pub enum HtmlValueRepresentationError {
 /// A failed recovery operation, distinct from resource admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlValueFailure {
-    /// Failure of a source-defined syntax or numeric constraint.
+    /// Failure of source-defined syntax or a rejection condition.
     Syntax(HtmlValueSyntaxError),
     /// A value cannot be represented by the selected numeric model.
     Representation(HtmlValueRepresentationError),
@@ -280,6 +290,35 @@ pub struct HtmlValueInterpreter {
 }
 
 impl HtmlValueInterpreter {
+    /// Applies the legacy-color processing algorithm, producing opaque RGB.
+    ///
+    /// The original raw UTF-16 length is admitted before HTML trimming,
+    /// code-point replacement or truncation. This selected clause defines no
+    /// author grammar. This operation does not validate CSS color syntax or
+    /// implement the separate color input-state algorithms.
+    pub fn legacy_color(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<HtmlValueReport<HtmlLegacyColor>, HtmlValueAdmissionError> {
+        let mut report = self.admit(raw, HtmlValueSyntax::LegacyColor)?;
+        if let Some(raw) = raw {
+            report.author = HtmlValueAuthorState::NotDefined;
+            report.recovery = match color::parse_legacy_color(raw) {
+                Ok(value) => HtmlValueRecoveryState::Value(value),
+                Err(error) => {
+                    let error = match error {
+                        LegacyColorParseError::EmptyInput => HtmlValueSyntaxError::EmptyLegacyColor,
+                        LegacyColorParseError::Transparent => {
+                            HtmlValueSyntaxError::TransparentLegacyColor
+                        }
+                    };
+                    HtmlValueRecoveryState::Failed(HtmlValueFailure::Syntax(error))
+                }
+            };
+        }
+        Ok(report)
+    }
+
     /// Splits on ASCII whitespace, preserving token order and repetitions.
     ///
     /// The splitter does not certify attribute keywords, cardinality, unique

@@ -5,6 +5,7 @@
 //! to the consuming DOM subsystem.
 #![forbid(unsafe_code)]
 
+mod color;
 mod construction;
 mod interpretation;
 mod numeric;
@@ -14,6 +15,7 @@ mod tokens;
 mod values;
 mod vocabulary;
 
+pub use color::*;
 pub use construction::*;
 pub use interpretation::*;
 pub use numeric::*;

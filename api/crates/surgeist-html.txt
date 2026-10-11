@@ -151,6 +151,7 @@ pub surgeist_html::HtmlValueSyntax::FloatingPointList
 pub surgeist_html::HtmlValueSyntax::FloatingPointNumber
 pub surgeist_html::HtmlValueSyntax::GlobalDateTime
 pub surgeist_html::HtmlValueSyntax::Integer
+pub surgeist_html::HtmlValueSyntax::LegacyColor
 pub surgeist_html::HtmlValueSyntax::LocalDateTime
 pub surgeist_html::HtmlValueSyntax::Month
 pub surgeist_html::HtmlValueSyntax::NonnegativeInteger
@@ -164,9 +165,11 @@ pub surgeist_html::HtmlValueSyntax::YearlessDate
 impl surgeist_html::HtmlValueSyntax
 pub fn surgeist_html::HtmlValueSyntax::source_clause(self) -> &'static str
 pub enum surgeist_html::HtmlValueSyntaxError
+pub surgeist_html::HtmlValueSyntaxError::EmptyLegacyColor
 pub surgeist_html::HtmlValueSyntaxError::InvalidNumericSyntax
 pub surgeist_html::HtmlValueSyntaxError::NegativeNonnegativeInteger
 pub surgeist_html::HtmlValueSyntaxError::Temporal(surgeist_html::HtmlTemporalError)
+pub surgeist_html::HtmlValueSyntaxError::TransparentLegacyColor
 pub surgeist_html::HtmlValueSyntaxError::ZeroNonzeroDimension
 pub enum surgeist_html::KnownHtmlAttribute
 pub surgeist_html::KnownHtmlAttribute::Abbr
@@ -631,6 +634,14 @@ pub fn surgeist_html::HtmlInteger::from(value: i128) -> Self
 impl core::convert::TryFrom<surgeist_html::HtmlInteger> for surgeist_html::HtmlNonNegativeInteger
 pub type surgeist_html::HtmlNonNegativeInteger::Error = surgeist_html::HtmlNegativeIntegerError
 pub fn surgeist_html::HtmlNonNegativeInteger::try_from(value: surgeist_html::HtmlInteger) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlLegacyColor
+impl surgeist_html::HtmlLegacyColor
+pub fn surgeist_html::HtmlLegacyColor::as_document_string(&self) -> surgeist_html::DocumentString
+pub const fn surgeist_html::HtmlLegacyColor::blue(&self) -> u8
+pub const fn surgeist_html::HtmlLegacyColor::channels(&self) -> [u8; 3]
+pub const fn surgeist_html::HtmlLegacyColor::green(&self) -> u8
+pub const fn surgeist_html::HtmlLegacyColor::new(red: u8, green: u8, blue: u8) -> Self
+pub const fn surgeist_html::HtmlLegacyColor::red(&self) -> u8
 pub struct surgeist_html::HtmlLocalDateTime
 impl surgeist_html::HtmlLocalDateTime
 pub fn surgeist_html::HtmlLocalDateTime::date(&self) -> &surgeist_html::HtmlDate
@@ -796,6 +807,7 @@ pub fn surgeist_html::HtmlValueInterpreter::floating_point_list(&self, raw: core
 pub fn surgeist_html::HtmlValueInterpreter::floating_point_number(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::global_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlGlobalDateTime>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::integer(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlInteger>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::legacy_color(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLegacyColor>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::max_input_code_units(self) -> usize
 pub fn surgeist_html::HtmlValueInterpreter::month(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlMonth>, surgeist_html::HtmlValueAdmissionError>

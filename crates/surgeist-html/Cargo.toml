@@ -7,3 +7,6 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Pinned HTML language values, typed authoring, and immutable construction results."
 readme = "README.md"
+
+[dependencies]
+cssparser = "=0.37.0"

@@ -7,6 +7,110 @@ use surgeist_html::{
 };
 
 #[test]
+fn legacy_color_missing_empty_and_transparent_have_distinct_outcomes() {
+    let interpreter = HtmlValueInterpreter::new(16);
+    let missing = interpreter.legacy_color(None).unwrap();
+    assert_eq!(missing.raw(), None);
+    assert_eq!(missing.author(), &Author::Missing);
+    assert_eq!(missing.recovery(), &Recovery::Missing);
+    assert_eq!(missing.syntax(), HtmlValueSyntax::LegacyColor);
+    assert_eq!(
+        missing.syntax().source_clause(),
+        "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#colours"
+    );
+
+    let raw = DocumentString::from("");
+    let empty = interpreter.legacy_color(Some(&raw)).unwrap();
+    assert_eq!(empty.author(), &Author::NotDefined);
+    assert_eq!(
+        empty.recovery(),
+        &Recovery::Failed(Failure::Syntax(Syntax::EmptyLegacyColor))
+    );
+    assert_eq!(empty.raw(), Some(&raw));
+    for text in ["transparent", " \tTrAnSpArEnT\r "] {
+        let raw = DocumentString::from(text);
+        let report = interpreter.legacy_color(Some(&raw)).unwrap();
+        assert_eq!(report.author(), &Author::NotDefined);
+        assert_eq!(
+            report.recovery(),
+            &Recovery::Failed(Failure::Syntax(Syntax::TransparentLegacyColor))
+        );
+        assert_eq!(report.raw(), Some(&raw));
+    }
+}
+
+#[test]
+fn legacy_color_processing_preserves_raw_whitespace_and_surrogates() {
+    let interpreter = HtmlValueInterpreter::new(16);
+    for (units, rgb) in [
+        (vec![0x20, 0x09, 0x0d], [0, 0, 0]),
+        (vec![0xd800, 0x66, 0x30], [0, 15, 0]),
+        (vec![0xd83d, 0xde00, 0x61], [0, 0, 10]),
+    ] {
+        let raw = DocumentString::from_utf16(units.clone());
+        let report = interpreter.legacy_color(Some(&raw)).unwrap();
+        assert_eq!(report.author(), &Author::NotDefined);
+        let Recovery::Value(color) = report.recovery() else {
+            panic!("expected recovered legacy color")
+        };
+        assert_eq!(color.channels(), rgb);
+        assert_eq!(report.raw().unwrap().code_units(), units);
+        assert_eq!(report.input_code_units(), units.len());
+    }
+}
+
+#[test]
+fn legacy_color_admits_original_units_before_trimming_and_truncation() {
+    let empty = DocumentString::from("");
+    assert!(HtmlValueInterpreter::new(0).legacy_color(None).is_ok());
+    assert!(
+        HtmlValueInterpreter::new(0)
+            .legacy_color(Some(&empty))
+            .is_ok()
+    );
+
+    for raw in [
+        DocumentString::from("   "),
+        DocumentString::from("f".repeat(129)),
+        DocumentString::from_utf16(vec![0xd83d, 0xde00]),
+    ] {
+        let report = HtmlValueInterpreter::new(raw.len())
+            .legacy_color(Some(&raw))
+            .unwrap();
+        assert!(matches!(report.recovery(), Recovery::Value(_)));
+        assert_eq!(report.raw(), Some(&raw));
+        let error = HtmlValueInterpreter::new(raw.len() - 1)
+            .legacy_color(Some(&raw))
+            .unwrap_err();
+        assert_eq!(error.capacity(), raw.len() - 1);
+        assert_eq!(error.required(), raw.len());
+    }
+}
+
+#[test]
+fn legacy_color_named_and_hex_results_have_equivalent_canonical_authoring() {
+    let interpreter = HtmlValueInterpreter::new(32);
+    for (text, rgb, canonical) in [
+        (" \tReBeCcApUrPlE ", [102, 51, 153], "#663399"),
+        ("#AbC", [170, 187, 204], "#aabbcc"),
+        ("#00ff7f", [0, 255, 127], "#00ff7f"),
+    ] {
+        let raw = DocumentString::from(text);
+        let report = interpreter.legacy_color(Some(&raw)).unwrap();
+        let Recovery::Value(color) = report.recovery() else {
+            panic!("expected recovered legacy color")
+        };
+        assert_eq!(color.channels(), rgb);
+        assert_eq!(color.as_document_string(), DocumentString::from(canonical));
+        let canonical = color.as_document_string();
+        let roundtrip = interpreter.legacy_color(Some(&canonical)).unwrap();
+        assert_eq!(roundtrip.recovery(), report.recovery());
+        assert_eq!(report.raw(), Some(&raw));
+        assert_eq!(report.author(), &Author::NotDefined);
+    }
+}
+
+#[test]
 fn absent_empty_and_admission_are_separate_from_syntax() {
     let interpreter = HtmlValueInterpreter::new(0);
     let missing = interpreter.integer(None).unwrap();
