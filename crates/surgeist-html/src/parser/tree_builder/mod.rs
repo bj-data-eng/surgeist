@@ -15,12 +15,14 @@
 //! Concrete tree operations, document prologue and bounded owning head dispatch
 //! over one construction arena. The fresh sealed Disabled driver handles actual
 //! scripts; a general proofless head stage suspends at script. Ordinary
-//! body/block/list/ruby and trailing modes are admitted. Unsupported
-//! formatting, form, select, table, frameset, template and foreign rows retain
+//! body/block/list/ruby, formatting/reconstruction/adoption, applet/marquee and
+//! trailing modes are admitted. Unsupported
+//! form, select, table, frameset, template and foreign rows retain
 //! owning continuations; construction EOF is not full parse/report success.
 
 mod body;
 mod doctype;
+mod formatting;
 mod head;
 mod prologue;
 mod tag_sets;
@@ -108,6 +110,66 @@ fn copy_node(node: &ParserNode, control: &mut ParseControl) -> Result<ParserNode
 }
 
 impl LocationKernel {
+    fn stack_index(
+        &self,
+        target: &ParserNode,
+        c: &mut ParseControl,
+    ) -> Result<Option<usize>, KernelError> {
+        self.require(c)?;
+        self.session.validate_node(c, target)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        for index in (0..self.stack()?.len()).rev() {
+            let node = self.at(index, c)?;
+            if self.session.same_node(c, &node, target)? {
+                return Ok(Some(index));
+            }
+        }
+        Ok(None)
+    }
+    fn replace_stack(
+        &mut self,
+        index: usize,
+        target: &ParserNode,
+        c: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        self.require(c)?;
+        self.session.validate_node(c, target)?;
+        let node = copy_node(target, c)?;
+        write(size_of::<ParserNode>(), 1, c)?;
+        let slot = self
+            .open
+            .as_mut()
+            .ok_or(KernelError::Consumed)?
+            .get_mut(index, c)?
+            .ok_or(KernelError::EmptyStack)?;
+        *slot = node;
+        Ok(())
+    }
+    fn insert_stack(
+        &mut self,
+        index: usize,
+        target: &ParserNode,
+        c: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        self.require(c)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if index > self.stack()?.len() {
+            return Err(KernelError::EmptyStack);
+        }
+        self.push(target, c)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        for shift in (index..self.stack()?.len() - 1).rev() {
+            if !self
+                .open
+                .as_mut()
+                .ok_or(KernelError::Consumed)?
+                .swap_slots(shift, shift + 1, c)?
+            {
+                return Err(KernelError::EmptyStack);
+            }
+        }
+        Ok(())
+    }
     fn current(&self, c: &mut ParseControl) -> Result<ParserNode, KernelError> {
         self.require(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;

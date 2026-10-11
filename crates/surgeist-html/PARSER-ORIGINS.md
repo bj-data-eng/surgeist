@@ -15,7 +15,8 @@ A fresh standalone Disabled driver also retains actual script metadata and
 implements script Text entry, end-tag preparation and EOF marking. The generic
 head continuation still suspends before script effects when it lacks that
 constructor proof. The fresh driver continues through AfterHead, ordinary InBody
-and the two trailing body modes. Formatting, forms, table/select/frameset
+and the two trailing body modes, with formatting reconstruction and adoption.
+Forms, table/select/frameset
 transitions, templates and foreign dispatch retain explicit unfinished
 continuations. Construction EOF is not completed stop-parsing or a public report.
 
@@ -31,9 +32,9 @@ before adaptation.
 | `html5ever/src/tokenizer/states.rs` | `35ea888082a92b77a428af263224169b05ff5740bd519efdace90e44858a0b7d` | `src/parser/tokenizer/states.rs` |
 | `html5ever/src/tokenizer/interface.rs` | `cdab80709a6e27663b9a349a607cf85da93fcc9ee3b3a54cf97ee635a9ae7cf4` | `src/parser/tokenizer/token.rs` |
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
-| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs` |
+| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs`; active formatting, reconstruction and adoption in `src/parser/tree_builder/formatting.rs` |
 | `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope, implied-end, heading and special-element lists in `src/parser/tree_builder/tag_sets.rs` |
-| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs`; formatting dispatch in `src/parser/tree_builder/formatting.rs` |
 | `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
@@ -180,8 +181,7 @@ derives from lines 1555–1585. The implied-end, heading and special-element lis
 derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected HTML
 edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
 `keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
-Upstream formatting/form/table/foreign creation and frameset transitions are
-unfinished boundaries, not incorporated complete algorithms.
+Form/table/foreign creation and frameset transitions remain unfinished boundaries.
 
 The sole fresh driver consumes its actual AfterHead handoff and retains current
 and return insertion modes, the stored head identity, frameset eligibility and
@@ -194,7 +194,23 @@ recovered tags do not invent lexical origins. Source-defined ignore rows execute
 while unavailable families preserve the token before effects. EOF retains an
 unfinished construction continuation rather than certifying report publication.
 
-Remaining insertion modes, formatting reconstruction/adoption, foreign dispatch,
+The formatting extension adapts `mod.rs` lines 713–921, 963–1035, 1516–1553
+and 1587–1604, with `rules.rs` lines 730–784, into the private
+`src/parser/tree_builder/formatting.rs`. Its initial adapted SHA-256 is
+`0e90ea52f6d2a7578a7ec5d01f279f03ed647816d421acad6341ff74ae854dd5`.
+Earlier incorporation hashes remain historical. Body/head dispatch also adapts
+reconstruction call sites and trailing whitespace delegation. The selected HTML
+edition governs original-token association, intended parents and conditional
+adoption insertion. Actual applet/marquee markers are supported; object creation
+retains the form continuation. Original tags have controlled owners; replay
+deep-copies their actual payloads into distinct admitted storage, while Noah
+comparison uses exact parsed attributes independently of order. Surgeist-owned
+session providers retain source/controller/arena qualification and first-stop
+cleanup. Ordered child transfer uses coherent individual tree mutations rather
+than claiming whole-transfer atomicity; its polled order/depth maintenance and
+attribute comparison can require quadratic work.
+
+Remaining insertion modes, foreign dispatch,
 context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,
 XML parser and RcDom are not incorporated here. Research prototypes and their
 measurements do not certify this adapted implementation or supply a public

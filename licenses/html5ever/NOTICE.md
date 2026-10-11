@@ -26,7 +26,8 @@ by the ordinary-document Initial/BeforeHtml prologue and doctype tables, then
 the owning BeforeHead/ordinary InHead/Disabled-noscript/Text driver, including
 script insertion and EOF/end-tag dispatch adapted for the fresh Disabled operation,
 then selected ordinary body/trailing-mode rows, generic end handling and
-implied-end/special-element lists. The
+implied-end/special-element lists, then active formatting, Noah comparison,
+reconstruction, adoption and applet/marquee marker handling. The
 [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;

@@ -4020,9 +4020,7 @@ fn body_after_modes_place_comments_and_pi_under_html_then_document() {
 fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     use super::head::HeadBoundary;
     for (name, boundary) in [
-        ("b", HeadBoundary::Formatting),
-        ("a", HeadBoundary::Formatting),
-        ("applet", HeadBoundary::Formatting),
+        ("object", HeadBoundary::Form),
         ("fieldset", HeadBoundary::Form),
         ("input", HeadBoundary::Form),
         ("textarea", HeadBoundary::Form),
@@ -4892,6 +4890,511 @@ fn formatting_adoption_moves_furthest_block_children_into_a_distinct_element_wit
         assert_eq!(
             actual_attributes,
             [expected_attributes.clone(), expected_attributes]
+        );
+    }
+}
+
+fn formatting_outline(source: &str) -> Vec<(usize, Vec<u16>)> {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        panic!("selected formatting source stopped at {boundary:?}");
+    }
+    let (mut c, mut frozen) = body_document(driver);
+    let result = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    result
+}
+
+#[test]
+fn formatting_all_fourteen_start_and_end_rows_use_actual_creation() {
+    for name in [
+        "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt",
+        "u",
+    ] {
+        let input = format!("<{name} data-x=Y/>1</{name}>");
+        assert_eq!(
+            formatting_outline(&input),
+            expected_outline(&[(0, "html"), (1, "head"), (1, "body"), (2, name), (3, "#1")]),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn formatting_nested_a_and_nobr_recovery_retains_sibling_order() {
+    for (source, name) in [
+        ("<p><a id=old>1<a id=new>2</a>3</p>", "a"),
+        ("<p><nobr>1<nobr>2</nobr>3</p>", "nobr"),
+    ] {
+        assert_eq!(
+            formatting_outline(source),
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "p"),
+                (3, name),
+                (4, "#1"),
+                (3, name),
+                (4, "#2"),
+                (3, "#3")
+            ])
+        );
+    }
+}
+
+#[test]
+fn formatting_missing_and_not_open_entries_take_distinct_source_recovery() {
+    assert_eq!(
+        formatting_outline("<p>x</b>y</p>"),
+        expected_outline(&[(0, "html"), (1, "head"), (1, "body"), (2, "p"), (3, "#xy")])
+    );
+    assert_eq!(
+        formatting_outline("<p><b>1</p></b>2"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "#1"),
+            (2, "#2")
+        ])
+    );
+}
+
+#[test]
+fn formatting_reconstruction_occurs_at_whitespace_void_generic_and_xmp_rows() {
+    for (source, suffix) in [
+        ("<p><b>1</p> 2", vec![(2, "b"), (3, "# 2")]),
+        ("<p><b>1</p><br/>2", vec![(2, "b"), (3, "br"), (3, "#2")]),
+        ("<p><b>1</p><image>2", vec![(2, "b"), (3, "img"), (3, "#2")]),
+        (
+            "<p><b>1</p></br a=discarded>2",
+            vec![(2, "b"), (3, "br"), (3, "#2")],
+        ),
+        ("<p><b>1</p><x>2</x>", vec![(2, "b"), (3, "x"), (4, "#2")]),
+        (
+            "<p><b>1</p><xmp>2</xmp>3",
+            vec![(2, "b"), (3, "xmp"), (4, "#2"), (3, "#3")],
+        ),
+        (
+            "<p><b>1</p><noscript>2</noscript>",
+            vec![(2, "b"), (3, "noscript"), (4, "#2")],
+        ),
+    ] {
+        let mut expected = expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "#1"),
+        ]);
+        expected.extend(expected_outline(&suffix));
+        assert_eq!(formatting_outline(source), expected, "{source}");
+    }
+}
+
+#[test]
+fn formatting_null_comments_and_head_text_do_not_invent_reconstruction() {
+    assert_eq!(
+        formatting_outline("<p><b>1</p>\0<!--x--><?t data?>"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "#1"),
+            (2, "!x"),
+            (2, "?t")
+        ])
+    );
+    assert_eq!(
+        formatting_outline("<p><b>1</p><script>x</script>2"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "#1"),
+            (2, "script"),
+            (3, "#x"),
+            (2, "b"),
+            (3, "#2")
+        ])
+    );
+}
+
+#[test]
+fn formatting_real_applet_and_marquee_markers_isolate_and_clear_active_entries() {
+    assert_eq!(
+        formatting_outline("<b>1<marquee>2</b>3</marquee>4"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "b"),
+            (3, "#1"),
+            (3, "marquee"),
+            (4, "#23"),
+            (3, "#4")
+        ])
+    );
+    assert_eq!(
+        formatting_outline("<p><b>1<applet><i>2</applet>3</p>4"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "#1"),
+            (4, "applet"),
+            (5, "i"),
+            (6, "#2"),
+            (4, "#3"),
+            (2, "b"),
+            (3, "#4")
+        ])
+    );
+}
+
+#[test]
+fn formatting_noah_evicts_earliest_equal_recipe_but_keeps_original_tree_node() {
+    assert_eq!(
+        formatting_outline("<p><b a=1 b=2><b b=2 a=1><b a=1 b=2><b b=2 a=1>1</p>2"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "b"),
+            (5, "b"),
+            (6, "b"),
+            (7, "#1"),
+            (2, "b"),
+            (3, "b"),
+            (4, "b"),
+            (5, "#2")
+        ])
+    );
+    assert_eq!(
+        formatting_outline("<p><b a=X><b a=x><b a=X><b a=x>1</p>2"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "b"),
+            (5, "b"),
+            (6, "b"),
+            (7, "#1"),
+            (2, "b"),
+            (3, "b"),
+            (4, "b"),
+            (5, "b"),
+            (6, "#2")
+        ])
+    );
+}
+
+#[test]
+fn formatting_adoption_inner_loop_replaces_three_and_prunes_later_entries_without_capping() {
+    assert_eq!(
+        formatting_outline("<b><i><u><em><s><div>x</b>y"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "b"),
+            (3, "i"),
+            (4, "u"),
+            (5, "em"),
+            (6, "s"),
+            (2, "u"),
+            (3, "em"),
+            (4, "s"),
+            (5, "div"),
+            (6, "b"),
+            (7, "#x"),
+            (6, "#y")
+        ])
+    );
+}
+
+#[test]
+fn formatting_adoption_outer_loop_stops_after_exactly_eight_source_iterations() {
+    assert_eq!(
+        formatting_outline("<b><div><div><div><div><div><div><div><div><div>x</b>y"),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "b"),
+            (2, "div"),
+            (3, "b"),
+            (3, "div"),
+            (4, "b"),
+            (4, "div"),
+            (5, "b"),
+            (5, "div"),
+            (6, "b"),
+            (6, "div"),
+            (7, "b"),
+            (7, "div"),
+            (8, "b"),
+            (8, "div"),
+            (9, "b"),
+            (9, "div"),
+            (10, "b"),
+            (11, "div"),
+            (12, "#xy")
+        ])
+    );
+}
+
+#[test]
+fn formatting_real_open_slot_exhaustion_retains_pending_recipe_and_sticky_first_stop() {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<b>x"), limits(2));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut failed = false;
+    for _ in 0..100 {
+        if driver.step().is_err() {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    let first = driver.control.stop();
+    assert!(first.is_some());
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(state.formatting_pending.is_some());
+    assert_eq!(state.formatting.len(), 0);
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), first);
+    let mut retained = Some(driver);
+    assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
+    let driver = retained.as_mut().unwrap();
+    driver.release().unwrap();
+    assert_eq!(driver.control.stop(), first);
+    assert_released(&driver.control);
+}
+
+#[test]
+fn formatting_cancellation_reclaims_original_recipes_and_native_replays() {
+    let request =
+        crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p><b a=x>1</p>2"), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    request.cancellation().cancel();
+    let mut retained = Some(driver);
+    assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
+    let driver = retained.as_mut().unwrap();
+    assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn formatting_replay_preserves_literal_utf16_pairs_and_isolated_surrogates() {
+    let mut units = "<p><b data-v='".encode_utf16().collect::<Vec<_>>();
+    units.extend([0xd800, 0xd83d, 0xde00, 0xdc00]);
+    units.extend("'>1</p>2".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document.root().children().next().unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let p = document.node(&body).unwrap().children().next().unwrap();
+    let old = document.node(&p).unwrap().children().next().unwrap();
+    let new = document.node(&body).unwrap().children().nth(1).unwrap();
+    for id in [&old, &new] {
+        let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+            panic!("actual formatting element")
+        };
+        assert_eq!(
+            element
+                .attributes()
+                .iter()
+                .next()
+                .unwrap()
+                .value()
+                .code_units(),
+            &[0xd800, 0xd83d, 0xde00, 0xdc00]
+        );
+    }
+    assert_ne!(old, new);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
+    let source = HtmlSource::utf8("<html><p><span>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let old = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    let before = c.usage().clone();
+    kernel.replace_stack(1, &replacement, &mut c).unwrap();
+    // Kernel identity/open preflight, actual target index, and get_mut slot.
+    assert_eq!(
+        c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+        3
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
+        1
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+        2 * size_of::<ParserNode>() as u64
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
+        1
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
+        0
+    );
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        2
+    );
+    let current = kernel.current(&mut c).unwrap();
+    assert!(
+        kernel
+            .session
+            .same_node(&mut c, &current, &replacement)
+            .unwrap()
+    );
+    let parent = kernel
+        .session
+        .parent(&mut c, &replacement)
+        .unwrap()
+        .unwrap();
+    assert!(kernel.session.same_node(&mut c, &parent, &old).unwrap());
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn formatting_noah_replay_keeps_each_retained_original_attribute_order() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<p><b a=1 b=2><b b=2 a=1><b a=1 b=2><b b=2 a=1>1</p>2"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document.root().children().next().unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let mut id = document.node(&body).unwrap().children().nth(1).unwrap();
+    for expected in [["b", "a"], ["a", "b"], ["b", "a"]] {
+        let node = document.node(&id).unwrap();
+        let HtmlNodeKind::Element(element) = node.kind() else {
+            panic!("actual replay")
+        };
+        let names = element
+            .attributes()
+            .iter()
+            .map(|attribute| attribute.name().local_name().code_units().to_vec())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            expected
+                .into_iter()
+                .map(|name| name.encode_utf16().collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        );
+        id = node.children().next().unwrap();
+    }
+    let HtmlNodeKind::Text(text) = document.node(&id).unwrap().kind() else {
+        panic!("reconstructed descendant text")
+    };
+    assert_eq!(text.code_units(), &[b'2' as u16]);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn formatting_nested_a_diagnostic_cap_stops_before_adoption_or_second_creation() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><a>1<a id=kept>2"),
+        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut stopped = false;
+    for _ in 0..100 {
+        if driver.step().is_err() {
+            stopped = true;
+            break;
+        }
+    }
+    assert!(stopped);
+    let first = driver.control.stop();
+    assert!(first.is_some());
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.formatting.len(), 1);
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+    assert!(state.formatting_pending.is_none());
+    let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+        panic!("original nested a input")
+    };
+    assert_eq!(
+        tag.attributes.as_slice()[0].value.value.text().code_units(),
+        "kept".encode_utf16().collect::<Vec<_>>()
+    );
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), first);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn formatting_after_body_and_after_after_body_whitespace_delegates_to_real_body_reconstruction() {
+    for source in ["<p><b>1</p></body> ", "<p><b>1</p></body></html> "] {
+        assert_eq!(
+            formatting_outline(source),
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "p"),
+                (3, "b"),
+                (4, "#1"),
+                (2, "b"),
+                (3, "# ")
+            ])
         );
     }
 }

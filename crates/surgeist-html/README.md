@@ -508,11 +508,23 @@ ordinary InBody and trailing body modes. It handles block, heading, list, ruby,
 void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
-stored head entry by identity and restores the actual insertion mode. Formatting,
-forms, table/select/frameset transitions, templates and foreign dispatch retain
+stored head entry by identity and restores the actual insertion mode. Forms,
+table/select/frameset transitions, templates and foreign dispatch retain
 untouched-token continuations when their required machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
 unfinished lifecycle state; these private operations produce no public parse report.
+
+Ordinary formatting starts and ends now use the active-formatting list, Noah
+rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
+the actual original tag into independently owned controlled storage, preserving
+attributes and origins while giving each new element a distinct identity.
+Applet and marquee establish real list markers; object retains its form
+continuation. The sole parser controller admits recipe retention, replay,
+comparisons, stack/list mutations and coherent child moves before their effects.
+Child transfer can stop after a coherent partial move; a terminal failure still
+prevents publication. Work is finite and polled, with potentially quadratic
+comparison and tree-order/depth maintenance costs. This checkpoint makes no
+linear-time or complete parser-accounting claim.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.

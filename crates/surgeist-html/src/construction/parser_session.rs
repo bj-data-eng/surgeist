@@ -101,6 +101,24 @@ pub(crate) struct ParserArenaSession {
     storage: Option<SessionStorage>,
 }
 
+/// Original lexical creation record, not an alias of installed arena backing.
+/// Only this arena can issue it; every replay copies into independent tickets.
+pub(crate) struct FormattingCreation {
+    token: Option<Tag>,
+    source: crate::HtmlSourceRange,
+    control: ControlIdentity,
+    arena: Weak<Identity>,
+}
+
+impl FormattingCreation {
+    /// Borrowed disposal retains originals on any preflight rejection. Once a
+    /// destructive disposal begins, newly observed stops complete reclamation.
+    pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+        cleanup_owner(control, &self.control)?;
+        release_formatting_tag(&mut self.token, control)
+    }
+}
+
 struct SessionStorage {
     control: ControlIdentity,
     standalone_ineligibility: Option<StandaloneUnsupported>,
@@ -1921,6 +1939,175 @@ impl SessionStorage {
 /// Borrowed transitions retain the owner on every failure, including terminal
 /// stops. Storage is absent only after successful freeze or explicit cleanup.
 impl ParserArenaSession {
+    /// Retains the actual fourteen ordinary formatting-start token families.
+    /// Marker wrappers use ordinary allocation and never manufacture a recipe.
+    pub(crate) fn retain_formatting_creation(
+        &mut self,
+        control: &mut ParseControl,
+        input: &mut Option<Tag>,
+        source: crate::HtmlSourceRange,
+    ) -> Result<FormattingCreation, SessionError> {
+        self.validate_standalone_document(control)?;
+        control.require_source_range(&source)?;
+        let tag = input.as_ref().ok_or(SessionError::Consumed)?;
+        check_formatting_tag(control, tag, &source)?;
+        let mut formatting = false;
+        for local in [
+            "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong",
+            "tt", "u",
+        ] {
+            if exact_ascii(control, Some(tag.name.value.text()), local)? {
+                formatting = true;
+                break;
+            }
+        }
+        if !formatting {
+            return Err(SessionError::WrongToken);
+        }
+        // Every fallible admission precedes the original token take.
+        control.charge(WorkCategory::ProviderCall, 2)?;
+        payload_write::<FormattingCreation>(control, 1)?;
+        let arena = Arc::downgrade(&self.active()?.identity);
+        let owner = control.identity();
+        let tag = take_payload(input, control)?;
+        Ok(FormattingCreation {
+            token: Some(tag),
+            source,
+            control: owner,
+            arena,
+        })
+    }
+
+    fn require_formatting_creation<'a>(
+        &self,
+        control: &mut ParseControl,
+        creation: &'a FormattingCreation,
+    ) -> Result<&'a Tag, SessionError> {
+        let storage = self.active()?;
+        storage.require(control)?;
+        control.require_identity(&creation.control)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if creation.arena.as_ptr() != Arc::as_ptr(&storage.identity) {
+            return Err(SessionError::ForeignNode);
+        }
+        control.require_source_range(&creation.source)?;
+        let tag = creation.token.as_ref().ok_or(SessionError::Consumed)?;
+        check_formatting_tag(control, tag, &creation.source)?;
+        Ok(tag)
+    }
+
+    /// Creates a detached native element for the original token. The caller
+    /// supplies the actual source-required intended parent, not current-node
+    /// inference. Partial copied payloads remain in this arena or are disposed.
+    pub(crate) fn create_formatting_from_creation(
+        &mut self,
+        control: &mut ParseControl,
+        creation: &FormattingCreation,
+        intended_parent: &ParserNode,
+    ) -> Result<ParserNode, SessionError> {
+        self.validate_standalone_document(control)?;
+        let storage = self.active()?;
+        let parent = storage.index(control, intended_parent)?;
+        storage.container(control, parent)?;
+        if storage.associated_document_parent(control, parent)? {
+            return Err(control
+                .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
+                .into());
+        }
+        let tag = self.require_formatting_creation(control, creation)?;
+        let mut copy = Some(copy_formatting_tag(control, tag)?);
+        match self.allocate_html_tag(control, &mut copy) {
+            Ok(node) => Ok(node),
+            Err(error) => {
+                // Preconsumption failure still owns the actual independent
+                // copy; postconsumption failure owns it in the arena registry.
+                discard_formatting_tag(&mut copy, control)?;
+                Err(error)
+            }
+        }
+    }
+
+    /// Noah equality compares parsed attributes as created, independent of
+    /// order. This closed issuer uses HTML elements and no-namespace parsed
+    /// attribute names; prefixes/colon units are not reinterpreted namespaces.
+    pub(crate) fn same_formatting_creation(
+        &self,
+        control: &mut ParseControl,
+        left: &FormattingCreation,
+        right: &FormattingCreation,
+    ) -> Result<bool, SessionError> {
+        let left = self.require_formatting_creation(control, left)?;
+        let right = self.require_formatting_creation(control, right)?;
+        if !exact_string_equal(control, left.name.value.text(), right.name.value.text())? {
+            return Ok(false);
+        }
+        control.charge(WorkCategory::RecordVisit, 2)?;
+        if left.attributes.len() != right.attributes.len() {
+            return Ok(false);
+        }
+        for left_attribute in left.attributes.as_slice() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let mut found = false;
+            for right_attribute in right.attributes.as_slice() {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if exact_string_equal(
+                    control,
+                    left_attribute.name.value.text(),
+                    right_attribute.name.value.text(),
+                )? {
+                    if !exact_string_equal(
+                        control,
+                        left_attribute.value.value.text(),
+                        right_attribute.value.value.text(),
+                    )? {
+                        return Ok(false);
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Ordered, individually atomic moves. Each committed prefix has coherent
+    /// backlinks; a stopped suffix remains owned by its original parent. The
+    /// existing move scans/orders/depth are repeated, so cost can be quadratic.
+    pub(crate) fn reparent_children(
+        &mut self,
+        control: &mut ParseControl,
+        from: &ParserNode,
+        to: &ParserNode,
+    ) -> Result<(), SessionError> {
+        let storage = self.active()?;
+        let source = storage.index(control, from)?;
+        let destination = storage.index(control, to)?;
+        storage.container(control, source)?;
+        storage.container(control, destination)?;
+        if source == destination {
+            return Err(SessionError::Cycle);
+        }
+        // A destination inside a source child cannot accept all those children.
+        // Detect that impossible transfer before moving any earlier siblings.
+        storage.depth(control, destination, Some((source, Some(destination))))?;
+        loop {
+            let storage = self.active()?;
+            storage.require(control)?;
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if storage.records[source].children.is_empty() {
+                return Ok(());
+            }
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            let index = storage.records[source].children[0];
+            let child = storage.node(control, index)?;
+            self.insert(control, to, &child, None)?;
+        }
+    }
+
     pub(crate) fn validate_standalone_document(
         &self,
         control: &mut ParseControl,
@@ -3031,6 +3218,197 @@ fn literal_string(
     }
     Ok(buffer.freeze(control)?)
 }
+
+fn check_formatting_text(
+    control: &mut ParseControl,
+    text: &Text,
+    source: &crate::HtmlSourceRange,
+) -> Result<(), SessionError> {
+    control.require_document_string(text.value.allocation(), text.value.text())?;
+    text.origins.require_disposal_owner(control)?;
+    control.charge(WorkCategory::ProviderCall, 1)?;
+    if Arc::strong_count(text.value.text().backing()) != 1 {
+        return Err(SessionError::AliasedPayload);
+    }
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    let len = text.value.text().len();
+    let mut covered = 0;
+    for origin in text.origins.as_slice() {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.require_source_range(&origin.source)?;
+        if origin.start != covered
+            || origin.end <= origin.start
+            || origin.end > len
+            || origin.source.start() < source.start()
+            || origin.source.end() > source.end()
+        {
+            return Err(SessionError::OriginSplitUnavailable);
+        }
+        covered = origin.end;
+    }
+    if covered != len {
+        return Err(SessionError::OriginSplitUnavailable);
+    }
+    Ok(())
+}
+fn check_formatting_tag(
+    control: &mut ParseControl,
+    tag: &Tag,
+    source: &crate::HtmlSourceRange,
+) -> Result<(), SessionError> {
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    if tag.kind != TagKind::Start {
+        return Err(SessionError::WrongToken);
+    }
+    check_formatting_text(control, &tag.name, source)?;
+    lowercase_token_name(control, tag.name.value.text())?;
+    tag.attributes.require_disposal_owner(control)?;
+    for (index, attribute) in tag.attributes.as_slice().iter().enumerate() {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        check_formatting_text(control, &attribute.name, source)?;
+        check_formatting_text(control, &attribute.value, source)?;
+        lowercase_token_name(control, attribute.name.value.text())?;
+        control.require_source_range(&attribute.source)?;
+        if attribute.source.start() < source.start() || attribute.source.end() > source.end() {
+            return Err(SessionError::OriginSplitUnavailable);
+        }
+        // Pair matching for Noah relies on actual unique parsed names, not the
+        // token's duplicate-recovery flag or an untrusted counter substitute.
+        for earlier in &tag.attributes.as_slice()[..index] {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if exact_string_equal(
+                control,
+                earlier.name.value.text(),
+                attribute.name.value.text(),
+            )? {
+                return Err(SessionError::DuplicateAttribute);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn copy_formatting_text(control: &mut ParseControl, text: &Text) -> Result<Text, SessionError> {
+    let mut value = Utf16Buffer::new(control)?;
+    let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
+    let copied = (|| {
+        // The concrete buffer copies/polls bounded real slices; no scalar or
+        // lossy conversion, lexical scan or implicit Arc alias is introduced.
+        value.extend_units(text.value.text().code_units(), control)?;
+        for origin in text.origins.as_slice() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(WorkCategory::ProviderCall, 1)?;
+            payload_write::<TextOrigin>(control, 1)?;
+            origins.try_push(
+                control,
+                TextOrigin {
+                    start: origin.start,
+                    end: origin.end,
+                    source: origin.source.clone(),
+                    kind: origin.kind,
+                },
+            )?;
+        }
+        payload_write::<Text>(control, 1)
+    })();
+    if let Err(error) = copied {
+        value.release(control)?;
+        origins.release(control)?;
+        return Err(error);
+    }
+    match value.freeze(control) {
+        Ok(value) => Ok(Text { value, origins }),
+        Err(stop) => {
+            origins.release(control)?;
+            Err(stop.into())
+        }
+    }
+}
+fn copy_formatting_tag(control: &mut ParseControl, tag: &Tag) -> Result<Tag, SessionError> {
+    let name = copy_formatting_text(control, &tag.name)?;
+    let mut attributes = OwnedVec::new(HtmlParseResource::TokenAttributes)?;
+    let copied = (|| {
+        for original in tag.attributes.as_slice() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let name = copy_formatting_text(control, &original.name)?;
+            let value = match copy_formatting_text(control, &original.value) {
+                Ok(value) => value,
+                Err(error) => {
+                    name.release(control)?;
+                    return Err(error);
+                }
+            };
+            let admission = (|| {
+                control.charge(WorkCategory::ProviderCall, 1)?;
+                payload_write::<crate::parser::tokenizer::token::Attribute>(control, 1)
+            })();
+            if let Err(error) = admission {
+                name.release(control)?;
+                value.release(control)?;
+                return Err(error);
+            }
+            let attribute = crate::parser::tokenizer::token::Attribute {
+                name,
+                value,
+                source: original.source.clone(),
+            };
+            if let Err((stop, attribute)) = attributes.try_push_recover(control, attribute) {
+                attribute.name.release(control)?;
+                attribute.value.release(control)?;
+                return Err(stop.into());
+            }
+        }
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        payload_write::<Tag>(control, 1)
+    })();
+    if let Err(error) = copied {
+        name.release(control)?;
+        release_token_attributes(attributes, control)?;
+        return Err(error);
+    }
+    Ok(Tag {
+        kind: TagKind::Start,
+        name,
+        self_closing: tag.self_closing,
+        attributes,
+        had_duplicate_attributes: tag.had_duplicate_attributes,
+    })
+}
+
+fn release_formatting_tag(
+    input: &mut Option<Tag>,
+    control: &mut ParseControl,
+) -> Result<(), SessionError> {
+    cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+    let Some(tag) = input.as_ref() else {
+        return Ok(());
+    };
+    check_disposal_text(control, &tag.name)?;
+    tag.attributes.require_disposal_owner(control)?;
+    for attribute in tag.attributes.as_slice() {
+        cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+        check_disposal_text(control, &attribute.name)?;
+        check_disposal_text(control, &attribute.value)?;
+    }
+    if control.stop().is_none() {
+        payload_write::<Option<Tag>>(control, 2)?;
+    }
+    let tag = input.take().expect("checked original formatting token");
+    tag.name.release(control)?;
+    release_token_attributes(tag.attributes, control)
+}
+fn discard_formatting_tag(
+    input: &mut Option<Tag>,
+    control: &mut ParseControl,
+) -> Result<(), SessionError> {
+    match release_formatting_tag(input, control) {
+        Err(_) if control.stop().is_some() && input.is_some() => {
+            release_formatting_tag(input, control)
+        }
+        Err(_) if control.stop().is_some() && input.is_none() => Ok(()),
+        result => result,
+    }
+}
 fn check_text_source(control: &mut ParseControl, text: &Text) -> Result<(), SessionError> {
     for origin in text.origins.as_slice() {
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -3806,6 +4184,794 @@ fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn formatting_lexical_tag(
+        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        c: &mut ParseControl,
+    ) -> (Option<Tag>, crate::HtmlSourceRange) {
+        loop {
+            match tokenizer.next(c, false).unwrap().expect("actual token") {
+                crate::parser::tokenizer::token::Event::Token(event) => {
+                    let token = event.into_token(c).unwrap();
+                    let TokenKind::Tag(tag) = token.kind else {
+                        panic!("expected real tag")
+                    };
+                    return (Some(tag), token.source);
+                }
+                event => event.release(c).unwrap(),
+            }
+        }
+    }
+    fn formatting_parent(c: &mut ParseControl, session: &mut ParserArenaSession) -> ParserNode {
+        let root = session.root(c).unwrap();
+        let html = session.allocate_implicit_html(c).unwrap();
+        session.insert(c, &root, &html, None).unwrap();
+        let body = session.allocate_implicit_body(c).unwrap();
+        session.insert(c, &html, &body, None).unwrap();
+        body
+    }
+    #[test]
+    fn formatting_replay_copies_exact_utf16_attributes_and_original_origins_into_distinct_nodes() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
+            "<b z='A&#x1F600;\r\n"
+                .encode_utf16()
+                .chain([0xd800])
+                .chain("' a=x>".encode_utf16())
+                .collect::<Vec<_>>(),
+        ));
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let parent = formatting_parent(&mut c, &mut session);
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        tokenizer.release(&mut c).unwrap();
+        let original_pointer = input
+            .as_ref()
+            .unwrap()
+            .name
+            .value
+            .text()
+            .code_units()
+            .as_ptr();
+        let original_origins = input.as_ref().unwrap().attributes.as_slice()[0]
+            .value
+            .origins
+            .as_slice()
+            .iter()
+            .map(|o| (o.start, o.end, o.source.clone(), o.kind))
+            .collect::<Vec<_>>();
+        let mut creation = session
+            .retain_formatting_creation(&mut c, &mut input, range)
+            .unwrap();
+        assert!(input.is_none());
+        let first = session
+            .create_formatting_from_creation(&mut c, &creation, &parent)
+            .unwrap();
+        let second = session
+            .create_formatting_from_creation(&mut c, &creation, &parent)
+            .unwrap();
+        assert!(!session.same_node(&mut c, &first, &second).unwrap());
+        session.insert(&mut c, &parent, &first, None).unwrap();
+        session.insert(&mut c, &parent, &second, None).unwrap();
+        for node in [&first, &second] {
+            let storage = session.active().unwrap();
+            let HtmlNodeKind::Element(element) = &storage.records[node.index].kind else {
+                panic!("element")
+            };
+            assert_ne!(
+                element.name().local_name().code_units().as_ptr(),
+                original_pointer
+            );
+            assert_eq!(element.name().namespace(), &Namespace::html());
+            let attributes = element.attributes().as_slice();
+            assert_eq!(attributes[0].name().local_name().code_units(), [122]);
+            assert_eq!(attributes[0].name().namespace(), &Namespace::none());
+            assert_eq!(
+                attributes[0].value().code_units(),
+                [65, 0xd83d, 0xde00, 10, 0xd800]
+            );
+            assert_eq!(attributes[1].name().local_name().code_units(), [97]);
+            let origins = storage.payloads.values.iter().find_map(|payload| match payload {
+                RetainedPayload::String { origins:Some(origins),location:StringLocation::AttributeValue(container,0),.. }
+                    if matches!(&storage.payloads.values[*container],RetainedPayload::Attributes(Some(AttributeStorage::Frozen {element:Some(index),..})) if *index==node.index) => Some(origins.as_slice()),
+                _ => None,
+            }).expect("actual attribute origins");
+            let observed = origins
+                .iter()
+                .map(|o| (o.start, o.end, o.source.clone(), o.kind))
+                .collect::<Vec<_>>();
+            assert_eq!(observed, original_origins);
+        }
+        creation.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            0
+        );
+        let mut arena = session.freeze(&mut c).unwrap();
+        assert!(arena.document().is_some());
+        arena.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::ManagedNodes).current,
+            5
+        );
+    }
+
+    #[test]
+    fn formatting_noah_ignores_attribute_order_duplicate_recovery_and_self_closing_but_preserves_exact_values()
+     {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source =
+            crate::HtmlSource::utf8("<b a=x z=y><b z=y a=x a=ignored /><b a=x z=Y><i z=y a=x>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut first, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        let mut a = session
+            .retain_formatting_creation(&mut c, &mut first, range)
+            .unwrap();
+        let (mut second, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        assert!(second.as_ref().unwrap().had_duplicate_attributes);
+        assert!(second.as_ref().unwrap().self_closing);
+        let mut b = session
+            .retain_formatting_creation(&mut c, &mut second, range)
+            .unwrap();
+        let (mut third, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        let mut different_value = session
+            .retain_formatting_creation(&mut c, &mut third, range)
+            .unwrap();
+        let (mut fourth, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        let mut different_name = session
+            .retain_formatting_creation(&mut c, &mut fourth, range)
+            .unwrap();
+        tokenizer.release(&mut c).unwrap();
+        assert!(session.same_formatting_creation(&mut c, &a, &b).unwrap());
+        assert!(
+            !session
+                .same_formatting_creation(&mut c, &a, &different_value)
+                .unwrap()
+        );
+        assert!(
+            !session
+                .same_formatting_creation(&mut c, &a, &different_name)
+                .unwrap()
+        );
+        a.release(&mut c).unwrap();
+        b.release(&mut c).unwrap();
+        different_value.release(&mut c).unwrap();
+        different_name.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn formatting_capture_rejects_alias_and_wrong_family_without_consuming_original() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<b a=x><applet>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        let alias = input.as_ref().unwrap().name.value.text().clone();
+        assert!(matches!(
+            session.retain_formatting_creation(&mut c, &mut input, range.clone()),
+            Err(SessionError::AliasedPayload)
+        ));
+        assert!(input.is_some());
+        assert_eq!(c.stop(), None);
+        drop(alias);
+        let mut creation = session
+            .retain_formatting_creation(&mut c, &mut input, range)
+            .unwrap();
+        let (mut wrapper, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        assert!(matches!(
+            session.retain_formatting_creation(&mut c, &mut wrapper, range),
+            Err(SessionError::WrongToken)
+        ));
+        assert!(wrapper.is_some());
+        discard_formatting_tag(&mut wrapper, &mut c).unwrap();
+        creation.release(&mut c).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn formatting_replay_rejects_foreign_arena_and_parent_before_new_payload_admission() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<b a=x>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let parent = formatting_parent(&mut c, &mut session);
+        let mut other =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let other_parent = other.root(&mut c).unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        tokenizer.release(&mut c).unwrap();
+        let mut creation = session
+            .retain_formatting_creation(&mut c, &mut input, range)
+            .unwrap();
+        let before = c.usage().resource(HtmlParseResource::ManagedNodes).current;
+        assert!(matches!(
+            other.create_formatting_from_creation(&mut c, &creation, &other_parent),
+            Err(SessionError::ForeignNode)
+        ));
+        assert!(matches!(
+            session.create_formatting_from_creation(&mut c, &creation, &other_parent),
+            Err(SessionError::ForeignNode)
+        ));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::ManagedNodes).current,
+            before
+        );
+        assert!(creation.token.is_some());
+        let node = session
+            .create_formatting_from_creation(&mut c, &creation, &parent)
+            .unwrap();
+        session.insert(&mut c, &parent, &node, None).unwrap();
+        creation.release(&mut c).unwrap();
+        other.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn formatting_replay_token_attribute_coexistence_exact_and_one_short_reclaims_only_copies() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        for cap in [3, 4] {
+            let source = crate::HtmlSource::utf8("<b a=x z=y>");
+            let mut c = ParseControl::new(
+                limits()
+                    .into_builder()
+                    .token_attributes(cap)
+                    .finish()
+                    .unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let parent = formatting_parent(&mut c, &mut session);
+            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+            tokenizer.release(&mut c).unwrap();
+            let mut creation = session
+                .retain_formatting_creation(&mut c, &mut input, range)
+                .unwrap();
+            let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
+            if cap == 3 {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::TokenAttributes,
+                        limit: 3,
+                        current: 3,
+                        requested_delta: 1
+                    }))
+                ));
+                assert!(session.freeze(&mut c).is_err());
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::BufferedUtf16Units)
+                        .current,
+                    5
+                );
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                    3
+                );
+            } else {
+                let node = result.unwrap();
+                session.insert(&mut c, &parent, &node, None).unwrap();
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::TokenAttributes)
+                        .high_water,
+                    4
+                );
+            }
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::TokenAttributes)
+                    .current,
+                2
+            );
+            let stop = c.stop();
+            creation.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), stop);
+        }
+    }
+
+    #[test]
+    fn formatting_recipe_terminal_cancel_and_foreign_disposal_preserve_owner_then_reclaim_once() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<b a=x>");
+        let cancel = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancel.clone());
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let parent = formatting_parent(&mut c, &mut session);
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        tokenizer.release(&mut c).unwrap();
+        let mut creation = session
+            .retain_formatting_creation(&mut c, &mut input, range)
+            .unwrap();
+        let mut foreign = control();
+        foreign.admit_source(&source).unwrap();
+        assert!(creation.release(&mut foreign).is_err());
+        assert!(creation.token.is_some());
+        cancel.cancel();
+        assert!(matches!(
+            session.create_formatting_from_creation(&mut c, &creation, &parent),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        ));
+        let alias = creation.token.as_ref().unwrap().name.value.text().clone();
+        assert_eq!(creation.release(&mut c), Err(SessionError::AliasedPayload));
+        assert!(creation.token.is_some());
+        drop(alias);
+        creation.release(&mut c).unwrap();
+        creation.release(&mut c).unwrap();
+        assert!(session.freeze(&mut c).is_err());
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    }
+
+    #[test]
+    fn formatting_same_source_foreign_control_replay_preserves_both_arenas_and_original_recipe() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<b a=x>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let root = session.root(&mut c).unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        tokenizer.release(&mut c).unwrap();
+        let mut creation = session
+            .retain_formatting_creation(&mut c, &mut input, range)
+            .unwrap();
+        let mut foreign = control();
+        foreign.admit_source(&source).unwrap();
+        let mut other =
+            ParserArenaSession::new(&mut foreign, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let other_root = other.root(&mut foreign).unwrap();
+        assert!(matches!(
+            other.create_formatting_from_creation(&mut foreign, &creation, &other_root),
+            Err(SessionError::Stop(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::ForeignControl
+            )))
+        ));
+        assert_eq!(
+            foreign
+                .usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            0
+        );
+        assert_eq!(
+            foreign
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            1
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            3
+        );
+        assert_eq!(c.stop(), None);
+        assert!(creation.token.is_some());
+        other.release(&mut foreign).unwrap();
+        storage_zero(&foreign);
+        session
+            .create_formatting_from_creation(&mut c, &creation, &root)
+            .unwrap();
+        creation.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn formatting_child_transfer_preserves_existing_destination_order_and_backlinks() {
+        let mut c = control();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let parent = formatting_parent(&mut c, &mut session);
+        let from = session.allocate_implicit_p(&mut c).unwrap();
+        let to = session.allocate_implicit_p(&mut c).unwrap();
+        session.insert(&mut c, &parent, &from, None).unwrap();
+        session.insert(&mut c, &parent, &to, None).unwrap();
+        let existing = session.allocate_implicit_p(&mut c).unwrap();
+        session.insert(&mut c, &to, &existing, None).unwrap();
+        let one = session.allocate_implicit_p(&mut c).unwrap();
+        let two = session.allocate_implicit_p(&mut c).unwrap();
+        session.insert(&mut c, &from, &one, None).unwrap();
+        session.insert(&mut c, &from, &two, None).unwrap();
+        let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
+        session.reparent_children(&mut c, &from, &to).unwrap();
+        assert!(
+            session.active().unwrap().records[from.index]
+                .children
+                .is_empty()
+        );
+        assert_eq!(
+            session.active().unwrap().records[to.index].children,
+            [existing.index, one.index, two.index]
+        );
+        for child in [&existing, &one, &two] {
+            let actual_parent = session.parent(&mut c, child).unwrap().unwrap();
+            assert!(session.same_node(&mut c, &actual_parent, &to).unwrap());
+        }
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::ManagedEdges).current,
+            edges
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            session.active().unwrap().records.len() as u64
+                + session.active().unwrap().payloads.values.len() as u64
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn formatting_namespace_copy_exact_and_one_short_buffer_limit_retains_original_and_staged_name()
+    {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // Original b needs one unit. Replay's copied name moves to Managed
+        // before the defining 28-unit HTML namespace is buffered: peak 1+28.
+        for cap in [28, 29] {
+            let source = crate::HtmlSource::utf8("<b>");
+            let mut c = ParseControl::new(
+                limits()
+                    .into_builder()
+                    .buffered_utf16_units(cap)
+                    .finish()
+                    .unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let parent = session.root(&mut c).unwrap();
+            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+            tokenizer.release(&mut c).unwrap();
+            let mut creation = session
+                .retain_formatting_creation(&mut c, &mut input, range)
+                .unwrap();
+            let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
+            if cap == 28 {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::BufferedUtf16Units,
+                        limit: 28,
+                        current: 28,
+                        requested_delta: 1
+                    }))
+                ));
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                    1
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .current,
+                    1
+                );
+                assert!(session.freeze(&mut c).is_err());
+            } else {
+                assert!(result.is_ok());
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .current,
+                    29
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::BufferedUtf16Units)
+                        .high_water,
+                    29
+                );
+            }
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::BufferedUtf16Units)
+                    .current,
+                1
+            );
+            let stop = c.stop();
+            creation.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), stop);
+        }
+    }
+
+    #[test]
+    fn formatting_capture_one_short_ordinary_document_qualification_preserves_original_before_take()
+    {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // Qualification reads the real eligibility and root-kind records as
+        // one two-credit admission. One short admits neither; exactly two
+        // completes that check but cannot admit the next source-range visit.
+        for remaining in [1, 2] {
+            let source = crate::HtmlSource::utf8("<b>");
+            let mut c = control();
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+            tokenizer.release(&mut c).unwrap();
+            let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(
+                WorkCategory::StateStep,
+                limits().work_credits() - work - remaining,
+            )
+            .unwrap();
+            let before = c.usage().work(WorkCategory::RecordVisit);
+            assert!(matches!(
+                session.retain_formatting_creation(&mut c, &mut input, range),
+                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    ..
+                }))
+            ));
+            assert!(input.is_some());
+            assert_eq!(
+                c.usage().work(WorkCategory::RecordVisit) - before,
+                if remaining == 2 { 2 } else { 0 }
+            );
+            let stop = c.stop();
+            discard_formatting_tag(&mut input, &mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), stop);
+        }
+    }
+
+    #[test]
+    fn formatting_wide_replay_source_map_coexistence_exact_and_one_short_reclaims_partial_copies() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // Real b/v/512 literal x values have 514 original codepoint origins.
+        // Independent replay retains them and needs 514 new origin records.
+        for cap in [1027, 1028] {
+            let source = crate::HtmlSource::utf8(format!("<b v='{}'>", "x".repeat(512)));
+            let mut c = ParseControl::new(
+                limits()
+                    .into_builder()
+                    .buffered_utf16_units(2000)
+                    .source_map_entries(cap)
+                    .work_credits(100_000_000)
+                    .finish()
+                    .unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let parent = session.root(&mut c).unwrap();
+            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+            tokenizer.release(&mut c).unwrap();
+            let mut creation = session
+                .retain_formatting_creation(&mut c, &mut input, range)
+                .unwrap();
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::SourceMapEntries)
+                    .current,
+                514
+            );
+            let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
+            if cap == 1027 {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::SourceMapEntries,
+                        limit: 1027,
+                        current: 1027,
+                        requested_delta: 1
+                    }))
+                ));
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::SourceMapEntries)
+                        .current,
+                    514
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::BufferedUtf16Units)
+                        .current,
+                    514
+                );
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                    1
+                );
+                assert!(session.freeze(&mut c).is_err());
+            } else {
+                assert!(result.is_ok());
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::SourceMapEntries)
+                        .current,
+                    1028
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::SourceMapEntries)
+                        .high_water,
+                    1028
+                );
+            }
+            let stop = c.stop();
+            creation.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), stop);
+        }
+    }
+
+    #[test]
+    fn formatting_capture_foreign_source_and_replay_import_refusal_leave_original_recipe_owned() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<b a=x>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let parent = session.root(&mut c).unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        tokenizer.release(&mut c).unwrap();
+        let mut creation = session
+            .retain_formatting_creation(&mut c, &mut input, range)
+            .unwrap();
+        session.allocate_element(&mut c, html("div")).unwrap();
+        assert!(matches!(
+            session.create_formatting_from_creation(&mut c, &creation, &parent),
+            Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Provenance
+            )))
+        ));
+        assert!(creation.token.is_some());
+        creation.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, _range) = formatting_lexical_tag(&mut tokenizer, &mut c);
+        tokenizer.release(&mut c).unwrap();
+        let foreign = crate::HtmlSource::utf8("<b a=x>").range(0, 7).unwrap();
+        assert!(
+            session
+                .retain_formatting_creation(&mut c, &mut input, foreign)
+                .is_err()
+        );
+        assert!(input.is_some());
+        discard_formatting_tag(&mut input, &mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn formatting_child_transfer_stops_with_an_ordered_coherent_prefix_and_reclaims_all_scratch() {
+        let mut observed_partial = false;
+        for remaining in (0..=1536).step_by(32) {
+            let mut c = control();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let parent = formatting_parent(&mut c, &mut session);
+            let from = session.allocate_implicit_p(&mut c).unwrap();
+            let to = session.allocate_implicit_p(&mut c).unwrap();
+            session.insert(&mut c, &parent, &from, None).unwrap();
+            session.insert(&mut c, &parent, &to, None).unwrap();
+            let one = session.allocate_implicit_p(&mut c).unwrap();
+            let two = session.allocate_implicit_p(&mut c).unwrap();
+            session.insert(&mut c, &from, &one, None).unwrap();
+            session.insert(&mut c, &from, &two, None).unwrap();
+            let before_nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
+            let before_edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
+            let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(
+                WorkCategory::StateStep,
+                limits().work_credits() - work - remaining,
+            )
+            .unwrap();
+            let result = session.reparent_children(&mut c, &from, &to);
+            let storage = session.active().unwrap();
+            let moved = storage.records[to.index].children.len();
+            let ordered = [one.index, two.index];
+            assert_eq!(storage.records[to.index].children, &ordered[..moved]);
+            assert_eq!(storage.records[from.index].children, &ordered[moved..]);
+            for (index, child) in ordered.iter().enumerate() {
+                assert_eq!(
+                    storage.records[*child].parent,
+                    Some(if index < moved { to.index } else { from.index })
+                );
+            }
+            observed_partial |= moved == 1;
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                before_nodes
+            );
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::ManagedEdges).current,
+                before_edges
+            );
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
+                storage.records.len() as u64 + storage.payloads.values.len() as u64
+            );
+            if result.is_err() {
+                assert!(session.freeze(&mut c).is_err());
+            }
+            let stop = c.stop();
+            if session.release(&mut c).is_err() {
+                assert!(c.stop().is_some());
+                session.release(&mut c).unwrap();
+            }
+            storage_zero(&c);
+            if let Some(stop) = stop {
+                assert_eq!(c.stop(), Some(stop));
+            }
+        }
+        assert!(
+            observed_partial,
+            "a real first-child commit must survive a later work stop"
+        );
+    }
     use crate::{Attribute, HtmlParseResource};
     use crate::{HtmlParseCancellation, HtmlParseLimits};
 

@@ -10,7 +10,7 @@
 // Adapted from selected ordinary body rows in tree_builder/rules.rs:
 // 356-541,558-602,616-630,693-731,796-813,842-873,880-892,947-1004,
 // 1466-1493,1563-1583; and tree_builder/mod.rs:1043-1223,1555-1585.
-// Formatting, forms, table/foreign creation and frameset transitions are
+// Forms, table/foreign creation and frameset transitions are
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
@@ -18,6 +18,7 @@
 
 use super::{
     KernelError, Scope, copy_node,
+    formatting::FORMATTING,
     head::{
         HeadBoundary, HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep, InsertionMode,
     },
@@ -103,7 +104,7 @@ const HEAD: &[&str] = &[
 const HEADING: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 
 impl HeadState<'_> {
-    fn token_in(
+    pub(super) fn token_in(
         &self,
         names: &[&'static str],
         c: &mut ParseControl,
@@ -144,7 +145,7 @@ impl HeadState<'_> {
         )?;
         Ok(Some((tag.kind, tag.self_closing)))
     }
-    fn frameset(&mut self, value: bool, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn frameset(&mut self, value: bool, c: &mut ParseControl) -> Result<(), HeadError> {
         write(size_of::<bool>(), 1, c)?;
         self.frameset_ok = value;
         Ok(())
@@ -248,8 +249,7 @@ impl HeadState<'_> {
                     c,
                 )?;
                 self.whitespace_pending = self.body_run.take().map(|run| run.text);
-                // This fresh family has consumed no formatting opener/marker;
-                // classification suspends before all such source rows.
+                self.reconstruct_formatting(c)?;
                 self.before
                     .kernel
                     .insert_text(&mut self.whitespace_pending, None, c)?;
@@ -382,18 +382,6 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<Option<HeadBoundary>, HeadError> {
         if kind == TagKind::End {
-            if self
-                .token_in(
-                    &[
-                        "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike",
-                        "strong", "tt", "u", "applet", "marquee", "object",
-                    ],
-                    c,
-                )?
-                .is_some()
-            {
-                return Ok(Some(HeadBoundary::Formatting));
-            }
             if self.token_in(&["form"], c)?.is_some() {
                 return Ok(Some(HeadBoundary::Form));
             }
@@ -403,13 +391,8 @@ impl HeadState<'_> {
             (&["template"][..], HeadBoundary::Template),
             (
                 &[
-                    "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike",
-                    "strong", "tt", "u", "applet", "marquee", "object",
+                    "form", "fieldset", "button", "input", "textarea", "output", "object",
                 ][..],
-                HeadBoundary::Formatting,
-            ),
-            (
-                &["form", "fieldset", "button", "input", "textarea", "output"][..],
                 HeadBoundary::Form,
             ),
             (&["select", "option", "optgroup"][..], HeadBoundary::Select),
@@ -586,7 +569,20 @@ impl HeadState<'_> {
             if self.token_in(HEAD, c)?.is_some() {
                 return Ok(Some(self.head_delegation(false, close, c)?));
             }
+            if self.token_in(FORMATTING, c)?.is_some() {
+                return Ok(Some(self.formatting_start(close, c)?));
+            }
+            if self.token_in(&["applet", "marquee"], c)?.is_some() {
+                return Ok(Some(self.marker_start(close, c)?));
+            }
             return self.body_start(source, close, c);
+        }
+        if self.token_in(FORMATTING, c)?.is_some() {
+            self.adoption(c)?;
+            return Ok(Some(self.discard(c)?));
+        }
+        if let Some(name) = self.token_in(&["applet", "marquee", "object"], c)? {
+            return Ok(Some(self.marker_end(name, c)?));
         }
         self.body_end(c)
     }
@@ -695,6 +691,7 @@ impl HeadState<'_> {
         } else if self.token_in(&["xmp", "iframe", "noembed"], c)?.is_some() {
             if self.token_in(&["xmp"], c)?.is_some() {
                 self.close_p_in_scope(c)?;
+                self.reconstruct_formatting(c)?;
             }
             if self.token_in(&["xmp", "iframe"], c)?.is_some() {
                 self.frameset(false, c)?;
@@ -730,15 +727,31 @@ impl HeadState<'_> {
             if self.token_in(&["hr"], c)?.is_some() {
                 self.close_p_in_scope(c)?;
             }
+            if self
+                .token_in(&["area", "br", "embed", "img", "keygen", "wbr"], c)?
+                .is_some()
+            {
+                self.reconstruct_formatting(c)?;
+            }
             self.insert_tag(c)?;
             self.before.kernel.pop(c)?;
             if affects {
                 self.frameset(false, c)?;
             }
             return Ok(Some(self.finish(c)?));
-        } else if let Some(name) = self.token_in(&["rb", "rtc", "rp", "rt"], c)?
-            && self.before.kernel.scoped_name("ruby", Scope::Default, c)?
-        {
+        } else if let Some(name) = self.token_in(&["rb", "rtc", "rp", "rt"], c)? {
+            self.ruby_start(name, c)?;
+        } else {
+            self.reconstruct_formatting(c)?;
+        }
+        self.insert_tag(c)?;
+        if close {
+            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+        }
+        Ok(Some(self.finish(c)?))
+    }
+    fn ruby_start(&mut self, name: &'static str, c: &mut ParseControl) -> Result<(), HeadError> {
+        if self.before.kernel.scoped_name("ruby", Scope::Default, c)? {
             self.before.kernel.implied_ends(
                 if matches!(name, "rp" | "rt") {
                     Some("rtc")
@@ -754,13 +767,9 @@ impl HeadState<'_> {
                 self.emit(HeadCondition::UnexpectedOpenElement, c)?;
             }
         }
-        self.insert_tag(c)?;
-        if close {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
-        }
-        Ok(Some(self.finish(c)?))
+        Ok(())
     }
-    fn token_matches_node(
+    pub(super) fn token_matches_node(
         &self,
         node: &ParserNode,
         c: &mut ParseControl,
@@ -896,6 +905,10 @@ impl HeadState<'_> {
             self.before.kernel.pop_through(&target, c)?;
             return Ok(Some(self.discard(c)?));
         }
+        self.generic_end(c)?;
+        Ok(Some(self.discard(c)?))
+    }
+    pub(super) fn generic_end(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         for index in (0..self.before.kernel.stack()?.len()).rev() {
             let node = self.before.kernel.at(index, c)?;
@@ -914,11 +927,11 @@ impl HeadState<'_> {
                     self.emit(HeadCondition::UnexpectedOpenElement, c)?;
                 }
                 self.before.kernel.pop_through(&node, c)?;
-                return Ok(Some(self.discard(c)?));
+                return Ok(());
             }
             if self.before.kernel.node_set(&node, NodeSet::Special, c)? {
                 self.emit(HeadCondition::UnexpectedEndTag, c)?;
-                return Ok(Some(self.discard(c)?));
+                return Ok(());
             }
         }
         Err(KernelError::EmptyStack.into())

@@ -14,6 +14,7 @@
 
 use super::{
     KernelError, LocationKernel, StackPush, copy_node,
+    formatting::FormattingEntry,
     prologue::{BeforeHead, Payload, PendingToken, PrologueError},
     tag_sets, write,
 };
@@ -57,6 +58,7 @@ pub(super) enum HeadCondition {
     UnexpectedBodyToken,
     NullInBody,
     UnexpectedOpenElement,
+    UnexpectedFormatting,
 }
 pub(super) struct HeadDiagnostic {
     pub(super) condition: HeadCondition,
@@ -68,7 +70,6 @@ pub(crate) enum HeadBoundary {
     AfterHead,
     Script,
     Template,
-    Formatting,
     Form,
     Select,
     Table,
@@ -97,6 +98,7 @@ pub(crate) enum HeadError {
     UnsupportedScriptPause,
     UnsupportedPendingScript,
     InvalidScriptNesting,
+    InvalidFormattingState,
 }
 impl std::fmt::Debug for HeadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -116,6 +118,7 @@ impl std::fmt::Debug for HeadError {
             Self::UnsupportedScriptPause => f.write_str("UnsupportedScriptPause"),
             Self::UnsupportedPendingScript => f.write_str("UnsupportedPendingScript"),
             Self::InvalidScriptNesting => f.write_str("InvalidScriptNesting"),
+            Self::InvalidFormattingState => f.write_str("InvalidFormattingState"),
         }
     }
 }
@@ -206,6 +209,9 @@ pub(super) struct HeadState<'source> {
     pub(super) temporary_head: Option<ParserNode>,
     pub(super) body_runs: Option<BodyTextRuns>,
     pub(super) body_run: Option<TextRun>,
+    pub(super) formatting: OwnedVec<FormattingEntry>,
+    pub(super) formatting_pending: Option<FormattingEntry>,
+    pub(super) formatting_removed: Option<FormattingEntry>,
     script: Option<StandaloneScriptState<'source>>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
@@ -245,19 +251,23 @@ impl<'source> HeadStage<'source> {
             .validate_head_handoff(source, c)?;
         let mut diagnostics = OwnedVec::new(HtmlParseResource::Diagnostics)?;
         let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let mut formatting = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         diagnostics.require_owner(c)?;
         lexical.require_owner(c)?;
-        // Three driver fields + seventeen state fields + caller BeforeHead and
+        formatting.require_owner(c)?;
+        // Three driver fields + twenty state fields + caller BeforeHead and
         // Tokenizer slots + the retained BeforeHead input slot are written.
-        // Admit all twenty-three field writes before the first owning take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 23, c) {
+        // Admit all twenty-six field writes before the first owning take.
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 26, c) {
             diagnostics.release(c)?;
             lexical.release(c)?;
+            formatting.release(c)?;
             return Err(stop.into());
         }
         if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
             diagnostics.release(c)?;
             lexical.release(c)?;
+            formatting.release(c)?;
             return Err(stop.into());
         }
         let mut before = before.take().expect("verified prologue continuation");
@@ -283,6 +293,9 @@ impl<'source> HeadStage<'source> {
                 temporary_head: None,
                 body_runs: None,
                 body_run: None,
+                formatting,
+                formatting_pending: None,
+                formatting_removed: None,
             }),
         })
     }
@@ -368,6 +381,7 @@ impl<'source> HeadStage<'source> {
             .capability
             .validate_session(c, &state.before.kernel.session)?;
         state.release_body(c)?;
+        state.release_formatting(c)?;
         if let Some(pending) = &mut state.pending {
             pending.release(c)?;
         }
@@ -411,6 +425,11 @@ impl<'source> HeadStage<'source> {
                 .as_mut()
                 .ok_or(KernelError::Consumed)?,
             HtmlParseResource::OpenElements,
+            c,
+        )?;
+        release_fixture_vector(
+            &mut state.formatting,
+            HtmlParseResource::AuxiliaryEntries,
             c,
         )?;
         release_fixture_vector(
@@ -583,6 +602,7 @@ impl<'source> HeadStage<'source> {
             text.release(c)?;
         }
         state.release_body(c)?;
+        state.release_formatting(c)?;
         state.before.kernel.release(c)?;
         if let Some(tokenizer) = state.tokenizer.take() {
             tokenizer.release(c)?;
@@ -594,6 +614,7 @@ impl<'source> HeadStage<'source> {
         state.before.whitespace.release(c)?;
         state.diagnostics.release(c)?;
         state.lexical.release(c)?;
+        state.formatting.release(c)?;
         Ok(())
     }
 }
@@ -749,6 +770,9 @@ impl HeadState<'_> {
         };
         write(size_of::<Option<Text>>(), 1, c)?;
         self.whitespace_pending = split_leading_ascii_whitespace(c, input)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        write(size_of::<bool>(), 1, c)?;
+        let empty = input.is_none();
         if self.whitespace_pending.is_some() {
             if mode == InsertionMode::BeforeHead {
                 write(size_of::<Option<Text>>(), 1, c)?;
@@ -761,13 +785,20 @@ impl HeadState<'_> {
                     return Err(stop.into());
                 }
             } else {
+                // These trailing rows explicitly process whitespace using the
+                // InBody rules while retaining their actual current mode.
+                if matches!(
+                    mode,
+                    InsertionMode::AfterBody | InsertionMode::AfterAfterBody
+                ) {
+                    self.reconstruct_formatting(c)?;
+                }
                 self.before
                     .kernel
                     .insert_text(&mut self.whitespace_pending, None, c)?;
             }
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        Ok(input.is_none())
+        Ok(empty)
     }
     pub(super) fn ordinary_node(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         let location = self.before.kernel.adjusted_location(None, c)?;
