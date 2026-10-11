@@ -298,3 +298,16 @@ preferences. Ordinary parent relations govern editability; source-defined
 heading-offset traversal separately crosses a shadow root to its captured host.
 This source selection implements no editing command, selection mutation,
 spelling service or JavaScript runtime.
+
+### HTML autocomplete credential recovery
+
+For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the
+[bounded WebAuthn edge determination](html-autocomplete-webauthn--877d6146487f.md)
+selects literal processing under the existing HTML revision. Bare `webauthn`
+is author-invalid but recovers successfully; `username webauthn` retains the
+terminal credential token as its processed field. The source's authored detail
+grammar and processing recovery remain separate. Exact field and IDL token
+casing follows HTML; the corroborating WebKit witness does not select blanket
+lowercasing. The recorded upstream defect remains unresolved by the selected
+edition. No browser-source excerpt, credential mediation or alternate
+compatibility mode is incorporated.

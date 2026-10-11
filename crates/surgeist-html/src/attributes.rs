@@ -1955,3 +1955,6 @@ impl HtmlValueInterpreter {
 
 mod scalar;
 pub use scalar::*;
+
+mod autocomplete;
+pub use autocomplete::*;

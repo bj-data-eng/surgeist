@@ -1,6 +1,6 @@
 # Exact source catalog
 
-352 retained source identities: 255 full documents/source witnesses, 90 partial witnesses, and 7 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes and discussion comments as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
+353 retained source identities: 255 full documents/source witnesses, 90 partial witnesses, and 8 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -482,3 +482,13 @@ This bounded source supplies only the finite vocabulary used by HTML referrer-po
 | Bounded witness | Complete original source | SHA-256 | Coverage |
 | --- | --- | --- | --- |
 | [execCommand editable definitions](execcommand-editability--85de9ff4a981.md) | [w3c/editing at 85de9ff4a9816139d06fc2dc39d5dacdc456fddc](https://github.com/w3c/editing/blob/85de9ff4a9816139d06fc2dc39d5dacdc456fddc/docs/execCommand/index.html) | da222a4ea70349eba9d9036a20708f1fa63690118f6c657da3f7f06c56fa78cf | partial document: HTML element, editable and editing-host-of definitions; original document notice and repository license retained; no editing-command selection |
+
+## HTML autocomplete credential witness
+
+The [bounded determination](html-autocomplete-webauthn--877d6146487f.md) follows
+the already retained HTML revision literally. Its upstream issue/PR links are
+dated corroboration, without redistributed prose or retained response snapshots.
+
+| Source | Exact snapshot | Source SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [WebKit Autofill.cpp credential edges](html-autocomplete-webauthn--877d6146487f.md) | [WebKit at 73aa6c89e2cb77c46184a81aec944e4ab99d114d](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/Autofill.cpp) | a9718e995bd0ea90a46fe68120453a3d9bf3eb3ebcd8572009864390ed733c15 | metadata-only corroborating witness; no browser source excerpt; literal lowercase edge outputs only |

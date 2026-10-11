@@ -62,12 +62,162 @@ pub fn surgeist_html::HtmlAutocapitalize::into_attribute(self) -> surgeist_html:
 pub enum surgeist_html::HtmlAutocapitalizeState
 pub surgeist_html::HtmlAutocapitalizeState::Default
 pub surgeist_html::HtmlAutocapitalizeState::Keyword(surgeist_html::HtmlAutocapitalize)
+pub enum surgeist_html::HtmlAutocompleteContactHint
+pub surgeist_html::HtmlAutocompleteContactHint::Fax
+pub surgeist_html::HtmlAutocompleteContactHint::Home
+pub surgeist_html::HtmlAutocompleteContactHint::Mobile
+pub surgeist_html::HtmlAutocompleteContactHint::Pager
+pub surgeist_html::HtmlAutocompleteContactHint::Work
+impl surgeist_html::HtmlAutocompleteContactHint
+pub fn surgeist_html::HtmlAutocompleteContactHint::canonical_keyword(self) -> &'static str
+pub enum surgeist_html::HtmlAutocompleteContextAuthorState
+pub surgeist_html::HtmlAutocompleteContextAuthorState::Conforming
+pub surgeist_html::HtmlAutocompleteContextAuthorState::Nonconforming(surgeist_html::HtmlAutocompleteContextViolations)
+pub surgeist_html::HtmlAutocompleteContextAuthorState::NotRequired
+pub surgeist_html::HtmlAutocompleteContextAuthorState::Unapplied
+pub surgeist_html::HtmlAutocompleteContextAuthorState::Unchecked
+pub enum surgeist_html::HtmlAutocompleteCredential
+pub surgeist_html::HtmlAutocompleteCredential::Webauthn
+impl surgeist_html::HtmlAutocompleteCredential
+pub fn surgeist_html::HtmlAutocompleteCredential::canonical_keyword(self) -> &'static str
+pub enum surgeist_html::HtmlAutocompleteCredentialOutcome
+pub surgeist_html::HtmlAutocompleteCredentialOutcome::Credential(surgeist_html::HtmlAutocompleteCredential)
+pub surgeist_html::HtmlAutocompleteCredentialOutcome::NotAssigned
+pub surgeist_html::HtmlAutocompleteCredentialOutcome::Null
+pub enum surgeist_html::HtmlAutocompleteDefaultField
+pub surgeist_html::HtmlAutocompleteDefaultField::Empty
+pub surgeist_html::HtmlAutocompleteDefaultField::FormOwnerRequired
+pub enum surgeist_html::HtmlAutocompleteDefaultReason
+pub surgeist_html::HtmlAutocompleteDefaultReason::EmptyTokens
+pub surgeist_html::HtmlAutocompleteDefaultReason::ExtraLeadingTokens
+pub surgeist_html::HtmlAutocompleteDefaultReason::InvalidCredentialPrefix
+pub surgeist_html::HtmlAutocompleteDefaultReason::MissingAttribute
+pub surgeist_html::HtmlAutocompleteDefaultReason::SettingOnAnchor
+pub surgeist_html::HtmlAutocompleteDefaultReason::SettingWithExtraTokens
+pub surgeist_html::HtmlAutocompleteDefaultReason::UnrecognizedFinalToken
+pub surgeist_html::HtmlAutocompleteDefaultReason::UnrecognizedLeadingToken
+pub enum surgeist_html::HtmlAutocompleteMantle
+pub surgeist_html::HtmlAutocompleteMantle::Anchor
+pub surgeist_html::HtmlAutocompleteMantle::Expectation
+pub enum surgeist_html::HtmlAutocompleteMode
+pub surgeist_html::HtmlAutocompleteMode::Billing
+pub surgeist_html::HtmlAutocompleteMode::Shipping
+impl surgeist_html::HtmlAutocompleteMode
+pub fn surgeist_html::HtmlAutocompleteMode::canonical_keyword(self) -> &'static str
+pub enum surgeist_html::HtmlAutocompleteProcessingState
+pub surgeist_html::HtmlAutocompleteProcessingState::Defaulted(surgeist_html::HtmlAutocompleteDefault)
+pub surgeist_html::HtmlAutocompleteProcessingState::InapplicableInputState(surgeist_html::HtmlInputType)
+pub surgeist_html::HtmlAutocompleteProcessingState::InputContextRequired
+pub surgeist_html::HtmlAutocompleteProcessingState::Processed(surgeist_html::HtmlAutocompleteProcessed)
+pub surgeist_html::HtmlAutocompleteProcessingState::Unapplied
+pub enum surgeist_html::HtmlAutocompleteSectionError
+pub surgeist_html::HtmlAutocompleteSectionError::MissingSectionPrefix
+pub surgeist_html::HtmlAutocompleteSectionError::Token(surgeist_html::HtmlTokenError)
+impl core::error::Error for surgeist_html::HtmlAutocompleteSectionError
+impl core::fmt::Display for surgeist_html::HtmlAutocompleteSectionError
+pub fn surgeist_html::HtmlAutocompleteSectionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlAutocompleteSyntaxError
+pub surgeist_html::HtmlAutocompleteSyntaxError::ContactHintRequiresContactField
+pub surgeist_html::HtmlAutocompleteSyntaxError::ContactHintRequiresContactField::field: surgeist_html::HtmlAutofillField
+pub surgeist_html::HtmlAutocompleteSyntaxError::EmptyTokens
+pub surgeist_html::HtmlAutocompleteSyntaxError::MissingDetailField
+pub surgeist_html::HtmlAutocompleteSyntaxError::UnexpectedToken
+pub surgeist_html::HtmlAutocompleteSyntaxError::UnexpectedToken::token_index: usize
+pub surgeist_html::HtmlAutocompleteSyntaxError::UnrecognizedDetailField
+pub surgeist_html::HtmlAutocompleteSyntaxError::UnrecognizedDetailField::token_index: usize
+pub enum surgeist_html::HtmlAutocompleteSyntaxState
+pub surgeist_html::HtmlAutocompleteSyntaxState::Invalid(surgeist_html::HtmlAutocompleteSyntaxError)
+pub surgeist_html::HtmlAutocompleteSyntaxState::Missing
+pub surgeist_html::HtmlAutocompleteSyntaxState::Unapplied
+pub surgeist_html::HtmlAutocompleteSyntaxState::Valid(surgeist_html::HtmlAutocompleteValue)
+pub enum surgeist_html::HtmlAutocompleteValue
+pub surgeist_html::HtmlAutocompleteValue::Details(surgeist_html::HtmlAutocompleteDetails)
+pub surgeist_html::HtmlAutocompleteValue::Setting(surgeist_html::HtmlFormAutocomplete)
+impl surgeist_html::HtmlAutocompleteValue
+pub fn surgeist_html::HtmlAutocompleteValue::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlAutocorrect
 pub surgeist_html::HtmlAutocorrect::Off
 pub surgeist_html::HtmlAutocorrect::On
 impl surgeist_html::HtmlAutocorrect
 pub fn surgeist_html::HtmlAutocorrect::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlAutocorrect::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlAutofillControlGroup
+pub surgeist_html::HtmlAutofillControlGroup::Date
+pub surgeist_html::HtmlAutofillControlGroup::Month
+pub surgeist_html::HtmlAutofillControlGroup::Multiline
+pub surgeist_html::HtmlAutofillControlGroup::Numeric
+pub surgeist_html::HtmlAutofillControlGroup::Password
+pub surgeist_html::HtmlAutofillControlGroup::Tel
+pub surgeist_html::HtmlAutofillControlGroup::Text
+pub surgeist_html::HtmlAutofillControlGroup::Url
+pub surgeist_html::HtmlAutofillControlGroup::Username
+pub enum surgeist_html::HtmlAutofillField
+pub surgeist_html::HtmlAutofillField::AdditionalName
+pub surgeist_html::HtmlAutofillField::AddressLevel1
+pub surgeist_html::HtmlAutofillField::AddressLevel2
+pub surgeist_html::HtmlAutofillField::AddressLevel3
+pub surgeist_html::HtmlAutofillField::AddressLevel4
+pub surgeist_html::HtmlAutofillField::AddressLine1
+pub surgeist_html::HtmlAutofillField::AddressLine2
+pub surgeist_html::HtmlAutofillField::AddressLine3
+pub surgeist_html::HtmlAutofillField::Bday
+pub surgeist_html::HtmlAutofillField::BdayDay
+pub surgeist_html::HtmlAutofillField::BdayMonth
+pub surgeist_html::HtmlAutofillField::BdayYear
+pub surgeist_html::HtmlAutofillField::CcAdditionalName
+pub surgeist_html::HtmlAutofillField::CcCsc
+pub surgeist_html::HtmlAutofillField::CcExp
+pub surgeist_html::HtmlAutofillField::CcExpMonth
+pub surgeist_html::HtmlAutofillField::CcExpYear
+pub surgeist_html::HtmlAutofillField::CcFamilyName
+pub surgeist_html::HtmlAutofillField::CcGivenName
+pub surgeist_html::HtmlAutofillField::CcName
+pub surgeist_html::HtmlAutofillField::CcNumber
+pub surgeist_html::HtmlAutofillField::CcType
+pub surgeist_html::HtmlAutofillField::Country
+pub surgeist_html::HtmlAutofillField::CountryName
+pub surgeist_html::HtmlAutofillField::CurrentPassword
+pub surgeist_html::HtmlAutofillField::Email
+pub surgeist_html::HtmlAutofillField::FamilyName
+pub surgeist_html::HtmlAutofillField::GivenName
+pub surgeist_html::HtmlAutofillField::HonorificPrefix
+pub surgeist_html::HtmlAutofillField::HonorificSuffix
+pub surgeist_html::HtmlAutofillField::Impp
+pub surgeist_html::HtmlAutofillField::Language
+pub surgeist_html::HtmlAutofillField::Name
+pub surgeist_html::HtmlAutofillField::NewPassword
+pub surgeist_html::HtmlAutofillField::Nickname
+pub surgeist_html::HtmlAutofillField::OneTimeCode
+pub surgeist_html::HtmlAutofillField::Organization
+pub surgeist_html::HtmlAutofillField::OrganizationTitle
+pub surgeist_html::HtmlAutofillField::Photo
+pub surgeist_html::HtmlAutofillField::PostalCode
+pub surgeist_html::HtmlAutofillField::Sex
+pub surgeist_html::HtmlAutofillField::StreetAddress
+pub surgeist_html::HtmlAutofillField::Tel
+pub surgeist_html::HtmlAutofillField::TelAreaCode
+pub surgeist_html::HtmlAutofillField::TelCountryCode
+pub surgeist_html::HtmlAutofillField::TelExtension
+pub surgeist_html::HtmlAutofillField::TelLocal
+pub surgeist_html::HtmlAutofillField::TelLocalPrefix
+pub surgeist_html::HtmlAutofillField::TelLocalSuffix
+pub surgeist_html::HtmlAutofillField::TelNational
+pub surgeist_html::HtmlAutofillField::TransactionAmount
+pub surgeist_html::HtmlAutofillField::TransactionCurrency
+pub surgeist_html::HtmlAutofillField::Url
+pub surgeist_html::HtmlAutofillField::Username
+impl surgeist_html::HtmlAutofillField
+pub fn surgeist_html::HtmlAutofillField::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlAutofillField::category(self) -> surgeist_html::HtmlAutofillFieldCategory
+pub fn surgeist_html::HtmlAutofillField::control_group(self) -> surgeist_html::HtmlAutofillControlGroup
+pub fn surgeist_html::HtmlAutofillField::source_clause(self) -> &'static str
+pub enum surgeist_html::HtmlAutofillFieldCategory
+pub surgeist_html::HtmlAutofillFieldCategory::Contact
+pub surgeist_html::HtmlAutofillFieldCategory::Normal
+pub enum surgeist_html::HtmlAutofillFieldIdentity
+pub surgeist_html::HtmlAutofillFieldIdentity::Credential(surgeist_html::HtmlAutocompleteCredential)
+pub surgeist_html::HtmlAutofillFieldIdentity::Detail(surgeist_html::HtmlAutofillField)
+pub surgeist_html::HtmlAutofillFieldIdentity::Setting(surgeist_html::HtmlFormAutocomplete)
 pub enum surgeist_html::HtmlBooleanAttribute
 pub surgeist_html::HtmlBooleanAttribute::AllowFullscreen
 pub surgeist_html::HtmlBooleanAttribute::Alpha
@@ -1382,6 +1532,71 @@ pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::Html
 impl core::convert::TryFrom<surgeist_html::HtmlProcessingInstruction> for surgeist_html::HtmlAuthoredProcessingInstruction
 pub type surgeist_html::HtmlAuthoredProcessingInstruction::Error = surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlAutocompleteContactFieldError
+impl surgeist_html::HtmlAutocompleteContactFieldError
+pub fn surgeist_html::HtmlAutocompleteContactFieldError::field(self) -> surgeist_html::HtmlAutofillField
+impl core::error::Error for surgeist_html::HtmlAutocompleteContactFieldError
+impl core::fmt::Display for surgeist_html::HtmlAutocompleteContactFieldError
+pub fn surgeist_html::HtmlAutocompleteContactFieldError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlAutocompleteContextViolations
+impl surgeist_html::HtmlAutocompleteContextViolations
+pub fn surgeist_html::HtmlAutocompleteContextViolations::anchor_setting(self) -> core::option::Option<surgeist_html::HtmlFormAutocomplete>
+pub fn surgeist_html::HtmlAutocompleteContextViolations::inappropriate_field(self) -> core::option::Option<surgeist_html::HtmlAutofillField>
+pub fn surgeist_html::HtmlAutocompleteContextViolations::prohibited_input_state(self) -> core::option::Option<surgeist_html::HtmlInputType>
+pub fn surgeist_html::HtmlAutocompleteContextViolations::webauthn_on_select(self) -> bool
+pub struct surgeist_html::HtmlAutocompleteDefault
+impl surgeist_html::HtmlAutocompleteDefault
+pub fn surgeist_html::HtmlAutocompleteDefault::contact_hint(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteContactHint>
+pub fn surgeist_html::HtmlAutocompleteDefault::field(&self) -> surgeist_html::HtmlAutocompleteDefaultField
+pub fn surgeist_html::HtmlAutocompleteDefault::idl_value(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlAutocompleteDefault::mode_hint(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteMode>
+pub fn surgeist_html::HtmlAutocompleteDefault::reason(&self) -> surgeist_html::HtmlAutocompleteDefaultReason
+pub fn surgeist_html::HtmlAutocompleteDefault::scope(&self) -> &surgeist_html::HtmlSpaceSeparatedTokens
+pub struct surgeist_html::HtmlAutocompleteDetails
+impl surgeist_html::HtmlAutocompleteDetails
+pub fn surgeist_html::HtmlAutocompleteDetails::contact_hint(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteContactHint>
+pub fn surgeist_html::HtmlAutocompleteDetails::field(&self) -> surgeist_html::HtmlAutofillField
+pub fn surgeist_html::HtmlAutocompleteDetails::has_webauthn(&self) -> bool
+pub fn surgeist_html::HtmlAutocompleteDetails::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlAutocompleteDetails::mode(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteMode>
+pub fn surgeist_html::HtmlAutocompleteDetails::new(field: surgeist_html::HtmlAutofillField) -> Self
+pub fn surgeist_html::HtmlAutocompleteDetails::section(&self) -> core::option::Option<&surgeist_html::HtmlAutocompleteSection>
+pub fn surgeist_html::HtmlAutocompleteDetails::with_contact_hint(self, hint: surgeist_html::HtmlAutocompleteContactHint) -> core::result::Result<Self, surgeist_html::HtmlAutocompleteContactFieldError>
+pub fn surgeist_html::HtmlAutocompleteDetails::with_mode(self, mode: surgeist_html::HtmlAutocompleteMode) -> Self
+pub fn surgeist_html::HtmlAutocompleteDetails::with_section(self, section: surgeist_html::HtmlAutocompleteSection) -> Self
+pub fn surgeist_html::HtmlAutocompleteDetails::with_webauthn(self) -> Self
+pub struct surgeist_html::HtmlAutocompleteProcessed
+impl surgeist_html::HtmlAutocompleteProcessed
+pub fn surgeist_html::HtmlAutocompleteProcessed::contact_hint(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteContactHint>
+pub fn surgeist_html::HtmlAutocompleteProcessed::credential_type(&self) -> surgeist_html::HtmlAutocompleteCredentialOutcome
+pub fn surgeist_html::HtmlAutocompleteProcessed::field_identity(&self) -> surgeist_html::HtmlAutofillFieldIdentity
+pub fn surgeist_html::HtmlAutocompleteProcessed::field_name(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlAutocompleteProcessed::idl_value(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlAutocompleteProcessed::mode_hint(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteMode>
+pub fn surgeist_html::HtmlAutocompleteProcessed::scope(&self) -> &surgeist_html::HtmlSpaceSeparatedTokens
+pub struct surgeist_html::HtmlAutocompleteReport
+impl surgeist_html::HtmlAutocompleteReport
+pub fn surgeist_html::HtmlAutocompleteReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlAutocompleteReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlAutocompleteReport::context_author(&self) -> surgeist_html::HtmlAutocompleteContextAuthorState
+pub fn surgeist_html::HtmlAutocompleteReport::context_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlAutocompleteReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlAutocompleteReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlAutocompleteReport::input_state(&self) -> core::option::Option<surgeist_html::HtmlInputType>
+pub fn surgeist_html::HtmlAutocompleteReport::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlAutocompleteReport::mantle(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteMantle>
+pub fn surgeist_html::HtmlAutocompleteReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlAutocompleteReport::processing(&self) -> &surgeist_html::HtmlAutocompleteProcessingState
+pub fn surgeist_html::HtmlAutocompleteReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlAutocompleteReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlAutocompleteReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlAutocompleteReport::source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlAutocompleteReport::syntax(&self) -> &surgeist_html::HtmlAutocompleteSyntaxState
+pub fn surgeist_html::HtmlAutocompleteReport::tokens(&self) -> core::option::Option<&surgeist_html::HtmlSpaceSeparatedTokens>
+pub struct surgeist_html::HtmlAutocompleteSection
+impl surgeist_html::HtmlAutocompleteSection
+pub fn surgeist_html::HtmlAutocompleteSection::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAutocompleteSectionError>
+pub fn surgeist_html::HtmlAutocompleteSection::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlBuilderNode
 pub struct surgeist_html::HtmlCapture(_)
 impl surgeist_html::HtmlCapture
@@ -2405,6 +2620,9 @@ pub fn surgeist_html::HtmlValueInterpreter::week(&self, raw: core::option::Optio
 pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlYearlessDate, surgeist_html::HtmlYearlessDate>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::contenteditable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlContentEditableState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::control_autocomplete(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAutocompleteReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::control_autocomplete_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAutocompleteReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::crossorigin(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCrossOriginState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

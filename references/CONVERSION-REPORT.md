@@ -328,3 +328,17 @@ Software and Document License are retained. Selected paragraphs were converted
 with Pandoc 3.1.11.1, retaining authored unresolved Bikeshed tokens and absolute
 source links. Source scripts were not executed. Scope selects HTML-delegated
 editability only; command execution and editing UI are outside it.
+
+## HTML autocomplete credential determination — 2026-10-11
+
+The [WebAuthn edge determination](html-autocomplete-webauthn--877d6146487f.md)
+contains independent analysis and source metadata, without browser code or
+upstream issue prose. The pinned HTML author grammar and processing branches
+were compared with the existing retained original. A scoped source review also
+confirmed the browser file hash, cited lines and dated upstream status/merge
+links. The WebKit witness corroborates two lowercase outcomes only; its broader
+case normalization is not selected. Autofill.cpp adds one metadata-only file
+identity, giving 353 identities: 255 full, 90 partial and eight metadata-only.
+HTML's existing identity is reused, and linked issues/PRs without retained
+response snapshots do not add identities. This records provenance and the
+selected recovery disposition rather than autofill or credential execution.

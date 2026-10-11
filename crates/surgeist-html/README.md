@@ -184,6 +184,21 @@ selected value; effective fallback requires the actual form owner and remains
 pending. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
 
+Control autocomplete reports preserve ordered tokens, authored detail grammar,
+actual input-state and element constraints, and the separate processing result.
+Native detail construction requires a standard field and checks contact hints;
+actual control suitability remains a contextual check. Processing retains exact
+field and IDL token casing while normalizing the source-defined hints and scope.
+Credential outcomes distinguish a setting branch that assigns no property from
+an explicit null or credential assignment, without asserting previous live state.
+The [selected credential-edge determination](../../references/html-autocomplete-webauthn--877d6146487f.md)
+retains the pinned standard's recovery for bare and prefixed WebAuthn tokens,
+independently of author validity. Default reports expose empty IDL/hints/scope
+and distinguish an anchor's empty field from an expectation default requiring
+the actual form owner. That contextual fallback remains pending; missing owner
+evidence is not interpreted as no owner. These reports execute no autofill,
+credential mediation or form-control transition.
+
 `HtmlCaptureBuilder` freezes one bounded, flat capture of document, node,
 registry and relationship facts. Capture-qualified subjects are independent of
 native result IDs and future canonical DOM IDs. Unavailable facts remain
