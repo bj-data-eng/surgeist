@@ -91,6 +91,21 @@ script/style/MDN annotations removed without executing source scripts.
 The capture retains the complete selected algorithms and interface text; no
 editing-command runtime or spelling service is incorporated.
 
+## HTML iframe sandbox directive — 2026-10-11
+
+The [complete sandboxing capture](../../references/html-sandboxing--877d6146487f.md)
+retains §7.1.5 from HTML revision `877d6146487f15b15bc8dd0e3c625063a37b456a`,
+complete original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft). The exact
+[upstream license](LICENSE) covers prose under CC BY 4.0 and portions
+incorporated into source code under BSD 3-Clause. Changes by Surgeist on
+2026-10-11 comprise offline bounded extraction, Pandoc Markdown conversion,
+absolute source links and inert ID/note preservation; source scripts do not run.
+The Rust intrinsic attribute operation adapts thirteen keywords and sixteen
+directive restrictions, separately retaining author-only errors. It incorporates
+no active-policy composition, navigation, origin change or enforcement algorithm.
+
 ## JavaScript MIME essence and HTML checkpoint — 2026-10-11
 
 Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).

@@ -964,6 +964,62 @@ pub surgeist_html::HtmlReferrerPolicy::UnsafeUrl
 impl surgeist_html::HtmlReferrerPolicy
 pub fn surgeist_html::HtmlReferrerPolicy::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlReferrerPolicy::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlSandboxAuthorState
+pub surgeist_html::HtmlSandboxAuthorState::Conforming
+pub surgeist_html::HtmlSandboxAuthorState::Missing
+pub surgeist_html::HtmlSandboxAuthorState::Nonconforming(surgeist_html::HtmlSandboxAuthorDiagnostics)
+pub surgeist_html::HtmlSandboxAuthorState::Unapplied
+pub enum surgeist_html::HtmlSandboxDirectiveState
+pub surgeist_html::HtmlSandboxDirectiveState::Absent
+pub surgeist_html::HtmlSandboxDirectiveState::Present(surgeist_html::HtmlSandboxFlags)
+pub enum surgeist_html::HtmlSandboxFlag
+pub surgeist_html::HtmlSandboxFlag::AutomaticFeatures
+pub surgeist_html::HtmlSandboxFlag::AuxiliaryNavigation
+pub surgeist_html::HtmlSandboxFlag::CustomProtocolsNavigation
+pub surgeist_html::HtmlSandboxFlag::DocumentDomain
+pub surgeist_html::HtmlSandboxFlag::Downloads
+pub surgeist_html::HtmlSandboxFlag::Forms
+pub surgeist_html::HtmlSandboxFlag::Modals
+pub surgeist_html::HtmlSandboxFlag::Navigation
+pub surgeist_html::HtmlSandboxFlag::OrientationLock
+pub surgeist_html::HtmlSandboxFlag::Origin
+pub surgeist_html::HtmlSandboxFlag::PointerLock
+pub surgeist_html::HtmlSandboxFlag::Presentation
+pub surgeist_html::HtmlSandboxFlag::PropagatesToAuxiliary
+pub surgeist_html::HtmlSandboxFlag::Scripts
+pub surgeist_html::HtmlSandboxFlag::TopNavigationWithUserActivation
+pub surgeist_html::HtmlSandboxFlag::TopNavigationWithoutUserActivation
+impl surgeist_html::HtmlSandboxFlag
+pub fn surgeist_html::HtmlSandboxFlag::source_clause(self) -> &'static str
+pub enum surgeist_html::HtmlSandboxKeyword
+pub surgeist_html::HtmlSandboxKeyword::AllowDownloads
+pub surgeist_html::HtmlSandboxKeyword::AllowForms
+pub surgeist_html::HtmlSandboxKeyword::AllowModals
+pub surgeist_html::HtmlSandboxKeyword::AllowOrientationLock
+pub surgeist_html::HtmlSandboxKeyword::AllowPointerLock
+pub surgeist_html::HtmlSandboxKeyword::AllowPopups
+pub surgeist_html::HtmlSandboxKeyword::AllowPopupsToEscapeSandbox
+pub surgeist_html::HtmlSandboxKeyword::AllowPresentation
+pub surgeist_html::HtmlSandboxKeyword::AllowSameOrigin
+pub surgeist_html::HtmlSandboxKeyword::AllowScripts
+pub surgeist_html::HtmlSandboxKeyword::AllowTopNavigation
+pub surgeist_html::HtmlSandboxKeyword::AllowTopNavigationByUserActivation
+pub surgeist_html::HtmlSandboxKeyword::AllowTopNavigationToCustomProtocols
+impl surgeist_html::HtmlSandboxKeyword
+pub fn surgeist_html::HtmlSandboxKeyword::from_token(token: &surgeist_html::HtmlSpaceToken) -> core::option::Option<Self>
+pub fn surgeist_html::HtmlSandboxKeyword::keyword(self) -> &'static str
+pub fn surgeist_html::HtmlSandboxKeyword::source_clause(self) -> &'static str
+pub enum surgeist_html::HtmlSandboxRedundancy
+pub surgeist_html::HtmlSandboxRedundancy::CustomProtocolsAndPopups
+pub surgeist_html::HtmlSandboxRedundancy::CustomProtocolsAndTopNavigation
+pub surgeist_html::HtmlSandboxRedundancy::TopNavigationAndByUserActivation
+pub enum surgeist_html::HtmlSandboxValueError
+pub surgeist_html::HtmlSandboxValueError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
+pub surgeist_html::HtmlSandboxValueError::Redundant(surgeist_html::HtmlSandboxRedundancy)
+impl core::error::Error for surgeist_html::HtmlSandboxValueError
+pub fn surgeist_html::HtmlSandboxValueError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlSandboxValueError
+pub fn surgeist_html::HtmlSandboxValueError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlScriptAttributeContext
 pub surgeist_html::HtmlScriptAttributeContext::DataBlock
 pub surgeist_html::HtmlScriptAttributeContext::ExternalClassic
@@ -2562,6 +2618,44 @@ pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::Html
 impl core::convert::TryFrom<surgeist_html::HtmlProcessingInstruction> for surgeist_html::HtmlAuthoredProcessingInstruction
 pub type surgeist_html::HtmlAuthoredProcessingInstruction::Error = surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlSandboxAuthorDiagnostics
+impl surgeist_html::HtmlSandboxAuthorDiagnostics
+pub fn surgeist_html::HtmlSandboxAuthorDiagnostics::duplicate(&self) -> core::option::Option<&surgeist_html::HtmlDuplicateTokenError>
+pub fn surgeist_html::HtmlSandboxAuthorDiagnostics::redundancies(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_html::HtmlSandboxRedundancy> + '_
+pub fn surgeist_html::HtmlSandboxAuthorDiagnostics::unknown_tokens(&self) -> &[surgeist_html::HtmlSandboxUnknownToken]
+pub struct surgeist_html::HtmlSandboxFlags
+impl surgeist_html::HtmlSandboxFlags
+pub fn surgeist_html::HtmlSandboxFlags::contains(&self, flag: surgeist_html::HtmlSandboxFlag) -> bool
+pub fn surgeist_html::HtmlSandboxFlags::is_empty(&self) -> bool
+pub fn surgeist_html::HtmlSandboxFlags::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_html::HtmlSandboxFlag> + '_
+pub fn surgeist_html::HtmlSandboxFlags::len(&self) -> usize
+pub struct surgeist_html::HtmlSandboxReport
+impl surgeist_html::HtmlSandboxReport
+pub fn surgeist_html::HtmlSandboxReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlSandboxReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlSandboxReport::author(&self) -> &surgeist_html::HtmlSandboxAuthorState
+pub fn surgeist_html::HtmlSandboxReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlSpaceSeparatedTokens, surgeist_html::HtmlSpaceSeparatedTokens>>
+pub fn surgeist_html::HtmlSandboxReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlSandboxReport::flag_set_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlSandboxReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlSandboxReport::intrinsic(&self) -> core::option::Option<&surgeist_html::HtmlSandboxDirectiveState>
+pub fn surgeist_html::HtmlSandboxReport::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlSandboxReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlSandboxReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlSandboxReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlSandboxReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlSandboxReport::source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlSandboxReport::tokens(&self) -> core::option::Option<&surgeist_html::HtmlSpaceSeparatedTokens>
+pub struct surgeist_html::HtmlSandboxUnknownToken
+impl surgeist_html::HtmlSandboxUnknownToken
+pub fn surgeist_html::HtmlSandboxUnknownToken::token_index(&self) -> usize
+pub fn surgeist_html::HtmlSandboxUnknownToken::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlSandboxValue
+impl surgeist_html::HtmlSandboxValue
+pub fn surgeist_html::HtmlSandboxValue::flags(&self) -> surgeist_html::HtmlSandboxFlags
+pub fn surgeist_html::HtmlSandboxValue::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlSandboxValue::new(keywords: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSandboxKeyword>) -> core::result::Result<Self, surgeist_html::HtmlSandboxValueError>
+pub fn surgeist_html::HtmlSandboxValue::tokens(&self) -> &surgeist_html::HtmlUnorderedTokenSet
 pub struct surgeist_html::HtmlSelectOptions
 impl surgeist_html::HtmlSelectOptions
 pub fn surgeist_html::HtmlSelectOptions::options(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
@@ -2922,6 +3016,8 @@ pub fn surgeist_html::HtmlValueInterpreter::formmethod_for_button(&self, element
 pub fn surgeist_html::HtmlValueInterpreter::formmethod_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::hidden(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlHiddenState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::iframe_sandbox(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSandboxReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::input_accept(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAcceptReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::input_accept_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAcceptReport, surgeist_html::HtmlValueAdmissionError>

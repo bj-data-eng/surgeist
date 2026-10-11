@@ -383,3 +383,26 @@ The catalog now contains **354 identities: 255 full, 91 partial and eight
 metadata-only**, with **81 passive SVG assets** unchanged. Historical counts
 above remain dated records. No production dependency is introduced by retaining
 these source references.
+
+## HTML sandboxing source representation — 2026-10-11
+
+The [complete sandboxing section](html-sandboxing--877d6146487f.md) adds a
+representation of the existing HTML877d identity, complete original HTML
+SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+It retains §7.1.5, original lines 65599–65796, immediately before §7.1.6:
+sixteen flag definitions, the complete three-step directive algorithm with
+sixteen entries, and the popup, iframe, active, CSP-derived and creation flag
+clauses. Independent source-to-Markdown comparison preserves 7,976 non-layout
+characters, 117 ordered links, 141 unique ordered IDs and three informative
+notes; all 102 same-edition targets resolve in the retained original.
+Pandoc 3.1.11.1 conversion uses absolute links and inert wrappers to preserve
+code/paragraph IDs, note classes and the original semantic heading. No source
+scripts execute. Sixteen Markdown hard breaks are serialized with backslash-newline instead
+of trailing spaces, preserving the same GFM break semantics. The retained
+Markdown SHA-256 is
+`ce19566ea24ff77f990e496b76b98a642166a55bbfe68eba7c0da7dfbedca830`.
+The existing exact WHATWG license applies: CC BY 4.0 for reference prose,
+BSD 3-Clause only for portions incorporated into code. This representation
+does not claim browser navigation, CSP evaluation or sandbox enforcement.
+The source counts remain 354 identities: 255 full, 91 partial and eight
+metadata-only; 81 passive SVG assets and historical dated counts are unchanged.

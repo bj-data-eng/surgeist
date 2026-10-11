@@ -199,6 +199,7 @@ The unstarted native HTML language contracts select WHATWG HTML commit snapshot 
 | `the-hidden-attribute`, `inert-subtrees`, `user-activation-data-model`, `focus`, `disabled-elements`, `selectors` | [host-facts](html-language-host-facts--877d6146487f--2dd822df9d5e.md) |
 | `dom-parsing-and-serialization`, `enabling-and-disabling-scripting` | [dom-parsing](html-language-dom-parsing--877d6146487f--c076ab7a56b9.md) |
 | `obsolete` | [obsolete](html-language-obsolete--877d6146487f--66870e9cdabe.md) |
+| `sandboxing` | [flag definitions and directive parsing](html-sandboxing--877d6146487f.md) |
 
 The [being-rendered definition and two notes](html-being-rendered--877d6146487f.md)
 add a bounded selection from the same snapshot’s rendering introduction.
@@ -210,6 +211,16 @@ clauses define list ownership, starting values and ordinal numbering. This
 selection adopts no layout geometry or browser rendering engine into HTML.
 
 All §4 element definitions are retained across the root/metadata, text/link, embedded, forms/tables, interactive/scripting and host-fact captures. Common microsyntaxes, global attributes and content models are retained in foundations; complete syntax/parser recovery, named references, foreign parsing and fragment algorithms are retained in syntax/parser. Required obsolete parsing behavior is retained separately from author-conformance restrictions. Forms, table processing, template contents, foreign element declarations, optional end tags and void-element rules therefore have pinned source definitions without imposing a stricter Surgeist language dialect. Output plus diagnostics remains the intended parse result for malformed authored source. Author conformance, parser recovery, unsupported browser runtime capabilities, and cancellation/admission failure are separate contracts.
+
+The [complete sandboxing section](html-sandboxing--877d6146487f.md) retains all
+sixteen flag definitions and the directive parsing algorithm from this same
+edition. The existing embedded-elements capture owns iframe attribute grammar
+and its author-only redundancy rules. Intrinsic iframe interpretation projects
+only the content directive: absent contributes no local restrictions; present
+empty retains all sixteen. Unknown, repeated and redundant tokens do not
+suppress recognized contributions. The active Document policy, ancestor/CSP
+and popup composition, navigation and enforcement remain external operations.
+This additional representation adds no source identity or edition change.
 
 The collection omits unrelated full browser runtime chapters (microdata, loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing and scripting-state clauses. Their original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
 

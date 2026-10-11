@@ -221,6 +221,17 @@ other input states retain the separate presence restriction and ignored effect.
 Symbolic MIME conformance remains unavailable, independently of established HTML
 constraints. These operations perform no file picking, type matching or sniffing.
 
+Iframe `sandbox` authoring uses the thirteen standard keywords and the shared
+unordered unique-token owner. Interpretation preserves exact raw tokens and
+independent duplicate, unknown and redundant-pair diagnostics while computing
+the [local directive's sixteen restriction flags](../../references/html-sandboxing--877d6146487f.md).
+A missing attribute is distinct from a present empty directive, which retains
+all sixteen restrictions. Recognized keywords contribute even when authorship
+is nonconforming. These flags do not establish a loaded document's active
+policy, ancestor/CSP composition, navigation, origin changes or enforcement.
+The standalone per-value raw cap applies; work accounting, cancellation and
+allocation-failure recovery are not promised by this intrinsic value report.
+
 `HtmlCaptureBuilder` freezes one bounded, flat capture of document, node,
 registry and relationship facts. Capture-qualified subjects are independent of
 native result IDs and future canonical DOM IDs. Unavailable facts remain

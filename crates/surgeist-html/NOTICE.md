@@ -37,6 +37,17 @@ document-state facts. It does not incorporate editing-command execution.
 HTML itself remains the owner of editing-host classification, under the
 separate WHATWG attribution above.
 
+## Intrinsic iframe sandbox directive
+
+The immutable sandbox value/report adapts the selected HTML edition's thirteen
+keywords, author-only redundancy restrictions and sixteen directive flags.
+The [source notice](../../licenses/whatwg/NOTICE.md#html-iframe-sandbox-directive--2026-10-11)
+identifies the complete retained section and conversion. Reference prose remains
+CC BY 4.0; incorporated Rust portions use the WHATWG BSD 3-Clause provision
+with its exact [copyright, conditions and disclaimer](../../licenses/whatwg/LICENSE).
+This adaptation does not incorporate Document active-policy composition,
+navigation or sandbox enforcement.
+
 ## JavaScript MIME essence and checkpoint sources
 
 The private Disabled-script preparation adaptation incorporates the exact 16

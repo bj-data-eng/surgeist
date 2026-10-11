@@ -385,6 +385,10 @@ The HTML crate also incorporates the selected edition's common microsyntax
 algorithms and element and attribute indexes under that BSD provision; see the
 [common microsyntax notice](licenses/whatwg/NOTICE.md#html-common-microsyntax-incorporation--2026-10-11)
 and [vocabulary adaptation notice](licenses/whatwg/NOTICE.md#html-vocabulary-incorporation--2026-10-11).
+The intrinsic iframe sandbox operation incorporates the selected edition's
+keyword and local directive rules under the same code provision; the
+[sandbox source notice](licenses/whatwg/NOTICE.md#html-iframe-sandbox-directive--2026-10-11)
+records its separate prose conversion and excludes active-policy enforcement.
 
 ## Crate Notices
 
