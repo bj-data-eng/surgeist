@@ -19,6 +19,8 @@ mod control;
 pub use control::*;
 mod inheritance;
 pub use inheritance::*;
+mod select;
+pub use select::*;
 
 use crate::numeric::{
     IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
@@ -634,6 +636,10 @@ pub enum HtmlSemanticQuery {
     TranslationMode,
     Spellcheck,
     ComputedHeadingLevel,
+    SelectOptions,
+    SelectedOptions,
+    SelectSelectedIndex,
+    OptionIndex,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
@@ -709,6 +715,18 @@ impl HtmlSemanticQuery {
             }
             Self::Spellcheck => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-spellcheck"
+            }
+            Self::SelectOptions => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-options"
+            }
+            Self::SelectedOptions => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-selectedoptions"
+            }
+            Self::SelectSelectedIndex => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-selectedindex"
+            }
+            Self::OptionIndex => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-index"
             }
             Self::ComputedHeadingLevel => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-level"
@@ -807,6 +825,11 @@ pub enum HtmlSemanticFact {
     TranslationMode(HtmlSemanticValue<HtmlTranslationMode>),
     Spellcheck(HtmlSemanticValue<bool>),
     ComputedHeadingLevel(HtmlSemanticValue<HtmlComputedHeadingLevel>),
+    SelectOptions(HtmlSemanticValue<HtmlSelectOptions>),
+    SelectedOptions(HtmlSemanticValue<HtmlSelectOptions>),
+    /// `Known(None)` represents the source selected index of −1.
+    SelectSelectedIndex(HtmlSemanticValue<Option<usize>>),
+    OptionIndex(HtmlSemanticValue<usize>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlSemanticResult {
@@ -2056,6 +2079,20 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Spellcheck => {
                             HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
                         }
+                        HtmlSemanticQuery::SelectOptions => {
+                            HtmlSemanticFact::SelectOptions(self.select_options(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::SelectedOptions => HtmlSemanticFact::SelectedOptions(
+                            self.selected_options(&request.subject)?,
+                        ),
+                        HtmlSemanticQuery::SelectSelectedIndex => {
+                            HtmlSemanticFact::SelectSelectedIndex(
+                                self.select_selected_index(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::OptionIndex => {
+                            HtmlSemanticFact::OptionIndex(self.option_index(&request.subject)?)
+                        }
                         HtmlSemanticQuery::ComputedHeadingLevel => {
                             HtmlSemanticFact::ComputedHeadingLevel(
                                 self.computed_heading_level(&request.subject)?,
@@ -2145,6 +2182,18 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Spellcheck => {
                         HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::SelectOptions => {
+                        HtmlSemanticFact::SelectOptions(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::SelectedOptions => {
+                        HtmlSemanticFact::SelectedOptions(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::SelectSelectedIndex => {
+                        HtmlSemanticFact::SelectSelectedIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OptionIndex => {
+                        HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::ComputedHeadingLevel => {
                         HtmlSemanticFact::ComputedHeadingLevel(HtmlSemanticValue::Inapplicable)

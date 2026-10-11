@@ -767,7 +767,11 @@ pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<
 pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
 pub surgeist_html::HtmlSemanticFact::Meter(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMeterState>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::OptionIndex(surgeist_html::HtmlSemanticValue<usize>)
 pub surgeist_html::HtmlSemanticFact::Progress(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlProgressState>)
+pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectOptions>)
+pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
+pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectOptions>)
 pub surgeist_html::HtmlSemanticFact::Spellcheck(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
@@ -826,7 +830,11 @@ pub surgeist_html::HtmlSemanticQuery::ListOwner
 pub surgeist_html::HtmlSemanticQuery::ListStartingValue
 pub surgeist_html::HtmlSemanticQuery::Meter
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
+pub surgeist_html::HtmlSemanticQuery::OptionIndex
 pub surgeist_html::HtmlSemanticQuery::Progress
+pub surgeist_html::HtmlSemanticQuery::SelectOptions
+pub surgeist_html::HtmlSemanticQuery::SelectSelectedIndex
+pub surgeist_html::HtmlSemanticQuery::SelectedOptions
 pub surgeist_html::HtmlSemanticQuery::Spellcheck
 pub surgeist_html::HtmlSemanticQuery::TableModel
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
@@ -2095,6 +2103,9 @@ pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::Html
 impl core::convert::TryFrom<surgeist_html::HtmlProcessingInstruction> for surgeist_html::HtmlAuthoredProcessingInstruction
 pub type surgeist_html::HtmlAuthoredProcessingInstruction::Error = surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlSelectOptions
+impl surgeist_html::HtmlSelectOptions
+pub fn surgeist_html::HtmlSelectOptions::options(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
 pub struct surgeist_html::HtmlSemanticCancellation(_)
 impl surgeist_html::HtmlSemanticCancellation
 pub fn surgeist_html::HtmlSemanticCancellation::cancel(&self)

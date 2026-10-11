@@ -235,6 +235,15 @@ These operations observe facts and execute no form reset, activation or control
 state transition. Actual control strings remain owned by the language/direction
 supplement.
 
+Select/option readback exposes the source-defined option list, selected options,
+selected index and option index. One bounded ordinary-tree traversal preserves
+tree order and the specific option, datalist, hr, nested-select and optgroup
+pruning rules. Selectedness comes from the existing current-state supplement;
+authored selected attributes, disabledness and multiple do not replace it.
+Collection getters expose capture-qualified subject keys. A known empty selected list
+and no selected index differ from unavailable state or order. These immutable
+results provide no live collection or selection/reset transition.
+
 `HtmlGlobalInheritanceFacts` supplies actual document design-mode states and
 per-element spellcheck default behaviors. The checked supplement joins one
 capture and host revision to its producer, configuration and revision; reports
