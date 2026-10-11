@@ -44,12 +44,18 @@ enum SelectWalkMode<'s> {
     Selected,
     FirstSelected,
     FirstSelectedIdentity,
+    FirstOptionIdentity,
     Target(&'s HtmlCaptureSubjectId),
 }
 struct SelectWalkResult {
     options: HtmlOptionCollection,
     index: Option<usize>,
     first_selected: Option<HtmlCaptureSubjectId>,
+    first_option: Option<SelectFirstOption>,
+}
+struct SelectFirstOption {
+    subject: HtmlCaptureSubjectId,
+    inside_optgroup: bool,
 }
 struct SelectFrame<'a> {
     children: HtmlCapturedChildIds<'a>,
@@ -169,6 +175,73 @@ impl<'a> HtmlSemanticSession<'a> {
             .map(|result| result.first_selected))
     }
 
+    pub(super) fn select_placeholder_label_option(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
+            return Ok(value);
+        }
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            unreachable!("select_applicable established an element");
+        };
+        // The source consumes Boolean presence, not its authored spelling.
+        if self.attribute(element, "required")?.is_none() {
+            return Ok(HtmlSemanticValue::Known(None));
+        }
+        let size = self.attribute(element, "size")?;
+        let projected_size = if let Some(size) = size {
+            self.interpreter
+                .admit_attribute_raw(Some(size.value()))
+                .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
+            // Same allocation-free nonnegative recovery owner used for spans.
+            // Its two scans are one input-bounded atomic semantic operation.
+            let work = size
+                .value()
+                .len()
+                .checked_mul(2)
+                .and_then(|n| n.checked_add(8))
+                .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+            self.charge(work)?;
+            let value = crate::numeric::parse_nonnegative_integer_capped(size.value(), 2);
+            self.poll()?;
+            value.ok()
+        } else {
+            None
+        };
+        let size_is_one = match projected_size {
+            Some(value) => value == 1,
+            None => self.attribute(element, "multiple")?.is_none(),
+        };
+        self.charge(1)?;
+        if !size_is_one {
+            return Ok(HtmlSemanticValue::Known(None));
+        }
+        match self.walk_select(subject, SelectWalkMode::FirstOptionIdentity)? {
+            HtmlSemanticValue::Known(result) => {
+                let Some(first) = result.first_option else {
+                    return Ok(HtmlSemanticValue::Known(None));
+                };
+                self.charge(1)?;
+                if first.inside_optgroup {
+                    return Ok(HtmlSemanticValue::Known(None));
+                }
+                let value =
+                    self.option_readback(&first.subject, HtmlOptionReadbackOrigin::ValueAttribute)?;
+                self.charge(1)?;
+                Ok(value.map(|readback| {
+                    // Dropping this intermediate does not undo its cumulative
+                    // output-capacity or observed-byte admission.
+                    readback.value().is_empty().then_some(first.subject)
+                }))
+            }
+            HtmlSemanticValue::Missing(missing) => Ok(HtmlSemanticValue::Missing(missing)),
+            HtmlSemanticValue::Inapplicable => Ok(HtmlSemanticValue::Inapplicable),
+            HtmlSemanticValue::Unsupported(reason) => Ok(HtmlSemanticValue::Unsupported(reason)),
+        }
+    }
+
     fn walk_select(
         &mut self,
         subject: &HtmlCaptureSubjectId,
@@ -199,6 +272,7 @@ impl<'a> HtmlSemanticSession<'a> {
             },
             index: None,
             first_selected: None,
+            first_option: None,
         };
         // Established empty needs neither a frame allocation nor option state.
         if children.len() == 0 {
@@ -228,6 +302,14 @@ impl<'a> HtmlSemanticSession<'a> {
             if kind == Some(KnownHtmlElement::Option) {
                 let keep = match mode {
                     SelectWalkMode::All => true,
+                    SelectWalkMode::FirstOptionIdentity => {
+                        self.charge(1)?;
+                        result.first_option = Some(SelectFirstOption {
+                            subject: id,
+                            inside_optgroup,
+                        });
+                        return Ok(HtmlSemanticValue::Known(result));
+                    }
                     SelectWalkMode::Target(target) => {
                         self.charge(1)?;
                         if &id == target {

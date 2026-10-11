@@ -3,7 +3,7 @@
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, form/fieldset listed collections and form length, label targets and control labels, current control flags, global inheritance, select
-//! readbacks, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
+//! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
@@ -701,6 +701,8 @@ pub enum HtmlSemanticQuery {
     OptionLabel,
     OptionValue,
     SelectValue,
+    /// Source placeholder classification; this does not change selection.
+    SelectPlaceholderLabelOption,
     ControlAutocomplete,
     SubmitterFormMethod,
     SubmitterFormEnctype,
@@ -755,6 +757,9 @@ impl HtmlSemanticQuery {
             }
             Self::OptionValue => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
+            }
+            Self::SelectPlaceholderLabelOption => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#placeholder-label-option"
             }
             Self::SelectValue => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-value"
@@ -1012,6 +1017,8 @@ pub enum HtmlSemanticFact {
     OptionLabel(HtmlSemanticValue<HtmlOptionReadback>),
     OptionValue(HtmlSemanticValue<HtmlOptionReadback>),
     SelectValue(HtmlSemanticValue<HtmlSelectValue>),
+    /// Known(None) establishes that no source placeholder label option exists.
+    SelectPlaceholderLabelOption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
     SubmitterFormMethod(HtmlSemanticValue<HtmlSubmitterFormMethod>),
     SubmitterFormEnctype(HtmlSemanticValue<HtmlSubmitterFormEnctype>),
@@ -2387,6 +2394,11 @@ impl<'a> HtmlSemanticSession<'a> {
                                 HtmlOptionReadbackOrigin::ValueAttribute,
                             )?)
                         }
+                        HtmlSemanticQuery::SelectPlaceholderLabelOption => {
+                            HtmlSemanticFact::SelectPlaceholderLabelOption(
+                                self.select_placeholder_label_option(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::SelectValue => {
                             HtmlSemanticFact::SelectValue(self.select_value(&request.subject)?)
                         }
@@ -2572,6 +2584,11 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::OptionValue => {
                         HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::SelectPlaceholderLabelOption => {
+                        HtmlSemanticFact::SelectPlaceholderLabelOption(
+                            HtmlSemanticValue::Inapplicable,
+                        )
                     }
                     HtmlSemanticQuery::SelectValue => {
                         HtmlSemanticFact::SelectValue(HtmlSemanticValue::Inapplicable)

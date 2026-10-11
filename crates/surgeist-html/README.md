@@ -462,6 +462,16 @@ a select with an established null owner. Consulted attributes, traversal,
 temporary scratch and actual output capacities use the semantic session's
 admission and atomic batch contract; missing influencing facts remain explicit.
 
+`SelectPlaceholderLabelOption` identifies the first source-list option when
+required is present, display size is one, its value is empty and no HTML
+optgroup intervenes. Explicit size one can qualify even with multiple present.
+Boolean presence consumes no spelling grammar; size and option value use their
+existing numeric and text owners. An established absence differs from missing
+influencing facts. Intermediate text allocation remains cumulatively admitted
+even when the result is absent. This immutable query follows the
+[placeholder definition](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#placeholder-label-option)
+and performs no selection or validity transition.
+
 `TextareaDefaultValue` concatenates exact Text data from immediate ordinary
 children only. `OutputValue` concatenates exact Text data from all ordinary
 descendants. Both preserve UTF-16 units and whitespace; output traversal includes

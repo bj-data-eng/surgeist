@@ -1297,6 +1297,7 @@ pub surgeist_html::HtmlSemanticFact::OutputDefaultValue(surgeist_html::HtmlSeman
 pub surgeist_html::HtmlSemanticFact::OutputValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::Progress(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlProgressState>)
 pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
+pub surgeist_html::HtmlSemanticFact::SelectPlaceholderLabelOption(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
 pub surgeist_html::HtmlSemanticFact::SelectValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectValue>)
 pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
@@ -1387,6 +1388,7 @@ pub surgeist_html::HtmlSemanticQuery::OutputDefaultValue
 pub surgeist_html::HtmlSemanticQuery::OutputValue
 pub surgeist_html::HtmlSemanticQuery::Progress
 pub surgeist_html::HtmlSemanticQuery::SelectOptions
+pub surgeist_html::HtmlSemanticQuery::SelectPlaceholderLabelOption
 pub surgeist_html::HtmlSemanticQuery::SelectSelectedIndex
 pub surgeist_html::HtmlSemanticQuery::SelectValue
 pub surgeist_html::HtmlSemanticQuery::SelectedOptions
