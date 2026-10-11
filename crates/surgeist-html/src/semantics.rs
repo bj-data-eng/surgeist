@@ -3,7 +3,7 @@
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, form/fieldset listed collections and form length, label targets, label form owners and control labels, current control flags, global inheritance, select
-//! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
+//! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, map area membership, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
@@ -32,6 +32,8 @@ pub use inheritance::*;
 mod select;
 pub use select::*;
 mod datalist;
+mod image_map;
+pub use image_map::*;
 mod option_text;
 pub use option_text::*;
 mod autocomplete;
@@ -687,6 +689,8 @@ pub enum HtmlSemanticQuery {
     SelectedOptions,
     InputSuggestionsSource,
     DatalistOptions,
+    /// Ordinary HTML area descendants in source tree order.
+    MapAreas,
     DatalistSuggestionOptions,
     ImageMapAttribute,
     ImageControlsAttribute,
@@ -741,6 +745,9 @@ impl HtmlSemanticQuery {
             }
             Self::InputSuggestionsSource => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list"
+            }
+            Self::MapAreas => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-map-areas"
             }
             Self::DatalistOptions => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-datalist-options"
@@ -1006,6 +1013,7 @@ pub enum HtmlSemanticFact {
     /// Known(None) establishes that the input has no source of suggestions.
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
     ImageMapAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
     ImageControlsAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
     StylesheetDisabledAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
@@ -1289,6 +1297,44 @@ impl<'a> HtmlSemanticSession<'a> {
             })
             .clone()
     }
+    // Descend only after inspecting the current node. This lets a first match
+    // succeed without reading its children or any later branch. Host/slot edges
+    // are never ordinary-tree traversal edges.
+    fn ordinary_tree_next(
+        &mut self,
+        node: HtmlCapturedNode<'a>,
+        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
+    ) -> Result<Result<Option<HtmlCaptureSubjectId>, HtmlSemanticMissing>, HtmlSemanticFailure>
+    {
+        if matches!(
+            node.kind(),
+            HtmlCapturedNodeKind::Element(_)
+                | HtmlCapturedNodeKind::Document(_)
+                | HtmlCapturedNodeKind::Fragment(_)
+        ) {
+            self.charge(1)?;
+            let children = match node.children() {
+                HtmlCapturedChildren::Complete(children) => children,
+                HtmlCapturedChildren::Unavailable => {
+                    return Ok(Err(HtmlSemanticMissing::OrderedChildren(node.id())));
+                }
+            };
+            self.reserve_scratch(frames, 1)?;
+            self.charge(1)?;
+            frames.push(children);
+        }
+        loop {
+            self.charge(1)?;
+            let Some(frame) = frames.last_mut() else {
+                return Ok(Ok(None));
+            };
+            if let Some(subject) = frame.next() {
+                return Ok(Ok(Some(subject)));
+            }
+            frames.pop();
+        }
+    }
+
     fn poll(&mut self) -> Result<(), HtmlSemanticFailure> {
         if let Some(failure) = &self.failure {
             return Err(failure.clone());
@@ -2328,6 +2374,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.input_suggestions_source(&request.subject)?,
                             )
                         }
+                        HtmlSemanticQuery::MapAreas => {
+                            HtmlSemanticFact::MapAreas(self.map_areas(&request.subject)?)
+                        }
                         HtmlSemanticQuery::DatalistOptions => HtmlSemanticFact::DatalistOptions(
                             self.datalist_options(&request.subject, false)?,
                         ),
@@ -2544,6 +2593,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::InputSuggestionsSource => {
                         HtmlSemanticFact::InputSuggestionsSource(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::MapAreas => {
+                        HtmlSemanticFact::MapAreas(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::DatalistOptions => {
                         HtmlSemanticFact::DatalistOptions(HtmlSemanticValue::Inapplicable)

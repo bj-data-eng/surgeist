@@ -84,45 +84,6 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
 
-    // Descend only after inspecting the current node. This lets a first match
-    // succeed without reading its children or any later branch. Host/slot edges
-    // are never ordinary-tree traversal edges.
-    fn default_tree_next(
-        &mut self,
-        node: HtmlCapturedNode<'a>,
-        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
-    ) -> DefaultResult<Option<HtmlCaptureSubjectId>> {
-        if matches!(
-            node.kind(),
-            HtmlCapturedNodeKind::Element(_)
-                | HtmlCapturedNodeKind::Document(_)
-                | HtmlCapturedNodeKind::Fragment(_)
-        ) {
-            self.charge(1)?;
-            let children = match node.children() {
-                HtmlCapturedChildren::Complete(children) => children,
-                HtmlCapturedChildren::Unavailable => {
-                    return Err(DefaultStop::Missing(HtmlSemanticMissing::OrderedChildren(
-                        node.id(),
-                    )));
-                }
-            };
-            self.reserve_scratch(frames, 1)?;
-            self.charge(1)?;
-            frames.push(children);
-        }
-        loop {
-            self.charge(1)?;
-            let Some(frame) = frames.last_mut() else {
-                return Ok(None);
-            };
-            if let Some(subject) = frame.next() {
-                return Ok(Some(subject));
-            }
-            frames.pop();
-        }
-    }
-
     fn default_owner(&mut self, subject: &HtmlCaptureSubjectId) -> DefaultResult<HtmlFormOwner> {
         match self.form_owner(subject)? {
             HtmlSemanticValue::Known(owner) => Ok(owner),
@@ -180,7 +141,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
             }
-            current = self.default_tree_next(node, frames)?;
+            current = self
+                .ordinary_tree_next(node, frames)?
+                .map_err(DefaultStop::Missing)?;
         }
         Ok(None)
     }
@@ -281,7 +244,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
             }
-            current = self.default_tree_next(node, frames)?;
+            current = self
+                .ordinary_tree_next(node, frames)?
+                .map_err(DefaultStop::Missing)?;
         }
         match missing {
             Some(value) => Err(DefaultStop::Missing(value)),

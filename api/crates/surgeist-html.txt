@@ -1290,6 +1290,7 @@ pub surgeist_html::HtmlSemanticFact::Language(surgeist_html::HtmlSemanticValue<s
 pub surgeist_html::HtmlSemanticFact::ListOrdinal(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlInteger>>)
 pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
+pub surgeist_html::HtmlSemanticFact::MapAreas(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlAreaCollection>)
 pub surgeist_html::HtmlSemanticFact::Meter(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMeterState>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionFormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionFormOwner>)
@@ -1382,6 +1383,7 @@ pub surgeist_html::HtmlSemanticQuery::Language
 pub surgeist_html::HtmlSemanticQuery::ListOrdinal
 pub surgeist_html::HtmlSemanticQuery::ListOwner
 pub surgeist_html::HtmlSemanticQuery::ListStartingValue
+pub surgeist_html::HtmlSemanticQuery::MapAreas
 pub surgeist_html::HtmlSemanticQuery::Meter
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
 pub surgeist_html::HtmlSemanticQuery::OptionFormOwner
@@ -2086,6 +2088,11 @@ impl surgeist_html::HtmlAreaCircle
 pub fn surgeist_html::HtmlAreaCircle::center(&self) -> &surgeist_html::HtmlAreaIntegerPoint
 pub fn surgeist_html::HtmlAreaCircle::new(center: surgeist_html::HtmlAreaIntegerPoint, radius: surgeist_html::HtmlNonNegativeInteger) -> Self
 pub fn surgeist_html::HtmlAreaCircle::radius(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub struct surgeist_html::HtmlAreaCollection
+impl surgeist_html::HtmlAreaCollection
+pub fn surgeist_html::HtmlAreaCollection::areas(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub fn surgeist_html::HtmlAreaCollection::is_empty(&self) -> bool
+pub fn surgeist_html::HtmlAreaCollection::len(&self) -> usize
 pub struct surgeist_html::HtmlAreaCoordinatesReport
 impl surgeist_html::HtmlAreaCoordinatesReport
 pub fn surgeist_html::HtmlAreaCoordinatesReport::author(&self) -> surgeist_html::HtmlAreaCoordinatesAuthorState

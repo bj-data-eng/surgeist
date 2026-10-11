@@ -601,6 +601,16 @@ their supplied classification. The result is an immutable association snapshot;
 it does not attach ElementInternals or provide a live NodeList. Traversal and
 nested output retain the semantic session's admission and atomic batch contract.
 
+`MapAreas` returns HTML area descendants of a map in ordinary tree order,
+including areas beneath wrappers and nested maps. Attribute values and visibility
+do not filter membership. Separate shadow and template trees are excluded;
+influencing unavailable child order remains missing rather than a partial list.
+`HtmlAreaCollection` retains capture-qualified subject identities from one
+immutable observation, using the shared traversal and semantic resource ledger.
+The [map areas clause](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#dom-map-areas)
+defines membership; this result supplies no live collection, named lookup,
+image-map selection, geometry or activation.
+
 The control-autocomplete query retains intrinsic syntax and processing, the
 actually consulted input-type report and any consulted form-autocomplete report.
 Only expectation defaults consult the existing form-owner operation: a known
