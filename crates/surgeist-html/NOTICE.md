@@ -88,6 +88,9 @@ scope lists from two files at that same revision. Its Initial/BeforeHtml
 prologue and doctype tables adapt two additional files; the owning head-stage
 driver further adapts selected head, noscript and Text rules, including script
 insertion and EOF/end-tag dispatch for the fresh Disabled operation.
+The same source files also supply selected ordinary body and trailing-mode rows,
+generic end handling and implied-end/special-element lists. Surgeist-owned
+controlled providers retain actual text and recovered-tag ownership.
 Their original notices are
 retained verbatim, with separate adaptation notes and origin hashes. The same
 MIT OR Apache-2.0 attribution applies; see the

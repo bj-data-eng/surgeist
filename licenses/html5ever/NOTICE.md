@@ -24,7 +24,9 @@ The same selected revision supplies a bounded adaptation of tree-builder
 insertion-location and stack/scope operations plus selected tag sets, followed
 by the ordinary-document Initial/BeforeHtml prologue and doctype tables, then
 the owning BeforeHead/ordinary InHead/Disabled-noscript/Text driver, including
-script insertion and EOF/end-tag dispatch adapted for the fresh Disabled operation. The
+script insertion and EOF/end-tag dispatch adapted for the fresh Disabled operation,
+then selected ordinary body/trailing-mode rows, generic end handling and
+implied-end/special-element lists. The
 [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;

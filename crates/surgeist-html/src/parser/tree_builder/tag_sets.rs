@@ -47,7 +47,7 @@ pub(super) fn ascii_eq(
     Ok(true)
 }
 
-fn namespace(
+pub(super) fn namespace(
     name: &QualifiedName,
     expected: &'static str,
     control: &mut ParseControl,
@@ -59,7 +59,7 @@ fn namespace(
     }
 }
 
-fn local_in(
+pub(super) fn local_in(
     name: &QualifiedName,
     choices: &[&'static str],
     control: &mut ParseControl,
@@ -135,6 +135,156 @@ pub(super) fn scope_boundary(
     }
     if namespace(name, SVG, control)? {
         return local_in(name, &["foreignObject", "desc", "title"], control);
+    }
+    Ok(false)
+}
+
+pub(super) fn equal_units(
+    left: &DocumentString,
+    right: &DocumentString,
+    c: &mut ParseControl,
+) -> Result<bool, ParseStop> {
+    c.charge(WorkCategory::RecordVisit, 2)?;
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for index in 0..left.len() {
+        c.charge(WorkCategory::InspectByte, 4)?;
+        if left.code_units()[index] != right.code_units()[index] {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum NodeSet {
+    Implied,
+    Heading,
+    BodyEnd,
+    Special,
+}
+
+/// Namespace-qualified source sets, including rb/rtc in the governing EOF set
+/// and annotation-xml in the MathML special category.
+pub(super) fn in_set(
+    name: &QualifiedName,
+    set: NodeSet,
+    c: &mut ParseControl,
+) -> Result<bool, ParseStop> {
+    if namespace(name, HTML, c)? {
+        return local_in(
+            name,
+            match set {
+                NodeSet::Implied => &[
+                    "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
+                ],
+                NodeSet::Heading => &["h1", "h2", "h3", "h4", "h5", "h6"],
+                NodeSet::BodyEnd => &[
+                    "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc", "tbody",
+                    "td", "tfoot", "th", "thead", "tr", "body", "html",
+                ],
+                NodeSet::Special => &[
+                    "address",
+                    "applet",
+                    "area",
+                    "article",
+                    "aside",
+                    "base",
+                    "basefont",
+                    "bgsound",
+                    "blockquote",
+                    "body",
+                    "br",
+                    "button",
+                    "caption",
+                    "center",
+                    "col",
+                    "colgroup",
+                    "dd",
+                    "details",
+                    "dir",
+                    "div",
+                    "dl",
+                    "dt",
+                    "embed",
+                    "fieldset",
+                    "figcaption",
+                    "figure",
+                    "footer",
+                    "form",
+                    "frame",
+                    "frameset",
+                    "h1",
+                    "h2",
+                    "h3",
+                    "h4",
+                    "h5",
+                    "h6",
+                    "head",
+                    "header",
+                    "hgroup",
+                    "hr",
+                    "html",
+                    "iframe",
+                    "img",
+                    "input",
+                    "keygen",
+                    "li",
+                    "link",
+                    "listing",
+                    "main",
+                    "marquee",
+                    "menu",
+                    "meta",
+                    "nav",
+                    "noembed",
+                    "noframes",
+                    "noscript",
+                    "object",
+                    "ol",
+                    "p",
+                    "param",
+                    "plaintext",
+                    "pre",
+                    "script",
+                    "search",
+                    "section",
+                    "select",
+                    "source",
+                    "style",
+                    "summary",
+                    "table",
+                    "tbody",
+                    "td",
+                    "template",
+                    "textarea",
+                    "tfoot",
+                    "th",
+                    "thead",
+                    "title",
+                    "tr",
+                    "track",
+                    "ul",
+                    "wbr",
+                    "xmp",
+                ],
+            },
+            c,
+        );
+    }
+    if !matches!(set, NodeSet::Special) {
+        return Ok(false);
+    }
+    if namespace(name, MATHML, c)? {
+        return local_in(
+            name,
+            &["mi", "mo", "mn", "ms", "mtext", "annotation-xml"],
+            c,
+        );
+    }
+    if namespace(name, SVG, c)? {
+        return local_in(name, &["foreignObject", "desc", "title"], c);
     }
     Ok(false)
 }

@@ -1390,6 +1390,33 @@ impl<T> OwnedVec<T> {
         control.charge(WorkCategory::RecordVisit, 1)?;
         Ok(self.vector.get_mut(index))
     }
+    /// Swaps two actual admitted fixed slots. No payload clone, allocation,
+    /// logical-slot change, or mutable-vector escape is involved.
+    pub(crate) fn swap_slots(
+        &mut self,
+        left: usize,
+        right: usize,
+        control: &mut ParseControl,
+    ) -> Result<bool, ParseStop> {
+        self.require_owner(control)?;
+        control.charge(WorkCategory::RecordVisit, 2)?;
+        if left >= self.vector.len() || right >= self.vector.len() {
+            return Ok(false);
+        }
+        if left == right {
+            return Ok(true);
+        }
+        let Some(bytes) = size_of::<T>().checked_mul(2) else {
+            return control.representation(HtmlParseResource::AtomicLayoutBytes);
+        };
+        control.admit_atomic_layout(bytes)?;
+        control.charge_many(&[
+            (WorkCategory::CopyByte, bytes as u64),
+            (WorkCategory::RecordWrite, 2),
+        ])?;
+        self.vector.swap(left, right);
+        Ok(true)
+    }
     /// Removes one admitted slot and transfers its value without releasing its
     /// nested payload tickets. The caller owns their separate release/transfer.
     /// Capacity and all high-water observations are retained. An empty attempt
@@ -1632,6 +1659,118 @@ impl<T: Copy> OwnedVec<T> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fixed_slot_swap_charges_two_real_slot_moves_and_writes_without_storage_growth() {
+        let mut c = control();
+        let mut slots = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        slots.try_push(&mut c, 11u16).unwrap();
+        slots.try_push(&mut c, 22u16).unwrap();
+        let before = c.usage().clone();
+        let capacity = slots.capacity();
+        assert!(slots.swap_slots(0, 1, &mut c).unwrap());
+        assert_eq!(slots.as_slice(), &[22, 11]);
+        assert_eq!(slots.capacity(), capacity);
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+            2
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+            4
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
+            2
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::ReserveByte),
+            before.work(WorkCategory::ReserveByte)
+        );
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::AuxiliaryEntries),
+            before.resource(HtmlParseResource::AuxiliaryEntries)
+        );
+        let before = c.usage().clone();
+        assert!(slots.swap_slots(0, 0, &mut c).unwrap());
+        assert!(!slots.swap_slots(0, 2, &mut c).unwrap());
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+            4
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::CopyByte),
+            before.work(WorkCategory::CopyByte)
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordWrite),
+            before.work(WorkCategory::RecordWrite)
+        );
+        slots.release(&mut c).unwrap();
+    }
+
+    #[test]
+    fn fixed_slot_swap_exact_and_one_short_work_preserve_atomic_mutation() {
+        for short in [false, true] {
+            let selected = limits();
+            let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
+            let mut slots = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+            slots.try_push(&mut c, 11u16).unwrap();
+            slots.try_push(&mut c, 22u16).unwrap();
+            // Two visits + two u16 moves + two writes; initial admitted
+            // allocation already establishes the real two-slot atomic layout.
+            let remaining = selected.work_credits()
+                - c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(WorkCategory::StateStep, remaining - 8 + u64::from(short))
+                .unwrap();
+            let result = slots.swap_slots(0, 1, &mut c);
+            if short {
+                assert!(matches!(
+                    result,
+                    Err(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    })
+                ));
+                assert_eq!(slots.as_slice(), &[11, 22]);
+            } else {
+                assert_eq!(result, Ok(true));
+                assert_eq!(slots.as_slice(), &[22, 11]);
+            }
+            slots.release(&mut c).unwrap();
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn fixed_slot_swap_rejects_foreign_owner_and_cancellation_before_mutation() {
+        let cancel = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancel.clone());
+        let mut slots = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        slots.try_push(&mut c, 11u16).unwrap();
+        slots.try_push(&mut c, 22u16).unwrap();
+        let mut foreign = control();
+        assert_eq!(
+            slots.swap_slots(0, 1, &mut foreign),
+            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+        );
+        assert_eq!(slots.as_slice(), &[11, 22]);
+        cancel.cancel();
+        assert_eq!(slots.swap_slots(0, 1, &mut c), Err(ParseStop::Cancelled));
+        assert_eq!(slots.as_slice(), &[11, 22]);
+        slots.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+    }
+
     #[test]
     fn unsupported_standalone_state_is_terminal_without_refunding_admitted_storage_or_work() {
         let mut c = control();

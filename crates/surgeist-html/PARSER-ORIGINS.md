@@ -14,8 +14,10 @@ BeforeHead, ordinary non-template InHead, Disabled InHeadNoscript and Text.
 A fresh standalone Disabled driver also retains actual script metadata and
 implements script Text entry, end-tag preparation and EOF marking. The generic
 head continuation still suspends before script effects when it lacks that
-constructor proof. AfterHead and template continuations remain unfinished;
-complete insertion-mode dispatch and public parse execution remain unfinished.
+constructor proof. The fresh driver continues through AfterHead, ordinary InBody
+and the two trailing body modes. Formatting, forms, table/select/frameset
+transitions, templates and foreign dispatch retain explicit unfinished
+continuations. Construction EOF is not completed stop-parsing or a public report.
 
 ## Original source and incorporated files
 
@@ -29,9 +31,9 @@ before adaptation.
 | `html5ever/src/tokenizer/states.rs` | `35ea888082a92b77a428af263224169b05ff5740bd519efdace90e44858a0b7d` | `src/parser/tokenizer/states.rs` |
 | `html5ever/src/tokenizer/interface.rs` | `cdab80709a6e27663b9a349a607cf85da93fcc9ee3b3a54cf97ee635a9ae7cf4` | `src/parser/tokenizer/token.rs` |
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
-| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location and stack/scope adaptation in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs` |
-| `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope-list adaptation in `src/parser/tree_builder/tag_sets.rs` |
-| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs` |
+| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs` |
+| `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope, implied-end, heading and special-element lists in `src/parser/tree_builder/tag_sets.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs` |
 | `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
@@ -75,6 +77,13 @@ native metadata providers are Surgeist-authored and their revisions remain in Gi
 | Incorporated file | Disabled-script adapted SHA-256 |
 | --- | --- |
 | `src/parser/tree_builder/head.rs` | `a19b85cf179750248e02101765a745e0f17246f19ff776f32b10656ca330aaa4` |
+
+The ordinary-body adaptation adds a separate initial incorporation checkpoint;
+earlier adapted hashes remain historical.
+
+| Incorporated file | Initial adapted SHA-256 |
+| --- | --- |
+| `src/parser/tree_builder/body.rs` | `29531aa6707752258e0f1e40bf7474457a675b30d4596b7a11aecebc8852b869` |
 
 The accompanying tokenizer and tree-builder tests are Surgeist-authored
 verification, not imported upstream test files. The input, buffer, controller,
@@ -163,6 +172,27 @@ Disabled scripting alone does not. Actual structural/text/attribute effects,
 script metadata and source-qualified terminal failures remain retained in the
 same controlled arena. Imported, hosted, shadow-document and template-document
 preparation have no supported execution path in this checkpoint.
+
+The ordinary-body extension adapts selected `rules.rs` rows 356–541, 558–602,
+616–630, 693–731, 796–813, 842–873, 880–892, 947–1004, 1466–1493 and 1563–1583.
+Stack/body predicates derive from `mod.rs` lines 1043–1223; generic end handling
+derives from lines 1555–1585. The implied-end, heading and special-element lists
+derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected HTML
+edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
+`keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
+Upstream formatting/form/table/foreign creation and frameset transitions are
+unfinished boundaries, not incorporated complete algorithms.
+
+The sole fresh driver consumes its actual AfterHead handoff and retains current
+and return insertion modes, the stored head identity, frameset eligibility and
+first-token LF handling. Late head delegation removes that exact temporary head
+entry; script provenance is checked before its diagnostic or stack effects.
+Text runs, implied body/paragraph factories, body-attribute merges and image/end-br
+recovery use the existing arena, actual payload owners and controller. NULL
+diagnostics and recovered character runs retain original UTF-16/source evidence;
+recovered tags do not invent lexical origins. Source-defined ignore rows execute,
+while unavailable families preserve the token before effects. EOF retains an
+unfinished construction continuation rather than certifying report publication.
 
 Remaining insertion modes, formatting reconstruction/adoption, foreign dispatch,
 context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,

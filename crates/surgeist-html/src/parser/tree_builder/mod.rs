@@ -14,9 +14,12 @@
 
 //! Concrete tree operations, document prologue and bounded owning head dispatch
 //! over one construction arena. The fresh sealed Disabled driver handles actual
-//! scripts; a general proofless head stage suspends at script. Template and
-//! AfterHead continuations remain unfinished; full parse/report work is later.
+//! scripts; a general proofless head stage suspends at script. Ordinary
+//! body/block/list/ruby and trailing modes are admitted. Unsupported
+//! formatting, form, select, table, frameset, template and foreign rows retain
+//! owning continuations; construction EOF is not full parse/report success.
 
+mod body;
 mod doctype;
 mod head;
 mod prologue;
@@ -105,6 +108,110 @@ fn copy_node(node: &ParserNode, control: &mut ParseControl) -> Result<ParserNode
 }
 
 impl LocationKernel {
+    fn current(&self, c: &mut ParseControl) -> Result<ParserNode, KernelError> {
+        self.require(c)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        self.at(
+            self.stack()?
+                .len()
+                .checked_sub(1)
+                .ok_or(KernelError::EmptyStack)?,
+            c,
+        )
+    }
+    fn node_set(
+        &self,
+        node: &ParserNode,
+        set: tag_sets::NodeSet,
+        c: &mut ParseControl,
+    ) -> Result<bool, KernelError> {
+        let name = self
+            .session
+            .element_name(c, node)?
+            .ok_or(KernelError::NotElement)?;
+        Ok(tag_sets::in_set(name, set, c)?)
+    }
+    fn scoped_name(
+        &self,
+        name: &'static str,
+        scope: Scope,
+        c: &mut ParseControl,
+    ) -> Result<bool, KernelError> {
+        self.require(c)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        for index in (0..self.stack()?.len()).rev() {
+            let node = self.at(index, c)?;
+            if self.named(&node, name, c)? {
+                return Ok(true);
+            }
+            let q = self
+                .session
+                .element_name(c, &node)?
+                .ok_or(KernelError::NotElement)?;
+            if tag_sets::scope_boundary(q, scope, c)? {
+                return Ok(false);
+            }
+        }
+        Ok(false)
+    }
+    fn implied_ends(
+        &mut self,
+        except: Option<&'static str>,
+        c: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        loop {
+            let node = self.current(c)?;
+            if let Some(except) = except
+                && self.named(&node, except, c)?
+            {
+                return Ok(());
+            }
+            if !self.node_set(&node, tag_sets::NodeSet::Implied, c)? {
+                return Ok(());
+            }
+            self.pop(c)?;
+        }
+    }
+    fn pop_through(
+        &mut self,
+        target: &ParserNode,
+        c: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        loop {
+            let node = self.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            if self.session.same_node(c, &node, target)? {
+                return Ok(());
+            }
+        }
+    }
+    fn remove_stack_identity(
+        &mut self,
+        target: &ParserNode,
+        c: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        self.require(c)?;
+        self.session.validate_node(c, target)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let len = self.stack()?.len();
+        for index in 0..len {
+            let node = self.at(index, c)?;
+            if self.session.same_node(c, &node, target)? {
+                for shift in index..len - 1 {
+                    if !self
+                        .open
+                        .as_mut()
+                        .ok_or(KernelError::Consumed)?
+                        .swap_slots(shift, shift + 1, c)?
+                    {
+                        return Err(KernelError::EmptyStack);
+                    }
+                }
+                self.pop(c)?;
+                return Ok(());
+            }
+        }
+        Err(KernelError::EmptyStack)
+    }
     /// The source-free native root kind establishes fragment substitution. No
     /// captured host is manufactured as an arena node or guessed from a flag.
     pub(crate) fn new(
@@ -541,7 +648,8 @@ impl From<head::HeadError> for StandaloneError {
 
 /// Fresh ordinary request admission owns the sole controller and actual lexer /
 /// prologue/head state. Captured/hosted initialization cannot enter this path.
-/// This bounded driver still stops at template/AfterHead, not full parse success.
+/// This bounded driver retains unsupported row continuations and construction
+/// EOF; full parser lifecycle and public parse/report publication are unfinished.
 pub(crate) struct StandaloneDocumentDriver<'source> {
     source: &'source crate::HtmlSource,
     control: ParseControl,
@@ -634,7 +742,21 @@ impl<'source> StandaloneDocumentDriver<'source> {
         self.control.require_source(self.source)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
         if let Some(head) = &mut self.head {
-            return Ok(head.step(&mut self.control)?);
+            let step = head.step(&mut self.control)?;
+            if step == head::HeadStep::Boundary(head::HeadBoundary::AfterHead) {
+                let state = head.state.as_mut().ok_or(StandaloneError::Consumed)?;
+                // Consume the actual phase handoff in the sole fresh driver.
+                // No new tree, tokenizer, controller or eligibility is minted.
+                self.control.charge(WorkCategory::RecordVisit, 1)?;
+                write(
+                    size_of::<Option<head::HeadBoundary>>(),
+                    1,
+                    &mut self.control,
+                )?;
+                state.boundary = None;
+                return Ok(head::HeadStep::Consumed);
+            }
+            return Ok(step);
         }
         let c = &mut self.control;
         c.charge(WorkCategory::RecordVisit, 1)?;

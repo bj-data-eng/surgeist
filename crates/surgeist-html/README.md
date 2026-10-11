@@ -456,8 +456,18 @@ The generic proofless head continuation still suspends at script starts.
 The [selected source boundary](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
 records MIME essence matching and the complete checkpoint clauses; source-local
 work/storage admission and sticky terminal failures remain with the sole parser
-controller. This private test-compiled machinery still stops at AfterHead or
-template continuation rather than producing a completed public parse report.
+controller.
+
+The same fresh driver consumes the actual AfterHead handoff and continues through
+ordinary InBody and trailing body modes. It handles block, heading, list, ruby,
+void and generic-name recovery, first-token LF suppression and raw-text entry.
+Repeated body attributes and character runs use the same controlled native
+storage, preserving order and exact origins. Late head delegation removes the
+stored head entry by identity and restores the actual insertion mode. Formatting,
+forms, table/select/frameset transitions, templates and foreign dispatch retain
+untouched-token continuations when their required machinery is unavailable.
+Source-defined error-and-ignore rows still execute. Construction EOF remains an
+unfinished lifecycle state; these private operations produce no public parse report.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.

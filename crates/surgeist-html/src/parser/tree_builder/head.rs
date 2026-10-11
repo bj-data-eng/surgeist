@@ -20,7 +20,8 @@ use super::{
 use crate::{
     HtmlParseResource, HtmlSource, HtmlSourceRange,
     construction::parser_session::{
-        ParserNode, SessionError, split_leading_ascii_whitespace, validate_token_kind,
+        BodyTextRuns, ParserNode, SessionError, TextRun, split_leading_ascii_whitespace,
+        validate_token_kind,
     },
     parser::{
         control::{ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WorkCategory},
@@ -34,12 +35,15 @@ use crate::{
 use std::mem::size_of;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum HeadMode {
+pub(super) enum InsertionMode {
     BeforeHead,
     InHead,
     InHeadNoscript,
     Text,
     AfterHead,
+    InBody,
+    AfterBody,
+    AfterAfterBody,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HeadCondition {
@@ -50,10 +54,13 @@ pub(super) enum HeadCondition {
     UnexpectedInNoscript,
     UnacknowledgedSelfClosing,
     EofInText,
+    UnexpectedBodyToken,
+    NullInBody,
+    UnexpectedOpenElement,
 }
 pub(super) struct HeadDiagnostic {
     pub(super) condition: HeadCondition,
-    pub(super) mode: HeadMode,
+    pub(super) mode: InsertionMode,
     pub(super) source: HtmlSourceRange,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,6 +68,13 @@ pub(crate) enum HeadBoundary {
     AfterHead,
     Script,
     Template,
+    Formatting,
+    Form,
+    Select,
+    Table,
+    Frameset,
+    Foreign,
+    ConstructionEof,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HeadStep {
@@ -179,14 +193,19 @@ pub(super) struct HeadState<'source> {
     pub(super) before: BeforeHead,
     pub(super) tokenizer: Option<Tokenizer<'source>>,
     pub(super) pending: Option<PendingToken>,
-    pub(super) mode: HeadMode,
+    pub(super) mode: InsertionMode,
     pub(super) head: Option<ParserNode>,
-    return_mode: Option<HeadMode>,
-    boundary: Option<HeadBoundary>,
+    pub(super) return_mode: Option<InsertionMode>,
+    pub(super) boundary: Option<HeadBoundary>,
     pub(super) diagnostics: OwnedVec<HeadDiagnostic>,
     pub(super) lexical: OwnedVec<Event>,
     lexical_pending: Option<Event>,
-    whitespace_pending: Option<Text>,
+    pub(super) whitespace_pending: Option<Text>,
+    pub(super) frameset_ok: bool,
+    pub(super) ignore_first_lf: bool,
+    pub(super) temporary_head: Option<ParserNode>,
+    pub(super) body_runs: Option<BodyTextRuns>,
+    pub(super) body_run: Option<TextRun>,
     script: Option<StandaloneScriptState<'source>>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
@@ -228,10 +247,10 @@ impl<'source> HeadStage<'source> {
         let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         diagnostics.require_owner(c)?;
         lexical.require_owner(c)?;
-        // Three driver fields + twelve state fields + caller BeforeHead and
+        // Three driver fields + seventeen state fields + caller BeforeHead and
         // Tokenizer slots + the retained BeforeHead input slot are written.
-        // Admit all eighteen field writes before the first owning take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 18, c) {
+        // Admit all twenty-three field writes before the first owning take.
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 23, c) {
             diagnostics.release(c)?;
             lexical.release(c)?;
             return Err(stop.into());
@@ -250,7 +269,7 @@ impl<'source> HeadStage<'source> {
                 before,
                 tokenizer: tokenizer.take(),
                 pending,
-                mode: HeadMode::BeforeHead,
+                mode: InsertionMode::BeforeHead,
                 head: None,
                 return_mode: None,
                 boundary: None,
@@ -259,6 +278,11 @@ impl<'source> HeadStage<'source> {
                 lexical_pending: None,
                 whitespace_pending: None,
                 script: None,
+                frameset_ok: true,
+                ignore_first_lf: false,
+                temporary_head: None,
+                body_runs: None,
+                body_run: None,
             }),
         })
     }
@@ -271,7 +295,7 @@ impl<'source> HeadStage<'source> {
         let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
         capability.validate_session(c, &state.before.kernel.session)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
-        if state.mode != HeadMode::BeforeHead || state.script.is_some() {
+        if state.mode != InsertionMode::BeforeHead || state.script.is_some() {
             return Err(HeadError::StandaloneCapabilityUnavailable);
         }
         write(size_of::<Option<StandaloneScriptState>>(), 7, c)?;
@@ -343,6 +367,7 @@ impl<'source> HeadStage<'source> {
             .ok_or(HeadError::StandaloneCapabilityUnavailable)?
             .capability
             .validate_session(c, &state.before.kernel.session)?;
+        state.release_body(c)?;
         if let Some(pending) = &mut state.pending {
             pending.release(c)?;
         }
@@ -478,7 +503,7 @@ impl<'source> HeadStage<'source> {
                 }
             }
         }
-        state.advance(c)
+        state.advance(self.source, c)
     }
     pub(super) fn take_continuation(
         &mut self,
@@ -557,6 +582,7 @@ impl<'source> HeadStage<'source> {
             let Some(text) = text else { break };
             text.release(c)?;
         }
+        state.release_body(c)?;
         state.before.kernel.release(c)?;
         if let Some(tokenizer) = state.tokenizer.take() {
             tokenizer.release(c)?;
@@ -596,20 +622,28 @@ fn validate_source(
     Ok(())
 }
 impl HeadState<'_> {
-    fn kernel(&mut self) -> &mut LocationKernel {
+    pub(super) fn kernel(&mut self) -> &mut LocationKernel {
         &mut self.before.kernel
     }
-    fn mode(&self, c: &mut ParseControl) -> Result<HeadMode, HeadError> {
+    pub(super) fn mode(&self, c: &mut ParseControl) -> Result<InsertionMode, HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, size_of::<HeadMode>() as u64)?;
+        c.charge(WorkCategory::InspectByte, size_of::<InsertionMode>() as u64)?;
         Ok(self.mode)
     }
-    fn set_mode(&mut self, mode: HeadMode, c: &mut ParseControl) -> Result<(), HeadError> {
-        write(size_of::<HeadMode>(), 1, c)?;
+    pub(super) fn set_mode(
+        &mut self,
+        mode: InsertionMode,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
+        write(size_of::<InsertionMode>(), 1, c)?;
         self.mode = mode;
         Ok(())
     }
-    fn emit(&mut self, condition: HeadCondition, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn emit(
+        &mut self,
+        condition: HeadCondition,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 2)?;
         let source = &self.pending.as_ref().ok_or(HeadError::MissingInput)?.source;
         write(size_of::<HeadDiagnostic>(), 3, c)?;
@@ -625,19 +659,19 @@ impl HeadState<'_> {
         )?;
         Ok(())
     }
-    fn finish(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+    pub(super) fn finish(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         write(size_of::<Option<PendingToken>>(), 1, c)?;
         self.pending = None;
         Ok(HeadStep::Consumed)
     }
-    fn discard(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+    pub(super) fn discard(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         self.pending
             .as_mut()
             .ok_or(HeadError::MissingInput)?
             .release(c)?;
         self.finish(c)
     }
-    fn stop_at(
+    pub(super) fn stop_at(
         &mut self,
         boundary: HeadBoundary,
         c: &mut ParseControl,
@@ -702,7 +736,7 @@ impl HeadState<'_> {
         };
         Ok(class)
     }
-    fn whitespace(&mut self, c: &mut ParseControl) -> Result<bool, HeadError> {
+    pub(super) fn whitespace(&mut self, c: &mut ParseControl) -> Result<bool, HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         let mode = self.mode(c)?;
         let Payload::Text(input) = &mut self
@@ -716,7 +750,7 @@ impl HeadState<'_> {
         write(size_of::<Option<Text>>(), 1, c)?;
         self.whitespace_pending = split_leading_ascii_whitespace(c, input)?;
         if self.whitespace_pending.is_some() {
-            if mode == HeadMode::BeforeHead {
+            if mode == InsertionMode::BeforeHead {
                 write(size_of::<Option<Text>>(), 1, c)?;
                 let text = self
                     .whitespace_pending
@@ -735,7 +769,7 @@ impl HeadState<'_> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         Ok(input.is_none())
     }
-    fn ordinary_node(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+    pub(super) fn ordinary_node(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         let location = self.before.kernel.adjusted_location(None, c)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let node = match &mut pending.payload {
@@ -753,7 +787,7 @@ impl HeadState<'_> {
             .insert(c, &location.parent, &node, location.before.as_ref())?;
         self.finish(c)
     }
-    fn insert_tag(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
+    pub(super) fn insert_tag(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
         let Payload::Tag(input) = &mut self
             .pending
             .as_mut()
@@ -772,7 +806,7 @@ impl HeadState<'_> {
         let node = copy_node(node, c)?;
         write(size_of::<Option<ParserNode>>(), 1, c)?;
         self.head = Some(node);
-        self.set_mode(HeadMode::InHead, c)
+        self.set_mode(InsertionMode::InHead, c)
     }
     fn implied_head(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         let location = self.kernel().adjusted_location(None, c)?;
@@ -781,7 +815,7 @@ impl HeadState<'_> {
         self.kernel().push(&node, c)?;
         self.set_head(&node, c)
     }
-    fn raw_text(
+    pub(super) fn raw_text(
         &mut self,
         raw: Raw,
         self_closing: bool,
@@ -792,16 +826,25 @@ impl HeadState<'_> {
             .as_mut()
             .ok_or(HeadError::Consumed)?
             .set_state(State::Raw(raw), c)?;
-        write(size_of::<Option<HeadMode>>(), 1, c)?;
+        write(size_of::<Option<InsertionMode>>(), 1, c)?;
         let mode = self.mode(c)?;
         self.return_mode = Some(mode);
-        self.set_mode(HeadMode::Text, c)?;
+        self.set_mode(InsertionMode::Text, c)?;
         if self_closing {
             self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
         }
         self.finish(c)
     }
-    fn script_start(
+    pub(super) fn validate_script_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        self.script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .capability
+            .validate_session(c, &self.before.kernel.session)?;
+        Ok(())
+    }
+    pub(super) fn script_start(
         &mut self,
         self_closing: bool,
         c: &mut ParseControl,
@@ -836,10 +879,10 @@ impl HeadState<'_> {
             .as_mut()
             .ok_or(HeadError::Consumed)?
             .set_state(State::Raw(Raw::Script), c)?;
-        write(size_of::<Option<HeadMode>>(), 1, c)?;
+        write(size_of::<Option<InsertionMode>>(), 1, c)?;
         let mode = self.mode(c)?;
         self.return_mode = Some(mode);
-        self.set_mode(HeadMode::Text, c)?;
+        self.set_mode(InsertionMode::Text, c)?;
         if self_closing {
             self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
         }
@@ -870,11 +913,11 @@ impl HeadState<'_> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(
             WorkCategory::InspectByte,
-            size_of::<Option<HeadMode>>() as u64,
+            size_of::<Option<InsertionMode>>() as u64,
         )?;
         let mode = self.return_mode.ok_or(HeadError::MissingReturnMode)?;
         self.set_mode(mode, c)?;
-        write(size_of::<Option<HeadMode>>(), 1, c)?;
+        write(size_of::<Option<InsertionMode>>(), 1, c)?;
         self.return_mode = None;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let script = self
@@ -933,7 +976,11 @@ impl HeadState<'_> {
         }
         self.discard(c)
     }
-    fn html(&mut self, self_closing: bool, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+    pub(super) fn html(
+        &mut self,
+        self_closing: bool,
+        c: &mut ParseControl,
+    ) -> Result<HeadStep, HeadError> {
         self.emit(HeadCondition::UnexpectedHtml, c)?;
         if self.before.kernel.contains_html_template(c)? {
             return self.discard(c);
@@ -956,16 +1003,32 @@ impl HeadState<'_> {
         }
         self.finish(c)
     }
-    fn advance(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+    fn advance(
+        &mut self,
+        source: &HtmlSource,
+        c: &mut ParseControl,
+    ) -> Result<HeadStep, HeadError> {
         loop {
             c.charge(WorkCategory::StateStep, 1)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
             let mode = self.mode(c)?;
-            if mode != HeadMode::Text && self.whitespace(c)? {
+            if matches!(
+                mode,
+                InsertionMode::AfterHead
+                    | InsertionMode::InBody
+                    | InsertionMode::AfterBody
+                    | InsertionMode::AfterAfterBody
+            ) {
+                if let Some(step) = self.body_advance(source, c)? {
+                    return Ok(step);
+                }
+                continue;
+            }
+            if mode != InsertionMode::Text && self.whitespace(c)? {
                 return self.finish(c);
             }
             let class = self.classify(c)?;
-            if mode == HeadMode::Text {
+            if mode == InsertionMode::Text {
                 match class {
                     Class::Text => {
                         let Payload::Text(input) = &mut self
@@ -1016,11 +1079,11 @@ impl HeadState<'_> {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         c.charge(
                             WorkCategory::InspectByte,
-                            size_of::<Option<HeadMode>>() as u64,
+                            size_of::<Option<InsertionMode>>() as u64,
                         )?;
                         let mode = self.return_mode.ok_or(HeadError::MissingReturnMode)?;
                         self.set_mode(mode, c)?;
-                        write(size_of::<Option<HeadMode>>(), 1, c)?;
+                        write(size_of::<Option<InsertionMode>>(), 1, c)?;
                         self.return_mode = None;
                         if matches!(class, Class::Eof) {
                             continue;
@@ -1037,7 +1100,7 @@ impl HeadState<'_> {
                 self.emit(HeadCondition::UnexpectedDoctype, c)?;
                 return self.discard(c);
             }
-            if mode == HeadMode::BeforeHead {
+            if mode == InsertionMode::BeforeHead {
                 match class {
                     Class::Comment | Class::Pi => return self.ordinary_node(c),
                     Class::Start(Name::Head, close) => {
@@ -1058,11 +1121,11 @@ impl HeadState<'_> {
                 self.implied_head(c)?;
                 continue;
             }
-            if mode == HeadMode::InHeadNoscript {
+            if mode == InsertionMode::InHeadNoscript {
                 match class {
                     Class::End(Name::Noscript) => {
                         self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
-                        self.set_mode(HeadMode::InHead, c)?;
+                        self.set_mode(InsertionMode::InHead, c)?;
                         return self.discard(c);
                     }
                     Class::Comment
@@ -1087,7 +1150,7 @@ impl HeadState<'_> {
                     _ => {
                         self.emit(HeadCondition::UnexpectedInNoscript, c)?;
                         self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
-                        self.set_mode(HeadMode::InHead, c)?;
+                        self.set_mode(InsertionMode::InHead, c)?;
                         continue;
                     }
                 }
@@ -1110,7 +1173,7 @@ impl HeadState<'_> {
                 }
                 Class::Start(Name::Noscript, close) => {
                     self.insert_tag(c)?;
-                    self.set_mode(HeadMode::InHeadNoscript, c)?;
+                    self.set_mode(InsertionMode::InHeadNoscript, c)?;
                     if close {
                         self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
                     }
@@ -1126,7 +1189,7 @@ impl HeadState<'_> {
                 Class::Start(Name::Template, _) => return self.stop_at(HeadBoundary::Template, c),
                 Class::End(Name::Head) => {
                     self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
-                    self.set_mode(HeadMode::AfterHead, c)?;
+                    self.set_mode(InsertionMode::AfterHead, c)?;
                     self.discard(c)?;
                     return self.stop_at(HeadBoundary::AfterHead, c);
                 }
@@ -1151,7 +1214,7 @@ impl HeadState<'_> {
                 _ => {}
             }
             self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
-            self.set_mode(HeadMode::AfterHead, c)?;
+            self.set_mode(InsertionMode::AfterHead, c)?;
             return self.stop_at(HeadBoundary::AfterHead, c);
         }
     }
@@ -1173,14 +1236,14 @@ mod script_state_tests {
             if driver
                 .head
                 .as_ref()
-                .is_some_and(|head| head.state.as_ref().unwrap().mode == HeadMode::Text)
+                .is_some_and(|head| head.state.as_ref().unwrap().mode == InsertionMode::Text)
             {
                 break;
             }
         }
         driver.step().unwrap(); // actual script character token
         let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
-        assert_eq!(state.mode, HeadMode::Text);
+        assert_eq!(state.mode, InsertionMode::Text);
         assert_eq!(state.script.as_ref().unwrap().nesting, 0);
         // Private-state fault injection tests the defense, without issuing a
         // capability, simulating script execution, or adding an input producer.
@@ -1198,7 +1261,7 @@ mod script_state_tests {
             ))
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert_eq!(state.mode, HeadMode::Text);
+        assert_eq!(state.mode, InsertionMode::Text);
         assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
         assert!(matches!(
             state.pending.as_ref().unwrap().payload,

@@ -2031,7 +2031,7 @@ fn head_names(document: &crate::HtmlDocument) -> Vec<DocumentString> {
     let html = document
         .node(&document.root().children().last().unwrap())
         .unwrap();
-    let head = document.node(&html.children().last().unwrap()).unwrap();
+    let head = html.children().map(|id| document.node(&id).unwrap()).find(|node| matches!(node.kind(), HtmlNodeKind::Element(element) if element.name().local_name() == &DocumentString::from("head"))).unwrap();
     head.children()
         .filter_map(|id| match document.node(&id).unwrap().kind() {
             HtmlNodeKind::Element(element) => Some(element.name().local_name().clone()),
@@ -2043,7 +2043,7 @@ fn first_head_child_text(document: &crate::HtmlDocument) -> Vec<u16> {
     let html = document
         .node(&document.root().children().last().unwrap())
         .unwrap();
-    let head = document.node(&html.children().last().unwrap()).unwrap();
+    let head = html.children().map(|id| document.node(&id).unwrap()).find(|node| matches!(node.kind(), HtmlNodeKind::Element(element) if element.name().local_name() == &DocumentString::from("head"))).unwrap();
     let element = document.node(&head.children().next().unwrap()).unwrap();
     element
         .children()
@@ -2056,7 +2056,7 @@ fn first_head_child_text(document: &crate::HtmlDocument) -> Vec<u16> {
 
 #[test]
 fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order() {
-    use super::head::{HeadBoundary, HeadMode};
+    use super::head::{HeadBoundary, InsertionMode};
     let source = HtmlSource::utf8(
         "<!doctype html><html> <!--outside--><?x a??><head>\r\n<!--inside--><?y b?><base/><basefont><bgsound/><link/><meta charset=utf-16></head>",
     );
@@ -2064,7 +2064,7 @@ fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order(
     let output = head_boundary(&source, &mut c);
     assert_eq!(output.boundary, HeadBoundary::AfterHead);
     let state = output.driver.state.as_ref().unwrap();
-    assert_eq!(state.mode, HeadMode::AfterHead);
+    assert_eq!(state.mode, InsertionMode::AfterHead);
     assert!(state.pending.is_none());
     assert!(state.diagnostics.as_slice().is_empty());
     assert_eq!(
@@ -2106,7 +2106,7 @@ fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order(
     assert!(
         matches!(kinds[1], HtmlNodeKind::ProcessingInstruction(value) if value.target().code_units()==[120] && value.data().code_units()==[97,63])
     );
-    let head = document.node(&html.children().last().unwrap()).unwrap();
+    let head = html.children().map(|id| document.node(&id).unwrap()).find(|node| matches!(node.kind(), HtmlNodeKind::Element(element) if element.name().local_name() == &DocumentString::from("head"))).unwrap();
     assert!(
         matches!(document.node(&head.children().next().unwrap()).unwrap().kind(), HtmlNodeKind::Text(value) if value.code_units()==[10])
     );
@@ -2120,13 +2120,13 @@ fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order(
 
 #[test]
 fn implicit_head_reprocesses_nonhead_tag_without_consuming_its_payload() {
-    use super::head::{HeadBoundary, HeadMode};
+    use super::head::{HeadBoundary, InsertionMode};
     let source = HtmlSource::utf8("<body x='kept'>tail");
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
     assert_eq!(output.boundary, HeadBoundary::AfterHead);
     let state = output.driver.state.as_ref().unwrap();
-    assert_eq!(state.mode, HeadMode::AfterHead);
+    assert_eq!(state.mode, InsertionMode::AfterHead);
     let pending = state.pending.as_ref().unwrap();
     assert_eq!(
         source.text(&pending.source).unwrap().code_units(),
@@ -2186,7 +2186,7 @@ fn head_rawtext_preserves_references_isolates_pairs_and_state_specific_null_reco
 
 #[test]
 fn disabled_head_noscript_style_returns_to_noscript_then_ignores_nested_noscript() {
-    use super::head::{HeadCondition, HeadMode};
+    use super::head::{HeadCondition, InsertionMode};
     let source = HtmlSource::utf8(
         "<head><noscript><style>&amp;</style><noscript><!--in--><?x d?><meta/><link/></noscript><title>T</title></head>",
     );
@@ -2198,7 +2198,7 @@ fn disabled_head_noscript_style_returns_to_noscript_then_ignores_nested_noscript
         diagnostics[0].condition,
         HeadCondition::UnexpectedInNoscript
     );
-    assert_eq!(diagnostics[0].mode, HeadMode::InHeadNoscript);
+    assert_eq!(diagnostics[0].mode, InsertionMode::InHeadNoscript);
     let mut frozen = observe_head(output, &mut c);
     let doc = frozen.document().unwrap();
     assert_eq!(
@@ -2226,14 +2226,14 @@ fn disabled_head_noscript_style_returns_to_noscript_then_ignores_nested_noscript
 
 #[test]
 fn head_text_eof_emits_error_restores_mode_and_retains_original_eof_for_afterhead() {
-    use super::head::{HeadCondition, HeadMode};
+    use super::head::{HeadCondition, InsertionMode};
     let source = HtmlSource::utf8("<title>unfinished&amp;");
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
     let state = output.driver.state.as_ref().unwrap();
     let d = &state.diagnostics.as_slice()[0];
     assert_eq!(d.condition, HeadCondition::EofInText);
-    assert_eq!(d.mode, HeadMode::Text);
+    assert_eq!(d.mode, InsertionMode::Text);
     assert_eq!(source.text(&d.source).unwrap().code_units(), []);
     let pending = state.pending.as_ref().unwrap();
     assert!(matches!(pending.payload, super::prologue::Payload::Eof));
@@ -2412,14 +2412,14 @@ fn mixed_head_whitespace_inserts_prefix_before_reprocessing_suffix_afterhead() {
 
 #[test]
 fn head_open_element_cap_stops_before_raw_state_success_and_cleans_all_actual_owners() {
-    use super::head::HeadMode;
+    use super::head::InsertionMode;
     let source = HtmlSource::utf8("<!doctype html><html><head><title>x</title>");
     let mut c = control(2); // html + head fit; the mandatory text-element push does not.
     let mut driver = head_stage(&source, &mut c);
     driver.step(&mut c).unwrap();
     assert!(driver.step(&mut c).is_err());
     assert!(c.stop().is_some());
-    assert_eq!(driver.state.as_ref().unwrap().mode, HeadMode::InHead);
+    assert_eq!(driver.state.as_ref().unwrap().mode, InsertionMode::InHead);
     assert_eq!(
         c.usage().resource(HtmlParseResource::OpenElements).current,
         2
@@ -2526,7 +2526,7 @@ fn selfclosing_text_and_noscript_starttags_remain_open_and_emit_unacknowledged_e
 
 #[test]
 fn disabled_noscript_default_closes_then_reprocesses_br_as_afterhead_input() {
-    use super::head::{HeadCondition, HeadMode};
+    use super::head::{HeadCondition, InsertionMode};
     let source = HtmlSource::utf8("<head><noscript></foo></br>tail");
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
@@ -2538,7 +2538,7 @@ fn disabled_noscript_default_closes_then_reprocesses_br_as_afterhead_input() {
             .as_slice()
             .iter()
             .all(|d| d.condition == HeadCondition::UnexpectedInNoscript
-                && d.mode == HeadMode::InHeadNoscript)
+                && d.mode == InsertionMode::InHeadNoscript)
     );
     let pending = state.pending.as_ref().unwrap();
     assert_eq!(
@@ -2590,7 +2590,7 @@ fn eof_and_permitted_beforehead_endtags_create_head_with_exact_continuation_inpu
 
 #[test]
 fn head_diagnostic_cap_preserves_pending_tag_first_stop_and_terminal_ownership() {
-    use super::head::{HeadError, HeadMode};
+    use super::head::{HeadError, InsertionMode};
     let source = HtmlSource::utf8("<!doctype html><html><head></oops>");
     let mut c = ParseControl::new(
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
@@ -2607,7 +2607,7 @@ fn head_diagnostic_cap_preserves_pending_tag_first_stop_and_terminal_ownership()
             }
         )))
     ));
-    assert_eq!(driver.state.as_ref().unwrap().mode, HeadMode::InHead);
+    assert_eq!(driver.state.as_ref().unwrap().mode, InsertionMode::InHead);
     assert!(matches!(
         &driver
             .state
@@ -2673,7 +2673,7 @@ fn script_text_node(driver: &mut StandaloneDocumentDriver<'_>) -> ParserNode {
     for _ in 0..1_000 {
         driver.step().unwrap();
         if let Some(head) = &driver.head
-            && head.state.as_ref().unwrap().mode == super::head::HeadMode::Text
+            && head.state.as_ref().unwrap().mode == super::head::InsertionMode::Text
         {
             let kernel = &head.state.as_ref().unwrap().before.kernel;
             let node = kernel
@@ -2747,7 +2747,7 @@ fn standalone_script_end_prepares_disabled_classic_and_restores_head_and_inserti
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::AfterHead
+        super::head::HeadBoundary::ConstructionEof
     );
     let (c, session, _) = driver.standalone_parts().unwrap();
     let metadata = session.script_metadata(c, &node).unwrap();
@@ -2802,7 +2802,7 @@ fn standalone_repeated_script_endings_restore_actual_nesting_pause_and_current_r
     for _ in 0..100 {
         driver.step().unwrap();
         if driver.head.as_ref().unwrap().state.as_ref().unwrap().mode
-            == super::head::HeadMode::InHead
+            == super::head::InsertionMode::InHead
         {
             break;
         }
@@ -2819,7 +2819,7 @@ fn standalone_repeated_script_endings_restore_actual_nesting_pause_and_current_r
     let second = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::AfterHead
+        super::head::HeadBoundary::ConstructionEof
     );
     assert_eq!(
         driver
@@ -2851,7 +2851,7 @@ fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_fac
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::AfterHead
+        super::head::HeadBoundary::ConstructionEof
     );
     let head = driver.head.as_ref().unwrap();
     let state = head.state.as_ref().unwrap();
@@ -2942,7 +2942,7 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
         let node = script_text_node(&mut driver);
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::AfterHead
+            super::head::HeadBoundary::ConstructionEof
         );
         let (c, session, _) = driver.standalone_parts().unwrap();
         let metadata = session.script_metadata(c, &node).unwrap();
@@ -2986,7 +2986,7 @@ fn standalone_scriptdata_preserves_literal_utf16_and_escaped_script_content() {
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::AfterHead
+        super::head::HeadBoundary::ConstructionEof
     );
     let mut owning = Some(driver);
     let (mut c, mut session, _) =
@@ -3019,7 +3019,7 @@ fn standalone_scriptdata_preserves_newline_origins_and_state_specific_null_recov
     script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::AfterHead
+        super::head::HeadBoundary::ConstructionEof
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     let null_error = state
@@ -3074,7 +3074,7 @@ fn standalone_script_import_revocation_stops_required_end_checkpoint_before_pop_
     ));
     let stop = driver.control.stop().unwrap();
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert_eq!(state.mode, super::head::HeadMode::Text);
+    assert_eq!(state.mode, super::head::InsertionMode::Text);
     assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
     assert!(matches!(
         state.pending.as_ref().unwrap().payload,
@@ -3418,7 +3418,7 @@ fn standalone_selfclosing_script_is_not_void_and_emits_exact_source_qualified_er
     );
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::AfterHead
+        super::head::HeadBoundary::ConstructionEof
     );
     let (c, session, _) = driver.standalone_parts().unwrap();
     assert!(session.script_metadata(c, &node).unwrap().already_started);
@@ -3581,7 +3581,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         assert!(driver.step().is_err());
         assert_eq!(
             driver.head.as_ref().unwrap().state.as_ref().unwrap().mode,
-            super::head::HeadMode::Text
+            super::head::InsertionMode::Text
         );
         driver.release().unwrap();
         assert_released(&driver.control);
@@ -3697,6 +3697,964 @@ fn present_token_disposal_accounts_for_real_pending_and_payload_moves() {
     assert!(c.stop().is_none());
     tokenizer.release(&mut c).unwrap();
     assert_released(&c);
+}
+
+fn body_document(driver: StandaloneDocumentDriver<'_>) -> (ParseControl, FrozenArena) {
+    let mut input = Some(driver);
+    let (mut c, mut session, _) =
+        StandaloneDocumentDriver::take_standalone_fixture(&mut input).unwrap();
+    assert!(input.is_none());
+    let frozen = session.freeze(&mut c).unwrap();
+    (c, frozen)
+}
+fn outline(document: &crate::HtmlDocument) -> Vec<(usize, Vec<u16>)> {
+    // A test observer only: expected outlines below are literal source outcomes.
+    // No serialization/reparse or synthetic producer drives construction.
+    let mut output = Vec::new();
+    let mut stack: Vec<_> = document.root().children().map(|id| (0, id)).collect();
+    stack.reverse();
+    while let Some((depth, id)) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        let value = match node.kind() {
+            HtmlNodeKind::Element(element) => element.name().local_name().code_units().to_vec(),
+            HtmlNodeKind::Text(text) => {
+                let mut units = vec![b'#' as u16];
+                units.extend_from_slice(text.code_units());
+                units
+            }
+            HtmlNodeKind::Comment(text) => {
+                let mut units = vec![b'!' as u16];
+                units.extend_from_slice(text.code_units());
+                units
+            }
+            HtmlNodeKind::ProcessingInstruction(pi) => {
+                let mut units = vec![b'?' as u16];
+                units.extend_from_slice(pi.target().code_units());
+                units
+            }
+            _ => continue,
+        };
+        output.push((depth, value));
+        let children: Vec<_> = node.children().map(|id| (depth + 1, id)).collect();
+        stack.extend(children.into_iter().rev());
+    }
+    output
+}
+fn expected_outline(rows: &[(usize, &str)]) -> Vec<(usize, Vec<u16>)> {
+    rows.iter()
+        .map(|(depth, value)| (*depth, value.encode_utf16().collect()))
+        .collect()
+}
+
+#[test]
+fn ordinary_body_recovers_paragraphs_blocks_and_missing_end_p_with_actual_topology() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<body><p>a<div>b</div>c</p><p>d<p>e</body></html>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.mode, super::head::InsertionMode::AfterAfterBody);
+    assert!(!state.frameset_ok);
+    assert!(matches!(
+        state.pending.as_ref().unwrap().payload,
+        super::prologue::Payload::Eof
+    ));
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(
+        outline(frozen.document().unwrap()),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "#a"),
+            (2, "div"),
+            (3, "#b"),
+            (2, "#c"),
+            (2, "p"),
+            (2, "p"),
+            (3, "#d"),
+            (2, "p"),
+            (3, "#e")
+        ])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_heading_list_and_ruby_implied_end_rules_preserve_literal_sibling_order() {
+    for (source, rows) in [
+        (
+            "<body><h1>a<h2>b</h1>c",
+            vec![(2, "h1"), (3, "#a"), (2, "h2"), (3, "#b"), (2, "#c")],
+        ),
+        (
+            "<body><ul><li>a<li>b</ul><dl><dd>c<dt>d</dl>",
+            vec![
+                (2, "ul"),
+                (3, "li"),
+                (4, "#a"),
+                (3, "li"),
+                (4, "#b"),
+                (2, "dl"),
+                (3, "dd"),
+                (4, "#c"),
+                (3, "dt"),
+                (4, "#d"),
+            ],
+        ),
+        (
+            "<body><ruby><rb>a<rtc><rt>b<rp>c</ruby>",
+            vec![
+                (2, "ruby"),
+                (3, "rb"),
+                (4, "#a"),
+                (3, "rtc"),
+                (4, "rt"),
+                (5, "#b"),
+                (4, "rp"),
+                (5, "#c"),
+            ],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let mut expected = vec![(0, "html"), (1, "head"), (1, "body")];
+        expected.extend(rows);
+        assert_eq!(
+            outline(frozen.document().unwrap()),
+            expected_outline(&expected),
+            "{source}"
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn late_head_style_and_disabled_script_remove_the_specific_head_stack_entry_and_restore_current_mode()
+ {
+    use crate::construction::parser_session::ScriptType;
+    for (source, head_child, expected_mode) in [
+        (
+            "<head></head><style>x</style><body>y",
+            "style",
+            super::head::InsertionMode::AfterHead,
+        ),
+        (
+            "<head></head><script>x</script><body>y",
+            "script",
+            super::head::InsertionMode::AfterHead,
+        ),
+        (
+            "<body><style>x</style>y",
+            "style",
+            super::head::InsertionMode::InBody,
+        ),
+        (
+            "<body><script>x</script>y",
+            "script",
+            super::head::InsertionMode::InBody,
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut raw_node = None;
+        for _ in 0..100 {
+            driver.step().unwrap();
+            let Some(head) = &mut driver.head else {
+                continue;
+            };
+            let state = head.state.as_mut().unwrap();
+            if state.mode == super::head::InsertionMode::Text {
+                assert!(state.temporary_head.is_none());
+                let node = state.before.kernel.current(&mut driver.control).unwrap();
+                assert!(
+                    state
+                        .before
+                        .kernel
+                        .named(&node, head_child, &mut driver.control)
+                        .unwrap()
+                );
+                let parent = state
+                    .before
+                    .kernel
+                    .session
+                    .parent(&mut driver.control, &node)
+                    .unwrap()
+                    .unwrap();
+                assert!(
+                    state
+                        .before
+                        .kernel
+                        .named(
+                            &parent,
+                            if expected_mode == super::head::InsertionMode::AfterHead {
+                                "head"
+                            } else {
+                                "body"
+                            },
+                            &mut driver.control
+                        )
+                        .unwrap()
+                );
+                for index in 0..state.before.kernel.stack().unwrap().len() {
+                    let entry = state.before.kernel.at(index, &mut driver.control).unwrap();
+                    assert!(
+                        !state
+                            .before
+                            .kernel
+                            .named(&entry, "head", &mut driver.control)
+                            .unwrap()
+                    );
+                }
+                raw_node = Some(node);
+                break;
+            }
+        }
+        let node = raw_node.expect("actual raw/script mode");
+        driver.step().unwrap(); // actual x text
+        driver.step().unwrap(); // actual end token
+        assert_eq!(
+            driver.head.as_ref().unwrap().state.as_ref().unwrap().mode,
+            expected_mode
+        );
+        if head_child == "script" {
+            let (c, session, _) = driver.standalone_parts().unwrap();
+            let metadata = session.script_metadata(c, &node).unwrap();
+            assert!(metadata.already_started);
+            assert_eq!(metadata.script_type, Some(ScriptType::Classic));
+        }
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn body_first_lf_and_null_recovery_preserve_exact_units_and_omitted_origin_evidence() {
+    let mut units: Vec<_> = "<body><pre>\r\n".encode_utf16().collect();
+    units.extend_from_slice(&[0xd800, 0xd83d, 0xde00, 0, b'a' as u16]);
+    units.extend("</pre><listing>&#10;b</listing>".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.before.whitespace.len(), 3);
+    let omitted: Vec<_> = state
+        .before
+        .whitespace
+        .as_slice()
+        .iter()
+        .map(|text| text.value.text().code_units().to_vec())
+        .collect();
+    assert_eq!(omitted, vec![vec![10], vec![0], vec![10]]);
+    let null = state
+        .diagnostics
+        .as_slice()
+        .iter()
+        .find(|d| d.condition == super::head::HeadCondition::NullInBody)
+        .unwrap();
+    assert_eq!((null.source.start(), null.source.end()), (16, 17));
+    let (mut c, mut frozen) = body_document(driver);
+    let mut expected = expected_outline(&[(0, "html"), (1, "head"), (1, "body"), (2, "pre")]);
+    expected.push((3, vec![b'#' as u16, 0xd800, 0xd83d, 0xde00, b'a' as u16]));
+    expected.extend(expected_outline(&[(2, "listing"), (3, "#b")]));
+    assert_eq!(outline(frozen.document().unwrap()), expected);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_after_modes_place_comments_and_pi_under_html_then_document() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<body>x</body><!--a--><?one data?></html><!--b--><?two data?>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(
+        outline(frozen.document().unwrap()),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "#x"),
+            (1, "!a"),
+            (1, "?one"),
+            (0, "!b"),
+            (0, "?two")
+        ])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_family_continuations_preserve_real_tokens_before_category_effects() {
+    use super::head::HeadBoundary;
+    for (name, boundary) in [
+        ("b", HeadBoundary::Formatting),
+        ("a", HeadBoundary::Formatting),
+        ("applet", HeadBoundary::Formatting),
+        ("fieldset", HeadBoundary::Form),
+        ("input", HeadBoundary::Form),
+        ("textarea", HeadBoundary::Form),
+        ("select", HeadBoundary::Select),
+        ("option", HeadBoundary::Select),
+        ("table", HeadBoundary::Table),
+        ("template", HeadBoundary::Template),
+        ("svg", HeadBoundary::Foreign),
+        ("math", HeadBoundary::Foreign),
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept>tail")),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(standalone_boundary(&mut driver), boundary, "{name}");
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+        let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload
+        else {
+            panic!("retained actual family tag");
+        };
+        assert_eq!(tag.name.value.text(), &DocumentString::from(name));
+        assert_eq!(tag.attributes.len(), 1);
+        assert_eq!(
+            tag.attributes.as_slice()[0].value.value.text(),
+            &DocumentString::from("kept")
+        );
+        let node_count = driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::ManagedNodes)
+            .current;
+        assert!(driver.step().is_err());
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            node_count
+        );
+        let mut retained = Some(driver);
+        assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
+        let driver = retained
+            .as_mut()
+            .expect("failed extraction retains the sole owner");
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn body_generic_names_void_recovery_rawtext_and_plaintext_follow_actual_source_rows() {
+    for (source, rows) in [
+        (
+            "<body><widget>a<div>b</widget>c</div></widget>",
+            vec![(2, "widget"), (3, "#a"), (3, "div"), (4, "#bc")],
+        ),
+        (
+            "<body><p>a<hr><image src=x></br><source><track><wbr>",
+            vec![
+                (2, "p"),
+                (3, "#a"),
+                (2, "hr"),
+                (2, "img"),
+                (2, "br"),
+                (2, "source"),
+                (2, "track"),
+                (2, "wbr"),
+            ],
+        ),
+        (
+            "<body><p>a<xmp>&amp;<b></xmp><iframe>x</iframe><noembed>y</noembed><noscript>z</noscript>",
+            vec![
+                (2, "p"),
+                (3, "#a"),
+                (2, "xmp"),
+                (3, "#&amp;<b>"),
+                (2, "iframe"),
+                (3, "#x"),
+                (2, "noembed"),
+                (3, "#y"),
+                (2, "noscript"),
+                (3, "#z"),
+            ],
+        ),
+        (
+            "<body><p>a<plaintext><b>&amp;</b>",
+            vec![(2, "p"), (3, "#a"), (2, "plaintext"), (3, "#<b>&amp;</b>")],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let mut expected = vec![(0, "html"), (1, "head"), (1, "body")];
+        expected.extend(rows);
+        assert_eq!(
+            outline(frozen.document().unwrap()),
+            expected_outline(&expected),
+            "{source}"
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn body_explicit_implied_and_repeated_body_merge_keep_source_frameset_state_and_attribute_order() {
+    for (source, expected_flag) in [
+        ("<head></head>", true),
+        ("<body>", false),
+        ("<head></head><widget>", true),
+        ("<head></head>x", false),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        assert_eq!(
+            driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .frameset_ok,
+            expected_flag,
+            "{source}"
+        );
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<html root=a><body old=a><body old=b new=c NEW=d><html root=b extra=e>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document
+        .node(&document.root().children().next().unwrap())
+        .unwrap();
+    let body = document.node(&html.children().last().unwrap()).unwrap();
+    for (node, expected) in [
+        (html, vec![("root", "a"), ("extra", "e")]),
+        (body, vec![("old", "a"), ("new", "c")]),
+    ] {
+        let HtmlNodeKind::Element(element) = node.kind() else {
+            panic!("actual HTML element");
+        };
+        let actual: Vec<_> = element
+            .attributes()
+            .iter()
+            .map(|attr| (attr.name().local_name().clone(), attr.value().clone()))
+            .collect();
+        assert_eq!(
+            actual,
+            expected
+                .into_iter()
+                .map(|(name, value)| (DocumentString::from(name), DocumentString::from(value)))
+                .collect::<Vec<_>>()
+        );
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_ignored_table_parts_and_frame_are_not_generic_nodes_and_keygen_has_source_void_recovery() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<body><p>a<caption><col><colgroup><frame><head><tbody><td><tfoot><th><thead><tr><keygen>b</keygen></template></div>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(
+        outline(frozen.document().unwrap()),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "#a"),
+            (3, "keygen"),
+            (3, "#b")
+        ])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_eof_predicate_accepts_rb_rtc_and_reports_one_actual_unexpected_open_node() {
+    for (source, errors) in [("<body><rb><rtc>", 0), ("<body><widget><div>", 1)] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(
+            state
+                .diagnostics
+                .as_slice()
+                .iter()
+                .filter(|d| d.condition == super::head::HeadCondition::UnexpectedOpenElement)
+                .count(),
+            errors
+        );
+        assert!(matches!(
+            state.pending.as_ref().unwrap().payload,
+            super::prologue::Payload::Eof
+        ));
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn body_first_lf_applies_to_only_the_next_real_token_and_afterbody_other_input_reprocesses() {
+    for (source, expected) in [
+        (
+            "<body><pre><!--c-->\nb</pre>",
+            vec![(2, "pre"), (3, "!c"), (3, "#\nb")],
+        ),
+        ("<body><pre>&#10;\nb</pre>", vec![(2, "pre"), (3, "#\nb")]),
+        ("<body>a</body>b</html>c", vec![(2, "#abc")]),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let mut rows = vec![(0, "html"), (1, "head"), (1, "body")];
+        rows.extend(expected);
+        assert_eq!(
+            outline(frozen.document().unwrap()),
+            expected_outline(&rows),
+            "{source}"
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn body_temporary_head_open_cap_failure_retains_obligation_and_created_raw_node_for_cleanup() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<head></head><style>x</style>"),
+        limits(2),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut stopped = None;
+    for _ in 0..100 {
+        match driver.step() {
+            Ok(_) => {}
+            Err(error) => {
+                stopped = Some(error);
+                break;
+            }
+        }
+    }
+    assert!(stopped.is_some());
+    assert!(matches!(
+        driver.control.stop(),
+        Some(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::OpenElements,
+            ..
+        })
+    ));
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.mode, super::head::InsertionMode::AfterHead);
+    assert!(state.temporary_head.is_some());
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+    assert_eq!(
+        driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::ManagedNodes)
+            .current,
+        4
+    );
+    let before = driver.control.usage().clone();
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.usage(), &before);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn body_null_diagnostic_cap_and_cancel_stop_without_successful_partial_continuation() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<body>a\0b"),
+        limits(100).into_builder().diagnostics(2).finish().unwrap(),
+    );
+    // Missing-doctype and lexical NULL evidence consume two slots before
+    // the independent tree-construction NULL error.
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut error = None;
+    for _ in 0..100 {
+        match driver.step() {
+            Ok(_) => {}
+            Err(value) => {
+                error = Some(value);
+                break;
+            }
+        }
+    }
+    assert!(error.is_some());
+    let stop = driver.control.stop().unwrap();
+    assert!(matches!(
+        stop,
+        ParseStop::LimitExceeded {
+            resource: HtmlParseResource::Diagnostics,
+            ..
+        }
+    ));
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(state.body_runs.is_some());
+    assert!(state.body_run.is_some());
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), Some(stop));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    let request =
+        crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<body><p>x"), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    for _ in 0..100 {
+        driver.step().unwrap();
+        if driver
+            .head
+            .as_ref()
+            .is_some_and(|h| h.state.as_ref().unwrap().mode == super::head::InsertionMode::InBody)
+        {
+            break;
+        }
+    }
+    request.cancellation().cancel();
+    let before = driver.control.usage().clone();
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+    driver.release().unwrap();
+    for category in [
+        WorkCategory::InputUnitRead,
+        WorkCategory::StateStep,
+        WorkCategory::RecordWrite,
+    ] {
+        assert_eq!(driver.control.usage().work(category), before.work(category));
+    }
+    assert_released(&driver.control);
+}
+
+#[test]
+fn body_source_void_keygen_is_immediately_popped_and_sets_frameset_not_ok() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<body><keygen>a<p>b"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    assert!(
+        !driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .frameset_ok
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(
+        outline(frozen.document().unwrap()),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "keygen"),
+            (2, "#a"),
+            (2, "p"),
+            (3, "#b")
+        ])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_source_void_end_br_discards_real_end_tag_attributes_before_insertion() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<body></br x=kept>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document
+        .node(&document.root().children().next().unwrap())
+        .unwrap();
+    let body = document.node(&html.children().last().unwrap()).unwrap();
+    let br = document.node(&body.children().next().unwrap()).unwrap();
+    let HtmlNodeKind::Element(element) = br.kind() else {
+        panic!("actual recovered br");
+    };
+    assert_eq!(element.name().local_name(), &DocumentString::from("br"));
+    assert!(element.attributes().is_empty());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_source_void_frameset_not_ok_row_ignores_token_without_an_unsupported_transition() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<body><frameset><widget>x"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(
+        outline(frozen.document().unwrap()),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "widget"),
+            (3, "#x")
+        ])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn body_source_scope_special_implied_and_eof_sets_keep_namespace_and_exact_case_distinctions() {
+    use super::tag_sets::{NodeSet, in_set};
+    let mut c = control(100);
+    for name in [
+        "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
+    ] {
+        let q = QualifiedName::new(Namespace::html(), None, DocumentString::from(name));
+        assert!(in_set(&q, NodeSet::Implied, &mut c).unwrap(), "{name}");
+        assert!(in_set(&q, NodeSet::BodyEnd, &mut c).unwrap(), "{name}");
+        let other = QualifiedName::new(Namespace::svg(), None, DocumentString::from(name));
+        assert!(!in_set(&other, NodeSet::Implied, &mut c).unwrap());
+        assert!(!in_set(&other, NodeSet::BodyEnd, &mut c).unwrap());
+    }
+    for name in ["h1", "h2", "h3", "h4", "h5", "h6"] {
+        let q = QualifiedName::new(Namespace::html(), None, DocumentString::from(name));
+        assert!(in_set(&q, NodeSet::Heading, &mut c).unwrap());
+        assert!(!in_set(&q, NodeSet::BodyEnd, &mut c).unwrap());
+    }
+    for (namespace, name, special) in [
+        (Namespace::mathml(), "annotation-xml", true),
+        (Namespace::mathml(), "mi", true),
+        (Namespace::svg(), "foreignObject", true),
+        (Namespace::svg(), "foreignobject", false),
+        (Namespace::svg(), "desc", true),
+        (Namespace::svg(), "title", true),
+        (Namespace::html(), "search", true),
+        (Namespace::html(), "keygen", true),
+        (Namespace::html(), "dialog", false),
+        (Namespace::html(), "widget", false),
+        (Namespace::html(), "image", false),
+    ] {
+        let q = QualifiedName::new(namespace, None, DocumentString::from(name));
+        assert_eq!(
+            in_set(&q, NodeSet::Special, &mut c).unwrap(),
+            special,
+            "{name}"
+        );
+    }
+    let q = QualifiedName::new(
+        Namespace::html(),
+        None,
+        DocumentString::from_utf16(vec![b'p' as u16, 0xd800]),
+    );
+    assert!(!in_set(&q, NodeSet::Implied, &mut c).unwrap());
+    assert!(!in_set(&q, NodeSet::Special, &mut c).unwrap());
+}
+
+#[test]
+fn body_supported_frameset_ignore_and_unfinished_transition_follow_actual_flag_before_any_tree_change()
+ {
+    for source in [
+        "<head></head><frameset a=kept>",
+        "<head></head><widget><frameset a=kept>",
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::Frameset
+        );
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload
+        else {
+            panic!("retained transition token")
+        };
+        assert_eq!(tag.name.value.text(), &DocumentString::from("frameset"));
+        assert_eq!(tag.attributes.len(), 1);
+        assert!(state.frameset_ok);
+        assert_eq!(
+            state.before.kernel.stack().unwrap().len(),
+            if source.contains("widget") { 3 } else { 1 }
+        );
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn late_script_eof_returns_afterhead_then_creates_body_without_preparation() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<head></head><script type=module>x"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = script_text_node(&mut driver);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.mode, super::head::InsertionMode::InBody);
+    assert!(state.temporary_head.is_none());
+    assert!(state.frameset_ok);
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    let metadata = session.script_metadata(c, &node).unwrap();
+    assert!(metadata.already_started);
+    assert_eq!(metadata.script_type, None);
+    assert!(
+        session
+            .script_preparation_document(c, &node)
+            .unwrap()
+            .is_none()
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn late_script_revoked_provenance_rejects_before_temporary_head_push_or_delegation_effects() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<head></head><script>x</script>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    loop {
+        driver.step().unwrap();
+        if driver.head.as_ref().is_some_and(|h| {
+            h.state.as_ref().unwrap().mode == super::head::InsertionMode::AfterHead
+        }) {
+            break;
+        }
+    }
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    preexisting(session, Namespace::html(), "imported", c);
+    let diagnostics = driver
+        .head
+        .as_ref()
+        .unwrap()
+        .state
+        .as_ref()
+        .unwrap()
+        .diagnostics
+        .len();
+    let error = driver.step().unwrap_err();
+    assert!(matches!(
+        error,
+        StandaloneError::Head(super::head::HeadError::Kernel(KernelError::Session(
+            SessionError::Stop(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Provenance
+            ))
+        )))
+    ));
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(
+        state.before.kernel.stack().unwrap().len(),
+        1,
+        "unsupported provenance must not temporarily push head"
+    );
+    assert!(state.temporary_head.is_none());
+    assert_eq!(
+        state.diagnostics.len(),
+        diagnostics,
+        "unsupported provenance precedes delegated row effects"
+    );
+    let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+        panic!("actual script token remains owned")
+    };
+    assert_eq!(tag.name.value.text(), &DocumentString::from("script"));
+    let stop = driver.control.stop().unwrap();
+    assert!(matches!(driver.step(),Err(StandaloneError::Stop(actual)) if actual==stop));
+    driver.release().unwrap();
+    assert_released(&driver.control);
 }
 
 #[test]
