@@ -1,4 +1,5 @@
 //! Source stylesheet operations and bounded replacement lifecycle.
+use crate::parser_resources::check_resource_diagnostics;
 use crate::{css_adapter::parse, *};
 use std::sync::Arc;
 use surgeist_css::*;
@@ -261,17 +262,7 @@ fn parse_media(
         });
     }
     let report = parse_media_query_list(source);
-    for diagnostic in report.diagnostics() {
-        if matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
-            || matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-                if matches!(error.kind(), CssComponentValueErrorKind::NestingLimit
-                    | CssComponentValueErrorKind::ComponentLimit
-                    | CssComponentValueErrorKind::ByteLimit
-                    | CssComponentValueErrorKind::CapacityOverflow))
-        {
-            return Err(CssomError::ParseResource(Box::new(diagnostic.clone())));
-        }
-    }
+    check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
 }
 

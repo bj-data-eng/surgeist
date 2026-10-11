@@ -1,4 +1,5 @@
 //! Source MediaList operations over the shared live collection owner.
+use crate::parser_resources::check_resource_diagnostics;
 use crate::*;
 use surgeist_css::*;
 
@@ -177,16 +178,28 @@ fn check_input(source: &str, limits: &CssomLimits) -> Result<(), CssomError> {
     Ok(())
 }
 fn recovered<T>(report: CssParseReport<T>) -> Result<(T, Vec<CssRecoveryDiagnostic>), CssomError> {
-    for diagnostic in report.diagnostics() {
-        if matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
-            || matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-                if matches!(error.kind(), CssComponentValueErrorKind::NestingLimit
-                    | CssComponentValueErrorKind::ComponentLimit
-                    | CssComponentValueErrorKind::ByteLimit
-                    | CssComponentValueErrorKind::CapacityOverflow))
-        {
-            return Err(CssomError::ParseResource(Box::new(diagnostic.clone())));
-        }
-    }
+    check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
+}
+
+impl CssomBatch {
+    /// Product typed media replacement uses the existing checked Media Queries carrier.
+    pub fn set_media(
+        &mut self,
+        id: &CssomMediaListId,
+        value: CssMediaQueryList,
+    ) -> Result<bool, CssomError> {
+        self.apply(|this| {
+            this.staged.media(id)?;
+            if this.staged.media[id] == value {
+                return Ok(false);
+            }
+            for sheet in this.staged.sheets.values_mut().filter(|v| &v.media == id) {
+                sheet.inputs.media = value.clone();
+            }
+            this.staged.media.insert(id.clone(), value);
+            this.affect(CssomObjectId::MediaList(id.clone()), &[CssomChange::Media]);
+            Ok(true)
+        })
+    }
 }

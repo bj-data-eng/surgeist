@@ -1,9 +1,6 @@
 //! Surgeist's inert named-support policy; CSS owns syntax and reconstruction.
-use crate::{
-    model::State,
-    rule_operations::{check_diagnostics, component_limits},
-    *,
-};
+use crate::parser_resources::check_resource_diagnostics;
+use crate::{model::State, rule_operations::component_limits, *};
 use surgeist_css::*;
 
 fn own_child(child: CssSupportsTestChildRef<'_>) -> CssSupportsTestChild {
@@ -130,7 +127,7 @@ impl CssomBatch {
         let (child, diagnostics) =
             parse_supports_test_child_with_limits(source, component_limits(&self.limits))
                 .into_parts();
-        check_diagnostics(&diagnostics)?;
+        check_resource_diagnostics(&diagnostics)?;
         let child = child.ok_or(CssomError::Source(CssomException::Syntax))?;
         let depth = self.staged.named_supports_depth(id, &self.limits)?;
         let child = self.staged.adopt(

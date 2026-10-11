@@ -1,4 +1,5 @@
 //! CSS-owned checked syntax enters one live owner without text reconstruction.
+use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
 use surgeist_css::*;
 
@@ -628,13 +629,7 @@ pub(crate) fn parse(
         });
     }
     let report = context.parse_sheet(source);
-    for diagnostic in report.diagnostics() {
-        if matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
-            || matches!(diagnostic.error().kind(),ErrorKind::InvalidComponentValue(e) if matches!(e.kind(),CssComponentValueErrorKind::NestingLimit|CssComponentValueErrorKind::ComponentLimit|CssComponentValueErrorKind::ByteLimit|CssComponentValueErrorKind::CapacityOverflow))
-        {
-            return Err(CssomError::ParseResource(Box::new(diagnostic.clone())));
-        }
-    }
+    check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
 }
 

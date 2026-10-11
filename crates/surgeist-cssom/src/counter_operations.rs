@@ -1,5 +1,6 @@
 //! CounterStyle partial reads and checked literal descriptor transitions.
-use crate::{declaration::*, declaration_support::DeclarationBudget, *};
+use crate::parser_resources::check_resource_diagnostics;
+use crate::{declaration::*, declaration_budget::DeclarationBudget, *};
 use surgeist_css::*;
 
 impl CssomBlock {
@@ -117,7 +118,7 @@ impl CssomBatch {
             }
             let (value, diagnostics) =
                 parse_counter_style_descriptor_value(source, kind).into_parts();
-            resource_diagnostics(&diagnostics)?;
+            check_resource_diagnostics(&diagnostics)?;
             let Some(value) = value else {
                 return Ok(false);
             };
@@ -166,6 +167,43 @@ impl CssomBatch {
                 CssomObjectId::Rule(id.clone()),
                 &[CssomChange::Descriptors, CssomChange::Provenance],
             );
+            Ok(true)
+        })
+    }
+}
+
+impl CssomBatch {
+    /// CSSOMString setter policy; deliberately accepts empty/raw custom names.
+    pub fn set_counter_name(&mut self, id: &CssomRuleId, name: &str) -> Result<bool, CssomError> {
+        self.apply(|this| {
+            this.staged.rule(id)?;
+            let rule = this.staged.rules.get_mut(id).expect("rule");
+            let CssomRuleData::CounterStyle { name: old, .. } = &mut rule.data else {
+                return Err(CssomError::WrongKind);
+            };
+            if [
+                "none",
+                "decimal",
+                "disc",
+                "circle",
+                "square",
+                "disclosure-open",
+                "disclosure-closed",
+            ]
+            .iter()
+            .any(|v| name.eq_ignore_ascii_case(v))
+            {
+                return Ok(false);
+            }
+            // Existing CSS owner normalizes predefined names. Invalid authored
+            // identifiers are still legitimate raw live CSSOMString contents.
+            let name = CssCounterStyleName::try_new(name)
+                .map_or_else(|| name.to_owned(), |v| v.as_str().to_owned());
+            if old == &name {
+                return Ok(false);
+            }
+            *old = name;
+            this.affect(CssomObjectId::Rule(id.clone()), &[CssomChange::Descriptors]);
             Ok(true)
         })
     }

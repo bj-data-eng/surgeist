@@ -1,8 +1,6 @@
 //! Source declaration algorithms over current checked selections.
-use crate::{
-    declaration_support::{DeclarationBudget, PendingPreparation},
-    *,
-};
+use crate::parser_resources::check_resource_diagnostics;
+use crate::{declaration_budget::DeclarationBudget, declaration_support::PendingPreparation, *};
 use std::sync::Arc;
 use surgeist_css::*;
 #[path = "declaration_descriptors.rs"]
@@ -395,18 +393,6 @@ pub(crate) fn complete_value_components(
         Err(error) => Err(CssomError::Component(error)),
     }
 }
-pub(crate) fn resource_diagnostics(
-    diagnostics: &[CssRecoveryDiagnostic],
-) -> Result<(), CssomError> {
-    for diagnostic in diagnostics {
-        if matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
-            || matches!(diagnostic.error().kind(),ErrorKind::InvalidComponentValue(e) if matches!(e.kind(),CssComponentValueErrorKind::NestingLimit|CssComponentValueErrorKind::ComponentLimit|CssComponentValueErrorKind::ByteLimit|CssComponentValueErrorKind::CapacityOverflow))
-        {
-            return Err(CssomError::ParseResource(Box::new(diagnostic.clone())));
-        }
-    }
-    Ok(())
-}
 fn source_precondition(block: &CssomBlock) -> Result<(), CssomError> {
     if block.flags.computed {
         Err(CssomError::ComputedStyleUpdatePrecondition)
@@ -517,7 +503,7 @@ impl CssomBatch {
                         .parser_context()
                         .parse_page_declaration_block_contents_with_limits(text, component_limits);
                     let (body, diagnostics) = report.into_parts();
-                    resource_diagnostics(&diagnostics)?;
+                    check_resource_diagnostics(&diagnostics)?;
                     let body = body.ok_or_else(|| {
                         diagnostics
                             .first()
@@ -548,7 +534,7 @@ impl CssomBatch {
                             component_limits,
                         )
                         .into_parts();
-                    resource_diagnostics(&diagnostics)?;
+                    check_resource_diagnostics(&diagnostics)?;
                     let body = body.ok_or(CssomError::InvalidInput(
                         "FontFace contents resource failure",
                     ))?;
@@ -566,7 +552,7 @@ impl CssomBatch {
                         .parser_context()
                         .parse_declaration_block_contents_with_limits(text, component_limits);
                     let (body, diagnostics) = report.into_parts();
-                    resource_diagnostics(&diagnostics)?;
+                    check_resource_diagnostics(&diagnostics)?;
                     (
                         body.iter()
                             .cloned()
@@ -686,7 +672,7 @@ impl CssomBatch {
                 ),
             };
             let (mut declaration, diagnostics) = report.into_parts();
-            resource_diagnostics(&diagnostics)?;
+            check_resource_diagnostics(&diagnostics)?;
             if let Some(value) = declaration.as_ref()
                 && matches!(
                     this.staged.block(id)?.data,
@@ -988,22 +974,26 @@ impl CssomBatch {
                                 &mut prepared.budget,
                             ) {
                                 Ok(new) => {
-                                    for entry in new {
-                                        if let Some(index) = entries.iter().position(
-                                            |old: &CssSpecifiedDeclarationEntry| {
-                                                old.property_name() == entry.property_name()
-                                            },
-                                        ) {
-                                            if entries[index].importance()
-                                                == CssImportance::Important
-                                                && entry.importance() != CssImportance::Important
-                                            {
-                                                continue;
-                                            }
-                                            entries.remove(index);
-                                        }
-                                        entries.push(entry);
-                                    }
+                                    // Expansion already charges every candidate, including losers.
+                                    // Bound aggregate allocation without charging that work again.
+                                    let capacity_error = || CssomError::Limit {
+                                        resource: "declaration candidate capacity",
+                                        maximum: prepared.budget.limits.max_entries,
+                                    };
+                                    entries
+                                        .len()
+                                        .checked_add(new.len())
+                                        .filter(|count| {
+                                            *count <= prepared.budget.limits.max_entries
+                                        })
+                                        .ok_or_else(capacity_error)?;
+                                    entries
+                                        .try_reserve_exact(new.len())
+                                        .map_err(|_| capacity_error())?;
+                                    admitted
+                                        .try_reserve_exact(1)
+                                        .map_err(|_| capacity_error())?;
+                                    entries.extend(new);
                                     admitted.push(declaration);
                                 }
                                 Err(CssomError::PageBlock(error)) if page_rejection(&error) => {}
@@ -1016,6 +1006,12 @@ impl CssomBatch {
                                 Err(error) => return Err(error),
                             }
                         }
+                        let entries =
+                            CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(
+                                entries,
+                                prepared.budget.provider()?,
+                            )
+                            .map_err(CssomError::Declaration)?;
                         this.replace_properties(id, entries, &mut prepared.budget)?;
                         if let CssomBlockData::Properties { authored, .. } =
                             &mut this.staged.blocks.get_mut(id).expect("owned block").data

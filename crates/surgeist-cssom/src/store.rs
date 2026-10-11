@@ -332,7 +332,7 @@ pub struct CssomBatch {
     pub(crate) full_recompute: bool,
     pub(crate) declaration_changes: Vec<CssomBlockId>,
     pub(crate) counter_changes: Vec<CssomBlockId>,
-    pub(crate) owner_updates: Vec<(CssomBlockId, crate::declaration_support::DeclarationBudget)>,
+    pub(crate) owner_updates: Vec<(CssomBlockId, crate::declaration_budget::DeclarationBudget)>,
     pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
@@ -578,25 +578,6 @@ impl CssomBatch {
             Ok(true)
         })
     }
-    /// Product typed media replacement uses the existing checked Media Queries carrier.
-    pub fn set_media(
-        &mut self,
-        id: &CssomMediaListId,
-        value: CssMediaQueryList,
-    ) -> Result<bool, CssomError> {
-        self.apply(|this| {
-            this.staged.media(id)?;
-            if this.staged.media[id] == value {
-                return Ok(false);
-            }
-            for sheet in this.staged.sheets.values_mut().filter(|v| &v.media == id) {
-                sheet.inputs.media = value.clone();
-            }
-            this.staged.media.insert(id.clone(), value);
-            this.affect(CssomObjectId::MediaList(id.clone()), &[CssomChange::Media]);
-            Ok(true)
-        })
-    }
     /// Recovered replacement follows constructed/modifiable guards before parsing.
     pub fn replace_sheet_text(
         &mut self,
@@ -823,96 +804,6 @@ impl CssomBatch {
     /// Source CSSRule.cssText setter is a standards-defined no-op.
     pub fn set_rule_css_text(&mut self, id: &CssomRuleId, _text: &str) -> Result<(), CssomError> {
         self.apply(|this| this.staged.rule(id).map(|_| ()))
-    }
-    /// CSSOMString setter policy; deliberately accepts empty/raw custom names.
-    pub fn set_counter_name(&mut self, id: &CssomRuleId, name: &str) -> Result<bool, CssomError> {
-        self.apply(|this| {
-            this.staged.rule(id)?;
-            let rule = this.staged.rules.get_mut(id).expect("rule");
-            let CssomRuleData::CounterStyle { name: old, .. } = &mut rule.data else {
-                return Err(CssomError::WrongKind);
-            };
-            if [
-                "none",
-                "decimal",
-                "disc",
-                "circle",
-                "square",
-                "disclosure-open",
-                "disclosure-closed",
-            ]
-            .iter()
-            .any(|v| name.eq_ignore_ascii_case(v))
-            {
-                return Ok(false);
-            }
-            // Existing CSS owner normalizes predefined names. Invalid authored
-            // identifiers are still legitimate raw live CSSOMString contents.
-            let name = CssCounterStyleName::try_new(name)
-                .map_or_else(|| name.to_owned(), |v| v.as_str().to_owned());
-            if old == &name {
-                return Ok(false);
-            }
-            *old = name;
-            this.affect(CssomObjectId::Rule(id.clone()), &[CssomChange::Descriptors]);
-            Ok(true)
-        })
-    }
-    pub fn set_feature(
-        &mut self,
-        id: &CssomFeatureMapId,
-        key: &str,
-        value: &[u32],
-    ) -> Result<bool, CssomError> {
-        self.apply(|this| {
-            this.staged.feature_map(id)?;
-            let map = this.staged.maps.get_mut(id).expect("map");
-            let max = match map.kind {
-                CssFontFeatureValueKind::HistoricalForms | CssFontFeatureValueKind::Styleset => {
-                    usize::MAX
-                }
-                CssFontFeatureValueKind::CharacterVariant => 2,
-                _ => 1,
-            };
-            if value.len() > max {
-                return Err(CssomError::Source(CssomException::InvalidAccess));
-            }
-            if let Some(old) = map.entries.iter_mut().find(|v| v.key == key) {
-                if matches!(&old.value,CssomFeatureValue::Unsigned(v) if v==value) {
-                    return Ok(false);
-                }
-                old.value = CssomFeatureValue::Unsigned(value.to_vec());
-            } else {
-                map.entries.push(CssomFeatureEntry {
-                    key: key.to_owned(),
-                    value: CssomFeatureValue::Unsigned(value.to_vec()),
-                });
-            }
-            this.affect(
-                CssomObjectId::FeatureMap(id.clone()),
-                &[CssomChange::FeatureMaps],
-            );
-            Ok(true)
-        })
-    }
-    pub fn delete_feature(
-        &mut self,
-        id: &CssomFeatureMapId,
-        key: &str,
-    ) -> Result<bool, CssomError> {
-        self.apply(|this| {
-            this.staged.feature_map(id)?;
-            let map = this.staged.maps.get_mut(id).expect("map");
-            let Some(index) = map.entries.iter().position(|v| v.key == key) else {
-                return Ok(false);
-            };
-            map.entries.remove(index);
-            this.affect(
-                CssomObjectId::FeatureMap(id.clone()),
-                &[CssomChange::FeatureMaps],
-            );
-            Ok(true)
-        })
     }
     /// Explicit host association; importing rule media survives a null child.
     pub fn associate_import(

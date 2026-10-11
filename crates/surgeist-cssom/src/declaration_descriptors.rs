@@ -180,7 +180,7 @@ impl CssomBatch {
                 )
             }
         };
-        resource_diagnostics(&diagnostics)?;
+        check_resource_diagnostics(&diagnostics)?;
         Ok(self.preparation(
             id.clone(),
             value.map_or(PreparedAction::Noop, PreparedAction::Set),

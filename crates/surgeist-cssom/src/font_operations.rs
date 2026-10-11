@@ -258,7 +258,7 @@ impl CssomBatch {
                     crate::rule_operations::component_limits(&this.limits),
                 )
                 .into_parts();
-            crate::rule_operations::check_diagnostics(&diagnostics)?;
+            crate::parser_resources::check_resource_diagnostics(&diagnostics)?;
             let Some(value) = value else {
                 return Ok(false);
             };
@@ -417,6 +417,65 @@ impl CssomBatch {
             };
             let block = block.clone();
             this.prepare_css_text(&block, source, limits)
+        })
+    }
+}
+
+impl CssomBatch {
+    pub fn set_feature(
+        &mut self,
+        id: &CssomFeatureMapId,
+        key: &str,
+        value: &[u32],
+    ) -> Result<bool, CssomError> {
+        self.apply(|this| {
+            this.staged.feature_map(id)?;
+            let map = this.staged.maps.get_mut(id).expect("map");
+            let max = match map.kind {
+                CssFontFeatureValueKind::HistoricalForms | CssFontFeatureValueKind::Styleset => {
+                    usize::MAX
+                }
+                CssFontFeatureValueKind::CharacterVariant => 2,
+                _ => 1,
+            };
+            if value.len() > max {
+                return Err(CssomError::Source(CssomException::InvalidAccess));
+            }
+            if let Some(old) = map.entries.iter_mut().find(|v| v.key == key) {
+                if matches!(&old.value,CssomFeatureValue::Unsigned(v) if v==value) {
+                    return Ok(false);
+                }
+                old.value = CssomFeatureValue::Unsigned(value.to_vec());
+            } else {
+                map.entries.push(CssomFeatureEntry {
+                    key: key.to_owned(),
+                    value: CssomFeatureValue::Unsigned(value.to_vec()),
+                });
+            }
+            this.affect(
+                CssomObjectId::FeatureMap(id.clone()),
+                &[CssomChange::FeatureMaps],
+            );
+            Ok(true)
+        })
+    }
+    pub fn delete_feature(
+        &mut self,
+        id: &CssomFeatureMapId,
+        key: &str,
+    ) -> Result<bool, CssomError> {
+        self.apply(|this| {
+            this.staged.feature_map(id)?;
+            let map = this.staged.maps.get_mut(id).expect("map");
+            let Some(index) = map.entries.iter().position(|v| v.key == key) else {
+                return Ok(false);
+            };
+            map.entries.remove(index);
+            this.affect(
+                CssomObjectId::FeatureMap(id.clone()),
+                &[CssomChange::FeatureMaps],
+            );
+            Ok(true)
         })
     }
 }

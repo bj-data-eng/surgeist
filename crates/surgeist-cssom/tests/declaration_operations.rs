@@ -115,6 +115,344 @@ fn selected<'a>(
     }
 }
 
+fn replacement_occurrences<'a>(
+    snapshot: &'a CssomSnapshot,
+    id: &CssomBlockId,
+) -> &'a CssDeclarationList {
+    match snapshot.block(id).unwrap().data() {
+        CssomBlockData::Properties {
+            authored: CssomPropertyOccurrences::RawContents(values),
+            ..
+        } => values,
+        other => panic!("replacement occurrences: {other:?}"),
+    }
+}
+
+#[test]
+fn replacement_priority_pairs_keep_winning_encounter_order_and_losing_raw_occurrences() {
+    for (first, last, value, names) in [
+        ("", "", "2px", vec!["color", "width", "--A", "--a"]),
+        (
+            "",
+            "!important",
+            "2px",
+            vec!["color", "width", "--A", "--a"],
+        ),
+        (
+            "!important",
+            "",
+            "1px",
+            vec!["width", "color", "--A", "--a"],
+        ),
+        (
+            "!important",
+            "!important",
+            "2px",
+            vec!["color", "width", "--A", "--a"],
+        ),
+    ] {
+        let mut live = store();
+        let id = create(&mut live, "height:9px", false, false, false);
+        let old = live.snapshot();
+        let text = format!("width:1px{first};color:red;width:2px{last};--A:one;--a:two");
+        let mut edit = batch(&live);
+        replace(&mut edit, &id, &text);
+        let commit = live.commit(edit).unwrap();
+        assert!(commit.owner_effects().is_empty());
+        let after = live.snapshot();
+        let read = view(&after, &id);
+        assert_eq!(read.get_property_value("width").unwrap(), value);
+        assert_eq!(read.get_property_value("--A").unwrap(), "one");
+        assert_eq!(read.get_property_value("--a").unwrap(), "two");
+        assert_eq!(
+            (0..read.length().unwrap())
+                .map(|i| read.item(i).unwrap())
+                .collect::<Vec<_>>(),
+            names
+        );
+        assert_eq!(replacement_occurrences(&after, &id).len(), 5);
+        assert_eq!(
+            after
+                .block(&id)
+                .unwrap()
+                .replacement_input()
+                .unwrap()
+                .source,
+            text
+        );
+        assert_eq!(view(&old, &id).get_property_value("height").unwrap(), "9px");
+        let winner = selected(&after, &id)
+            .iter()
+            .find(|entry| {
+                matches!(
+                    entry.property_name(),
+                    CssPropertyNameRef::Known(CssKnownProperty::Width)
+                )
+            })
+            .unwrap();
+        let expected_name_start = if first == "!important" && last.is_empty() {
+            0
+        } else {
+            text.find("width:2px").unwrap()
+        };
+        assert_eq!(
+            winner
+                .source()
+                .parsed_name()
+                .unwrap()
+                .span()
+                .start()
+                .byte_offset()
+                .value(),
+            expected_name_start
+        );
+        // Each genuine singleton projection retains its own ordinal; selection never renumbers it.
+        assert_eq!(winner.authored_ordinal(), 0);
+        assert_eq!(
+            winner.importance(),
+            if first.is_empty() && last.is_empty() {
+                CssImportance::Normal
+            } else {
+                CssImportance::Important
+            }
+        );
+    }
+}
+
+#[test]
+fn rejected_domain_occurrences_do_not_mask_admitted_duplicate_neighbors() {
+    let mut live = store();
+    let sheet = sheet(
+        &mut live,
+        "@keyframes demo{from{opacity:0}} @page{@top-left{width:1px}}",
+    );
+    let before = live.snapshot();
+    let roots = before.sheet_rules(&sheet).unwrap();
+    let frame_rule = before
+        .rules(before.rule(&roots[0]).unwrap().data().children().unwrap())
+        .unwrap()[0]
+        .clone();
+    let margin_rule = before
+        .rules(before.rule(&roots[1]).unwrap().data().children().unwrap())
+        .unwrap()[0]
+        .clone();
+    let frame = rule_block(&before, &frame_rule);
+    let margin = rule_block(&before, &margin_rule);
+    let mut edit = batch(&live);
+    let frame_text = "opacity:.1;width:2px;opacity:.8!important;opacity:.3";
+    let margin_text = "width:2px;opacity:.8!important;color:red;width:4px";
+    replace(&mut edit, &frame, frame_text);
+    replace(&mut edit, &margin, margin_text);
+    live.commit(edit).unwrap();
+    let after = live.snapshot();
+    assert_eq!(
+        view(&after, &frame).css_text().unwrap(),
+        "width: 2px; opacity: 0.3;"
+    );
+    assert_eq!(
+        view(&after, &margin).css_text().unwrap(),
+        "color: red; width: 4px;"
+    );
+    for (id, rule, text) in [
+        (&frame, &frame_rule, frame_text),
+        (&margin, &margin_rule, margin_text),
+    ] {
+        assert_eq!(view(&after, id).parent_rule(), Some(rule));
+        assert_eq!(rule_block(&after, rule), *id);
+        assert_eq!(replacement_occurrences(&after, id).len(), 3);
+        assert_eq!(
+            after.block(id).unwrap().replacement_input().unwrap().source,
+            text
+        );
+    }
+    assert_eq!(
+        view(&before, &frame).get_property_value("opacity").unwrap(),
+        "0"
+    );
+    assert_eq!(
+        view(&before, &margin).get_property_value("width").unwrap(),
+        "1px"
+    );
+}
+
+#[test]
+fn winning_pending_group_retains_original_members_and_owner_output() {
+    // Unlike mode-switching margin, overflow has a determined two-terminal
+    // footprint even while its shorthand substitution remains pending.
+    let mut context = support_context(false);
+    let CssomInputData::Support(profile) = &context.inputs[0].data else {
+        panic!("support profile");
+    };
+    let mut properties = profile.properties().to_vec();
+    properties.push((
+        CssPropertyGrammar::from_name("overflow").unwrap(),
+        CssomUsabilityRequirement::AllCheckedValues,
+    ));
+    context.inputs[0].data =
+        CssomInputData::Support(CssomDeclarationSupport::try_new(properties).unwrap());
+    let mut live = CssomStore::new(CssomLimits::default(), context).unwrap();
+    let id = create(&mut live, "width:1px", false, false, true);
+    let old = live.snapshot();
+    let text = "overflow:var(--old);width:3px;overflow:var(--new)!important;--X:var(--v)";
+    let mut edit = batch(&live);
+    replace(&mut edit, &id, text);
+    let commit = live.commit(edit).unwrap();
+    assert_eq!(commit.owner_effects().len(), 1);
+    assert_eq!(commit.owner_effects()[0].block(), &id);
+    assert_eq!(
+        commit.owner_effects()[0].revision(),
+        live.snapshot().revision()
+    );
+    assert_eq!(
+        commit.owner_effects()[0].value(),
+        "width: 3px; overflow: var(--new) !important; --X: var(--v);"
+    );
+    let after = live.snapshot();
+    assert_eq!(
+        view(&after, &id).get_property_value("overflow").unwrap(),
+        "var(--new)"
+    );
+    assert_eq!(replacement_occurrences(&after, &id).len(), 4);
+    assert_eq!(selected(&after, &id).len(), 4);
+    let members = &selected(&after, &id)[1..3];
+    for (ordinal, entry) in members.iter().enumerate() {
+        assert_eq!(entry.authored_ordinal(), 0);
+        assert_eq!(entry.member_ordinal(), ordinal);
+        assert_eq!(entry.importance(), CssImportance::Important);
+        assert!(
+            entry
+                .source()
+                .same_occurrence(&replacement_occurrences(&after, &id).as_slice()[2])
+        );
+        assert!(matches!(
+            entry.value(),
+            CssSpecifiedDeclarationValueRef::PendingShorthand(_)
+        ));
+        let origin = entry.source().parsed_name().unwrap();
+        assert_eq!(origin.source().as_str(), text);
+        assert_eq!(
+            origin.span().start().byte_offset().value(),
+            text.find("overflow:var(--new)").unwrap()
+        );
+    }
+    assert_eq!(view(&old, &id).css_text().unwrap(), "width: 1px;");
+}
+
+#[test]
+fn unusable_important_occurrence_is_filtered_before_winner_selection() {
+    let profile = CssomDeclarationSupport::try_new(vec![(
+        CssPropertyGrammar::from_name("width").unwrap(),
+        CssomUsabilityRequirement::WholeDeclarationDecision,
+    )])
+    .unwrap();
+    let mut live = CssomStore::new(
+        CssomLimits::default(),
+        CssomContext {
+            inputs: vec![CssomInput {
+                version: version(CssomInputRole::Support, "width-owner", 1),
+                data: CssomInputData::Support(profile),
+            }],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let id = create(&mut live, "", false, false, false);
+    let mut edit = batch(&live);
+    let prepared = edit
+        .prepare_css_text(
+            &id,
+            "width:1px!important;--x:var(--v);width:2px",
+            CssomDeclarationRequestLimits::default(),
+        )
+        .unwrap();
+    assert_eq!(prepared.candidates().len(), 2);
+    let decision_version = version(CssomInputRole::Support, "values-owner", 7);
+    let decisions = [
+        prepared.candidates()[0]
+            .decide(
+                decision_version.clone(),
+                CssomDeclarationUsability::Unusable,
+            )
+            .unwrap(),
+        prepared.candidates()[1]
+            .decide(decision_version.clone(), CssomDeclarationUsability::Usable)
+            .unwrap(),
+    ];
+    edit.apply_declaration_with_inputs(
+        prepared,
+        &decisions,
+        std::slice::from_ref(&decision_version),
+    )
+    .unwrap();
+    live.commit(edit).unwrap();
+    let after = live.snapshot();
+    assert_eq!(
+        view(&after, &id).css_text().unwrap(),
+        "--x: var(--v); width: 2px;"
+    );
+    assert_eq!(replacement_occurrences(&after, &id).len(), 2);
+    assert!(
+        after
+            .block(&id)
+            .unwrap()
+            .admission_inputs()
+            .contains(&decision_version)
+    );
+}
+
+#[test]
+fn replacement_candidate_resource_failure_aborts_staged_changes_and_fresh_retry_succeeds() {
+    let mut live = store();
+    let id = create(&mut live, "width:1px", false, false, true);
+    let unrelated = create(&mut live, "height:1px", false, false, false);
+    let before = live.snapshot();
+    let text = "margin:1px;margin:2px;margin:3px";
+    let mut edit = batch(&live);
+    set(&mut edit, &unrelated, "height", "9px", "");
+    let prepared = edit
+        .prepare_css_text(
+            &id,
+            text,
+            CssomDeclarationRequestLimits {
+                provider: CssSpecifiedValueSerializationLimits::new(540, 10_000, 10_000),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let error = edit.apply_declaration(prepared, &[]).unwrap_err();
+    assert!(
+        matches!(error, CssomError::Declaration(ref cause) if matches!(cause.kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit))
+    );
+    let CssomError::Declaration(cause) = error else {
+        panic!("checked candidate selection resource error");
+    };
+    // Three four-side sources produce twelve candidates. The disjoint selector
+    // reservation is twenty input nodes; I1 + I2 per candidate reaches its limit
+    // at the second member of the third source, including the losing candidates.
+    assert_eq!(cause.authored_ordinal(), Some(0));
+    assert_eq!(cause.member_ordinal(), Some(1));
+    let origin = cause.declaration().unwrap().parsed_name().unwrap();
+    assert_eq!(origin.source().as_str(), text);
+    assert_eq!(
+        origin.span().start().byte_offset().value(),
+        text.find("margin:3px").unwrap()
+    );
+    assert!(matches!(live.commit(edit), Err(CssomError::BatchAborted)));
+    let unchanged = live.snapshot();
+    assert_eq!(unchanged.revision(), before.revision());
+    assert_eq!(view(&unchanged, &id).css_text().unwrap(), "width: 1px;");
+    assert_eq!(
+        view(&unchanged, &unrelated).css_text().unwrap(),
+        "height: 1px;"
+    );
+    let mut retry = batch(&live);
+    replace(&mut retry, &id, text);
+    let commit = live.commit(retry).unwrap();
+    assert_eq!(commit.owner_effects().len(), 1);
+    assert_eq!(commit.owner_effects()[0].value(), "margin: 3px;");
+    assert_eq!(replacement_occurrences(&live.snapshot(), &id).len(), 3);
+}
+
 #[test]
 fn pending_replacement_reserves_cleanup_against_owner_declaration_publication() {
     let mut store = CssomStore::new(
