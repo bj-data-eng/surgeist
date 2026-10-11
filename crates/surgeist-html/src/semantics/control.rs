@@ -888,7 +888,7 @@ impl<'a> HtmlSemanticSession<'a> {
             )),
         }
     }
-    fn control_equal(
+    pub(super) fn control_equal(
         &mut self,
         left: &crate::DocumentString,
         right: &crate::DocumentString,

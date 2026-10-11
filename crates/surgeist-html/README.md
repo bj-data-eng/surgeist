@@ -632,6 +632,20 @@ The [map areas clause](../../references/html-language-elements-embedded--877d614
 defines membership; this result supplies no live collection, named lookup,
 image-map selection, geometry or activation.
 
+`DetailsSummary` observes the first actual direct HTML summary child; complete
+absence returns no captured identity. `SummaryForParentDetails` tests whether a
+summary is that first child of its actual ordinary details parent.
+`DetailsNameGroup` retains the selected name attribute and all same-tree HTML
+details members with an equal nonempty UTF-16 name, in ordinary tree order.
+Absent or empty names produce a singleton containing the queried subject without
+requiring unrelated topology. Separate shadow and template trees remain separate;
+missing influencing ancestry or child order yields missing evidence.
+
+These observations reuse the semantic session's qualification, raw admission,
+resource ledger and atomic batches. They establish captured relationships rather
+than group author conformance, exclusivity mutation, activation, toggle events or
+a rendered fallback legend.
+
 The control-autocomplete query retains intrinsic syntax and processing, the
 actually consulted input-type report and any consulted form-autocomplete report.
 Only expectation defaults consult the existing form-owner operation: a known

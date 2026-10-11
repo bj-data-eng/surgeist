@@ -4,7 +4,7 @@
 //! table model and immutable table collections, language and directionality,
 //! meter and progress state, inertness,
 //! form owners, form/fieldset listed collections and form length, label targets, label form owners and control labels, current control flags, global inheritance, select
-//! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, map area membership, option form/text/label/value and select value getters, autocomplete
+//! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
@@ -35,6 +35,8 @@ pub use select::*;
 mod datalist;
 mod image_map;
 pub use image_map::*;
+mod details;
+pub use details::*;
 mod option_text;
 pub use option_text::*;
 mod autocomplete;
@@ -696,6 +698,9 @@ pub enum HtmlSemanticQuery {
     DatalistOptions,
     /// Ordinary HTML area descendants in source tree order.
     MapAreas,
+    DetailsSummary,
+    SummaryForParentDetails,
+    DetailsNameGroup,
     DatalistSuggestionOptions,
     ImageMapAttribute,
     ImageControlsAttribute,
@@ -750,6 +755,15 @@ impl HtmlSemanticQuery {
             }
             Self::InputSuggestionsSource => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list"
+            }
+            Self::DetailsSummary => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element"
+            }
+            Self::SummaryForParentDetails => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#summary-for-its-parent-details"
+            }
+            Self::DetailsNameGroup => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#details-name-group"
             }
             Self::MapAreas => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-map-areas"
@@ -1035,6 +1049,9 @@ pub enum HtmlSemanticFact {
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
     MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
+    DetailsSummary(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    SummaryForParentDetails(HtmlSemanticValue<bool>),
+    DetailsNameGroup(HtmlSemanticValue<HtmlDetailsNameGroup>),
     ImageMapAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
     ImageControlsAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
     StylesheetDisabledAttribute(HtmlSemanticValue<HtmlBooleanAuthorContextReadback>),
@@ -1318,6 +1335,21 @@ impl<'a> HtmlSemanticSession<'a> {
             })
             .clone()
     }
+    fn ordinary_tree_root(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<Result<HtmlCaptureSubjectId, HtmlSemanticMissing>, HtmlSemanticFailure> {
+        let mut current = subject.clone();
+        loop {
+            let node = self.node(&current)?;
+            match self.parent(node)? {
+                Ok(Some(parent)) => current = parent,
+                Ok(None) => return Ok(Ok(current)),
+                Err(missing) => return Ok(Err(missing)),
+            }
+        }
+    }
+
     // Descend only after inspecting the current node. This lets a first match
     // succeed without reading its children or any later branch. Host/slot edges
     // are never ordinary-tree traversal edges.
@@ -2407,6 +2439,17 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.input_suggestions_source(&request.subject)?,
                             )
                         }
+                        HtmlSemanticQuery::DetailsSummary => HtmlSemanticFact::DetailsSummary(
+                            self.details_summary(&request.subject)?,
+                        ),
+                        HtmlSemanticQuery::SummaryForParentDetails => {
+                            HtmlSemanticFact::SummaryForParentDetails(
+                                self.summary_for_parent_details(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::DetailsNameGroup => HtmlSemanticFact::DetailsNameGroup(
+                            self.details_name_group(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::MapAreas => {
                             HtmlSemanticFact::MapAreas(self.map_areas(&request.subject)?)
                         }
@@ -2638,6 +2681,15 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::InputSuggestionsSource => {
                         HtmlSemanticFact::InputSuggestionsSource(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DetailsSummary => {
+                        HtmlSemanticFact::DetailsSummary(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::SummaryForParentDetails => {
+                        HtmlSemanticFact::SummaryForParentDetails(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DetailsNameGroup => {
+                        HtmlSemanticFact::DetailsNameGroup(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::MapAreas => {
                         HtmlSemanticFact::MapAreas(HtmlSemanticValue::Inapplicable)

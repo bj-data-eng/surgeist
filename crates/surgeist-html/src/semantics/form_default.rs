@@ -70,20 +70,6 @@ impl<'a> HtmlSemanticSession<'a> {
         })
     }
 
-    fn default_tree_root(
-        &mut self,
-        subject: &HtmlCaptureSubjectId,
-    ) -> DefaultResult<HtmlCaptureSubjectId> {
-        let mut current = subject.clone();
-        loop {
-            let node = self.node(&current)?;
-            match self.parent(node)?.map_err(DefaultStop::Missing)? {
-                Some(parent) => current = parent,
-                None => return Ok(current),
-            }
-        }
-    }
-
     fn default_owner(&mut self, subject: &HtmlCaptureSubjectId) -> DefaultResult<HtmlFormOwner> {
         match self.form_owner(subject)? {
             HtmlSemanticValue::Known(owner) => Ok(owner),
@@ -117,7 +103,10 @@ impl<'a> HtmlSemanticSession<'a> {
         form: &HtmlCaptureSubjectId,
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
     ) -> DefaultResult<Option<HtmlDefaultButton>> {
-        let mut current = Some(self.default_tree_root(form)?);
+        let mut current = Some(
+            self.ordinary_tree_root(form)?
+                .map_err(DefaultStop::Missing)?,
+        );
         while let Some(subject) = current {
             let node = self.node(&subject)?;
             if let HtmlCapturedNodeKind::Element(element) = node.kind() {
@@ -186,7 +175,10 @@ impl<'a> HtmlSemanticSession<'a> {
         form: &HtmlCaptureSubjectId,
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
     ) -> DefaultResult<HtmlImplicitSubmissionBlockingFields> {
-        let mut current = Some(self.default_tree_root(form)?);
+        let mut current = Some(
+            self.ordinary_tree_root(form)?
+                .map_err(DefaultStop::Missing)?,
+        );
         let mut count = HtmlImplicitSubmissionBlockingFields::Zero;
         let mut missing = None;
         while let Some(subject) = current {
