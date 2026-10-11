@@ -662,6 +662,33 @@ impl CssSpecifiedDeclarationBlock {
     ) -> Result<Self> {
         Self::from_selected_entries(entries, &mut SpecifiedRuleWriter::new(limits))
     }
+    /// Selects winners from checked terminal candidates in encounter order.
+    /// An earlier important entry defeats a later normal entry; otherwise the
+    /// later entry wins. Survivors retain their relative positions, selected
+    /// importance, payloads, source occurrences and authored/member ordinals.
+    ///
+    /// This selects entries without certifying a declaration domain. The strict
+    /// entry constructors still check duplicate identities and domain admission.
+    /// No values are expanded or serialized, and a zero CSS byte allowance is
+    /// valid. One aggregate input/projection node, two input nodes per entry/key
+    /// and one projection node per candidate (including losers) are charged.
+    /// These are structural quotas, not limits on custom-name character work or
+    /// process memory. Temporary indexing is fallibly allocated only after all
+    /// candidates have been admitted under the cumulative node allowances.
+    pub fn try_select_winning_entries_with_limits(
+        entries: Vec<CssSpecifiedDeclarationEntry>,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Vec<CssSpecifiedDeclarationEntry>> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.node()?;
+        for entry in &entries {
+            writer
+                .context
+                .charge_input(2)
+                .map_err(|error| entry.at(error.into()))?;
+        }
+        Self::select_winning_entries(entries, &mut writer)
+    }
     pub fn try_from_keyframe_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
         Self::try_from_keyframe_entries_with_limits(
             entries,
@@ -999,16 +1026,30 @@ impl CssSpecifiedDeclarationBlock {
         domain: Domain,
         writer: &mut SpecifiedRuleWriter,
     ) -> Result<Self> {
+        Ok(Self {
+            entries: Self::select_winning_entries(entries, writer)?,
+            domain,
+        })
+    }
+    fn select_winning_entries(
+        entries: Vec<CssSpecifiedDeclarationEntry>,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<Vec<CssSpecifiedDeclarationEntry>> {
+        // Admit all candidate work, including losers, before allocating the
+        // temporary index and retention flags. Authored/expansion callers have
+        // already admitted their source and expansion work independently.
+        for entry in &entries {
+            writer
+                .context
+                .charge_projection(1)
+                .map_err(|e| entry.at(e.into()))?;
+        }
         let mut index: HashMap<Key<'_>, usize> = HashMap::new();
         index.try_reserve(entries.len()).map_err(|_| capacity())?;
         let mut retained = Vec::new();
         reserve(&mut retained, entries.len())?;
         retained.resize(entries.len(), false);
         for (i, entry) in entries.iter().enumerate() {
-            writer
-                .context
-                .charge_projection(1)
-                .map_err(|e| entry.at(e.into()))?;
             let key = Key::from_entry(entry);
             let earlier = index.get(&key).copied();
             if earlier.is_none_or(|earlier| {
@@ -1030,9 +1071,6 @@ impl CssSpecifiedDeclarationBlock {
                 winners.push(entry);
             }
         }
-        Ok(Self {
-            entries: winners,
-            domain,
-        })
+        Ok(winners)
     }
 }
