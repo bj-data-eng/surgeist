@@ -4709,3 +4709,189 @@ fn standalone_driver_consumes_body_and_preserves_source_paragraph_topology() {
     .collect();
     assert_eq!(actual, expected);
 }
+
+// Expected trees: pinned HTML877d syntax capture §13.2.10.1/.2 and
+// creation-token replay §13.2.4.3. Attribute variants do not change topology.
+
+#[test]
+fn misnested_inline_formatting_reconstructs_a_distinct_element_from_original_attributes() {
+    for (source, expected_attributes) in [
+        ("<p>1<b>2<i>3</b>4</i>5</p>", &[][..]),
+        (
+            "<p>1<b>2<i class=Keep data-x=Raw>3</b>4</i>5</p>",
+            &[("class", "Keep"), ("data-x", "Raw")][..],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let boundary = standalone_boundary(&mut driver);
+        if boundary != super::head::HeadBoundary::ConstructionEof {
+            // Current real driver suspends at the formatting opener. Dispose
+            // all actual owners before the expected runtime RED assertion.
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+            return;
+        }
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let actual_outline = outline(document);
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let p = document.node(&body).unwrap().children().next().unwrap();
+        let old_b = document.node(&p).unwrap().children().nth(1).unwrap();
+        let old_i = document.node(&old_b).unwrap().children().nth(1).unwrap();
+        let new_i = document.node(&p).unwrap().children().nth(2).unwrap();
+        let actual_attributes: Vec<_> = [&old_i, &new_i]
+            .into_iter()
+            .map(|id| {
+                let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                    panic!("source-derived i positions must be actual elements");
+                };
+                element
+                    .attributes()
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            attribute
+                                .name()
+                                .namespace()
+                                .uri()
+                                .map(|uri| uri.code_units().to_vec()),
+                            attribute.name().local_name().code_units().to_vec(),
+                            attribute.value().code_units().to_vec(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(
+            actual_outline,
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#1"),
+                (3, "b"),
+                (4, "#2"),
+                (4, "i"),
+                (5, "#3"),
+                (3, "i"),
+                (4, "#4"),
+                (3, "#5"),
+            ]),
+            "{source}"
+        );
+        assert_ne!(
+            old_i, new_i,
+            "reconstruction allocates a distinct result-qualified node"
+        );
+        let expected_attributes: Vec<_> = expected_attributes
+            .iter()
+            .map(|(name, value)| {
+                (
+                    None::<Vec<u16>>,
+                    name.encode_utf16().collect::<Vec<_>>(),
+                    value.encode_utf16().collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            actual_attributes,
+            [expected_attributes.clone(), expected_attributes]
+        );
+    }
+}
+
+#[test]
+fn formatting_adoption_moves_furthest_block_children_into_a_distinct_element_with_original_attributes()
+ {
+    for (source, expected_attributes) in [
+        ("<b>1<p>2</b>3</p>", &[][..]),
+        (
+            "<b class=Keep data-x=Raw>1<p>2</b>3</p>",
+            &[("class", "Keep"), ("data-x", "Raw")][..],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let boundary = standalone_boundary(&mut driver);
+        if boundary != super::head::HeadBoundary::ConstructionEof {
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+            return;
+        }
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let actual_outline = outline(document);
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let old_b = document.node(&body).unwrap().children().next().unwrap();
+        let p = document.node(&body).unwrap().children().nth(1).unwrap();
+        let new_b = document.node(&p).unwrap().children().next().unwrap();
+        let actual_attributes: Vec<_> = [&old_b, &new_b]
+            .into_iter()
+            .map(|id| {
+                let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                    panic!("source-derived b positions must be actual elements");
+                };
+                element
+                    .attributes()
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            attribute
+                                .name()
+                                .namespace()
+                                .uri()
+                                .map(|uri| uri.code_units().to_vec()),
+                            attribute.name().local_name().code_units().to_vec(),
+                            attribute.value().code_units().to_vec(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(
+            actual_outline,
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "b"),
+                (3, "#1"),
+                (2, "p"),
+                (3, "b"),
+                (4, "#2"),
+                (3, "#3"),
+            ]),
+            "{source}"
+        );
+        assert_ne!(
+            old_b, new_b,
+            "adoption creates a new formatting node instead of reusing the old one"
+        );
+        let expected_attributes: Vec<_> = expected_attributes
+            .iter()
+            .map(|(name, value)| {
+                (
+                    None::<Vec<u16>>,
+                    name.encode_utf16().collect::<Vec<_>>(),
+                    value.encode_utf16().collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            actual_attributes,
+            [expected_attributes.clone(), expected_attributes]
+        );
+    }
+}
