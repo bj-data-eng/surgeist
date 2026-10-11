@@ -5419,7 +5419,11 @@ fn ordinary_form_end_removes_only_the_pointed_stack_identity_and_allows_a_later_
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
     let actual_outline = outline(document);
-    let html = document.root().children().next().unwrap();
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
     let body = document.node(&html).unwrap().children().nth(1).unwrap();
     let old_form = document.node(&body).unwrap().children().next().unwrap();
     let later_form = document.node(&body).unwrap().children().nth(1).unwrap();
