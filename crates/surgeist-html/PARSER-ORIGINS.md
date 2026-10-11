@@ -20,7 +20,8 @@ Ordinary form recovery and parser-created image, button, fieldset and object
 associations use that same fresh driver and controlled arena. Seven structural table modes now use that driver,
 including pending text and implied column-group, section and row creation.
 Ordinary frameset entry and its three insertion modes also use that driver.
-Resettable control creation, unsupported table rows, select
+Ordinary textarea creation, RCDATA and raw/reset hooks now use it as well.
+Other resettable control creation, unsupported table rows, select
 transitions, templates and foreign dispatch retain explicit unfinished
 continuations. Construction EOF is not completed stop-parsing or a public report.
 
@@ -185,7 +186,7 @@ derives from lines 1555–1585. The implied-end, heading and special-element lis
 derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected HTML
 edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
 `keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
-Resettable control and template-form creation, unsupported table branches,
+Other resettable control and template-form creation, unsupported table branches,
 foreign creation remain unfinished boundaries. Frameset transitions are extended below.
 
 The sole fresh driver consumes its actual AfterHead handoff and retains current
@@ -249,7 +250,8 @@ The selected HTML edition governs button diagnostic-before-pop ordering,
 fieldset block recovery and object reconstruction/marker clearing. These rows
 delegate through the existing structural table modes rather than introducing
 another driver. Button, fieldset and object have no resettable initialization
-step; input, textarea, output and select remain pre-effect continuations.
+step; input, output and select remain pre-effect continuations. Textarea is
+extended below with its own resettable initialization.
 
 Surgeist-owned providers generalize the existing image association registry to
 one kind-qualified record. Borrowed source/controller/arena/name/attribute and
@@ -277,6 +279,27 @@ with the attribute commit, then drain before further transfer or rebinding.
 Terminal stops retain actual metadata prefixes, topology and transfer redirects
 for cleanup, and refuse useful continuation, observations and freeze. Repeated
 registry/tree scans remain charged and polled; no linear-time guarantee follows.
+
+The textarea extension adapts `rules.rs` lines 874–878 in the existing body
+driver, preserving the original notice and complete rules-file hash above.
+The selected HTML edition governs creation reset before parser association,
+first-LF omission, RCDATA, saved caller mode, children-change raw updates and
+reset on every actual parser stack removal. Raw/reset behavior derives from
+the [textarea clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-textarea-element)
+and the selected [DOM children-change hooks](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md).
+The upstream row supplies implementation provenance, not the whole raw-state contract.
+
+Surgeist-owned textarea metadata indexes independently copied raw UTF-16 backing
+in the same controlled payload registry. Removal hooks and old-parent child-text
+updates use the excluded-root view before insertion hooks and final-parent updates;
+text merges invoke the parent children-change hook. Stack pop, identity removal
+and replacement reset the actual removed textarea before mode restoration or EOF
+reprocessing. New and old raw buffers coexist under actual admission; replaced
+backing is disposed while initialized retired slots remain charged until registry
+disposal. Terminal cleanup performs no useful reset. Repeated raw copies and
+registry scans may be quadratic and remain charged and polled. This checkpoint
+adds no user interaction, API-value normalization, hosted execution or completed
+public parse/report lifecycle.
 
 The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
 `mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry

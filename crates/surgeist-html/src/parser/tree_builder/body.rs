@@ -9,9 +9,10 @@
 //
 // Adapted from selected ordinary body rows in tree_builder/rules.rs:
 // 356-541,558-602,616-630,693-731,786-813,842-873,880-892,947-1004,
-// 1466-1493,1563-1583, plus form/control rows508-518,543-558,604-665,765-784;
+// 1466-1493,1563-1583, plus form/control rows508-518,543-558,604-665,765-784,
+// and textarea874-878;
 // and tree_builder/mod.rs:1043-1223,1555-1585.
-// Resettable form controls and foreign creation are
+// Other resettable form controls and foreign creation are
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
@@ -168,7 +169,7 @@ impl HeadState<'_> {
         }
         Ok(())
     }
-    fn first_lf(&mut self, c: &mut ParseControl) -> Result<bool, HeadError> {
+    pub(super) fn first_lf(&mut self, c: &mut ParseControl) -> Result<bool, HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
         if !self.ignore_first_lf {
@@ -396,7 +397,7 @@ impl HeadState<'_> {
         }
         for (names, boundary) in [
             (&["template"][..], HeadBoundary::Template),
-            (&["input", "textarea", "output"][..], HeadBoundary::Form),
+            (&["input", "output"][..], HeadBoundary::Form),
             (&["select", "option", "optgroup"][..], HeadBoundary::Select),
             (&["math", "svg"][..], HeadBoundary::Foreign),
         ] {
@@ -575,6 +576,34 @@ impl HeadState<'_> {
             return Err(HeadError::MissingInput);
         };
         if kind == TagKind::Start {
+            if self.token_in(&["textarea"], c)?.is_some() {
+                match self.validate_standalone_capability(c) {
+                    Err(HeadError::StandaloneCapabilityUnavailable) => {
+                        return Err(c
+                            .stop_unsupported_standalone(
+                                crate::parser::control::StandaloneUnsupported::Provenance,
+                            )
+                            .into());
+                    }
+                    other => other?,
+                }
+                self.insert_tag(c)?;
+                write(size_of::<bool>(), 1, c)?;
+                self.ignore_first_lf = true;
+                self.tokenizer
+                    .as_mut()
+                    .ok_or(HeadError::Consumed)?
+                    .set_state(State::Raw(Raw::Rcdata), c)?;
+                let mode = self.mode(c)?;
+                write(size_of::<Option<InsertionMode>>(), 1, c)?;
+                self.return_mode = Some(mode);
+                self.frameset(false, c)?;
+                self.set_mode(InsertionMode::Text, c)?;
+                if close {
+                    self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                }
+                return Ok(Some(self.finish(c)?));
+            }
             if self.token_in(&["form"], c)?.is_some() {
                 return Ok(Some(self.form_start(close, c)?));
             }

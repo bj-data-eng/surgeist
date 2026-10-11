@@ -4024,7 +4024,6 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     use super::head::HeadBoundary;
     for (name, boundary) in [
         ("input", HeadBoundary::Form),
-        ("textarea", HeadBoundary::Form),
         ("select", HeadBoundary::Select),
         ("option", HeadBoundary::Select),
         ("template", HeadBoundary::Template),
@@ -5257,11 +5256,12 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = c.usage().clone();
     kernel.replace_stack(1, &replacement, &mut c).unwrap();
-    // Kernel identity/open preflight, actual session readiness and target index,
-    // then the get_mut slot.
+    // Original preflight/get_mut visits4, removed-slot visit1, actual old-node
+    // index2, HTML kind/name visits3, namespace/local length visits2. The old
+    // p differs in length from textarea; only namespace units are inspected.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        4
+        12
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -5269,11 +5269,15 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     );
     assert_eq!(
         c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
-        2 * size_of::<ParserNode>() as u64
+        3 * size_of::<ParserNode>() as u64
     );
     assert_eq!(
         c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
-        1
+        2
+    );
+    assert_eq!(
+        c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
+        28 * 3
     );
     assert_eq!(
         c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
@@ -5899,7 +5903,6 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
 fn ordinary_form_control_and_template_continuations_preserve_pointer_and_original_token() {
     for (name, expected) in [
         ("input", super::head::HeadBoundary::Form),
-        ("textarea", super::head::HeadBoundary::Form),
         ("output", super::head::HeadBoundary::Form),
         ("template", super::head::HeadBoundary::Template),
     ] {
@@ -8183,6 +8186,48 @@ fn ordinary_textarea_rcdata_first_lf_and_form_sibling_order_preserve_exact_nativ
     );
 }
 
+struct TextareaNativeObservation {
+    shape: Vec<(usize, Vec<u16>)>,
+    raw: Vec<Vec<u16>>,
+}
+
+fn textarea_native_observation(source: HtmlSource) -> TextareaNativeObservation {
+    let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let shape = outline(document);
+    let mut stack: Vec<_> = document.root().children().collect();
+    let mut textareas = Vec::new();
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        stack.extend(node.children());
+        if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().namespace()==&Namespace::html() && e.name().local_name().code_units()==[116,101,120,116,97,114,101,97])
+        {
+            textareas.push(id);
+        }
+    }
+    let mut raw = Vec::new();
+    for id in &textareas {
+        let state = frozen.textarea_state(&mut c, id).unwrap();
+        assert!(!state.dirty_value && !state.user_validity);
+        raw.push(
+            frozen
+                .textarea_raw_value(&mut c, id)
+                .unwrap()
+                .code_units()
+                .to_vec(),
+        );
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    TextareaNativeObservation { shape, raw }
+}
+
 #[test]
 fn ordinary_table_textarea_delegation_preserves_foster_tree_and_returns_to_table() {
     let request = crate::HtmlDocumentParseRequest::offline(
@@ -8217,4 +8262,432 @@ fn ordinary_table_textarea_delegation_preserves_foster_tree_and_returns_to_table
             (2, "#C")
         ])
     );
+}
+
+#[test]
+fn textarea_rcdata_first_lf_end_like_and_null_preserve_exact_raw_units() {
+    for (input, expected) in [
+        ("<textarea>A</textarea>", vec![65]),
+        ("<textarea>\r\nA</textarea>", vec![65]),
+        ("<textarea>&#10;A</textarea>", vec![65]),
+        ("<textarea>\n\nA</textarea>", vec![10, 65]),
+        ("<textarea>&amp;B&#13;C</textarea>Z", vec![38, 66, 13, 67]),
+        (
+            "<textarea>A</textareax>&lt;b></textarea>",
+            "A</textareax><b>".encode_utf16().collect(),
+        ),
+        ("<textarea>A\0B</textarea>", vec![65, 0xfffd, 66]),
+        ("<textarea/>A</textarea>", vec![65]),
+        ("<textarea>A", vec![65]),
+    ] {
+        let TextareaNativeObservation { raw, .. } =
+            textarea_native_observation(HtmlSource::utf8(input));
+        assert_eq!(raw, vec![expected], "{input:?}");
+    }
+}
+
+#[test]
+fn textarea_exact_utf16_and_eof_pop_reset_keep_raw_distinct_from_api_value() {
+    let mut units: Vec<u16> = "<textarea>\n".encode_utf16().collect();
+    units.extend([0xd800, 0xd83d, 0xde00, 0xdc00, 13, 10]);
+    units.extend("&#13;C".encode_utf16());
+    let TextareaNativeObservation { raw, .. } =
+        textarea_native_observation(HtmlSource::utf16(DocumentString::from_utf16(units)));
+    // Physical CRLF is one LF, numeric CR is not API-normalized.
+    assert_eq!(raw, vec![vec![0xd800, 0xd83d, 0xde00, 0xdc00, 10, 13, 67]]);
+}
+
+#[test]
+fn textarea_table_delegation_returns_to_actual_in_table_and_keeps_foster_location() {
+    let TextareaNativeObservation { shape, raw } = textarea_native_observation(HtmlSource::utf8(
+        "<!doctype html><table><textarea>\nA</textarea><tr><td>B</table>C",
+    ));
+    assert_eq!(raw, vec![vec![65]]);
+    assert_eq!(
+        shape,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "textarea"),
+            (3, "#A"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#B"),
+            (2, "#C")
+        ])
+    );
+}
+
+#[test]
+fn textarea_form_association_is_actual_known_state_with_or_without_explicit_form() {
+    for (attrs, associated) in [
+        ("name=t", true),
+        ("name=t form=f", true),
+        ("form=missing", false),
+        ("form=''", false),
+    ] {
+        let input = format!("<!doctype html><form id=f><textarea {attrs}>A</textarea></form>");
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(input), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let doc = frozen.document().unwrap();
+        let html = doc
+            .root()
+            .children()
+            .find(|id| matches!(doc.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = doc.node(&html).unwrap().children().nth(1).unwrap();
+        let form = doc.node(&body).unwrap().children().next().unwrap();
+        let textarea = doc.node(&form).unwrap().children().next().unwrap();
+        let state = frozen.form_association_state(&mut c, &textarea).unwrap();
+        assert_eq!(
+            state.kind,
+            crate::construction::parser_session::FormAssociationKind::Textarea
+        );
+        let owner = frozen.form_association_owner(&mut c, &textarea).unwrap();
+        assert_eq!(owner.as_ref(), associated.then_some(&form));
+        assert_eq!(
+            frozen
+                .textarea_raw_value(&mut c, &textarea)
+                .unwrap()
+                .code_units(),
+            [65]
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn textarea_eof_reset_failure_occurs_after_real_pop_before_return_and_stays_terminal() {
+    // html/head/body local names+URIs96, textarea36, doctype4, native/raw A2:
+    // before pop current138. Reset's independent new raw A requires peak139.
+    for cap in [138, 139] {
+        let caps = limits(100)
+            .into_builder()
+            .managed_utf16_units(cap)
+            .finish()
+            .unwrap();
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><textarea>A"),
+            caps,
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut failure = None;
+        for _ in 0..1000 {
+            match driver.step() {
+                Ok(super::head::HeadStep::Boundary(super::head::HeadBoundary::ConstructionEof)) => {
+                    break;
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    failure = Some(error);
+                    break;
+                }
+            }
+        }
+        if cap == 138 {
+            assert!(failure.is_some());
+            let stop = driver.control.stop().unwrap();
+            let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+            assert_eq!(state.mode, super::head::InsertionMode::Text);
+            assert_eq!(state.return_mode, Some(super::head::InsertionMode::InBody));
+            assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+            assert!(matches!(driver.step(),Err(StandaloneError::Stop(s)) if s==stop));
+            let work = driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
+            driver.release().unwrap();
+            assert_eq!(
+                driver
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current,
+                work
+            );
+            assert_eq!(driver.control.stop(), Some(stop));
+            assert_released(&driver.control);
+        } else {
+            assert!(failure.is_none());
+            let (mut c, mut frozen) = body_document(driver);
+            let doc = frozen.document().unwrap();
+            let html = doc
+                .root()
+                .children()
+                .find(|id| matches!(doc.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+                .unwrap();
+            let body = doc.node(&html).unwrap().children().nth(1).unwrap();
+            let textarea = doc.node(&body).unwrap().children().next().unwrap();
+            assert_eq!(
+                frozen
+                    .textarea_raw_value(&mut c, &textarea)
+                    .unwrap()
+                    .code_units(),
+                [65]
+            );
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::ManagedUtf16Units)
+                    .high_water,
+                139
+            );
+            frozen.release(&mut c).unwrap();
+            assert_released(&c);
+        }
+    }
+}
+
+#[test]
+fn textarea_text_cancellation_preserves_raw_owner_and_cleanup_runs_no_reset() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><textarea>A&amp;B</textarea>Z"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut reached = false;
+    for _ in 0..1000 {
+        driver.step().unwrap();
+        let Some(stage) = driver.head.as_mut() else {
+            continue;
+        };
+        let state = stage.state.as_mut().unwrap();
+        if state.mode == super::head::InsertionMode::Text {
+            let node = state.before.kernel.current(&mut driver.control).unwrap();
+            if state
+                .before
+                .kernel
+                .session
+                .textarea_raw_value(&mut driver.control, &node)
+                .unwrap()
+                .code_units()
+                == [65]
+            {
+                reached = true;
+                break;
+            }
+        }
+    }
+    assert!(reached);
+    request.cancellation().cancel();
+    let before = driver.control.usage().clone();
+    assert!(matches!(
+        driver.step(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    assert!(driver.step().is_err());
+    driver.release().unwrap();
+    assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+    for category in [
+        WorkCategory::InputUnitRead,
+        WorkCategory::RecordVisit,
+        WorkCategory::RecordWrite,
+        WorkCategory::CopyByte,
+        WorkCategory::InspectByte,
+        WorkCategory::ProviderCall,
+        WorkCategory::StateStep,
+        WorkCategory::ReserveByte,
+    ] {
+        assert_eq!(driver.control.usage().work(category), before.work(category));
+    }
+    assert_released(&driver.control);
+}
+
+#[test]
+fn textarea_finite_work_stops_retain_all_lexical_native_and_raw_owners_for_disposal() {
+    for cap in [200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000] {
+        let caps = limits(100)
+            .into_builder()
+            .work_credits(cap)
+            .finish()
+            .unwrap();
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(
+                "<!doctype html><form id=f><table><textarea name=t>\nA&amp;B&#13;C</textarea><tr><td>Z</table></form>",
+            ),
+            caps,
+        );
+        let mut driver = match StandaloneDocumentDriver::new(&request) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        for _ in 0..1000 {
+            match driver.step() {
+                Ok(super::head::HeadStep::Boundary(_)) | Err(_) => break,
+                _ => {}
+            }
+        }
+        let first = driver.control.stop();
+        if let Some(stop) = first {
+            assert!(matches!(driver.step(),Err(StandaloneError::Stop(s)) if s==stop));
+        }
+        if driver.release().is_err() {
+            driver.release().unwrap();
+        }
+        assert_released(&driver.control);
+        if let Some(stop) = first {
+            assert_eq!(driver.control.stop(), Some(stop));
+        }
+    }
+}
+
+#[test]
+fn textarea_proofless_head_rejects_before_diagnostic_stack_and_creation_effects() {
+    let source = HtmlSource::utf8("<!doctype html><head></head><body><textarea>A</textarea>");
+    let mut c = control(100);
+    let mut stage = head_boundary(&source, &mut c).driver;
+    write(size_of::<Option<super::head::HeadBoundary>>(), 1, &mut c).unwrap();
+    stage.state.as_mut().unwrap().boundary = None;
+    stage.step(&mut c).unwrap(); // Actual explicit-body row precedes textarea.
+    assert_eq!(
+        stage.state.as_ref().unwrap().mode,
+        super::head::InsertionMode::InBody
+    );
+    let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
+    assert!(stage.step(&mut c).is_err());
+    let first = c.stop().unwrap();
+    assert_eq!(
+        first,
+        ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+    );
+    let state = stage.state.as_ref().unwrap();
+    assert!(state.diagnostics.as_slice().is_empty());
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+    assert!(matches!(
+        state.pending.as_ref().unwrap().payload,
+        Payload::Tag(Some(_))
+    ));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        nodes
+    );
+    assert!(stage.take_continuation(&mut c).is_err());
+    assert!(stage.step(&mut c).is_err());
+    stage.release(&mut c).unwrap();
+    assert_eq!(c.stop(), Some(first));
+    assert_released(&c);
+}
+
+#[test]
+fn textarea_text_returns_to_actual_table_body_row_cell_and_caption_modes() {
+    for (input, expected) in [
+        (
+            "<!doctype html><table><tbody><textarea>A</textarea><tr><td>B</table>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "textarea"),
+                (3, "#A"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#B"),
+            ]),
+        ),
+        (
+            "<!doctype html><table><tr><textarea>A</textarea><td>B</table>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "textarea"),
+                (3, "#A"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#B"),
+            ]),
+        ),
+        (
+            "<!doctype html><table><tr><td><textarea>A</textarea>B</table>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "textarea"),
+                (7, "#A"),
+                (6, "#B"),
+            ]),
+        ),
+        (
+            "<!doctype html><table><caption><textarea>A</textarea>B</caption></table>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "table"),
+                (3, "caption"),
+                (4, "textarea"),
+                (5, "#A"),
+                (4, "#B"),
+            ]),
+        ),
+    ] {
+        let TextareaNativeObservation { shape, raw } =
+            textarea_native_observation(HtmlSource::utf8(input));
+        assert_eq!(raw, vec![vec![65]], "{input}");
+        assert_eq!(shape, expected, "{input}");
+    }
+}
+
+#[test]
+fn textarea_late_form_id_reset_observes_first_element_order_without_changing_raw() {
+    for (prefix, associated) in [("", true), ("<div id=f></div>", false)] {
+        let source =
+            format!("<!doctype html>{prefix}<textarea form=f>A</textarea><form id=f></form>");
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let doc = frozen.document().unwrap();
+        let html = doc
+            .root()
+            .children()
+            .find(|id| matches!(doc.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = doc.node(&html).unwrap().children().nth(1).unwrap();
+        let children: Vec<_> = doc.node(&body).unwrap().children().collect();
+        let textarea = &children[usize::from(!prefix.is_empty())];
+        let form = children.last().unwrap();
+        let owner = frozen.form_association_owner(&mut c, textarea).unwrap();
+        assert_eq!(owner.as_ref(), associated.then_some(form));
+        let state = frozen.form_association_state(&mut c, textarea).unwrap();
+        assert!(!state.parser_inserted);
+        assert_eq!(
+            state.evidence,
+            crate::construction::parser_session::FormAssociationEvidence::Reset
+        );
+        assert_eq!(
+            frozen
+                .textarea_raw_value(&mut c, textarea)
+                .unwrap()
+                .code_units(),
+            [65]
+        );
+        let state = frozen.textarea_state(&mut c, textarea).unwrap();
+        assert!(!state.dirty_value && !state.user_validity);
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
 }

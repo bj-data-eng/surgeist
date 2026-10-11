@@ -4,11 +4,13 @@
 //! UTF-16 backing, actual vector/shared tickets, and original token text origins.
 //! Character insertion merges preceding native text at an explicitly selected
 //! location. Retired merge backing remains owned and fully charged until cleanup.
+//! Textarea raw backing is independent of native child text; replacement disposes
+//! its old backing while retaining initialized retired slots until cleanup.
 //! Prologue producers retain comments, recovered PI and doctype fields in the
 //! same arena, with controlled implied-html backing and exact whitespace splits.
 //! Preexisting immutable element inputs retain their earlier physical exclusion.
 //! Foreign-name adjustment, foster-parent selection, full patching/template
-//! metadata, resettable form metadata, source reports and public parsing
+//! metadata, other resettable form metadata, source reports and public parsing
 //! remain later producers; this private checkpoint makes no complete parser claim.
 //! Script facts are retained for a sealed fresh ordinary Disabled execution;
 //! preparation ends at step18 and never fabricates a loaded or executed result.
@@ -53,6 +55,7 @@ pub(crate) enum SessionError {
     ScriptMetadataUnavailable,
     ImageFormMetadataUnavailable,
     FormAssociationMetadataUnavailable,
+    TextareaMetadataUnavailable,
 }
 /// Pinned element-placement guards; generic storage moves remain independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -129,6 +132,8 @@ struct SessionStorage {
     form_effects: Option<FormEffects>,
     #[cfg(test)]
     cancel_after_removal: Option<crate::HtmlParseCancellation>,
+    #[cfg(test)]
+    cancel_after_textarea_reset: Option<crate::HtmlParseCancellation>,
     standalone_ineligibility: Option<StandaloneUnsupported>,
     identity: Arc<Identity>,
     identity_allocation: SharedAllocation<Identity>,
@@ -183,6 +188,19 @@ enum RetainedPayload {
         node: Option<usize>,
         state: FormAssociationState,
     },
+    Textarea {
+        node: Option<usize>,
+        state: TextareaState,
+    },
+    // A replaced raw backing was disposed; its initialized registry slot
+    // remains admitted until the registry itself is released.
+    Retired,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TextareaState {
+    raw: usize,
+    pub(crate) dirty_value: bool,
+    pub(crate) user_validity: bool,
 }
 /// Actual parser-created association, distinct from structural owners.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -191,6 +209,7 @@ pub(crate) enum FormAssociationKind {
     Button,
     Fieldset,
     Object,
+    Textarea,
 }
 impl FormAssociationKind {
     fn listed(self) -> bool {
@@ -213,7 +232,9 @@ pub(crate) enum FormAssociationEvidence {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FormEffectStage {
     Removal,
+    RemovalChildren,
     Insertion,
+    InsertionChildren,
     IdChange,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -229,6 +250,8 @@ enum FormEffectPass {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FormEffects {
     root: usize,
+    old_parent: Option<usize>,
+    new_parent: Option<usize>,
     stage: FormEffectStage,
     insert: bool,
     next: Option<usize>,
@@ -385,7 +408,10 @@ impl PayloadStorage {
                     AttributeStorage::Building { .. } | AttributeStorage::Transferring { .. },
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
-                RetainedPayload::Script { .. } | RetainedPayload::FormAssociation { .. } => {}
+                RetainedPayload::Script { .. }
+                | RetainedPayload::FormAssociation { .. }
+                | RetainedPayload::Textarea { .. }
+                | RetainedPayload::Retired => {}
             }
         }
         Ok(())
@@ -624,6 +650,8 @@ impl SessionStorage {
             form_effects: None,
             #[cfg(test)]
             cancel_after_removal: None,
+            #[cfg(test)]
+            cancel_after_textarea_reset: None,
             standalone_ineligibility: None,
             identity,
             identity_allocation,
@@ -813,6 +841,15 @@ impl SessionStorage {
 
     fn prepare_payload_slot(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         self.require(control)?;
+        self.prepare_payload_slot_owned(control)
+    }
+    // Only the synchronous effects owner may admit a raw replacement while
+    // public/session entry points are blocked by the retained effects phase.
+    fn prepare_payload_slot_owned(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        control.require_identity(&self.control)?;
         control.reserve_vector(&mut self.payloads.values, &mut self.payloads.allocation, 1)?;
         control.admit_atomic_layout(mem::size_of::<RetainedPayload>())?;
         control.charge(
@@ -821,6 +858,117 @@ impl SessionStorage {
         )?;
         control.charge(WorkCategory::RecordWrite, 1)?;
         control.acquire(HtmlParseResource::AuxiliaryEntries, 1)?;
+        Ok(())
+    }
+    fn register_raw(
+        &mut self,
+        control: &mut ParseControl,
+        raw: FrozenUtf16,
+    ) -> Result<usize, SessionError> {
+        if let Err(error) = self.prepare_payload_slot_owned(control) {
+            raw.release(control)?;
+            return Err(error);
+        }
+        let (value, allocation) = raw.into_parts();
+        let index = self.payloads.values.len();
+        self.payloads.values.push(RetainedPayload::String {
+            value,
+            allocation,
+            origins: None,
+            location: StringLocation::Detached,
+        });
+        let RetainedPayload::String {
+            value, allocation, ..
+        } = &mut self.payloads.values[index]
+        else {
+            unreachable!()
+        };
+        control.move_document_string_to_managed(allocation, value)?;
+        Ok(index)
+    }
+
+    fn textarea_slot(
+        &self,
+        control: &mut ParseControl,
+        node: usize,
+    ) -> Result<Option<(usize, TextareaState)>, SessionError> {
+        find_textarea_state(&self.payloads, control, node)
+    }
+
+    /// Child text is direct Text children in the actual source view. A moved
+    /// root is excluded for removal, even if the fixed final links reinsert it.
+    fn refresh_textarea(
+        &mut self,
+        control: &mut ParseControl,
+        node: usize,
+        detached: Option<usize>,
+        reset: bool,
+    ) -> Result<(), SessionError> {
+        let Some((slot, mut state)) = self.textarea_slot(control, node)? else {
+            return Ok(());
+        };
+        let old = textarea_raw(&self.payloads, control, state.raw)?;
+        control.charge(WorkCategory::ProviderCall, 1)?;
+        if Arc::strong_count(old.backing()) != 1 {
+            return Err(SessionError::AliasedPayload);
+        }
+        if reset {
+            payload_write::<TextareaState>(control, 1)?;
+            state.dirty_value = false;
+            state.user_validity = false;
+            let RetainedPayload::Textarea { state: stored, .. } = &mut self.payloads.values[slot]
+            else {
+                unreachable!()
+            };
+            *stored = state;
+        } else if state.dirty_value {
+            return Ok(());
+        }
+        let mut raw = Utf16Buffer::new(control)?;
+        let copied = (|| {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            for position in 0..self.records[node].children.len() {
+                control.charge(WorkCategory::RecordVisit, 2)?;
+                let child = self.records[node].children[position];
+                if Some(child) != detached
+                    && let HtmlNodeKind::Text(value) = &self.records[child].kind
+                {
+                    raw.extend_units(value.code_units(), control)?;
+                }
+            }
+            Ok::<_, SessionError>(())
+        })();
+        if let Err(error) = copied {
+            raw.release(control)?;
+            return Err(error);
+        }
+        let raw = raw.freeze(control)?;
+        let next = self.register_raw(control, raw)?;
+        // All useful work and both actual record moves precede a fixed commit.
+        // The old raw has no native/metadata Arc alias: metadata holds an index.
+        payload_write::<TextareaState>(control, 1)?;
+        payload_write::<RetainedPayload>(control, 2)?;
+        let RetainedPayload::Textarea { state: stored, .. } = &mut self.payloads.values[slot]
+        else {
+            unreachable!()
+        };
+        let previous = state.raw;
+        state.raw = next;
+        *stored = state;
+        let RetainedPayload::String {
+            value,
+            allocation,
+            origins: None,
+            ..
+        } = mem::replace(
+            &mut self.payloads.values[previous],
+            RetainedPayload::Retired,
+        )
+        else {
+            unreachable!("qualified raw owns only its independent backing")
+        };
+        drop(value);
+        control.release_document_string(allocation)?;
         Ok(())
     }
     fn check_text(control: &mut ParseControl, text: &mut Text) -> Result<(), SessionError> {
@@ -1156,6 +1304,10 @@ impl SessionStorage {
             let merged = merged.freeze(control)?;
             let (merged, merged_ticket) = self.register_string(control, merged, None)?;
             let node = self.node(control, index)?;
+            let children_changed = self.textarea_slot(control, parent_index)?.is_some();
+            if children_changed {
+                payload_write::<Option<FormEffects>>(control, 1)?;
+            }
             control.charge(
                 WorkCategory::CopyByte,
                 mem::size_of::<DocumentString>() as u64,
@@ -1171,6 +1323,18 @@ impl SessionStorage {
             self.bind_string(merged_ticket, StringLocation::Text(index));
             self.records[index].kind = HtmlNodeKind::Text(merged);
             self.usage.utf16_units += added;
+            if children_changed {
+                self.form_effects = Some(FormEffects {
+                    root: parent_index,
+                    old_parent: None,
+                    new_parent: Some(parent_index),
+                    stage: FormEffectStage::InsertionChildren,
+                    insert: false,
+                    next: None,
+                    pass: FormEffectPass::Local,
+                });
+                self.drain_form_effects(control)?;
+            }
             Ok(Some(TextInsertion { node, offset }))
         } else {
             let units = value.len();
@@ -1591,6 +1755,8 @@ impl SessionStorage {
             {
                 return Ok(Some(FormEffects {
                     root: target,
+                    old_parent: None,
+                    new_parent: None,
                     stage: FormEffectStage::IdChange,
                     insert: false,
                     next: Some(target),
@@ -1909,8 +2075,20 @@ impl SessionStorage {
         root: usize,
         remove: bool,
         insert: bool,
+        new_parent: Option<usize>,
     ) -> Result<Option<FormEffects>, SessionError> {
         self.require(control)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let old_parent = self.records[root].parent;
+        let mut children_changed = false;
+        for parent in [old_parent.filter(|_| remove), new_parent]
+            .into_iter()
+            .flatten()
+        {
+            if self.textarea_slot(control, parent)?.is_some() {
+                children_changed = true;
+            }
+        }
         let mut local = false;
         let mut listed_explicit = false;
         for slot in 0..self.payloads.values.len() {
@@ -1940,11 +2118,13 @@ impl SessionStorage {
                 next = self.next_effect_node(control, root, node)?;
             }
         }
-        if !local {
+        if !local && !children_changed {
             return Ok(None);
         }
         Ok(Some(FormEffects {
             root,
+            old_parent,
+            new_parent,
             stage: if remove {
                 FormEffectStage::Removal
             } else {
@@ -2139,8 +2319,25 @@ impl SessionStorage {
                 let Some(mut effects) = self.form_effects else {
                     return Ok(());
                 };
-                let Some(node) = effects.next else {
-                    if effects.stage == FormEffectStage::Removal && effects.insert {
+                if matches!(
+                    effects.stage,
+                    FormEffectStage::RemovalChildren | FormEffectStage::InsertionChildren
+                ) {
+                    let removal = effects.stage == FormEffectStage::RemovalChildren;
+                    let parent = if removal {
+                        effects.old_parent
+                    } else {
+                        effects.new_parent
+                    };
+                    if let Some(parent) = parent {
+                        self.refresh_textarea(
+                            control,
+                            parent,
+                            removal.then_some(effects.root),
+                            false,
+                        )?;
+                    }
+                    if removal && effects.insert {
                         effects.stage = FormEffectStage::Insertion;
                         effects.next = Some(effects.root);
                         effects.pass = FormEffectPass::Local;
@@ -2150,6 +2347,23 @@ impl SessionStorage {
                         if let Some(cancellation) = self.cancel_after_removal.take() {
                             cancellation.cancel();
                         }
+                        continue;
+                    }
+                    payload_write::<Option<FormEffects>>(control, 1)?;
+                    self.form_effects = None;
+                    return Ok(());
+                }
+                let Some(node) = effects.next else {
+                    if effects.stage == FormEffectStage::Removal
+                        || effects.stage == FormEffectStage::Insertion
+                    {
+                        effects.stage = if effects.stage == FormEffectStage::Removal {
+                            FormEffectStage::RemovalChildren
+                        } else {
+                            FormEffectStage::InsertionChildren
+                        };
+                        payload_write::<Option<FormEffects>>(control, 1)?;
+                        self.form_effects = Some(effects);
                         continue;
                     }
                     payload_write::<Option<FormEffects>>(control, 1)?;
@@ -2177,6 +2391,10 @@ impl SessionStorage {
                                     self.reset_form_association(control, slot, node, state, None)?;
                                 }
                                 FormEffectStage::Insertion | FormEffectStage::IdChange => {}
+                                FormEffectStage::RemovalChildren
+                                | FormEffectStage::InsertionChildren => {
+                                    unreachable!("children stage handled above")
+                                }
                             }
                         }
                         let id_event = self.has_id(control, node)?
@@ -2191,6 +2409,10 @@ impl SessionStorage {
                                     self.connected(control, node, None)?
                                 }
                                 FormEffectStage::IdChange => true,
+                                FormEffectStage::RemovalChildren
+                                | FormEffectStage::InsertionChildren => {
+                                    unreachable!("children stage handled above")
+                                }
                             };
                         if id_event {
                             effects.pass = FormEffectPass::Global {
@@ -2356,7 +2578,9 @@ impl SessionStorage {
                 // Pre-insert adjusts the reference child but still adopts
                 // (removes) and inserts the root. Final links/order are equal;
                 // actual managed image facts nevertheless receive both hooks.
-                if let Some(effects) = self.prepare_form_effects(control, node, true, true)? {
+                if let Some(effects) =
+                    self.prepare_form_effects(control, node, true, true, Some(parent))?
+                {
                     payload_write::<Option<FormEffects>>(control, 1)?;
                     self.form_effects = Some(effects);
                     self.drain_form_effects(control)?;
@@ -2365,7 +2589,8 @@ impl SessionStorage {
             }
         }
         let old_parent = self.records[node].parent;
-        let form_effects = self.prepare_form_effects(control, node, old_parent.is_some(), true)?;
+        let form_effects =
+            self.prepare_form_effects(control, node, old_parent.is_some(), true, Some(parent))?;
         let depth = self.maximum_depth(control, Some((node, Some(parent))))?;
         control.observe_tree_depth(depth as u64)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -2472,7 +2697,7 @@ impl SessionStorage {
         let Some(parent) = self.records[node].parent else {
             return Ok(());
         };
-        let form_effects = self.prepare_form_effects(control, node, true, false)?;
+        let form_effects = self.prepare_form_effects(control, node, true, false, None)?;
         let depth = self.maximum_depth(control, Some((node, None)))?;
         control.observe_tree_depth(depth as u64)?;
         let (order, allocation) = self.child_order(control, parent, node, None)?;
@@ -2539,6 +2764,8 @@ impl SessionStorage {
             form_effects: _,
             #[cfg(test)]
                 cancel_after_removal: _,
+            #[cfg(test)]
+                cancel_after_textarea_reset: _,
             standalone_ineligibility: _,
             identity,
             identity_allocation,
@@ -3025,6 +3252,7 @@ impl ParserArenaSession {
             ("button", FormAssociationKind::Button),
             ("fieldset", FormAssociationKind::Fieldset),
             ("object", FormAssociationKind::Object),
+            ("textarea", FormAssociationKind::Textarea),
         ] {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if exact_ascii(control, Some(tag.name.value.text()), local)? {
@@ -3056,6 +3284,25 @@ impl ParserArenaSession {
             None
         };
         let storage = self.active_mut()?;
+        // Reserve actual independent empty raw backing and initialized metadata
+        // BEFORE lexical ownership transfer. A stopped unbound slot is cleanup-only.
+        let textarea_slot = if kind == Some(FormAssociationKind::Textarea) {
+            let empty = literal_string(control, b"")?;
+            let raw = storage.register_raw(control, empty)?;
+            storage.prepare_payload_slot(control)?;
+            let slot = storage.payloads.values.len();
+            storage.payloads.values.push(RetainedPayload::Textarea {
+                node: None,
+                state: TextareaState {
+                    raw,
+                    dirty_value: false,
+                    user_validity: false,
+                },
+            });
+            Some(slot)
+        } else {
+            None
+        };
         let slot = if let Some(kind) = kind {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
@@ -3066,9 +3313,9 @@ impl ParserArenaSession {
                     node: None,
                     state: FormAssociationState {
                         kind,
-                        owner,
-                        parser_inserted: owner.is_some(),
-                        evidence: if owner.is_some() {
+                        owner: if textarea_slot.is_some() { None } else { owner },
+                        parser_inserted: textarea_slot.is_none() && owner.is_some(),
+                        evidence: if textarea_slot.is_none() && owner.is_some() {
                             FormAssociationEvidence::ParserAssociated
                         } else {
                             FormAssociationEvidence::Created
@@ -3089,6 +3336,28 @@ impl ParserArenaSession {
                 Some(name.origins),
                 attributes,
             )?;
+            if let Some(textarea) = textarea_slot {
+                control.charge(WorkCategory::RecordVisit, 2)?;
+                if !storage.records[node.index].children.is_empty() {
+                    return Err(SessionError::WrongToken);
+                }
+                // Actual fresh node has no children. Its already admitted empty
+                // raw is therefore exactly child text; reset precedes association.
+                payload_write::<Option<usize>>(control, 1)?;
+                payload_write::<TextareaState>(control, 1)?;
+                let RetainedPayload::Textarea { node: bound, state } =
+                    &mut storage.payloads.values[textarea]
+                else {
+                    unreachable!()
+                };
+                *bound = Some(node.index);
+                state.dirty_value = false;
+                state.user_validity = false;
+                #[cfg(test)]
+                if let Some(cancellation) = storage.cancel_after_textarea_reset.take() {
+                    cancellation.cancel();
+                }
+            }
             if let Some(slot) = slot {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 payload_write::<Option<usize>>(control, 1)?;
@@ -3098,6 +3367,21 @@ impl ParserArenaSession {
                     return Err(SessionError::FormAssociationMetadataUnavailable);
                 };
                 *bound = Some(node.index);
+                if textarea_slot.is_some() {
+                    payload_write::<FormAssociationState>(control, 1)?;
+                    let RetainedPayload::FormAssociation { state, .. } =
+                        &mut storage.payloads.values[slot]
+                    else {
+                        unreachable!()
+                    };
+                    state.owner = owner;
+                    state.parser_inserted = owner.is_some();
+                    state.evidence = if owner.is_some() {
+                        FormAssociationEvidence::ParserAssociated
+                    } else {
+                        FormAssociationEvidence::Created
+                    };
+                }
             }
             Ok(node)
         })();
@@ -3128,6 +3412,50 @@ impl ParserArenaSession {
             return Err(SessionError::ImageFormMetadataUnavailable);
         }
         Ok(state)
+    }
+    pub(crate) fn textarea_state(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<TextareaState, SessionError> {
+        let storage = self.active()?;
+        let node = storage.index(control, node)?;
+        storage
+            .textarea_slot(control, node)?
+            .map(|(_, state)| state)
+            .ok_or(SessionError::TextareaMetadataUnavailable)
+    }
+    pub(crate) fn textarea_raw_value<'a>(
+        &'a self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<&'a DocumentString, SessionError> {
+        let state = self.textarea_state(control, node)?;
+        textarea_raw(&self.active()?.payloads, control, state.raw)
+    }
+    /// Called after a real parser stack removal, never during terminal cleanup.
+    pub(crate) fn parser_stack_removed(
+        &mut self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<(), SessionError> {
+        let storage = self.active_mut()?;
+        let node = storage.index(control, node)?;
+        if !storage.html_local(control, node, "textarea")? {
+            return Ok(());
+        }
+        if storage.textarea_slot(control, node)?.is_none() {
+            return Err(control
+                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .into());
+        }
+        match storage.refresh_textarea(control, node, None, true) {
+            Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
+            Err(_) => Err(control
+                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .into()),
+            Ok(()) => Ok(()),
+        }
     }
     pub(crate) fn image_form_owner(
         &self,
@@ -3754,6 +4082,8 @@ impl ParserArenaSession {
             form_effects: _,
             #[cfg(test)]
                 cancel_after_removal: _,
+            #[cfg(test)]
+                cancel_after_textarea_reset: _,
             standalone_ineligibility,
             identity,
             identity_allocation,
@@ -3780,6 +4110,8 @@ impl ParserArenaSession {
                     form_effects: None,
                     #[cfg(test)]
                     cancel_after_removal: None,
+                    #[cfg(test)]
+                    cancel_after_textarea_reset: None,
                     standalone_ineligibility,
                     identity: arena.identity,
                     identity_allocation,
@@ -3825,6 +4157,35 @@ impl ParserArenaSession {
 }
 
 impl FrozenArena {
+    pub(crate) fn textarea_state(
+        &self,
+        control: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<TextareaState, SessionError> {
+        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
+        control.require_identity(&storage.control)?;
+        let arena = match &storage.view {
+            FrozenView::Document(view) => &view.arena,
+            FrozenView::Fragment(view) => &view.arena,
+        };
+        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if !Arc::ptr_eq(&node.identity, &arena.identity) || node.index >= arena.records.len() {
+            return Err(SessionError::ForeignNode);
+        }
+        find_textarea_state(&storage.payloads, control, node.index)?
+            .map(|(_, state)| state)
+            .ok_or(SessionError::TextareaMetadataUnavailable)
+    }
+    pub(crate) fn textarea_raw_value<'a>(
+        &'a self,
+        control: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<&'a DocumentString, SessionError> {
+        let state = self.textarea_state(control, node)?;
+        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
+        textarea_raw(&storage.payloads, control, state.raw)
+    }
     pub(crate) fn image_form_state(
         &self,
         control: &mut ParseControl,
@@ -4920,6 +5281,48 @@ fn exact_ascii(
     }
     Ok(true)
 }
+fn find_textarea_state(
+    payloads: &PayloadStorage,
+    control: &mut ParseControl,
+    node: usize,
+) -> Result<Option<(usize, TextareaState)>, SessionError> {
+    for slot in 0..payloads.values.len() {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if let RetainedPayload::Textarea {
+            node: Some(owner),
+            state,
+        } = &payloads.values[slot]
+            && *owner == node
+        {
+            control.charge(
+                WorkCategory::CopyByte,
+                mem::size_of::<TextareaState>() as u64,
+            )?;
+            return Ok(Some((slot, *state)));
+        }
+    }
+    Ok(None)
+}
+
+fn textarea_raw<'a>(
+    payloads: &'a PayloadStorage,
+    control: &mut ParseControl,
+    raw: usize,
+) -> Result<&'a DocumentString, SessionError> {
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    let Some(RetainedPayload::String {
+        value,
+        allocation,
+        location: StringLocation::Detached,
+        ..
+    }) = payloads.values.get(raw)
+    else {
+        return Err(SessionError::TextareaMetadataUnavailable);
+    };
+    control.require_document_string(allocation, value)?;
+    Ok(value)
+}
+
 fn find_form_association_state(
     payloads: &PayloadStorage,
     control: &mut ParseControl,
@@ -5160,6 +5563,574 @@ fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn textarea_owner<'a>(
+        source: &'a crate::HtmlSource,
+        caps: HtmlParseLimits,
+    ) -> (
+        ParseControl,
+        ParserArenaSession,
+        ParserNode,
+        crate::parser::tokenizer::Tokenizer<'a>,
+    ) {
+        textarea_owner_cancellable(source, caps, HtmlParseCancellation::new())
+    }
+    fn textarea_owner_cancellable<'a>(
+        source: &'a crate::HtmlSource,
+        caps: HtmlParseLimits,
+        cancellation: HtmlParseCancellation,
+    ) -> (
+        ParseControl,
+        ParserArenaSession,
+        ParserNode,
+        crate::parser::tokenizer::Tokenizer<'a>,
+    ) {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let mut c = ParseControl::new(caps, cancellation);
+        c.admit_source(source).unwrap();
+        let mut tokenizer = Tokenizer::new(source, State::Data, None, &mut c).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let root = session.root(&mut c).unwrap();
+        let tag = next_fixture_tag(
+            &mut tokenizer,
+            &mut c,
+            &[116, 101, 120, 116, 97, 114, 101, 97],
+        );
+        let mut input = Some(tag);
+        let textarea = session
+            .allocate_html_tag_for_creation(&mut c, &mut input, &root, None)
+            .unwrap();
+        assert!(input.is_none());
+        session.insert(&mut c, &root, &textarea, None).unwrap();
+        (c, session, textarea, tokenizer)
+    }
+
+    fn next_text(
+        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        c: &mut ParseControl,
+    ) -> Option<Text> {
+        let TokenKind::Text(text) = lexical_kind(tokenizer, c) else {
+            panic!("actual lexical text")
+        };
+        Some(text)
+    }
+
+    #[test]
+    fn textarea_raw_is_independent_exact_child_text_and_retired_backing_is_disposed() {
+        let source = crate::HtmlSource::utf8("<textarea>AB<span>C");
+        let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, limits());
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &node)
+                .unwrap()
+                .code_units(),
+            []
+        );
+        let state = session.textarea_state(&mut c, &node).unwrap();
+        assert!(!state.dirty_value && !state.user_validity);
+        assert_eq!(
+            session.form_association_state(&mut c, &node).unwrap().kind,
+            FormAssociationKind::Textarea
+        );
+        let mut a = next_text(&mut tokenizer, &mut c);
+        let text = session
+            .insert_text(&mut c, &node, None, &mut a)
+            .unwrap()
+            .unwrap()
+            .node;
+        let first_raw = session.textarea_state(&mut c, &node).unwrap().raw;
+        let native = native_text(&session, &text);
+        let raw = session
+            .textarea_raw_value(&mut c, &node)
+            .unwrap()
+            .code_units()
+            .to_vec();
+        assert_eq!(native, [65]);
+        assert_eq!(raw, [65]);
+        let HtmlNodeKind::Text(native) = &session.active().unwrap().records[text.index].kind else {
+            panic!("text")
+        };
+        assert!(!Arc::ptr_eq(
+            native.backing(),
+            session.textarea_raw_value(&mut c, &node).unwrap().backing()
+        ));
+        let mut b = next_text(&mut tokenizer, &mut c);
+        session.insert_text(&mut c, &node, None, &mut b).unwrap();
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &node)
+                .unwrap()
+                .code_units(),
+            [65, 66]
+        );
+        assert!(matches!(
+            session.active().unwrap().payloads.values[first_raw],
+            RetainedPayload::Retired
+        ));
+        let before_reset = c
+            .usage()
+            .resource(HtmlParseResource::ManagedUtf16Units)
+            .current;
+        for _ in 0..4 {
+            session.parser_stack_removed(&mut c, &node).unwrap();
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::ManagedUtf16Units)
+                    .current,
+                before_reset
+            );
+        }
+        // A descendant Text is excluded: only immediate Text children contribute.
+        let span = next_fixture_tag(&mut tokenizer, &mut c, &[115, 112, 97, 110]);
+        let child = session
+            .allocate_html_tag_for_creation(&mut c, &mut Some(span), &node, None)
+            .unwrap();
+        session.insert(&mut c, &node, &child, None).unwrap();
+        let mut text_c = next_text(&mut tokenizer, &mut c);
+        session
+            .insert_text(&mut c, &child, None, &mut text_c)
+            .unwrap();
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &node)
+                .unwrap()
+                .code_units(),
+            [65, 66]
+        );
+        tokenizer.release(&mut c).unwrap();
+        let mut frozen = session.freeze(&mut c).unwrap();
+        let document = frozen.document().unwrap();
+        let id = document.root().children().next().unwrap();
+        assert_eq!(
+            frozen.textarea_raw_value(&mut c, &id).unwrap().code_units(),
+            [65, 66]
+        );
+        let state = frozen.textarea_state(&mut c, &id).unwrap();
+        assert!(!state.dirty_value && !state.user_validity);
+        frozen.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn textarea_same_parent_reference_removal_runs_old_view_before_insertion() {
+        let source = crate::HtmlSource::utf8("<textarea>AB");
+        let cancel = HtmlParseCancellation::new();
+        let (mut c, mut session, node, mut tokenizer) =
+            textarea_owner_cancellable(&source, limits(), cancel.clone());
+        let mut a = next_text(&mut tokenizer, &mut c);
+        let text = session
+            .insert_text(&mut c, &node, None, &mut a)
+            .unwrap()
+            .unwrap()
+            .node;
+        let mut b = next_text(&mut tokenizer, &mut c);
+        session.insert_text(&mut c, &node, None, &mut b).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        // Cancellation between hook phases proves the removal raw prefix was
+        // applied, although final before==node topology is deliberately equal.
+        session.active_mut().unwrap().cancel_after_removal = Some(cancel.clone());
+        let Err(SessionError::Stop(first)) = session.insert(&mut c, &node, &text, Some(&text))
+        else {
+            panic!("actual phase cancellation")
+        };
+        let storage = session.active().unwrap();
+        assert_eq!(storage.records[text.index].parent, Some(node.index));
+        assert_eq!(native_text(&session, &text), [65, 66]);
+        let raw = storage
+            .payloads
+            .values
+            .iter()
+            .find_map(|entry| match entry {
+                RetainedPayload::Textarea {
+                    node: Some(owner),
+                    state,
+                } if *owner == node.index => Some(state.raw),
+                _ => None,
+            })
+            .unwrap();
+        let RetainedPayload::String { value, .. } = &storage.payloads.values[raw] else {
+            panic!("raw owner")
+        };
+        assert_eq!(value.code_units(), []);
+        assert!(storage.form_effects.is_some());
+        assert!(matches!(session.freeze(&mut c),Err(SessionError::Stop(stop)) if stop==first));
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        session.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+        assert_eq!(c.stop(), Some(first));
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn textarea_raw_coexistence_has_exact_43_unit_admission_and_retained_terminal_prefix() {
+        // textarea name8 + HTML URI28; A(native1,raw1)=38. B adds lexical1,
+        // merged2, new raw2 while old raw1 coexists: exact peak43, then current42.
+        for cap in [42, 43] {
+            let source = crate::HtmlSource::utf8("<textarea>AB");
+            let caps = limits()
+                .into_builder()
+                .managed_utf16_units(cap)
+                .finish()
+                .unwrap();
+            let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, caps);
+            let mut a = next_text(&mut tokenizer, &mut c);
+            let text = session
+                .insert_text(&mut c, &node, None, &mut a)
+                .unwrap()
+                .unwrap()
+                .node;
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::ManagedUtf16Units)
+                    .current,
+                38
+            );
+            let old_raw = session.textarea_state(&mut c, &node).unwrap().raw;
+            let mut b = next_text(&mut tokenizer, &mut c);
+            let result = session.insert_text(&mut c, &node, None, &mut b);
+            assert!(b.is_none());
+            assert_eq!(native_text(&session, &text), [65, 66]);
+            if cap == 43 {
+                assert!(result.is_ok());
+                assert_eq!(
+                    session
+                        .textarea_raw_value(&mut c, &node)
+                        .unwrap()
+                        .code_units(),
+                    [65, 66]
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .current,
+                    42
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .high_water,
+                    43
+                );
+                assert!(matches!(
+                    session.active().unwrap().payloads.values[old_raw],
+                    RetainedPayload::Retired
+                ));
+            } else {
+                let Err(SessionError::Stop(first)) = result else {
+                    panic!("actual coexistence stop")
+                };
+                assert!(session.active().unwrap().form_effects.is_some());
+                let RetainedPayload::String { value, .. } =
+                    &session.active().unwrap().payloads.values[old_raw]
+                else {
+                    panic!("old owner retained")
+                };
+                assert_eq!(value.code_units(), [65]);
+                assert!(
+                    matches!(session.textarea_state(&mut c,&node),Err(SessionError::Stop(s)) if s==first)
+                );
+                assert!(matches!(session.freeze(&mut c),Err(SessionError::Stop(s)) if s==first));
+            }
+            tokenizer.release(&mut c).unwrap();
+            if session.release(&mut c).is_err() {
+                session.release(&mut c).unwrap();
+            }
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded() {
+        // Registry slots: initial raw/textarea/form3, name/namespace/attrs3,
+        // actual native A1 and first children-change raw1 =8. Three actual nodes
+        // add three auxiliary slots, so baseline11. The finite cap16
+        // admits initial lexical/topology staging, then five reset slots;
+        // the next reset retains the current raw and latches the slot cap.
+        let source = crate::HtmlSource::utf8("<textarea>A");
+        let caps = limits()
+            .into_builder()
+            .auxiliary_entries(16)
+            .finish()
+            .unwrap();
+        let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, caps);
+        let mut text = next_text(&mut tokenizer, &mut c);
+        session.insert_text(&mut c, &node, None, &mut text).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        assert_eq!(session.active().unwrap().payloads.values.len(), 8);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            11
+        );
+        let old = Arc::downgrade(session.textarea_raw_value(&mut c, &node).unwrap().backing());
+        for _ in 0..5 {
+            session.parser_stack_removed(&mut c, &node).unwrap();
+        }
+        assert!(
+            old.upgrade().is_none(),
+            "retired backing is actually disposed"
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            16
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedUtf16Units)
+                .current,
+            38
+        );
+        let current = Arc::downgrade(session.textarea_raw_value(&mut c, &node).unwrap().backing());
+        let current_slot = session.textarea_state(&mut c, &node).unwrap().raw;
+        let result = session.parser_stack_removed(&mut c, &node);
+        let first = c.stop().unwrap();
+        assert_eq!(result, Err(SessionError::Stop(first)));
+        assert!(matches!(
+            first,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::AuxiliaryEntries,
+                ..
+            }
+        ));
+        let storage = session.active().unwrap();
+        assert_eq!(storage.payloads.values.len(), 13);
+        let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
+            panic!("original current raw retained")
+        };
+        assert_eq!(value.code_units(), [65]);
+        assert!(current.upgrade().is_some());
+        assert!(matches!(session.freeze(&mut c), Err(SessionError::Stop(s)) if s==first));
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        session.release(&mut c).unwrap();
+        assert!(current.upgrade().is_none());
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+        assert_eq!(c.stop(), Some(first));
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        for cap in [10, 11, 12] {
+            let source = crate::HtmlSource::utf8("<textarea>");
+            let mut c = ParseControl::new(
+                limits()
+                    .into_builder()
+                    .auxiliary_entries(cap)
+                    .finish()
+                    .unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let root = session.root(&mut c).unwrap();
+            let html = session.allocate_implicit_html(&mut c).unwrap();
+            session.insert(&mut c, &root, &html, None).unwrap();
+            let tag = next_fixture_tag(
+                &mut tokenizer,
+                &mut c,
+                &[116, 101, 120, 116, 97, 114, 101, 97],
+            );
+            let backing = Arc::as_ptr(tag.name.value.text().backing());
+            let mut input = Some(tag);
+            session.allocate_implicit_body(&mut c).unwrap();
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
+                9
+            );
+            let result = session.allocate_html_tag_for_creation(&mut c, &mut input, &html, None);
+            assert!(matches!(result, Err(SessionError::Stop(_))));
+            if cap < 12 {
+                assert_eq!(
+                    Arc::as_ptr(input.as_ref().unwrap().name.value.text().backing()),
+                    backing
+                );
+            } else {
+                assert!(input.is_none());
+            }
+            if let Some(tag) = input.take() {
+                release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
+            }
+            tokenizer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn textarea_initial_reset_precedes_parser_association_commit_and_stop_owns_every_slot() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<form><textarea>");
+        let cancellation = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancellation.clone());
+        c.admit_source(&source).unwrap();
+        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let root = session.root(&mut c).unwrap();
+        let form_tag = next_fixture_tag(&mut tokenizer, &mut c, &[102, 111, 114, 109]);
+        let form = session
+            .allocate_html_tag_for_creation(&mut c, &mut Some(form_tag), &root, None)
+            .unwrap();
+        session.insert(&mut c, &root, &form, None).unwrap();
+        let tag = next_fixture_tag(
+            &mut tokenizer,
+            &mut c,
+            &[116, 101, 120, 116, 97, 114, 101, 97],
+        );
+        session.active_mut().unwrap().cancel_after_textarea_reset = Some(cancellation);
+        let mut input = Some(tag);
+        assert!(matches!(
+            session.allocate_html_tag_for_creation(&mut c, &mut input, &form, Some(&form)),
+            Err(SessionError::Stop(_))
+        ));
+        assert!(input.is_none());
+        let storage = session.active().unwrap();
+        let state = storage
+            .payloads
+            .values
+            .iter()
+            .find_map(|entry| match entry {
+                RetainedPayload::Textarea {
+                    node: Some(_),
+                    state,
+                } => Some(*state),
+                _ => None,
+            })
+            .unwrap();
+        assert!(!state.dirty_value && !state.user_validity);
+        let RetainedPayload::String { value, .. } = &storage.payloads.values[state.raw] else {
+            panic!("initial raw owner")
+        };
+        assert_eq!(value.code_units(), []);
+        assert!(storage.payloads.values.iter().any(|entry|matches!(entry,
+            RetainedPayload::FormAssociation{node:None,state} if state.kind==FormAssociationKind::Textarea && state.owner.is_none() && !state.parser_inserted && state.evidence==FormAssociationEvidence::Created
+        )));
+        let first = c.stop().unwrap();
+        assert!(matches!(session.freeze(&mut c),Err(SessionError::Stop(stop)) if stop==first));
+        tokenizer.release(&mut c).unwrap();
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        session.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+        assert_eq!(c.stop(), Some(first));
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn textarea_raw_child_moves_update_both_parents_and_ignore_descendant_text() {
+        let source = crate::HtmlSource::utf8("<textarea>A<textarea>B");
+        let (mut c, mut session, left, mut tokenizer) = textarea_owner(&source, limits());
+        let mut a = next_text(&mut tokenizer, &mut c);
+        let text = session
+            .insert_text(&mut c, &left, None, &mut a)
+            .unwrap()
+            .unwrap()
+            .node;
+        let tag = next_fixture_tag(
+            &mut tokenizer,
+            &mut c,
+            &[116, 101, 120, 116, 97, 114, 101, 97],
+        );
+        let root = session.root(&mut c).unwrap();
+        let right = session
+            .allocate_html_tag_for_creation(&mut c, &mut Some(tag), &root, None)
+            .unwrap();
+        session.insert(&mut c, &root, &right, None).unwrap();
+        let mut b = next_text(&mut tokenizer, &mut c);
+        session.insert_text(&mut c, &right, None, &mut b).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        session.insert(&mut c, &right, &text, None).unwrap();
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &left)
+                .unwrap()
+                .code_units(),
+            []
+        );
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &right)
+                .unwrap()
+                .code_units(),
+            [66, 65]
+        );
+        session.insert(&mut c, &left, &right, None).unwrap();
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &left)
+                .unwrap()
+                .code_units(),
+            []
+        );
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &right)
+                .unwrap()
+                .code_units(),
+            [66, 65]
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn textarea_getters_qualify_actual_arena_control_and_preserve_alias_cleanup() {
+        let source = crate::HtmlSource::utf8("<textarea>A");
+        let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, limits());
+        let mut a = next_text(&mut tokenizer, &mut c);
+        session.insert_text(&mut c, &node, None, &mut a).unwrap();
+        tokenizer.release(&mut c).unwrap();
+        let mut unrelated =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let other = unrelated.root(&mut c).unwrap();
+        assert!(matches!(
+            session.textarea_state(&mut c, &other),
+            Err(SessionError::ForeignNode)
+        ));
+        let root = session.root(&mut c).unwrap();
+        assert!(matches!(
+            session.textarea_state(&mut c, &root),
+            Err(SessionError::TextareaMetadataUnavailable)
+        ));
+        let alias = session.textarea_raw_value(&mut c, &node).unwrap().clone();
+        assert!(matches!(
+            session.release(&mut c),
+            Err(SessionError::AliasedPayload)
+        ));
+        assert!(session.storage.is_some());
+        drop(alias);
+        let mut foreign = control();
+        assert!(matches!(
+            session.textarea_raw_value(&mut foreign, &node),
+            Err(SessionError::Stop(_))
+        ));
+        assert!(c.stop().is_none());
+        unrelated.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        storage_zero(&foreign);
+    }
 
     fn formatting_lexical_tag(
         tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
@@ -10147,7 +11118,8 @@ mod tests {
         storage_zero(&measured);
         // Independent submitted-work derivation after reset step1 in removal:
         // four remaining state writes (visit + copied layout + write), one
-        // registry scan/copy, seven phase read/write spans, two detached-parent
+        // registry scan/copy, eleven phase read/write spans, two full registry
+        // scans for the non-textarea old/new parent children-change hooks, two detached-parent
         // reads, two leaf successor reads, two ID checks (container + empty result
         // in each source stage), and the immediate HTML form ancestor
         // lookup: parent1 + kind/name3 + namespace1/28*3 + local1/4*3 =102.
@@ -10155,8 +11127,13 @@ mod tests {
         // attributes: its actual lookup stops three entries before registry end.
         let state_bytes = mem::size_of::<FormAssociationState>() as u64;
         let phase_bytes = mem::size_of::<Option<FormEffects>>() as u64;
-        let tail =
-            4 * (state_bytes + 2) + (entries - 3) + state_bytes + 7 * (phase_bytes + 1) + 106 + 4;
+        let tail = 4 * (state_bytes + 2)
+            + (entries - 3)
+            + state_bytes
+            + 11 * (phase_bytes + 1)
+            + 2 * entries
+            + 106
+            + 4;
         let mut c = control();
         let (mut session, image, old, target) = image_move_fixture(&mut c);
         let unused =

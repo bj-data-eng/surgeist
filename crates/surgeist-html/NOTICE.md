@@ -97,6 +97,9 @@ are recorded in the origin record.
 Ordinary frameset entry, InFrameset and its trailing modes additionally adapt
 the same rules file; the new private frameset module retains its complete
 original notice and records its source ranges in the origin record.
+Ordinary textarea entry also adapts the same rules file, lines 874–878, with
+its original notice retained; controlled raw/reset providers follow the selected
+HTML and DOM clauses identified in the origin record.
 Surgeist-owned
 controlled providers retain actual text and recovered-tag ownership.
 Their original notices are

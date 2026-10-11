@@ -816,7 +816,7 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Resettable control creation, select transitions, templates
+Other resettable control creation, select transitions, templates
 and foreign dispatch retain untouched-token continuations when their required
 machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
@@ -849,7 +849,7 @@ pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Template forms,
-resettable controls, unfinished table rows, foreign dispatch, contextual
+other resettable controls, unfinished table rows, foreign dispatch, contextual
 fragment execution, hosted parsing and full EOF/report completion remain unfinished.
 
 The same association registry now admits parser-created button, fieldset and
@@ -869,6 +869,22 @@ effects. Each appended html/body ID drains its effects before the next attribute
 or transfer rebinding. Stops retain topology, association prefixes and transfer
 owners for terminal disposal, while observations and freeze reject publication.
 Repeated scans remain metered and may be superlinear.
+
+Ordinary textarea parsing uses that same fresh driver for RCDATA, first-LF
+omission and restoration of the actual caller insertion mode, including table
+delegation. Creation resets its raw value before parser-established form
+association. Direct child-text changes update independently owned raw UTF-16;
+removal-view updates precede insertion-view updates, and text merges invoke the
+parent hook. Every actual parser stack removal resets dirty-value and user-validity
+state and copies the current direct child text before mode restoration or EOF
+reprocessing. Reference-produced CR remains raw rather than API-normalized.
+Active and frozen private observations retain the actual arena/controller
+qualification. Old and new raw backing coexist under admission; successful
+replacement releases old backing while retired registry slots stay admitted
+until disposal. Stops refuse publication and cleanup runs no reset. Repeated
+copies and scans may be quadratic; all variable work remains charged and polled.
+User interactions, value setters, API-value normalization, submission wrapping and
+public parse completion remain separate work.
 
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay

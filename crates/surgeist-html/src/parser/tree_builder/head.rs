@@ -1117,6 +1117,9 @@ impl HeadState<'_> {
             ) {
                 return self.frameset_rules(mode, c);
             }
+            if mode == InsertionMode::Text && self.first_lf(c)? {
+                return self.finish(c);
+            }
             if mode != InsertionMode::Text && self.whitespace(c)? {
                 return self.finish(c);
             }

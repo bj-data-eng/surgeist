@@ -18,8 +18,9 @@
 //! body/block/list/ruby, formatting/reconstruction/adoption, applet/marquee and
 //! trailing modes, ordinary form pointer recovery, image and listed non-resettable
 //! button/fieldset/object form associations and bounded structural tables are
-//! admitted, together with ordinary standalone frameset entry and trailing modes.
-//! Resettable controls (including Hidden input), select,
+//! admitted, together with ordinary standalone frameset entry and trailing modes,
+//! and textarea RCDATA, raw child-text hooks and parser-pop reset.
+//! Other resettable controls (including Hidden input), select,
 //! template and foreign rows retain owning continuations; construction EOF is
 //! not full parse/report success.
 
@@ -139,6 +140,7 @@ impl LocationKernel {
     ) -> Result<(), KernelError> {
         self.require(c)?;
         self.session.validate_node(c, target)?;
+        let removed = self.at(index, c)?;
         let node = copy_node(target, c)?;
         write(size_of::<ParserNode>(), 1, c)?;
         let slot = self
@@ -148,6 +150,7 @@ impl LocationKernel {
             .get_mut(index, c)?
             .ok_or(KernelError::EmptyStack)?;
         *slot = node;
+        self.session.parser_stack_removed(c, &removed)?;
         Ok(())
     }
     fn insert_stack(
@@ -372,11 +375,15 @@ impl LocationKernel {
         control: &mut ParseControl,
     ) -> Result<Option<ParserNode>, KernelError> {
         self.require(control)?;
-        Ok(self
+        let node = self
             .open
             .as_mut()
             .ok_or(KernelError::Consumed)?
-            .try_pop(control)?)
+            .try_pop(control)?;
+        if let Some(node) = &node {
+            self.session.parser_stack_removed(control, node)?;
+        }
+        Ok(node)
     }
 
     pub(crate) fn set_foster_parenting(

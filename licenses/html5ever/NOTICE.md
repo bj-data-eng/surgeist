@@ -29,7 +29,8 @@ then selected ordinary body/trailing-mode rows, generic end handling and
 implied-end/special-element lists, then active formatting, Noah comparison,
 reconstruction, adoption and applet/marquee/object marker handling, followed by
 the listed non-resettable button/fieldset/object rows and ordinary frameset
-entry, InFrameset and its trailing modes. The
+entry, InFrameset and its trailing modes, then ordinary textarea entry from
+`rules.rs` lines 874–878. The
 [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;
