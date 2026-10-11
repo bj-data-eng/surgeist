@@ -410,7 +410,8 @@ revision, exact original files and modifications. The retained
 cover this adaptation; it adds no external parser Cargo dependency.
 
 The same private machinery also incorporates bounded tree-insertion and scope
-operations under the [tree-source notice](licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).
+operations, an ordinary-document Initial/BeforeHtml prologue and doctype tables
+under the [tree-source notice](licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).
 Its origin record preserves a separate initial adaptation checkpoint and the
 complete original notices. This does not assert complete tree-mode dispatch or
 public parsing.

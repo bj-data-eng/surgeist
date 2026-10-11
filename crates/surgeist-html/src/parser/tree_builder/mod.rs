@@ -12,9 +12,12 @@
 // and stack/scope operations. HTML 877d6146487f15b15bc8dd0e3c625063a37b456a
 // governs the fragment substitution and newly-created template state.
 
-//! Functional adjusted-insertion checkpoint over the actual construction arena.
-//! This module does not dispatch insertion modes or expose a parse report.
+//! Concrete tree operations and document prologue over one construction arena.
+//! Initial/BeforeHtml dispatch stops at an owned BeforeHead continuation;
+//! later modes, complete parsing and report publication remain separate work.
 
+mod doctype;
+mod prologue;
 mod tag_sets;
 #[cfg(test)]
 mod tests;

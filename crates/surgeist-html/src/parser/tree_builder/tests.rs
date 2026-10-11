@@ -152,6 +152,7 @@ fn assert_released(control: &ParseControl) {
         HtmlParseResource::ManagedAttributes,
         HtmlParseResource::ManagedUtf16Units,
         HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::Diagnostics,
         HtmlParseResource::OpenElements,
         HtmlParseResource::ManagedCapacityBytes,
     ] {
@@ -1216,4 +1217,750 @@ fn cancelled_element_insertion_keeps_actual_token_before_creation() {
     kernel.release(&mut c).unwrap();
     assert_eq!(c.stop(), stop);
     assert_released(&c);
+}
+
+fn next_token(
+    tokenizer: &mut Tokenizer<'_>,
+    c: &mut ParseControl,
+) -> crate::parser::tokenizer::token::Token {
+    loop {
+        match tokenizer
+            .next(c, false)
+            .unwrap()
+            .expect("tokenized input reaches EOF")
+        {
+            Event::Token(event) => return event.into_token(c).unwrap(),
+            event => event.release(c).unwrap(),
+        }
+    }
+}
+
+fn prologue(source: &HtmlSource, c: &mut ParseControl) -> super::prologue::BeforeHead {
+    use super::prologue::{DocumentPrologue, PrologueStep};
+    c.admit_source(source).unwrap();
+    let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
+    let mut engine = DocumentPrologue::new(source, c).unwrap();
+    loop {
+        let mut input = Some(next_token(&mut tokenizer, c));
+        let step = engine.process(&mut input, c).unwrap();
+        assert!(input.is_none(), "prologue owns the admitted lexical input");
+        if step == PrologueStep::BeforeHead {
+            break;
+        }
+    }
+    tokenizer.release(c).unwrap();
+    engine.take_before_head(c).unwrap()
+}
+
+fn observe_prologue(mut output: super::prologue::BeforeHead, c: &mut ParseControl) -> FrozenArena {
+    if let Some(input) = output.input.take() {
+        let mut kind = Some(input.kind);
+        crate::construction::parser_session::release_token_kind(&mut kind, c).unwrap();
+        assert!(kind.is_none());
+    }
+    while let Some(text) = output.whitespace.try_pop(c).unwrap() {
+        text.release(c).unwrap();
+    }
+    output.whitespace.release(c).unwrap();
+    output.diagnostics.release(c).unwrap();
+    freeze(output.kernel, c)
+}
+
+#[test]
+fn fresh_document_prologue_preserves_initial_noquirks_and_exact_doctype_fields() {
+    use super::prologue::PrologueCondition;
+    for (input, id) in [
+        ("<!doctype html><html>", None),
+        (
+            "<!doctype html SYSTEM 'about:legacy-compat'><html>",
+            Some("about:legacy-compat"),
+        ),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = control(100);
+        let output = prologue(&source, &mut c);
+        assert!(output.diagnostics.as_slice().is_empty());
+        assert!(output.input.is_none());
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::OpenElements).current,
+            1
+        );
+        let mut frozen = observe_prologue(output, &mut c);
+        let document = frozen.document().unwrap();
+        assert!(matches!(
+            document.root().kind(),
+            HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
+        ));
+        assert_eq!(document.root().children().len(), 2);
+        let doctype = document
+            .node(&document.root().children().next().unwrap())
+            .unwrap();
+        let HtmlNodeKind::Doctype(value) = doctype.kind() else {
+            panic!("actual doctype");
+        };
+        assert_eq!(value.name().code_units(), [104, 116, 109, 108]);
+        assert_eq!(value.public_id().unwrap().code_units(), []);
+        assert_eq!(
+            value.system_id().unwrap().code_units(),
+            DocumentString::from(id.unwrap_or("")).code_units()
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+    // The pin removed upstream's old-public-ID exemption from parse errors.
+    let source = HtmlSource::utf8("<!doctype html PUBLIC '-//W3C//DTD HTML 4.0//EN'><html>");
+    let mut c = control(100);
+    let output = prologue(&source, &mut c);
+    assert_eq!(output.diagnostics.as_slice().len(), 1);
+    assert_eq!(
+        output.diagnostics.as_slice()[0].condition,
+        PrologueCondition::InvalidDoctype
+    );
+    let mut frozen = observe_prologue(output, &mut c);
+    assert!(matches!(
+        frozen.document().unwrap().root().kind(),
+        HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
+    ));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn prologue_quirks_reconciles_silmaril_and_html4_empty_or_present_system() {
+    use super::prologue::PrologueCondition;
+    for (input, expected) in [
+        (
+            "<!doctype html PUBLIC '+//SiLmArIl//dtd html Pro v0r11 19970101//suffix'><html>",
+            HtmlDocumentMode::Quirks,
+        ),
+        (
+            "<!doctype html PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN'><html>",
+            HtmlDocumentMode::Quirks,
+        ),
+        (
+            "<!doctype html PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN' ''><html>",
+            HtmlDocumentMode::Quirks,
+        ),
+        (
+            "<!doctype html PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN' 'x'><html>",
+            HtmlDocumentMode::LimitedQuirks,
+        ),
+        (
+            "<!doctype html PUBLIC '-//W3C//DTD XHTML 1.0 Frameset//EN'><html>",
+            HtmlDocumentMode::LimitedQuirks,
+        ),
+        (
+            "<!doctype html SYSTEM 'HTTP://WWW.IBM.COM/DATA/DTD/V11/IBMXHTML1-TRANSITIONAL.DTD'><html>",
+            HtmlDocumentMode::Quirks,
+        ),
+        ("<!doctype other><html>", HtmlDocumentMode::Quirks),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = control(100);
+        let output = prologue(&source, &mut c);
+        assert_eq!(output.diagnostics.as_slice().len(), 1);
+        assert_eq!(
+            output.diagnostics.as_slice()[0].condition,
+            PrologueCondition::InvalidDoctype
+        );
+        let mut frozen = observe_prologue(output, &mut c);
+        assert!(
+            matches!(frozen.document().unwrap().root().kind(), HtmlNodeKind::Document(actual) if *actual==expected),
+            "{input}"
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn prologue_inserts_comment_and_recovered_pi_in_document_order_in_both_modes() {
+    use super::prologue::{PrologueCondition, PrologueMode};
+    let source = HtmlSource::utf8(" \r\n<!--a--><?x a??><!doctype html><?y b?><html/>");
+    let mut c = control(100);
+    let output = prologue(&source, &mut c);
+    assert_eq!(output.diagnostics.as_slice().len(), 1);
+    let diagnostic = &output.diagnostics.as_slice()[0];
+    assert_eq!(
+        diagnostic.condition,
+        PrologueCondition::UnacknowledgedSelfClosing
+    );
+    assert_eq!(diagnostic.mode, PrologueMode::BeforeHtml);
+    assert_eq!(
+        source.text(&diagnostic.source).unwrap().code_units(),
+        DocumentString::from("<html/>").code_units()
+    );
+    let whitespace: Vec<u16> = output
+        .whitespace
+        .as_slice()
+        .iter()
+        .flat_map(|text| text.value.text().code_units().iter().copied())
+        .collect();
+    assert_eq!(whitespace, [32, 10]);
+    let mut frozen = observe_prologue(output, &mut c);
+    let document = frozen.document().unwrap();
+    let children: Vec<_> = document.root().children().collect();
+    assert_eq!(children.len(), 5);
+    assert!(
+        matches!(document.node(&children[0]).unwrap().kind(), HtmlNodeKind::Comment(text) if text.code_units()==[97])
+    );
+    assert!(
+        matches!(document.node(&children[1]).unwrap().kind(), HtmlNodeKind::ProcessingInstruction(pi) if pi.target().code_units()==[120] && pi.data().code_units()==[97,63])
+    );
+    assert!(matches!(
+        document.node(&children[2]).unwrap().kind(),
+        HtmlNodeKind::Doctype(_)
+    ));
+    assert!(
+        matches!(document.node(&children[3]).unwrap().kind(), HtmlNodeKind::ProcessingInstruction(pi) if pi.target().code_units()==[121] && pi.data().code_units()==[98])
+    );
+    assert!(
+        matches!(document.node(&children[4]).unwrap().kind(), HtmlNodeKind::Element(value) if value.name().local_name().code_units()==[104,116,109,108])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn absent_doctype_creates_actual_implicit_html_and_retains_exact_before_head_token() {
+    use super::prologue::PrologueCondition;
+    for input in ["<head>", "</head>", "</body>", "</html>", "</br>", ""] {
+        let source = HtmlSource::utf8(input);
+        let mut c = control(100);
+        let output = prologue(&source, &mut c);
+        assert_eq!(output.diagnostics.as_slice().len(), 1);
+        assert_eq!(
+            output.diagnostics.as_slice()[0].condition,
+            PrologueCondition::MissingDoctype
+        );
+        let retained = output
+            .input
+            .as_ref()
+            .expect("same token must be reprocessed by BeforeHead");
+        assert_eq!(
+            source.text(&retained.source).unwrap().code_units(),
+            DocumentString::from(input).code_units()
+        );
+        assert!(matches!(&retained.kind, TokenKind::Tag(_) | TokenKind::Eof));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::ManagedNodes).current,
+            2
+        );
+        let mut frozen = observe_prologue(output, &mut c);
+        let document = frozen.document().unwrap();
+        assert!(matches!(
+            document.root().kind(),
+            HtmlNodeKind::Document(HtmlDocumentMode::Quirks)
+        ));
+        let html = document
+            .node(&document.root().children().next().unwrap())
+            .unwrap();
+        assert!(
+            matches!(html.kind(), HtmlNodeKind::Element(value) if value.name().local_name().code_units()==[104,116,109,108])
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn before_html_discards_other_end_tags_and_late_doctype_with_qualified_diagnostics() {
+    use super::prologue::{PrologueCondition, PrologueMode};
+    let source = HtmlSource::utf8("<!doctype html></p><!doctype other><html id=x>");
+    let mut c = control(100);
+    let output = prologue(&source, &mut c);
+    assert_eq!(output.diagnostics.as_slice().len(), 2);
+    for (diagnostic, condition, literal) in output
+        .diagnostics
+        .as_slice()
+        .iter()
+        .zip([
+            PrologueCondition::UnexpectedEndTag,
+            PrologueCondition::UnexpectedDoctype,
+        ])
+        .zip(["</p>", "<!doctype other>"])
+        .map(|((a, b), c)| (a, b, c))
+    {
+        assert_eq!(diagnostic.condition, condition);
+        assert_eq!(diagnostic.mode, PrologueMode::BeforeHtml);
+        assert_eq!(
+            source.text(&diagnostic.source).unwrap().code_units(),
+            DocumentString::from(literal).code_units()
+        );
+        assert_eq!(diagnostic.source.source(), source.identity());
+    }
+    let mut frozen = observe_prologue(output, &mut c);
+    let document = frozen.document().unwrap();
+    assert_eq!(document.root().children().len(), 2);
+    assert!(matches!(
+        document.root().kind(),
+        HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
+    ));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn prologue_whitespace_split_retains_original_source_maps_and_isolated_surrogate_suffix() {
+    let source = HtmlSource::utf16(DocumentString::from_utf16(vec![
+        32, 13, 10, 9, 0xd800, 0xd83d, 0xde42, 0xfeff,
+    ]));
+    let mut c = control(100);
+    let output = prologue(&source, &mut c);
+    let whitespace: Vec<u16> = output
+        .whitespace
+        .as_slice()
+        .iter()
+        .flat_map(|text| text.value.text().code_units().iter().copied())
+        .collect();
+    assert_eq!(whitespace, [32, 10, 9]);
+    let mapped: Vec<_> = output
+        .whitespace
+        .as_slice()
+        .iter()
+        .flat_map(|text| text.origins.as_slice().iter())
+        .map(|origin| (origin.source.start(), origin.source.end()))
+        .collect();
+    assert_eq!(mapped, [(0, 1), (1, 3), (3, 4)]);
+    let retained = output.input.as_ref().unwrap();
+    let TokenKind::Text(text) = &retained.kind else {
+        panic!("original nonwhitespace text");
+    };
+    assert_eq!(text.value.text().code_units(), [0xd800]);
+    let mapped: Vec<_> = text
+        .origins
+        .as_slice()
+        .iter()
+        .map(|origin| {
+            (
+                origin.start,
+                origin.end,
+                origin.source.start(),
+                origin.source.end(),
+            )
+        })
+        .collect();
+    assert_eq!(mapped, [(0, 1, 4, 5)]);
+    let mut frozen = observe_prologue(output, &mut c);
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn cancelled_prologue_keeps_caller_token_and_allows_original_owner_cleanup() {
+    use super::prologue::{DocumentPrologue, PrologueError};
+    let source = HtmlSource::utf8("<html id=x>");
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(100), cancellation.clone());
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
+    let mut input = Some(next_token(&mut tokenizer, &mut c));
+    cancellation.cancel();
+    assert!(matches!(
+        engine.process(&mut input, &mut c),
+        Err(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::Cancelled
+        )))
+    ));
+    assert!(input.is_some());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        1
+    );
+    let mut kind = Some(input.take().unwrap().kind);
+    crate::construction::parser_session::release_token_kind(&mut kind, &mut c).unwrap();
+    assert!(kind.is_none());
+    tokenizer.release(&mut c).unwrap();
+    let stop = c.stop();
+    engine.release(&mut c).unwrap();
+    assert_eq!(c.stop(), stop);
+    assert_released(&c);
+}
+
+#[test]
+fn prologue_diagnostic_cap_stops_before_implicit_creation_and_releases_retained_tag() {
+    use super::prologue::{DocumentPrologue, PrologueError};
+    let source = HtmlSource::utf8("<div id=x>");
+    let caps = limits(100).into_builder().diagnostics(0).finish().unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
+    let mut input = Some(next_token(&mut tokenizer, &mut c));
+    assert!(matches!(
+        engine.process(&mut input, &mut c),
+        Err(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::Diagnostics,
+                ..
+            }
+        )))
+    ));
+    assert!(input.is_none());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        1
+    );
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::OpenElements).current,
+        0
+    );
+    let stop = c.stop();
+    tokenizer.release(&mut c).unwrap();
+    engine.release(&mut c).unwrap();
+    assert_eq!(c.stop(), stop);
+    assert_released(&c);
+}
+
+#[test]
+fn prologue_stack_limit_keeps_created_element_payload_owned_until_terminal_cleanup() {
+    use super::prologue::{DocumentPrologue, PrologueError};
+    let source = HtmlSource::utf8("<!doctype html><html id=x>");
+    let mut c = control(0);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
+    let mut first = Some(next_token(&mut tokenizer, &mut c));
+    engine.process(&mut first, &mut c).unwrap();
+    let mut input = Some(next_token(&mut tokenizer, &mut c));
+    assert!(matches!(
+        engine.process(&mut input, &mut c),
+        Err(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::OpenElements,
+                ..
+            }
+        )))
+    ));
+    assert!(input.is_none());
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        3
+    );
+    assert_eq!(
+        c.usage()
+            .resource(HtmlParseResource::ManagedAttributes)
+            .current,
+        1
+    );
+    let stop = c.stop();
+    tokenizer.release(&mut c).unwrap();
+    engine.release(&mut c).unwrap();
+    assert_eq!(c.stop(), stop);
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        3
+    );
+    assert_released(&c);
+}
+
+#[test]
+fn fresh_prologue_constructor_requires_actual_admitted_source_before_any_document_allocation() {
+    use super::prologue::{DocumentPrologue, PrologueError};
+    let source = HtmlSource::utf8("about:srcdoc");
+    let mut c = control(100);
+    assert!(matches!(
+        DocumentPrologue::new(&source, &mut c),
+        Err(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::InternalInvariant(Invariant::MissingSource)
+        )))
+    ));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        0
+    );
+    assert_released(&c);
+}
+
+#[test]
+fn ordinary_prologue_recognizes_every_normative_quirky_public_prefix_without_name_restriction() {
+    // HTML 877d §13.2.6.4.1, independently transcribed public-prefix list.
+    // Each actual token contains a suffix: this asserts prefix, not equality.
+    for prefix in [
+        "+//Silmaril//dtd html Pro v0r11 19970101//",
+        "-//AS//DTD HTML 3.0 asWedit + extensions//",
+        "-//AdvaSoft Ltd//DTD HTML 3.0 asWedit + extensions//",
+        "-//IETF//DTD HTML 2.0 Level 1//",
+        "-//IETF//DTD HTML 2.0 Level 2//",
+        "-//IETF//DTD HTML 2.0 Strict Level 1//",
+        "-//IETF//DTD HTML 2.0 Strict Level 2//",
+        "-//IETF//DTD HTML 2.0 Strict//",
+        "-//IETF//DTD HTML 2.0//",
+        "-//IETF//DTD HTML 2.1E//",
+        "-//IETF//DTD HTML 3.0//",
+        "-//IETF//DTD HTML 3.2 Final//",
+        "-//IETF//DTD HTML 3.2//",
+        "-//IETF//DTD HTML 3//",
+        "-//IETF//DTD HTML Level 0//",
+        "-//IETF//DTD HTML Level 1//",
+        "-//IETF//DTD HTML Level 2//",
+        "-//IETF//DTD HTML Level 3//",
+        "-//IETF//DTD HTML Strict Level 0//",
+        "-//IETF//DTD HTML Strict Level 1//",
+        "-//IETF//DTD HTML Strict Level 2//",
+        "-//IETF//DTD HTML Strict Level 3//",
+        "-//IETF//DTD HTML Strict//",
+        "-//IETF//DTD HTML//",
+        "-//Metrius//DTD Metrius Presentational//",
+        "-//Microsoft//DTD Internet Explorer 2.0 HTML Strict//",
+        "-//Microsoft//DTD Internet Explorer 2.0 HTML//",
+        "-//Microsoft//DTD Internet Explorer 2.0 Tables//",
+        "-//Microsoft//DTD Internet Explorer 3.0 HTML Strict//",
+        "-//Microsoft//DTD Internet Explorer 3.0 HTML//",
+        "-//Microsoft//DTD Internet Explorer 3.0 Tables//",
+        "-//Netscape Comm. Corp.//DTD HTML//",
+        "-//Netscape Comm. Corp.//DTD Strict HTML//",
+        "-//O'Reilly and Associates//DTD HTML 2.0//",
+        "-//O'Reilly and Associates//DTD HTML Extended 1.0//",
+        "-//O'Reilly and Associates//DTD HTML Extended Relaxed 1.0//",
+        "-//SQ//DTD HTML 2.0 HoTMetaL + extensions//",
+        "-//SoftQuad Software//DTD HoTMetaL PRO 6.0::19990601::extensions to HTML 4.0//",
+        "-//SoftQuad//DTD HoTMetaL PRO 4.0::19971010::extensions to HTML 4.0//",
+        "-//Spyglass//DTD HTML 2.0 Extended//",
+        "-//Sun Microsystems Corp.//DTD HotJava HTML//",
+        "-//Sun Microsystems Corp.//DTD HotJava Strict HTML//",
+        "-//W3C//DTD HTML 3 1995-03-24//",
+        "-//W3C//DTD HTML 3.2 Draft//",
+        "-//W3C//DTD HTML 3.2 Final//",
+        "-//W3C//DTD HTML 3.2//",
+        "-//W3C//DTD HTML 3.2S Draft//",
+        "-//W3C//DTD HTML 4.0 Frameset//",
+        "-//W3C//DTD HTML 4.0 Transitional//",
+        "-//W3C//DTD HTML Experimental 19960712//",
+        "-//W3C//DTD HTML Experimental 970421//",
+        "-//W3C//DTD W3 HTML//",
+        "-//W3O//DTD W3 HTML 3.0//",
+        "-//WebTechs//DTD Mozilla HTML 2.0//",
+        "-//WebTechs//DTD Mozilla HTML//",
+    ] {
+        let source = HtmlSource::utf8(format!("<!doctype html PUBLIC \"{prefix}suffix\"><html>"));
+        let mut c = control(100);
+        let output = prologue(&source, &mut c);
+        assert_eq!(output.diagnostics.as_slice().len(), 1);
+        let mut frozen = observe_prologue(output, &mut c);
+        assert!(
+            matches!(
+                frozen.document().unwrap().root().kind(),
+                HtmlNodeKind::Document(HtmlDocumentMode::Quirks)
+            ),
+            "{prefix}"
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn prologue_doctype_matching_preserves_nonascii_units_and_exact_system_error_case() {
+    use super::prologue::PrologueCondition;
+    for (input, error) in [
+        ("<!doctype html SYSTEM 'ABOUT:LEGACY-COMPAT'><html>", true),
+        ("<!doctype html SYSTEM 'about:legacy-compat'><html>", false),
+        ("<!doctype html PUBLIC 'hTmL'><html>", true),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = control(100);
+        let output = prologue(&source, &mut c);
+        assert_eq!(output.diagnostics.as_slice().len(), usize::from(error));
+        if error {
+            assert_eq!(
+                output.diagnostics.as_slice()[0].condition,
+                PrologueCondition::InvalidDoctype
+            );
+        }
+        let mut frozen = observe_prologue(output, &mut c);
+        let expected = if input.contains("PUBLIC") {
+            HtmlDocumentMode::Quirks
+        } else {
+            HtmlDocumentMode::NoQuirks
+        };
+        assert!(
+            matches!(frozen.document().unwrap().root().kind(),HtmlNodeKind::Document(mode) if *mode==expected)
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+    let mut units: Vec<u16> = "<!doctype html PUBLIC '".encode_utf16().collect();
+    units.extend([0xd800, 0xd83d, 0xde42, 0xfeff]);
+    units.extend("'><html>".encode_utf16());
+    let source = HtmlSource::utf16(DocumentString::from_utf16(units));
+    let mut c = control(100);
+    let output = prologue(&source, &mut c);
+    assert_eq!(output.diagnostics.as_slice().len(), 1);
+    let mut frozen = observe_prologue(output, &mut c);
+    let document = frozen.document().unwrap();
+    assert!(matches!(
+        document.root().kind(),
+        HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
+    ));
+    let doctype = document
+        .node(&document.root().children().next().unwrap())
+        .unwrap();
+    assert!(
+        matches!(doctype.kind(),HtmlNodeKind::Doctype(value) if value.public_id().unwrap().code_units()==[0xd800,0xd83d,0xde42,0xfeff])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn ordinary_prologue_rejects_foreign_source_token_before_consuming_its_actual_payload() {
+    use super::prologue::{DocumentPrologue, PrologueError};
+    let first = HtmlSource::utf8("<!doctype html><html>");
+    let second = HtmlSource::utf8("<html id=x>");
+    let mut owner = control(100);
+    owner.admit_source(&first).unwrap();
+    let mut engine = DocumentPrologue::new(&first, &mut owner).unwrap();
+    let mut foreign = control(100);
+    foreign.admit_source(&second).unwrap();
+    let mut tokenizer = Tokenizer::new(&second, State::Data, None, &mut foreign).unwrap();
+    let mut input = Some(next_token(&mut tokenizer, &mut foreign));
+    assert!(matches!(
+        engine.process(&mut input, &mut owner),
+        Err(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::InternalInvariant(Invariant::ForeignSource)
+        )))
+    ));
+    assert!(input.is_some());
+    assert_eq!(
+        owner
+            .usage()
+            .resource(HtmlParseResource::ManagedNodes)
+            .current,
+        1
+    );
+    assert_eq!(
+        owner
+            .usage()
+            .resource(HtmlParseResource::ManagedAttributes)
+            .current,
+        0
+    );
+    let mut kind = Some(input.take().unwrap().kind);
+    crate::construction::parser_session::release_token_kind(&mut kind, &mut foreign).unwrap();
+    tokenizer.release(&mut foreign).unwrap();
+    engine.release(&mut owner).unwrap();
+    assert_released(&owner);
+    assert_released(&foreign);
+}
+
+#[test]
+fn prologue_rejects_same_source_foreign_payload_before_ownership_transfer_or_mode_effect() {
+    use super::prologue::{DocumentPrologue, PrologueError};
+    let source = HtmlSource::utf8("<html id=x>");
+    let mut owner = control(100);
+    owner.admit_source(&source).unwrap();
+    let mut engine = DocumentPrologue::new(&source, &mut owner).unwrap();
+    let mut foreign = control(100);
+    foreign.admit_source(&source).unwrap();
+    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut foreign).unwrap();
+    let mut input = Some(next_token(&mut tokenizer, &mut foreign));
+    let result = engine.process(&mut input, &mut owner);
+    assert!(
+        input.is_some(),
+        "foreign payload must remain with its actual original owner: {result:?}"
+    );
+    assert!(matches!(
+        result,
+        Err(PrologueError::Kernel(
+            KernelError::Stop(ParseStop::InternalInvariant(Invariant::ForeignControl))
+                | KernelError::Session(SessionError::Stop(ParseStop::InternalInvariant(
+                    Invariant::ForeignControl
+                )))
+        ))
+    ));
+    assert_eq!(
+        owner
+            .usage()
+            .resource(HtmlParseResource::ManagedNodes)
+            .current,
+        1
+    );
+    assert_eq!(
+        owner
+            .usage()
+            .resource(HtmlParseResource::Diagnostics)
+            .current,
+        0
+    );
+    let mut kind = Some(input.take().unwrap().kind);
+    crate::construction::parser_session::release_token_kind(&mut kind, &mut foreign).unwrap();
+    tokenizer.release(&mut foreign).unwrap();
+    engine.release(&mut owner).unwrap();
+    assert_released(&owner);
+    assert_released(&foreign);
+}
+
+#[test]
+fn prologue_atomic_layout_cap_rejects_fixed_owner_before_native_document_allocation() {
+    use super::prologue::{DocumentPrologue, PrologueError};
+    let source = HtmlSource::utf8("<!doctype html><html>");
+    let cap = (std::mem::size_of::<DocumentPrologue<'_>>() - 1) as u64;
+    let caps = limits(100)
+        .into_builder()
+        .atomic_layout_bytes(cap)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    assert!(matches!(
+        DocumentPrologue::new(&source, &mut c),
+        Err(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::AtomicLayoutBytes,
+                ..
+            }
+        )))
+    ));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        0
+    );
+    assert_eq!(
+        c.usage()
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current,
+        0
+    );
+    assert_released(&c);
+}
+
+#[test]
+fn prologue_quirky_public_equality_and_prefix_cases_remain_distinct() {
+    for (id, expected) in [
+        (
+            "-//W3O//DTD W3 HTML Strict 3.0//EN//",
+            HtmlDocumentMode::Quirks,
+        ),
+        (
+            "-/W3C/DTD HTML 4.0 Transitional/EN",
+            HtmlDocumentMode::Quirks,
+        ),
+        ("HTML", HtmlDocumentMode::Quirks),
+        ("HTMLsuffix", HtmlDocumentMode::NoQuirks),
+        (
+            "-//W3O//DTD W3 HTML Strict 3.0//EN//suffix",
+            HtmlDocumentMode::NoQuirks,
+        ),
+        (
+            "-//W3C//DTD XHTML 1.0 Transitional//EN",
+            HtmlDocumentMode::LimitedQuirks,
+        ),
+        (
+            "-//W3C//DTD HTML 4.01 Frameset//EN",
+            HtmlDocumentMode::Quirks,
+        ),
+    ] {
+        let source = HtmlSource::utf8(format!("<!doctype html PUBLIC '{id}'><html>"));
+        let mut c = control(100);
+        let output = prologue(&source, &mut c);
+        let mut frozen = observe_prologue(output, &mut c);
+        assert!(
+            matches!(frozen.document().unwrap().root().kind(),HtmlNodeKind::Document(mode) if *mode==expected),
+            "{id}"
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
 }

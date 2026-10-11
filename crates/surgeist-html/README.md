@@ -274,8 +274,9 @@ effects, diagnostics, provenance and its separate execution controls.
 `HtmlParseLimits::builder` requires all nineteen finite caps explicitly; zero
 is valid, and no default or unlimited sentinel is supplied. `finish` checks
 representation before a request can retain the configuration.
-`HtmlDocumentParseRequest` selects offline Disabled parsing or a supported
-captured document mode. `HtmlFragmentParseRequest` retains the checked fragment
+`HtmlDocumentParseRequest` configures offline Disabled parsing or retains a
+captured document context. Request construction does not establish execution
+support for that context. `HtmlFragmentParseRequest` retains the checked fragment
 context and distinguishes requested from effective scripting mode. Each request
 issues a fresh `HtmlParseCancellation`; cloned handles share sticky cancellation.
 Constructing a request admits no source and produces no parse result. The caps
@@ -289,8 +290,15 @@ bounded tree kernel now supplies adjusted element/text insertion, foster and
 template locations, source-required ignored-placement guards and exact scope
 predicates over an admitted open-elements stack. Actual tokenizer payloads
 transfer into the existing immutable-result storage under owner and backing
-checks; terminal cleanup retains no lost capacity ticket. Complete insertion
-modes, context effects and parse-report publication remain unfinished.
+checks; terminal cleanup retains no lost capacity ticket. The ordinary-document
+prologue now implements Initial and BeforeHtml: actual comments, processing
+instructions and doctypes reach native storage, doctype modes follow the pinned
+HTML rules, and explicit or implied HTML roots lead to an owned BeforeHead
+continuation. It retains exact reprocessed input, diagnostics and ignored
+whitespace origins. The constructor creates a fresh ordinary document; hosted,
+srcdoc, mode-fixed and captured-document execution remain unsupported.
+Remaining insertion modes, required contextual fragments, context effects and
+parse-report publication remain unfinished.
 The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,
 modifications and attribution separately from the normative HTML edition.
 The offline `tools/generate_character_references.py --check`

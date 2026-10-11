@@ -923,6 +923,26 @@ impl ParseControl {
     ) -> Result<(), ParseStop> {
         self.checkpoint()?;
         self.charge(WorkCategory::RecordVisit, 1)?;
+        self.validate_document_string(allocation, value)
+    }
+    /// Disposal-only inspection of already-admitted backing. Terminal cleanup
+    /// may validate ownership before taking a caller's retained payload; it
+    /// cannot resume parsing, acquire storage, or refund execution observations.
+    pub(crate) fn require_document_string_for_disposal(
+        &mut self,
+        allocation: &DocumentStringAllocation,
+        value: &crate::DocumentString,
+    ) -> Result<(), ParseStop> {
+        if self.stop().is_none() {
+            return self.require_document_string(allocation, value);
+        }
+        self.validate_document_string(allocation, value)
+    }
+    fn validate_document_string(
+        &mut self,
+        allocation: &DocumentStringAllocation,
+        value: &crate::DocumentString,
+    ) -> Result<(), ParseStop> {
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
         }
@@ -1220,6 +1240,26 @@ impl<T> OwnedVec<T> {
             }
         } else {
             self.owner = Some(control.identity.clone());
+        }
+        Ok(())
+    }
+    /// Read-only owner preflight for actual payload disposal, including after
+    /// exhaustion. An unbound empty vector has no admitted storage owner.
+    pub(crate) fn require_disposal_owner(
+        &self,
+        control: &mut ParseControl,
+    ) -> Result<(), ParseStop> {
+        if control.stop().is_none() {
+            control.checkpoint()?;
+            control.charge(WorkCategory::RecordVisit, 1)?;
+        }
+        if let Some(owner) = &self.owner {
+            if control.stop().is_none() {
+                control.charge(WorkCategory::ProviderCall, 1)?;
+            }
+            if !Arc::ptr_eq(owner, &control.identity) {
+                return control.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+            }
         }
         Ok(())
     }

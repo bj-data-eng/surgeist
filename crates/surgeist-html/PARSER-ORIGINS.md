@@ -8,7 +8,9 @@ The behavioral authority is the separate
 provenance, not a different HTML dialect. This machinery currently compiles only
 for tests. The tree kernel implements adjusted insertion locations, element/text
 insertion and stack/scope operations over actual controlled native storage.
-Complete insertion-mode dispatch and public parse execution remain unfinished.
+The ordinary-document prologue implements Initial and BeforeHtml and hands off
+an owned BeforeHead continuation. Complete insertion-mode dispatch and public
+parse execution remain unfinished.
 
 ## Original source and incorporated files
 
@@ -24,6 +26,8 @@ before adaptation.
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
 | `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location and stack/scope adaptation in `src/parser/tree_builder/mod.rs` |
 | `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope-list adaptation in `src/parser/tree_builder/tag_sets.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml adaptation in `src/parser/tree_builder/prologue.rs` |
+| `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
 2026-10-11. Later implementation changes remain discoverable in Git; these are
@@ -44,6 +48,14 @@ below. The earlier tokenizer incorporation hashes remain historical.
 | --- | --- |
 | `src/parser/tree_builder/mod.rs` | `139d6ce69a6f47e179969cbc4ca99e25df44126498eeac7a375bc11d29eececb` |
 | `src/parser/tree_builder/tag_sets.rs` | `1d50c10ad6e4b3f8a6a086e47bb65226fa4a6d76c33dc3337aafe49db6d7a76f` |
+
+The prologue adds a separate initial adapted checkpoint; earlier hashes above
+remain historical.
+
+| Incorporated file | Initial adapted SHA-256 |
+| --- | --- |
+| `src/parser/tree_builder/prologue.rs` | `91a99f0291d311221aa9bf3aab51c0a5c5a998eb24a2e7d87fa676a8589dd5d1` |
+| `src/parser/tree_builder/doctype.rs` | `ef2f9ddfa625128fde2910f1a74ac25b2dda64534e346fe24385f0f88ad1ac64` |
 
 The accompanying tokenizer and tree-builder tests are Surgeist-authored
 verification, not imported upstream test files. The input, buffer, controller,
@@ -87,9 +99,23 @@ consume exact tokenizer payloads into the existing native arena; aliases and
 foreign ownership cannot certify a transfer. Terminal cleanup disposes retained
 fields and physical capacity even when the final active visit latches a stop.
 
-Complete insertion modes, formatting reconstruction/adoption, foreign dispatch,
-processing-instruction tree operations, context effects and report publication
-remain required engine work. The driver, encoding implementation, serializer,
+The prologue adapts `rules.rs` lines 101–144 and the original `mod.rs`
+doctype interception and root creation. `data.rs` lines 14–89 supply the
+doctypes tables; its classifier is replaced by charged exact UTF-16 matching.
+The selected HTML edition governs the restricted non-error doctype syntax,
+Silmaril quirks prefix, and HTML 4.01 empty-or-missing system identifier behavior.
+Comments, processing instructions and doctypes transfer actual lexical payloads
+into native storage. Ignored leading whitespace retains exact source origins,
+and the BeforeHead continuation retains any reprocessed token. Foreign
+controller payloads are rejected before consuming input or changing tree state.
+
+The fresh ordinary-document constructor establishes non-srcdoc initialization
+and parser-cannot-change-mode as false. Hosted, srcdoc, mode-fixed and captured
+document execution are unsupported; source labels do not select these modes.
+This prologue is a private continuation, not a completed parse result.
+
+Remaining insertion modes, formatting reconstruction/adoption, foreign dispatch,
+context effects and report publication remain required engine work. The driver, encoding implementation, serializer,
 XML parser and RcDom are not incorporated here. Research prototypes and their
 measurements do not certify this adapted implementation or supply a public
 parsing contract.

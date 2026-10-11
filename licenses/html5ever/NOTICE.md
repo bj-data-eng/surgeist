@@ -21,9 +21,10 @@ applies to the adaptation. No html5ever Cargo package is added by this ingestion
 ## Incorporated tree-insertion source
 
 The same selected revision supplies a bounded adaptation of tree-builder
-insertion-location and stack/scope operations plus selected tag sets. The
-[origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies the two
-complete original file hashes and the separate initial adapted checkpoint.
+insertion-location and stack/scope operations plus selected tag sets, followed
+by the ordinary-document Initial/BeforeHtml prologue and doctype tables. The
+[origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
+complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;
 adaptation notes identify the changed source and selected HTML authority.
 The exact copyright, authorship and MIT OR Apache-2.0 material above applies.
