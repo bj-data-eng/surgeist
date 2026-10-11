@@ -467,6 +467,41 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
     }
+    /// Selected execCommand editing-host-of definition, ordinary ancestry only.
+    pub(super) fn editing_host_of(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        match self.editing_host(subject)? {
+            HtmlSemanticValue::Known(true) => {
+                self.charge(1)?;
+                return Ok(HtmlSemanticValue::Known(Some(subject.clone())));
+            }
+            HtmlSemanticValue::Known(false) => {}
+            value => return Ok(value.map(|_| None)),
+        }
+        match self.editable(subject)? {
+            HtmlSemanticValue::Known(false) => return Ok(HtmlSemanticValue::Known(None)),
+            HtmlSemanticValue::Known(true) => {}
+            value => return Ok(value.map(|_| None)),
+        }
+        let mut current = subject.clone();
+        loop {
+            let node = self.node(&current)?;
+            current = match self.parent(node)? {
+                Ok(Some(parent)) => parent,
+                Ok(None) => return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)),
+                Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+            };
+            match self.editing_host(&current)? {
+                HtmlSemanticValue::Known(true) => {
+                    return Ok(HtmlSemanticValue::Known(Some(current)));
+                }
+                HtmlSemanticValue::Known(false) => {}
+                value => return Ok(value.map(|_| None)),
+            }
+        }
+    }
     pub(super) fn is_content_editable(
         &mut self,
         subject: &HtmlCaptureSubjectId,

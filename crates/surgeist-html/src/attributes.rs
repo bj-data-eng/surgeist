@@ -1378,7 +1378,94 @@ pub(crate) fn stylesheet_link_context_work_bound(input_code_units: usize) -> Opt
     input_code_units.checked_mul(8)?.checked_add(13)
 }
 
+struct EnumValueSelection<T> {
+    recognition: HtmlAttributeRecognition,
+    author: HtmlAttributeAuthorState,
+    intrinsic: Option<T>,
+}
+
+fn enum_value_selection<T: Copy + 'static>(
+    rule: &EnumRule<T>,
+    raw: Option<&DocumentString>,
+) -> EnumValueSelection<T> {
+    let mut selection = EnumValueSelection {
+        recognition: HtmlAttributeRecognition::Unapplied,
+        author: HtmlAttributeAuthorState::Unapplied,
+        intrinsic: None,
+    };
+    match raw {
+        None => {
+            selection.recognition = HtmlAttributeRecognition::Missing;
+            selection.author = HtmlAttributeAuthorState::Missing;
+            selection.intrinsic = rule.missing;
+        }
+        Some(value) => {
+            if let Some(keyword) = rule.keywords.iter().find(|keyword| {
+                if rule.exact_keywords {
+                    value
+                        .code_units()
+                        .iter()
+                        .copied()
+                        .eq(keyword.spelling.encode_utf16())
+                } else {
+                    ascii_keyword(value, keyword.spelling)
+                }
+            }) {
+                selection.recognition = HtmlAttributeRecognition::Keyword {
+                    matched: keyword.spelling,
+                    canonical: keyword.canonical,
+                };
+                selection.author = if keyword.conforming {
+                    HtmlAttributeAuthorState::Conforming
+                } else {
+                    HtmlAttributeAuthorState::Nonconforming(
+                        HtmlAttributeConformanceError::NonconformingKeyword,
+                    )
+                };
+                selection.intrinsic = Some(keyword.state);
+            } else if value.is_empty() {
+                selection.recognition = HtmlAttributeRecognition::Empty;
+                selection.intrinsic = rule.empty.or(rule.invalid);
+                selection.author = if rule.empty.is_some() {
+                    HtmlAttributeAuthorState::Conforming
+                } else {
+                    HtmlAttributeAuthorState::Nonconforming(
+                        HtmlAttributeConformanceError::UnrecognizedKeyword,
+                    )
+                };
+            } else {
+                selection.recognition = HtmlAttributeRecognition::Unrecognized;
+                selection.author = HtmlAttributeAuthorState::Nonconforming(
+                    HtmlAttributeConformanceError::UnrecognizedKeyword,
+                );
+                selection.intrinsic = rule.invalid;
+            }
+        }
+    }
+    selection
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WritingSuggestionsProcessing {
+    pub(crate) recognition: HtmlAttributeRecognition,
+    pub(crate) intrinsic: Option<HtmlWritingSuggestionsState>,
+}
+
 impl HtmlValueInterpreter {
+    /// Content-state processing for the HTML-defined generic parent algorithm.
+    /// This makes no element applicability or author-conformance assertion.
+    pub(crate) fn writingsuggestions_processing(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<WritingSuggestionsProcessing, HtmlValueAdmissionError> {
+        self.admit_attribute_raw(raw)?;
+        let selection = enum_value_selection(&WRITINGSUGGESTIONS, raw);
+        Ok(WritingSuggestionsProcessing {
+            recognition: selection.recognition,
+            intrinsic: selection.intrinsic,
+        })
+    }
+
     fn enumerated<T: Copy>(
         &self,
         rule: &EnumRule<T>,
@@ -1490,56 +1577,10 @@ impl HtmlValueInterpreter {
                 _ => HtmlAttributeContextAuthorState::Unchecked,
             };
         }
-        match raw {
-            None => {
-                result.recognition = HtmlAttributeRecognition::Missing;
-                result.author = HtmlAttributeAuthorState::Missing;
-                result.intrinsic = rule.missing;
-            }
-            Some(attribute) => {
-                let value = attribute.value();
-                if let Some(keyword) = rule.keywords.iter().find(|keyword| {
-                    if rule.exact_keywords {
-                        value
-                            .code_units()
-                            .iter()
-                            .copied()
-                            .eq(keyword.spelling.encode_utf16())
-                    } else {
-                        ascii_keyword(value, keyword.spelling)
-                    }
-                }) {
-                    result.recognition = HtmlAttributeRecognition::Keyword {
-                        matched: keyword.spelling,
-                        canonical: keyword.canonical,
-                    };
-                    result.author = if keyword.conforming {
-                        HtmlAttributeAuthorState::Conforming
-                    } else {
-                        HtmlAttributeAuthorState::Nonconforming(
-                            HtmlAttributeConformanceError::NonconformingKeyword,
-                        )
-                    };
-                    result.intrinsic = Some(keyword.state);
-                } else if value.is_empty() {
-                    result.recognition = HtmlAttributeRecognition::Empty;
-                    result.intrinsic = rule.empty.or(rule.invalid);
-                    result.author = if rule.empty.is_some() {
-                        HtmlAttributeAuthorState::Conforming
-                    } else {
-                        HtmlAttributeAuthorState::Nonconforming(
-                            HtmlAttributeConformanceError::UnrecognizedKeyword,
-                        )
-                    };
-                } else {
-                    result.recognition = HtmlAttributeRecognition::Unrecognized;
-                    result.author = HtmlAttributeAuthorState::Nonconforming(
-                        HtmlAttributeConformanceError::UnrecognizedKeyword,
-                    );
-                    result.intrinsic = rule.invalid;
-                }
-            }
-        }
+        let selection = enum_value_selection(rule, raw.map(Attribute::value));
+        result.recognition = selection.recognition;
+        result.author = selection.author;
+        result.intrinsic = selection.intrinsic;
         Ok(result)
     }
 

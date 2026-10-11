@@ -707,6 +707,24 @@ retained output and temporary scratch, preserving observed usage on failure.
 Fixed shared wrappers and allocator internals are outside that capacity contract.
 These observations perform no autofill or credential mediation.
 
+`OwnAutocapitalizationHint` preserves the element's nonempty setting or the
+source-defined form-owner fallback, with its canonical IDL spelling.
+`UsedAutocapitalizationHint` separately applies input-type suppression and
+selects the actual editing host where required. `UsedAutocorrectionState`
+applies its own local/form rules and exposes the Boolean getter; it does not
+inherit through the editing host. `ComputedWritingSuggestions` follows Default
+states through ordinary parent elements, including foreign parents, and retains
+the deciding attribute and identity. Unknown influencing relations remain
+missing; established null ownership and tree boundaries retain their source
+meaning. Reports keep only the observations their branch actually consulted.
+
+These four queries reuse the qualified semantic session, raw admission,
+traversal, sticky failures and atomic batches. Actual output capacities are
+charged, including both nested records when a used hint retains an own hint.
+Caller-initiated cloning is outside query allocation accounting. These static
+readbacks do not perform input-method actions, suggest text or select user
+preferences.
+
 Captured form-method and form-enctype queries cover potential input/button
 submitters. A present override on an actual submit button selects its intrinsic
 state, including its invalid-value default, without consulting association.

@@ -1358,6 +1358,7 @@ pub enum surgeist_html::HtmlSemanticDependencies
 pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
 pub surgeist_html::HtmlSemanticFact::ComputedHeadingLevel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedHeadingLevel>)
+pub surgeist_html::HtmlSemanticFact::ComputedWritingSuggestions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedWritingSuggestions>)
 pub surgeist_html::HtmlSemanticFact::ConstraintValidationCandidate(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::ControlAutocomplete(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlAutocomplete>)
 pub surgeist_html::HtmlSemanticFact::ControlLabels(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlControlLabels>>)
@@ -1403,6 +1404,7 @@ pub surgeist_html::HtmlSemanticFact::OptionText(surgeist_html::HtmlSemanticValue
 pub surgeist_html::HtmlSemanticFact::OptionValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
 pub surgeist_html::HtmlSemanticFact::OutputDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::OutputValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
+pub surgeist_html::HtmlSemanticFact::OwnAutocapitalizationHint(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOwnAutocapitalizationHint>)
 pub surgeist_html::HtmlSemanticFact::Progress(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlProgressState>)
 pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::SelectPlaceholderLabelOption(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
@@ -1424,6 +1426,8 @@ pub surgeist_html::HtmlSemanticFact::TableSectionRows(surgeist_html::HtmlSemanti
 pub surgeist_html::HtmlSemanticFact::TextareaDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::TimeElement(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTimeElementReadback>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
+pub surgeist_html::HtmlSemanticFact::UsedAutocapitalizationHint(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsedAutocapitalizationHint>)
+pub surgeist_html::HtmlSemanticFact::UsedAutocorrectionState(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsedAutocorrectionState>)
 pub enum surgeist_html::HtmlSemanticFailureKind
 pub surgeist_html::HtmlSemanticFailureKind::AllocationFailed
 pub surgeist_html::HtmlSemanticFailureKind::Attribute(surgeist_html::HtmlValueAdmissionError)
@@ -1460,6 +1464,7 @@ pub surgeist_html::HtmlSemanticMissing::SlotAssignment(surgeist_html::HtmlCaptur
 pub surgeist_html::HtmlSemanticMissing::SpellcheckDefault(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlSemanticQuery
 pub surgeist_html::HtmlSemanticQuery::ComputedHeadingLevel
+pub surgeist_html::HtmlSemanticQuery::ComputedWritingSuggestions
 pub surgeist_html::HtmlSemanticQuery::ConstraintValidationCandidate
 pub surgeist_html::HtmlSemanticQuery::ControlAutocomplete
 pub surgeist_html::HtmlSemanticQuery::ControlLabels
@@ -1505,6 +1510,7 @@ pub surgeist_html::HtmlSemanticQuery::OptionText
 pub surgeist_html::HtmlSemanticQuery::OptionValue
 pub surgeist_html::HtmlSemanticQuery::OutputDefaultValue
 pub surgeist_html::HtmlSemanticQuery::OutputValue
+pub surgeist_html::HtmlSemanticQuery::OwnAutocapitalizationHint
 pub surgeist_html::HtmlSemanticQuery::Progress
 pub surgeist_html::HtmlSemanticQuery::SelectOptions
 pub surgeist_html::HtmlSemanticQuery::SelectPlaceholderLabelOption
@@ -1526,6 +1532,8 @@ pub surgeist_html::HtmlSemanticQuery::TableSectionRows
 pub surgeist_html::HtmlSemanticQuery::TextareaDefaultValue
 pub surgeist_html::HtmlSemanticQuery::TimeElement
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
+pub surgeist_html::HtmlSemanticQuery::UsedAutocapitalizationHint
+pub surgeist_html::HtmlSemanticQuery::UsedAutocorrectionState
 impl surgeist_html::HtmlSemanticQuery
 pub fn surgeist_html::HtmlSemanticQuery::source_clause(self) -> &'static str
 pub enum surgeist_html::HtmlSemanticResource
@@ -1777,6 +1785,10 @@ pub surgeist_html::HtmlTranslateState::Keyword(surgeist_html::HtmlTranslate)
 pub enum surgeist_html::HtmlTranslationMode
 pub surgeist_html::HtmlTranslationMode::Disabled
 pub surgeist_html::HtmlTranslationMode::Enabled
+pub enum surgeist_html::HtmlUsedAutocapitalizationBranch
+pub surgeist_html::HtmlUsedAutocapitalizationBranch::Control
+pub surgeist_html::HtmlUsedAutocapitalizationBranch::EditingHost
+pub surgeist_html::HtmlUsedAutocapitalizationBranch::SuppressedInput
 pub enum surgeist_html::HtmlValueAuthorState<T>
 pub surgeist_html::HtmlValueAuthorState::Invalid(surgeist_html::HtmlValueSyntaxError)
 pub surgeist_html::HtmlValueAuthorState::Missing
@@ -2488,6 +2500,14 @@ pub fn surgeist_html::HtmlCommaToken::value(&self) -> &surgeist_html::DocumentSt
 pub struct surgeist_html::HtmlComputedHeadingLevel(_)
 impl surgeist_html::HtmlComputedHeadingLevel
 pub fn surgeist_html::HtmlComputedHeadingLevel::value(self) -> u8
+pub struct surgeist_html::HtmlComputedWritingSuggestions
+impl surgeist_html::HtmlComputedWritingSuggestions
+pub fn surgeist_html::HtmlComputedWritingSuggestions::idl_value(&self) -> &'static str
+pub fn surgeist_html::HtmlComputedWritingSuggestions::local_state(&self) -> surgeist_html::HtmlWritingSuggestionsState
+pub fn surgeist_html::HtmlComputedWritingSuggestions::recognition(&self) -> surgeist_html::HtmlAttributeRecognition
+pub fn surgeist_html::HtmlComputedWritingSuggestions::selecting_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlComputedWritingSuggestions::selecting_subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlComputedWritingSuggestions::state(&self) -> surgeist_html::HtmlWritingSuggestions
 pub struct surgeist_html::HtmlConstructionLimits
 impl surgeist_html::HtmlConstructionLimits
 pub fn surgeist_html::HtmlConstructionLimits::attributes(self) -> usize
@@ -3261,6 +3281,15 @@ pub fn surgeist_html::HtmlOutputDefaultLimits::code_units(self) -> usize
 pub fn surgeist_html::HtmlOutputDefaultLimits::new(record_capacity: usize, code_units: usize, validation_work: usize) -> Self
 pub fn surgeist_html::HtmlOutputDefaultLimits::record_capacity(self) -> usize
 pub fn surgeist_html::HtmlOutputDefaultLimits::validation_work(self) -> usize
+pub struct surgeist_html::HtmlOwnAutocapitalizationHint
+impl surgeist_html::HtmlOwnAutocapitalizationHint
+pub fn surgeist_html::HtmlOwnAutocapitalizationHint::form_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlOwnAutocapitalizationHint::form_report(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocapitalizeState>>
+pub fn surgeist_html::HtmlOwnAutocapitalizationHint::idl_value(&self) -> &'static str
+pub fn surgeist_html::HtmlOwnAutocapitalizationHint::own_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlOwnAutocapitalizationHint::own_report(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocapitalizeState>>
+pub fn surgeist_html::HtmlOwnAutocapitalizationHint::owner(&self) -> core::option::Option<&surgeist_html::HtmlFormOwner>
+pub fn surgeist_html::HtmlOwnAutocapitalizationHint::state(&self) -> surgeist_html::HtmlAutocapitalizeState
 pub struct surgeist_html::HtmlParseCancellation(_)
 impl surgeist_html::HtmlParseCancellation
 pub fn surgeist_html::HtmlParseCancellation::cancel(&self)
@@ -3814,6 +3843,21 @@ pub fn surgeist_html::HtmlUnorderedTokenSet::tokens(&self) -> &[surgeist_html::H
 impl core::cmp::Eq for surgeist_html::HtmlUnorderedTokenSet
 impl core::cmp::PartialEq for surgeist_html::HtmlUnorderedTokenSet
 pub fn surgeist_html::HtmlUnorderedTokenSet::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlUsedAutocapitalizationHint
+impl surgeist_html::HtmlUsedAutocapitalizationHint
+pub fn surgeist_html::HtmlUsedAutocapitalizationHint::branch(&self) -> surgeist_html::HtmlUsedAutocapitalizationBranch
+pub fn surgeist_html::HtmlUsedAutocapitalizationHint::input_type(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>>
+pub fn surgeist_html::HtmlUsedAutocapitalizationHint::own_hint(&self) -> core::option::Option<&surgeist_html::HtmlOwnAutocapitalizationHint>
+pub fn surgeist_html::HtmlUsedAutocapitalizationHint::selected_subject(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlUsedAutocapitalizationHint::state(&self) -> surgeist_html::HtmlAutocapitalizeState
+pub struct surgeist_html::HtmlUsedAutocorrectionState
+impl surgeist_html::HtmlUsedAutocorrectionState
+pub fn surgeist_html::HtmlUsedAutocorrectionState::form_report(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocorrect>>
+pub fn surgeist_html::HtmlUsedAutocorrectionState::idl_value(&self) -> bool
+pub fn surgeist_html::HtmlUsedAutocorrectionState::input_type(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>>
+pub fn surgeist_html::HtmlUsedAutocorrectionState::own_report(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocorrect>>
+pub fn surgeist_html::HtmlUsedAutocorrectionState::owner(&self) -> core::option::Option<&surgeist_html::HtmlFormOwner>
+pub fn surgeist_html::HtmlUsedAutocorrectionState::state(&self) -> surgeist_html::HtmlAutocorrect
 pub struct surgeist_html::HtmlUtcInstant
 impl surgeist_html::HtmlUtcInstant
 pub fn surgeist_html::HtmlUtcInstant::day(&self) -> &surgeist_html::HtmlInteger

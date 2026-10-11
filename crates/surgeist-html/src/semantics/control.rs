@@ -3,7 +3,7 @@
 //! Host adapters establish history and current slots; queries execute no transitions.
 
 use super::*;
-use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlInputType};
+use crate::{HtmlAttributeReport, HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlInputType};
 
 /// Evidence of the actual association phase at this capture's host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -931,15 +931,21 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.control_custom(subject)
     }
-    fn control_input_type(
+    pub(super) fn control_input_type_report(
         &mut self,
         element: &'a HtmlCapturedElement,
-    ) -> Result<HtmlInputType, HtmlSemanticFailure> {
+    ) -> Result<HtmlAttributeReport<HtmlInputType>, HtmlSemanticFailure> {
         let raw = self.attribute(element, "type")?;
         self.admit_intrinsic(element, raw, 23)?;
         self.interpreter
             .input_type(element.name(), raw)
-            .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?
+            .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))
+    }
+    fn control_input_type(
+        &mut self,
+        element: &'a HtmlCapturedElement,
+    ) -> Result<HtmlInputType, HtmlSemanticFailure> {
+        self.control_input_type_report(element)?
             .intrinsic()
             .copied()
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))

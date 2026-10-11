@@ -7,7 +7,8 @@
 //! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
-//! submission conditions, static constraint-validation candidacy and the static tabIndex getter.
+//! submission conditions, static constraint-validation candidacy, the static tabIndex getter,
+//! and own/used capitalization, used autocorrection and computed writing suggestions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
@@ -30,6 +31,8 @@ mod time_element;
 pub use time_element::*;
 mod inheritance;
 pub use inheritance::*;
+mod text_assistance;
+pub use text_assistance::*;
 mod select;
 pub use select::*;
 mod datalist;
@@ -691,6 +694,11 @@ pub enum HtmlSemanticQuery {
     EditingHost,
     Editable,
     IsContentEditable,
+    OwnAutocapitalizationHint,
+    UsedAutocapitalizationHint,
+    UsedAutocorrectionState,
+    ComputedWritingSuggestions,
+
     TranslationMode,
     Spellcheck,
     ComputedHeadingLevel,
@@ -898,6 +906,18 @@ impl HtmlSemanticQuery {
             Self::Editable => {
                 "https://github.com/w3c/editing/blob/85de9ff4a9816139d06fc2dc39d5dacdc456fddc/docs/execCommand/index.html#L1053"
             }
+            Self::OwnAutocapitalizationHint => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#own-autocapitalization-hint"
+            }
+            Self::UsedAutocapitalizationHint => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#used-autocapitalization-hint"
+            }
+            Self::UsedAutocorrectionState => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#used-autocorrection-state"
+            }
+            Self::ComputedWritingSuggestions => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#computed-writing-suggestions-value"
+            }
             Self::IsContentEditable => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-iscontenteditable"
             }
@@ -1050,6 +1070,11 @@ pub enum HtmlSemanticFact {
     EditingHost(HtmlSemanticValue<bool>),
     Editable(HtmlSemanticValue<bool>),
     IsContentEditable(HtmlSemanticValue<bool>),
+    OwnAutocapitalizationHint(HtmlSemanticValue<HtmlOwnAutocapitalizationHint>),
+    UsedAutocapitalizationHint(HtmlSemanticValue<HtmlUsedAutocapitalizationHint>),
+    UsedAutocorrectionState(HtmlSemanticValue<HtmlUsedAutocorrectionState>),
+    ComputedWritingSuggestions(HtmlSemanticValue<HtmlComputedWritingSuggestions>),
+
     TranslationMode(HtmlSemanticValue<HtmlTranslationMode>),
     Spellcheck(HtmlSemanticValue<bool>),
     ComputedHeadingLevel(HtmlSemanticValue<HtmlComputedHeadingLevel>),
@@ -2400,6 +2425,26 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Editable => {
                             HtmlSemanticFact::Editable(self.editable(&request.subject)?)
                         }
+                        HtmlSemanticQuery::OwnAutocapitalizationHint => {
+                            HtmlSemanticFact::OwnAutocapitalizationHint(
+                                self.own_autocapitalization_hint(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::UsedAutocapitalizationHint => {
+                            HtmlSemanticFact::UsedAutocapitalizationHint(
+                                self.used_autocapitalization_hint(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::UsedAutocorrectionState => {
+                            HtmlSemanticFact::UsedAutocorrectionState(
+                                self.used_autocorrection_state(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::ComputedWritingSuggestions => {
+                            HtmlSemanticFact::ComputedWritingSuggestions(
+                                self.computed_writing_suggestions(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::IsContentEditable => {
                             HtmlSemanticFact::IsContentEditable(
                                 self.is_content_editable(&request.subject)?,
@@ -2667,6 +2712,22 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Editable => {
                         HtmlSemanticFact::Editable(self.editable(&request.subject)?)
+                    }
+                    HtmlSemanticQuery::OwnAutocapitalizationHint => {
+                        HtmlSemanticFact::OwnAutocapitalizationHint(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::UsedAutocapitalizationHint => {
+                        HtmlSemanticFact::UsedAutocapitalizationHint(
+                            HtmlSemanticValue::Inapplicable,
+                        )
+                    }
+                    HtmlSemanticQuery::UsedAutocorrectionState => {
+                        HtmlSemanticFact::UsedAutocorrectionState(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ComputedWritingSuggestions => {
+                        HtmlSemanticFact::ComputedWritingSuggestions(
+                            HtmlSemanticValue::Inapplicable,
+                        )
                     }
                     HtmlSemanticQuery::IsContentEditable => {
                         HtmlSemanticFact::IsContentEditable(HtmlSemanticValue::Inapplicable)
