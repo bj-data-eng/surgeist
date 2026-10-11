@@ -1129,9 +1129,37 @@ pub surgeist_html::HtmlProcessingInstructionError::ReservedTarget
 impl core::error::Error for surgeist_html::HtmlProcessingInstructionError
 impl core::fmt::Display for surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlProcessingInstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlProgressNativeError
+pub surgeist_html::HtmlProgressNativeError::NegativeValue
+pub surgeist_html::HtmlProgressNativeError::NonpositiveMaximum
+pub surgeist_html::HtmlProgressNativeError::RepresentationUnavailable
+pub surgeist_html::HtmlProgressNativeError::ValueAboveMaximum
+impl core::error::Error for surgeist_html::HtmlProgressNativeError
+impl core::fmt::Display for surgeist_html::HtmlProgressNativeError
+pub fn surgeist_html::HtmlProgressNativeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlProgressNumberAuthorError
+pub surgeist_html::HtmlProgressNumberAuthorError::NegativeValue
+pub surgeist_html::HtmlProgressNumberAuthorError::NonpositiveMaximum
+pub surgeist_html::HtmlProgressNumberAuthorError::Syntax(surgeist_html::HtmlValueSyntaxError)
+pub enum surgeist_html::HtmlProgressNumberAuthorState
+pub surgeist_html::HtmlProgressNumberAuthorState::Conforming
+pub surgeist_html::HtmlProgressNumberAuthorState::Missing
+pub surgeist_html::HtmlProgressNumberAuthorState::Nonconforming(surgeist_html::HtmlProgressNumberAuthorError)
+pub surgeist_html::HtmlProgressNumberAuthorState::RepresentationUnavailable
+pub surgeist_html::HtmlProgressNumberAuthorState::Unapplied
 pub enum surgeist_html::HtmlProgressState
 pub surgeist_html::HtmlProgressState::Determinate(surgeist_html::HtmlDeterminateProgress)
 pub surgeist_html::HtmlProgressState::Indeterminate
+pub enum surgeist_html::HtmlProgressUpperBoundState
+pub surgeist_html::HtmlProgressUpperBoundState::Conforming
+pub surgeist_html::HtmlProgressUpperBoundState::NotRequired
+pub surgeist_html::HtmlProgressUpperBoundState::Unapplied
+pub surgeist_html::HtmlProgressUpperBoundState::Unavailable(surgeist_html::HtmlProgressUpperBoundUnavailable)
+pub surgeist_html::HtmlProgressUpperBoundState::ValueAboveMaximum
+pub enum surgeist_html::HtmlProgressUpperBoundUnavailable
+pub surgeist_html::HtmlProgressUpperBoundUnavailable::MaximumSyntax
+pub surgeist_html::HtmlProgressUpperBoundUnavailable::Representation
+pub surgeist_html::HtmlProgressUpperBoundUnavailable::ValueSyntax
 pub enum surgeist_html::HtmlProtocolLanguage
 pub surgeist_html::HtmlProtocolLanguage::Absent
 pub surgeist_html::HtmlProtocolLanguage::Multiple
@@ -3201,6 +3229,22 @@ pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::Html
 impl core::convert::TryFrom<surgeist_html::HtmlProcessingInstruction> for surgeist_html::HtmlAuthoredProcessingInstruction
 pub type surgeist_html::HtmlAuthoredProcessingInstruction::Error = surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlProgressAttributeReport
+impl surgeist_html::HtmlProgressAttributeReport
+pub fn surgeist_html::HtmlProgressAttributeReport::maximum(&self) -> &surgeist_html::HtmlProgressNumberReport
+pub fn surgeist_html::HtmlProgressAttributeReport::upper_bound(&self) -> surgeist_html::HtmlProgressUpperBoundState
+pub fn surgeist_html::HtmlProgressAttributeReport::value(&self) -> &surgeist_html::HtmlProgressNumberReport
+pub struct surgeist_html::HtmlProgressAttributes
+impl surgeist_html::HtmlProgressAttributes
+pub fn surgeist_html::HtmlProgressAttributes::into_attributes(self) -> alloc::vec::Vec<surgeist_html::Attribute>
+pub fn surgeist_html::HtmlProgressAttributes::maximum(&self) -> core::option::Option<surgeist_html::HtmlFloatingPointNumber>
+pub fn surgeist_html::HtmlProgressAttributes::new(value: core::option::Option<surgeist_html::HtmlFloatingPointNumber>, maximum: core::option::Option<surgeist_html::HtmlFloatingPointNumber>) -> core::result::Result<Self, surgeist_html::HtmlProgressNativeError>
+pub fn surgeist_html::HtmlProgressAttributes::value(&self) -> core::option::Option<surgeist_html::HtmlFloatingPointNumber>
+pub struct surgeist_html::HtmlProgressNumberReport
+impl surgeist_html::HtmlProgressNumberReport
+pub fn surgeist_html::HtmlProgressNumberReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
+pub fn surgeist_html::HtmlProgressNumberReport::author(&self) -> surgeist_html::HtmlProgressNumberAuthorState
+pub fn surgeist_html::HtmlProgressNumberReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>>
 pub struct surgeist_html::HtmlSandboxAuthorDiagnostics
 impl surgeist_html::HtmlSandboxAuthorDiagnostics
 pub fn surgeist_html::HtmlSandboxAuthorDiagnostics::duplicate(&self) -> core::option::Option<&surgeist_html::HtmlDuplicateTokenError>
@@ -3744,6 +3788,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::popover(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPopoverState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::preload(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPreloadState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::progress_attributes(&self, element: &surgeist_html::QualifiedName, value: core::option::Option<&surgeist_html::Attribute>, maximum: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlProgressAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

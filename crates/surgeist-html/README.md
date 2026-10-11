@@ -266,6 +266,16 @@ current-value sanitization, periodic membership, constraint validation or
 stepping. Raw admission is per supplied value; native conversion retains its
 ordinary allocation contract.
 
+`progress_attributes` retains the original value/max attributes, common floating
+reports and independent exact mathematical author constraints. Value must be
+nonnegative and no greater than the authored maximum, or one when max is absent;
+maximum must be positive. Invalid present max leaves that comparison unavailable.
+Binary64 rounding, underflow and overflow remain separate common evidence.
+`HtmlProgressAttributes` checks a coupled finite native pair against its actual
+canonical emitted decimals and preserves absent attributes. These operations use
+ordinary allocation and per-value raw UTF-16 admission; captured Progress below
+owns effective quantities and determinate state.
+
 `HtmlAuthoredArea` supplies exact circle, rectangle and polygon values or a
 symbolic whole-image area. Native rectangles require increasing x and y edges;
 polygons require at least three vertices. Circle radius may be zero. Canonical

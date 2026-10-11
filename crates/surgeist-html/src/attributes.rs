@@ -2006,6 +2006,9 @@ pub use modification::*;
 mod area;
 pub use area::*;
 
+mod progress;
+pub use progress::*;
+
 #[cfg(test)]
 mod stylesheet_context_tests {
     use super::*;
