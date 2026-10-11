@@ -295,6 +295,7 @@ CSS Syntax 3 source; the corresponding source grammars and attribution are retai
 * Homepages: [W3C technical reports](https://www.w3.org/TR/) and [CSSWG drafts](https://github.com/w3c/csswg-drafts)
 * Exact-document copyright statements, applicable licenses and modification notices: [reference attribution](licenses/w3c/NOTICE.md)
 * Pinned CSSWG repository declaration: [LICENSE.md](licenses/w3c/csswg-drafts/LICENSE.md)
+* Bounded Referrer Policy vocabulary and exact repository declaration: [source and license attribution](licenses/w3c/NOTICE.md#referrer-policy-vocabulary)
 
 The older document-use publications are also available under the 2015 document
 license, as expressly stated in the [official W3C licensing announcement](https://www.w3.org/news/2015/w3c-updates-general-document-license/).

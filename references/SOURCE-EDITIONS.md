@@ -223,3 +223,7 @@ The existing external `cssparser` 0.37.0 named-color helper supplies that exact
 name/RGB domain; HTML owns its surrounding legacy recovery steps. This selects
 the bounded external fact table, without adding CSS color grammar validation or
 changing the color-input state's separate CSS ownership.
+
+### Bounded referrer-policy vocabulary
+
+For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the [Referrer Policy vocabulary](referrer-policy-vocabulary--cc435b05ca4a.md) selects the finite enumeration from W3C editor-source revision `cc435b05ca4a94f7f1a139be5074b168d20014db` (20 March 2026). The complete original source SHA-256 is `a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1`. Eight nonempty keywords and the empty state are retained. Pinned HTML §2.5.5 supplies ASCII-insensitive whole-value matching without trimming and missing/invalid empty-state defaults. Empty remains unresolved; the implementation does not substitute the external draft's default policy. This selection adopts no network, Fetch, referrer-generation, policy-container, URL or header-list algorithm. The older 2017 CR's surrounding processing model is not mixed into this selection.

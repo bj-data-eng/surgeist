@@ -141,7 +141,13 @@ exact case comparison, and track kinds retain their distinct missing/invalid
 defaults. It preserves invalid
 spelling when a clause supplies a fallback; keyboard hints retain their lack of
 a defined fallback. Native keyword values construct their canonical raw
-attributes. These views do not compute inheritance or claim runtime effects,
+attributes. CORS, fetch-priority and referrer-policy operations retain their finite intrinsic
+states. Script operations require explicit classic/module/inline/external or
+non-script type context; hyperlink referrer policy requires an explicit href
+presence fact. Inapplicable contexts remain distinct from invalid spelling.
+Referrer policy uses the [pinned external vocabulary](../../references/referrer-policy-vocabulary--cc435b05ca4a.md);
+its empty state remains unresolved rather than selecting a host network default.
+These views do not compute inheritance or claim runtime effects,
 and the remaining attribute families are tracked by the contribution.
 
 `HtmlCaptureBuilder` freezes one bounded, flat capture of document, node,

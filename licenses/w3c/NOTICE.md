@@ -7,7 +7,7 @@ This material accompanies the Surgeist software source checkout as implementatio
 * [Software and Document License, 2023](software-license-2023.txt): documents whose exact source links the current permissive software/document license, and the pinned CSSWG repository source declarations
 * [Software and Document License, 2015](software-license-2015.txt): documents whose exact source explicitly links the 2015 permissive license
 * [Document License, 2015](document-license-2015.txt): document-use licensed technical reports, including their chapters and supporting errata
-* [Document License, 2023](document-license-2023.txt): the captured W3C CSS Values 5 publication-history page
+* [Document License, 2023](document-license-2023.txt): the captured W3C CSS Values 5 publication-history page and bounded Referrer Policy vocabulary
 * [Document License, 2002](document-license-2002.txt): retained historical terms for pre-2015 document-use publications; it is not used as a grant to modify them
 
 The [official 5 February 2015 W3C announcement](https://www.w3.org/news/2015/w3c-updates-general-document-license/) makes the updated document license available for existing publications. The [official 2015 FAQ](https://www.w3.org/Consortium/Legal/IPR-FAQ-20000620-new.html#2015published) expressly covers all technical reports published under previous versions, whose original notices were not edited in place. Its [reformatting guidance](https://www.w3.org/Consortium/Legal/IPR-FAQ-20000620-new.html#format) points to the implementation-support derivative permission. The 2015 and 2023 document licenses permit supporting materials accompanying software while expressly prohibiting derivative works for use as a technical specification. The required derived-material notices appear in the prominent wrappers of the corresponding converted documents.
@@ -1399,3 +1399,17 @@ The 2026-10-10/11 additions retain original copyright, status, contributor, liab
 | [Accessible Name and Description Computation 1.2](https://www.w3.org/TR/accname-1.2/); [style-host-generated-accname-1.2--WD-accname-1.2-20261002--86c08e5f10b6.md](../../references/style-host-generated-accname-1.2--WD-accname-1.2-20261002--86c08e5f10b6.md); full original SHA-256 `3658a43482510f5fa0083069c9dcb0321089acc903a2177a63091930da038082` | Copyright © 2014-2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.; `terms`, `conformance`, `mapping_additional_nd`, `accessible-name-and-description-mapping` |
 
 The [additional CSSWG discussion witness](../../references/additional-selectors-resolutions--capture-20261011--b321c7ac6475.md) retains four brief attributed resolution quotations with original comment IDs, inspected edit times and complete-response/body hashes. Two additional comments are URL/hash provenance without redistributed text. This notice does not infer a blanket license for issue comments from the repository’s specification license; discussion evidence does not replace a technical specification.
+
+
+## Referrer Policy vocabulary
+
+* Bundled copy: [bounded vocabulary](../../references/referrer-policy-vocabulary--cc435b05ca4a.md)
+* Original: [W3C editor source at cc435b05ca4a94f7f1a139be5074b168d20014db](https://github.com/w3c/webappsec-referrer-policy/blob/cc435b05ca4a94f7f1a139be5074b168d20014db/index.src.html)
+* Full original SHA-256: `a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1`
+* Status: Editor's Draft; source edition 20 March 2026
+* Exact repository declaration: [LICENSE.md](referrer-policy/LICENSE.md)
+* Prose license: [W3C Document License, 2023](document-license-2023.txt)
+* Marked Web IDL Code Component license: [W3C Software and Document License, 2023](software-license-2023.txt)
+* Changes: bounded selection, readable Markdown, provenance and implementation-scope wrapper; no source algorithm is modified.
+
+The original has no pre-existing copyright statement. The bundled wrapper supplies the document-license fallback notice using the selected source edition's year, and the required “Copyright © 2023 W3C®” derivative notice. These license-prescribed notices are not transcribed upstream copyright statements. The source selection adds only the finite vocabulary required by pinned HTML; network behavior is not adopted.

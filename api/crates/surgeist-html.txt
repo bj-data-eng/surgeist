@@ -7,6 +7,10 @@ pub surgeist_html::HtmlAttributeApplicability::Applicable
 pub surgeist_html::HtmlAttributeApplicability::DifferentAttribute
 pub surgeist_html::HtmlAttributeApplicability::DifferentElement
 pub surgeist_html::HtmlAttributeApplicability::ForeignElementNamespace
+pub surgeist_html::HtmlAttributeApplicability::HyperlinkContextRequired
+pub surgeist_html::HtmlAttributeApplicability::InapplicableHyperlinkContext
+pub surgeist_html::HtmlAttributeApplicability::InapplicableScriptKind
+pub surgeist_html::HtmlAttributeApplicability::ScriptContextRequired
 pub enum surgeist_html::HtmlAttributeAuthorState
 pub surgeist_html::HtmlAttributeAuthorState::Conforming
 pub surgeist_html::HtmlAttributeAuthorState::Missing
@@ -224,6 +228,15 @@ pub fn surgeist_html::HtmlContentEditable::into_attribute(self) -> surgeist_html
 pub enum surgeist_html::HtmlContentEditableState
 pub surgeist_html::HtmlContentEditableState::Inherit
 pub surgeist_html::HtmlContentEditableState::Keyword(surgeist_html::HtmlContentEditable)
+pub enum surgeist_html::HtmlCrossOrigin
+pub surgeist_html::HtmlCrossOrigin::Anonymous
+pub surgeist_html::HtmlCrossOrigin::UseCredentials
+impl surgeist_html::HtmlCrossOrigin
+pub fn surgeist_html::HtmlCrossOrigin::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlCrossOrigin::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlCrossOriginState
+pub surgeist_html::HtmlCrossOriginState::Keyword(surgeist_html::HtmlCrossOrigin)
+pub surgeist_html::HtmlCrossOriginState::NoCors
 pub enum surgeist_html::HtmlDateOrTime
 pub surgeist_html::HtmlDateOrTime::Date(surgeist_html::HtmlDate)
 pub surgeist_html::HtmlDateOrTime::Global(surgeist_html::HtmlParsedGlobalDateTime)
@@ -289,6 +302,13 @@ pub surgeist_html::HtmlEnterKeyHint::Send
 impl surgeist_html::HtmlEnterKeyHint
 pub fn surgeist_html::HtmlEnterKeyHint::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlEnterKeyHint::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFetchPriority
+pub surgeist_html::HtmlFetchPriority::Auto
+pub surgeist_html::HtmlFetchPriority::High
+pub surgeist_html::HtmlFetchPriority::Low
+impl surgeist_html::HtmlFetchPriority
+pub fn surgeist_html::HtmlFetchPriority::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlFetchPriority::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlFormAutocomplete
 pub surgeist_html::HtmlFormAutocomplete::Off
 pub surgeist_html::HtmlFormAutocomplete::On
@@ -340,6 +360,9 @@ pub fn surgeist_html::HtmlHidden::into_attribute(self) -> surgeist_html::Attribu
 pub enum surgeist_html::HtmlHiddenState
 pub surgeist_html::HtmlHiddenState::Keyword(surgeist_html::HtmlHidden)
 pub surgeist_html::HtmlHiddenState::NotHidden
+pub enum surgeist_html::HtmlHyperlinkAttributeContext
+pub surgeist_html::HtmlHyperlinkAttributeContext::WithHref
+pub surgeist_html::HtmlHyperlinkAttributeContext::WithoutHref
 pub enum surgeist_html::HtmlInputMode
 pub surgeist_html::HtmlInputMode::Decimal
 pub surgeist_html::HtmlInputMode::Email
@@ -434,6 +457,27 @@ pub surgeist_html::HtmlProcessingInstructionError::ReservedTarget
 impl core::error::Error for surgeist_html::HtmlProcessingInstructionError
 impl core::fmt::Display for surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlProcessingInstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlReferrerPolicy
+pub surgeist_html::HtmlReferrerPolicy::Empty
+pub surgeist_html::HtmlReferrerPolicy::NoReferrer
+pub surgeist_html::HtmlReferrerPolicy::NoReferrerWhenDowngrade
+pub surgeist_html::HtmlReferrerPolicy::Origin
+pub surgeist_html::HtmlReferrerPolicy::OriginWhenCrossOrigin
+pub surgeist_html::HtmlReferrerPolicy::SameOrigin
+pub surgeist_html::HtmlReferrerPolicy::StrictOrigin
+pub surgeist_html::HtmlReferrerPolicy::StrictOriginWhenCrossOrigin
+pub surgeist_html::HtmlReferrerPolicy::UnsafeUrl
+impl surgeist_html::HtmlReferrerPolicy
+pub fn surgeist_html::HtmlReferrerPolicy::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlReferrerPolicy::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlScriptAttributeContext
+pub surgeist_html::HtmlScriptAttributeContext::DataBlock
+pub surgeist_html::HtmlScriptAttributeContext::ExternalClassic
+pub surgeist_html::HtmlScriptAttributeContext::ExternalModule
+pub surgeist_html::HtmlScriptAttributeContext::ImportMap
+pub surgeist_html::HtmlScriptAttributeContext::InlineClassic
+pub surgeist_html::HtmlScriptAttributeContext::InlineModule
+pub surgeist_html::HtmlScriptAttributeContext::SpeculationRules
 pub enum surgeist_html::HtmlScriptingStatus
 pub surgeist_html::HtmlScriptingStatus::Disabled
 pub surgeist_html::HtmlScriptingStatus::Enabled
@@ -915,6 +959,7 @@ pub fn surgeist_html::HtmlAttributeReport<T>::attribute(&self) -> surgeist_html:
 pub fn surgeist_html::HtmlAttributeReport<T>::author(&self) -> surgeist_html::HtmlAttributeAuthorState
 pub fn surgeist_html::HtmlAttributeReport<T>::context_source_clause(&self) -> core::option::Option<&'static str>
 pub fn surgeist_html::HtmlAttributeReport<T>::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlAttributeReport<T>::hyperlink_context(&self) -> core::option::Option<surgeist_html::HtmlHyperlinkAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::input_code_units(&self) -> usize
 pub fn surgeist_html::HtmlAttributeReport<T>::intrinsic(&self) -> core::option::Option<&T>
 pub fn surgeist_html::HtmlAttributeReport<T>::inventory_rows(&self) -> &'static [u16]
@@ -922,7 +967,9 @@ pub fn surgeist_html::HtmlAttributeReport<T>::observation(&self) -> surgeist_htm
 pub fn surgeist_html::HtmlAttributeReport<T>::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
 pub fn surgeist_html::HtmlAttributeReport<T>::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
 pub fn surgeist_html::HtmlAttributeReport<T>::recognition(&self) -> surgeist_html::HtmlAttributeRecognition
+pub fn surgeist_html::HtmlAttributeReport<T>::script_context(&self) -> core::option::Option<surgeist_html::HtmlScriptAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlAttributeReport<T>::vocabulary_source_clause(&self) -> core::option::Option<&'static str>
 pub struct surgeist_html::HtmlAuthoredProcessingInstruction
 impl surgeist_html::HtmlAuthoredProcessingInstruction
 pub fn surgeist_html::HtmlAuthoredProcessingInstruction::data(&self) -> &surgeist_html::DocumentString
@@ -1495,11 +1542,19 @@ pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::opti
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::contenteditable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlContentEditableState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::crossorigin(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCrossOriginState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::crossorigin_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCrossOriginState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::decoding(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDecoding>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::draggable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDraggableState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::enterkeyhint(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlEnterKeyHint>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::fetchpriority(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFetchPriority>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::fetchpriority_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFetchPriority>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::form_autocomplete(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormAutocomplete>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
@@ -1520,6 +1575,12 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::popover(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPopoverState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::preload(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPreloadState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_hyperlink(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlHyperlinkAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::shadowrootmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlShadowRootMode>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

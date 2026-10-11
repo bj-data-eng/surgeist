@@ -12,12 +12,687 @@ use surgeist_html::{
     HtmlTranslateState, HtmlValueInterpreter, HtmlWritingSuggestions, HtmlWritingSuggestionsState,
     KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
 };
+use surgeist_html::{
+    HtmlCrossOrigin, HtmlCrossOriginState, HtmlFetchPriority, HtmlScriptAttributeContext,
+};
+use surgeist_html::{HtmlHyperlinkAttributeContext, HtmlReferrerPolicy};
 
 fn element(local: &str) -> QualifiedName {
     QualifiedName::new(Namespace::html(), None, local)
 }
 fn attr(local: &str, value: &str) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, local), value)
+}
+
+#[test]
+fn referrerpolicy_recognizes_the_pinned_vocabulary_including_conforming_empty() {
+    // Actual index.src.html cc435b05ca4a L216–236, not HTTP header parsing.
+    let cases = [
+        ("", HtmlReferrerPolicy::Empty),
+        ("no-referrer", HtmlReferrerPolicy::NoReferrer),
+        (
+            "no-referrer-when-downgrade",
+            HtmlReferrerPolicy::NoReferrerWhenDowngrade,
+        ),
+        ("same-origin", HtmlReferrerPolicy::SameOrigin),
+        ("origin", HtmlReferrerPolicy::Origin),
+        ("strict-origin", HtmlReferrerPolicy::StrictOrigin),
+        (
+            "origin-when-cross-origin",
+            HtmlReferrerPolicy::OriginWhenCrossOrigin,
+        ),
+        (
+            "strict-origin-when-cross-origin",
+            HtmlReferrerPolicy::StrictOriginWhenCrossOrigin,
+        ),
+        ("unsafe-url", HtmlReferrerPolicy::UnsafeUrl),
+    ];
+    let interpreter = HtmlValueInterpreter::new(100);
+    for (canonical, state) in cases {
+        assert_eq!(state.canonical_keyword(), canonical);
+        assert_eq!(state.into_attribute(), attr("referrerpolicy", canonical));
+        let mixed: String = canonical
+            .chars()
+            .enumerate()
+            .map(|(index, c)| {
+                if index % 2 == 0 {
+                    c.to_ascii_uppercase()
+                } else {
+                    c
+                }
+            })
+            .collect();
+        for literal in [canonical.to_owned(), mixed] {
+            let raw = attr("referrerpolicy", &literal);
+            let report = interpreter
+                .referrerpolicy(&element("img"), Some(&raw))
+                .unwrap();
+            assert_eq!(report.intrinsic(), Some(&state));
+            assert_eq!(report.author(), Author::Conforming);
+            assert_eq!(
+                report.recognition(),
+                Recognition::Keyword {
+                    matched: canonical,
+                    canonical
+                }
+            );
+            assert_eq!(
+                report.observation(),
+                if canonical.is_empty() {
+                    Observation::PresentEmpty
+                } else {
+                    Observation::PresentNonempty
+                }
+            );
+            assert_eq!(report.raw_attribute(), Some(&raw));
+        }
+    }
+}
+
+#[test]
+fn referrerpolicy_empty_default_stays_unresolved_and_raw_states_remain_distinct() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let context = element("iframe");
+    let missing = interpreter.referrerpolicy(&context, None).unwrap();
+    assert_eq!(missing.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
+    assert_eq!(missing.observation(), Observation::Missing);
+    assert_eq!(missing.recognition(), Recognition::Missing);
+    assert_eq!(missing.author(), Author::Missing);
+    let empty = attr("referrerpolicy", "");
+    let empty_report = interpreter.referrerpolicy(&context, Some(&empty)).unwrap();
+    assert_eq!(empty_report.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
+    assert_eq!(
+        empty_report.recognition(),
+        Recognition::Keyword {
+            matched: "",
+            canonical: ""
+        }
+    );
+    assert_eq!(empty_report.author(), Author::Conforming);
+    for literal in [
+        "unknown",
+        "default",
+        "never",
+        " origin",
+        "origin ",
+        "\tno-referrer",
+        "no-referrer\n",
+        "no-referrer, origin",
+        "origin, no-referrer",
+        "no-referrer unsafe-url",
+        "\u{ff2f}rigin",
+    ] {
+        let raw = attr("referrerpolicy", literal);
+        let report = interpreter.referrerpolicy(&context, Some(&raw)).unwrap();
+        assert_eq!(report.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
+        assert_eq!(report.observation(), Observation::PresentNonempty);
+        assert_eq!(report.recognition(), Recognition::Unrecognized);
+        assert_eq!(
+            report.author(),
+            Author::Nonconforming(Conformance::UnrecognizedKeyword)
+        );
+        assert_eq!(report.raw_attribute(), Some(&raw));
+    }
+}
+
+#[test]
+fn referrerpolicy_contexts_use_explicit_hyperlink_and_script_facts() {
+    use HtmlHyperlinkAttributeContext::{WithHref, WithoutHref};
+    use HtmlScriptAttributeContext::{
+        DataBlock, ExternalClassic, ExternalModule, ImportMap, InlineClassic, InlineModule,
+        SpeculationRules,
+    };
+    let interpreter = HtmlValueInterpreter::new(100);
+    let raw = attr("referrerpolicy", "ORIGIN");
+    for local in ["iframe", "img", "link"] {
+        let report = interpreter
+            .referrerpolicy(&element(local), Some(&raw))
+            .unwrap();
+        assert_eq!(report.applicability(), Applicability::Applicable);
+        assert_eq!(report.intrinsic(), Some(&HtmlReferrerPolicy::Origin));
+        assert_eq!(report.inventory_rows(), &[126]);
+        assert!(
+            report
+                .source_clause()
+                .ends_with("#referrer-policy-attributes")
+        );
+        assert_eq!(
+            report.vocabulary_source_clause(),
+            Some(
+                "https://github.com/w3c/webappsec-referrer-policy/blob/cc435b05ca4a94f7f1a139be5074b168d20014db/index.src.html#L216"
+            )
+        );
+    }
+    for (local, source) in [("a", "#the-a-element"), ("area", "#the-area-element")] {
+        let context = element(local);
+        let unspecified = interpreter.referrerpolicy(&context, Some(&raw)).unwrap();
+        assert_eq!(
+            unspecified.applicability(),
+            Applicability::HyperlinkContextRequired
+        );
+        assert_eq!(unspecified.intrinsic(), None);
+        assert_eq!(unspecified.author(), Author::Unapplied);
+        assert_eq!(unspecified.hyperlink_context(), None);
+        for facts in [WithHref, WithoutHref] {
+            let report = interpreter
+                .referrerpolicy_for_hyperlink(&context, Some(&raw), facts)
+                .unwrap();
+            assert_eq!(report.hyperlink_context(), Some(facts));
+            assert_eq!(report.script_context(), None);
+            assert_eq!(report.element(), &context);
+            assert_eq!(report.raw_attribute(), Some(&raw));
+            assert!(report.context_source_clause().unwrap().ends_with(source));
+            assert_eq!(
+                report.applicability(),
+                if facts == WithHref {
+                    Applicability::Applicable
+                } else {
+                    Applicability::InapplicableHyperlinkContext
+                }
+            );
+            assert_eq!(
+                report.intrinsic(),
+                if facts == WithHref {
+                    Some(&HtmlReferrerPolicy::Origin)
+                } else {
+                    None
+                }
+            );
+            assert_eq!(
+                report.recognition(),
+                if facts == WithHref {
+                    Recognition::Keyword {
+                        matched: "origin",
+                        canonical: "origin",
+                    }
+                } else {
+                    Recognition::Unapplied
+                }
+            );
+            assert_eq!(
+                report.author(),
+                if facts == WithHref {
+                    Author::Conforming
+                } else {
+                    Author::Unapplied
+                }
+            );
+        }
+    }
+    assert_eq!(
+        interpreter
+            .referrerpolicy(&element("script"), Some(&raw))
+            .unwrap()
+            .applicability(),
+        Applicability::ScriptContextRequired
+    );
+    for (facts, allowed) in [
+        (ExternalClassic, true),
+        (InlineClassic, true),
+        (ExternalModule, true),
+        (InlineModule, true),
+        (ImportMap, false),
+        (SpeculationRules, false),
+        (DataBlock, false),
+    ] {
+        let report = interpreter
+            .referrerpolicy_for_script(&element("script"), Some(&raw), facts)
+            .unwrap();
+        assert_eq!(report.script_context(), Some(facts));
+        assert_eq!(report.hyperlink_context(), None);
+        assert_eq!(
+            report.applicability(),
+            if allowed {
+                Applicability::Applicable
+            } else {
+                Applicability::InapplicableScriptKind
+            }
+        );
+        assert_eq!(
+            report.intrinsic(),
+            if allowed {
+                Some(&HtmlReferrerPolicy::Origin)
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            report.author(),
+            if allowed {
+                Author::Conforming
+            } else {
+                Author::Unapplied
+            }
+        );
+        assert!(
+            report
+                .context_source_clause()
+                .unwrap()
+                .ends_with("#the-script-element")
+        );
+    }
+    assert_eq!(
+        interpreter
+            .referrerpolicy_for_hyperlink(&element("img"), Some(&raw), WithHref)
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+    assert_eq!(
+        interpreter
+            .referrerpolicy_for_hyperlink(&element("script"), Some(&raw), WithHref)
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+    assert_eq!(
+        interpreter
+            .referrerpolicy_for_script(&element("a"), Some(&raw), ExternalClassic)
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+    assert_eq!(
+        interpreter
+            .crossorigin(&element("img"), None)
+            .unwrap()
+            .vocabulary_source_clause(),
+        None
+    );
+}
+
+#[test]
+fn referrerpolicy_uses_exact_expanded_names_and_admits_unapplied_raw_units_first() {
+    use HtmlHyperlinkAttributeContext::WithoutHref;
+    let interpreter = HtmlValueInterpreter::new(100);
+    let prefixed = QualifiedName::new(Namespace::html(), Some("h".into()), "a");
+    let raw = Attribute::new(
+        QualifiedName::new(Namespace::none(), Some("p".into()), "referrerpolicy"),
+        DocumentString::from_utf16(vec![0xd800, 0x0041]),
+    );
+    let report = interpreter
+        .referrerpolicy_for_hyperlink(
+            &prefixed,
+            Some(&raw),
+            HtmlHyperlinkAttributeContext::WithHref,
+        )
+        .unwrap();
+    assert_eq!(report.element(), &prefixed);
+    assert_eq!(report.raw_attribute(), Some(&raw));
+    assert_eq!(report.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
+    assert_eq!(report.recognition(), Recognition::Unrecognized);
+    assert_eq!(report.input_code_units(), 2);
+    let error = HtmlValueInterpreter::new(1)
+        .referrerpolicy_for_hyperlink(&prefixed, Some(&raw), WithoutHref)
+        .unwrap_err();
+    assert_eq!(error.capacity(), 1);
+    assert_eq!(error.required(), 2);
+    for local in ["A", "AREA", "IMG", "audio", "video", "div", "x-link"] {
+        assert_eq!(
+            interpreter
+                .referrerpolicy(&element(local), Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::DifferentElement
+        );
+    }
+    let foreign = QualifiedName::new(Namespace::svg(), None, "a");
+    let report = interpreter
+        .referrerpolicy_for_hyperlink(&foreign, Some(&raw), WithoutHref)
+        .unwrap();
+    assert_eq!(
+        report.applicability(),
+        Applicability::ForeignElementNamespace
+    );
+    assert_eq!(report.hyperlink_context(), Some(WithoutHref));
+    assert_eq!(report.raw_attribute(), Some(&raw));
+    for name in [
+        QualifiedName::new(Namespace::none(), None, "REFERRERPOLICY"),
+        QualifiedName::new(Namespace::html(), None, "referrerpolicy"),
+    ] {
+        let wrong = Attribute::new(name, "origin");
+        let report = interpreter
+            .referrerpolicy(&element("img"), Some(&wrong))
+            .unwrap();
+        assert_eq!(report.applicability(), Applicability::DifferentAttribute);
+        assert_eq!(report.author(), Author::Unapplied);
+        assert_eq!(report.intrinsic(), None);
+    }
+}
+
+#[test]
+fn cors_intrinsic_defaults_do_not_claim_a_request_mode() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    for local in ["audio", "video", "img", "link"] {
+        let context = element(local);
+        let missing = interpreter.crossorigin(&context, None).unwrap();
+        assert_eq!(missing.intrinsic(), Some(&HtmlCrossOriginState::NoCors));
+        assert_eq!(missing.author(), Author::Missing);
+        assert_eq!(missing.recognition(), Recognition::Missing);
+        for (literal, state, author, recognition) in [
+            (
+                "",
+                HtmlCrossOrigin::Anonymous,
+                Author::Conforming,
+                Recognition::Empty,
+            ),
+            (
+                "ANONYMOUS",
+                HtmlCrossOrigin::Anonymous,
+                Author::Conforming,
+                Recognition::Keyword {
+                    matched: "anonymous",
+                    canonical: "anonymous",
+                },
+            ),
+            (
+                "USE-CREDENTIALS",
+                HtmlCrossOrigin::UseCredentials,
+                Author::Conforming,
+                Recognition::Keyword {
+                    matched: "use-credentials",
+                    canonical: "use-credentials",
+                },
+            ),
+            (
+                "false",
+                HtmlCrossOrigin::Anonymous,
+                Author::Nonconforming(Conformance::UnrecognizedKeyword),
+                Recognition::Unrecognized,
+            ),
+            (
+                " anonymous ",
+                HtmlCrossOrigin::Anonymous,
+                Author::Nonconforming(Conformance::UnrecognizedKeyword),
+                Recognition::Unrecognized,
+            ),
+        ] {
+            let raw = attr("crossorigin", literal);
+            let report = interpreter.crossorigin(&context, Some(&raw)).unwrap();
+            assert_eq!(
+                report.intrinsic(),
+                Some(&HtmlCrossOriginState::Keyword(state))
+            );
+            assert_eq!(report.author(), author);
+            assert_eq!(report.recognition(), recognition);
+            assert_eq!(report.raw_attribute(), Some(&raw));
+            assert_eq!(
+                report.observation(),
+                if literal.is_empty() {
+                    Observation::PresentEmpty
+                } else {
+                    Observation::PresentNonempty
+                }
+            );
+            assert_eq!(report.inventory_rows(), &[34]);
+            assert!(
+                report
+                    .source_clause()
+                    .ends_with("#cors-settings-attributes")
+            );
+        }
+    }
+    assert_eq!(
+        HtmlCrossOrigin::Anonymous.into_attribute(),
+        attr("crossorigin", "anonymous")
+    );
+    assert_eq!(
+        HtmlCrossOrigin::UseCredentials.into_attribute(),
+        attr("crossorigin", "use-credentials")
+    );
+}
+
+#[test]
+fn fetchpriority_is_a_literal_intrinsic_hint_with_no_empty_keyword() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    for local in ["img", "link"] {
+        let context = element(local);
+        assert_eq!(
+            interpreter
+                .fetchpriority(&context, None)
+                .unwrap()
+                .intrinsic(),
+            Some(&HtmlFetchPriority::Auto)
+        );
+        for (literal, expected) in [
+            ("HIGH", HtmlFetchPriority::High),
+            ("LOW", HtmlFetchPriority::Low),
+            ("AUTO", HtmlFetchPriority::Auto),
+        ] {
+            let raw = attr("fetchpriority", literal);
+            let report = interpreter.fetchpriority(&context, Some(&raw)).unwrap();
+            assert_eq!(report.intrinsic(), Some(&expected));
+            assert_eq!(report.author(), Author::Conforming);
+            assert_eq!(report.raw_attribute(), Some(&raw));
+            assert_eq!(
+                expected.into_attribute(),
+                attr("fetchpriority", &literal.to_ascii_lowercase())
+            );
+            assert_eq!(report.inventory_rows(), &[51]);
+            assert!(
+                report
+                    .source_clause()
+                    .ends_with("#fetch-priority-attributes")
+            );
+        }
+        for literal in [
+            "",
+            "unknown",
+            " high",
+            "high ",
+            "\u{ff28}\u{ff29}\u{ff27}\u{ff28}",
+        ] {
+            let raw = attr("fetchpriority", literal);
+            let report = interpreter.fetchpriority(&context, Some(&raw)).unwrap();
+            assert_eq!(report.intrinsic(), Some(&HtmlFetchPriority::Auto));
+            assert_eq!(
+                report.author(),
+                Author::Nonconforming(Conformance::UnrecognizedKeyword)
+            );
+            assert_eq!(
+                report.recognition(),
+                if literal.is_empty() {
+                    Recognition::Empty
+                } else {
+                    Recognition::Unrecognized
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn script_fetch_attributes_require_supplied_source_table_facts() {
+    use HtmlScriptAttributeContext::{
+        DataBlock, ExternalClassic, ExternalModule, ImportMap, InlineClassic, InlineModule,
+        SpeculationRules,
+    };
+    let interpreter = HtmlValueInterpreter::new(100);
+    let script = element("script");
+    let cors = attr("crossorigin", "USE-CREDENTIALS");
+    let priority = attr("fetchpriority", "HIGH");
+    assert_eq!(
+        interpreter
+            .crossorigin(&script, Some(&cors))
+            .unwrap()
+            .applicability(),
+        Applicability::ScriptContextRequired
+    );
+    assert_eq!(
+        interpreter
+            .fetchpriority(&script, Some(&priority))
+            .unwrap()
+            .applicability(),
+        Applicability::ScriptContextRequired
+    );
+    // The independent expected booleans are the actual script attribute table.
+    for (facts, cors_allowed, priority_allowed) in [
+        (ExternalClassic, true, true),
+        (InlineClassic, true, false),
+        (ExternalModule, true, true),
+        (InlineModule, true, false),
+        (ImportMap, false, false),
+        (SpeculationRules, false, false),
+        (DataBlock, false, false),
+    ] {
+        let report = interpreter
+            .crossorigin_for_script(&script, Some(&cors), facts)
+            .unwrap();
+        assert_eq!(report.script_context(), Some(facts));
+        assert_eq!(report.raw_attribute(), Some(&cors));
+        assert!(
+            report
+                .context_source_clause()
+                .unwrap()
+                .ends_with("#the-script-element")
+        );
+        assert_eq!(
+            report.applicability(),
+            if cors_allowed {
+                Applicability::Applicable
+            } else {
+                Applicability::InapplicableScriptKind
+            }
+        );
+        assert_eq!(
+            report.intrinsic(),
+            if cors_allowed {
+                Some(&HtmlCrossOriginState::Keyword(
+                    HtmlCrossOrigin::UseCredentials,
+                ))
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            report.author(),
+            if cors_allowed {
+                Author::Conforming
+            } else {
+                Author::Unapplied
+            }
+        );
+        let report = interpreter
+            .fetchpriority_for_script(&script, Some(&priority), facts)
+            .unwrap();
+        assert_eq!(report.script_context(), Some(facts));
+        assert_eq!(
+            report.applicability(),
+            if priority_allowed {
+                Applicability::Applicable
+            } else {
+                Applicability::InapplicableScriptKind
+            }
+        );
+        assert_eq!(
+            report.intrinsic(),
+            if priority_allowed {
+                Some(&HtmlFetchPriority::High)
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            report.recognition(),
+            if priority_allowed {
+                Recognition::Keyword {
+                    matched: "high",
+                    canonical: "high",
+                }
+            } else {
+                Recognition::Unapplied
+            }
+        );
+    }
+    let missing = interpreter
+        .crossorigin_for_script(&script, None, ExternalModule)
+        .unwrap();
+    assert_eq!(missing.intrinsic(), Some(&HtmlCrossOriginState::NoCors));
+    let inline = interpreter
+        .fetchpriority_for_script(&script, Some(&priority), InlineModule)
+        .unwrap();
+    assert_eq!(inline.observation(), Observation::PresentNonempty);
+    assert_eq!(inline.author(), Author::Unapplied);
+    assert_eq!(
+        interpreter
+            .crossorigin_for_script(&element("img"), Some(&cors), ExternalClassic)
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+}
+
+#[test]
+fn fetch_attribute_names_raw_units_and_admission_remain_exact() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let prefixed = QualifiedName::new(Namespace::html(), Some("h".into()), "img");
+    let raw = Attribute::new(
+        QualifiedName::new(Namespace::none(), Some("p".into()), "crossorigin"),
+        DocumentString::from_utf16(vec![0xd800, 0x0041]),
+    );
+    let report = interpreter.crossorigin(&prefixed, Some(&raw)).unwrap();
+    assert_eq!(report.element(), &prefixed);
+    assert_eq!(report.raw_attribute(), Some(&raw));
+    assert_eq!(report.input_code_units(), 2);
+    assert_eq!(report.recognition(), Recognition::Unrecognized);
+    assert_eq!(
+        report.intrinsic(),
+        Some(&HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous))
+    );
+    let error = HtmlValueInterpreter::new(1)
+        .crossorigin_for_script(
+            &element("div"),
+            Some(&raw),
+            HtmlScriptAttributeContext::DataBlock,
+        )
+        .unwrap_err();
+    assert_eq!(error.capacity(), 1);
+    assert_eq!(error.required(), 2);
+    for local in ["IMG", "div", "x-img", "iframe"] {
+        assert_eq!(
+            interpreter
+                .crossorigin(&element(local), Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::DifferentElement
+        );
+    }
+    for local in ["audio", "video", "iframe", "div"] {
+        assert_eq!(
+            interpreter
+                .fetchpriority(&element(local), None)
+                .unwrap()
+                .applicability(),
+            Applicability::DifferentElement
+        );
+    }
+    let foreign = QualifiedName::new(Namespace::svg(), None, "img");
+    assert_eq!(
+        interpreter
+            .crossorigin(&foreign, Some(&raw))
+            .unwrap()
+            .applicability(),
+        Applicability::ForeignElementNamespace
+    );
+    let wrong = Attribute::new(
+        QualifiedName::new(Namespace::html(), None, "crossorigin"),
+        "anonymous",
+    );
+    assert_eq!(
+        interpreter
+            .crossorigin(&prefixed, Some(&wrong))
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentAttribute
+    );
+    let wrong = attr("FETCHPRIORITY", "high");
+    assert_eq!(
+        interpreter
+            .fetchpriority(&prefixed, Some(&wrong))
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentAttribute
+    );
 }
 
 #[test]

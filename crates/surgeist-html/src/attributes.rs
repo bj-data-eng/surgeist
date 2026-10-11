@@ -5,6 +5,7 @@
 //! editing, directionality, dragging, focus, microdata, or shadow-root creation.
 //! The defining HTML clauses, rather than non-normative index summaries, own
 //! these rules. WHATWG source attribution is in `licenses/whatwg/NOTICE.md`.
+//! Referrer-policy vocabulary is qualified separately in its report metadata.
 
 use crate::{
     Attribute, DocumentString, HtmlShadowRootMode, HtmlSlotAssignment, HtmlValueAdmissionError,
@@ -26,6 +27,43 @@ pub enum HtmlAttributeApplicability {
     ForeignElementNamespace,
     DifferentElement,
     DifferentAttribute,
+    /// Script kind and external/inline placement were not supplied.
+    ScriptContextRequired,
+    /// The supplied script kind does not admit the selected content attribute.
+    InapplicableScriptKind,
+    /// Whether an a/area element has href was not supplied.
+    HyperlinkContextRequired,
+    /// The supplied a/area context has no href and forbids this attribute.
+    InapplicableHyperlinkContext,
+}
+
+/// Explicit script facts from HTML's content-attribute applicability table.
+///
+/// These are supplied facts, not a script type or MIME parser. No script is
+/// fetched or executed, and inline imports are not resolved by this model.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlScriptAttributeContext {
+    ExternalClassic,
+    InlineClassic,
+    ExternalModule,
+    InlineModule,
+    ImportMap,
+    SpeculationRules,
+    DataBlock,
+}
+
+/// Explicit a/area href presence, without parsing or resolving the URL.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlHyperlinkAttributeContext {
+    WithHref,
+    WithoutHref,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SuppliedContext {
+    None,
+    Script(HtmlScriptAttributeContext),
+    Hyperlink(HtmlHyperlinkAttributeContext),
 }
 
 /// Recognition of literal value syntax; a fallback never changes this result.
@@ -78,6 +116,7 @@ pub struct HtmlAttributeReport<T> {
     recognition: HtmlAttributeRecognition,
     author: HtmlAttributeAuthorState,
     intrinsic: Option<T>,
+    supplied_context: SuppliedContext,
 }
 
 impl<T> HtmlAttributeReport<T> {
@@ -113,6 +152,20 @@ impl<T> HtmlAttributeReport<T> {
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.rule.attribute
     }
+    /// Returns the exact supplied script facts, even for an unapplied rule.
+    pub fn script_context(&self) -> Option<HtmlScriptAttributeContext> {
+        match self.supplied_context {
+            SuppliedContext::Script(context) => Some(context),
+            _ => None,
+        }
+    }
+    /// Returns the exact supplied hyperlink facts, even for an unapplied rule.
+    pub fn hyperlink_context(&self) -> Option<HtmlHyperlinkAttributeContext> {
+        match self.supplied_context {
+            SuppliedContext::Hyperlink(context) => Some(context),
+            _ => None,
+        }
+    }
     /// Returns existing original index row IDs covered by this defining rule.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.rule.rows
@@ -121,8 +174,31 @@ impl<T> HtmlAttributeReport<T> {
     pub fn source_clause(&self) -> &'static str {
         self.rule.source
     }
-    /// Returns the bdo-specific defining clause when that author rule applies.
+    /// Returns a separately pinned external keyword definition, when adopted.
+    /// This does not adopt external network or effective-policy algorithms.
+    pub fn vocabulary_source_clause(&self) -> Option<&'static str> {
+        self.rule.vocabulary_source
+    }
+    /// Returns the defining clause for bdo, script or hyperlink applicability.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if matches!(
+            self.rule.context,
+            Context::Fetching {
+                hyperlink: true,
+                ..
+            }
+        ) {
+            match KnownHtmlElement::from_name(&self.element) {
+                Some(KnownHtmlElement::A) => return Some(HYPERLINK_A_SOURCE),
+                Some(KnownHtmlElement::Area) => return Some(HYPERLINK_AREA_SOURCE),
+                _ => {}
+            }
+        }
+        if matches!(self.rule.context, Context::Fetching { .. })
+            && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Script)
+        {
+            return Some(SCRIPT_SOURCE);
+        }
         (self.applicability == HtmlAttributeApplicability::Applicable
             && self.rule.context == Context::Direction
             && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Bdo))
@@ -140,6 +216,32 @@ enum Context {
     Direction,
     Template,
     Elements(&'static [KnownHtmlElement]),
+    Fetching {
+        elements: &'static [KnownHtmlElement],
+        script: ScriptApplicability,
+        hyperlink: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ScriptApplicability {
+    ClassicOrModule,
+    ExternalClassicOrModule,
+}
+
+impl ScriptApplicability {
+    fn allows(self, context: HtmlScriptAttributeContext) -> bool {
+        use HtmlScriptAttributeContext::{
+            ExternalClassic, ExternalModule, InlineClassic, InlineModule,
+        };
+        match self {
+            Self::ClassicOrModule => matches!(
+                context,
+                ExternalClassic | ExternalModule | InlineClassic | InlineModule
+            ),
+            Self::ExternalClassicOrModule => matches!(context, ExternalClassic | ExternalModule),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -148,6 +250,7 @@ struct RuleMetadata {
     rows: &'static [u16],
     source: &'static str,
     context: Context,
+    vocabulary_source: Option<&'static str>,
 }
 
 struct Keyword<T> {
@@ -176,6 +279,15 @@ macro_rules! source {
 }
 
 const BDO_SOURCE: &str = source!("the-bdo-element");
+const SCRIPT_SOURCE: &str = source!("the-script-element");
+const HYPERLINK_A_SOURCE: &str = source!("the-a-element");
+const HYPERLINK_AREA_SOURCE: &str = source!("the-area-element");
+// Vocabulary-only adoption; raw index.src.html SHA-256:
+// a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1.
+const REFERRER_POLICY_VOCABULARY: &str = concat!(
+    "https://github.com/w3c/webappsec-referrer-policy/blob/",
+    "cc435b05ca4a94f7f1a139be5074b168d20014db/index.src.html#L216"
+);
 
 macro_rules! keyword_type {
     ($name:ident, $attribute:ident, [$($variant:ident => $keyword:literal),+ $(,)?]) => {
@@ -257,6 +369,15 @@ keyword_type!(HtmlInputType, Type, [
 ]);
 keyword_type!(HtmlButtonType, Type, [Submit => "submit", Reset => "reset", Button => "button"]);
 default_state!(HtmlButtonTypeState, HtmlButtonType, Auto);
+keyword_type!(HtmlCrossOrigin, Crossorigin, [Anonymous => "anonymous", UseCredentials => "use-credentials"]);
+default_state!(HtmlCrossOriginState, HtmlCrossOrigin, NoCors);
+keyword_type!(HtmlFetchPriority, Fetchpriority, [High => "high", Low => "low", Auto => "auto"]);
+keyword_type!(HtmlReferrerPolicy, Referrerpolicy, [
+    Empty => "", NoReferrer => "no-referrer", NoReferrerWhenDowngrade => "no-referrer-when-downgrade",
+    SameOrigin => "same-origin", Origin => "origin", StrictOrigin => "strict-origin",
+    OriginWhenCrossOrigin => "origin-when-cross-origin",
+    StrictOriginWhenCrossOrigin => "strict-origin-when-cross-origin", UnsafeUrl => "unsafe-url"
+]);
 
 impl HtmlShadowRootMode {
     /// Constructs a conforming template shadowrootmode keyword attribute.
@@ -288,14 +409,18 @@ impl HtmlSlotAssignment {
 // metadata and execution; index rows are provenance references, never grammars.
 macro_rules! enum_rule {
     ($name:ident, $type:ty, $attribute:ident, $context:expr, [$($row:literal),+], $source:literal,
-     $missing:expr, $invalid:expr, $empty:expr, [$($spelling:literal => ($canonical:literal, $state:expr)),+ $(,)?]) => {
+     $missing:expr, $invalid:expr, $empty:expr, [$($spelling:literal => ($canonical:literal, $state:expr)),+ $(,)?]
+     $(, vocabulary: $vocabulary:expr)?) => {
         const $name: EnumRule<$type> = EnumRule {
             metadata: RuleMetadata { attribute: KnownHtmlAttribute::$attribute, rows: &[$($row),+],
-                source: source!($source), context: $context },
+                source: source!($source), context: $context,
+                vocabulary_source: enum_rule!(@vocabulary $($vocabulary)?) },
             keywords: &[$(Keyword { spelling: $spelling, canonical: $canonical, state: $state }),+],
             missing: $missing, invalid: $invalid, empty: $empty, exact_keywords: false,
         };
     };
+    (@vocabulary) => { None };
+    (@vocabulary $source:expr) => { Some($source) };
 }
 
 enum_rule!(DIR, HtmlDirState, Dir, Context::Direction, [41, 42], "attr-dir",
@@ -413,6 +538,31 @@ enum_rule!(BUTTON_TYPE, HtmlButtonTypeState, Type, Context::Elements(&[KnownHtml
     ["submit" => ("submit", HtmlButtonTypeState::Keyword(HtmlButtonType::Submit)),
      "reset" => ("reset", HtmlButtonTypeState::Keyword(HtmlButtonType::Reset)),
      "button" => ("button", HtmlButtonTypeState::Keyword(HtmlButtonType::Button))]);
+enum_rule!(CROSSORIGIN, HtmlCrossOriginState, Crossorigin,
+    Context::Fetching { elements: &[KnownHtmlElement::Audio, KnownHtmlElement::Video, KnownHtmlElement::Img, KnownHtmlElement::Link, KnownHtmlElement::Script], script: ScriptApplicability::ClassicOrModule, hyperlink: false },
+    [34], "cors-settings-attributes",
+    Some(HtmlCrossOriginState::NoCors), Some(HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)), Some(HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)),
+    ["anonymous" => ("anonymous", HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)),
+     "use-credentials" => ("use-credentials", HtmlCrossOriginState::Keyword(HtmlCrossOrigin::UseCredentials))]);
+enum_rule!(FETCHPRIORITY, HtmlFetchPriority, Fetchpriority,
+    Context::Fetching { elements: &[KnownHtmlElement::Img, KnownHtmlElement::Link, KnownHtmlElement::Script], script: ScriptApplicability::ExternalClassicOrModule, hyperlink: false },
+    [51], "fetch-priority-attributes",
+    Some(HtmlFetchPriority::Auto), Some(HtmlFetchPriority::Auto), None,
+    ["high" => ("high", HtmlFetchPriority::High), "low" => ("low", HtmlFetchPriority::Low), "auto" => ("auto", HtmlFetchPriority::Auto)]);
+enum_rule!(REFERRERPOLICY, HtmlReferrerPolicy, Referrerpolicy,
+    Context::Fetching { elements: &[KnownHtmlElement::A, KnownHtmlElement::Area, KnownHtmlElement::Iframe, KnownHtmlElement::Img, KnownHtmlElement::Link, KnownHtmlElement::Script], script: ScriptApplicability::ClassicOrModule, hyperlink: true },
+    [126], "referrer-policy-attributes",
+    Some(HtmlReferrerPolicy::Empty), Some(HtmlReferrerPolicy::Empty), None,
+    ["" => ("", HtmlReferrerPolicy::Empty),
+     "no-referrer" => ("no-referrer", HtmlReferrerPolicy::NoReferrer),
+     "no-referrer-when-downgrade" => ("no-referrer-when-downgrade", HtmlReferrerPolicy::NoReferrerWhenDowngrade),
+     "same-origin" => ("same-origin", HtmlReferrerPolicy::SameOrigin),
+     "origin" => ("origin", HtmlReferrerPolicy::Origin),
+     "strict-origin" => ("strict-origin", HtmlReferrerPolicy::StrictOrigin),
+     "origin-when-cross-origin" => ("origin-when-cross-origin", HtmlReferrerPolicy::OriginWhenCrossOrigin),
+     "strict-origin-when-cross-origin" => ("strict-origin-when-cross-origin", HtmlReferrerPolicy::StrictOriginWhenCrossOrigin),
+     "unsafe-url" => ("unsafe-url", HtmlReferrerPolicy::UnsafeUrl)],
+    vocabulary: REFERRER_POLICY_VOCABULARY);
 
 // ol[type] is an exact character table, not an ASCII-insensitive enumeration.
 const OL_TYPE: EnumRule<HtmlOlType> = EnumRule {
@@ -421,6 +571,7 @@ const OL_TYPE: EnumRule<HtmlOlType> = EnumRule {
         rows: &[170],
         source: source!("attr-ol-type"),
         context: Context::Elements(&[KnownHtmlElement::Ol]),
+        vocabulary_source: None,
     },
     keywords: &[
         Keyword {
@@ -615,6 +766,7 @@ impl HtmlBooleanAttribute {
             rows,
             source,
             context,
+            vocabulary_source: None,
         }
     }
 
@@ -644,10 +796,25 @@ fn applies(
     let applicable = match rule.context {
         Context::Global | Context::Direction => true,
         Context::Template => known == Some(KnownHtmlElement::Template),
-        Context::Elements(elements) => known.is_some_and(|name| elements.contains(&name)),
+        Context::Elements(elements) | Context::Fetching { elements, .. } => {
+            known.is_some_and(|name| elements.contains(&name))
+        }
     };
     if !applicable {
         return HtmlAttributeApplicability::DifferentElement;
+    }
+    if matches!(rule.context, Context::Fetching { .. }) && known == Some(KnownHtmlElement::Script) {
+        return HtmlAttributeApplicability::ScriptContextRequired;
+    }
+    if matches!(
+        rule.context,
+        Context::Fetching {
+            hyperlink: true,
+            ..
+        }
+    ) && matches!(known, Some(KnownHtmlElement::A | KnownHtmlElement::Area))
+    {
+        return HtmlAttributeApplicability::HyperlinkContextRequired;
     }
     HtmlAttributeApplicability::Applicable
 }
@@ -671,6 +838,7 @@ fn report<T>(
         recognition: HtmlAttributeRecognition::Unapplied,
         author: HtmlAttributeAuthorState::Unapplied,
         intrinsic: None,
+        supplied_context: SuppliedContext::None,
     }
 }
 
@@ -692,8 +860,57 @@ impl HtmlValueInterpreter {
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
+        self.enumerated_with_context(rule, element, raw, SuppliedContext::None)
+    }
+
+    fn enumerated_with_context<T: Copy>(
+        &self,
+        rule: &EnumRule<T>,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        supplied_context: SuppliedContext,
+    ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(Attribute::value))?;
         let mut result = report(rule.metadata, element, raw);
+        result.supplied_context = supplied_context;
+        match supplied_context {
+            SuppliedContext::None => {}
+            SuppliedContext::Script(context) => {
+                if result.applicability == HtmlAttributeApplicability::ScriptContextRequired {
+                    if let Context::Fetching { script, .. } = rule.metadata.context {
+                        result.applicability = if script.allows(context) {
+                            HtmlAttributeApplicability::Applicable
+                        } else {
+                            HtmlAttributeApplicability::InapplicableScriptKind
+                        };
+                    }
+                } else if matches!(
+                    result.applicability,
+                    HtmlAttributeApplicability::Applicable
+                        | HtmlAttributeApplicability::HyperlinkContextRequired
+                ) {
+                    result.applicability = HtmlAttributeApplicability::DifferentElement;
+                }
+            }
+            SuppliedContext::Hyperlink(context) => {
+                if result.applicability == HtmlAttributeApplicability::HyperlinkContextRequired {
+                    result.applicability = match context {
+                        HtmlHyperlinkAttributeContext::WithHref => {
+                            HtmlAttributeApplicability::Applicable
+                        }
+                        HtmlHyperlinkAttributeContext::WithoutHref => {
+                            HtmlAttributeApplicability::InapplicableHyperlinkContext
+                        }
+                    };
+                } else if matches!(
+                    result.applicability,
+                    HtmlAttributeApplicability::Applicable
+                        | HtmlAttributeApplicability::ScriptContextRequired
+                ) {
+                    result.applicability = HtmlAttributeApplicability::DifferentElement;
+                }
+            }
+        }
         if result.applicability != HtmlAttributeApplicability::Applicable {
             return Ok(result);
         }
@@ -851,3 +1068,48 @@ interpret_method!(track_kind, TRACK_KIND, HtmlTrackKind);
 interpret_method!(ol_type, OL_TYPE, HtmlOlType);
 interpret_method!(input_type, INPUT_TYPE, HtmlInputType);
 interpret_method!(button_type, BUTTON_TYPE, HtmlButtonTypeState);
+interpret_method!(crossorigin, CROSSORIGIN, HtmlCrossOriginState);
+interpret_method!(fetchpriority, FETCHPRIORITY, HtmlFetchPriority);
+interpret_method!(referrerpolicy, REFERRERPOLICY, HtmlReferrerPolicy);
+
+macro_rules! script_interpret_method {
+    ($method:ident, $rule:ident, $type:ty) => {
+        impl HtmlValueInterpreter {
+            /// Interprets an intrinsic keyword attribute with explicitly supplied script facts.
+            pub fn $method(
+                &self,
+                element: &QualifiedName,
+                raw: Option<&Attribute>,
+                context: HtmlScriptAttributeContext,
+            ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
+                self.enumerated_with_context(&$rule, element, raw, SuppliedContext::Script(context))
+            }
+        }
+    };
+}
+
+script_interpret_method!(crossorigin_for_script, CROSSORIGIN, HtmlCrossOriginState);
+script_interpret_method!(fetchpriority_for_script, FETCHPRIORITY, HtmlFetchPriority);
+script_interpret_method!(
+    referrerpolicy_for_script,
+    REFERRERPOLICY,
+    HtmlReferrerPolicy
+);
+
+impl HtmlValueInterpreter {
+    /// Interprets referrerpolicy for a/area over explicitly supplied href presence.
+    /// The href value and effective request policy are not resolved.
+    pub fn referrerpolicy_for_hyperlink(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: HtmlHyperlinkAttributeContext,
+    ) -> Result<HtmlAttributeReport<HtmlReferrerPolicy>, HtmlValueAdmissionError> {
+        self.enumerated_with_context(
+            &REFERRERPOLICY,
+            element,
+            raw,
+            SuppliedContext::Hyperlink(context),
+        )
+    }
+}
