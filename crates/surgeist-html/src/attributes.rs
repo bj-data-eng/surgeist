@@ -168,6 +168,8 @@ enum SuppliedContext {
 pub enum HtmlAttributeRecognition {
     Missing,
     Empty,
+    /// The selected text rule recognizes an exact nonempty value.
+    NonemptyText,
     Keyword {
         matched: &'static str,
         canonical: &'static str,
@@ -186,6 +188,8 @@ pub enum HtmlAttributeConformanceError {
     BooleanSpelling,
     BdoDirectionRequired,
     BdoDirectionMustBeLtrOrRtl,
+    /// A specified details name must not be the empty string.
+    DetailsNameMustNotBeEmpty,
 }
 
 /// Intrinsic value author conformance is independent of state/applicability.
@@ -2011,6 +2015,9 @@ pub use progress::*;
 
 mod meter;
 pub use meter::*;
+
+mod details_name;
+pub use details_name::*;
 
 #[cfg(test)]
 mod stylesheet_context_tests {

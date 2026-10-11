@@ -91,6 +91,7 @@ pub enum surgeist_html::HtmlAttributeConformanceError
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionMustBeLtrOrRtl
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
+pub surgeist_html::HtmlAttributeConformanceError::DetailsNameMustNotBeEmpty
 pub surgeist_html::HtmlAttributeConformanceError::NonconformingKeyword
 pub surgeist_html::HtmlAttributeConformanceError::UnrecognizedKeyword
 pub enum surgeist_html::HtmlAttributeContextAuthorState
@@ -120,6 +121,7 @@ pub surgeist_html::HtmlAttributeRecognition::Keyword
 pub surgeist_html::HtmlAttributeRecognition::Keyword::canonical: &'static str
 pub surgeist_html::HtmlAttributeRecognition::Keyword::matched: &'static str
 pub surgeist_html::HtmlAttributeRecognition::Missing
+pub surgeist_html::HtmlAttributeRecognition::NonemptyText
 pub surgeist_html::HtmlAttributeRecognition::Unapplied
 pub surgeist_html::HtmlAttributeRecognition::Unrecognized
 pub enum surgeist_html::HtmlAuthoredArea
@@ -2565,6 +2567,11 @@ pub struct surgeist_html::HtmlDefaultButton
 impl surgeist_html::HtmlDefaultButton
 pub fn surgeist_html::HtmlDefaultButton::form_owner(&self) -> &surgeist_html::HtmlFormOwner
 pub fn surgeist_html::HtmlDefaultButton::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlDetailsName
+impl surgeist_html::HtmlDetailsName
+pub fn surgeist_html::HtmlDetailsName::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlDetailsName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAttributeConformanceError>
+pub fn surgeist_html::HtmlDetailsName::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlDetailsNameGroup
 impl surgeist_html::HtmlDetailsNameGroup
 pub fn surgeist_html::HtmlDetailsNameGroup::is_empty(&self) -> bool
@@ -3845,6 +3852,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::crossorigin_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCrossOriginState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::decoding(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDecoding>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::details_name(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDetailsName>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::draggable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDraggableState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

@@ -287,6 +287,14 @@ including numbers beyond binary64 range or precision. Emission moves those strin
 into ordered attributes. Both operations use ordinary allocation; raw interpretation
 uses per-value admission. Captured Meter below owns processing defaults and clamping.
 
+`details_name` checks the local specified-nonempty rule for `details[name]`.
+Absence remains missing; supplied empty content is retained and nonconforming.
+Every nonempty name preserves its exact UTF-16, including whitespace and case.
+`HtmlDetailsName` provides checked native construction and moves the accepted
+value into the canonical name attribute. Both operations use ordinary allocation;
+raw interpretation applies its per-value admission cap. This local check does
+not certify same-tree grouping, nesting or exclusivity conformance.
+
 `HtmlAuthoredArea` supplies exact circle, rectangle and polygon values or a
 symbolic whole-image area. Native rectangles require increasing x and y edges;
 polygons require at least three vertices. Circle radius may be zero. Canonical
