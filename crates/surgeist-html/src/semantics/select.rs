@@ -20,11 +20,13 @@ enum SelectWalkMode<'s> {
     All,
     Selected,
     FirstSelected,
+    FirstSelectedIdentity,
     Target(&'s HtmlCaptureSubjectId),
 }
 struct SelectWalkResult {
     options: HtmlSelectOptions,
     index: Option<usize>,
+    first_selected: Option<HtmlCaptureSubjectId>,
 }
 struct SelectFrame<'a> {
     children: HtmlCapturedChildIds<'a>,
@@ -102,6 +104,20 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
 
+    // The value getter consumes the same list/pruning/selectedness owner but
+    // needs the identity rather than materializing a complete option list.
+    pub(super) fn first_selected_option(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
+            return Ok(value);
+        }
+        Ok(self
+            .walk_select(subject, SelectWalkMode::FirstSelectedIdentity)?
+            .map(|result| result.first_selected))
+    }
+
     fn walk_select(
         &mut self,
         subject: &HtmlCaptureSubjectId,
@@ -131,6 +147,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 options: Vec::new(),
             },
             index: None,
+            first_selected: None,
         };
         // Established empty needs neither a frame allocation nor option state.
         if children.len() == 0 {
@@ -168,7 +185,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         false
                     }
-                    SelectWalkMode::Selected | SelectWalkMode::FirstSelected => {
+                    SelectWalkMode::Selected
+                    | SelectWalkMode::FirstSelected
+                    | SelectWalkMode::FirstSelectedIdentity => {
                         match self.control_flag(&id, HtmlControlFlag::Selectedness)? {
                             HtmlSemanticValue::Known(selected) => selected,
                             HtmlSemanticValue::Missing(missing) => {
@@ -187,6 +206,11 @@ impl<'a> HtmlSemanticSession<'a> {
                     if matches!(mode, SelectWalkMode::FirstSelected) {
                         self.charge(1)?;
                         result.index = Some(index);
+                        return Ok(HtmlSemanticValue::Known(result));
+                    }
+                    if matches!(mode, SelectWalkMode::FirstSelectedIdentity) {
+                        self.charge(1)?;
+                        result.first_selected = Some(id);
                         return Ok(HtmlSemanticValue::Known(result));
                     }
                     self.reserve_nested_output(&mut result.options.options, 1)?;

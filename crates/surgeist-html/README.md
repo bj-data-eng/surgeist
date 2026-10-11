@@ -327,6 +327,18 @@ Collection getters expose capture-qualified subject keys. A known empty selected
 and no selected index differ from unavailable state or order. These immutable
 results provide no live collection or selection/reset transition.
 
+Option text, label and value getters expose exact immutable strings and their
+selected source. Present label/value attributes, including empty values, are
+returned unchanged. Descendant fallback uses HTML-aware text: HTML/SVG script
+and HTML img subtrees are excluded, and only ASCII whitespace is stripped and
+collapsed across text nodes. BR adds no separator; other UTF-16 units remain
+exact. The label getter follows IDL readback, rather than the separate rendering
+label algorithm. Select value reuses the source-defined option list and returns
+the first currently selected option's value. Its result distinguishes a selected
+empty value from a known absence of selection. Consulted attributes, traversal,
+temporary scratch and actual output capacities use the semantic session's
+admission and atomic batch contract; missing influencing facts remain explicit.
+
 The control-labels query returns the complete associated label list in ordinary
 tree order. Hidden inputs produce known null; a complete applicable empty list
 differs from unavailable evidence. Exact first-ID and implicit-descendant rules

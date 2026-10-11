@@ -932,6 +932,10 @@ pub surgeist_html::HtmlOlType::UpperRoman
 impl surgeist_html::HtmlOlType
 pub fn surgeist_html::HtmlOlType::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlOlType::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlOptionReadbackOrigin
+pub surgeist_html::HtmlOptionReadbackOrigin::DescendantText
+pub surgeist_html::HtmlOptionReadbackOrigin::LabelAttribute
+pub surgeist_html::HtmlOptionReadbackOrigin::ValueAttribute
 pub enum surgeist_html::HtmlParseLimitsError
 pub surgeist_html::HtmlParseLimitsError::MissingResource(surgeist_html::HtmlParseResource)
 pub surgeist_html::HtmlParseLimitsError::Unrepresentable
@@ -1152,9 +1156,13 @@ pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemant
 pub surgeist_html::HtmlSemanticFact::Meter(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMeterState>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionIndex(surgeist_html::HtmlSemanticValue<usize>)
+pub surgeist_html::HtmlSemanticFact::OptionLabel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
+pub surgeist_html::HtmlSemanticFact::OptionText(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
+pub surgeist_html::HtmlSemanticFact::OptionValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
 pub surgeist_html::HtmlSemanticFact::Progress(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlProgressState>)
 pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectOptions>)
 pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
+pub surgeist_html::HtmlSemanticFact::SelectValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectValue>)
 pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectOptions>)
 pub surgeist_html::HtmlSemanticFact::Spellcheck(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormEnctype>)
@@ -1222,9 +1230,13 @@ pub surgeist_html::HtmlSemanticQuery::ListStartingValue
 pub surgeist_html::HtmlSemanticQuery::Meter
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
 pub surgeist_html::HtmlSemanticQuery::OptionIndex
+pub surgeist_html::HtmlSemanticQuery::OptionLabel
+pub surgeist_html::HtmlSemanticQuery::OptionText
+pub surgeist_html::HtmlSemanticQuery::OptionValue
 pub surgeist_html::HtmlSemanticQuery::Progress
 pub surgeist_html::HtmlSemanticQuery::SelectOptions
 pub surgeist_html::HtmlSemanticQuery::SelectSelectedIndex
+pub surgeist_html::HtmlSemanticQuery::SelectValue
 pub surgeist_html::HtmlSemanticQuery::SelectedOptions
 pub surgeist_html::HtmlSemanticQuery::Spellcheck
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormEnctype
@@ -2669,6 +2681,10 @@ pub fn surgeist_html::HtmlOptionControlState::dirtiness(&self) -> core::option::
 pub fn surgeist_html::HtmlOptionControlState::new(subject: surgeist_html::HtmlCaptureSubjectId, selectedness: core::option::Option<bool>, dirtiness: core::option::Option<bool>) -> Self
 pub fn surgeist_html::HtmlOptionControlState::selectedness(&self) -> core::option::Option<bool>
 pub fn surgeist_html::HtmlOptionControlState::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlOptionReadback
+impl surgeist_html::HtmlOptionReadback
+pub fn surgeist_html::HtmlOptionReadback::origin(&self) -> surgeist_html::HtmlOptionReadbackOrigin
+pub fn surgeist_html::HtmlOptionReadback::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlOrderedTokenSet
 impl surgeist_html::HtmlOrderedTokenSet
 pub fn surgeist_html::HtmlOrderedTokenSet::as_document_string(&self) -> surgeist_html::DocumentString
@@ -2829,6 +2845,10 @@ pub fn surgeist_html::HtmlSandboxValue::tokens(&self) -> &surgeist_html::HtmlUno
 pub struct surgeist_html::HtmlSelectOptions
 impl surgeist_html::HtmlSelectOptions
 pub fn surgeist_html::HtmlSelectOptions::options(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub struct surgeist_html::HtmlSelectValue
+impl surgeist_html::HtmlSelectValue
+pub fn surgeist_html::HtmlSelectValue::selected_option(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlSelectValue::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlSemanticCancellation(_)
 impl surgeist_html::HtmlSemanticCancellation
 pub fn surgeist_html::HtmlSemanticCancellation::cancel(&self)

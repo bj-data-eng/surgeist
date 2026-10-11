@@ -3,7 +3,8 @@
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets and control labels, current control flags, global inheritance, select
-//! readbacks, autocomplete defaults and input/button form setting selection
+//! readbacks, option text/label/value and select value getters, autocomplete
+//! defaults and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
@@ -24,6 +25,8 @@ mod inheritance;
 pub use inheritance::*;
 mod select;
 pub use select::*;
+mod option_text;
+pub use option_text::*;
 mod autocomplete;
 pub use autocomplete::*;
 mod form_settings;
@@ -650,6 +653,10 @@ pub enum HtmlSemanticQuery {
     SelectedOptions,
     SelectSelectedIndex,
     OptionIndex,
+    OptionText,
+    OptionLabel,
+    OptionValue,
+    SelectValue,
     ControlAutocomplete,
     SubmitterFormMethod,
     SubmitterFormEnctype,
@@ -660,6 +667,18 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::OptionText => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-text"
+            }
+            Self::OptionLabel => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-label"
+            }
+            Self::OptionValue => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
+            }
+            Self::SelectValue => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-value"
+            }
             Self::ControlLabels => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels"
             }
@@ -869,6 +888,10 @@ pub enum HtmlSemanticFact {
     /// `Known(None)` represents the source selected index of −1.
     SelectSelectedIndex(HtmlSemanticValue<Option<usize>>),
     OptionIndex(HtmlSemanticValue<usize>),
+    OptionText(HtmlSemanticValue<HtmlOptionReadback>),
+    OptionLabel(HtmlSemanticValue<HtmlOptionReadback>),
+    OptionValue(HtmlSemanticValue<HtmlOptionReadback>),
+    SelectValue(HtmlSemanticValue<HtmlSelectValue>),
     ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
     SubmitterFormMethod(HtmlSemanticValue<HtmlSubmitterFormMethod>),
     SubmitterFormEnctype(HtmlSemanticValue<HtmlSubmitterFormEnctype>),
@@ -2169,6 +2192,27 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::OptionIndex => {
                             HtmlSemanticFact::OptionIndex(self.option_index(&request.subject)?)
                         }
+                        HtmlSemanticQuery::OptionText => {
+                            HtmlSemanticFact::OptionText(self.option_readback(
+                                &request.subject,
+                                HtmlOptionReadbackOrigin::DescendantText,
+                            )?)
+                        }
+                        HtmlSemanticQuery::OptionLabel => {
+                            HtmlSemanticFact::OptionLabel(self.option_readback(
+                                &request.subject,
+                                HtmlOptionReadbackOrigin::LabelAttribute,
+                            )?)
+                        }
+                        HtmlSemanticQuery::OptionValue => {
+                            HtmlSemanticFact::OptionValue(self.option_readback(
+                                &request.subject,
+                                HtmlOptionReadbackOrigin::ValueAttribute,
+                            )?)
+                        }
+                        HtmlSemanticQuery::SelectValue => {
+                            HtmlSemanticFact::SelectValue(self.select_value(&request.subject)?)
+                        }
                         HtmlSemanticQuery::ComputedHeadingLevel => {
                             HtmlSemanticFact::ComputedHeadingLevel(
                                 self.computed_heading_level(&request.subject)?,
@@ -2293,6 +2337,18 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::OptionIndex => {
                         HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OptionText => {
+                        HtmlSemanticFact::OptionText(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OptionLabel => {
+                        HtmlSemanticFact::OptionLabel(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OptionValue => {
+                        HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::SelectValue => {
+                        HtmlSemanticFact::SelectValue(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::ComputedHeadingLevel => {
                         HtmlSemanticFact::ComputedHeadingLevel(HtmlSemanticValue::Inapplicable)
