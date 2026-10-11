@@ -654,6 +654,16 @@ resource ledger and atomic batches. They establish captured relationships rather
 than group author conformance, exclusivity mutation, activation, toggle events or
 a rendered fallback legend.
 
+`TabIndex` returns the captured static getter value for HTML, SVG and MathML
+elements. It recovers an in-range signed 32-bit integer from the selected raw
+attribute; missing, failed and out-of-range values use the source's element
+defaults. The readback retains the exact attribute and distinguishes these
+origins. A defaulting HTML summary uses `SummaryForParentDetails`; an explicit
+in-range value needs no parent or child-order evidence. The shared numeric
+scanner performs fixed-width projection without a digit allocation. Whole raw
+admission, conservative work charging and atomic batches remain session-owned.
+This getter does not establish focusability or focus navigation.
+
 The control-autocomplete query retains intrinsic syntax and processing, the
 actually consulted input-type report and any consulted form-autocomplete report.
 Only expectation defaults consult the existing form-owner operation: a known

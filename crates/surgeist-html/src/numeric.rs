@@ -1771,6 +1771,48 @@ pub(crate) fn try_parse_integer(
     })
 }
 
+/// Fixed signed-long projection of the shared integer recovery prefix.
+/// `None` is a successfully parsed mathematical integer outside i32, not syntax
+/// failure. No canonical digit allocation or arbitrary integer digit cap.
+pub(crate) fn parse_integer_long(input: &DocumentString) -> Result<Option<i32>, NumericParseError> {
+    let prefix = integer_prefix(input.code_units(), true)?;
+    let limit = if prefix.negative {
+        2_147_483_648_u32
+    } else {
+        2_147_483_647_u32
+    };
+    let mut magnitude = 0_u32;
+    for &unit in prefix.digits {
+        let Some(next) = magnitude
+            .checked_mul(10)
+            .and_then(|n| n.checked_add(u32::from(unit - b'0' as u16)))
+        else {
+            return Ok(None);
+        };
+        if next > limit {
+            return Ok(None);
+        }
+        magnitude = next;
+    }
+    Ok(Some(if prefix.negative {
+        if magnitude == 2_147_483_648 {
+            i32::MIN
+        } else {
+            -(magnitude as i32)
+        }
+    } else {
+        magnitude as i32
+    }))
+}
+
+/// Input-bounded atomic operation envelope: prefix scan <= n+2 inspections,
+/// projection <= n digit reads plus subtraction, multiply, add and range checks;
+/// fixed sign, length, result and branch operations fit the remaining allowance.
+/// Caller admits raw units and precharges/polls; no instruction/quantum claim.
+pub(crate) fn integer_long_work_bound(input_units: usize) -> Option<usize> {
+    input_units.checked_mul(8)?.checked_add(16)
+}
+
 /// §2.3.4.2 recovery projected to `min(exact_value, cap)` without allocation.
 ///
 /// Negative nonzero input is rejected before projection, including when the cap
@@ -2419,6 +2461,49 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn signed_long_projection_literal_boundaries_and_recovery() {
+        for (raw, expected) in [
+            ("2147483647", Some(i32::MAX)),
+            ("-2147483648", Some(i32::MIN)),
+            ("2147483648", None),
+            ("-2147483649", None),
+            ("999999999999999999999999999999999999999", None),
+            ("-0", Some(0)),
+            ("+0", Some(0)),
+            (" \t\n\u{000c}\r+12suffix", Some(12)),
+            ("-42.5", Some(-42)),
+            ("0000000000000000000002147483647", Some(i32::MAX)),
+            ("-0000000000000000000002147483648", Some(i32::MIN)),
+        ] {
+            assert_eq!(
+                parse_integer_long(&DocumentString::from(raw)),
+                Ok(expected),
+                "{raw:?}"
+            );
+        }
+        for raw in ["", "-", "+", "--1", "\u{00a0}1", "x12"] {
+            assert_eq!(
+                parse_integer_long(&DocumentString::from(raw)),
+                Err(NumericParseError::InvalidSyntax)
+            );
+        }
+        assert_eq!(
+            parse_integer_long(&DocumentString::from_utf16(vec![0xd800, 49])),
+            Err(NumericParseError::InvalidSyntax)
+        );
+        assert_eq!(
+            parse_integer_long(&DocumentString::from_utf16(vec![49, 0xd800])),
+            Ok(Some(1))
+        );
+    }
+    #[test]
+    fn signed_long_projection_work_bound_checks_representation() {
+        assert_eq!(integer_long_work_bound(0), Some(16));
+        assert_eq!(integer_long_work_bound(5), Some(56));
+        assert_eq!(integer_long_work_bound(usize::MAX), None);
+    }
+
     use super::*;
 
     fn digits(input: &str) -> Vec<u16> {

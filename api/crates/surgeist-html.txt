@@ -1387,6 +1387,7 @@ pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSem
 pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormMethod>)
 pub surgeist_html::HtmlSemanticFact::SubmitterNoValidate(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterNoValidate>)
 pub surgeist_html::HtmlSemanticFact::SummaryForParentDetails(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::TabIndex(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTabIndexReadback>)
 pub surgeist_html::HtmlSemanticFact::TableBodies(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableBodyCollection>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
 pub surgeist_html::HtmlSemanticFact::TableRowCells(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableCellCollection>)
@@ -1487,6 +1488,7 @@ pub surgeist_html::HtmlSemanticQuery::SubmitterFormEnctype
 pub surgeist_html::HtmlSemanticQuery::SubmitterFormMethod
 pub surgeist_html::HtmlSemanticQuery::SubmitterNoValidate
 pub surgeist_html::HtmlSemanticQuery::SummaryForParentDetails
+pub surgeist_html::HtmlSemanticQuery::TabIndex
 pub surgeist_html::HtmlSemanticQuery::TableBodies
 pub surgeist_html::HtmlSemanticQuery::TableModel
 pub surgeist_html::HtmlSemanticQuery::TableRowCells
@@ -1653,6 +1655,11 @@ pub fn surgeist_html::HtmlSrcsetUrlTokenError::fmt(&self, f: &mut core::fmt::For
 pub enum surgeist_html::HtmlSubmitterTypeObservation
 pub surgeist_html::HtmlSubmitterTypeObservation::Button(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlButtonTypeState>)
 pub surgeist_html::HtmlSubmitterTypeObservation::Input(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>)
+pub enum surgeist_html::HtmlTabIndexOrigin
+pub surgeist_html::HtmlTabIndexOrigin::MissingDefault
+pub surgeist_html::HtmlTabIndexOrigin::OutOfRangeDefault
+pub surgeist_html::HtmlTabIndexOrigin::ParseFailureDefault
+pub surgeist_html::HtmlTabIndexOrigin::Recovered
 pub enum surgeist_html::HtmlTabindexValue
 pub surgeist_html::HtmlTabindexValue::Integer(surgeist_html::HtmlInteger)
 pub surgeist_html::HtmlTabindexValue::Null
@@ -3662,6 +3669,11 @@ pub fn surgeist_html::HtmlSubmitterNoValidate::intrinsic(&self) -> &surgeist_htm
 pub fn surgeist_html::HtmlSubmitterNoValidate::resolution(&self) -> &surgeist_html::HtmlNoValidateResolution
 pub fn surgeist_html::HtmlSubmitterNoValidate::submitter_type(&self) -> core::option::Option<&surgeist_html::HtmlSubmitterTypeObservation>
 pub fn surgeist_html::HtmlSubmitterNoValidate::value(&self) -> core::option::Option<bool>
+pub struct surgeist_html::HtmlTabIndexReadback
+impl surgeist_html::HtmlTabIndexReadback
+pub fn surgeist_html::HtmlTabIndexReadback::attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlTabIndexReadback::origin(&self) -> surgeist_html::HtmlTabIndexOrigin
+pub fn surgeist_html::HtmlTabIndexReadback::value(&self) -> i32
 pub struct surgeist_html::HtmlTableBodyCollection
 impl surgeist_html::HtmlTableBodyCollection
 pub fn surgeist_html::HtmlTableBodyCollection::bodies(&self) -> &[surgeist_html::HtmlCaptureSubjectId]

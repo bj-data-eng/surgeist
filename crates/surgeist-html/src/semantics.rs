@@ -7,7 +7,7 @@
 //! readbacks and placeholder-label-option classification, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
-//! submission conditions.
+//! submission conditions and the static tabIndex getter.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
@@ -35,6 +35,8 @@ pub use select::*;
 mod datalist;
 mod image_map;
 pub use image_map::*;
+mod tabindex;
+pub use tabindex::*;
 mod details;
 pub use details::*;
 mod option_text;
@@ -698,6 +700,7 @@ pub enum HtmlSemanticQuery {
     DatalistOptions,
     /// Ordinary HTML area descendants in source tree order.
     MapAreas,
+    TabIndex,
     DetailsSummary,
     SummaryForParentDetails,
     DetailsNameGroup,
@@ -755,6 +758,9 @@ impl HtmlSemanticQuery {
             }
             Self::InputSuggestionsSource => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list"
+            }
+            Self::TabIndex => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tabindex"
             }
             Self::DetailsSummary => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element"
@@ -1049,6 +1055,7 @@ pub enum HtmlSemanticFact {
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
     MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
+    TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
     DetailsSummary(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     SummaryForParentDetails(HtmlSemanticValue<bool>),
     DetailsNameGroup(HtmlSemanticValue<HtmlDetailsNameGroup>),
@@ -1494,11 +1501,17 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         element: &HtmlCapturedElement,
     ) -> Result<bool, HtmlSemanticFailure> {
+        self.namespace_is(element, "http://www.w3.org/1999/xhtml")
+    }
+    fn namespace_is(
+        &mut self,
+        element: &HtmlCapturedElement,
+        expected: &str,
+    ) -> Result<bool, HtmlSemanticFailure> {
         self.charge(1)?;
         let Some(uri) = element.name().namespace().uri() else {
             return Ok(false);
         };
-        let expected = "http://www.w3.org/1999/xhtml";
         if uri.len() != expected.len() {
             return Ok(false);
         }
@@ -2439,6 +2452,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.input_suggestions_source(&request.subject)?,
                             )
                         }
+                        HtmlSemanticQuery::TabIndex => {
+                            HtmlSemanticFact::TabIndex(self.tab_index(&request.subject)?)
+                        }
                         HtmlSemanticQuery::DetailsSummary => HtmlSemanticFact::DetailsSummary(
                             self.details_summary(&request.subject)?,
                         ),
@@ -2681,6 +2697,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::InputSuggestionsSource => {
                         HtmlSemanticFact::InputSuggestionsSource(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TabIndex => {
+                        HtmlSemanticFact::TabIndex(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::DetailsSummary => {
                         HtmlSemanticFact::DetailsSummary(HtmlSemanticValue::Inapplicable)
