@@ -84,6 +84,7 @@ implemented dependency graph and behavior.
 | `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
+| `surgeist-html` | Pinned HTML language values, typed authoring, immutable construction results, parsing, and intrinsic interpretation |
 | `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |
 | `surgeist-render` | Rendering contracts and backend-facing draw data |
 | `surgeist-retained` | Retained identity and state, tree identity, and stable handles |
@@ -116,9 +117,10 @@ provides stable identities, immutable snapshots, atomic edits and headless live
 declaration, rule, stylesheet and MediaList operations. Its crate README records
 current extension operations and source-qualified capability limits.
 
-The selected next crate is `surgeist-html`: a pinned HTML language and typed
-Rust authoring model with ingested html5ever parsing, recovery, diagnostics and
-immutable parse results. It has no DOM or downstream rendering dependency.
+The `surgeist-html` contribution is underway: its shared HTML-owned values are
+implemented, while typed authoring, immutable parse results, html5ever ingestion,
+recovery, diagnostics and intrinsic interpretation remain contribution work.
+It has no DOM or downstream rendering dependency.
 The HTML standard revision defines behavior; the html5ever revision identifies
 implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.

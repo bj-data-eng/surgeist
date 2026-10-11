@@ -1,0 +1,9 @@
+[package]
+name = "surgeist-html"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Pinned HTML language values, typed authoring, and immutable construction results."
+readme = "README.md"

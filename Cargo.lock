@@ -3622,6 +3622,7 @@ dependencies = [
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-dialog",
+ "surgeist-html",
  "surgeist-layout",
  "surgeist-render",
  "surgeist-retained",
@@ -3686,6 +3687,10 @@ dependencies = [
  "toml",
  "url",
 ]
+
+[[package]]
+name = "surgeist-html"
+version = "0.1.0"
 
 [[package]]
 name = "surgeist-layout"
