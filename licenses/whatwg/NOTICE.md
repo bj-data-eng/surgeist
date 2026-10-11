@@ -53,3 +53,20 @@ assert complete native HTML or browser conformance.
 ## Pinned HTML language snapshot — 2026-10-11
 
 The [selected HTML edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline) retains ten bounded complete-section format conversions from [immutable HTML snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/), complete original HTML SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. This snapshot directly identifies the retained edition, unlike the historical live chapter/legal-pin association above. All §4 element definitions are included; other browser runtime chapters are explicitly bounded. The [exact upstream LICENSE](LICENSE) at this commit remains unchanged, SHA-256 `85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`. Copyright © WHATWG (Apple, Google, Mozilla, Microsoft). Specification prose is Creative Commons Attribution 4.0 International; BSD 3-Clause applies only to portions incorporated into source code. Offline extraction, Markdown reformatting, semantic tables/SVG preservation, inert embedded-example retention and same-edition link rewriting are disclosed in the [conversion report](../../references/CONVERSION-REPORT.md#pinned-html-language-snapshot--2026-10-11). Source text and original classifications remain authoritative; no endorsement is implied.
+
+## HTML character-reference table incorporation — 2026-10-11
+
+The HTML crate incorporates the complete named-character-reference and C1
+replacement tables from the pinned HTML edition into ordinary Rust data under
+the upstream BSD 3-Clause source-code provision. The [offline generator](../../crates/surgeist-html/tools/generate_character_references.py)
+reads the retained [syntax capture](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md),
+SHA-256 `db1eaacc388d494736080301dd18e9147feb39f2651e2bc7fbeed36ee2cfb214`,
+and writes [private reference data](../../crates/surgeist-html/src/parser/character_references.rs).
+Adaptations omit the leading ampersand from lookup keys, sort all complete
+names, retain semicolon-less spellings and two-scalar values, and represent
+unlisted C1 overrides as absence. The generation headers identify the selected
+HTML revision, original-source hashes and independently compared html5ever
+revision. No html5ever atom implementation or generation machinery is copied.
+The unchanged [upstream LICENSE](LICENSE) supplies the original copyright,
+conditions and disclaimer. Lookup data alone does not assert full tokenization
+or browser conformance.

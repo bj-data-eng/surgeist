@@ -5,6 +5,12 @@ Surgeist-authored code uses the repository [MIT License](../../LICENSE).
 The selected HTML algorithms and source adaptations are covered by the
 [WHATWG notice](../../licenses/whatwg/NOTICE.md).
 
+The private parser character-reference data is generated from the complete
+named-reference and C1 tables in the pinned HTML syntax capture. The generator
+retains all 2,231 names, 93 two-scalar values and 27 C1 replacements; it also
+compares them with the acquired html5ever tables as independent witnesses.
+Those engine files are not imported source or required generation inputs.
+
 ## Dependencies
 
 This notice covers the 16 registry packages in this crate’s default-feature

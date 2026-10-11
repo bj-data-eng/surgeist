@@ -28,3 +28,10 @@ The offline `tools/generate_vocabulary.py` owns the marked ordinary Rust region
 in `src/vocabulary.rs`; run it with `--check` after vocabulary/source changes.
 Its non-normative inventory records retain contextual rows and defining-clause
 links without replacing intrinsic value interpretation or execution ownership.
+
+The offline `tools/generate_character_references.py` derives private parser
+reference data from the complete tracked normative syntax tables. Run
+`python3 crates/surgeist-html/tools/generate_character_references.py --check`
+from the repository root after reference data or generator changes. Optional
+`--verify-origins` needs the retained full HTML and acquired engine witnesses;
+normal checking does not require ignored working material.

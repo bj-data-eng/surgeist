@@ -158,3 +158,12 @@ producer values independently of strict native author syntax. Capture and contex
 selection perform no parsing, live mutation, script execution or effect
 publication. The parser still owns recovered metadata, contextual construction
 effects, diagnostics, provenance and its separate execution controls.
+
+Private parser mechanics currently compile for tests while engine integration
+continues. Source decoding, UTF-16 buffering and reference lookup share one
+resource controller. The offline `tools/generate_character_references.py --check`
+verifies every named-reference and C1 data record from the tracked pinned syntax
+capture; optional `--verify-origins` also compares the retained original HTML
+and acquired implementation witnesses. Normal generation needs no ignored
+checkout or network access. These mechanics do not yet provide public parsing
+or a complete parser accounting guarantee.
