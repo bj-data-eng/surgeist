@@ -1,6 +1,6 @@
 //! Private parser mechanics under integration.
 
 mod buffer;
-mod control;
+pub(crate) mod control;
 mod input;
 mod references;

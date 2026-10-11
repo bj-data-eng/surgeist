@@ -1,5 +1,8 @@
 //! Bounded native authoring and immutable, result-local construction output.
 
+#[cfg(test)]
+mod parser_session;
+
 use crate::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 use std::{
     error::Error,

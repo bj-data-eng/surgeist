@@ -3,9 +3,10 @@
 
 use crate::{HtmlSource, HtmlSourceCoordinates, HtmlSourceId};
 use std::{
+    marker::PhantomData,
     mem::size_of,
     sync::{
-        Arc,
+        Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -184,6 +185,7 @@ pub(crate) enum Invariant {
     InputCursorState,
     ForeignControl,
     CleanupWhileRunning,
+    SharedAllocationAliased,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -303,8 +305,26 @@ impl ParseControl {
         }
         Ok(())
     }
-    fn representation<T>(&mut self, resource: Resource) -> Result<T, ParseStop> {
+    /// Latches a checked-arithmetic failure observed after the caller's initial
+    /// checkpoint. No extra poll can replace that already observed first stop.
+    pub(crate) fn representation<T>(&mut self, resource: Resource) -> Result<T, ParseStop> {
         self.fail(ParseStop::RepresentationExhausted { resource })
+    }
+    /// Admits one known indivisible owned-record layout before its move/copy.
+    /// The caller separately precharges actual bytes and record writes. This
+    /// observes layout only; it creates no allocation or cumulative work credit.
+    pub(crate) fn admit_atomic_layout(&mut self, bytes: usize) -> Result<(), ParseStop> {
+        self.checkpoint()?;
+        if bytes > isize::MAX as usize {
+            return self.representation(Resource::AtomicLayoutBytes);
+        }
+        let Ok(bytes) = u64::try_from(bytes) else {
+            return self.representation(Resource::AtomicLayoutBytes);
+        };
+        self.check_value(Resource::AtomicLayoutBytes, bytes, bytes)?;
+        self.set(Resource::AtomicLayoutBytes, bytes);
+        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
+        Ok(())
     }
     fn check_value(&mut self, resource: Resource, value: u64, delta: u64) -> Result<(), ParseStop> {
         let limit = self.limits[resource as usize];
@@ -438,8 +458,365 @@ impl ParseControl {
         }
         Ok(())
     }
+    /// Nonmutating logical preflight before actual storage reservations. The
+    /// session rechecks with `acquire_many` immediately before graph mutation;
+    /// no logical acquisition may intervene between that commit and mutation.
+    pub(crate) fn check_acquire_many(
+        &mut self,
+        requests: &[(Resource, u64)],
+    ) -> Result<(), ParseStop> {
+        self.plan_storage(requests).map(|_| ())
+    }
+    /// Transfers admitted replacement child-order slots out of scratch storage
+    /// and commits their actual ordinary-edge delta together. The construction
+    /// owner precharges the bounded swaps/backlinks/copies before this final
+    /// checkpoint, then changes topology immediately after success, without an
+    /// intervening allocation, poll or fallible operation. Rejection retains all
+    /// scratch and edge admission for terminal cleanup of the unchanged graph.
+    pub(crate) fn commit_child_orders(
+        &mut self,
+        owner: &ControlIdentity,
+        scratch_entries: u64,
+        edge_add: u64,
+        edge_remove: u64,
+    ) -> Result<(), ParseStop> {
+        self.require_identity(owner)?;
+        let Some(auxiliary) = self
+            .usage
+            .resource(Resource::AuxiliaryEntries)
+            .current
+            .checked_sub(scratch_entries)
+        else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        };
+        let Some(retained_edges) = self
+            .usage
+            .resource(Resource::ManagedEdges)
+            .current
+            .checked_sub(edge_remove)
+        else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        };
+        let Some(edges) = retained_edges.checked_add(edge_add) else {
+            return self.representation(Resource::ManagedEdges);
+        };
+        self.check_value(Resource::ManagedEdges, edges, edge_add)?;
+        self.set(Resource::AuxiliaryEntries, auxiliary);
+        self.set(Resource::ManagedEdges, edges);
+        Ok(())
+    }
+    /// Produces the actual empty vector and its unique accounting ticket.
+    /// This creates no allocation or logical node/edge/storage admission.
+    pub(crate) fn new_vector<T>(&mut self) -> Result<(Vec<T>, VectorCapacity<T>), ParseStop> {
+        self.checkpoint()?;
+        if size_of::<T>() == 0 {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ZeroSizedStorage));
+        }
+        let Some(bytes) = size_of::<Vec<T>>()
+            .checked_add(size_of::<VectorCapacity<T>>())
+            .and_then(|bytes| u64::try_from(bytes).ok())
+        else {
+            return self.representation(Resource::AtomicLayoutBytes);
+        };
+        self.charge_many(&[
+            (WorkCategory::RecordWrite, 2),
+            (WorkCategory::CopyByte, bytes),
+        ])?;
+        Ok((
+            Vec::new(),
+            VectorCapacity {
+                owner: self.identity.clone(),
+                capacity: 0,
+                element: PhantomData,
+            },
+        ))
+    }
+    /// Reserves the consumer's actual vector. Only the construction owner may
+    /// hold its mutable storage; engine operations receive no vector escape.
+    /// Logical admission and actual record copies/writes remain caller duties.
+    pub(crate) fn reserve_vector<T>(
+        &mut self,
+        vector: &mut Vec<T>,
+        allocation: &mut VectorCapacity<T>,
+        additional: usize,
+    ) -> Result<(), ParseStop> {
+        self.checkpoint()?;
+        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        self.charge(WorkCategory::RecordVisit, 2)?;
+        if allocation.capacity != vector.capacity() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let plan = match ReservationPlan::for_vec(vector, additional) {
+            Ok(Some(plan)) => plan,
+            Ok(None) => return Ok(()),
+            Err(stop) => return self.fail(stop),
+        };
+        let Some(bytes) = plan.old_bytes.checked_add(plan.new_bytes) else {
+            return self.representation(Resource::ManagedCapacityBytes);
+        };
+        self.charge_many(&[
+            (WorkCategory::ReserveByte, bytes),
+            (WorkCategory::ProviderCall, 1),
+            (WorkCategory::RecordWrite, 1),
+            (WorkCategory::CopyByte, size_of::<usize>() as u64),
+        ])?;
+        let result = self.reserve(vector, plan);
+        // Successful reserve can change capacity before a post-call stop. That
+        // physical ownership must remain releasable even when logical work ends.
+        Self::record_vector_capacity(vector, allocation, result)
+    }
+    fn record_vector_capacity<T>(
+        vector: &Vec<T>,
+        allocation: &mut VectorCapacity<T>,
+        result: Result<(), ParseStop>,
+    ) -> Result<(), ParseStop> {
+        allocation.capacity = vector.capacity();
+        result
+    }
+    /// Consumes real storage plus its ticket, returning both on invalid owner
+    /// or capacity. Cleanup needs no budget, and releases capacity only: managed
+    /// nodes, logical edges/slots, cumulative work and high-water stay admitted.
+    /// The session separately extracts/releases nested allocation tickets first.
+    pub(crate) fn release_vector<T>(
+        &mut self,
+        vector: Vec<T>,
+        allocation: VectorCapacity<T>,
+    ) -> Result<(), VectorReleaseError<T>> {
+        let release = (|| {
+            if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+                return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+            }
+            if allocation.capacity != vector.capacity() {
+                return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            }
+            let Some(bytes) = allocation
+                .capacity
+                .checked_mul(size_of::<T>())
+                .and_then(|bytes| u64::try_from(bytes).ok())
+            else {
+                return self.representation(Resource::ManagedCapacityBytes);
+            };
+            self.cleanup_capacity(bytes)
+        })();
+        match release {
+            Ok(()) => {
+                drop(vector);
+                Ok(())
+            }
+            Err(stop) => Err(VectorReleaseError {
+                stop,
+                vector,
+                allocation,
+            }),
+        }
+    }
+    fn cleanup_capacity(&mut self, bytes: u64) -> Result<(), ParseStop> {
+        let Some(capacity) = self
+            .usage
+            .resource(Resource::ManagedCapacityBytes)
+            .current
+            .checked_sub(bytes)
+        else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        };
+        self.set(Resource::ManagedCapacityBytes, capacity);
+        self.set(Resource::PeakTransientBytes, capacity);
+        self.usage.actual_capacity_bytes = capacity;
+        Ok(())
+    }
+    /// Builds an actual fixed shared payload, then polls before returning it.
+    /// Nested vectors keep their own tickets. Arc headers/allocator metadata and
+    /// infallible Arc setup are opaque provider limits; zero-sized identity is
+    /// valid and still charges the provider call. Failure returns owned payload.
+    pub(crate) fn share_owned<T>(
+        &mut self,
+        payload: T,
+    ) -> Result<(Arc<T>, SharedAllocation<T>), (ParseStop, T)> {
+        let admission = (|| {
+            self.checkpoint()?;
+            let Ok(bytes) = u64::try_from(size_of::<T>()) else {
+                return self.representation(Resource::AtomicLayoutBytes);
+            };
+            self.charge_many(&[
+                (WorkCategory::ReserveByte, bytes),
+                (WorkCategory::ProviderCall, 1),
+                (WorkCategory::CopyByte, bytes),
+                (WorkCategory::RecordWrite, 1),
+            ])?;
+            let Some(total) = self
+                .usage
+                .resource(Resource::ManagedCapacityBytes)
+                .current
+                .checked_add(bytes)
+            else {
+                return self.representation(Resource::ManagedCapacityBytes);
+            };
+            self.check_value(Resource::ManagedCapacityBytes, total, bytes)?;
+            self.check_value(Resource::PeakTransientBytes, total, bytes)?;
+            self.check_value(Resource::AtomicLayoutBytes, bytes, bytes)?;
+            self.set(Resource::ManagedCapacityBytes, total);
+            self.set(Resource::PeakTransientBytes, total);
+            self.set(Resource::AtomicLayoutBytes, bytes);
+            self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
+            self.usage.actual_capacity_bytes = total;
+            self.usage.actual_capacity_high_water =
+                self.usage.actual_capacity_high_water.max(total);
+            Ok(bytes)
+        })();
+        let bytes = match admission {
+            Ok(bytes) => bytes,
+            Err(stop) => return Err((stop, payload)),
+        };
+        let shared = Arc::new(payload);
+        let allocation = SharedAllocation {
+            owner: self.identity.clone(),
+            shared: Arc::downgrade(&shared),
+            bytes,
+            element: PhantomData,
+        };
+        self.finish_shared(shared, allocation)
+    }
+    fn finish_shared<T>(
+        &mut self,
+        shared: Arc<T>,
+        allocation: SharedAllocation<T>,
+    ) -> Result<(Arc<T>, SharedAllocation<T>), (ParseStop, T)> {
+        match self.checkpoint() {
+            Ok(()) => Ok((shared, allocation)),
+            Err(stop) => {
+                // This private transition receives the sole newly created Arc;
+                // it has not escaped and no callback can have cloned it.
+                let payload = Arc::into_inner(shared)
+                    .expect("new shared payload has exactly one strong owner");
+                // Admission above proved ownership and available capacity. No
+                // other storage mutation occurs before this cleanup transition.
+                self.cleanup_capacity(allocation.bytes)
+                    .expect("new shared payload remains admitted");
+                Err((stop, payload))
+            }
+        }
+    }
+    /// Recovers the unique payload and releases only its known shared layout.
+    /// Aliased/foreign failures return the actual Arc and ticket unchanged, so
+    /// the original owner may retry cleanup after outstanding handles are gone.
+    pub(crate) fn release_shared<T>(
+        &mut self,
+        shared: Arc<T>,
+        allocation: SharedAllocation<T>,
+    ) -> Result<T, SharedReleaseError<T>> {
+        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+            let stop = self
+                .fail::<()>(ParseStop::InternalInvariant(Invariant::ForeignControl))
+                .unwrap_err();
+            return Err(SharedReleaseError {
+                stop,
+                shared,
+                allocation,
+            });
+        }
+        if !std::ptr::eq(Arc::as_ptr(&shared), allocation.shared.as_ptr()) {
+            let stop = self
+                .fail::<()>(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+                .unwrap_err();
+            return Err(SharedReleaseError {
+                stop,
+                shared,
+                allocation,
+            });
+        }
+        if self.usage.resource(Resource::ManagedCapacityBytes).current < allocation.bytes {
+            let stop = self
+                .fail::<()>(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
+                .unwrap_err();
+            return Err(SharedReleaseError {
+                stop,
+                shared,
+                allocation,
+            });
+        }
+        match Arc::try_unwrap(shared) {
+            Ok(payload) => {
+                self.cleanup_capacity(allocation.bytes)
+                    .expect("shared payload capacity checked before recovery");
+                Ok(payload)
+            }
+            Err(shared) => {
+                let stop = self
+                    .fail::<()>(ParseStop::InternalInvariant(
+                        Invariant::SharedAllocationAliased,
+                    ))
+                    .unwrap_err();
+                Err(SharedReleaseError {
+                    stop,
+                    shared,
+                    allocation,
+                })
+            }
+        }
+    }
+    /// Drops one actual zero-sized shared payload and its accounting ticket.
+    /// Other strong owners may retain the opaque Arc header; this operation
+    /// makes no deallocation claim and refunds no capacity. Invalid tickets
+    /// return the actual Arc and ticket for cleanup by their original owner.
+    pub(crate) fn release_zero_sized_shared<T>(
+        &mut self,
+        shared: Arc<T>,
+        allocation: SharedAllocation<T>,
+    ) -> Result<(), SharedReleaseError<T>> {
+        let invariant = if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+            Some(Invariant::ForeignControl)
+        } else if !std::ptr::eq(Arc::as_ptr(&shared), allocation.shared.as_ptr())
+            || size_of::<T>() != 0
+            || allocation.bytes != 0
+        {
+            Some(Invariant::CapacityMismatch)
+        } else {
+            None
+        };
+        if let Some(invariant) = invariant {
+            let stop = self
+                .fail::<()>(ParseStop::InternalInvariant(invariant))
+                .unwrap_err();
+            return Err(SharedReleaseError {
+                stop,
+                shared,
+                allocation,
+            });
+        }
+        drop(shared);
+        drop(allocation);
+        Ok(())
+    }
     pub(crate) fn release(&mut self, resource: Resource, units: u64) -> Result<(), ParseStop> {
         self.checkpoint()?;
+        if !resource.storage() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::NonStorageResource));
+        }
+        if resource == Resource::ManagedNodes {
+            return self.fail(ParseStop::InternalInvariant(Invariant::NonReclaimableNodes));
+        }
+        let Some(value) = self.usage.resource(resource).current.checked_sub(units) else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        };
+        self.set(resource, value);
+        Ok(())
+    }
+    /// Releases actually deallocated non-node logical slots after first-stop.
+    /// No successful engine transition may use this cleanup-only path.
+    pub(crate) fn cleanup_release(
+        &mut self,
+        identity: &ControlIdentity,
+        resource: Resource,
+        units: u64,
+    ) -> Result<(), ParseStop> {
+        if self.stop().is_none() {
+            return Err(self.fail_invariant(Invariant::CleanupWhileRunning));
+        }
+        if !Arc::ptr_eq(&identity.0, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
         if !resource.storage() {
             return self.fail(ParseStop::InternalInvariant(Invariant::NonStorageResource));
         }
@@ -616,6 +993,59 @@ impl ParseControl {
             return self.representation(Resource::ManagedCapacityBytes);
         };
         self.cleanup_storage(Resource::BufferedUtf16Units, allocation.units, bytes)
+    }
+}
+
+/// Unique ticket for an actual consumer-owned vector. It cannot register an
+/// arbitrary preallocated vector or be cloned to refund the same capacity twice.
+#[derive(Debug)]
+pub(crate) struct VectorCapacity<T> {
+    owner: Arc<()>,
+    capacity: usize,
+    element: PhantomData<T>,
+}
+impl<T> VectorCapacity<T> {
+    pub(crate) fn capacity(&self) -> usize {
+        self.capacity
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct VectorReleaseError<T> {
+    stop: ParseStop,
+    vector: Vec<T>,
+    allocation: VectorCapacity<T>,
+}
+impl<T> VectorReleaseError<T> {
+    pub(crate) fn into_parts(self) -> (ParseStop, Vec<T>, VectorCapacity<T>) {
+        (self.stop, self.vector, self.allocation)
+    }
+}
+
+/// Known fixed payload only, excluding opaque shared headers and allocator
+/// bookkeeping. Nested dynamic payloads retain distinct vector/text tickets.
+#[derive(Debug)]
+pub(crate) struct SharedAllocation<T> {
+    owner: Arc<()>,
+    shared: Weak<T>,
+    bytes: u64,
+    element: PhantomData<T>,
+}
+impl<T> SharedAllocation<T> {
+    pub(crate) fn payload_bytes(&self) -> u64 {
+        self.bytes
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SharedReleaseError<T> {
+    stop: ParseStop,
+    shared: Arc<T>,
+    allocation: SharedAllocation<T>,
+}
+impl<T> SharedReleaseError<T> {
+    pub(crate) fn into_parts(self) -> (ParseStop, Arc<T>, SharedAllocation<T>) {
+        (self.stop, self.shared, self.allocation)
     }
 }
 
@@ -2031,5 +2461,743 @@ mod tests {
         control.release_document_string(allocation).unwrap();
         entries.release(&mut control).unwrap();
         assert_eq!(control.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn actual_vector_reservation_tracks_growth_overlap_and_within_capacity_reuse() {
+        let mut control = control();
+        let (mut vector, mut ticket) = control.new_vector::<u32>().unwrap();
+        assert_eq!(ticket.capacity(), 0);
+        assert_eq!(vector.capacity(), 0);
+        control
+            .check_acquire_many(&[(Resource::ManagedNodes, 2)])
+            .unwrap();
+        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 0);
+        control.reserve_vector(&mut vector, &mut ticket, 2).unwrap();
+        assert_eq!(vector.capacity(), 2);
+        assert_eq!(ticket.capacity(), 2);
+        assert_eq!(control.usage().actual_capacity_bytes, 8);
+        control
+            .acquire_many(&[(Resource::ManagedNodes, 2)])
+            .unwrap();
+        control
+            .charge_many(&[(WorkCategory::RecordWrite, 2), (WorkCategory::CopyByte, 8)])
+            .unwrap();
+        vector.push(10);
+        vector.push(20);
+        control.reserve_vector(&mut vector, &mut ticket, 1).unwrap();
+        assert_eq!(ticket.capacity(), 3);
+        assert_eq!(vector.capacity(), 3);
+        assert_eq!(vector, [10, 20]);
+        assert_eq!(control.usage().actual_capacity_bytes, 12);
+        assert_eq!(
+            control
+                .usage()
+                .resource(Resource::PeakTransientBytes)
+                .high_water,
+            20
+        );
+        assert_eq!(control.usage().work(WorkCategory::ReserveByte), 28);
+        let calls = control.usage().work(WorkCategory::ProviderCall);
+        control.reserve_vector(&mut vector, &mut ticket, 1).unwrap();
+        assert_eq!(control.usage().work(WorkCategory::ProviderCall), calls);
+        control.cancellation.cancel();
+        let stop = control.checkpoint().unwrap_err();
+        let work = control.usage().resource(Resource::WorkCredits);
+        control.release_vector(vector, ticket).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            control.usage().resource(Resource::ManagedNodes),
+            ResourceUsage {
+                current: 2,
+                high_water: 2
+            }
+        );
+        assert_eq!(control.usage().resource(Resource::WorkCredits), work);
+        assert_eq!(control.stop(), Some(stop));
+    }
+    #[test]
+    fn actual_vector_ticket_rejects_foreign_owner_and_recovers_owned_storage() {
+        let mut owner = control();
+        let mut foreign = control();
+        let (mut vector, mut ticket) = owner.new_vector::<u32>().unwrap();
+        owner.reserve_vector(&mut vector, &mut ticket, 2).unwrap();
+        let before = foreign.usage().clone();
+        assert_eq!(
+            foreign.reserve_vector(&mut vector, &mut ticket, 3),
+            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+        );
+        assert_eq!(foreign.usage(), &before);
+        assert_eq!(ticket.capacity(), 2);
+        let (stop, vector, ticket) = foreign
+            .release_vector(vector, ticket)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::ForeignControl)
+        );
+        assert_eq!(vector.capacity(), 2);
+        assert_eq!(ticket.capacity(), 2);
+        owner.release_vector(vector, ticket).unwrap();
+        assert_eq!(owner.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn actual_vector_ticket_checks_exact_capacity_before_growth_and_cleanup() {
+        let mut control = control();
+        let (mut first, mut first_ticket) = control.new_vector::<u32>().unwrap();
+        let (mut second, mut second_ticket) = control.new_vector::<u32>().unwrap();
+        control
+            .reserve_vector(&mut first, &mut first_ticket, 1)
+            .unwrap();
+        control
+            .reserve_vector(&mut second, &mut second_ticket, 2)
+            .unwrap();
+        let calls = control.usage().work(WorkCategory::ProviderCall);
+        assert_eq!(
+            control.reserve_vector(&mut second, &mut first_ticket, 3),
+            Err(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+        );
+        assert_eq!(control.usage().work(WorkCategory::ProviderCall), calls);
+        assert_eq!(second.capacity(), 2);
+        assert_eq!(first_ticket.capacity(), 1);
+        let (_, second, first_ticket) = control
+            .release_vector(second, first_ticket)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(control.usage().actual_capacity_bytes, 12);
+        control.release_vector(first, first_ticket).unwrap();
+        control.release_vector(second, second_ticket).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn actual_vector_cancel_and_capacity_failure_do_not_grow_or_admit_nodes() {
+        let mut limits = limits();
+        limits.managed_capacity_bytes = 3;
+        let mut control = ParseControl::new(limits, Cancellation::new()).unwrap();
+        let (mut vector, mut ticket) = control.new_vector::<u32>().unwrap();
+        assert_eq!(
+            control.reserve_vector(&mut vector, &mut ticket, 1),
+            Err(ParseStop::LimitExceeded {
+                resource: Resource::ManagedCapacityBytes,
+                limit: 3,
+                current: 0,
+                requested_delta: 4,
+            })
+        );
+        assert_eq!(ticket.capacity(), 0);
+        assert_eq!(vector.capacity(), 0);
+        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 0);
+        control.release_vector(vector, ticket).unwrap();
+        let mut control = super::tests::control();
+        let (mut vector, mut ticket) = control.new_vector::<u32>().unwrap();
+        control.cancellation.cancel();
+        let before = control.usage().clone();
+        assert_eq!(
+            control.reserve_vector(&mut vector, &mut ticket, 1),
+            Err(ParseStop::Cancelled)
+        );
+        assert_eq!(control.usage(), &before);
+        assert_eq!(ticket.capacity(), 0);
+        control.release_vector(vector, ticket).unwrap();
+    }
+    #[test]
+    fn actual_allocation_failure_preserves_zero_capacity_ticket_for_cleanup() {
+        let mut limits = limits();
+        limits.managed_capacity_bytes = usize::MAX as u64;
+        limits.peak_transient_bytes = usize::MAX as u64;
+        limits.atomic_layout_bytes = isize::MAX as u64;
+        limits.work_credits = u64::MAX;
+        let mut control = ParseControl::new(limits, Cancellation::new()).unwrap();
+        let (mut vector, mut ticket) = control.new_vector::<u8>().unwrap();
+        assert_eq!(
+            control.reserve_vector(&mut vector, &mut ticket, isize::MAX as usize),
+            Err(ParseStop::AllocationFailed {
+                resource: Resource::ManagedCapacityBytes,
+                layout_bytes: isize::MAX as u64,
+            })
+        );
+        assert_eq!(ticket.capacity(), 0);
+        assert_eq!(vector.capacity(), 0);
+        control.release_vector(vector, ticket).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn ticket_refresh_records_actual_growth_even_when_post_reserve_phase_stops() {
+        let mut control = control();
+        let (mut vector, mut ticket) = control.new_vector::<u32>().unwrap();
+        // Execute the real reservation phase, then deterministically cancel at
+        // its post-call boundary before the production ticket-refresh phase.
+        let plan = ReservationPlan::for_vec(&vector, 2).unwrap().unwrap();
+        control
+            .charge_many(&[
+                (WorkCategory::ReserveByte, 8),
+                (WorkCategory::ProviderCall, 1),
+            ])
+            .unwrap();
+        control.reserve(&mut vector, plan).unwrap();
+        control.cancellation.cancel();
+        let stop = control.checkpoint().unwrap_err();
+        assert_eq!(
+            ParseControl::record_vector_capacity(&vector, &mut ticket, Err(stop)),
+            Err(stop)
+        );
+        assert_eq!(ticket.capacity(), 2);
+        assert_eq!(control.usage().actual_capacity_bytes, 8);
+        control.release_vector(vector, ticket).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.stop(), Some(stop));
+    }
+    #[test]
+    fn logical_preflight_does_not_commit_and_final_admission_rechecks_the_boundary() {
+        let mut limits = limits();
+        limits.managed_nodes = 1;
+        let mut control = ParseControl::new(limits, Cancellation::new()).unwrap();
+        control
+            .check_acquire_many(&[(Resource::ManagedNodes, 1), (Resource::ManagedEdges, 1)])
+            .unwrap();
+        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 0);
+        control.acquire(Resource::ManagedNodes, 1).unwrap();
+        assert!(matches!(
+            control.acquire_many(&[(Resource::ManagedNodes, 1), (Resource::ManagedEdges, 1)]),
+            Err(ParseStop::LimitExceeded {
+                resource: Resource::ManagedNodes,
+                ..
+            })
+        ));
+        assert_eq!(control.usage().resource(Resource::ManagedEdges).current, 0);
+    }
+    #[test]
+    fn fixed_shared_payload_moves_actual_vector_and_tickets_without_copying_backing() {
+        let mut control = control();
+        let (mut vector, mut ticket) = control.new_vector::<u32>().unwrap();
+        control.reserve_vector(&mut vector, &mut ticket, 2).unwrap();
+        control.acquire(Resource::ManagedNodes, 2).unwrap();
+        control
+            .charge_many(&[(WorkCategory::CopyByte, 8), (WorkCategory::RecordWrite, 2)])
+            .unwrap();
+        vector.push(10);
+        vector.push(20);
+        let pointer = vector.as_ptr();
+        let (shared, allocation) = control.share_owned(vector).unwrap();
+        assert_eq!(shared.as_ptr(), pointer);
+        assert_eq!(shared.as_slice(), &[10, 20]);
+        assert_eq!(allocation.payload_bytes(), size_of::<Vec<u32>>() as u64);
+        assert_eq!(
+            control.usage().actual_capacity_bytes,
+            8 + size_of::<Vec<u32>>() as u64
+        );
+        control.cancellation.cancel();
+        let stop = control.checkpoint().unwrap_err();
+        let vector = control.release_shared(shared, allocation).unwrap();
+        assert_eq!(vector.as_ptr(), pointer);
+        assert_eq!(vector, [10, 20]);
+        control.release_vector(vector, ticket).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.usage().resource(Resource::ManagedNodes).current, 2);
+        assert_eq!(control.stop(), Some(stop));
+    }
+    #[test]
+    fn zero_sized_shared_identity_is_real_but_headers_are_not_fabricated_capacity() {
+        let mut control = control();
+        let (shared, ticket) = control.share_owned(()).unwrap();
+        assert_eq!(Arc::strong_count(&shared), 1);
+        assert_eq!(ticket.payload_bytes(), 0);
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.usage().work(WorkCategory::ProviderCall), 1);
+        assert_eq!(control.release_shared(shared, ticket).unwrap(), ());
+        assert!(matches!(
+            control.new_vector::<()>(),
+            Err(ParseStop::InternalInvariant(Invariant::ZeroSizedStorage))
+        ));
+    }
+    #[test]
+    fn shared_admission_cap_or_cancel_failure_returns_the_original_payload() {
+        let mut limits = limits();
+        limits.managed_capacity_bytes = 3;
+        let mut control = ParseControl::new(limits, Cancellation::new()).unwrap();
+        assert_eq!(
+            control.share_owned(77_u32).unwrap_err(),
+            (
+                ParseStop::LimitExceeded {
+                    resource: Resource::ManagedCapacityBytes,
+                    limit: 3,
+                    current: 0,
+                    requested_delta: 4,
+                },
+                77
+            )
+        );
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        let mut control = super::tests::control();
+        control.cancellation.cancel();
+        assert_eq!(
+            control.share_owned(91_u32).unwrap_err(),
+            (ParseStop::Cancelled, 91)
+        );
+        assert_eq!(control.usage().resource(Resource::WorkCredits).current, 0);
+    }
+    #[test]
+    fn shared_post_construction_checkpoint_recovers_actual_owned_payload() {
+        let mut control = control();
+        let (shared, ticket) = control.share_owned(77_u32).unwrap();
+        let work = control.usage().resource(Resource::WorkCredits);
+        control.cancellation.cancel();
+        assert_eq!(
+            control.finish_shared(shared, ticket).unwrap_err(),
+            (ParseStop::Cancelled, 77)
+        );
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.usage().actual_capacity_high_water, 4);
+        assert_eq!(control.usage().resource(Resource::WorkCredits), work);
+    }
+    #[test]
+    fn shared_foreign_alias_and_wrong_payload_rejections_preserve_actual_ownership() {
+        let mut owner = control();
+        let mut foreign = control();
+        let (shared, ticket) = owner.share_owned(77_u32).unwrap();
+        let (stop, shared, ticket) = foreign
+            .release_shared(shared, ticket)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::ForeignControl)
+        );
+        assert_eq!(owner.usage().actual_capacity_bytes, 4);
+        let other_handle = shared.clone();
+        let (stop, shared, ticket) = owner
+            .release_shared(shared, ticket)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::SharedAllocationAliased)
+        );
+        assert_eq!(owner.usage().actual_capacity_bytes, 4);
+        drop(other_handle);
+        assert_eq!(owner.release_shared(shared, ticket).unwrap(), 77);
+        let mut control = control();
+        let (first, first_ticket) = control.share_owned(10_u32).unwrap();
+        let (second, second_ticket) = control.share_owned(20_u32).unwrap();
+        let (_, second, first_ticket) = control
+            .release_shared(second, first_ticket)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(control.usage().actual_capacity_bytes, 8);
+        assert_eq!(control.release_shared(first, first_ticket).unwrap(), 10);
+        assert_eq!(control.release_shared(second, second_ticket).unwrap(), 20);
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn terminal_logical_cleanup_requires_same_owner_and_never_refunds_nodes_or_work() {
+        let mut control = control();
+        let identity = control.identity();
+        let foreign_identity = super::tests::control().identity();
+        control
+            .acquire_many(&[
+                (Resource::ManagedNodes, 2),
+                (Resource::AuxiliaryEntries, 3),
+                (Resource::ManagedEdges, 1),
+            ])
+            .unwrap();
+        control.charge(WorkCategory::StateStep, 5).unwrap();
+        control.cancellation.cancel();
+        let stop = control.checkpoint().unwrap_err();
+        let before = control.usage().clone();
+        assert_eq!(
+            control.cleanup_release(&foreign_identity, Resource::AuxiliaryEntries, 1),
+            Err(stop)
+        );
+        assert_eq!(
+            control.cleanup_release(&identity, Resource::AuxiliaryEntries, 4),
+            Err(stop)
+        );
+        assert_eq!(
+            control.cleanup_release(&identity, Resource::ManagedNodes, 1),
+            Err(stop)
+        );
+        assert_eq!(
+            control.cleanup_release(&identity, Resource::WorkCredits, 1),
+            Err(stop)
+        );
+        assert_eq!(control.usage(), &before);
+        control
+            .cleanup_release(&identity, Resource::AuxiliaryEntries, 3)
+            .unwrap();
+        control
+            .cleanup_release(&identity, Resource::ManagedEdges, 1)
+            .unwrap();
+        assert_eq!(
+            control.usage().resource(Resource::AuxiliaryEntries),
+            ResourceUsage {
+                current: 0,
+                high_water: 3
+            }
+        );
+        assert_eq!(
+            control.usage().resource(Resource::ManagedEdges),
+            ResourceUsage {
+                current: 0,
+                high_water: 1
+            }
+        );
+        assert_eq!(
+            control.usage().resource(Resource::ManagedNodes),
+            before.resource(Resource::ManagedNodes)
+        );
+        assert_eq!(
+            control.usage().resource(Resource::WorkCredits),
+            before.resource(Resource::WorkCredits)
+        );
+        assert_eq!(control.stop(), Some(stop));
+    }
+    #[test]
+    fn active_logical_cleanup_is_rejected_without_changing_admitted_counts() {
+        let mut control = control();
+        let identity = control.identity();
+        control.acquire(Resource::AuxiliaryEntries, 1).unwrap();
+        let before = control.usage().clone();
+        assert_eq!(
+            control.cleanup_release(&identity, Resource::AuxiliaryEntries, 1),
+            Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning))
+        );
+        assert_eq!(control.usage(), &before);
+        control
+            .cleanup_release(&identity, Resource::AuxiliaryEntries, 1)
+            .unwrap();
+    }
+    #[test]
+    fn fixed_record_layout_observation_is_separate_from_work_and_storage() {
+        let mut control = control();
+        let before = control.usage().clone();
+        control.admit_atomic_layout(512).unwrap();
+        control.admit_atomic_layout(128).unwrap();
+        assert_eq!(
+            control.usage().resource(Resource::AtomicLayoutBytes),
+            ResourceUsage {
+                current: 128,
+                high_water: 512,
+            }
+        );
+        assert_eq!(control.usage().largest_atomic_layout, 512);
+        assert_eq!(control.usage().work, before.work);
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.usage().actual_capacity_high_water, 0);
+        for resource in RESOURCES {
+            if resource != Resource::AtomicLayoutBytes {
+                assert_eq!(
+                    control.usage().resource(resource),
+                    before.resource(resource)
+                );
+            }
+        }
+    }
+    #[test]
+    fn fixed_record_layout_rejection_and_cancellation_observe_no_layout() {
+        let mut caps = limits();
+        caps.atomic_layout_bytes = 511;
+        let mut owner = ParseControl::new(caps, Cancellation::new()).unwrap();
+        let before = owner.usage().clone();
+        let stop = owner.admit_atomic_layout(512).unwrap_err();
+        assert_eq!(
+            stop,
+            ParseStop::LimitExceeded {
+                resource: Resource::AtomicLayoutBytes,
+                limit: 511,
+                current: 0,
+                requested_delta: 512,
+            }
+        );
+        owner.cancellation.cancel();
+        assert_eq!(owner.admit_atomic_layout(0), Err(stop));
+        assert_eq!(owner.usage(), &before);
+
+        let mut owner = control();
+        owner.cancellation.cancel();
+        let before = owner.usage().clone();
+        assert_eq!(owner.admit_atomic_layout(1), Err(ParseStop::Cancelled));
+        assert_eq!(owner.usage(), &before);
+    }
+    #[test]
+    fn fixed_record_layout_checks_representable_span_and_zero_layout() {
+        let mut owner = control();
+        owner.admit_atomic_layout(0).unwrap();
+        let before = owner.usage().clone();
+        assert_eq!(
+            owner.admit_atomic_layout(usize::MAX),
+            Err(ParseStop::RepresentationExhausted {
+                resource: Resource::AtomicLayoutBytes,
+            })
+        );
+        assert_eq!(owner.usage(), &before);
+    }
+    #[test]
+    fn checked_arithmetic_failure_latches_observation_and_preserves_first_stop() {
+        let mut owner = control();
+        owner.checkpoint().unwrap();
+        let before = owner.usage().clone();
+        // Cancellation arrives after the arithmetic operation's initial poll.
+        // The already observed failure remains the first terminal transition.
+        owner.cancellation.cancel();
+        let stop = ParseStop::RepresentationExhausted {
+            resource: Resource::ManagedUtf16Units,
+        };
+        assert_eq!(
+            owner.representation::<()>(Resource::ManagedUtf16Units),
+            Err(stop)
+        );
+        assert_eq!(owner.checkpoint(), Err(stop));
+        assert_eq!(
+            owner.representation::<()>(Resource::ManagedEdges),
+            Err(stop)
+        );
+        assert_eq!(owner.usage(), &before);
+
+        let mut owner = control();
+        owner.cancellation.cancel();
+        assert_eq!(owner.checkpoint(), Err(ParseStop::Cancelled));
+        assert_eq!(
+            owner.representation::<()>(Resource::ManagedUtf16Units),
+            Err(ParseStop::Cancelled)
+        );
+    }
+    #[test]
+    fn zero_sized_shared_cleanup_allows_actual_alias_without_capacity_refund() {
+        let mut owner = control();
+        let (shared, allocation) = owner.share_owned(()).unwrap();
+        let alias = shared.clone();
+        assert_eq!(Arc::strong_count(&alias), 2);
+        owner.cancellation.cancel();
+        let stop = owner.checkpoint().unwrap_err();
+        let before = owner.usage().clone();
+        owner.release_zero_sized_shared(shared, allocation).unwrap();
+        assert_eq!(Arc::strong_count(&alias), 1);
+        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.stop(), Some(stop));
+    }
+    #[test]
+    fn zero_sized_shared_cleanup_recovers_foreign_or_mismatched_actual_ownership() {
+        let mut owner = control();
+        let mut foreign = control();
+        let (first, first_ticket) = owner.share_owned(()).unwrap();
+        let (stop, first, first_ticket) = foreign
+            .release_zero_sized_shared(first, first_ticket)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::ForeignControl)
+        );
+        assert_eq!(owner.stop(), None);
+        let (second, second_ticket) = owner.share_owned(()).unwrap();
+        let before = owner.usage().clone();
+        let (stop, second, first_ticket) = owner
+            .release_zero_sized_shared(second, first_ticket)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::CapacityMismatch)
+        );
+        assert_eq!(owner.usage(), &before);
+        owner
+            .release_zero_sized_shared(first, first_ticket)
+            .unwrap();
+        owner
+            .release_zero_sized_shared(second, second_ticket)
+            .unwrap();
+        assert_eq!(owner.usage(), &before);
+    }
+    #[test]
+    fn zero_sized_cleanup_rejects_nonzero_payload_without_refunding_its_layout() {
+        let mut owner = control();
+        let (shared, allocation) = owner.share_owned(77_u32).unwrap();
+        let before = owner.usage().clone();
+        let (stop, shared, allocation) = owner
+            .release_zero_sized_shared(shared, allocation)
+            .unwrap_err()
+            .into_parts();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::CapacityMismatch)
+        );
+        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.release_shared(shared, allocation).unwrap(), 77);
+        assert_eq!(owner.usage().actual_capacity_bytes, 0);
+        assert_eq!(owner.usage().actual_capacity_high_water, 4);
+        assert_eq!(owner.usage().work, before.work);
+        assert_eq!(owner.stop(), Some(stop));
+    }
+    #[test]
+    fn child_order_commit_transfers_scratch_and_edge_delta_without_other_refunds() {
+        let mut owner = control();
+        let identity = owner.identity();
+        owner
+            .acquire_many(&[
+                (Resource::AuxiliaryEntries, 3),
+                (Resource::ManagedEdges, 2),
+                (Resource::ManagedNodes, 4),
+            ])
+            .unwrap();
+        owner
+            .charge_many(&[(WorkCategory::RecordWrite, 3), (WorkCategory::CopyByte, 24)])
+            .unwrap();
+        let before = owner.usage().clone();
+        owner.commit_child_orders(&identity, 3, 2, 1).unwrap();
+        assert_eq!(
+            owner.usage().resource(Resource::AuxiliaryEntries),
+            ResourceUsage {
+                current: 0,
+                high_water: 3,
+            }
+        );
+        assert_eq!(
+            owner.usage().resource(Resource::ManagedEdges),
+            ResourceUsage {
+                current: 3,
+                high_water: 3,
+            }
+        );
+        for resource in RESOURCES {
+            if resource != Resource::AuxiliaryEntries && resource != Resource::ManagedEdges {
+                assert_eq!(owner.usage().resource(resource), before.resource(resource));
+            }
+        }
+        assert_eq!(owner.usage().work, before.work);
+        assert_eq!(owner.stop(), None);
+    }
+    #[test]
+    fn child_order_same_parent_move_can_commit_at_edge_cap_without_transient_growth() {
+        let mut caps = limits();
+        caps.managed_edges = 2;
+        let mut owner = ParseControl::new(caps, Cancellation::new()).unwrap();
+        let identity = owner.identity();
+        owner
+            .acquire_many(&[(Resource::AuxiliaryEntries, 2), (Resource::ManagedEdges, 2)])
+            .unwrap();
+        owner.commit_child_orders(&identity, 2, 1, 1).unwrap();
+        assert_eq!(
+            owner.usage().resource(Resource::AuxiliaryEntries).current,
+            0
+        );
+        assert_eq!(
+            owner.usage().resource(Resource::ManagedEdges),
+            ResourceUsage {
+                current: 2,
+                high_water: 2,
+            }
+        );
+        let before = owner.usage().clone();
+        owner.commit_child_orders(&identity, 0, 0, 0).unwrap();
+        assert_eq!(owner.usage(), &before);
+    }
+    #[test]
+    fn child_order_cap_failure_retains_scratch_edges_and_first_stop() {
+        let mut caps = limits();
+        caps.managed_edges = 1;
+        let mut owner = ParseControl::new(caps, Cancellation::new()).unwrap();
+        let identity = owner.identity();
+        owner
+            .acquire_many(&[(Resource::AuxiliaryEntries, 2), (Resource::ManagedEdges, 1)])
+            .unwrap();
+        let before = owner.usage().clone();
+        let stop = ParseStop::LimitExceeded {
+            resource: Resource::ManagedEdges,
+            limit: 1,
+            current: 1,
+            requested_delta: 1,
+        };
+        assert_eq!(owner.commit_child_orders(&identity, 2, 1, 0), Err(stop));
+        assert_eq!(owner.usage(), &before);
+        owner.cancellation.cancel();
+        assert_eq!(owner.commit_child_orders(&identity, 0, 0, 0), Err(stop));
+        assert_eq!(owner.usage(), &before);
+        owner
+            .cleanup_release(&identity, Resource::AuxiliaryEntries, 2)
+            .unwrap();
+        assert_eq!(
+            owner.usage().resource(Resource::AuxiliaryEntries).current,
+            0
+        );
+        assert_eq!(
+            owner
+                .usage()
+                .resource(Resource::AuxiliaryEntries)
+                .high_water,
+            2
+        );
+        assert_eq!(
+            owner.usage().resource(Resource::ManagedEdges),
+            before.resource(Resource::ManagedEdges)
+        );
+        assert_eq!(owner.stop(), Some(stop));
+    }
+    #[test]
+    fn child_order_foreign_owner_rejects_before_any_counter_commit() {
+        let mut owner = control();
+        let foreign_identity = control().identity();
+        owner
+            .acquire_many(&[(Resource::AuxiliaryEntries, 2), (Resource::ManagedEdges, 1)])
+            .unwrap();
+        let before = owner.usage().clone();
+        assert_eq!(
+            owner.commit_child_orders(&foreign_identity, 2, 0, 1),
+            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+        );
+        assert_eq!(owner.usage(), &before);
+    }
+    #[test]
+    fn child_order_underflow_rejects_all_counters_before_edge_arithmetic() {
+        for (scratch, removal) in [(3, 0), (2, 2)] {
+            let mut owner = control();
+            let identity = owner.identity();
+            owner
+                .acquire_many(&[(Resource::AuxiliaryEntries, 2), (Resource::ManagedEdges, 1)])
+                .unwrap();
+            let before = owner.usage().clone();
+            assert_eq!(
+                owner.commit_child_orders(&identity, scratch, u64::MAX, removal),
+                Err(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
+            );
+            assert_eq!(owner.usage(), &before);
+        }
+    }
+    #[test]
+    fn child_order_edge_addition_overflow_retains_scratch_and_existing_edges() {
+        let mut owner = control();
+        let identity = owner.identity();
+        owner
+            .acquire_many(&[(Resource::AuxiliaryEntries, 2), (Resource::ManagedEdges, 1)])
+            .unwrap();
+        let before = owner.usage().clone();
+        assert_eq!(
+            owner.commit_child_orders(&identity, 2, u64::MAX, 0),
+            Err(ParseStop::RepresentationExhausted {
+                resource: Resource::ManagedEdges,
+            })
+        );
+        assert_eq!(owner.usage(), &before);
+    }
+    #[test]
+    fn child_order_final_checkpoint_cancellation_precedes_validation_even_for_empty_commit() {
+        for (scratch, addition, removal) in [(0, 0, 0), (3, u64::MAX, 2)] {
+            let mut owner = control();
+            let identity = owner.identity();
+            owner
+                .acquire_many(&[(Resource::AuxiliaryEntries, 2), (Resource::ManagedEdges, 1)])
+                .unwrap();
+            owner.cancellation.cancel();
+            let before = owner.usage().clone();
+            assert_eq!(
+                owner.commit_child_orders(&identity, scratch, addition, removal),
+                Err(ParseStop::Cancelled)
+            );
+            assert_eq!(owner.usage(), &before);
+            assert_eq!(
+                owner.commit_child_orders(&identity, 2, 0, 1),
+                Err(ParseStop::Cancelled)
+            );
+            assert_eq!(owner.usage(), &before);
+        }
     }
 }
