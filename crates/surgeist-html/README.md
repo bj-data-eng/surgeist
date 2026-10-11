@@ -172,6 +172,18 @@ its empty state remains unresolved rather than selecting a host network default.
 These views do not compute inheritance or claim runtime effects,
 and the remaining attribute families are tracked by the contribution.
 
+Numeric attribute reports cover canvas width/height, textarea cols/rows and
+tabindex content values. They preserve whole authored syntax and prefix recovery
+separately from each attribute's selected default: canvas defaults to 300/150
+while accepting zero, and textarea defaults to 20/2 when recovery fails or yields
+zero. Tabindex retains an exact signed integer or source-null; its full signed-long
+IDL getter and element-specific focus defaults remain pending. Formmethod and
+formenctype overrides reuse the defining keyword rules and separate submitter
+author restrictions from their intrinsic values. A missing override retains no
+selected value; effective fallback requires the actual form owner and remains
+pending. These content operations do not allocate canvas surfaces, lay out text,
+move focus or submit a form.
+
 `HtmlCaptureBuilder` freezes one bounded, flat capture of document, node,
 registry and relationship facts. Capture-qualified subjects are independent of
 native result IDs and future canonical DOM IDs. Unavailable facts remain

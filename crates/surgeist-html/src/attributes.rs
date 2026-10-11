@@ -1,7 +1,8 @@
 //! Intrinsic interpretation of selected HTML attributes over exact raw records.
 //!
 //! This bounded family covers global and selected element-specific enumerations,
-//! Boolean attributes, and declarative-shadow template modes/flags. It does not resolve inheritance,
+//! Boolean attributes, exact scalar content values, submitter keyword overrides,
+//! and declarative-shadow template modes/flags. It does not resolve inheritance,
 //! editing, directionality, dragging, focus, microdata, or shadow-root creation.
 //! The defining HTML clauses, rather than non-normative index summaries, own
 //! these rules. WHATWG source attribution is in `licenses/whatwg/NOTICE.md`.
@@ -145,6 +146,8 @@ pub enum HtmlAttributeContextConformanceError {
     ScriptContextForbidsAttribute,
     /// The actual button is not a source-defined submit button.
     FormnovalidateRequiresSubmitButton,
+    /// A formmethod or formenctype override was authored on a non-submit button.
+    FormOverrideRequiresSubmitButton,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -332,7 +335,10 @@ impl<T> HtmlAttributeReport<T> {
         ) {
             return Some(self.rule.source);
         }
-        if matches!(self.rule.context, Context::InputControl(_)) {
+        if matches!(
+            self.rule.context,
+            Context::InputControl(_) | Context::SubmitterOverride
+        ) {
             match KnownHtmlElement::from_name(&self.element) {
                 Some(KnownHtmlElement::Input) => {
                     return Some(match &self.supplied_context {
@@ -340,8 +346,16 @@ impl<T> HtmlAttributeReport<T> {
                         _ => INPUT_SOURCE,
                     });
                 }
-                Some(KnownHtmlElement::Button) => return Some(BUTTON_TYPE_SOURCE),
-                None if self.element.namespace() == &Namespace::html() => {
+                Some(KnownHtmlElement::Button) => {
+                    return Some(if self.rule.context == Context::SubmitterOverride {
+                        BUTTON_SOURCE
+                    } else {
+                        BUTTON_TYPE_SOURCE
+                    });
+                }
+                None if self.element.namespace() == &Namespace::html()
+                    && self.rule.context != Context::SubmitterOverride =>
+                {
                     return Some(FORM_ASSOCIATED_CUSTOM_SOURCE);
                 }
                 _ => {}
@@ -395,6 +409,7 @@ enum Context {
     Elements(&'static [KnownHtmlElement]),
     DisabledControls,
     InputControl(InputBooleanApplicability),
+    SubmitterOverride,
     ScriptBoolean(ScriptApplicability),
     ImageMap,
     ImageControls,
@@ -529,6 +544,7 @@ const HYPERLINK_AREA_SOURCE: &str = source!("the-area-element");
 const FORM_ASSOCIATED_CUSTOM_SOURCE: &str = source!("form-associated-custom-element");
 const INPUT_SOURCE: &str = source!("the-input-element");
 const BUTTON_TYPE_SOURCE: &str = source!("attr-button-type");
+const BUTTON_SOURCE: &str = source!("the-button-element");
 
 fn input_state_source(state: HtmlInputType) -> &'static str {
     match state {
@@ -1225,6 +1241,12 @@ fn applies(
             known.is_some_and(|name| elements.contains(&name))
         }
         Context::InputControl(condition) => return condition.applicability(known),
+        Context::SubmitterOverride => {
+            matches!(
+                known,
+                Some(KnownHtmlElement::Input | KnownHtmlElement::Button)
+            )
+        }
         Context::ScriptBoolean(_) => {
             return if known == Some(KnownHtmlElement::Script) {
                 HtmlAttributeApplicability::Applicable
@@ -1287,7 +1309,8 @@ fn report<T>(
         HtmlAttributeContextAuthorState::Unapplied
     } else if raw.is_some()
         && (has_boolean_author_constraint(rule, element)
-            || has_hyperlink_author_constraint(rule, element))
+            || has_hyperlink_author_constraint(rule, element)
+            || rule.context == Context::SubmitterOverride)
     {
         HtmlAttributeContextAuthorState::Unchecked
     } else {
@@ -1367,9 +1390,22 @@ impl HtmlValueInterpreter {
             SuppliedContext::CustomControl(_) => {
                 result.applicability = HtmlAttributeApplicability::DifferentElement;
             }
-            SuppliedContext::Input(_)
-            | SuppliedContext::ButtonSubmitter(_)
-            | SuppliedContext::ImageMap(_)
+            SuppliedContext::Input(_) | SuppliedContext::ButtonSubmitter(_) => {
+                let matches_element = matches!(
+                    (&supplied_context, KnownHtmlElement::from_name(element)),
+                    (SuppliedContext::Input(_), Some(KnownHtmlElement::Input))
+                        | (
+                            SuppliedContext::ButtonSubmitter(_),
+                            Some(KnownHtmlElement::Button)
+                        )
+                );
+                if result.applicability == HtmlAttributeApplicability::Applicable
+                    && (rule.metadata.context != Context::SubmitterOverride || !matches_element)
+                {
+                    result.applicability = HtmlAttributeApplicability::DifferentContext;
+                }
+            }
+            SuppliedContext::ImageMap(_)
             | SuppliedContext::ImageControls(_)
             | SuppliedContext::StylesheetLink(_) => {
                 result.applicability = HtmlAttributeApplicability::DifferentContext;
@@ -1381,7 +1417,9 @@ impl HtmlValueInterpreter {
         }
         // The href requirement constrains authorship only. Without supplied
         // evidence, intrinsic interpretation retains an unchecked author fact.
-        if !has_hyperlink_author_constraint(rule.metadata, element) {
+        if !has_hyperlink_author_constraint(rule.metadata, element)
+            && rule.metadata.context != Context::SubmitterOverride
+        {
             result.context_author = HtmlAttributeContextAuthorState::NotRequired;
         }
         if raw.is_some()
@@ -1396,6 +1434,23 @@ impl HtmlValueInterpreter {
                         HtmlAttributeContextConformanceError::ReferrerPolicyRequiresHref,
                     )
                 }
+            };
+        }
+        if raw.is_some() && rule.metadata.context == Context::SubmitterOverride {
+            result.context_author = match &result.supplied_context {
+                SuppliedContext::Input(HtmlInputType::Submit | HtmlInputType::Image)
+                | SuppliedContext::ButtonSubmitter(HtmlButtonSubmitterContext::SubmitButton) => {
+                    HtmlAttributeContextAuthorState::Conforming
+                }
+                SuppliedContext::Input(_) => HtmlAttributeContextAuthorState::Nonconforming(
+                    HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
+                ),
+                SuppliedContext::ButtonSubmitter(_) => {
+                    HtmlAttributeContextAuthorState::Nonconforming(
+                        HtmlAttributeContextConformanceError::FormOverrideRequiresSubmitButton,
+                    )
+                }
+                _ => HtmlAttributeContextAuthorState::Unchecked,
             };
         }
         match raw {
@@ -1897,3 +1952,6 @@ impl HtmlValueInterpreter {
         )
     }
 }
+
+mod scalar;
+pub use scalar::*;
