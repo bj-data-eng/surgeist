@@ -208,6 +208,16 @@ and [processing rules](../../references/html-language-forms-tables-templates--87
 do not establish overlap conformance or resolve the table's height. The reports
 use the standalone per-value UTF-16 cap and ordinary native allocations.
 
+`col_span` and `colgroup_span` apply the same separation to column-span numeric
+content. Numeric authoring requires 1..=1000; processing defaults absent, failed
+or zero recovery to one and clamps larger quantities to 1000. One checked native
+constructor emits canonical `span` syntax for either element. Colgroup numeric
+conformance does not establish its child restrictions or actual table use:
+when actual col children are present, table formation uses their spans and
+ignores the group's own span. The [column clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-colgroup-element)
+and existing captured table kernel own those contextual distinctions. These
+standalone reports provide neither a resolved group width nor an IDL getter.
+
 `select_size` combines exact size content with the actual multiple attribute.
 Native size construction requires a positive integer. Processing preserves every
 successful nonnegative recovery, including zero and negative zero; only missing

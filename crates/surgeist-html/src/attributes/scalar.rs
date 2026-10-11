@@ -9,7 +9,8 @@ use crate::{
     HtmlValueRecoveryState, HtmlValueReport,
 };
 
-/// Attribute-level author conformance, separate from prefix recovery/defaults.
+/// Numeric-value author conformance, separate from prefix recovery/defaults.
+/// This does not establish additional element or tree-context conformance.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNumericAttributeAuthorState {
     Missing,
@@ -21,7 +22,7 @@ pub enum HtmlNumericAttributeAuthorState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNumericAttributeConformanceError {
     CommonValue(HtmlValueFailure),
-    /// Textarea rows/cols, select size and cell colspan require authored positivity.
+    /// Textarea rows/cols, select size and positive span rules require authored positivity.
     ZeroMustBePositive,
     /// A whole valid integer exceeds this attribute's source-defined maximum.
     MaximumExceeded {
@@ -35,7 +36,7 @@ pub enum HtmlNumericAttributeValueOrigin {
     Recovered,
     MissingDefault,
     ParseFailureDefault,
-    /// Successful recovery produced zero, which rows/cols and cell colspan default.
+    /// Successful recovery produced zero, which rows/cols and positive span rules default.
     ZeroDefault,
     /// Successful recovery exceeded the source cap; common retains its exact value.
     Clamped,
@@ -94,7 +95,11 @@ impl<A, T> HtmlNumericAttributeReport<A, T> {
     pub fn processing_source_clause(&self) -> &'static str {
         match self.attribute() {
             KnownHtmlAttribute::Tabindex => source!("tabindex-value"),
-            KnownHtmlAttribute::Colspan | KnownHtmlAttribute::Rowspan => source!("forming-a-table"),
+            KnownHtmlAttribute::Colspan
+            | KnownHtmlAttribute::Rowspan
+            | KnownHtmlAttribute::Span => {
+                source!("forming-a-table")
+            }
             _ => self.source_clause(),
         }
     }
@@ -185,15 +190,15 @@ const SELECT_SIZE: RuleMetadata = RuleMetadata {
     vocabulary_source: None,
 };
 
-// Cell author bounds and recovery caps share one source-owned declaration.
+// Bounded span author constraints and recovery caps share a source-owned rule.
 #[derive(Clone, Copy)]
-struct CellSpanRule {
+struct BoundedSpanRule {
     metadata: RuleMetadata,
     positive: bool,
     maximum: u16,
 }
 
-const CELL_COLSPAN: CellSpanRule = CellSpanRule {
+const CELL_COLSPAN: BoundedSpanRule = BoundedSpanRule {
     metadata: RuleMetadata {
         attribute: KnownHtmlAttribute::Colspan,
         rows: &[27],
@@ -205,7 +210,7 @@ const CELL_COLSPAN: CellSpanRule = CellSpanRule {
     maximum: 1000,
 };
 
-const CELL_ROWSPAN: CellSpanRule = CellSpanRule {
+const CELL_ROWSPAN: BoundedSpanRule = BoundedSpanRule {
     metadata: RuleMetadata {
         attribute: KnownHtmlAttribute::Rowspan,
         rows: &[132],
@@ -215,6 +220,30 @@ const CELL_ROWSPAN: CellSpanRule = CellSpanRule {
     },
     positive: false,
     maximum: 65534,
+};
+
+const COL_SPAN: BoundedSpanRule = BoundedSpanRule {
+    metadata: RuleMetadata {
+        attribute: KnownHtmlAttribute::Span,
+        rows: &[147],
+        source: source!("attr-col-span"),
+        context: Context::Elements(&[KnownHtmlElement::Col]),
+        vocabulary_source: None,
+    },
+    positive: true,
+    maximum: 1000,
+};
+
+const COLGROUP_SPAN: BoundedSpanRule = BoundedSpanRule {
+    metadata: RuleMetadata {
+        attribute: KnownHtmlAttribute::Span,
+        rows: &[147],
+        source: source!("attr-colgroup-span"),
+        context: Context::Elements(&[KnownHtmlElement::Colgroup]),
+        vocabulary_source: None,
+    },
+    positive: true,
+    maximum: 1000,
 };
 
 const TABINDEX: RuleMetadata = RuleMetadata {
@@ -277,7 +306,7 @@ fn numeric_author<A>(common: &HtmlValueReport<A, A>) -> HtmlNumericAttributeAuth
 }
 
 // A failed u128 projection proves the exact nonnegative magnitude exceeds
-// either cell cap; it is neither a syntax failure nor a processing error.
+// the selected span cap; it is neither a syntax failure nor a processing error.
 fn capped_nonnegative(value: &HtmlNonNegativeInteger, maximum: u16) -> (u16, bool) {
     match value.to_u128() {
         Ok(value) if value <= u128::from(maximum) => (value as u16, false),
@@ -369,9 +398,9 @@ impl HtmlValueInterpreter {
         })
     }
 
-    fn cell_span(
+    fn bounded_span(
         &self,
-        rule: CellSpanRule,
+        rule: BoundedSpanRule,
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
@@ -427,7 +456,7 @@ impl HtmlValueInterpreter {
         raw: Option<&Attribute>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
-        self.cell_span(CELL_COLSPAN, element, raw)
+        self.bounded_span(CELL_COLSPAN, element, raw)
     }
 
     /// Interprets exact HTML td/th rowspan content: absent or failed recovery
@@ -442,7 +471,38 @@ impl HtmlValueInterpreter {
         raw: Option<&Attribute>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
-        self.cell_span(CELL_ROWSPAN, element, raw)
+        self.bounded_span(CELL_ROWSPAN, element, raw)
+    }
+
+    /// Interprets exact HTML col span numeric content. Author syntax requires
+    /// an integer in 1..=1000; absent, failed or zero recovery selects 1 and
+    /// larger recovered quantities are capped at 1000. This content quantity
+    /// does not establish the col element's parent or actual table use and is
+    /// separate from WebIDL reflection and CSS table layout.
+    pub fn col_span(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
+    {
+        self.bounded_span(COL_SPAN, element, raw)
+    }
+
+    /// Interprets only exact HTML colgroup span's numeric content value.
+    /// Numeric-value author syntax requires an integer in 1..=1000; absent,
+    /// failed or zero recovery selects 1 and larger recovery is capped at 1000.
+    /// Conforming here certifies only that numeric value: it does not establish
+    /// the source restriction requiring no col elements or the group's content
+    /// model. The content quantity is retained independently of whether table
+    /// formation uses it; actual col children make that algorithm ignore the
+    /// group's own span. No child evidence, group width or IDL getter is inferred.
+    pub fn colgroup_span(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
+    {
+        self.bounded_span(COLGROUP_SPAN, element, raw)
     }
 
     /// Interprets exact canvas bitmap width content, including valid zero.
@@ -614,9 +674,9 @@ fn nonnegative_author_attribute(
     ))
 }
 
-fn cell_span_author_attribute(
+fn bounded_span_author_attribute(
     value: HtmlNonNegativeInteger,
-    rule: CellSpanRule,
+    rule: BoundedSpanRule,
 ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
     nonnegative_constraint(&value, rule.positive, Some(rule.maximum))?;
     Ok(Attribute::new(
@@ -626,12 +686,22 @@ fn cell_span_author_attribute(
 }
 
 impl HtmlNonNegativeInteger {
+    /// Constructs canonical span numeric syntax in 1..=1000 for col/colgroup.
+    /// Zero and exact larger magnitudes are rejected rather than clamped.
+    /// This establishes intrinsic numeric conformance only, not the colgroup
+    /// child restriction/content model or the element's actual table use.
+    pub fn into_column_span_attribute(
+        self,
+    ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
+        bounded_span_author_attribute(self, COL_SPAN)
+    }
+
     /// Constructs canonical conforming cell colspan in 1..=1000.
     /// Exact larger magnitudes are rejected, never clamped or called malformed.
     pub fn into_cell_colspan_attribute(
         self,
     ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
-        cell_span_author_attribute(self, CELL_COLSPAN)
+        bounded_span_author_attribute(self, CELL_COLSPAN)
     }
 
     /// Constructs canonical conforming cell rowspan in 0..=65534.
@@ -639,7 +709,7 @@ impl HtmlNonNegativeInteger {
     pub fn into_cell_rowspan_attribute(
         self,
     ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
-        cell_span_author_attribute(self, CELL_ROWSPAN)
+        bounded_span_author_attribute(self, CELL_ROWSPAN)
     }
 
     /// Constructs conforming select size syntax. Authored zero is rejected,
