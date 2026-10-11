@@ -322,6 +322,15 @@ irrelevant facts. Reports retain the consulted raw Boolean observations and
 owner origin, including known ownership within an unresolved result. This
 readback does not execute constraint validation or submission.
 
+The form-default-button query selects the first owned submit button in ordinary
+tree order across the whole tree, including controls outside the form subtree.
+A disabled first button remains the default. The implicit-submission-condition
+query reports that button or, after proving there is none, whether zero, one or
+at least two owned input fields block the no-button branch. Both queries reuse
+the qualified form-owner and submit-button observations. Unavailable order or
+association remains missing when it can affect the result. These static
+conditions do not activate a button, dispatch events or submit a form.
+
 `HtmlGlobalInheritanceFacts` supplies actual document design-mode states and
 per-element spellcheck default behaviors. The checked supplement joins one
 capture and host revision to its producer, configuration and revision; reports

@@ -728,6 +728,14 @@ pub enum surgeist_html::HtmlImageMapAttributeContext
 pub surgeist_html::HtmlImageMapAttributeContext::AncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAttributeContext::NoAncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImplicitSubmissionBlockingFields
+pub surgeist_html::HtmlImplicitSubmissionBlockingFields::Multiple
+pub surgeist_html::HtmlImplicitSubmissionBlockingFields::One
+pub surgeist_html::HtmlImplicitSubmissionBlockingFields::Zero
+pub enum surgeist_html::HtmlImplicitSubmissionCondition
+pub surgeist_html::HtmlImplicitSubmissionCondition::DefaultButton(surgeist_html::HtmlDefaultButton)
+pub surgeist_html::HtmlImplicitSubmissionCondition::NoButton
+pub surgeist_html::HtmlImplicitSubmissionCondition::NoButton::blocking_fields: surgeist_html::HtmlImplicitSubmissionBlockingFields
 pub enum surgeist_html::HtmlInertFactError
 pub surgeist_html::HtmlInertFactError::Capture(surgeist_html::HtmlCaptureError)
 pub surgeist_html::HtmlInertFactError::ContradictoryConnectedness(surgeist_html::HtmlCaptureSubjectId)
@@ -1073,6 +1081,8 @@ pub surgeist_html::HtmlSemanticFact::DirtyValueFlag(surgeist_html::HtmlSemanticV
 pub surgeist_html::HtmlSemanticFact::Disabledness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Editable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::EditingHost(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDefaultButton>>)
+pub surgeist_html::HtmlSemanticFact::FormImplicitSubmissionCondition(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImplicitSubmissionCondition>)
 pub surgeist_html::HtmlSemanticFact::FormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFormOwner>)
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
 pub surgeist_html::HtmlSemanticFact::Indeterminateness(surgeist_html::HtmlSemanticValue<bool>)
@@ -1140,6 +1150,8 @@ pub surgeist_html::HtmlSemanticQuery::DirtyValueFlag
 pub surgeist_html::HtmlSemanticQuery::Disabledness
 pub surgeist_html::HtmlSemanticQuery::Editable
 pub surgeist_html::HtmlSemanticQuery::EditingHost
+pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
+pub surgeist_html::HtmlSemanticQuery::FormImplicitSubmissionCondition
 pub surgeist_html::HtmlSemanticQuery::FormOwner
 pub surgeist_html::HtmlSemanticQuery::Hidden
 pub surgeist_html::HtmlSemanticQuery::Indeterminateness
@@ -2053,6 +2065,10 @@ impl surgeist_html::HtmlDeclarativeShadowRoot
 pub fn surgeist_html::HtmlDeclarativeShadowRoot::contents(&self) -> &surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlDeclarativeShadowRoot::host(&self) -> &surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlDeclarativeShadowRoot::properties(&self) -> surgeist_html::HtmlShadowRootProperties
+pub struct surgeist_html::HtmlDefaultButton
+impl surgeist_html::HtmlDefaultButton
+pub fn surgeist_html::HtmlDefaultButton::form_owner(&self) -> &surgeist_html::HtmlFormOwner
+pub fn surgeist_html::HtmlDefaultButton::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
 pub struct surgeist_html::HtmlDeterminateProgress
 impl surgeist_html::HtmlDeterminateProgress
 pub fn surgeist_html::HtmlDeterminateProgress::maximum(&self) -> surgeist_html::HtmlFloatingPointNumber

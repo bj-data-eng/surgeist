@@ -4,7 +4,8 @@
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets, current control flags, global inheritance, select
 //! readbacks, autocomplete defaults and input/button form setting selection
-//! including the source no-validate state.
+//! including the source no-validate state, default buttons and static implicit
+//! submission conditions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
@@ -27,6 +28,8 @@ mod autocomplete;
 pub use autocomplete::*;
 mod form_settings;
 pub use form_settings::*;
+mod form_default;
+pub use form_default::*;
 
 use crate::numeric::{
     IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
@@ -650,10 +653,18 @@ pub enum HtmlSemanticQuery {
     SubmitterFormMethod,
     SubmitterFormEnctype,
     SubmitterNoValidate,
+    FormDefaultButton,
+    FormImplicitSubmissionCondition,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::FormDefaultButton => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#default-button"
+            }
+            Self::FormImplicitSubmissionCondition => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#implicit-submission"
+            }
             Self::Hidden => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hidden"
             }
@@ -856,6 +867,9 @@ pub enum HtmlSemanticFact {
     SubmitterFormMethod(HtmlSemanticValue<HtmlSubmitterFormMethod>),
     SubmitterFormEnctype(HtmlSemanticValue<HtmlSubmitterFormEnctype>),
     SubmitterNoValidate(HtmlSemanticValue<HtmlSubmitterNoValidate>),
+    /// Known(None) proves no owned submit button in the form's ordinary tree.
+    FormDefaultButton(HtmlSemanticValue<Option<HtmlDefaultButton>>),
+    FormImplicitSubmissionCondition(HtmlSemanticValue<HtmlImplicitSubmissionCondition>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlSemanticResult {
@@ -2121,6 +2135,16 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.submitter_no_validate(&request.subject)?,
                             )
                         }
+                        HtmlSemanticQuery::FormDefaultButton => {
+                            HtmlSemanticFact::FormDefaultButton(
+                                self.form_default_button(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::FormImplicitSubmissionCondition => {
+                            HtmlSemanticFact::FormImplicitSubmissionCondition(
+                                self.form_implicit_submission_condition(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::SubmitterFormMethod => {
                             HtmlSemanticFact::SubmitterFormMethod(
                                 self.submitter_form_method(&request.subject)?,
@@ -2240,6 +2264,14 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::SubmitterNoValidate => {
                         HtmlSemanticFact::SubmitterNoValidate(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FormDefaultButton => {
+                        HtmlSemanticFact::FormDefaultButton(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FormImplicitSubmissionCondition => {
+                        HtmlSemanticFact::FormImplicitSubmissionCondition(
+                            HtmlSemanticValue::Inapplicable,
+                        )
                     }
                     HtmlSemanticQuery::SubmitterFormMethod => {
                         HtmlSemanticFact::SubmitterFormMethod(HtmlSemanticValue::Inapplicable)

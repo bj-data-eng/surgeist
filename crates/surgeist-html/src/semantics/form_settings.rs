@@ -16,9 +16,9 @@ pub enum HtmlSubmitterTypeObservation {
     Button(HtmlAttributeReport<HtmlButtonTypeState>),
 }
 
-struct SubmitterRole {
-    observation: HtmlSubmitterTypeObservation,
-    submit_button: Result<bool, HtmlSemanticMissing>,
+pub(super) struct SubmitterRole {
+    pub(super) observation: HtmlSubmitterTypeObservation,
+    pub(super) submit_button: Result<bool, HtmlSemanticMissing>,
 }
 
 macro_rules! form_setting {
@@ -218,7 +218,7 @@ form_setting!(
 );
 
 impl<'a> HtmlSemanticSession<'a> {
-    fn form_submitter_role(
+    pub(super) fn form_submitter_role(
         &mut self,
         subject: &HtmlCaptureSubjectId,
         element: &'a HtmlCapturedElement,
