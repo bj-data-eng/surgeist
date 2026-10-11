@@ -921,3 +921,125 @@ impl HtmlValueInterpreter {
         })
     }
 }
+
+/// Source-qualified parsed content for `ol[start]` or `li[value]`, with exact
+/// signed author syntax independently retained from prefix recovery.
+///
+/// This local declaration is not an ordered-list starting value, list-item
+/// ordinal or WebIDL signed-long getter. Missing or failed contents have no
+/// invented default. The captured semantic owner supplies actual reversed
+/// counts, list ownership and ordinal sequencing separately.
+///
+/// Reports and exact integers use ordinary allocation plus the interpreter's
+/// per-original-value UTF-16 cap, without physical-memory, work or cancellation
+/// guarantees. Numeric conformance does not establish element/tree conformance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HtmlListIntegerAttributeReport {
+    attribute: HtmlAttributeReport<()>,
+    common: Option<HtmlValueReport<HtmlInteger, HtmlInteger>>,
+    author: HtmlNumericAttributeAuthorState,
+}
+
+impl HtmlListIntegerAttributeReport {
+    /// Exact names, raw observation and defining metadata. Generic keyword
+    /// recognition/author fields are Unapplied; numeric evidence is in common()
+    /// and author(). A specified li value leaves parent-author context Unchecked.
+    pub fn attribute(&self) -> &HtmlAttributeReport<()> {
+        &self.attribute
+    }
+
+    /// None means the rule was unapplied and no signed grammar ran. Applicable
+    /// absence retains a common report with independent Missing states.
+    pub fn common(&self) -> Option<&HtmlValueReport<HtmlInteger, HtmlInteger>> {
+        self.common.as_ref()
+    }
+
+    /// Checks only the whole numeric authored spelling, not list relationships.
+    pub fn author(&self) -> HtmlNumericAttributeAuthorState {
+        self.author
+    }
+
+    /// Borrows a successful parsed content integer, including nonconforming
+    /// recovered prefixes. Missing, failed and unapplied contents return None;
+    /// their distinct evidence remains in common() and attribute().
+    pub fn content_integer(&self) -> Option<&HtmlInteger> {
+        match self.common.as_ref()?.recovery() {
+            HtmlValueRecoveryState::Value(value) => Some(value),
+            HtmlValueRecoveryState::Missing | HtmlValueRecoveryState::Failed(_) => None,
+        }
+    }
+}
+
+const OL_START: RuleMetadata = RuleMetadata {
+    attribute: KnownHtmlAttribute::Start,
+    rows: &[153],
+    source: source!("attr-ol-start"),
+    context: Context::Elements(&[KnownHtmlElement::Ol]),
+    vocabulary_source: None,
+};
+
+const LI_VALUE: RuleMetadata = RuleMetadata {
+    attribute: KnownHtmlAttribute::Value,
+    rows: &[176],
+    source: source!("attr-li-value"),
+    context: Context::Elements(&[KnownHtmlElement::Li]),
+    vocabulary_source: None,
+};
+
+impl HtmlValueInterpreter {
+    fn list_integer_attribute(
+        &self,
+        metadata: RuleMetadata,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
+        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        let mut attribute = report(metadata, element, raw);
+        let common = if attribute.applicability() == HtmlAttributeApplicability::Applicable {
+            if metadata.attribute == KnownHtmlAttribute::Value && raw.is_some() {
+                // The li table excludes authored value on a child of ul/menu;
+                // this standalone declaration has no actual parent observation.
+                attribute.context_author = HtmlAttributeContextAuthorState::Unchecked;
+            }
+            Some(self.integer(raw.map(Attribute::value))?)
+        } else {
+            None
+        };
+        let author = common
+            .as_ref()
+            .map_or(HtmlNumericAttributeAuthorState::Unapplied, numeric_author);
+        Ok(HtmlListIntegerAttributeReport {
+            attribute,
+            common,
+            author,
+        })
+    }
+
+    /// Interprets only exact HTML `ol[start]` local signed content. The full raw
+    /// length is admitted before applicability; wrong roles run no grammar.
+    /// This supplies no missing/failed starting-value fallback, reversed count,
+    /// rendering/owner facts or IDL projection. Native exact syntax can already
+    /// be authored with HtmlInteger::as_document_string and Attribute::new.
+    pub fn ol_start(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
+        self.list_integer_attribute(OL_START, element, raw)
+    }
+
+    /// Interprets only exact HTML `li[value]` local signed content. Every present
+    /// applicable value leaves the separate actual-parent author restriction
+    /// Unchecked: the source prohibits authored value when li is a child of ul
+    /// or menu. Absence needs no such presence check. Numeric conformance and
+    /// prefix recovery are independent; neither establishes a list owner,
+    /// ordinal, parent eligibility or WebIDL value. Full raw admission precedes
+    /// applicability. Existing exact integer/Attribute factories author syntax.
+    pub fn li_value(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
+        self.list_integer_attribute(LI_VALUE, element, raw)
+    }
+}

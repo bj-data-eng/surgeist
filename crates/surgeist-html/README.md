@@ -188,13 +188,24 @@ Numeric attribute reports cover canvas width/height, textarea cols/rows and
 tabindex content values. They preserve whole authored syntax and prefix recovery
 separately from each attribute's selected default: canvas defaults to 300/150
 while accepting zero, and textarea defaults to 20/2 when recovery fails or yields
-zero. Tabindex retains an exact signed integer or source-null; its full signed-long
-IDL getter and element-specific focus defaults remain pending. Formmethod and
-formenctype overrides reuse the defining keyword rules and separate submitter
+zero. Tabindex retains an exact signed integer or source-null; the separate
+captured tabIndex query below owns its signed-long getter and element defaults.
+Formmethod and formenctype overrides reuse the defining keyword rules and
+separate submitter
 author restrictions from their intrinsic values. A missing override retains no
 selected value; the captured form-setting queries below use the actual form
 owner for effective fallback. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
+
+`ol_start` and `li_value` report exact local signed list declarations through
+the shared integer interpreter. Whole author syntax and independent prefix
+recovery retain their own evidence, including arbitrarily large signed values.
+Missing or failed content supplies no default, starting value or ordinal.
+Present applicable li value leaves its actual-parent author restriction
+unchecked. Existing exact integer construction and serialization compose with
+the ordinary Attribute factory for native authoring. The captured list owner
+below supplies reversed counts, starting values and ordinal sequencing.
+These standalone reports use ordinary allocation and the per-raw UTF-16 cap.
 
 `cell_colspan` and `cell_rowspan` retain exact common integer author/recovery
 reports independently of the cell-specific bounds. Checked native constructors

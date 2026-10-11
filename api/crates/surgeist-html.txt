@@ -2997,6 +2997,12 @@ pub const fn surgeist_html::HtmlLegacyColor::channels(&self) -> [u8; 3]
 pub const fn surgeist_html::HtmlLegacyColor::green(&self) -> u8
 pub const fn surgeist_html::HtmlLegacyColor::new(red: u8, green: u8, blue: u8) -> Self
 pub const fn surgeist_html::HtmlLegacyColor::red(&self) -> u8
+pub struct surgeist_html::HtmlListIntegerAttributeReport
+impl surgeist_html::HtmlListIntegerAttributeReport
+pub fn surgeist_html::HtmlListIntegerAttributeReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
+pub fn surgeist_html::HtmlListIntegerAttributeReport::author(&self) -> surgeist_html::HtmlNumericAttributeAuthorState
+pub fn surgeist_html::HtmlListIntegerAttributeReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlInteger, surgeist_html::HtmlInteger>>
+pub fn surgeist_html::HtmlListIntegerAttributeReport::content_integer(&self) -> core::option::Option<&surgeist_html::HtmlInteger>
 pub struct surgeist_html::HtmlListParticipation
 impl surgeist_html::HtmlListParticipation
 pub fn surgeist_html::HtmlListParticipation::capture(&self) -> &surgeist_html::HtmlCaptureId
@@ -3915,6 +3921,9 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::input_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::inputmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputMode>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::li_value(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlListIntegerAttributeReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::ol_start(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlListIntegerAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
