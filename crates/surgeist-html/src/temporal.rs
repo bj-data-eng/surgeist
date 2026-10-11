@@ -1,14 +1,18 @@
 //! Intrinsically valid HTML temporal values from the pinned
 //! [HTML foundations §2.3.5](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dates-and-times).
 //!
-//! Lexical recognition below checks the valid-string grammars. In particular,
-//! it does not substitute the more permissive duration/time parsing algorithms
-//! for author-conformance validation. No host clock or time zone is consulted.
+//! Author validation and exact processing results are separate. Processing
+//! retains arbitrary decimal fractions and normalizes explicit offsets without
+//! substituting permissive parsing for author conformance. No host clock or time
+//! zone is consulted.
 
-use crate::{DocumentString, numeric::HtmlNonNegativeInteger};
+use crate::{
+    DocumentString,
+    numeric::{HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger},
+};
 use std::{error::Error, fmt, num::NonZeroU32};
 
-/// A rejected temporal component or valid-string grammar.
+/// A rejected temporal grammar or source-defined intrinsic component constraint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTemporalError {
     /// A year contains something other than one or more ASCII decimal digits.
@@ -23,7 +27,8 @@ pub enum HtmlTemporalError {
     HourOutOfRange,
     /// A minute is outside 0 through 59.
     MinuteOutOfRange,
-    /// A second is outside 0 through 59; leap seconds are not representable.
+    /// Seconds are at least 60; leap seconds are not representable. Authored
+    /// integer seconds range from 0 through 59, with an optional fraction.
     SecondOutOfRange,
     /// A millisecond is outside 0 through 999.
     MillisecondOutOfRange,
@@ -31,7 +36,10 @@ pub enum HtmlTemporalError {
     OffsetOutOfRange,
     /// A week does not exist in the selected ISO week-year.
     WeekOutOfRange,
-    /// The entire input does not satisfy the selected valid-string grammar.
+    /// Duration processing accumulated nonzero years or months, which cannot
+    /// describe a fixed number of seconds.
+    NonzeroCalendarDuration,
+    /// The input fails the selected author grammar or processing algorithm.
     InvalidSyntax,
 }
 
@@ -44,10 +52,11 @@ impl fmt::Display for HtmlTemporalError {
             Self::DayOutOfRange => "day does not exist in this month",
             Self::HourOutOfRange => "hour must be between 0 and 23",
             Self::MinuteOutOfRange => "minute must be between 0 and 59",
-            Self::SecondOutOfRange => "second must be between 0 and 59",
+            Self::SecondOutOfRange => "seconds must be below 60",
             Self::MillisecondOutOfRange => "millisecond must be between 0 and 999",
             Self::OffsetOutOfRange => "time-zone offset exceeds 23 hours and 59 minutes",
             Self::WeekOutOfRange => "week does not exist in this week-year",
+            Self::NonzeroCalendarDuration => "duration contains nonzero calendar years or months",
             Self::InvalidSyntax => "input is not a valid HTML temporal string",
         })
     }
@@ -434,26 +443,18 @@ impl HtmlWeek {
     }
 }
 
-/// The date, time, and global date/time alternatives of §2.3.5.10.
+/// The complete processing alternatives returned by §2.3.5.10.
+///
+/// This processing clause defines no independent author grammar. Its time
+/// alternatives can retain more precision than valid authored time strings.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDateOrTime {
     /// A date without a time or offset.
     Date(HtmlDate),
     /// A time without a date or offset.
-    Time(HtmlTime),
+    Time(HtmlParsedTime),
     /// A date and time with an explicit offset.
-    Global(HtmlGlobalDateTime),
-}
-
-impl HtmlDateOrTime {
-    /// Produces the appropriate valid HTML temporal string.
-    pub fn to_document_string(&self) -> DocumentString {
-        match self {
-            Self::Date(value) => value.to_document_string(),
-            Self::Time(value) => value.to_document_string(),
-            Self::Global(value) => value.to_document_string(),
-        }
-    }
+    Global(HtmlParsedGlobalDateTime),
 }
 
 /// A valid date string with optional time (§2.3.5.10). A supplied time requires
@@ -517,6 +518,285 @@ impl HtmlDuration {
         }
         result.push('S');
         result.into()
+    }
+}
+
+/// An exact parsed temporal value cannot be represented at millisecond precision.
+/// No rounding or truncation has occurred.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlTemporalPrecisionError;
+
+impl fmt::Display for HtmlTemporalPrecisionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("temporal value is not exactly representable in milliseconds")
+    }
+}
+impl Error for HtmlTemporalPrecisionError {}
+
+/// An exact HTML processing time, without a zone or a fractional precision cap.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct HtmlParsedTime {
+    hour: u8,
+    minute: u8,
+    second: HtmlNonNegativeDecimal,
+}
+
+impl HtmlParsedTime {
+    /// Checks clock components; exact seconds must be below 60, so leap seconds
+    /// are rejected without projecting or rounding the decimal fraction.
+    pub fn new(
+        hour: u8,
+        minute: u8,
+        second: HtmlNonNegativeDecimal,
+    ) -> Result<Self, HtmlTemporalError> {
+        if hour > 23 {
+            return Err(HtmlTemporalError::HourOutOfRange);
+        }
+        if minute > 59 {
+            return Err(HtmlTemporalError::MinuteOutOfRange);
+        }
+        if !second.integer_part().to_u64().is_ok_and(|value| value < 60) {
+            return Err(HtmlTemporalError::SecondOutOfRange);
+        }
+        Ok(Self {
+            hour,
+            minute,
+            second,
+        })
+    }
+    /// Returns the hour, from 0 through 23.
+    pub fn hour(&self) -> u8 {
+        self.hour
+    }
+    /// Returns the minute, from 0 through 59.
+    pub fn minute(&self) -> u8 {
+        self.minute
+    }
+    /// Returns exact decimal seconds, including every significant fraction digit.
+    pub fn second(&self) -> &HtmlNonNegativeDecimal {
+        &self.second
+    }
+}
+
+fn exact_millisecond(value: &HtmlNonNegativeDecimal) -> Result<u16, HtmlTemporalPrecisionError> {
+    let Some(digits) = value.fractional_digits() else {
+        return Ok(0);
+    };
+    if digits.len() > 3 {
+        return Err(HtmlTemporalPrecisionError);
+    }
+    let mut millisecond = digits
+        .bytes()
+        .fold(0, |value, digit| value * 10 + u16::from(digit - b'0'));
+    for _ in digits.len()..3 {
+        millisecond *= 10;
+    }
+    Ok(millisecond)
+}
+
+fn authored_decimal(integer: HtmlNonNegativeInteger, millisecond: u16) -> HtmlNonNegativeDecimal {
+    if millisecond == 0 {
+        return integer.into();
+    }
+    HtmlNonNegativeDecimal::with_fraction_digits(integer, &format!("{millisecond:03}").into())
+        .expect("validated milliseconds produce ASCII fraction digits")
+}
+
+impl From<HtmlTime> for HtmlParsedTime {
+    fn from(value: HtmlTime) -> Self {
+        Self {
+            hour: value.hour,
+            minute: value.minute,
+            second: authored_decimal(u128::from(value.second).into(), value.millisecond),
+        }
+    }
+}
+
+impl TryFrom<HtmlParsedTime> for HtmlTime {
+    type Error = HtmlTemporalPrecisionError;
+    fn try_from(value: HtmlParsedTime) -> Result<Self, Self::Error> {
+        Ok(Self {
+            hour: value.hour,
+            minute: value.minute,
+            second: value
+                .second
+                .integer_part()
+                .to_u64()
+                .expect("parsed time seconds are below 60") as u8,
+            millisecond: exact_millisecond(&value.second)?,
+        })
+    }
+}
+
+/// A positive-year date and exact processing time, without an inferred zone.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct HtmlParsedLocalDateTime {
+    date: HtmlDate,
+    time: HtmlParsedTime,
+}
+
+impl HtmlParsedLocalDateTime {
+    /// Couples intrinsically valid components without guessing a time zone.
+    pub fn new(date: HtmlDate, time: HtmlParsedTime) -> Self {
+        Self { date, time }
+    }
+    /// Returns the positive-year Gregorian date.
+    pub fn date(&self) -> &HtmlDate {
+        &self.date
+    }
+    /// Returns the exact time.
+    pub fn time(&self) -> &HtmlParsedTime {
+        &self.time
+    }
+}
+
+impl From<HtmlLocalDateTime> for HtmlParsedLocalDateTime {
+    fn from(value: HtmlLocalDateTime) -> Self {
+        Self::new(value.date, value.time.into())
+    }
+}
+impl TryFrom<HtmlParsedLocalDateTime> for HtmlLocalDateTime {
+    type Error = HtmlTemporalPrecisionError;
+    fn try_from(value: HtmlParsedLocalDateTime) -> Result<Self, Self::Error> {
+        Ok(Self::new(value.date, value.time.try_into()?))
+    }
+}
+
+/// An exact UTC instant encoded as a signed day and a time within that day.
+///
+/// Day zero is UTC midnight beginning Gregorian 0001-01-01. This Rust coordinate
+/// is not an HTML year-zero wire spelling. Explicit offset normalization can
+/// produce day -1 even though the supplied HTML date must have a positive year.
+/// Historical UT1 interpretation follows the source; no clock conversion is
+/// inferred from this numerical representation.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct HtmlUtcInstant {
+    day: HtmlInteger,
+    time: HtmlParsedTime,
+}
+
+impl HtmlUtcInstant {
+    /// Converts positive-year local components and an explicit offset exactly.
+    /// The result's signed day is at least -1; there is no upper magnitude cap.
+    pub fn from_local_and_offset(
+        local: &HtmlParsedLocalDateTime,
+        offset: HtmlTimeZoneOffset,
+    ) -> Self {
+        let preceding = local
+            .date
+            .year()
+            .value
+            .decremented()
+            .expect("HTML years are positive");
+        let (cycles, remainder) =
+            preceding.quotient_remainder(NonZeroU32::new(400).expect("400 is nonzero"));
+        let mut ordinal = u32::from(local.date.day()) - 1;
+        for month in 1..local.date.month() {
+            ordinal += u32::from(days_in_month(month, local.date.year().is_leap_year()));
+        }
+        let within_cycle = remainder * 365 + remainder / 4 - remainder / 100 + ordinal;
+        let magnitude = cycles
+            .multiplied_by(146097)
+            .added_to(&u128::from(within_cycle).into());
+        let shifted = i32::from(local.time.hour) * 60 + i32::from(local.time.minute)
+            - i32::from(offset.minutes);
+        let day = match shifted.div_euclid(1440) {
+            -1 => magnitude.decremented().map_or_else(
+                || HtmlInteger::from(-1),
+                |magnitude| HtmlInteger::from_magnitude(magnitude, false),
+            ),
+            0 => HtmlInteger::from_magnitude(magnitude, false),
+            1 => HtmlInteger::from_magnitude(magnitude.added_to(&1_u128.into()), false),
+            _ => unreachable!("validated HTML offsets carry at most one day"),
+        };
+        let minute = shifted.rem_euclid(1440);
+        Self {
+            day,
+            time: HtmlParsedTime {
+                hour: (minute / 60) as u8,
+                minute: (minute % 60) as u8,
+                second: local.time.second.clone(),
+            },
+        }
+    }
+    /// Returns exact signed days from the documented year-1 origin.
+    pub fn day(&self) -> &HtmlInteger {
+        &self.day
+    }
+    /// Returns the exact UTC time within that day.
+    pub fn time(&self) -> &HtmlParsedTime {
+        &self.time
+    }
+}
+
+/// Exact global processing result with UTC instant and retained display offset.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct HtmlParsedGlobalDateTime {
+    local: HtmlParsedLocalDateTime,
+    offset: HtmlTimeZoneOffset,
+    utc: HtmlUtcInstant,
+}
+
+impl HtmlParsedGlobalDateTime {
+    /// Computes UTC once from intrinsically valid components and explicit offset.
+    pub fn new(local: HtmlParsedLocalDateTime, offset: HtmlTimeZoneOffset) -> Self {
+        let utc = HtmlUtcInstant::from_local_and_offset(&local, offset);
+        Self { local, offset, utc }
+    }
+    /// Returns supplied local components, without host-zone substitution.
+    pub fn local(&self) -> &HtmlParsedLocalDateTime {
+        &self.local
+    }
+    /// Returns the explicit minutes east of UTC.
+    pub fn offset(&self) -> HtmlTimeZoneOffset {
+        self.offset
+    }
+    /// Returns the exact normalized UTC instant. Compare this value for instant
+    /// equality; the global result also retains offset/local display information.
+    pub fn utc(&self) -> &HtmlUtcInstant {
+        &self.utc
+    }
+}
+impl From<HtmlGlobalDateTime> for HtmlParsedGlobalDateTime {
+    fn from(value: HtmlGlobalDateTime) -> Self {
+        Self::new(value.local.into(), value.offset)
+    }
+}
+impl TryFrom<HtmlParsedGlobalDateTime> for HtmlGlobalDateTime {
+    type Error = HtmlTemporalPrecisionError;
+    fn try_from(value: HtmlParsedGlobalDateTime) -> Result<Self, Self::Error> {
+        Ok(Self::new(value.local.try_into()?, value.offset))
+    }
+}
+
+/// An exact nonnegative processing duration, with no fractional precision cap.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct HtmlParsedDuration {
+    seconds: HtmlNonNegativeDecimal,
+}
+impl HtmlParsedDuration {
+    /// Constructs a fixed duration from an intrinsically valid exact decimal.
+    pub fn new(seconds: HtmlNonNegativeDecimal) -> Self {
+        Self { seconds }
+    }
+    /// Returns the exact number of seconds.
+    pub fn seconds(&self) -> &HtmlNonNegativeDecimal {
+        &self.seconds
+    }
+}
+impl From<HtmlDuration> for HtmlParsedDuration {
+    fn from(value: HtmlDuration) -> Self {
+        Self::new(authored_decimal(value.seconds, value.millisecond))
+    }
+}
+impl TryFrom<HtmlParsedDuration> for HtmlDuration {
+    type Error = HtmlTemporalPrecisionError;
+    fn try_from(value: HtmlParsedDuration) -> Result<Self, Self::Error> {
+        let millisecond = exact_millisecond(&value.seconds)?;
+        Ok(Self {
+            seconds: value.seconds.integer_part().clone(),
+            millisecond,
+        })
     }
 }
 
@@ -646,7 +926,10 @@ impl<'a> Cursor<'a> {
         }
         Ok(HtmlLocalDateTime::new(date, self.time()?))
     }
-    fn offset(&mut self) -> Result<HtmlTimeZoneOffset, HtmlTemporalError> {
+    fn offset(
+        &mut self,
+        reject_negative_zero: bool,
+    ) -> Result<HtmlTimeZoneOffset, HtmlTemporalError> {
         if self.take(b'Z') {
             return HtmlTimeZoneOffset::new(0);
         }
@@ -673,10 +956,62 @@ impl<'a> Cursor<'a> {
             return Err(HtmlTemporalError::OffsetOutOfRange);
         }
         let minutes = i16::from(hour) * 60 + i16::from(minute);
-        if negative && minutes == 0 {
+        if reject_negative_zero && negative && minutes == 0 {
             return Err(HtmlTemporalError::InvalidSyntax);
         }
         HtmlTimeZoneOffset::new(if negative { -minutes } else { minutes })
+    }
+
+    // §2.3.5.4 collects the entire digits/dots run for seconds. Its accepted
+    // fractions are unbounded, unlike the separate authored time grammar.
+    fn parsed_time(&mut self) -> Result<HtmlParsedTime, HtmlTemporalError> {
+        let hour = self.pair()?;
+        self.expect(b':')?;
+        let minute = self.pair()?;
+        let second = if self.take(b':') {
+            let start = self.position;
+            while self
+                .peek()
+                .is_some_and(|unit| unit == 0x2e || (0x30..=0x39).contains(&unit))
+            {
+                self.position += 1;
+            }
+            let seconds = &self.input[start..self.position];
+            if seconds.len() < 2
+                || seconds[..2]
+                    .iter()
+                    .any(|unit| !(0x30..=0x39).contains(unit))
+                || seconds.len() == 3
+                || (seconds.len() > 3 && seconds[2] != 0x2e)
+                || seconds.iter().filter(|&&unit| unit == 0x2e).count() > 1
+            {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            let integer = HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
+                seconds[..2].to_vec(),
+            ))
+            .map_err(|_| HtmlTemporalError::InvalidSyntax)?;
+            if seconds.len() == 2 {
+                integer.into()
+            } else {
+                HtmlNonNegativeDecimal::with_fraction_digits(
+                    integer,
+                    &DocumentString::from_utf16(seconds[3..].to_vec()),
+                )
+                .map_err(|_| HtmlTemporalError::InvalidSyntax)?
+            }
+        } else {
+            HtmlNonNegativeInteger::from(0_u128).into()
+        };
+        HtmlParsedTime::new(hour, minute, second)
+    }
+
+    fn parsed_local(&mut self) -> Result<HtmlParsedLocalDateTime, HtmlTemporalError> {
+        let date = self.date()?;
+        if !self.take(b'T') && !self.take(b' ') {
+            return Err(HtmlTemporalError::InvalidSyntax);
+        }
+        Ok(HtmlParsedLocalDateTime::new(date, self.parsed_time()?))
     }
 }
 
@@ -741,7 +1076,7 @@ pub(crate) fn validate_time_zone_offset(
     input: &DocumentString,
 ) -> Result<HtmlTimeZoneOffset, HtmlTemporalError> {
     let mut cursor = Cursor::new(input);
-    let value = cursor.offset()?;
+    let value = cursor.offset(true)?;
     cursor.end()?;
     Ok(value)
 }
@@ -750,7 +1085,7 @@ pub(crate) fn validate_global_date_time(
 ) -> Result<HtmlGlobalDateTime, HtmlTemporalError> {
     let mut cursor = Cursor::new(input);
     let local = cursor.local()?;
-    let offset = cursor.offset()?;
+    let offset = cursor.offset(true)?;
     cursor.end()?;
     Ok(HtmlGlobalDateTime::new(local, offset))
 }
@@ -763,16 +1098,189 @@ pub(crate) fn validate_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemp
     cursor.end()?;
     HtmlWeek::new(year, week)
 }
-pub(crate) fn validate_date_or_time(
+// The month/date/yearless/week processing algorithms have the same value
+// domains and full-consumption checks as their authored grammars (§2.3.5).
+pub(crate) fn parse_month(input: &DocumentString) -> Result<HtmlMonth, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let value = cursor.month()?;
+    cursor.end()?;
+    Ok(value)
+}
+pub(crate) fn parse_date(input: &DocumentString) -> Result<HtmlDate, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let value = cursor.date()?;
+    cursor.end()?;
+    Ok(value)
+}
+pub(crate) fn parse_yearless_date(
+    input: &DocumentString,
+) -> Result<HtmlYearlessDate, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    if cursor.take(b'-') {
+        cursor.expect(b'-')?;
+    }
+    let month = cursor.pair()?;
+    cursor.expect(b'-')?;
+    let day = cursor.pair()?;
+    cursor.end()?;
+    HtmlYearlessDate::new(month, day)
+}
+pub(crate) fn parse_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let year = cursor.year()?;
+    cursor.expect(b'-')?;
+    cursor.expect(b'W')?;
+    let week = cursor.pair()?;
+    cursor.end()?;
+    HtmlWeek::new(year, week)
+}
+pub(crate) fn parse_time(input: &DocumentString) -> Result<HtmlParsedTime, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let value = cursor.parsed_time()?;
+    cursor.end()?;
+    Ok(value)
+}
+pub(crate) fn parse_local_date_time(
+    input: &DocumentString,
+) -> Result<HtmlParsedLocalDateTime, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let value = cursor.parsed_local()?;
+    cursor.end()?;
+    Ok(value)
+}
+pub(crate) fn parse_time_zone_offset(
+    input: &DocumentString,
+) -> Result<HtmlTimeZoneOffset, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let value = cursor.offset(false)?;
+    cursor.end()?;
+    Ok(value)
+}
+pub(crate) fn parse_global_date_time(
+    input: &DocumentString,
+) -> Result<HtmlParsedGlobalDateTime, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let local = cursor.parsed_local()?;
+    let offset = cursor.offset(false)?;
+    cursor.end()?;
+    Ok(HtmlParsedGlobalDateTime::new(local, offset))
+}
+pub(crate) fn parse_date_or_time(
     input: &DocumentString,
 ) -> Result<HtmlDateOrTime, HtmlTemporalError> {
-    if let Ok(value) = validate_date(input) {
-        return Ok(HtmlDateOrTime::Date(value));
+    let mut cursor = Cursor::new(input);
+    let value = if let Ok(date) = cursor.date() {
+        if cursor.take(b'T') || cursor.take(b' ') {
+            let time = cursor.parsed_time()?;
+            let offset = cursor.offset(false)?;
+            HtmlDateOrTime::Global(HtmlParsedGlobalDateTime::new(
+                HtmlParsedLocalDateTime::new(date, time),
+                offset,
+            ))
+        } else {
+            HtmlDateOrTime::Date(date)
+        }
+    } else {
+        // The source resets the cursor after *any* failed date-component attempt.
+        cursor.position = 0;
+        HtmlDateOrTime::Time(cursor.parsed_time()?)
+    };
+    cursor.end()?;
+    Ok(value)
+}
+
+pub(crate) fn parse_duration(
+    input: &DocumentString,
+) -> Result<HtmlParsedDuration, HtmlTemporalError> {
+    let mut cursor = Cursor::new(input);
+    let mut seconds = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(0_u128));
+    let mut months = false;
+    let mut nonzero_calendar = false;
+    let mut component_present = false;
+    cursor.whitespace();
+    if cursor.take(b'P') {
+        months = true;
+        cursor.whitespace();
     }
-    if let Ok(value) = validate_global_date_time(input) {
-        return Ok(HtmlDateOrTime::Global(value));
+    while cursor.peek().is_some() {
+        if cursor.take(b'T') {
+            months = false;
+            cursor.whitespace();
+            continue;
+        }
+        let integer = if cursor.peek() == Some(0x2e) {
+            0_u128.into()
+        } else {
+            cursor.quantity()?
+        };
+        let next = cursor.peek().ok_or(HtmlTemporalError::InvalidSyntax)?;
+        cursor.position += 1;
+        if next == 0x2e {
+            let digits = cursor.digits();
+            let quantity = HtmlNonNegativeDecimal::with_fraction_digits(
+                integer,
+                &DocumentString::from_utf16(digits.to_vec()),
+            )
+            .map_err(|_| HtmlTemporalError::InvalidSyntax)?;
+            cursor.whitespace();
+            if !cursor.take(b'S') && !cursor.take(b's') {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            seconds = seconds.added_to(&quantity);
+            // Fractional S does not reset M-disambiguator (§2.3.5.9 step 8.9).
+        } else {
+            let unit = if matches!(next, 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
+                cursor.whitespace();
+                let unit = cursor.peek().ok_or(HtmlTemporalError::InvalidSyntax)?;
+                cursor.position += 1;
+                unit
+            } else {
+                next
+            };
+            let scale = match unit {
+                0x59 | 0x79 => {
+                    months = true;
+                    None
+                }
+                0x4d | 0x6d if months => None,
+                0x57 | 0x77 => {
+                    months = false;
+                    Some(604800)
+                }
+                0x44 | 0x64 => {
+                    months = false;
+                    Some(86400)
+                }
+                0x48 | 0x68 => {
+                    months = false;
+                    Some(3600)
+                }
+                0x4d | 0x6d => Some(60),
+                0x53 | 0x73 => {
+                    months = false;
+                    Some(1)
+                }
+                _ => return Err(HtmlTemporalError::InvalidSyntax),
+            };
+            if let Some(scale) = scale {
+                seconds =
+                    seconds.added_to(&HtmlNonNegativeDecimal::from(integer).multiplied_by(scale));
+            } else {
+                nonzero_calendar |= !integer.is_zero();
+            }
+        }
+        component_present = true;
+        cursor.whitespace();
     }
-    validate_time(input).map(HtmlDateOrTime::Time)
+    if !component_present {
+        return Err(HtmlTemporalError::InvalidSyntax);
+    }
+    // Calendar quantities are nonnegative, so a nonzero component implies a
+    // nonzero sum without allocating an otherwise unusable months magnitude.
+    if nonzero_calendar {
+        return Err(HtmlTemporalError::NonzeroCalendarDuration);
+    }
+    Ok(HtmlParsedDuration::new(seconds))
 }
 
 pub(crate) fn validate_date_with_optional_time(
@@ -1167,18 +1675,18 @@ mod tests {
     #[test]
     fn vaguer_forms_require_offsets_when_a_date_and_time_are_both_present() {
         assert!(matches!(
-            validate_date_or_time(&text("2000-01-01")),
+            parse_date_or_time(&text("2000-01-01")),
             Ok(HtmlDateOrTime::Date(_))
         ));
         assert!(matches!(
-            validate_date_or_time(&text("00:00")),
+            parse_date_or_time(&text("00:00")),
             Ok(HtmlDateOrTime::Time(_))
         ));
         assert!(matches!(
-            validate_date_or_time(&text("2000-01-01T00:00Z")),
+            parse_date_or_time(&text("2000-01-01T00:00Z")),
             Ok(HtmlDateOrTime::Global(_))
         ));
-        assert!(validate_date_or_time(&text("2000-01-01T00:00")).is_err());
+        assert!(parse_date_or_time(&text("2000-01-01T00:00")).is_err());
         assert!(validate_date_with_optional_time(&text("00:00")).is_err());
         assert!(matches!(
             validate_date_with_optional_time(&text("2000-01-01")),
@@ -1188,5 +1696,112 @@ mod tests {
             validate_date_with_optional_time(&text("2000-01-01T00:00Z")),
             Ok(HtmlDateWithOptionalTime::Global(_))
         ));
+    }
+
+    #[test]
+    fn processing_time_consumes_whole_fraction_runs_without_rounding() {
+        for (raw, expected) in [
+            ("12:34:59.000000000001", "59.000000000001"),
+            ("12:34:00.0000", "0"),
+            ("12:34:01.100000", "1.1"),
+        ] {
+            let parsed = parse_time(&text(raw)).unwrap();
+            assert_eq!(spelling(parsed.second().as_document_string()), expected);
+            assert!(validate_time(&text(raw)).is_err());
+        }
+        for raw in [
+            "12:34:60.0000",
+            "12:34:001",
+            "12:34:00.",
+            "12:34:00..1",
+            "12:34:00.1.2",
+            "12:34:00.1Z",
+            "12:34:00.1 ",
+        ] {
+            assert!(parse_time(&text(raw)).is_err(), "{raw}");
+        }
+        let raw = DocumentString::from_utf16(vec![0x31, 0x32, 0x3a, 0x33, 0x34, 0xd800]);
+        assert!(parse_time(&raw).is_err());
+        assert_eq!(raw.code_units(), &[0x31, 0x32, 0x3a, 0x33, 0x34, 0xd800]);
+    }
+
+    #[test]
+    fn processing_offsets_admit_negative_zero_and_preserve_strict_boundary() {
+        for raw in ["-0000", "-00:00"] {
+            assert_eq!(parse_time_zone_offset(&text(raw)).unwrap().minutes(), 0);
+            assert!(validate_time_zone_offset(&text(raw)).is_err());
+            assert!(parse_global_date_time(&text(&format!("0001-01-01T00:00{raw}"))).is_ok());
+        }
+        for raw in ["+00000", "+00:000", "-24:00", "Zx", "z"] {
+            assert!(parse_time_zone_offset(&text(raw)).is_err());
+        }
+    }
+
+    #[test]
+    fn processing_duration_follows_marker_state_and_fractional_asymmetry() {
+        for (raw, expected) in [
+            ("P1S1M", "61"),
+            ("PT1.5S1M", "61.5"),
+            ("P0Y0M", "0"),
+            ("P1DT", "86400"),
+            ("TT1ST", "1"),
+            ("1h1H", "7200"),
+            (".5s .0001s", "0.5001"),
+            ("P1D1M", "86460"),
+            ("\tP\nT\r.000000000001\x0cS ", "0.000000000001"),
+            (
+                "9999999999999999999999999999999999999999s1s",
+                "10000000000000000000000000000000000000000",
+            ),
+        ] {
+            assert_eq!(
+                spelling(
+                    parse_duration(&text(raw))
+                        .unwrap()
+                        .seconds()
+                        .as_document_string()
+                ),
+                expected,
+                "{raw}"
+            );
+        }
+        for raw in ["P1.5S1M", "P1Y", "P1M", "1y1m"] {
+            assert_eq!(
+                parse_duration(&text(raw)),
+                Err(HtmlTemporalError::NonzeroCalendarDuration),
+                "{raw}"
+            );
+        }
+        for raw in [
+            "PT", "", "P", ".0Y", "P0Yjunk", "P1Yjunk", "1\u{a0}s", "1.s", "1s\0", "p1s", "1t",
+        ] {
+            assert_eq!(
+                parse_duration(&text(raw)),
+                Err(HtmlTemporalError::InvalidSyntax),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn processing_date_or_time_resets_failed_date_and_observes_full_consumption() {
+        assert!(matches!(
+            parse_date_or_time(&text("12:34:00.00000001")),
+            Ok(HtmlDateOrTime::Time(_))
+        ));
+        assert!(matches!(
+            parse_date_or_time(&text("2000-02-29T12:34:00.00000001-0000")),
+            Ok(HtmlDateOrTime::Global(_))
+        ));
+        for raw in [
+            "2000-01-01 ",
+            "2000-01-01Z",
+            "2000-01-01T12:34",
+            "12:34Z",
+            "2000-02-30",
+            "2000-01-01T12:34Zx",
+        ] {
+            assert!(parse_date_or_time(&text(raw)).is_err(), "{raw}");
+        }
     }
 }

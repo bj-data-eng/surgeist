@@ -10,8 +10,9 @@ use crate::numeric::{
 };
 use crate::temporal::{
     HtmlDate, HtmlDateOrTime, HtmlDateWithOptionalTime, HtmlDuration, HtmlGlobalDateTime,
-    HtmlLocalDateTime, HtmlMonth, HtmlTemporalError, HtmlTime, HtmlTimeZoneOffset, HtmlWeek,
-    HtmlYearlessDate,
+    HtmlLocalDateTime, HtmlMonth, HtmlParsedDuration, HtmlParsedGlobalDateTime,
+    HtmlParsedLocalDateTime, HtmlParsedTime, HtmlTemporalError, HtmlTime, HtmlTimeZoneOffset,
+    HtmlWeek, HtmlYearlessDate,
 };
 use crate::tokens::{HtmlCommaSeparatedTokens, HtmlSpaceSeparatedTokens};
 use crate::{DocumentString, color, numeric, temporal, tokens};
@@ -202,22 +203,22 @@ pub enum HtmlValueRecoveryState<T> {
     Value(T),
     /// The source algorithm failed, without replacing the raw value.
     Failed(HtmlValueFailure),
-    /// This crate has not implemented this clause's separate recovery algorithm.
-    ///
-    /// A successful author check is not advertised as browser recovery.
-    Unsupported,
 }
 
 /// An immutable raw value and the two distinct attempts to interpret it.
+///
+/// `A` is the authored value domain and `R` is the processing-result domain.
+/// Temporal processing can preserve precision unavailable to authored values;
+/// the report never coerces a recovered result into the authored domain.
 #[derive(Clone, Debug, PartialEq)]
-pub struct HtmlValueReport<T> {
+pub struct HtmlValueReport<A, R> {
     raw: Option<DocumentString>,
     syntax: HtmlValueSyntax,
-    author: HtmlValueAuthorState<T>,
-    recovery: HtmlValueRecoveryState<T>,
+    author: HtmlValueAuthorState<A>,
+    recovery: HtmlValueRecoveryState<R>,
 }
 
-impl<T> HtmlValueReport<T> {
+impl<A, R> HtmlValueReport<A, R> {
     /// Returns the exact raw value, preserving absent versus present empty.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.raw.as_ref()
@@ -227,11 +228,11 @@ impl<T> HtmlValueReport<T> {
         self.syntax
     }
     /// Returns the whole-value author-conformance attempt.
-    pub fn author(&self) -> &HtmlValueAuthorState<T> {
+    pub fn author(&self) -> &HtmlValueAuthorState<A> {
         &self.author
     }
     /// Returns the independent processing/recovery attempt.
-    pub fn recovery(&self) -> &HtmlValueRecoveryState<T> {
+    pub fn recovery(&self) -> &HtmlValueRecoveryState<R> {
         &self.recovery
     }
     /// Returns the supplied UTF-16 units admitted for this single operation.
@@ -299,7 +300,7 @@ impl HtmlValueInterpreter {
     pub fn legacy_color(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlLegacyColor>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlLegacyColor, HtmlLegacyColor>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::LegacyColor)?;
         if let Some(raw) = raw {
             report.author = HtmlValueAuthorState::NotDefined;
@@ -326,7 +327,10 @@ impl HtmlValueInterpreter {
     pub fn space_separated_tokens(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlSpaceSeparatedTokens>, HtmlValueAdmissionError> {
+    ) -> Result<
+        HtmlValueReport<HtmlSpaceSeparatedTokens, HtmlSpaceSeparatedTokens>,
+        HtmlValueAdmissionError,
+    > {
         let mut report = self.admit(raw, HtmlValueSyntax::SpaceSeparatedTokens)?;
         if let Some(raw) = raw {
             report.author = HtmlValueAuthorState::NotDefined;
@@ -342,7 +346,10 @@ impl HtmlValueInterpreter {
     pub fn comma_separated_tokens(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlCommaSeparatedTokens>, HtmlValueAdmissionError> {
+    ) -> Result<
+        HtmlValueReport<HtmlCommaSeparatedTokens, HtmlCommaSeparatedTokens>,
+        HtmlValueAdmissionError,
+    > {
         let mut report = self.admit(raw, HtmlValueSyntax::CommaSeparatedTokens)?;
         if let Some(raw) = raw {
             report.author = HtmlValueAuthorState::NotDefined;
@@ -363,11 +370,11 @@ impl HtmlValueInterpreter {
         self.max_input_code_units
     }
 
-    fn admit<T>(
+    /// Checks the common finite raw-input capacity before owner-specific work.
+    pub(crate) fn admit_attribute_raw(
         &self,
         raw: Option<&DocumentString>,
-        syntax: HtmlValueSyntax,
-    ) -> Result<HtmlValueReport<T>, HtmlValueAdmissionError> {
+    ) -> Result<(), HtmlValueAdmissionError> {
         let required = raw.map_or(0, DocumentString::len);
         if required > self.max_input_code_units {
             return Err(HtmlValueAdmissionError {
@@ -375,6 +382,15 @@ impl HtmlValueInterpreter {
                 required,
             });
         }
+        Ok(())
+    }
+
+    fn admit<A, R>(
+        &self,
+        raw: Option<&DocumentString>,
+        syntax: HtmlValueSyntax,
+    ) -> Result<HtmlValueReport<A, R>, HtmlValueAdmissionError> {
+        self.admit_attribute_raw(raw)?;
         Ok(HtmlValueReport {
             raw: raw.cloned(),
             syntax,
@@ -387,7 +403,7 @@ impl HtmlValueInterpreter {
     pub fn integer(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlInteger>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlInteger, HtmlInteger>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Integer)?;
         if let Some(raw) = raw {
             report.author = numeric_author(numeric::validate_integer(raw));
@@ -400,7 +416,10 @@ impl HtmlValueInterpreter {
     pub fn nonnegative_integer(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlNonNegativeInteger>, HtmlValueAdmissionError> {
+    ) -> Result<
+        HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+        HtmlValueAdmissionError,
+    > {
         let mut report = self.admit(raw, HtmlValueSyntax::NonnegativeInteger)?;
         if let Some(raw) = raw {
             report.author = numeric_author(numeric::validate_nonnegative_integer(raw));
@@ -413,7 +432,10 @@ impl HtmlValueInterpreter {
     pub fn floating_point_number(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlFloatingPointNumber>, HtmlValueAdmissionError> {
+    ) -> Result<
+        HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>,
+        HtmlValueAdmissionError,
+    > {
         let mut report = self.admit(raw, HtmlValueSyntax::FloatingPointNumber)?;
         if let Some(raw) = raw {
             report.author = numeric_author(numeric::validate_floating_point_number(raw));
@@ -426,7 +448,10 @@ impl HtmlValueInterpreter {
     pub fn floating_point_list(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlFloatingPointList>, HtmlValueAdmissionError> {
+    ) -> Result<
+        HtmlValueReport<HtmlFloatingPointList, HtmlFloatingPointList>,
+        HtmlValueAdmissionError,
+    > {
         let mut report = self.admit(raw, HtmlValueSyntax::FloatingPointList)?;
         if let Some(raw) = raw {
             report.author = numeric_author(numeric::validate_floating_point_list(raw));
@@ -440,7 +465,7 @@ impl HtmlValueInterpreter {
     pub fn dimension(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlDimension>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlDimension, HtmlDimension>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Dimension)?;
         if let Some(raw) = raw {
             report.author = HtmlValueAuthorState::NotDefined;
@@ -453,7 +478,7 @@ impl HtmlValueInterpreter {
     pub fn nonzero_dimension(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlDimension>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlDimension, HtmlDimension>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::NonzeroDimension)?;
         if let Some(raw) = raw {
             report.author = HtmlValueAuthorState::NotDefined;
@@ -466,7 +491,8 @@ impl HtmlValueInterpreter {
     pub fn dimension_list(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlDimensionList>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlDimensionList, HtmlDimensionList>, HtmlValueAdmissionError>
+    {
         let mut report = self.admit(raw, HtmlValueSyntax::DimensionList)?;
         if let Some(raw) = raw {
             report.author = HtmlValueAuthorState::NotDefined;
@@ -475,194 +501,167 @@ impl HtmlValueInterpreter {
         Ok(report)
     }
 
-    /// Checks the entire month valid-string grammar; recovery remains unsupported.
+    /// Checks month author syntax and separately applies temporal processing.
     pub fn month(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlMonth>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlMonth, HtmlMonth>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Month)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_month(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_month(raw));
+            report.recovery = temporal_recovery(temporal::parse_month(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire date valid-string grammar; recovery remains unsupported.
+    /// Checks date author syntax and separately applies temporal processing.
     pub fn date(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlDate>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlDate, HtmlDate>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Date)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_date(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_date(raw));
+            report.recovery = temporal_recovery(temporal::parse_date(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire yearless date valid-string grammar; recovery remains unsupported.
+    /// Checks yearless date author syntax and separately applies temporal processing.
     pub fn yearless_date(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlYearlessDate>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlYearlessDate, HtmlYearlessDate>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::YearlessDate)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_yearless_date(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_yearless_date(raw));
+            report.recovery = temporal_recovery(temporal::parse_yearless_date(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire time valid-string grammar; recovery remains unsupported.
+    /// Checks time author syntax and separately applies temporal processing.
     pub fn time(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlTime>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlTime, HtmlParsedTime>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Time)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_time(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_time(raw));
+            report.recovery = temporal_recovery(temporal::parse_time(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire local date time valid-string grammar; recovery remains unsupported.
+    /// Checks local date time author syntax and separately applies temporal processing.
     pub fn local_date_time(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlLocalDateTime>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlLocalDateTime, HtmlParsedLocalDateTime>, HtmlValueAdmissionError>
+    {
         let mut report = self.admit(raw, HtmlValueSyntax::LocalDateTime)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_local_date_time(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_local_date_time(raw));
+            report.recovery = temporal_recovery(temporal::parse_local_date_time(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire normalized local date time valid-string grammar; recovery remains unsupported.
+    /// Checks normalized local date time author syntax and separately applies temporal processing.
+    /// Recovery uses the local-date-time algorithm, including nonnormalized spellings.
     pub fn normalized_local_date_time(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlLocalDateTime>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlLocalDateTime, HtmlParsedLocalDateTime>, HtmlValueAdmissionError>
+    {
         let mut report = self.admit(raw, HtmlValueSyntax::NormalizedLocalDateTime)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_normalized_local_date_time(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_normalized_local_date_time(raw));
+            report.recovery = temporal_recovery(temporal::parse_local_date_time(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire time zone offset valid-string grammar; recovery remains unsupported.
+    /// Checks time zone offset author syntax and separately applies temporal processing.
     pub fn time_zone_offset(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlTimeZoneOffset>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlTimeZoneOffset, HtmlTimeZoneOffset>, HtmlValueAdmissionError>
+    {
         let mut report = self.admit(raw, HtmlValueSyntax::TimeZoneOffset)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_time_zone_offset(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_time_zone_offset(raw));
+            report.recovery = temporal_recovery(temporal::parse_time_zone_offset(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire global date time valid-string grammar; recovery remains unsupported.
+    /// Checks global date time author syntax and separately applies temporal processing.
     pub fn global_date_time(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlGlobalDateTime>, HtmlValueAdmissionError> {
+    ) -> Result<
+        HtmlValueReport<HtmlGlobalDateTime, HtmlParsedGlobalDateTime>,
+        HtmlValueAdmissionError,
+    > {
         let mut report = self.admit(raw, HtmlValueSyntax::GlobalDateTime)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_global_date_time(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_global_date_time(raw));
+            report.recovery = temporal_recovery(temporal::parse_global_date_time(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire week valid-string grammar; recovery remains unsupported.
+    /// Checks week author syntax and separately applies temporal processing.
     pub fn week(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlWeek>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlWeek, HtmlWeek>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Week)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_week(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_week(raw));
+            report.recovery = temporal_recovery(temporal::parse_week(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire duration valid-string grammar; recovery remains unsupported.
+    /// Checks duration author syntax and separately applies temporal processing.
     pub fn duration(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlDuration>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlDuration, HtmlParsedDuration>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Duration)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_duration(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_duration(raw));
+            report.recovery = temporal_recovery(temporal::parse_duration(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire date or time valid-string grammar; recovery remains unsupported.
+    /// Applies the source's date-or-time processing algorithm without inventing author syntax.
     pub fn date_or_time(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlDateOrTime>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlDateOrTime, HtmlDateOrTime>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::DateOrTime)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_date_or_time(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = HtmlValueAuthorState::NotDefined;
+            report.recovery = temporal_recovery(temporal::parse_date_or_time(raw));
         }
         Ok(report)
     }
 
-    /// Checks the entire date with optional time valid-string grammar; recovery remains unsupported.
+    /// Checks date-with-optional-time author syntax and retains the full common processing result.
+    /// A recovered standalone time is retained; attribute-specific effective filtering is separate.
     pub fn date_with_optional_time(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlValueReport<HtmlDateWithOptionalTime>, HtmlValueAdmissionError> {
+    ) -> Result<HtmlValueReport<HtmlDateWithOptionalTime, HtmlDateOrTime>, HtmlValueAdmissionError>
+    {
         let mut report = self.admit(raw, HtmlValueSyntax::DateWithOptionalTime)?;
         if let Some(raw) = raw {
-            report.author = match temporal::validate_date_with_optional_time(raw) {
-                Ok(value) => HtmlValueAuthorState::Valid(value),
-                Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
-            };
-            report.recovery = HtmlValueRecoveryState::Unsupported;
+            report.author = temporal_author(temporal::validate_date_with_optional_time(raw));
+            report.recovery = temporal_recovery(temporal::parse_date_or_time(raw));
         }
         Ok(report)
     }
@@ -699,5 +698,21 @@ fn numeric_recovery<T>(result: Result<T, NumericParseError>) -> HtmlValueRecover
     match result {
         Ok(value) => HtmlValueRecoveryState::Value(value),
         Err(error) => HtmlValueRecoveryState::Failed(numeric_failure(error)),
+    }
+}
+
+fn temporal_author<T>(result: Result<T, HtmlTemporalError>) -> HtmlValueAuthorState<T> {
+    match result {
+        Ok(value) => HtmlValueAuthorState::Valid(value),
+        Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
+    }
+}
+
+fn temporal_recovery<T>(result: Result<T, HtmlTemporalError>) -> HtmlValueRecoveryState<T> {
+    match result {
+        Ok(value) => HtmlValueRecoveryState::Value(value),
+        Err(error) => HtmlValueRecoveryState::Failed(HtmlValueFailure::Syntax(
+            HtmlValueSyntaxError::Temporal(error),
+        )),
     }
 }

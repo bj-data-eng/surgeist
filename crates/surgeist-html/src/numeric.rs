@@ -160,6 +160,52 @@ impl HtmlNonNegativeInteger {
         }
     }
 
+    /// Subtracts one exactly, with no result below zero.
+    pub(crate) fn decremented(&self) -> Option<Self> {
+        if self.is_zero() {
+            return None;
+        }
+        let mut digits = self.digits.as_bytes().to_vec();
+        for digit in digits.iter_mut().rev() {
+            if *digit > b'0' {
+                *digit -= 1;
+                break;
+            }
+            *digit = b'9';
+        }
+        // A canonical positive magnitude can lose at most its first digit.
+        let digits = if digits.len() > 1 && digits[0] == b'0' {
+            &digits[1..]
+        } else {
+            &digits
+        };
+        Some(Self {
+            digits: digits.iter().copied().map(char::from).collect(),
+        })
+    }
+
+    /// Divides an exact magnitude by a bounded nonzero integer.
+    /// The remainder is strictly less than the divisor.
+    pub(crate) fn quotient_remainder(&self, divisor: NonZeroU32) -> (Self, u32) {
+        let divisor = u64::from(divisor.get());
+        let mut quotient = String::new();
+        let mut remainder = 0_u64;
+        for digit in self.digits.bytes() {
+            // remainder < divisor <= u32::MAX, so the partial dividend is
+            // below 10 * u32::MAX and the quotient digit is in 0..=9.
+            let partial = remainder * 10 + u64::from(digit - b'0');
+            let digit = (partial / divisor) as u8;
+            remainder = partial % divisor;
+            if digit != 0 || !quotient.is_empty() {
+                quotient.push(char::from(b'0' + digit));
+            }
+        }
+        if quotient.is_empty() {
+            quotient.push('0');
+        }
+        (Self { digits: quotient }, remainder as u32)
+    }
+
     /// Returns normalized ASCII decimal magnitude digits.
     pub fn as_document_string(&self) -> DocumentString {
         DocumentString::from(self.digits.as_str())
@@ -336,11 +382,14 @@ impl HtmlFloatingPointList {
     }
 }
 
-/// An exact nonnegative decimal number used by HTML dimension algorithms.
+/// An exact nonnegative decimal number used by HTML dimension and temporal
+/// algorithms.
 ///
-/// Unlike HTML floating-point recovery, the dimension clauses specify no
-/// binary64 conversion, rounding, or overflow rule. This representation retains
-/// the base-ten value exactly, independently of machine-number limits.
+/// Unlike HTML floating-point recovery, these clauses specify no binary64
+/// conversion, rounding, or overflow rule for their decimal quantities. This
+/// representation retains the base-ten value exactly, independently of
+/// machine-number limits. Temporal owners apply their own range and authored
+/// precision rules to this shared numeric value.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlNonNegativeDecimal {
     integer: HtmlNonNegativeInteger,
@@ -371,6 +420,65 @@ impl HtmlNonNegativeDecimal {
                 .iter()
                 .map(|&unit| char::from(unit as u8))
                 .collect(),
+        }
+    }
+
+    /// Adds exact decimal quantities, preserving significant fractional zeroes.
+    pub(crate) fn added_to(&self, other: &Self) -> Self {
+        let scale = self.fraction.len().max(other.fraction.len());
+        let mut fraction = vec![b'0'; scale];
+        let mut carry = 0;
+        for index in (0..scale).rev() {
+            let left = self
+                .fraction
+                .as_bytes()
+                .get(index)
+                .map_or(0, |&digit| digit - b'0');
+            let right = other
+                .fraction
+                .as_bytes()
+                .get(index)
+                .map_or(0, |&digit| digit - b'0');
+            let sum = left + right + carry;
+            fraction[index] = b'0' + sum % 10;
+            carry = sum / 10;
+        }
+        let mut integer = self.integer.added_to(&other.integer);
+        if carry != 0 {
+            integer = integer.added_to(&HtmlNonNegativeInteger::from(u128::from(carry)));
+        }
+        Self::from_ascii_fraction(integer, fraction)
+    }
+
+    /// Multiplies an exact decimal quantity by a bounded nonnegative integer.
+    pub(crate) fn multiplied_by(&self, multiplier: u32) -> Self {
+        if multiplier == 0 || self.is_zero() {
+            return HtmlNonNegativeInteger::from(0).into();
+        }
+        let mut fraction = vec![b'0'; self.fraction.len()];
+        let mut carry = 0_u64;
+        for (index, digit) in self.fraction.bytes().enumerate().rev() {
+            // Each partial product is below 10 * u32::MAX; carry fits u32.
+            let product = u64::from(digit - b'0') * u64::from(multiplier) + carry;
+            fraction[index] = b'0' + (product % 10) as u8;
+            carry = product / 10;
+        }
+        let mut integer = self.integer.multiplied_by(multiplier);
+        if carry != 0 {
+            integer = integer.added_to(&HtmlNonNegativeInteger::from(u128::from(carry)));
+        }
+        Self::from_ascii_fraction(integer, fraction)
+    }
+
+    // Only the arithmetic above constructs these ASCII digit buffers. Leading
+    // fractional zeroes retain scale; removing trailing zeroes is lossless.
+    fn from_ascii_fraction(integer: HtmlNonNegativeInteger, mut fraction: Vec<u8>) -> Self {
+        while fraction.last() == Some(&b'0') {
+            fraction.pop();
+        }
+        Self {
+            integer,
+            fraction: fraction.into_iter().map(char::from).collect(),
         }
     }
 
@@ -1161,6 +1269,165 @@ mod tests {
         assert!(zero.is_zero());
         assert_eq!(zero.fractional_digits(), None);
         assert_eq!(zero.integer_part().decimal_digits(), "0");
+    }
+
+    #[test]
+    fn exact_integer_decrement_borrows_and_stops_at_zero() {
+        assert_eq!(HtmlNonNegativeInteger::from(0).decremented(), None);
+        for (input, expected) in [
+            ("1", "0"),
+            ("10", "9"),
+            ("1000", "999"),
+            ("1010", "1009"),
+            (
+                "340282366920938463463374607431768211456",
+                "340282366920938463463374607431768211455",
+            ),
+        ] {
+            let value = HtmlNonNegativeInteger::from_decimal_digits(&text(input)).unwrap();
+            assert_eq!(value.decremented().unwrap().decimal_digits(), expected);
+            assert_eq!(value.decimal_digits(), input);
+        }
+    }
+
+    #[test]
+    fn exact_integer_division_handles_large_magnitudes_and_boundary_divisors() {
+        // Independent base-ten expectations: 2^128 / 400; and the geometric
+        // identity (2^32)^4 = (2^32 - 1)(1 + 2^32 + 2^64 + 2^96) + 1.
+        for (input, divisor, quotient, remainder) in [
+            ("0", 400, "0", 0),
+            ("399", 400, "0", 399),
+            ("400", 400, "1", 0),
+            ("401", 400, "1", 1),
+            ("4294967294", u32::MAX, "0", u32::MAX - 1),
+            ("4294967295", u32::MAX, "1", 0),
+            ("4294967296", u32::MAX, "1", 1),
+            (
+                "340282366920938463463374607431768211456",
+                400,
+                "850705917302346158658436518579420528",
+                256,
+            ),
+            (
+                "340282366920938463463374607431768211456",
+                u32::MAX,
+                "79228162532711081671548469249",
+                1,
+            ),
+            (
+                "340282366920938463463374607431768211456",
+                1,
+                "340282366920938463463374607431768211456",
+                0,
+            ),
+        ] {
+            let value = HtmlNonNegativeInteger::from_decimal_digits(&text(input)).unwrap();
+            let (actual_quotient, actual_remainder) =
+                value.quotient_remainder(NonZeroU32::new(divisor).unwrap());
+            assert_eq!(actual_quotient.decimal_digits(), quotient);
+            assert_eq!(actual_remainder, remainder);
+            assert!(actual_remainder < divisor);
+            assert_eq!(
+                actual_quotient
+                    .multiplied_by(divisor)
+                    .added_to(&HtmlNonNegativeInteger::from(u128::from(actual_remainder))),
+                value
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_integer_division_matches_machine_arithmetic_without_projection_loss() {
+        for value in [0, 1, 399, 400, 401, u64::MAX as u128, u128::MAX] {
+            for divisor in [1, 2, 400, u32::MAX - 1, u32::MAX] {
+                let (quotient, remainder) = HtmlNonNegativeInteger::from(value)
+                    .quotient_remainder(NonZeroU32::new(divisor).unwrap());
+                assert_eq!(quotient.to_u128(), Ok(value / u128::from(divisor)));
+                assert_eq!(u128::from(remainder), value % u128::from(divisor));
+            }
+        }
+    }
+
+    fn decimal(integer: &str, fraction: &str) -> HtmlNonNegativeDecimal {
+        HtmlNonNegativeDecimal::with_fraction_digits(
+            HtmlNonNegativeInteger::from_decimal_digits(&text(integer)).unwrap(),
+            &text(fraction),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn exact_decimal_addition_aligns_places_and_carries_into_huge_integers() {
+        for (left_integer, left_fraction, right_integer, right_fraction, expected) in [
+            ("0", "999", "0", "001", "1"),
+            ("0", "0125", "0", "5", "0.5125"),
+            ("0", "5", "0", "05", "0.55"),
+            ("0", "00000001", "0", "00000009", "0.0000001"),
+            ("9", "75", "0", "25", "10"),
+            (
+                "340282366920938463463374607431768211456",
+                "9999",
+                "0",
+                "0001",
+                "340282366920938463463374607431768211457",
+            ),
+        ] {
+            let left = decimal(left_integer, left_fraction);
+            let right = decimal(right_integer, right_fraction);
+            let sum = left.added_to(&right);
+            assert_eq!(sum.as_document_string(), text(expected));
+            assert_eq!(right.added_to(&left), sum);
+        }
+        let integer = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(400));
+        assert_eq!(integer.added_to(&integer).as_document_string(), text("800"));
+        assert_eq!(
+            integer.added_to(&decimal("0", "025")).as_document_string(),
+            text("400.025")
+        );
+    }
+
+    #[test]
+    fn exact_decimal_multiplication_preserves_fractional_places_and_bounded_carries() {
+        for (integer, fraction, multiplier, expected) in [
+            ("0", "25", u32::MAX, "1073741823.75"),
+            ("9", "75", 4, "39"),
+            ("0", "0001", 100, "0.01"),
+            ("0", "0001", 10_000, "1"),
+            (
+                "340282366920938463463374607431768211456",
+                "75",
+                4,
+                "1361129467683753853853498429727072845827",
+            ),
+        ] {
+            assert_eq!(
+                decimal(integer, fraction)
+                    .multiplied_by(multiplier)
+                    .as_document_string(),
+                text(expected)
+            );
+        }
+        let integer = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(400));
+        assert_eq!(
+            integer.multiplied_by(400).as_document_string(),
+            text("160000")
+        );
+        assert_eq!(integer.multiplied_by(1), integer);
+    }
+
+    #[test]
+    fn decimal_arithmetic_normalizes_zero_and_equivalent_trailing_zeroes() {
+        let zero = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(0));
+        let fractional_zero = decimal("000", "0000");
+        assert_eq!(fractional_zero, zero);
+        assert_eq!(zero.added_to(&fractional_zero), zero);
+        assert_eq!(fractional_zero.multiplied_by(u32::MAX), zero);
+        let value = decimal("001", "0025000");
+        assert_eq!(value, decimal("1", "0025"));
+        assert_eq!(value.added_to(&zero), value);
+        assert_eq!(value.multiplied_by(1), value);
+        assert_eq!(value.multiplied_by(0), zero);
+        assert_eq!(value.added_to(&value).as_document_string(), text("2.005"));
     }
 
     #[test]

@@ -84,18 +84,31 @@ machine-integer magnitude cap. Time and duration author values use millisecond
 precision, matching the strict author grammar. A global date/time retains its
 explicit local value and offset; it does not perform an implicit UTC conversion.
 
+Temporal recovery returns separate parsed values where the source accepts a
+wider domain. Exact decimal seconds retain arbitrary admitted fractional
+precision; projection to millisecond author values fails when that value cannot
+be represented exactly. Parsed global values retain the supplied local time and
+offset alongside their computed UTC instant. The UTC day coordinate is signed,
+with day zero at Gregorian `0001-01-01`; this representation permits an offset
+to carry recovery into the preceding day without extending HTML's author-year
+grammar. No host clock or time zone is inferred.
+
 Token authoring preserves exact spelling and order. Unique ordered or unordered
 sets require an explicit case-sensitive or ASCII-insensitive comparison.
 Comma tokens can be empty and retain internal whitespace. These common values
 do not certify an attribute's keywords, cardinality or contextual constraints.
 
 `HtmlValueInterpreter` admits each raw value against a caller-selected finite
-UTF-16 input capacity. Its immutable reports distinguish missing values,
-whole-value author conformance, representation failure and separate recovery
-outcomes. Numeric recovery and common token splitting are available; permissive
-temporal recovery is explicitly unsupported. Raw values remain unchanged,
-including isolated surrogates. Attribute applicability, missing/invalid/empty
-defaults and effective states still require their individual defining clauses.
+UTF-16 input capacity. Its immutable `HtmlValueReport<A, R>` reports distinguish
+missing values, whole-value author conformance, representation failure and
+separate recovery outcomes. Numeric, temporal and common token processing use
+their pinned algorithms. The date-or-time operation defines processing without
+an independent author grammar. Date-with-optional-time checks its Date/Global
+author grammar while retaining the common parser's standalone Time result;
+attribute-specific timestamp filters remain with their consuming clauses.
+Raw values remain unchanged, including isolated surrogates. Attribute
+applicability, missing/invalid/empty defaults and effective states still require
+their individual defining clauses.
 This standalone input cap is not full parser accounting, cancellation or an
 allocation-failure guarantee. The parser contribution owns those controls.
 

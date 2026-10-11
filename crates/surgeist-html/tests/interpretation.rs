@@ -1,7 +1,7 @@
 //! Public common-value behavior; expected results follow the pinned clauses.
 use surgeist_html::{
-    DocumentString, HtmlDimension, HtmlValueAuthorState as Author, HtmlValueFailure as Failure,
-    HtmlValueInterpreter, HtmlValueRecoveryState as Recovery,
+    DocumentString, HtmlDateOrTime, HtmlDimension, HtmlTime, HtmlValueAuthorState as Author,
+    HtmlValueFailure as Failure, HtmlValueInterpreter, HtmlValueRecoveryState as Recovery,
     HtmlValueRepresentationError as Representation, HtmlValueSyntax,
     HtmlValueSyntaxError as Syntax,
 };
@@ -324,364 +324,415 @@ fn isolated_surrogates_remain_raw_and_recovery_observes_only_numeric_prefix() {
     assert_eq!(error.required(), 4);
 }
 
-#[test]
-fn month_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2024-02");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.month(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.month(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("2024-00");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .month(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .month(Some(&raw))
-            .is_err()
-    );
+macro_rules! temporal_report {
+    ($test:ident, $operation:ident, $valid:literal, $invalid_author:literal, $recover_invalid:literal) => {
+        #[test]
+        fn $test() {
+            let raw = DocumentString::from($valid);
+            let interpreter = HtmlValueInterpreter::new(raw.len());
+            let report = interpreter.$operation(Some(&raw)).unwrap();
+            assert!(matches!(report.author(), Author::Valid(_)));
+            assert!(matches!(report.recovery(), Recovery::Value(_)));
+            assert_eq!(report.raw(), Some(&raw));
+            assert_eq!(report.input_code_units(), raw.len());
+
+            let missing = interpreter.$operation(None).unwrap();
+            assert_eq!(missing.author(), &Author::Missing);
+            assert_eq!(missing.recovery(), &Recovery::Missing);
+            assert_eq!(missing.raw(), None);
+
+            let invalid = DocumentString::from($invalid_author);
+            let invalid_report = HtmlValueInterpreter::new(invalid.len())
+                .$operation(Some(&invalid))
+                .unwrap();
+            assert!(matches!(
+                invalid_report.author(),
+                Author::Invalid(Syntax::Temporal(_))
+            ));
+            if $recover_invalid {
+                assert!(matches!(invalid_report.recovery(), Recovery::Value(_)));
+            } else {
+                assert!(matches!(
+                    invalid_report.recovery(),
+                    Recovery::Failed(Failure::Syntax(Syntax::Temporal(_)))
+                ));
+            }
+            assert_eq!(invalid_report.raw(), Some(&invalid));
+            assert!(
+                HtmlValueInterpreter::new(raw.len() - 1)
+                    .$operation(Some(&raw))
+                    .is_err()
+            );
+        }
+    };
 }
 
-#[test]
-fn date_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2024-02-29");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.date(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.date(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("2023-02-29");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .date(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .date(Some(&raw))
-            .is_err()
-    );
-}
+temporal_report!(
+    month_separates_author_and_processing,
+    month,
+    "2024-02",
+    "2024-00",
+    false
+);
+temporal_report!(
+    date_separates_author_and_processing,
+    date,
+    "2024-02-29",
+    "2023-02-29",
+    false
+);
+temporal_report!(
+    yearless_date_separates_author_and_processing,
+    yearless_date,
+    "--02-29",
+    "02-30",
+    false
+);
+temporal_report!(
+    time_separates_author_and_processing,
+    time,
+    "23:59:59.125",
+    "23:59:59.1234",
+    true
+);
+temporal_report!(
+    local_date_time_separates_author_and_processing,
+    local_date_time,
+    "2024-02-29 23:59",
+    "2024-02-29_23:59",
+    false
+);
+temporal_report!(
+    normalized_local_date_time_separates_author_and_processing,
+    normalized_local_date_time,
+    "2024-02-29T23:59",
+    "2024-02-29T23:59:00",
+    true
+);
+temporal_report!(
+    time_zone_offset_separates_author_and_processing,
+    time_zone_offset,
+    "+23:59",
+    "-00:00",
+    true
+);
+temporal_report!(
+    global_date_time_separates_author_and_processing,
+    global_date_time,
+    "2024-02-29T23:59Z",
+    "2024-02-29T23:59",
+    false
+);
+temporal_report!(
+    week_separates_author_and_processing,
+    week,
+    "2020-W53",
+    "2021-W53",
+    false
+);
+temporal_report!(
+    duration_separates_author_and_processing,
+    duration,
+    "PT1.125S",
+    "PT1.1234S",
+    true
+);
+temporal_report!(
+    date_with_optional_time_separates_author_and_processing,
+    date_with_optional_time,
+    "2024-02-29T23:59+01:00",
+    "23:59",
+    true
+);
 
 #[test]
-fn yearless_date_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("--02-29");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.yearless_date(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.yearless_date(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("02-30");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .yearless_date(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .yearless_date(Some(&raw))
-            .is_err()
-    );
-}
-
-#[test]
-fn time_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("23:59:59.125");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.time(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.time(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("23:59:59.1234");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .time(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
+fn exact_time_recovery_preserves_long_fractions_without_author_projection() {
+    for (text, second) in [
+        ("12:34:01.000000000001", "1.000000000001"),
+        ("12:34:01.0000", "1"),
+        (
+            "12:34:00.0000000000000000000000001",
+            "0.0000000000000000000000001",
+        ),
+    ] {
+        let raw = DocumentString::from(text);
+        let report = HtmlValueInterpreter::new(raw.len())
             .time(Some(&raw))
-            .is_err()
-    );
+            .unwrap();
+        assert!(matches!(
+            report.author(),
+            Author::Invalid(Syntax::Temporal(_))
+        ));
+        let Recovery::Value(time) = report.recovery() else {
+            panic!("expected exact time")
+        };
+        assert_eq!(time.hour(), 12);
+        assert_eq!(time.minute(), 34);
+        assert_eq!(
+            time.second().as_document_string(),
+            DocumentString::from(second)
+        );
+        assert_eq!(HtmlTime::try_from(time.clone()).is_ok(), second == "1");
+        assert_eq!(report.raw(), Some(&raw));
+    }
+    for text in [
+        "12:34:01.",
+        "12:34:001",
+        "12:34:01..2",
+        "12:34:60",
+        "12:34Z",
+        "12:34 ",
+    ] {
+        let raw = DocumentString::from(text);
+        let report = HtmlValueInterpreter::new(raw.len())
+            .time(Some(&raw))
+            .unwrap();
+        assert!(matches!(
+            report.recovery(),
+            Recovery::Failed(Failure::Syntax(Syntax::Temporal(_)))
+        ));
+        assert_eq!(report.raw(), Some(&raw));
+    }
 }
 
 #[test]
-fn local_date_time_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2024-02-29 23:59");
+fn local_processing_retains_exact_precision_despite_normalized_author_failure() {
+    let raw = DocumentString::from("2000-02-29 12:34:01.0001");
     let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.local_date_time(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.local_date_time(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("2024-02-29_23:59");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .local_date_time(Some(&invalid))
-        .unwrap();
+    let local = interpreter.local_date_time(Some(&raw)).unwrap();
+    let normalized = interpreter.normalized_local_date_time(Some(&raw)).unwrap();
     assert!(matches!(
-        invalid_report.author(),
+        local.author(),
         Author::Invalid(Syntax::Temporal(_))
     ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .local_date_time(Some(&raw))
-            .is_err()
+    assert!(matches!(
+        normalized.author(),
+        Author::Invalid(Syntax::Temporal(_))
+    ));
+    assert_eq!(local.recovery(), normalized.recovery());
+    let Recovery::Value(value) = local.recovery() else {
+        panic!("expected local processing result")
+    };
+    assert_eq!(value.date().year().decimal_digits(), "2000");
+    assert_eq!(value.date().month(), 2);
+    assert_eq!(value.date().day(), 29);
+    assert_eq!(
+        value.time().second().as_document_string(),
+        DocumentString::from("1.0001")
     );
+    assert_eq!(local.raw(), Some(&raw));
 }
 
 #[test]
-fn normalized_local_date_time_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2024-02-29T23:59");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.normalized_local_date_time(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.normalized_local_date_time(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("2024-02-29T23:59:00");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .normalized_local_date_time(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .normalized_local_date_time(Some(&raw))
-            .is_err()
-    );
-}
-
-#[test]
-fn time_zone_offset_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("+23:59");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.time_zone_offset(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.time_zone_offset(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("-00:00");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .time_zone_offset(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
+fn negative_zero_offset_recovery_preserves_the_raw_sign() {
+    for text in ["-00:00", "-0000"] {
+        let raw = DocumentString::from(text);
+        let report = HtmlValueInterpreter::new(raw.len())
             .time_zone_offset(Some(&raw))
-            .is_err()
-    );
+            .unwrap();
+        assert!(matches!(
+            report.author(),
+            Author::Invalid(Syntax::Temporal(_))
+        ));
+        let Recovery::Value(value) = report.recovery() else {
+            panic!("expected zero offset")
+        };
+        assert_eq!(value.minutes(), 0);
+        assert_eq!(report.raw(), Some(&raw));
+    }
 }
 
 #[test]
-fn global_date_time_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2024-02-29T23:59Z");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.global_date_time(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.global_date_time(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("2024-02-29T23:59");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .global_date_time(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
+fn global_processing_exposes_exact_utc_day_offset_and_fraction() {
+    for (text, day, hour, minute, second, offset) in [
+        ("0001-01-01T00:00+23:59", "-1", 0, 1, "0", 1439),
+        (
+            "2000-01-01T00:15:01.0001+00:30",
+            "730118",
+            23,
+            45,
+            "1.0001",
+            30,
+        ),
+        ("1999-12-31T23:30-01:00", "730119", 0, 30, "0", -60),
+    ] {
+        let raw = DocumentString::from(text);
+        let report = HtmlValueInterpreter::new(raw.len())
             .global_date_time(Some(&raw))
-            .is_err()
-    );
+            .unwrap();
+        let Recovery::Value(value) = report.recovery() else {
+            panic!("expected global result")
+        };
+        assert_eq!(
+            value.utc().day().as_document_string(),
+            DocumentString::from(day)
+        );
+        assert_eq!(value.utc().time().hour(), hour);
+        assert_eq!(value.utc().time().minute(), minute);
+        assert_eq!(
+            value.utc().time().second().as_document_string(),
+            DocumentString::from(second)
+        );
+        assert_eq!(value.offset().minutes(), offset);
+        assert_eq!(report.raw(), Some(&raw));
+    }
+
+    let first = DocumentString::from("2000-01-01T00:00Z");
+    let second = DocumentString::from("1999-12-31T23:00-01:00");
+    let interpreter = HtmlValueInterpreter::new(32);
+    let first_report = interpreter.global_date_time(Some(&first)).unwrap();
+    let second_report = interpreter.global_date_time(Some(&second)).unwrap();
+    let (Recovery::Value(first), Recovery::Value(second)) =
+        (first_report.recovery(), second_report.recovery())
+    else {
+        panic!("expected both instants")
+    };
+    assert_eq!(first.utc(), second.utc());
+    assert_ne!(first.offset(), second.offset());
 }
 
 #[test]
-fn week_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2020-W53");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.week(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.week(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("2021-W53");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .week(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .week(Some(&raw))
-            .is_err()
-    );
-}
-
-#[test]
-fn duration_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("PT1.125S");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.duration(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.duration(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("PT1.1234S");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .duration(Some(&invalid))
-        .unwrap();
-    assert!(matches!(
-        invalid_report.author(),
-        Author::Invalid(Syntax::Temporal(_))
-    ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
+fn duration_processing_follows_permissive_loop_and_exact_sum() {
+    for (text, seconds) in [
+        ("1M", "60"),
+        ("P0Y0M", "0"),
+        ("P0Y1H1M", "3660"),
+        ("P1S1M", "61"),
+        ("PT1.5S1M", "61.5"),
+        (".5s .0001s", "0.5001"),
+        (".9999s .0001s", "1"),
+        ("P1DT", "86400"),
+        ("TT1ST", "1"),
+        ("1h1H", "7200"),
+        (
+            "1000000000000000000000000000000w",
+            "604800000000000000000000000000000000",
+        ),
+    ] {
+        let raw = DocumentString::from(text);
+        let report = HtmlValueInterpreter::new(raw.len())
             .duration(Some(&raw))
-            .is_err()
-    );
+            .unwrap();
+        let Recovery::Value(value) = report.recovery() else {
+            panic!("expected duration for {text}")
+        };
+        assert_eq!(
+            value.seconds().as_document_string(),
+            DocumentString::from(seconds),
+            "{text}"
+        );
+        assert_eq!(report.raw(), Some(&raw));
+    }
+    for text in [
+        "P1M",
+        "P1.5S1M",
+        "PT",
+        "P1.0D",
+        "1. s",
+        "1 .5s",
+        "1.5m",
+        "p1s",
+        "1s\u{000b}",
+    ] {
+        let raw = DocumentString::from(text);
+        let report = HtmlValueInterpreter::new(raw.len())
+            .duration(Some(&raw))
+            .unwrap();
+        assert!(
+            matches!(
+                report.recovery(),
+                Recovery::Failed(Failure::Syntax(Syntax::Temporal(_)))
+            ),
+            "{text}"
+        );
+        assert_eq!(report.raw(), Some(&raw));
+    }
 }
 
 #[test]
-fn date_or_time_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2024-02-29");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.date_or_time(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
+fn date_or_time_processing_has_no_author_grammar_and_keeps_exact_alternatives() {
+    let interpreter = HtmlValueInterpreter::new(64);
     let missing = interpreter.date_or_time(None).unwrap();
     assert_eq!(missing.author(), &Author::Missing);
     assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("2024-02-30");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .date_or_time(Some(&invalid))
-        .unwrap();
+    for text in [
+        "12:34:01.0001",
+        "2000-01-01",
+        "2000-01-01T12:34:01.0001Z",
+        "",
+    ] {
+        let raw = DocumentString::from(text);
+        let report = interpreter.date_or_time(Some(&raw)).unwrap();
+        assert_eq!(report.author(), &Author::NotDefined);
+        match (text, report.recovery()) {
+            ("12:34:01.0001", Recovery::Value(HtmlDateOrTime::Time(time))) => {
+                assert_eq!(
+                    time.second().as_document_string(),
+                    DocumentString::from("1.0001")
+                );
+            }
+            ("2000-01-01", Recovery::Value(HtmlDateOrTime::Date(date))) => {
+                assert_eq!(date.day(), 1)
+            }
+            ("2000-01-01T12:34:01.0001Z", Recovery::Value(HtmlDateOrTime::Global(global))) => {
+                assert_eq!(global.utc().day().to_i128().unwrap(), 730119);
+            }
+            ("", Recovery::Failed(Failure::Syntax(Syntax::Temporal(_)))) => {}
+            _ => panic!("unexpected processing outcome for {text}"),
+        }
+        assert_eq!(report.raw(), Some(&raw));
+    }
+    for text in ["2000-01-01T12:34", "12:34Z"] {
+        let raw = DocumentString::from(text);
+        let report = interpreter.date_or_time(Some(&raw)).unwrap();
+        assert_eq!(report.author(), &Author::NotDefined);
+        assert!(matches!(
+            report.recovery(),
+            Recovery::Failed(Failure::Syntax(Syntax::Temporal(_)))
+        ));
+    }
+
+    let raw = DocumentString::from("12:34:01.0001");
+    let report = interpreter.date_with_optional_time(Some(&raw)).unwrap();
     assert!(matches!(
-        invalid_report.author(),
+        report.author(),
         Author::Invalid(Syntax::Temporal(_))
     ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .date_or_time(Some(&raw))
-            .is_err()
-    );
+    assert!(matches!(
+        report.recovery(),
+        Recovery::Value(HtmlDateOrTime::Time(_))
+    ));
 }
 
 #[test]
-fn date_with_optional_time_checks_authored_strings_without_claiming_recovery() {
-    let raw = DocumentString::from("2024-02-29T23:59+01:00");
-    let interpreter = HtmlValueInterpreter::new(raw.len());
-    let report = interpreter.date_with_optional_time(Some(&raw)).unwrap();
-    assert!(matches!(report.author(), Author::Valid(_)));
-    assert_eq!(report.recovery(), &Recovery::Unsupported);
-    assert_eq!(report.raw(), Some(&raw));
-    assert_eq!(report.input_code_units(), raw.len());
-    let missing = interpreter.date_with_optional_time(None).unwrap();
-    assert_eq!(missing.author(), &Author::Missing);
-    assert_eq!(missing.recovery(), &Recovery::Missing);
-    assert_eq!(missing.raw(), None);
-    let invalid = DocumentString::from("23:59");
-    let invalid_report = HtmlValueInterpreter::new(invalid.len())
-        .date_with_optional_time(Some(&invalid))
+fn temporal_surrogate_input_is_source_failure_and_remains_exact() {
+    let mut units: Vec<u16> = "12:34".encode_utf16().collect();
+    units.push(0xd800);
+    let raw = DocumentString::from_utf16(units.clone());
+    let report = HtmlValueInterpreter::new(raw.len())
+        .time(Some(&raw))
         .unwrap();
     assert!(matches!(
-        invalid_report.author(),
+        report.author(),
         Author::Invalid(Syntax::Temporal(_))
     ));
-    assert_eq!(invalid_report.recovery(), &Recovery::Unsupported);
-    assert_eq!(invalid_report.raw(), Some(&invalid));
-    assert!(
-        HtmlValueInterpreter::new(raw.len() - 1)
-            .date_with_optional_time(Some(&raw))
-            .is_err()
-    );
+    assert!(matches!(
+        report.recovery(),
+        Recovery::Failed(Failure::Syntax(Syntax::Temporal(_)))
+    ));
+    assert_eq!(report.raw().unwrap().code_units(), units);
+
+    let empty = DocumentString::from("");
+    let report = HtmlValueInterpreter::new(0).time(Some(&empty)).unwrap();
+    assert_eq!(report.raw(), Some(&empty));
+    assert!(matches!(
+        report.author(),
+        Author::Invalid(Syntax::Temporal(_))
+    ));
+    assert!(matches!(
+        report.recovery(),
+        Recovery::Failed(Failure::Syntax(Syntax::Temporal(_)))
+    ));
 }
 
 #[test]
