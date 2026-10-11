@@ -132,8 +132,8 @@ See the [dependency notice](NOTICE.md) and [source selection](../../references/S
 `HtmlAttributeReport` separates exact presence, expanded-name applicability,
 keyword recognition, author conformance and the selected intrinsic state. The
 implemented overlays cover twelve global enumerated attributes, template
-shadow mode/slot assignment, eleven element-specific keyword rules and twenty
-Boolean contexts. Input types retain all twenty-two standard keywords and their
+shadow mode/slot assignment, eleven element-specific keyword rules and
+element-specific Boolean attributes. Input types retain all twenty-two standard keywords and their
 Text fallback; button types retain the distinct Auto fallback without treating
 it as an authored keyword. Media preload retains implementation-defined missing/invalid
 policy separately from its recognized keywords; ordered-list marker types use
@@ -145,6 +145,10 @@ attributes. CORS, fetch-priority and referrer-policy operations retain their fin
 states. Script operations require explicit classic/module/inline/external or
 non-script type context; hyperlink referrer policy requires an explicit href
 presence fact. Inapplicable contexts remain distinct from invalid spelling.
+Disabled-attribute interpretation also covers fieldset, optgroup, option and
+the four standard form controls. Custom controls require an explicit
+form-associated classification. This intrinsic Boolean presence operation
+does not itself compute disabledness inherited from ancestors.
 Referrer policy uses the [pinned external vocabulary](../../references/referrer-policy-vocabulary--cc435b05ca4a.md);
 its empty state remains unresolved rather than selecting a host network default.
 These views do not compute inheritance or claim runtime effects,
@@ -157,6 +161,20 @@ distinct from known absence; lookups and traversal borrow the captured records.
 Every retention capacity is explicit, and rejected changes preserve logical
 content and usage. Document self identity is covered by the subject count;
 relationships count references to other retained records.
+
+`HtmlSemanticSession` borrows one capture and a matching `HtmlSemanticContext`
+to answer hidden-state and actual disabledness queries. Disabledness includes
+the fieldset’s first-legend exception and the option/optgroup/select rules;
+custom controls use the supplied form-associated classifications. Results
+distinguish known values, inapplicable subjects, missing captured facts and
+unsupported cases. The session admits finite work and output capacity, observes
+cancellation and returns a complete batch or a sticky terminal failure.
+Reports and admitted query failures retain the same immutable qualification:
+HTML revision, capture, context, host-facts revision and selected limits.
+Constructor rejection has no admitted-session qualification. Dependency results
+currently request conservative recomputation. These operations borrow captured
+relationships without constructing a live tree; language, direction, inertness,
+lists and tables remain part of the semantic contribution.
 
 `HtmlFragmentContext` selects an actual captured element or hosted fragment,
 retaining its context and target documents, integration facts and nearest form.

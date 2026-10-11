@@ -35,6 +35,10 @@ pub enum HtmlAttributeApplicability {
     HyperlinkContextRequired,
     /// The supplied a/area context has no href and forbids this attribute.
     InapplicableHyperlinkContext,
+    /// An unknown HTML element needs actual custom-control classification.
+    CustomControlContextRequired,
+    /// The supplied custom element is not form-associated.
+    InapplicableCustomControl,
 }
 
 /// Explicit script facts from HTML's content-attribute applicability table.
@@ -59,11 +63,22 @@ pub enum HtmlHyperlinkAttributeContext {
     WithoutHref,
 }
 
+/// Source-established autonomous custom-control classification.
+///
+/// This is a supplied fact about an actual element and its definition. The
+/// interpreter does not infer registry, upgrade or form association from a name.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlCustomControlAttributeContext {
+    FormAssociated,
+    NotFormAssociated,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SuppliedContext {
     None,
     Script(HtmlScriptAttributeContext),
     Hyperlink(HtmlHyperlinkAttributeContext),
+    CustomControl(HtmlCustomControlAttributeContext),
 }
 
 /// Recognition of literal value syntax; a fallback never changes this result.
@@ -166,6 +181,13 @@ impl<T> HtmlAttributeReport<T> {
             _ => None,
         }
     }
+    /// Returns the supplied actual custom-control classification, if any.
+    pub fn custom_control_context(&self) -> Option<HtmlCustomControlAttributeContext> {
+        match self.supplied_context {
+            SuppliedContext::CustomControl(context) => Some(context),
+            _ => None,
+        }
+    }
     /// Returns existing original index row IDs covered by this defining rule.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.rule.rows
@@ -179,8 +201,14 @@ impl<T> HtmlAttributeReport<T> {
     pub fn vocabulary_source_clause(&self) -> Option<&'static str> {
         self.rule.vocabulary_source
     }
-    /// Returns the defining clause for bdo, script or hyperlink applicability.
+    /// Returns the defining clause for additional element-context facts.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if self.rule.context == Context::DisabledControls
+            && self.element.namespace() == &Namespace::html()
+            && KnownHtmlElement::from_name(&self.element).is_none()
+        {
+            return Some(FORM_ASSOCIATED_CUSTOM_SOURCE);
+        }
         if matches!(
             self.rule.context,
             Context::Fetching {
@@ -216,6 +244,7 @@ enum Context {
     Direction,
     Template,
     Elements(&'static [KnownHtmlElement]),
+    DisabledControls,
     Fetching {
         elements: &'static [KnownHtmlElement],
         script: ScriptApplicability,
@@ -282,6 +311,7 @@ const BDO_SOURCE: &str = source!("the-bdo-element");
 const SCRIPT_SOURCE: &str = source!("the-script-element");
 const HYPERLINK_A_SOURCE: &str = source!("the-a-element");
 const HYPERLINK_AREA_SOURCE: &str = source!("the-area-element");
+const FORM_ASSOCIATED_CUSTOM_SOURCE: &str = source!("form-associated-custom-element");
 // Vocabulary-only adoption; raw index.src.html SHA-256:
 // a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1.
 const REFERRER_POLICY_VOCABULARY: &str = concat!(
@@ -634,6 +664,9 @@ pub enum HtmlBooleanAttribute {
     PlaysInline,
     Reversed,
     Selected,
+    /// Local disabled content presence, with defining source chosen by context.
+    /// This does not compute inherited or actual disabledness.
+    Disabled,
 }
 
 impl HtmlBooleanAttribute {
@@ -760,6 +793,12 @@ impl HtmlBooleanAttribute {
                 source!("attr-option-selected"),
                 Context::Elements(&[KnownHtmlElement::Option]),
             ),
+            Self::Disabled => (
+                KnownHtmlAttribute::Disabled,
+                &[44],
+                source!("attr-fe-disabled"),
+                Context::DisabledControls,
+            ),
         };
         RuleMetadata {
             attribute,
@@ -768,6 +807,22 @@ impl HtmlBooleanAttribute {
             context,
             vocabulary_source: None,
         }
+    }
+
+    fn rule_for(self, element: &QualifiedName) -> RuleMetadata {
+        let mut rule = self.rule();
+        if self == Self::Disabled {
+            match KnownHtmlElement::from_name(element) {
+                Some(KnownHtmlElement::Fieldset) => {
+                    rule.source = source!("attr-fieldset-disabled");
+                    rule.rows = &[45];
+                }
+                Some(KnownHtmlElement::Optgroup) => rule.source = source!("attr-optgroup-disabled"),
+                Some(KnownHtmlElement::Option) => rule.source = source!("attr-option-disabled"),
+                _ => {}
+            }
+        }
+        rule
     }
 
     /// Returns the standard expanded-name identity for this Boolean rule.
@@ -796,12 +851,27 @@ fn applies(
     let applicable = match rule.context {
         Context::Global | Context::Direction => true,
         Context::Template => known == Some(KnownHtmlElement::Template),
+        Context::DisabledControls => matches!(
+            known,
+            None | Some(
+                KnownHtmlElement::Button
+                    | KnownHtmlElement::Input
+                    | KnownHtmlElement::Select
+                    | KnownHtmlElement::Textarea
+                    | KnownHtmlElement::Fieldset
+                    | KnownHtmlElement::Optgroup
+                    | KnownHtmlElement::Option
+            )
+        ),
         Context::Elements(elements) | Context::Fetching { elements, .. } => {
             known.is_some_and(|name| elements.contains(&name))
         }
     };
     if !applicable {
         return HtmlAttributeApplicability::DifferentElement;
+    }
+    if rule.context == Context::DisabledControls && known.is_none() {
+        return HtmlAttributeApplicability::CustomControlContextRequired;
     }
     if matches!(rule.context, Context::Fetching { .. }) && known == Some(KnownHtmlElement::Script) {
         return HtmlAttributeApplicability::ScriptContextRequired;
@@ -910,6 +980,9 @@ impl HtmlValueInterpreter {
                     result.applicability = HtmlAttributeApplicability::DifferentElement;
                 }
             }
+            SuppliedContext::CustomControl(_) => {
+                result.applicability = HtmlAttributeApplicability::DifferentElement;
+            }
         }
         if result.applicability != HtmlAttributeApplicability::Applicable {
             return Ok(result);
@@ -968,8 +1041,33 @@ impl HtmlValueInterpreter {
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(selected, element, raw, SuppliedContext::None)
+    }
+
+    fn boolean_with_context(
+        &self,
+        selected: HtmlBooleanAttribute,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        supplied_context: SuppliedContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(Attribute::value))?;
-        let mut result = report(selected.rule(), element, raw);
+        let mut result = report(selected.rule_for(element), element, raw);
+        result.supplied_context = supplied_context;
+        if let SuppliedContext::CustomControl(context) = supplied_context {
+            if result.applicability == HtmlAttributeApplicability::CustomControlContextRequired {
+                result.applicability = match context {
+                    HtmlCustomControlAttributeContext::FormAssociated => {
+                        HtmlAttributeApplicability::Applicable
+                    }
+                    HtmlCustomControlAttributeContext::NotFormAssociated => {
+                        HtmlAttributeApplicability::InapplicableCustomControl
+                    }
+                };
+            } else if result.applicability == HtmlAttributeApplicability::Applicable {
+                result.applicability = HtmlAttributeApplicability::DifferentElement;
+            }
+        }
         if result.applicability != HtmlAttributeApplicability::Applicable {
             return Ok(result);
         }
@@ -995,6 +1093,31 @@ impl HtmlValueInterpreter {
             }
         }
         Ok(result)
+    }
+
+    /// Interprets local disabled content presence using its defining element clause.
+    /// Ancestors, legend exceptions and actual disabledness are separate queries.
+    pub fn disabled(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_attribute(HtmlBooleanAttribute::Disabled, element, raw)
+    }
+
+    /// Interprets disabled for an explicitly classified autonomous custom control.
+    pub fn disabled_for_custom_control(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        context: HtmlCustomControlAttributeContext,
+    ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
+        self.boolean_with_context(
+            HtmlBooleanAttribute::Disabled,
+            element,
+            raw,
+            SuppliedContext::CustomControl(context),
+        )
     }
 
     /// Interprets dir's intrinsic state and the bdo-specific author requirement.

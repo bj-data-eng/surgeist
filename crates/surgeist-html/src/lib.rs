@@ -13,6 +13,7 @@ mod interpretation;
 mod numeric;
 #[cfg(test)]
 mod parser;
+mod semantics;
 mod source;
 mod temporal;
 mod tokens;
@@ -25,6 +26,7 @@ pub use color::*;
 pub use construction::*;
 pub use interpretation::*;
 pub use numeric::*;
+pub use semantics::*;
 pub use source::*;
 pub use temporal::*;
 pub use tokens::*;

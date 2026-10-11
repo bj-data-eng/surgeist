@@ -4,10 +4,12 @@
 pub mod surgeist_html
 pub enum surgeist_html::HtmlAttributeApplicability
 pub surgeist_html::HtmlAttributeApplicability::Applicable
+pub surgeist_html::HtmlAttributeApplicability::CustomControlContextRequired
 pub surgeist_html::HtmlAttributeApplicability::DifferentAttribute
 pub surgeist_html::HtmlAttributeApplicability::DifferentElement
 pub surgeist_html::HtmlAttributeApplicability::ForeignElementNamespace
 pub surgeist_html::HtmlAttributeApplicability::HyperlinkContextRequired
+pub surgeist_html::HtmlAttributeApplicability::InapplicableCustomControl
 pub surgeist_html::HtmlAttributeApplicability::InapplicableHyperlinkContext
 pub surgeist_html::HtmlAttributeApplicability::InapplicableScriptKind
 pub surgeist_html::HtmlAttributeApplicability::ScriptContextRequired
@@ -57,6 +59,7 @@ pub surgeist_html::HtmlBooleanAttribute::Autofocus
 pub surgeist_html::HtmlBooleanAttribute::Autoplay
 pub surgeist_html::HtmlBooleanAttribute::DetailsOpen
 pub surgeist_html::HtmlBooleanAttribute::DialogOpen
+pub surgeist_html::HtmlBooleanAttribute::Disabled
 pub surgeist_html::HtmlBooleanAttribute::HeadingReset
 pub surgeist_html::HtmlBooleanAttribute::Inert
 pub surgeist_html::HtmlBooleanAttribute::Itemscope
@@ -237,6 +240,9 @@ pub fn surgeist_html::HtmlCrossOrigin::into_attribute(self) -> surgeist_html::At
 pub enum surgeist_html::HtmlCrossOriginState
 pub surgeist_html::HtmlCrossOriginState::Keyword(surgeist_html::HtmlCrossOrigin)
 pub surgeist_html::HtmlCrossOriginState::NoCors
+pub enum surgeist_html::HtmlCustomControlAttributeContext
+pub surgeist_html::HtmlCustomControlAttributeContext::FormAssociated
+pub surgeist_html::HtmlCustomControlAttributeContext::NotFormAssociated
 pub enum surgeist_html::HtmlDateOrTime
 pub surgeist_html::HtmlDateOrTime::Date(surgeist_html::HtmlDate)
 pub surgeist_html::HtmlDateOrTime::Global(surgeist_html::HtmlParsedGlobalDateTime)
@@ -482,6 +488,52 @@ pub enum surgeist_html::HtmlScriptingStatus
 pub surgeist_html::HtmlScriptingStatus::Disabled
 pub surgeist_html::HtmlScriptingStatus::Enabled
 pub surgeist_html::HtmlScriptingStatus::Unavailable
+pub enum surgeist_html::HtmlSemanticContextError
+pub surgeist_html::HtmlSemanticContextError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlSemanticContextError::ClassificationLimit
+pub surgeist_html::HtmlSemanticContextError::ClassificationLimit::limit: usize
+pub surgeist_html::HtmlSemanticContextError::ClassificationLimit::retained_capacity: usize
+pub surgeist_html::HtmlSemanticContextError::DuplicateSubject(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticContextError::HostRevisionMismatch
+impl core::error::Error for surgeist_html::HtmlSemanticContextError
+impl core::fmt::Display for surgeist_html::HtmlSemanticContextError
+pub fn surgeist_html::HtmlSemanticContextError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlSemanticDependencies
+pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
+pub enum surgeist_html::HtmlSemanticFact
+pub surgeist_html::HtmlSemanticFact::Disabledness(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
+pub enum surgeist_html::HtmlSemanticFailureKind
+pub surgeist_html::HtmlSemanticFailureKind::AllocationFailed
+pub surgeist_html::HtmlSemanticFailureKind::Attribute(surgeist_html::HtmlValueAdmissionError)
+pub surgeist_html::HtmlSemanticFailureKind::Cancelled
+pub surgeist_html::HtmlSemanticFailureKind::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlSemanticFailureKind::ContextCaptureMismatch
+pub surgeist_html::HtmlSemanticFailureKind::IntrinsicUnavailable
+pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded
+pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::limit: usize
+pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::required: usize
+pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::resource: surgeist_html::HtmlSemanticResource
+pub surgeist_html::HtmlSemanticFailureKind::RepresentationExhausted
+pub enum surgeist_html::HtmlSemanticMissing
+pub surgeist_html::HtmlSemanticMissing::CustomControlClassification(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::OrderedChildren(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::Parent(surgeist_html::HtmlCaptureSubjectId)
+pub enum surgeist_html::HtmlSemanticQuery
+pub surgeist_html::HtmlSemanticQuery::Disabledness
+pub surgeist_html::HtmlSemanticQuery::Hidden
+impl surgeist_html::HtmlSemanticQuery
+pub fn surgeist_html::HtmlSemanticQuery::source_clause(self) -> &'static str
+pub enum surgeist_html::HtmlSemanticResource
+pub surgeist_html::HtmlSemanticResource::OutputRecords
+pub surgeist_html::HtmlSemanticResource::Work
+pub enum surgeist_html::HtmlSemanticUnsupported
+pub surgeist_html::HtmlSemanticUnsupported::ForeignNamespace
+pub enum surgeist_html::HtmlSemanticValue<T>
+pub surgeist_html::HtmlSemanticValue::Inapplicable
+pub surgeist_html::HtmlSemanticValue::Known(T)
+pub surgeist_html::HtmlSemanticValue::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlSemanticValue::Unsupported(surgeist_html::HtmlSemanticUnsupported)
 pub enum surgeist_html::HtmlShadowAttachmentStatus
 pub surgeist_html::HtmlShadowAttachmentStatus::Allowed
 pub surgeist_html::HtmlShadowAttachmentStatus::DefinitionDisallows
@@ -958,6 +1010,7 @@ pub fn surgeist_html::HtmlAttributeReport<T>::applicability(&self) -> surgeist_h
 pub fn surgeist_html::HtmlAttributeReport<T>::attribute(&self) -> surgeist_html::KnownHtmlAttribute
 pub fn surgeist_html::HtmlAttributeReport<T>::author(&self) -> surgeist_html::HtmlAttributeAuthorState
 pub fn surgeist_html::HtmlAttributeReport<T>::context_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlAttributeReport<T>::custom_control_context(&self) -> core::option::Option<surgeist_html::HtmlCustomControlAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::element(&self) -> &surgeist_html::QualifiedName
 pub fn surgeist_html::HtmlAttributeReport<T>::hyperlink_context(&self) -> core::option::Option<surgeist_html::HtmlHyperlinkAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::input_code_units(&self) -> usize
@@ -1122,6 +1175,11 @@ pub fn surgeist_html::HtmlConstructionUsage::depth(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::edges(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::nodes(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::utf16_units(self) -> usize
+pub struct surgeist_html::HtmlCustomControlClassification
+impl surgeist_html::HtmlCustomControlClassification
+pub fn surgeist_html::HtmlCustomControlClassification::form_associated(&self) -> bool
+pub fn surgeist_html::HtmlCustomControlClassification::new(subject: surgeist_html::HtmlCaptureSubjectId, form_associated: bool) -> Self
+pub fn surgeist_html::HtmlCustomControlClassification::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
 pub struct surgeist_html::HtmlCustomElementDefinition
 impl surgeist_html::HtmlCustomElementDefinition
 pub fn surgeist_html::HtmlCustomElementDefinition::disable_shadow(&self) -> bool
@@ -1415,6 +1473,74 @@ pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::Html
 impl core::convert::TryFrom<surgeist_html::HtmlProcessingInstruction> for surgeist_html::HtmlAuthoredProcessingInstruction
 pub type surgeist_html::HtmlAuthoredProcessingInstruction::Error = surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlSemanticCancellation(_)
+impl surgeist_html::HtmlSemanticCancellation
+pub fn surgeist_html::HtmlSemanticCancellation::cancel(&self)
+pub fn surgeist_html::HtmlSemanticCancellation::is_cancelled(&self) -> bool
+pub fn surgeist_html::HtmlSemanticCancellation::new() -> Self
+pub struct surgeist_html::HtmlSemanticContext
+impl surgeist_html::HtmlSemanticContext
+pub fn surgeist_html::HtmlSemanticContext::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlSemanticContext::classifications(&self) -> &[surgeist_html::HtmlCustomControlClassification]
+pub fn surgeist_html::HtmlSemanticContext::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlSemanticContext::identity(&self) -> &surgeist_html::HtmlSemanticContextId
+pub fn surgeist_html::HtmlSemanticContext::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, classifications: alloc::vec::Vec<surgeist_html::HtmlCustomControlClassification>, max_classifications: usize) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
+pub struct surgeist_html::HtmlSemanticContextId(_)
+impl core::cmp::Eq for surgeist_html::HtmlSemanticContextId
+impl core::cmp::PartialEq for surgeist_html::HtmlSemanticContextId
+pub fn surgeist_html::HtmlSemanticContextId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlSemanticFailure
+impl surgeist_html::HtmlSemanticFailure
+pub fn surgeist_html::HtmlSemanticFailure::kind(&self) -> &surgeist_html::HtmlSemanticFailureKind
+pub fn surgeist_html::HtmlSemanticFailure::qualification(&self) -> core::option::Option<&surgeist_html::HtmlSemanticQualification>
+pub fn surgeist_html::HtmlSemanticFailure::usage(&self) -> surgeist_html::HtmlSemanticUsage
+impl core::error::Error for surgeist_html::HtmlSemanticFailure
+impl core::fmt::Display for surgeist_html::HtmlSemanticFailure
+pub fn surgeist_html::HtmlSemanticFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlSemanticLimits
+impl surgeist_html::HtmlSemanticLimits
+pub fn surgeist_html::HtmlSemanticLimits::new(work: usize, output_records: usize) -> Self
+pub fn surgeist_html::HtmlSemanticLimits::output_records(self) -> usize
+pub fn surgeist_html::HtmlSemanticLimits::work(self) -> usize
+pub struct surgeist_html::HtmlSemanticQualification
+impl surgeist_html::HtmlSemanticQualification
+pub fn surgeist_html::HtmlSemanticQualification::attribute_input_limit(&self) -> usize
+pub fn surgeist_html::HtmlSemanticQualification::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlSemanticQualification::context(&self) -> &surgeist_html::HtmlSemanticContextId
+pub fn surgeist_html::HtmlSemanticQualification::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlSemanticQualification::limits(&self) -> surgeist_html::HtmlSemanticLimits
+pub fn surgeist_html::HtmlSemanticQualification::source_revision(&self) -> &'static str
+pub struct surgeist_html::HtmlSemanticReport
+impl surgeist_html::HtmlSemanticReport
+pub fn surgeist_html::HtmlSemanticReport::attribute_input_limit(&self) -> usize
+pub fn surgeist_html::HtmlSemanticReport::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlSemanticReport::context(&self) -> &surgeist_html::HtmlSemanticContextId
+pub fn surgeist_html::HtmlSemanticReport::dependencies(&self) -> surgeist_html::HtmlSemanticDependencies
+pub fn surgeist_html::HtmlSemanticReport::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlSemanticReport::limits(&self) -> surgeist_html::HtmlSemanticLimits
+pub fn surgeist_html::HtmlSemanticReport::qualification(&self) -> &surgeist_html::HtmlSemanticQualification
+pub fn surgeist_html::HtmlSemanticReport::results(&self) -> &[surgeist_html::HtmlSemanticResult]
+pub fn surgeist_html::HtmlSemanticReport::source_revision(&self) -> &'static str
+pub fn surgeist_html::HtmlSemanticReport::usage(&self) -> surgeist_html::HtmlSemanticUsage
+pub struct surgeist_html::HtmlSemanticRequest
+impl surgeist_html::HtmlSemanticRequest
+pub fn surgeist_html::HtmlSemanticRequest::new(subject: surgeist_html::HtmlCaptureSubjectId, query: surgeist_html::HtmlSemanticQuery) -> Self
+pub fn surgeist_html::HtmlSemanticRequest::query(&self) -> surgeist_html::HtmlSemanticQuery
+pub fn surgeist_html::HtmlSemanticRequest::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlSemanticResult
+impl surgeist_html::HtmlSemanticResult
+pub fn surgeist_html::HtmlSemanticResult::fact(&self) -> &surgeist_html::HtmlSemanticFact
+pub fn surgeist_html::HtmlSemanticResult::request(&self) -> &surgeist_html::HtmlSemanticRequest
+pub struct surgeist_html::HtmlSemanticSession<'a>
+impl<'a> surgeist_html::HtmlSemanticSession<'a>
+pub fn surgeist_html::HtmlSemanticSession<'a>::failure(&self) -> core::option::Option<&surgeist_html::HtmlSemanticFailure>
+pub fn surgeist_html::HtmlSemanticSession<'a>::new(capture: &'a surgeist_html::HtmlCapture, context: &'a surgeist_html::HtmlSemanticContext, interpreter: surgeist_html::HtmlValueInterpreter, limits: surgeist_html::HtmlSemanticLimits, cancellation: surgeist_html::HtmlSemanticCancellation) -> core::result::Result<Self, surgeist_html::HtmlSemanticFailure>
+pub fn surgeist_html::HtmlSemanticSession<'a>::query(&mut self, requests: &[surgeist_html::HtmlSemanticRequest]) -> core::result::Result<surgeist_html::HtmlSemanticReport, surgeist_html::HtmlSemanticFailure>
+pub fn surgeist_html::HtmlSemanticSession<'a>::usage(&self) -> surgeist_html::HtmlSemanticUsage
+pub struct surgeist_html::HtmlSemanticUsage
+impl surgeist_html::HtmlSemanticUsage
+pub fn surgeist_html::HtmlSemanticUsage::output_records(self) -> usize
+pub fn surgeist_html::HtmlSemanticUsage::work(self) -> usize
 pub struct surgeist_html::HtmlShadowRootProperties
 impl surgeist_html::HtmlShadowRootProperties
 pub fn surgeist_html::HtmlShadowRootProperties::clonable(self) -> bool
@@ -1510,6 +1636,8 @@ pub fn surgeist_html::HtmlValueInterpreter::autocorrect(&self, element: &surgeis
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::boolean_attribute(&self, selected: surgeist_html::HtmlBooleanAttribute, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::dir(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDirState>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::disabled(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::disabled_for_custom_control(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlCustomControlAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<bool>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::button_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlButtonTypeState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

@@ -1,3 +1,4 @@
+use surgeist_html::HtmlCustomControlAttributeContext;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability as Applicability,
     HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
@@ -22,6 +23,225 @@ fn element(local: &str) -> QualifiedName {
 }
 fn attr(local: &str, value: &str) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, local), value)
+}
+
+#[test]
+fn disabled_local_presence_uses_each_standard_elements_defining_clause() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    for (local, row, anchor) in [
+        ("button", 44, "attr-fe-disabled"),
+        ("input", 44, "attr-fe-disabled"),
+        ("select", 44, "attr-fe-disabled"),
+        ("textarea", 44, "attr-fe-disabled"),
+        ("fieldset", 45, "attr-fieldset-disabled"),
+        ("optgroup", 44, "attr-optgroup-disabled"),
+        ("option", 44, "attr-option-disabled"),
+    ] {
+        let context = element(local);
+        let missing = interpreter.disabled(&context, None).unwrap();
+        assert_eq!(missing.applicability(), Applicability::Applicable);
+        assert_eq!(missing.intrinsic(), Some(&false));
+        assert_eq!(missing.observation(), Observation::Missing);
+        assert_eq!(missing.author(), Author::Missing);
+        for (literal, recognition, author) in [
+            ("", Recognition::Empty, Author::Conforming),
+            ("DiSaBlEd", Recognition::BooleanName, Author::Conforming),
+            (
+                "false",
+                Recognition::Unrecognized,
+                Author::Nonconforming(Conformance::BooleanSpelling),
+            ),
+            (
+                " disabled",
+                Recognition::Unrecognized,
+                Author::Nonconforming(Conformance::BooleanSpelling),
+            ),
+        ] {
+            let raw = attr("disabled", literal);
+            let report = interpreter.disabled(&context, Some(&raw)).unwrap();
+            assert_eq!(report.applicability(), Applicability::Applicable);
+            assert_eq!(report.intrinsic(), Some(&true));
+            assert_eq!(report.recognition(), recognition);
+            assert_eq!(report.author(), author);
+            assert_eq!(report.raw_attribute(), Some(&raw));
+            assert_eq!(report.inventory_rows(), &[row]);
+            assert!(report.source_clause().ends_with(&format!("#{anchor}")));
+            assert_eq!(
+                report,
+                interpreter
+                    .boolean_attribute(HtmlBooleanAttribute::Disabled, &context, Some(&raw))
+                    .unwrap()
+            );
+        }
+    }
+    assert_eq!(
+        HtmlBooleanAttribute::Disabled.into_attribute(true),
+        Some(attr("disabled", ""))
+    );
+    assert_eq!(HtmlBooleanAttribute::Disabled.into_attribute(false), None);
+}
+
+#[test]
+fn disabled_custom_controls_require_actual_supplied_form_association() {
+    use HtmlCustomControlAttributeContext::{FormAssociated, NotFormAssociated};
+    let interpreter = HtmlValueInterpreter::new(100);
+    let context = element("x-control");
+    let raw = attr("disabled", "false");
+    let unclassified = interpreter.disabled(&context, Some(&raw)).unwrap();
+    assert_eq!(
+        unclassified.applicability(),
+        Applicability::CustomControlContextRequired
+    );
+    assert_eq!(unclassified.intrinsic(), None);
+    assert_eq!(unclassified.author(), Author::Unapplied);
+    assert_eq!(unclassified.custom_control_context(), None);
+    for facts in [FormAssociated, NotFormAssociated] {
+        let report = interpreter
+            .disabled_for_custom_control(&context, Some(&raw), facts)
+            .unwrap();
+        assert_eq!(report.custom_control_context(), Some(facts));
+        assert_eq!(report.element(), &context);
+        assert_eq!(report.raw_attribute(), Some(&raw));
+        assert_eq!(report.inventory_rows(), &[44]);
+        assert!(report.source_clause().ends_with("#attr-fe-disabled"));
+        assert!(
+            report
+                .context_source_clause()
+                .unwrap()
+                .ends_with("#form-associated-custom-element")
+        );
+        assert_eq!(
+            report.applicability(),
+            if facts == FormAssociated {
+                Applicability::Applicable
+            } else {
+                Applicability::InapplicableCustomControl
+            }
+        );
+        assert_eq!(
+            report.intrinsic(),
+            if facts == FormAssociated {
+                Some(&true)
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            report.author(),
+            if facts == FormAssociated {
+                Author::Nonconforming(Conformance::BooleanSpelling)
+            } else {
+                Author::Unapplied
+            }
+        );
+    }
+    let missing = interpreter
+        .disabled_for_custom_control(&context, None, FormAssociated)
+        .unwrap();
+    assert_eq!(missing.intrinsic(), Some(&false));
+    let empty = attr("disabled", "");
+    assert_eq!(
+        interpreter
+            .disabled_for_custom_control(&context, Some(&empty), FormAssociated)
+            .unwrap()
+            .author(),
+        Author::Conforming
+    );
+    assert_eq!(
+        interpreter
+            .disabled_for_custom_control(&element("button"), Some(&raw), FormAssociated)
+            .unwrap()
+            .applicability(),
+        Applicability::DifferentElement
+    );
+}
+
+#[test]
+fn disabled_preserves_exact_expanded_names_and_unapplied_observation() {
+    let interpreter = HtmlValueInterpreter::new(100);
+    let prefixed = QualifiedName::new(Namespace::html(), Some("h".into()), "input");
+    let raw = Attribute::new(
+        QualifiedName::new(Namespace::none(), Some("p".into()), "disabled"),
+        "DISABLED",
+    );
+    let report = interpreter.disabled(&prefixed, Some(&raw)).unwrap();
+    assert_eq!(report.element(), &prefixed);
+    assert_eq!(report.raw_attribute(), Some(&raw));
+    assert_eq!(report.intrinsic(), Some(&true));
+    assert_eq!(report.author(), Author::Conforming);
+    for local in ["div", "link", "legend", "datalist"] {
+        let report = interpreter.disabled(&element(local), Some(&raw)).unwrap();
+        assert_eq!(report.applicability(), Applicability::DifferentElement);
+        assert_eq!(report.intrinsic(), None);
+        assert_eq!(report.recognition(), Recognition::Unapplied);
+        assert_eq!(report.observation(), Observation::PresentNonempty);
+    }
+    assert_eq!(
+        interpreter
+            .disabled(&element("INPUT"), Some(&raw))
+            .unwrap()
+            .applicability(),
+        Applicability::CustomControlContextRequired
+    );
+    for namespace in [Namespace::none(), Namespace::svg(), Namespace::mathml()] {
+        let foreign = QualifiedName::new(namespace, None, "input");
+        assert_eq!(
+            interpreter
+                .disabled(&foreign, Some(&raw))
+                .unwrap()
+                .applicability(),
+            Applicability::ForeignElementNamespace
+        );
+    }
+    for name in [
+        QualifiedName::new(Namespace::none(), None, "DISABLED"),
+        QualifiedName::new(Namespace::html(), None, "disabled"),
+    ] {
+        let wrong = Attribute::new(name, "");
+        let report = interpreter.disabled(&prefixed, Some(&wrong)).unwrap();
+        assert_eq!(report.applicability(), Applicability::DifferentAttribute);
+        assert_eq!(report.intrinsic(), None);
+        assert_eq!(report.raw_attribute(), Some(&wrong));
+    }
+}
+
+#[test]
+fn disabled_admits_exact_raw_units_before_even_unapplied_contexts() {
+    let raw = Attribute::new(
+        KnownHtmlAttribute::Disabled.qualified_name(),
+        DocumentString::from_utf16(vec![0xd800, 0x0044]),
+    );
+    let report = HtmlValueInterpreter::new(2)
+        .disabled(&element("input"), Some(&raw))
+        .unwrap();
+    assert_eq!(report.raw_attribute(), Some(&raw));
+    assert_eq!(report.input_code_units(), 2);
+    assert_eq!(report.intrinsic(), Some(&true));
+    assert_eq!(
+        report.author(),
+        Author::Nonconforming(Conformance::BooleanSpelling)
+    );
+    let small = HtmlValueInterpreter::new(1);
+    for error in [
+        small.disabled(&element("div"), Some(&raw)).unwrap_err(),
+        small
+            .disabled_for_custom_control(
+                &element("x-control"),
+                Some(&raw),
+                HtmlCustomControlAttributeContext::NotFormAssociated,
+            )
+            .unwrap_err(),
+    ] {
+        assert_eq!(error.capacity(), 1);
+        assert_eq!(error.required(), 2);
+    }
+    assert_eq!(
+        HtmlValueInterpreter::new(0)
+            .disabled(&element("input"), None)
+            .unwrap()
+            .intrinsic(),
+        Some(&false)
+    );
 }
 
 #[test]
