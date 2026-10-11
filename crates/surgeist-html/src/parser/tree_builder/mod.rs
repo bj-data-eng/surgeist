@@ -18,13 +18,15 @@
 //! body/block/list/ruby, formatting/reconstruction/adoption, applet/marquee and
 //! trailing modes, ordinary form pointer recovery, image and listed non-resettable
 //! button/fieldset/object form associations and bounded structural tables are
-//! admitted. Resettable controls (including Hidden input), select, frameset,
+//! admitted, together with ordinary standalone frameset entry and trailing modes.
+//! Resettable controls (including Hidden input), select,
 //! template and foreign rows retain owning continuations; construction EOF is
 //! not full parse/report success.
 
 mod body;
 mod doctype;
 mod formatting;
+mod frameset;
 mod head;
 mod prologue;
 mod tables;

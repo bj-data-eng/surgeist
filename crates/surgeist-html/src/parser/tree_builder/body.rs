@@ -11,7 +11,7 @@
 // 356-541,558-602,616-630,693-731,786-813,842-873,880-892,947-1004,
 // 1466-1493,1563-1583, plus form/control rows508-518,543-558,604-665,765-784;
 // and tree_builder/mod.rs:1043-1223,1555-1585.
-// Resettable form controls, foreign creation and frameset transitions are
+// Resettable form controls and foreign creation are
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
@@ -152,7 +152,7 @@ impl HeadState<'_> {
         self.frameset_ok = value;
         Ok(())
     }
-    fn ignored_text(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn ignored_text(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         if self.whitespace_pending.is_none() {
             return Ok(());
@@ -325,7 +325,7 @@ impl HeadState<'_> {
         if late && self.token_in(&["script"], c)?.is_some() {
             // The sealed owner must still qualify before even the temporary
             // stack entry or delegated-row diagnostic is changed.
-            self.validate_script_capability(c)?;
+            self.validate_standalone_capability(c)?;
         }
         if late {
             self.emit(HeadCondition::UnexpectedBodyToken, c)?;
@@ -368,7 +368,7 @@ impl HeadState<'_> {
         self.emit(HeadCondition::UnexpectedEndTag, c)?;
         self.discard(c)
     }
-    fn ordinary_at(
+    pub(super) fn ordinary_at(
         &mut self,
         parent: &ParserNode,
         c: &mut ParseControl,
@@ -398,7 +398,6 @@ impl HeadState<'_> {
             (&["template"][..], HeadBoundary::Template),
             (&["input", "textarea", "output"][..], HeadBoundary::Form),
             (&["select", "option", "optgroup"][..], HeadBoundary::Select),
-            (&["frameset", "frame"][..], HeadBoundary::Frameset),
             (&["math", "svg"][..], HeadBoundary::Foreign),
         ] {
             if self.token_in(names, c)?.is_some() {
@@ -473,7 +472,7 @@ impl HeadState<'_> {
                     return Ok(Some(self.head_delegation(true, close, c)?));
                 }
                 if self.token_in(&["frameset"], c)?.is_some() {
-                    return Ok(Some(self.stop_at(HeadBoundary::Frameset, c)?));
+                    return Ok(Some(self.frameset_start(close, c)?));
                 }
                 if self.token_in(&["head"], c)?.is_some() {
                     self.emit(HeadCondition::UnexpectedHead, c)?;
@@ -524,20 +523,35 @@ impl HeadState<'_> {
         if matches!(kind, Some((TagKind::End, _))) && self.token_in(&["template"], c)?.is_some() {
             return Ok(Some(self.end_template(c)?));
         }
-        if matches!(kind, Some((TagKind::Start, _))) && self.token_in(&["frameset"], c)?.is_some() {
+        if let Some((TagKind::Start, close)) = kind
+            && self.token_in(&["frameset"], c)?.is_some()
+        {
+            self.frameset_admission(c)?;
+            // The governing source diagnoses before stack/flag checks/removal.
+            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let body_present = if self.before.kernel.stack()?.len() > 1 {
-                let body = self.before.kernel.at(1, c)?;
-                self.before.kernel.named(&body, "body", c)?
-            } else {
-                false
-            };
+            if self.before.kernel.stack()?.len() < 2 {
+                return Ok(Some(self.discard(c)?));
+            }
+            let body = self.before.kernel.at(1, c)?;
+            if !self.before.kernel.named(&body, "body", c)? {
+                return Ok(Some(self.discard(c)?));
+            }
             c.charge(WorkCategory::RecordVisit, 1)?;
             c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
-            if body_present && self.frameset_ok {
-                return Ok(Some(self.stop_at(HeadBoundary::Frameset, c)?));
+            if self.frameset_ok {
+                if self.before.kernel.session.parent(c, &body)?.is_some() {
+                    self.before.kernel.session.remove(c, &body)?;
+                }
+                loop {
+                    let current = self.before.kernel.current(c)?;
+                    if self.before.kernel.named(&current, "html", c)? {
+                        break;
+                    }
+                    self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+                }
+                return Ok(Some(self.frameset_start(close, c)?));
             }
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
             return Ok(Some(self.discard(c)?));
         }
         if matches!(kind, Some((TagKind::Start, _)))

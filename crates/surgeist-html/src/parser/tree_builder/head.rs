@@ -52,6 +52,9 @@ pub(super) enum InsertionMode {
     InTableBody,
     InRow,
     InCell,
+    InFrameset,
+    AfterFrameset,
+    AfterAfterFrameset,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HeadCondition {
@@ -69,6 +72,8 @@ pub(super) enum HeadCondition {
     UnexpectedTableToken,
     NonWhitespaceInTable,
     NullInTable,
+    UnexpectedFramesetToken,
+    NullInFrameset,
 }
 pub(super) struct HeadDiagnostic {
     pub(super) condition: HeadCondition,
@@ -82,7 +87,6 @@ pub(crate) enum HeadBoundary {
     Template,
     Form,
     Select,
-    Frameset,
     Foreign,
     ConstructionEof,
 }
@@ -898,7 +902,10 @@ impl HeadState<'_> {
         }
         self.finish(c)
     }
-    pub(super) fn validate_script_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn validate_standalone_capability(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         self.script
             .as_ref()
@@ -1101,6 +1108,14 @@ impl HeadState<'_> {
                     return Ok(step);
                 }
                 continue;
+            }
+            if matches!(
+                mode,
+                InsertionMode::InFrameset
+                    | InsertionMode::AfterFrameset
+                    | InsertionMode::AfterAfterFrameset
+            ) {
+                return self.frameset_rules(mode, c);
             }
             if mode != InsertionMode::Text && self.whitespace(c)? {
                 return self.finish(c);

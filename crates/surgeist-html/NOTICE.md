@@ -94,6 +94,9 @@ formatting, Noah comparison, reconstruction, adoption and applet/marquee/object
 markers. Selected button, fieldset and object rows additionally use the same
 source files and notices; their exact source ranges and association adaptations
 are recorded in the origin record.
+Ordinary frameset entry, InFrameset and its trailing modes additionally adapt
+the same rules file; the new private frameset module retains its complete
+original notice and records its source ranges in the origin record.
 Surgeist-owned
 controlled providers retain actual text and recovered-tag ownership.
 Their original notices are

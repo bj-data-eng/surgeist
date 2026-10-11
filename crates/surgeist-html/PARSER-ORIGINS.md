@@ -19,7 +19,8 @@ and the two trailing body modes, with formatting reconstruction and adoption.
 Ordinary form recovery and parser-created image, button, fieldset and object
 associations use that same fresh driver and controlled arena. Seven structural table modes now use that driver,
 including pending text and implied column-group, section and row creation.
-Resettable control creation, unsupported table rows, select/frameset
+Ordinary frameset entry and its three insertion modes also use that driver.
+Resettable control creation, unsupported table rows, select
 transitions, templates and foreign dispatch retain explicit unfinished
 continuations. Construction EOF is not completed stop-parsing or a public report.
 
@@ -37,7 +38,7 @@ before adaptation.
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
 | `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs`; active formatting, reconstruction and adoption in `src/parser/tree_builder/formatting.rs`; table reset and structural helpers in `src/parser/tree_builder/tables.rs` |
 | `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope, implied-end, heading and special-element lists in `src/parser/tree_builder/tag_sets.rs` |
-| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs`; formatting dispatch in `src/parser/tree_builder/formatting.rs`; structural table modes in `src/parser/tree_builder/tables.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs`; formatting dispatch in `src/parser/tree_builder/formatting.rs`; structural table modes in `src/parser/tree_builder/tables.rs`; frameset entry and trailing modes in `src/parser/tree_builder/frameset.rs` |
 | `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
@@ -185,7 +186,7 @@ derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected 
 edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
 `keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
 Resettable control and template-form creation, unsupported table branches,
-foreign creation and frameset transitions remain unfinished boundaries.
+foreign creation remain unfinished boundaries. Frameset transitions are extended below.
 
 The sole fresh driver consumes its actual AfterHead handoff and retains current
 and return insertion modes, the stored head identity, frameset eligibility and
@@ -303,6 +304,27 @@ Unsupported control, select, template and foreign branches retain the original
 token before unavailable effects. This checkpoint does not certify complete
 InTable behavior, fragment initialization, EOF/report completion or complete
 parser resource accounting.
+
+The ordinary frameset extension adapts `rules.rs` lines 378–383, 458–475,
+1494–1563 and 1584–1608 into `src/parser/tree_builder/frameset.rs`, with entry
+dispatch in the existing body/head driver. Its initial adapted SHA-256 is
+`f267a94de78049ed4371419a2a51bb4382dfce3144353dd809d43767643b7b49`.
+The complete original notice remains verbatim; earlier incorporation hashes
+remain historical. The pinned HTML edition supplies processing instructions,
+exact character-origin handling and the frame postconnection null-browsing-context
+return. The existing sealed fresh standalone capability establishes that actual
+node-document state; generic and imported owners stop before frameset effects.
+
+InBody entry diagnoses before its body/eligibility guards and uses canonical
+body removal effects without clearing the current-form pointer or formatting
+list. Nested framesets and immediate frame pops use the existing stack.
+InFrameset and AfterFrameset insert whitespace directly; AfterAfterFrameset
+delegates it through ordinary body reconstruction. The shared character-run
+owner preserves mixed-run source ranges and NULL/nonwhitespace diagnostics.
+Noframes uses the existing RAWTEXT handoff and restores its actual caller mode
+at end-tag or EOF. These operations retain one controller, arena and terminal
+cleanup path. They do not supply hosted frame navigation, fragment initialization
+or completed stop-parsing/report publication.
 
 Remaining insertion modes, foreign dispatch,
 context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,

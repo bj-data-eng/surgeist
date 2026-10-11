@@ -772,11 +772,21 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Resettable control creation, select/frameset transitions, templates
+Resettable control creation, select transitions, templates
 and foreign dispatch retain untouched-token continuations when their required
 machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
 unfinished lifecycle state; these private operations produce no public parse report.
+
+Ordinary frameset documents use that same constructor-proved driver. AfterHead
+and eligible InBody entry lead to InFrameset, AfterFrameset and AfterAfterFrameset.
+Body removal runs the existing form effects while retaining the current-form
+pointer and formatting list; trailing whitespace can reconstruct formatting.
+Frame insertion returns at the actual node-document's null browsing-context
+guard. Noframes uses RAWTEXT and restores its saved caller mode. Mixed character
+runs preserve exact origins while diagnosing and omitting nonwhitespace and NULL.
+Generic or imported owners cannot establish the required constructor proof.
+This adds no hosted navigation, fragment execution or completed EOF lifecycle.
 
 The fresh ordinary Disabled driver also retains the actual current-form pointer
 and handles ordinary form starts and ends. A nested start is diagnosed and
