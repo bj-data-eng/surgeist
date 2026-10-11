@@ -316,6 +316,15 @@ Collection getters expose capture-qualified subject keys. A known empty selected
 and no selected index differ from unavailable state or order. These immutable
 results provide no live collection or selection/reset transition.
 
+The control-labels query returns the complete associated label list in ordinary
+tree order. Hidden inputs produce known null; a complete applicable empty list
+differs from unavailable evidence. Exact first-ID and implicit-descendant rules
+reuse the existing labeled-control owner, with irrelevant labels excluded before
+requiring unrelated custom-control facts. Form-associated custom controls use
+their supplied classification. The result is an immutable association snapshot;
+it does not attach ElementInternals or provide a live NodeList. Traversal and
+nested output retain the semantic session's admission and atomic batch contract.
+
 The control-autocomplete query retains intrinsic syntax and processing, the
 actually consulted input-type report and any consulted form-autocomplete report.
 Only expectation defaults consult the existing form-owner operation: a known

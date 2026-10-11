@@ -1117,6 +1117,7 @@ pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
 pub surgeist_html::HtmlSemanticFact::ComputedHeadingLevel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedHeadingLevel>)
 pub surgeist_html::HtmlSemanticFact::ControlAutocomplete(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlAutocomplete>)
+pub surgeist_html::HtmlSemanticFact::ControlLabels(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlControlLabels>>)
 pub surgeist_html::HtmlSemanticFact::CurrentCheckedness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::CurrentSelectedness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Directionality(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDirectionality>)
@@ -1186,6 +1187,7 @@ pub surgeist_html::HtmlSemanticMissing::SpellcheckDefault(surgeist_html::HtmlCap
 pub enum surgeist_html::HtmlSemanticQuery
 pub surgeist_html::HtmlSemanticQuery::ComputedHeadingLevel
 pub surgeist_html::HtmlSemanticQuery::ControlAutocomplete
+pub surgeist_html::HtmlSemanticQuery::ControlLabels
 pub surgeist_html::HtmlSemanticQuery::CurrentCheckedness
 pub surgeist_html::HtmlSemanticQuery::CurrentSelectedness
 pub surgeist_html::HtmlSemanticQuery::Directionality
@@ -2048,6 +2050,9 @@ impl surgeist_html::HtmlControlFactsLimits
 pub fn surgeist_html::HtmlControlFactsLimits::new(record_capacity: usize, validation_work: usize) -> Self
 pub fn surgeist_html::HtmlControlFactsLimits::record_capacity(self) -> usize
 pub fn surgeist_html::HtmlControlFactsLimits::validation_work(self) -> usize
+pub struct surgeist_html::HtmlControlLabels
+impl surgeist_html::HtmlControlLabels
+pub fn surgeist_html::HtmlControlLabels::labels(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
 pub struct surgeist_html::HtmlControlLengthBoundsReport
 impl surgeist_html::HtmlControlLengthBoundsReport
 pub fn surgeist_html::HtmlControlLengthBoundsReport::initial_text(&self) -> core::option::Option<&surgeist_html::HtmlControlInitialText>

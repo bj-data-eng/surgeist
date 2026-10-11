@@ -2,7 +2,7 @@
 //!
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
-//! form owners, label targets, current control flags, global inheritance, select
+//! form owners, label targets and control labels, current control flags, global inheritance, select
 //! readbacks, autocomplete defaults and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
@@ -633,6 +633,7 @@ pub enum HtmlSemanticQuery {
     Inertness,
     FormOwner,
     LabeledControl,
+    ControlLabels,
     CurrentCheckedness,
     CurrentSelectedness,
     DirtyValueFlag,
@@ -659,6 +660,9 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::ControlLabels => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels"
+            }
             Self::FormDefaultButton => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#default-button"
             }
@@ -846,6 +850,8 @@ pub enum HtmlSemanticFact {
     Inertness(HtmlSemanticValue<bool>),
     FormOwner(HtmlSemanticValue<HtmlFormOwner>),
     LabeledControl(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    /// Known(None) is the source Hidden-input null; Some(empty) is a complete empty list.
+    ControlLabels(HtmlSemanticValue<Option<HtmlControlLabels>>),
     CurrentCheckedness(HtmlSemanticValue<bool>),
     CurrentSelectedness(HtmlSemanticValue<bool>),
     DirtyValueFlag(HtmlSemanticValue<bool>),
@@ -2177,6 +2183,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::LabeledControl => HtmlSemanticFact::LabeledControl(
                             self.labeled_control(&request.subject)?,
                         ),
+                        HtmlSemanticQuery::ControlLabels => {
+                            HtmlSemanticFact::ControlLabels(self.control_labels(&request.subject)?)
+                        }
                         HtmlSemanticQuery::CurrentCheckedness => {
                             HtmlSemanticFact::CurrentCheckedness(
                                 self.control_flag(&request.subject, HtmlControlFlag::Checkedness)?,
@@ -2296,6 +2305,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::LabeledControl => {
                         HtmlSemanticFact::LabeledControl(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ControlLabels => {
+                        HtmlSemanticFact::ControlLabels(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::CurrentCheckedness => {
                         HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Inapplicable)

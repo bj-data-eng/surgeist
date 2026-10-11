@@ -1,4 +1,4 @@
-//! Immutable form associations, label targeting and current internal flags.
+//! Immutable form associations, label targeting, control labels and current internal flags.
 //! HTML 877d6146487f §4.10.2, §4.10.4, §4.10.5, §4.10.10 and §4.10.18.
 //! Host adapters establish history and current slots; queries execute no transitions.
 
@@ -47,6 +47,19 @@ impl HtmlFormOwner {
     }
     pub fn origin(&self) -> HtmlFormOwnerOrigin {
         self.origin
+    }
+}
+
+/// Complete immutable label association snapshot in ordinary tree order.
+/// Custom-control associations describe the source ElementInternals label list,
+/// not attachment, a live NodeList or an element labels IDL attribute.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlControlLabels {
+    labels: Vec<HtmlCaptureSubjectId>,
+}
+impl HtmlControlLabels {
+    pub fn labels(&self) -> &[HtmlCaptureSubjectId] {
+        &self.labels
     }
 }
 
@@ -867,6 +880,140 @@ impl<'a> HtmlSemanticSession<'a> {
             self.control_find(subject, None, false, scratch)
         }
     }
+
+    pub(super) fn control_labels(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlControlLabels>>, HtmlSemanticFailure> {
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        };
+        if !self.html_namespace(element)? {
+            return Ok(HtmlSemanticValue::Unsupported(
+                HtmlSemanticUnsupported::ForeignNamespace,
+            ));
+        }
+        let mut frames = Vec::new();
+        let result = self.control_labels_inner(subject, element, &mut frames);
+        self.release_scratch(frames.capacity());
+        match result {
+            Ok(value) => Ok(value),
+            Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
+            Err(ControlStop::Failure(failure)) => Err(failure),
+        }
+    }
+
+    fn control_labels_inner(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
+    ) -> ControlResult<HtmlSemanticValue<Option<HtmlControlLabels>>> {
+        if self.known(element)? == Some(KnownHtmlElement::Input) {
+            if self.control_input_type(element)? == HtmlInputType::Hidden {
+                return Ok(HtmlSemanticValue::Known(None));
+            }
+        } else if !self.control_category(subject, element, true)? {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        let root = self.control_root(subject)?;
+        let mut current = Some(root.clone());
+        let mut labels = Vec::new();
+        while let Some(candidate) = current {
+            let node = self.node(&candidate)?;
+            if let HtmlCapturedNodeKind::Element(label) = node.kind()
+                && self.known(label)? == Some(KnownHtmlElement::Label)
+                && self.control_label_matches(&candidate, label, subject, element, &root)?
+            {
+                self.reserve_nested_output(&mut labels, 1)?;
+                self.charge(1)?;
+                labels.push(candidate);
+            }
+            if matches!(
+                node.kind(),
+                HtmlCapturedNodeKind::Element(_)
+                    | HtmlCapturedNodeKind::Document(_)
+                    | HtmlCapturedNodeKind::Fragment(_)
+            ) {
+                let children = self.control_children(&node.id())?;
+                self.reserve_scratch(frames, 1)?;
+                self.charge(1)?;
+                frames.push(children);
+            }
+            current = loop {
+                self.charge(1)?;
+                let Some(frame) = frames.last_mut() else {
+                    break None;
+                };
+                if let Some(next) = frame.next() {
+                    break Some(next);
+                }
+                frames.pop();
+            };
+        }
+        self.charge(1)?;
+        Ok(HtmlSemanticValue::Known(Some(HtmlControlLabels { labels })))
+    }
+
+    fn control_label_matches(
+        &mut self,
+        label: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+        target: &HtmlCaptureSubjectId,
+        target_element: &'a HtmlCapturedElement,
+        root: &HtmlCaptureSubjectId,
+    ) -> ControlResult<bool> {
+        let mut scratch = Vec::new();
+        let result = (|| {
+            if let Some(raw) = self.attribute(element, "for")? {
+                let Some(id) = self.attribute(target_element, "id")? else {
+                    return Ok(false);
+                };
+                self.charge(1)?;
+                if id.value().is_empty() {
+                    return Ok(false);
+                }
+                // A consulted for value keeps the same original-input admission
+                // as the shared label resolver, before any comparison or lookup.
+                self.interpreter
+                    .admit_attribute_raw(Some(raw.value()))
+                    .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
+                if !self.control_equal(raw.value(), id.value())? {
+                    return Ok(false);
+                }
+                let first = self.control_find(root, Some(raw.value()), true, &mut scratch)?;
+                self.charge(1)?;
+                if first.as_ref() != Some(target) {
+                    return Ok(false);
+                }
+                // The first-ID proof excludes another unknown custom target
+                // without interpreting that target's labelability. Reuse the
+                // actual association owner for potentially matching labels.
+                self.charge(scratch.len())?;
+                scratch.clear();
+            } else {
+                let mut ancestor = target.clone();
+                loop {
+                    let node = self.node(&ancestor)?;
+                    let Some(parent) = self.parent(node)?.map_err(ControlStop::Missing)? else {
+                        return Ok(false);
+                    };
+                    self.charge(1)?;
+                    if &parent == label {
+                        break;
+                    }
+                    ancestor = parent;
+                }
+            }
+            let associated = self.control_label_inner(label, element, &mut scratch)?;
+            self.charge(1)?;
+            Ok(associated.as_ref() == Some(target))
+        })();
+        self.release_scratch(scratch.capacity());
+        result
+    }
+
     pub(super) fn control_flag(
         &mut self,
         subject: &HtmlCaptureSubjectId,
