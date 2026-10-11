@@ -756,7 +756,7 @@ pub struct surgeist_html::DocumentString
 impl surgeist_html::DocumentString
 pub fn surgeist_html::DocumentString::code_points(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + core::clone::Clone + '_
 pub fn surgeist_html::DocumentString::code_units(&self) -> &[u16]
-pub fn surgeist_html::DocumentString::from_utf16(code_units: impl core::convert::Into<alloc::sync::Arc<[u16]>>) -> Self
+pub fn surgeist_html::DocumentString::from_utf16(code_units: impl core::convert::Into<alloc::vec::Vec<u16>>) -> Self
 pub fn surgeist_html::DocumentString::is_empty(&self) -> bool
 pub fn surgeist_html::DocumentString::len(&self) -> usize
 pub fn surgeist_html::DocumentString::to_utf8(&self) -> core::result::Result<alloc::string::String, surgeist_html::Utf8ConversionError>

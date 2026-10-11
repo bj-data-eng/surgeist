@@ -8,14 +8,14 @@ use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 /// and conversion-error offsets use code units, not Unicode scalar values.
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct DocumentString {
-    code_units: Arc<[u16]>,
+    code_units: Arc<Vec<u16>>,
 }
 
 impl DocumentString {
     /// Constructs a string without validating, replacing, or normalizing units.
-    pub fn from_utf16(code_units: impl Into<Arc<[u16]>>) -> Self {
+    pub fn from_utf16(code_units: impl Into<Vec<u16>>) -> Self {
         Self {
-            code_units: code_units.into(),
+            code_units: Arc::new(code_units.into()),
         }
     }
 

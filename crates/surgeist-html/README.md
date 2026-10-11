@@ -13,7 +13,11 @@ The [selected WHATWG edition](../../references/SOURCE-EDITIONS.md#pinned-html-la
 defines behavior; the separate html5ever revision identifies implementation
 provenance. Shared values apply no language-specific normalization. A Rust `str`
 converts losslessly to `DocumentString`; conversion back to UTF-8 rejects isolated
-surrogates. Raw names and attributes preserve supplied values for their eventual
+surrogates. UTF-16 construction accepts a vector or a borrowed slice. An owned
+vector transfers into immutable shared ownership without copying its variable
+payload; a borrowed slice first creates an owned vector. Fixed shared-wrapper
+allocation remains subject to the standard allocator, independently of parser
+resource admission. Raw names and attributes preserve supplied values for their eventual
 owning language or DOM validation boundary.
 
 The crate is independently usable and has no DOM or rendering dependency. DOM
