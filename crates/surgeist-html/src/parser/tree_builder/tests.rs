@@ -8182,3 +8182,39 @@ fn ordinary_textarea_rcdata_first_lf_and_form_sibling_order_preserve_exact_nativ
         ]
     );
 }
+
+#[test]
+fn ordinary_table_textarea_delegation_preserves_foster_tree_and_returns_to_table() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table><textarea>\nA</textarea><tr><td>B</table>C"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "textarea"),
+            (3, "#A"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#B"),
+            (2, "#C")
+        ])
+    );
+}
