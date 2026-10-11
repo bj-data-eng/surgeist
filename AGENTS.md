@@ -30,9 +30,9 @@ for final independent integration review.
 
 This repository owns the `surgeist` facade in `src/`, all crate implementations
 under `crates/`, their manifests, public contracts, tests, fixtures, documentation,
-and shared tooling. Root also owns Surgeist-to-Surgeist adapters, workspace
-wiring, cross-crate plans, integration verification, and source-derived API
-artifacts.
+and shared tooling. Repository root owns workspace wiring, cross-crate plans,
+integration verification, and source-derived API artifacts. Each consuming
+subsystem owns its integration with the lower-level crates it depends on.
 
 Crates remain domain boundaries within one Git repository. Their original
 repositories supplied the imported snapshots; they are historical source
@@ -78,7 +78,7 @@ implemented dependency graph and behavior.
 
 | Crate | Owns |
 | --- | --- |
-| Root `surgeist` | Thin facade, public composition, cross-crate adapters, and integration |
+| Root `surgeist` | Thin facade, curated reexports, application builders, and bootstrap |
 | `surgeist-animation` | CSS animation and transition timing, easing, keyframes, interpolation, and sampled values |
 | `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, and clean-report validation |
 | `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
@@ -96,9 +96,12 @@ implemented dependency graph and behavior.
 | `surgeist-window` | Window, app-host, event-loop, and platform-host contracts |
 
 - Update this table with authorized ownership changes.
-- `surgeist-cssom` owns its integration adapter with `surgeist-css`. Other
-  Surgeist-to-Surgeist lowering belongs in root or a root-owned tool;
-  backend-local adapters remain in their domain crate.
+- Follow the [architecture vision](https://chatgpt.com/space/page_6ce383176ca08191b1dd6d5d16e63979):
+  subsystems depend directly on the lower-level contracts they consume and own
+  their integration and focused tests. Keep dependencies acyclic and each
+  semantic phase authoritative in one owner. Lower layers never depend on the
+  facade or runtime; runtime owns orchestration and coherent publication.
+  The facade is not the mandatory path for cross-crate interactions.
 - `surgeist-test` may depend on production crates for shared verification. The
   facade must not production-depend on it or on corpus-generation tooling.
 - `surgeist-generator` owns shared CSS and browser-corpus mechanics; layout owns
@@ -111,11 +114,31 @@ implementation scope.
 The previous `surgeist-style` implementation is removed. `surgeist-cssom`
 provides stable identities, immutable snapshots, atomic edits and headless live
 declaration, rule, stylesheet and MediaList operations. Its crate README records
-current extension operations and source-qualified capability limits. Greenfield
-style follows the CSSOM contribution. Future style consumes CSSOM snapshots and owns
-matching, cascade, inheritance, substitution, computed values, and invalidation;
-CSSOM does not depend on style. Manifests and source establish the implemented
-workspace and current capabilities.
+current extension operations and source-qualified capability limits.
+
+The selected next crate is `surgeist-html`: a pinned HTML language and typed
+Rust authoring model with ingested html5ever parsing, recovery, diagnostics and
+immutable parse results. It has no DOM or downstream rendering dependency.
+The HTML standard revision defines behavior; the html5ever revision identifies
+implementation provenance. Ingestion may change implementation machinery but
+must not introduce a Surgeist HTML dialect.
+
+The planned downstream ownership is `surgeist-dom` for the canonical live tree,
+identity, atomic mutation and captures; `surgeist-selectors` for matching and
+specificity; `surgeist-cascade` for precedence and rollback; and `surgeist-style`
+for rule collection, inheritance, substitution, computed values and invalidation.
+DOM depends directly on HTML and owns importing its construction values and
+adapting canonical snapshots to HTML semantic operations. `surgeist-html` owns
+typed HTML construction; `surgeist-template` retains template syntax, symbolic
+expressions, component validation and Rust generation, consuming the HTML and
+DOM contracts directly rather than duplicating their semantics. HTML parse results
+are immutable construction values, not a second live DOM. DOM retains generic
+name/string/tree invariants; HTML owns its language-specific interpretation.
+These are planned boundaries, not implemented workspace members. Implement the
+HTML-owned contribution before starting these new crates, as directed by the
+user; DOM integration follows availability of both producers. Do not encode
+that scheduling choice as blanket blocking dependencies. Manifests and source
+establish the implemented workspace and current capabilities.
 
 ## Backward Compatibility
 

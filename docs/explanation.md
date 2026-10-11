@@ -8,11 +8,14 @@ the facade, domain implementations, shared tooling, and integration. A change
 to several participating crates can therefore share a source revision, review,
 and dependency resolution without publishing intermediate crate candidates.
 
-Domain ownership still matters. CSSOM owns its integration adapter with CSS.
-Root owns the other Surgeist-to-Surgeist adapters:
-conversions from one crate's public model into another crate's public inputs.
-Domain crates own their algorithms, models, and backend-local adapters, such as
-text shaping, rendering backends, and platform hosting. `surgeist-test` owns
+Domain ownership still matters. The
+[architecture vision](https://chatgpt.com/space/page_6ce383176ca08191b1dd6d5d16e63979)
+uses direct subsystem dependencies: each consumer owns integration with its
+lower-level inputs, alongside its algorithms, models and backend adapters.
+CSSOM owns its CSS integration; the planned DOM owns its HTML integration.
+Tests exercise those actual dependencies without requiring the application
+facade. Runtime owns scheduling and coherent publication; the facade provides
+application builders, reexports and bootstrap. `surgeist-test` owns
 shared verification contracts. `surgeist-generator` supplies CSS corpus tooling
 and browser-corpus mechanics, while layout keeps its semantic conversion and
 adapter. Neither support crate is a facade production dependency.
@@ -30,15 +33,31 @@ declaration, rule, stylesheet and MediaList operations. The
 [CSSOM crate guide](../crates/surgeist-cssom/README.md) explains the supported
 extension operations, explicit host facts and source-qualified formatting limits.
 Root host bindings and full product CSSOM conformance remain separate work.
-Style will be rebuilt using CSSOM snapshots for matching, cascade, inheritance,
-substitution and computed values.
+The next planned foundation is `surgeist-html`, using an explicitly pinned HTML
+standard and ingested html5ever implementation. It will provide the HTML types
+shared by markup parsing and Rust authoring, plus immutable recovered parse
+results and structured diagnostics. Implementation changes for safe Rust, source
+mapping and work limits do not define a separate HTML dialect.
+
+`surgeist-dom`, the planned sole owner of live document identity, mutation and
+snapshots, will depend directly on HTML. DOM owns importing HTML construction
+values and adapting captured DOM facts to HTML-owned interpretation. Native authoring
+uses the same HTML value contracts without serializing and reparsing strings.
+The existing template crate keeps its syntax, symbolic expressions and source
+generation; it consumes HTML and DOM contracts for registry and construction
+integration.
+Selectors will own matching, cascade will own precedence and rollback, and style
+will compute values from DOM and CSSOM captures. HTML-owned work is scheduled
+first; completing DOM integration requires both HTML and DOM. The
+[repository guide](../AGENTS.md#product-boundary) distinguishes these planned
+boundaries from the implemented workspace.
 
 ## Facade And Integration
 
 The facade directly reexports the production crates through their public front
-doors. Its `app` and `runtime` modules both expose `surgeist-runtime`. Root-owned
-cross-crate adapters, integration tests, examples, and a native development
-harness are unimplemented. The shared source boundary supports integration work;
+doors. Its `app` and `runtime` modules both expose `surgeist-runtime`. The complete
+layered integration, application examples, and native development harness
+remain planned work. The shared source boundary supports integration work;
 it does not supply an integrated UI application by itself.
 
 Source, tests, fixtures, and legal material stay with their owning crates.
