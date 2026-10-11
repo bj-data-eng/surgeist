@@ -3,7 +3,7 @@
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets and control labels, current control flags, global inheritance, select
-//! readbacks, option form/text/label/value and select value getters, autocomplete
+//! readbacks, datalist association and option/suggestion membership, option form/text/label/value and select value getters, autocomplete
 //! defaults and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
@@ -25,6 +25,7 @@ mod inheritance;
 pub use inheritance::*;
 mod select;
 pub use select::*;
+mod datalist;
 mod option_text;
 pub use option_text::*;
 mod autocomplete;
@@ -651,6 +652,9 @@ pub enum HtmlSemanticQuery {
     ComputedHeadingLevel,
     SelectOptions,
     SelectedOptions,
+    InputSuggestionsSource,
+    DatalistOptions,
+    DatalistSuggestionOptions,
     SelectSelectedIndex,
     OptionIndex,
     OptionFormOwner,
@@ -668,6 +672,15 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::InputSuggestionsSource => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list"
+            }
+            Self::DatalistOptions => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-datalist-options"
+            }
+            Self::DatalistSuggestionOptions => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-datalist-element"
+            }
             Self::OptionFormOwner => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-form"
             }
@@ -857,6 +870,19 @@ impl<T> HtmlSemanticValue<T> {
         }
     }
 }
+/// Complete source-ordered option identities from one qualified query.
+/// The query/fact selects the collection's source filter; this immutable payload
+/// has no live owner or mutation behavior. Construction remains query-owned.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlOptionCollection {
+    options: Vec<HtmlCaptureSubjectId>,
+}
+impl HtmlOptionCollection {
+    pub fn options(&self) -> &[HtmlCaptureSubjectId] {
+        &self.options
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlSemanticFact {
     Hidden(HtmlSemanticValue<HtmlHiddenState>),
@@ -887,8 +913,13 @@ pub enum HtmlSemanticFact {
     TranslationMode(HtmlSemanticValue<HtmlTranslationMode>),
     Spellcheck(HtmlSemanticValue<bool>),
     ComputedHeadingLevel(HtmlSemanticValue<HtmlComputedHeadingLevel>),
-    SelectOptions(HtmlSemanticValue<HtmlSelectOptions>),
-    SelectedOptions(HtmlSemanticValue<HtmlSelectOptions>),
+    SelectOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    SelectedOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    /// Known(None) establishes that the input has no source of suggestions.
+    InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    /// Membership only: source-option-enabled descendants with nonempty values.
+    DatalistSuggestionOptions(HtmlSemanticValue<HtmlOptionCollection>),
     /// `Known(None)` represents the source selected index of −1.
     SelectSelectedIndex(HtmlSemanticValue<Option<usize>>),
     OptionIndex(HtmlSemanticValue<usize>),
@@ -2153,6 +2184,19 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Spellcheck => {
                             HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
                         }
+                        HtmlSemanticQuery::InputSuggestionsSource => {
+                            HtmlSemanticFact::InputSuggestionsSource(
+                                self.input_suggestions_source(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::DatalistOptions => HtmlSemanticFact::DatalistOptions(
+                            self.datalist_options(&request.subject, false)?,
+                        ),
+                        HtmlSemanticQuery::DatalistSuggestionOptions => {
+                            HtmlSemanticFact::DatalistSuggestionOptions(
+                                self.datalist_options(&request.subject, true)?,
+                            )
+                        }
                         HtmlSemanticQuery::SelectOptions => {
                             HtmlSemanticFact::SelectOptions(self.select_options(&request.subject)?)
                         }
@@ -2313,6 +2357,15 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::Spellcheck => {
                         HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::InputSuggestionsSource => {
+                        HtmlSemanticFact::InputSuggestionsSource(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DatalistOptions => {
+                        HtmlSemanticFact::DatalistOptions(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DatalistSuggestionOptions => {
+                        HtmlSemanticFact::DatalistSuggestionOptions(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::SelectOptions => {
                         HtmlSemanticFact::SelectOptions(HtmlSemanticValue::Inapplicable)

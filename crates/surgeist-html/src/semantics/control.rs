@@ -828,6 +828,89 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
     }
+    /// Source association only; no picker or current-value transition.
+    pub(super) fn input_suggestions_source(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        };
+        if !self.html_namespace(element)? {
+            return Ok(HtmlSemanticValue::Unsupported(
+                HtmlSemanticUnsupported::ForeignNamespace,
+            ));
+        }
+        if self.known(element)? != Some(KnownHtmlElement::Input) {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        let mut frames = Vec::new();
+        let result = self.input_suggestions_source_inner(subject, element, &mut frames);
+        self.release_scratch(frames.capacity());
+        match result {
+            Ok(value) => Ok(HtmlSemanticValue::Known(value)),
+            Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
+            Err(ControlStop::Failure(failure)) => Err(failure),
+        }
+    }
+
+    fn input_suggestions_source_inner(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
+    ) -> ControlResult<Option<HtmlCaptureSubjectId>> {
+        // Absence/empty and a non-applicable state independently establish null.
+        // Do not inspect unrelated type, raw contents or topology for those proofs.
+        let Some(raw) = self.attribute(element, "list")? else {
+            self.charge(1)?;
+            return Ok(None);
+        };
+        if raw.value().is_empty() {
+            self.charge(1)?;
+            return Ok(None);
+        }
+        if !matches!(
+            self.control_input_type(element)?,
+            HtmlInputType::Text
+                | HtmlInputType::Search
+                | HtmlInputType::Telephone
+                | HtmlInputType::Url
+                | HtmlInputType::Email
+                | HtmlInputType::Date
+                | HtmlInputType::Month
+                | HtmlInputType::Week
+                | HtmlInputType::Time
+                | HtmlInputType::LocalDateTime
+                | HtmlInputType::Number
+                | HtmlInputType::Range
+                | HtmlInputType::Color
+        ) {
+            self.charge(1)?;
+            return Ok(None);
+        }
+        self.interpreter
+            .admit_attribute_raw(Some(raw.value()))
+            .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
+        let root = self.control_root(subject)?;
+        let candidate = self.control_find(&root, Some(raw.value()), true, frames)?;
+        let source = if let Some(candidate) = candidate {
+            let node = self.node(&candidate)?;
+            if let HtmlCapturedNodeKind::Element(element) = node.kind()
+                && self.known(element)? == Some(KnownHtmlElement::Datalist)
+            {
+                Some(candidate)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        self.charge(1)?;
+        Ok(source)
+    }
+
     pub(super) fn labeled_control(
         &mut self,
         subject: &HtmlCaptureSubjectId,

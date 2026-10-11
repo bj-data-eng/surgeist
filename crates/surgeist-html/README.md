@@ -346,9 +346,10 @@ selected index and option index. One bounded ordinary-tree traversal preserves
 tree order and the specific option, datalist, hr, nested-select and optgroup
 pruning rules. Selectedness comes from the existing current-state supplement;
 authored selected attributes, disabledness and multiple do not replace it.
-Collection getters expose capture-qualified subject keys. A known empty selected list
-and no selected index differ from unavailable state or order. These immutable
-results provide no live collection or selection/reset transition.
+Select and datalist collections share `HtmlOptionCollection`, whose getters
+expose capture-qualified subject keys. A known empty selected list and no
+selected index differ from unavailable state or order. These immutable results
+provide no live collection or selection/reset transition.
 
 Option text, label and value getters expose exact immutable strings and their
 selected source. Present label/value attributes, including empty values, are
@@ -364,6 +365,26 @@ actual or reset-qualified association. It distinguishes no nearest select from
 a select with an established null owner. Consulted attributes, traversal,
 temporary scratch and actual output capacities use the semantic session's
 admission and atomic batch contract; missing influencing facts remain explicit.
+
+`InputSuggestionsSource` uses the input state's source-defined `list`
+applicability and the first element in the same ordinary tree whose ID exactly
+matches the raw attribute. That element supplies the source only when it is an
+HTML datalist; a first matching element of another kind establishes null rather
+than permitting a later match. Absent `list` content, no matching ID and states
+where `list` does not apply also establish null; unavailable influencing facts
+remain missing.
+
+`DatalistOptions` returns every ordinary-descendant HTML option in tree order,
+including options beneath nested selects, datalists or options. Separate shadow
+and template trees are outside that traversal. `DatalistSuggestionOptions`
+retains only options whose source-defined disabledness is false and whose source
+option value is nonempty, reusing exact value attributes or HTML-aware text
+fallback. These immutable membership results share the semantic session's
+bounded traversal, allocation and atomic batch contract. They provide no live
+collection, host UI, display-label computation, input-value compatibility
+checks, relevance filtering or control-value changes. The
+[pinned datalist clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-datalist-element)
+own the distinction between all options and suggestion membership.
 
 The control-labels query returns the complete associated label list in ordinary
 tree order. Hidden inputs produce known null; a complete applicable empty list

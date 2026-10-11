@@ -5,17 +5,6 @@
 
 use super::*;
 
-/// Complete source-ordered option identities from one qualified query.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlSelectOptions {
-    options: Vec<HtmlCaptureSubjectId>,
-}
-impl HtmlSelectOptions {
-    pub fn options(&self) -> &[HtmlCaptureSubjectId] {
-        &self.options
-    }
-}
-
 /// An option form getter observation with the selecting evidence retained.
 /// A null nearest select differs from a select with an established null form
 /// owner. The latter retains the actual/reset association origin. No current
@@ -58,7 +47,7 @@ enum SelectWalkMode<'s> {
     Target(&'s HtmlCaptureSubjectId),
 }
 struct SelectWalkResult {
-    options: HtmlSelectOptions,
+    options: HtmlOptionCollection,
     index: Option<usize>,
     first_selected: Option<HtmlCaptureSubjectId>,
 }
@@ -92,7 +81,7 @@ impl<'a> HtmlSemanticSession<'a> {
     pub(super) fn select_options(
         &mut self,
         subject: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlSemanticValue<HtmlSelectOptions>, HtmlSemanticFailure> {
+    ) -> Result<HtmlSemanticValue<HtmlOptionCollection>, HtmlSemanticFailure> {
         if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
             return Ok(value);
         }
@@ -103,7 +92,7 @@ impl<'a> HtmlSemanticSession<'a> {
     pub(super) fn selected_options(
         &mut self,
         subject: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlSemanticValue<HtmlSelectOptions>, HtmlSemanticFailure> {
+    ) -> Result<HtmlSemanticValue<HtmlOptionCollection>, HtmlSemanticFailure> {
         if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
             return Ok(value);
         }
@@ -205,7 +194,7 @@ impl<'a> HtmlSemanticSession<'a> {
             ));
         };
         let mut result = SelectWalkResult {
-            options: HtmlSelectOptions {
+            options: HtmlOptionCollection {
                 options: Vec::new(),
             },
             index: None,

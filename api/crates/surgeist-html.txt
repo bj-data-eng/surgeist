@@ -1139,6 +1139,8 @@ pub surgeist_html::HtmlSemanticFact::ControlAutocomplete(surgeist_html::HtmlSema
 pub surgeist_html::HtmlSemanticFact::ControlLabels(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlControlLabels>>)
 pub surgeist_html::HtmlSemanticFact::CurrentCheckedness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::CurrentSelectedness(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::DatalistOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
+pub surgeist_html::HtmlSemanticFact::DatalistSuggestionOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::Directionality(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDirectionality>)
 pub surgeist_html::HtmlSemanticFact::DirtyCheckednessFlag(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::DirtyValueFlag(surgeist_html::HtmlSemanticValue<bool>)
@@ -1151,6 +1153,7 @@ pub surgeist_html::HtmlSemanticFact::FormOwner(surgeist_html::HtmlSemanticValue<
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
 pub surgeist_html::HtmlSemanticFact::Indeterminateness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Inertness(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::InputSuggestionsSource(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::IsContentEditable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::LabeledControl(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::Language(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlLanguage>)
@@ -1165,10 +1168,10 @@ pub surgeist_html::HtmlSemanticFact::OptionLabel(surgeist_html::HtmlSemanticValu
 pub surgeist_html::HtmlSemanticFact::OptionText(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
 pub surgeist_html::HtmlSemanticFact::OptionValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
 pub surgeist_html::HtmlSemanticFact::Progress(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlProgressState>)
-pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectOptions>)
+pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
 pub surgeist_html::HtmlSemanticFact::SelectValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectValue>)
-pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectOptions>)
+pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::Spellcheck(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormEnctype(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormEnctype>)
 pub surgeist_html::HtmlSemanticFact::SubmitterFormMethod(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSubmitterFormMethod>)
@@ -1214,6 +1217,8 @@ pub surgeist_html::HtmlSemanticQuery::ControlAutocomplete
 pub surgeist_html::HtmlSemanticQuery::ControlLabels
 pub surgeist_html::HtmlSemanticQuery::CurrentCheckedness
 pub surgeist_html::HtmlSemanticQuery::CurrentSelectedness
+pub surgeist_html::HtmlSemanticQuery::DatalistOptions
+pub surgeist_html::HtmlSemanticQuery::DatalistSuggestionOptions
 pub surgeist_html::HtmlSemanticQuery::Directionality
 pub surgeist_html::HtmlSemanticQuery::DirtyCheckednessFlag
 pub surgeist_html::HtmlSemanticQuery::DirtyValueFlag
@@ -1226,6 +1231,7 @@ pub surgeist_html::HtmlSemanticQuery::FormOwner
 pub surgeist_html::HtmlSemanticQuery::Hidden
 pub surgeist_html::HtmlSemanticQuery::Indeterminateness
 pub surgeist_html::HtmlSemanticQuery::Inertness
+pub surgeist_html::HtmlSemanticQuery::InputSuggestionsSource
 pub surgeist_html::HtmlSemanticQuery::IsContentEditable
 pub surgeist_html::HtmlSemanticQuery::LabeledControl
 pub surgeist_html::HtmlSemanticQuery::Language
@@ -2779,6 +2785,9 @@ pub struct surgeist_html::HtmlNumericRangeError
 impl core::error::Error for surgeist_html::HtmlNumericRangeError
 impl core::fmt::Display for surgeist_html::HtmlNumericRangeError
 pub fn surgeist_html::HtmlNumericRangeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlOptionCollection
+impl surgeist_html::HtmlOptionCollection
+pub fn surgeist_html::HtmlOptionCollection::options(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
 pub struct surgeist_html::HtmlOptionControlState
 impl surgeist_html::HtmlOptionControlState
 pub fn surgeist_html::HtmlOptionControlState::dirtiness(&self) -> core::option::Option<bool>
@@ -2956,9 +2965,6 @@ pub fn surgeist_html::HtmlSandboxValue::flags(&self) -> surgeist_html::HtmlSandb
 pub fn surgeist_html::HtmlSandboxValue::into_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlSandboxValue::new(keywords: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSandboxKeyword>) -> core::result::Result<Self, surgeist_html::HtmlSandboxValueError>
 pub fn surgeist_html::HtmlSandboxValue::tokens(&self) -> &surgeist_html::HtmlUnorderedTokenSet
-pub struct surgeist_html::HtmlSelectOptions
-impl surgeist_html::HtmlSelectOptions
-pub fn surgeist_html::HtmlSelectOptions::options(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
 pub struct surgeist_html::HtmlSelectValue
 impl surgeist_html::HtmlSelectValue
 pub fn surgeist_html::HtmlSelectValue::selected_option(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
