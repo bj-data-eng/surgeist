@@ -701,6 +701,15 @@ pub struct HtmlInputTemporalCoordinate {
 }
 
 impl HtmlInputTemporalCoordinate {
+    /// Actual source fallback without requiring successful content conversion.
+    pub(crate) fn default_step_base_for(state: HtmlInputType) -> Option<Self> {
+        let (_, _, _, base) = Self::definition_for(state)?;
+        Some(Self {
+            state,
+            value: HtmlInteger::from(base).into(),
+        })
+    }
+
     /// Returns the input state whose conversion produced this quantity.
     pub fn state(&self) -> HtmlInputType {
         self.state
@@ -776,10 +785,14 @@ impl HtmlInputTemporalCoordinate {
     }
 
     fn definition(&self) -> (&'static str, u32, u32, i128) {
+        Self::definition_for(self.state).expect("only temporal producers construct coordinates")
+    }
+
+    fn definition_for(state: HtmlInputType) -> Option<(&'static str, u32, u32, i128)> {
         macro_rules! source {
             ($anchor:literal) => { concat!("https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#", $anchor) };
         }
-        match self.state {
+        Some(match state {
             HtmlInputType::Date => (
                 source!("date-state-(type=date):concept-input-value-string-number"),
                 86400000,
@@ -812,8 +825,8 @@ impl HtmlInputTemporalCoordinate {
                 60,
                 0,
             ),
-            _ => unreachable!("only the five temporal producers construct a coordinate"),
-        }
+            _ => return None,
+        })
     }
 }
 
@@ -1624,6 +1637,64 @@ pub(crate) fn validate_duration(input: &DocumentString) -> Result<HtmlDuration, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_default_base_needs_no_successful_content_coordinate() {
+        for (state, base, unit, step) in [
+            (
+                HtmlInputType::Date,
+                "0",
+                HtmlInputTemporalCoordinateUnit::Milliseconds,
+                "86400000",
+            ),
+            (
+                HtmlInputType::Month,
+                "0",
+                HtmlInputTemporalCoordinateUnit::Months,
+                "1",
+            ),
+            (
+                HtmlInputType::Week,
+                "-259200000",
+                HtmlInputTemporalCoordinateUnit::Milliseconds,
+                "604800000",
+            ),
+            (
+                HtmlInputType::Time,
+                "0",
+                HtmlInputTemporalCoordinateUnit::Milliseconds,
+                "60000",
+            ),
+            (
+                HtmlInputType::LocalDateTime,
+                "0",
+                HtmlInputTemporalCoordinateUnit::Milliseconds,
+                "60000",
+            ),
+        ] {
+            let value = HtmlInputTemporalCoordinate::default_step_base_for(state).unwrap();
+            assert_eq!(value.state(), state);
+            assert_eq!(
+                value.value().as_document_string(),
+                DocumentString::from(base)
+            );
+            assert_eq!(value.unit(), unit);
+            assert_eq!(
+                value.default_allowed_step().as_document_string(),
+                DocumentString::from(step)
+            );
+        }
+        for state in [
+            HtmlInputType::Number,
+            HtmlInputType::Range,
+            HtmlInputType::Text,
+        ] {
+            assert_eq!(
+                HtmlInputTemporalCoordinate::default_step_base_for(state),
+                None
+            );
+        }
+    }
 
     #[test]
     fn shared_ordinal_uses_the_gregorian_origin_and_complete_cycles() {

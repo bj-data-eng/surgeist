@@ -1,15 +1,17 @@
-//! Number/Range content limits and step, from HTML #the-min-and-max-attributes,
-//! #the-step-attribute and the two state definitions at the selected HTML pin.
+//! Numeric and temporal input content limits and step, from HTML
+//! #the-min-and-max-attributes, #the-step-attribute and selected state definitions.
 //! These are immutable content observations, not current value sanitization,
 //! validity, stepping, WebIDL reflection or runtime transitions. Attribution:
 //! `licenses/whatwg/NOTICE.md`.
 
 use super::*;
 use crate::{
-    HtmlFloatingPointNumber, HtmlValueAuthorState, HtmlValueFailure, HtmlValueRecoveryState,
-    HtmlValueReport,
+    HtmlDate, HtmlFloatingPointNumber, HtmlInputTemporalCoordinate,
+    HtmlInputTemporalCoordinateUnit, HtmlLocalDateTime, HtmlMonth, HtmlNonNegativeDecimal,
+    HtmlParsedLocalDateTime, HtmlParsedTime, HtmlTime, HtmlValueAuthorState, HtmlValueFailure,
+    HtmlValueRecoveryState, HtmlValueReport, HtmlWeek,
 };
-use std::{error::Error, fmt};
+use std::{cmp::Ordering, error::Error, fmt};
 
 /// Per-value raw admission precedes name, state and grammar interpretation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -49,16 +51,65 @@ pub enum HtmlInputNumericAuthorState {
     Nonconforming(HtmlValueFailure),
     /// A grammatical step rounded to zero, or to a negative number.
     StepMustBePositive,
-    /// The actual state grammar is outside this Number/Range operation.
+    /// The actual state grammar is outside this numeric/temporal operation.
     NotChecked,
     Unapplied,
 }
 
-/// One role's exact shared attribute observation and optional common numeric report.
+/// Actual typed common evidence selected by input state, or by step's grammar.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HtmlInputNumericCommonReport {
+    FloatingPoint(HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>),
+    Date(HtmlValueReport<HtmlDate, HtmlDate>),
+    Month(HtmlValueReport<HtmlMonth, HtmlMonth>),
+    Week(HtmlValueReport<HtmlWeek, HtmlWeek>),
+    Time(HtmlValueReport<HtmlTime, HtmlParsedTime>),
+    LocalDateTime(HtmlValueReport<HtmlLocalDateTime, HtmlParsedLocalDateTime>),
+}
+
+/// A successful content conversion, distinct from the typed grammar evidence.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HtmlInputNumericAttributeValue {
+    FloatingPoint(HtmlFloatingPointNumber),
+    Temporal(HtmlInputTemporalCoordinate),
+}
+
+fn recovered_value<A, R>(report: &HtmlValueReport<A, R>) -> Option<&R> {
+    match report.recovery() {
+        HtmlValueRecoveryState::Value(value) => Some(value),
+        _ => None,
+    }
+}
+impl HtmlInputNumericCommonReport {
+    fn author(&self, role: KnownHtmlAttribute) -> HtmlInputNumericAuthorState {
+        match self {
+            Self::FloatingPoint(report) => author(report, role),
+            Self::Date(report) => author(report, role),
+            Self::Month(report) => author(report, role),
+            Self::Week(report) => author(report, role),
+            Self::Time(report) => author(report, role),
+            Self::LocalDateTime(report) => author(report, role),
+        }
+    }
+    fn converted(&self) -> Option<HtmlInputNumericAttributeValue> {
+        use HtmlInputNumericAttributeValue::{FloatingPoint, Temporal};
+        Some(match self {
+            Self::FloatingPoint(report) => FloatingPoint(*recovered_value(report)?),
+            Self::Date(report) => Temporal(recovered_value(report)?.input_coordinate()),
+            Self::Month(report) => Temporal(recovered_value(report)?.input_coordinate()),
+            Self::Week(report) => Temporal(recovered_value(report)?.input_coordinate()),
+            Self::Time(report) => Temporal(recovered_value(report)?.input_coordinate()),
+            Self::LocalDateTime(report) => Temporal(recovered_value(report)?.input_coordinate()),
+        })
+    }
+}
+
+/// One role's exact shared attribute observation and optional common report.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlInputNumericAttributeReport {
     attribute: HtmlAttributeReport<()>,
-    common: Option<HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>>,
+    common: Option<HtmlInputNumericCommonReport>,
+    converted: Option<HtmlInputNumericAttributeValue>,
     author: HtmlInputNumericAuthorState,
     any_keyword: bool,
 }
@@ -100,9 +151,7 @@ impl HtmlInputNumericAttributeReport {
         self.attribute.input_code_units()
     }
     /// None means numeric grammar was not attempted (including exact step `any`).
-    pub fn common(
-        &self,
-    ) -> Option<&HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>> {
+    pub fn common(&self) -> Option<&HtmlInputNumericCommonReport> {
         self.common.as_ref()
     }
     pub fn author(&self) -> HtmlInputNumericAuthorState {
@@ -115,9 +164,18 @@ impl HtmlInputNumericAttributeReport {
     pub fn any_keyword(&self) -> bool {
         self.any_keyword
     }
-    pub fn recovered(&self) -> Option<HtmlFloatingPointNumber> {
-        match self.common.as_ref()?.recovery() {
-            HtmlValueRecoveryState::Value(value) => Some(*value),
+    pub fn converted(&self) -> Option<&HtmlInputNumericAttributeValue> {
+        self.converted.as_ref()
+    }
+    fn floating_point(&self) -> Option<HtmlFloatingPointNumber> {
+        match self.converted()? {
+            HtmlInputNumericAttributeValue::FloatingPoint(value) => Some(*value),
+            _ => None,
+        }
+    }
+    fn temporal(&self) -> Option<&HtmlInputTemporalCoordinate> {
+        match self.converted()? {
+            HtmlInputNumericAttributeValue::Temporal(value) => Some(value),
             _ => None,
         }
     }
@@ -143,6 +201,8 @@ pub enum HtmlInputNumericStepBaseOrigin {
     MinimumContent,
     ValueContent,
     Zero,
+    /// Week's explicitly defined base, after absent/failed min and value.
+    StateDefault,
 }
 /// The nonperiodic author relation compares effective limits, including Range
 /// fallbacks. It is separate from each value's grammar; NotRequired means no
@@ -199,12 +259,69 @@ impl HtmlInputNumericConstraints {
     }
 }
 
+/// Exact static temporal quantities, in the base coordinate's qualified state/unit.
+/// These do not calculate periodic membership, current validity or stepping.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HtmlInputTemporalConstraints {
+    minimum: Option<HtmlInputTemporalCoordinate>,
+    maximum: Option<HtmlInputTemporalCoordinate>,
+    minimum_origin: HtmlInputNumericBoundOrigin,
+    maximum_origin: HtmlInputNumericBoundOrigin,
+    allowed_step: Option<HtmlNonNegativeDecimal>,
+    step_origin: HtmlInputNumericStepOrigin,
+    step_base: HtmlInputTemporalCoordinate,
+    step_base_origin: HtmlInputNumericStepBaseOrigin,
+    limit_author: HtmlInputNumericLimitAuthorState,
+    reversed_range: bool,
+}
+impl HtmlInputTemporalConstraints {
+    pub fn state(&self) -> HtmlInputType {
+        self.step_base.state()
+    }
+    pub fn unit(&self) -> HtmlInputTemporalCoordinateUnit {
+        self.step_base.unit()
+    }
+    pub fn minimum(&self) -> Option<&HtmlInputTemporalCoordinate> {
+        self.minimum.as_ref()
+    }
+    pub fn maximum(&self) -> Option<&HtmlInputTemporalCoordinate> {
+        self.maximum.as_ref()
+    }
+    pub fn minimum_origin(&self) -> HtmlInputNumericBoundOrigin {
+        self.minimum_origin
+    }
+    pub fn maximum_origin(&self) -> HtmlInputNumericBoundOrigin {
+        self.maximum_origin
+    }
+    /// None means exact `any`; defaults and positive recovered steps are exact decimals.
+    pub fn allowed_step(&self) -> Option<&HtmlNonNegativeDecimal> {
+        self.allowed_step.as_ref()
+    }
+    pub fn step_origin(&self) -> HtmlInputNumericStepOrigin {
+        self.step_origin
+    }
+    pub fn step_base(&self) -> &HtmlInputTemporalCoordinate {
+        &self.step_base
+    }
+    pub fn step_base_origin(&self) -> HtmlInputNumericStepBaseOrigin {
+        self.step_base_origin
+    }
+    pub fn limit_author(&self) -> HtmlInputNumericLimitAuthorState {
+        self.limit_author
+    }
+    pub fn has_periodic_domain(&self) -> bool {
+        self.step_base.has_periodic_domain()
+    }
+    pub fn has_reversed_range(&self) -> bool {
+        self.reversed_range
+    }
+}
+
 /// Capability, source applicability and expanded-name failures are distinct.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum HtmlInputNumericConstraintsOutcome {
     Computed(HtmlInputNumericConstraints),
-    /// Min/max/step apply in this state; its temporal grammar is not executed here.
-    UnsupportedNumericState(HtmlInputType),
+    ComputedTemporal(HtmlInputTemporalConstraints),
     InapplicableInputState(HtmlInputType),
     /// First failure in minimum, maximum, step, value order.
     Unapplied {
@@ -213,7 +330,7 @@ pub enum HtmlInputNumericConstraintsOutcome {
     },
 }
 
-/// All four observations survive an unapplied/unsupported compound outcome.
+/// All four observations survive an unapplied/source-inapplicable compound outcome.
 /// The input count is metadata, not another admission cap or work/memory ledger.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlInputNumericConstraintsReport {
@@ -238,8 +355,8 @@ impl HtmlInputNumericConstraintsReport {
     pub fn value(&self) -> &HtmlInputNumericAttributeReport {
         &self.value
     }
-    pub fn outcome(&self) -> HtmlInputNumericConstraintsOutcome {
-        self.outcome
+    pub fn outcome(&self) -> &HtmlInputNumericConstraintsOutcome {
+        &self.outcome
     }
     pub fn input_code_units(&self) -> usize {
         self.input_code_units
@@ -282,8 +399,8 @@ fn temporal_state(state: HtmlInputType) -> bool {
             | HtmlInputType::LocalDateTime
     )
 }
-fn author(
-    common: &HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>,
+fn author<A, R>(
+    common: &HtmlValueReport<A, R>,
     role: KnownHtmlAttribute,
 ) -> HtmlInputNumericAuthorState {
     match common.author() {
@@ -299,7 +416,7 @@ fn author(
         // Min/max/value require the whole author grammar, not successful
         // binary64 conversion. Unrepresentable explicitly certifies that grammar.
         HtmlValueAuthorState::Unrepresentable(_) => HtmlInputNumericAuthorState::Conforming,
-        HtmlValueAuthorState::NotDefined => unreachable!("floating-point grammar is defined"),
+        HtmlValueAuthorState::NotDefined => unreachable!("selected author grammars are defined"),
     }
 }
 
@@ -316,13 +433,14 @@ impl HtmlValueInterpreter {
         let mut result = HtmlInputNumericAttributeReport {
             attribute,
             common: None,
+            converted: None,
             author: HtmlInputNumericAuthorState::Unapplied,
             any_keyword: false,
         };
         if result.applicability() != HtmlAttributeApplicability::Applicable {
             return Ok(result);
         }
-        if !computed_state(state) {
+        if !computed_state(state) && !temporal_state(state) {
             result.author = if raw.is_none() {
                 HtmlInputNumericAuthorState::Missing
             } else {
@@ -330,13 +448,9 @@ impl HtmlValueInterpreter {
             };
             result.attribute.context_author = if raw.is_some() && role != KnownHtmlAttribute::Value
             {
-                if temporal_state(state) {
-                    HtmlAttributeContextAuthorState::Unchecked
-                } else {
-                    HtmlAttributeContextAuthorState::Nonconforming(
-                        HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
-                    )
-                }
+                HtmlAttributeContextAuthorState::Nonconforming(
+                    HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
+                )
             } else {
                 HtmlAttributeContextAuthorState::NotRequired
             };
@@ -349,24 +463,40 @@ impl HtmlValueInterpreter {
             result.author = HtmlInputNumericAuthorState::Conforming;
             return Ok(result);
         }
-        let common = self.floating_point_number(raw.map(Attribute::value))?;
-        result.author = author(&common, role);
+        let input = raw.map(Attribute::value);
+        let common = if role == KnownHtmlAttribute::Step || computed_state(state) {
+            HtmlInputNumericCommonReport::FloatingPoint(self.floating_point_number(input)?)
+        } else {
+            match state {
+                HtmlInputType::Date => HtmlInputNumericCommonReport::Date(self.date(input)?),
+                HtmlInputType::Month => HtmlInputNumericCommonReport::Month(self.month(input)?),
+                HtmlInputType::Week => HtmlInputNumericCommonReport::Week(self.week(input)?),
+                HtmlInputType::Time => HtmlInputNumericCommonReport::Time(self.time(input)?),
+                HtmlInputType::LocalDateTime => {
+                    HtmlInputNumericCommonReport::LocalDateTime(self.local_date_time(input)?)
+                }
+                _ => unreachable!("only supported temporal states dispatch here"),
+            }
+        };
+        result.author = common.author(role);
         if role == KnownHtmlAttribute::Value
-            && state == HtmlInputType::Number
+            && state != HtmlInputType::Range
             && raw.is_some_and(|raw| raw.value().is_empty())
         {
             result.author = HtmlInputNumericAuthorState::Conforming;
         } else if role == KnownHtmlAttribute::Step
-            && let HtmlValueAuthorState::Valid(value) = common.author()
+            && let HtmlInputNumericCommonReport::FloatingPoint(ref float) = common
+            && let HtmlValueAuthorState::Valid(value) = float.author()
             && value.value() <= 0.0
         {
             result.author = HtmlInputNumericAuthorState::StepMustBePositive;
         }
+        result.converted = common.converted();
         result.common = Some(common);
         Ok(result)
     }
 
-    /// Interpret Number/Range content limits and step together, using supplied
+    /// Interpret numeric/temporal content limits and step together, using supplied
     /// actual input state. Every supplied UTF-16 value is admitted first. The
     /// standalone cap does not claim parser/session allocation or cancellation bounds.
     pub fn input_numeric_constraints(
@@ -402,7 +532,9 @@ impl HtmlValueInterpreter {
                 reason: side.applicability(),
             }
         } else if temporal_state(state) {
-            HtmlInputNumericConstraintsOutcome::UnsupportedNumericState(state)
+            HtmlInputNumericConstraintsOutcome::ComputedTemporal(temporal_constraints(
+                &minimum, &maximum, &step, &value, state,
+            ))
         } else if !computed_state(state) {
             HtmlInputNumericConstraintsOutcome::InapplicableInputState(state)
         } else {
@@ -428,7 +560,7 @@ fn bound(
     side: &HtmlInputNumericAttributeReport,
     default: Option<HtmlFloatingPointNumber>,
 ) -> (Option<HtmlFloatingPointNumber>, HtmlInputNumericBoundOrigin) {
-    if let Some(value) = side.recovered() {
+    if let Some(value) = side.floating_point() {
         (Some(value), HtmlInputNumericBoundOrigin::Recovered)
     } else {
         (
@@ -458,7 +590,7 @@ fn constraints(
             Some(number(1.0)),
             HtmlInputNumericStepOrigin::MissingDefault,
         )
-    } else if let Some(value) = step.recovered() {
+    } else if let Some(value) = step.floating_point() {
         if value.value() > 0.0 {
             (Some(value), HtmlInputNumericStepOrigin::Recovered)
         } else {
@@ -473,9 +605,9 @@ fn constraints(
             HtmlInputNumericStepOrigin::ParseFailureDefault,
         )
     };
-    let (step_base, step_base_origin) = if let Some(value) = min.recovered() {
+    let (step_base, step_base_origin) = if let Some(value) = min.floating_point() {
         (value, HtmlInputNumericStepBaseOrigin::MinimumContent)
-    } else if let Some(value) = value.recovered() {
+    } else if let Some(value) = value.floating_point() {
         (value, HtmlInputNumericStepBaseOrigin::ValueContent)
     } else {
         (number(0.0), HtmlInputNumericStepBaseOrigin::Zero)
@@ -497,6 +629,98 @@ fn constraints(
         step_base,
         step_base_origin,
         limit_author,
+    }
+}
+
+fn bound_origin(side: &HtmlInputNumericAttributeReport) -> HtmlInputNumericBoundOrigin {
+    if side.temporal().is_some() {
+        HtmlInputNumericBoundOrigin::Recovered
+    } else if side.raw().is_none() {
+        HtmlInputNumericBoundOrigin::MissingFallback
+    } else {
+        HtmlInputNumericBoundOrigin::ParseFailureFallback
+    }
+}
+
+fn temporal_constraints(
+    min: &HtmlInputNumericAttributeReport,
+    max: &HtmlInputNumericAttributeReport,
+    step: &HtmlInputNumericAttributeReport,
+    value: &HtmlInputNumericAttributeReport,
+    state: HtmlInputType,
+) -> HtmlInputTemporalConstraints {
+    let fallback = HtmlInputTemporalCoordinate::default_step_base_for(state)
+        .expect("temporal dispatch requires a selected temporal state");
+    let (step_base, step_base_origin) = if let Some(value) = min.temporal() {
+        (
+            value.clone(),
+            HtmlInputNumericStepBaseOrigin::MinimumContent,
+        )
+    } else if let Some(value) = value.temporal() {
+        (value.clone(), HtmlInputNumericStepBaseOrigin::ValueContent)
+    } else {
+        (
+            fallback,
+            if state == HtmlInputType::Week {
+                HtmlInputNumericStepBaseOrigin::StateDefault
+            } else {
+                HtmlInputNumericStepBaseOrigin::Zero
+            },
+        )
+    };
+    let (allowed_step, step_origin) = if step.any_keyword {
+        (None, HtmlInputNumericStepOrigin::Any)
+    } else if step.raw().is_none() {
+        (
+            Some(step_base.default_allowed_step()),
+            HtmlInputNumericStepOrigin::MissingDefault,
+        )
+    } else if let Some(number) = step.floating_point() {
+        if number.value() > 0.0 {
+            (
+                Some(
+                    step_base
+                        .scale_step(number)
+                        .expect("recovered step was checked positive"),
+                ),
+                HtmlInputNumericStepOrigin::Recovered,
+            )
+        } else {
+            (
+                Some(step_base.default_allowed_step()),
+                HtmlInputNumericStepOrigin::NonPositiveDefault,
+            )
+        }
+    } else {
+        (
+            Some(step_base.default_allowed_step()),
+            HtmlInputNumericStepOrigin::ParseFailureDefault,
+        )
+    };
+    let comparison = min
+        .temporal()
+        .zip(max.temporal())
+        .map(|(min, max)| min.value().compare(max.value()));
+    let periodic = step_base.has_periodic_domain();
+    let reversed_range = periodic && comparison == Some(Ordering::Greater);
+    let limit_author = match comparison {
+        None => HtmlInputNumericLimitAuthorState::NotRequired,
+        Some(Ordering::Greater) if !periodic => {
+            HtmlInputNumericLimitAuthorState::MinimumExceedsMaximum
+        }
+        _ => HtmlInputNumericLimitAuthorState::Conforming,
+    };
+    HtmlInputTemporalConstraints {
+        minimum: min.temporal().cloned(),
+        maximum: max.temporal().cloned(),
+        minimum_origin: bound_origin(min),
+        maximum_origin: bound_origin(max),
+        allowed_step,
+        step_origin,
+        step_base,
+        step_base_origin,
+        limit_author,
+        reversed_range,
     }
 }
 

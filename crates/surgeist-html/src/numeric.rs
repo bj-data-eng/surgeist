@@ -864,6 +864,15 @@ pub struct HtmlSignedDecimal {
 }
 
 impl HtmlSignedDecimal {
+    pub(crate) fn compare(&self, other: &Self) -> Ordering {
+        match (self.negative, other.negative) {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => self.magnitude.compare(&other.magnitude),
+            (true, true) => other.magnitude.compare(&self.magnitude),
+        }
+    }
+
     /// Constructs an exact quantity, normalizing either sign of zero to zero.
     pub fn from_magnitude(magnitude: HtmlNonNegativeDecimal, negative: bool) -> Self {
         Self {
@@ -1535,6 +1544,57 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signed_comparison_preserves_sign_fraction_and_unbounded_magnitude() {
+        for (left, right, expected) in [
+            (
+                signed_decimal(0, "0", true),
+                signed_decimal(0, "000", false),
+                Ordering::Equal,
+            ),
+            (
+                signed_decimal(0, "001", true),
+                signed_decimal(0, "0", false),
+                Ordering::Less,
+            ),
+            (
+                signed_decimal(1, "0", false),
+                signed_decimal(1, "0", true),
+                Ordering::Greater,
+            ),
+            (
+                signed_decimal(2, "1", true),
+                signed_decimal(2, "09", true),
+                Ordering::Less,
+            ),
+            (
+                signed_decimal(2, "100", false),
+                signed_decimal(2, "1", false),
+                Ordering::Equal,
+            ),
+            (
+                signed_decimal(0, "000000001", false),
+                signed_decimal(0, "0000000001", false),
+                Ordering::Greater,
+            ),
+        ] {
+            assert_eq!(left.compare(&right), expected);
+            assert_eq!(right.compare(&left), expected.reverse());
+        }
+        let large = HtmlSignedDecimal::from(HtmlInteger::from_magnitude(
+            HtmlNonNegativeInteger::from_decimal_digits(
+                &"340282366920938463463374607431768211456".into(),
+            )
+            .unwrap(),
+            false,
+        ));
+        let smaller = HtmlSignedDecimal::from(HtmlInteger::from_magnitude(u128::MAX.into(), false));
+        assert_eq!(large.compare(&smaller), Ordering::Greater);
+        let negative = HtmlSignedDecimal::from_magnitude(large.magnitude().clone(), true);
+        let less_negative = HtmlSignedDecimal::from_magnitude(smaller.magnitude().clone(), true);
+        assert_eq!(negative.compare(&less_negative), Ordering::Less);
+    }
 
     fn signed_decimal(integer: u128, fraction: &str, negative: bool) -> HtmlSignedDecimal {
         HtmlSignedDecimal::from_magnitude(

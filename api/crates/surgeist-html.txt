@@ -770,6 +770,9 @@ pub surgeist_html::HtmlInputMode::Url
 impl surgeist_html::HtmlInputMode
 pub fn surgeist_html::HtmlInputMode::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputMode::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlInputNumericAttributeValue
+pub surgeist_html::HtmlInputNumericAttributeValue::FloatingPoint(surgeist_html::HtmlFloatingPointNumber)
+pub surgeist_html::HtmlInputNumericAttributeValue::Temporal(surgeist_html::HtmlInputTemporalCoordinate)
 pub enum surgeist_html::HtmlInputNumericAuthorState
 pub surgeist_html::HtmlInputNumericAuthorState::Conforming
 pub surgeist_html::HtmlInputNumericAuthorState::Missing
@@ -781,6 +784,13 @@ pub enum surgeist_html::HtmlInputNumericBoundOrigin
 pub surgeist_html::HtmlInputNumericBoundOrigin::MissingFallback
 pub surgeist_html::HtmlInputNumericBoundOrigin::ParseFailureFallback
 pub surgeist_html::HtmlInputNumericBoundOrigin::Recovered
+pub enum surgeist_html::HtmlInputNumericCommonReport
+pub surgeist_html::HtmlInputNumericCommonReport::Date(surgeist_html::HtmlValueReport<surgeist_html::HtmlDate, surgeist_html::HtmlDate>)
+pub surgeist_html::HtmlInputNumericCommonReport::FloatingPoint(surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>)
+pub surgeist_html::HtmlInputNumericCommonReport::LocalDateTime(surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime, surgeist_html::HtmlParsedLocalDateTime>)
+pub surgeist_html::HtmlInputNumericCommonReport::Month(surgeist_html::HtmlValueReport<surgeist_html::HtmlMonth, surgeist_html::HtmlMonth>)
+pub surgeist_html::HtmlInputNumericCommonReport::Time(surgeist_html::HtmlValueReport<surgeist_html::HtmlTime, surgeist_html::HtmlParsedTime>)
+pub surgeist_html::HtmlInputNumericCommonReport::Week(surgeist_html::HtmlValueReport<surgeist_html::HtmlWeek, surgeist_html::HtmlWeek>)
 pub enum surgeist_html::HtmlInputNumericConstraintsError
 pub surgeist_html::HtmlInputNumericConstraintsError::Admission(surgeist_html::HtmlValueAdmissionError)
 pub surgeist_html::HtmlInputNumericConstraintsError::InputCodeUnitsOverflow
@@ -792,17 +802,18 @@ impl core::fmt::Display for surgeist_html::HtmlInputNumericConstraintsError
 pub fn surgeist_html::HtmlInputNumericConstraintsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlInputNumericConstraintsOutcome
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::Computed(surgeist_html::HtmlInputNumericConstraints)
+pub surgeist_html::HtmlInputNumericConstraintsOutcome::ComputedTemporal(surgeist_html::HtmlInputTemporalConstraints)
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::InapplicableInputState(surgeist_html::HtmlInputType)
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::Unapplied
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::Unapplied::attribute: surgeist_html::KnownHtmlAttribute
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::Unapplied::reason: surgeist_html::HtmlAttributeApplicability
-pub surgeist_html::HtmlInputNumericConstraintsOutcome::UnsupportedNumericState(surgeist_html::HtmlInputType)
 pub enum surgeist_html::HtmlInputNumericLimitAuthorState
 pub surgeist_html::HtmlInputNumericLimitAuthorState::Conforming
 pub surgeist_html::HtmlInputNumericLimitAuthorState::MinimumExceedsMaximum
 pub surgeist_html::HtmlInputNumericLimitAuthorState::NotRequired
 pub enum surgeist_html::HtmlInputNumericStepBaseOrigin
 pub surgeist_html::HtmlInputNumericStepBaseOrigin::MinimumContent
+pub surgeist_html::HtmlInputNumericStepBaseOrigin::StateDefault
 pub surgeist_html::HtmlInputNumericStepBaseOrigin::ValueContent
 pub surgeist_html::HtmlInputNumericStepBaseOrigin::Zero
 pub enum surgeist_html::HtmlInputNumericStepOrigin
@@ -2378,8 +2389,9 @@ pub fn surgeist_html::HtmlInputNumericAttributeReport::any_keyword(&self) -> boo
 pub fn surgeist_html::HtmlInputNumericAttributeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
 pub fn surgeist_html::HtmlInputNumericAttributeReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
 pub fn surgeist_html::HtmlInputNumericAttributeReport::author(&self) -> surgeist_html::HtmlInputNumericAuthorState
-pub fn surgeist_html::HtmlInputNumericAttributeReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>>
+pub fn surgeist_html::HtmlInputNumericAttributeReport::common(&self) -> core::option::Option<&surgeist_html::HtmlInputNumericCommonReport>
 pub fn surgeist_html::HtmlInputNumericAttributeReport::context_author(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub fn surgeist_html::HtmlInputNumericAttributeReport::converted(&self) -> core::option::Option<&surgeist_html::HtmlInputNumericAttributeValue>
 pub fn surgeist_html::HtmlInputNumericAttributeReport::element(&self) -> &surgeist_html::QualifiedName
 pub fn surgeist_html::HtmlInputNumericAttributeReport::input_code_units(&self) -> usize
 pub fn surgeist_html::HtmlInputNumericAttributeReport::input_state(&self) -> surgeist_html::HtmlInputType
@@ -2388,7 +2400,6 @@ pub fn surgeist_html::HtmlInputNumericAttributeReport::inventory_rows(&self) -> 
 pub fn surgeist_html::HtmlInputNumericAttributeReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
 pub fn surgeist_html::HtmlInputNumericAttributeReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
 pub fn surgeist_html::HtmlInputNumericAttributeReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
-pub fn surgeist_html::HtmlInputNumericAttributeReport::recovered(&self) -> core::option::Option<surgeist_html::HtmlFloatingPointNumber>
 pub fn surgeist_html::HtmlInputNumericAttributeReport::source_clause(&self) -> &'static str
 pub struct surgeist_html::HtmlInputNumericConstraints
 impl surgeist_html::HtmlInputNumericConstraints
@@ -2407,7 +2418,7 @@ pub fn surgeist_html::HtmlInputNumericConstraintsReport::input_code_units(&self)
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::limits_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::maximum(&self) -> &surgeist_html::HtmlInputNumericAttributeReport
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::minimum(&self) -> &surgeist_html::HtmlInputNumericAttributeReport
-pub fn surgeist_html::HtmlInputNumericConstraintsReport::outcome(&self) -> surgeist_html::HtmlInputNumericConstraintsOutcome
+pub fn surgeist_html::HtmlInputNumericConstraintsReport::outcome(&self) -> &surgeist_html::HtmlInputNumericConstraintsOutcome
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::step(&self) -> &surgeist_html::HtmlInputNumericAttributeReport
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::step_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::value(&self) -> &surgeist_html::HtmlInputNumericAttributeReport
@@ -2446,6 +2457,21 @@ pub fn surgeist_html::HtmlInputStep::as_document_string(&self) -> surgeist_html:
 pub fn surgeist_html::HtmlInputStep::into_step_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlInputStep::number(&self) -> core::option::Option<surgeist_html::HtmlFloatingPointNumber>
 pub fn surgeist_html::HtmlInputStep::positive(number: surgeist_html::HtmlFloatingPointNumber) -> core::result::Result<Self, surgeist_html::HtmlNonPositiveInputStepError>
+pub struct surgeist_html::HtmlInputTemporalConstraints
+impl surgeist_html::HtmlInputTemporalConstraints
+pub fn surgeist_html::HtmlInputTemporalConstraints::allowed_step(&self) -> core::option::Option<&surgeist_html::HtmlNonNegativeDecimal>
+pub fn surgeist_html::HtmlInputTemporalConstraints::has_periodic_domain(&self) -> bool
+pub fn surgeist_html::HtmlInputTemporalConstraints::has_reversed_range(&self) -> bool
+pub fn surgeist_html::HtmlInputTemporalConstraints::limit_author(&self) -> surgeist_html::HtmlInputNumericLimitAuthorState
+pub fn surgeist_html::HtmlInputTemporalConstraints::maximum(&self) -> core::option::Option<&surgeist_html::HtmlInputTemporalCoordinate>
+pub fn surgeist_html::HtmlInputTemporalConstraints::maximum_origin(&self) -> surgeist_html::HtmlInputNumericBoundOrigin
+pub fn surgeist_html::HtmlInputTemporalConstraints::minimum(&self) -> core::option::Option<&surgeist_html::HtmlInputTemporalCoordinate>
+pub fn surgeist_html::HtmlInputTemporalConstraints::minimum_origin(&self) -> surgeist_html::HtmlInputNumericBoundOrigin
+pub fn surgeist_html::HtmlInputTemporalConstraints::state(&self) -> surgeist_html::HtmlInputType
+pub fn surgeist_html::HtmlInputTemporalConstraints::step_base(&self) -> &surgeist_html::HtmlInputTemporalCoordinate
+pub fn surgeist_html::HtmlInputTemporalConstraints::step_base_origin(&self) -> surgeist_html::HtmlInputNumericStepBaseOrigin
+pub fn surgeist_html::HtmlInputTemporalConstraints::step_origin(&self) -> surgeist_html::HtmlInputNumericStepOrigin
+pub fn surgeist_html::HtmlInputTemporalConstraints::unit(&self) -> surgeist_html::HtmlInputTemporalCoordinateUnit
 pub struct surgeist_html::HtmlInputTemporalCoordinate
 impl surgeist_html::HtmlInputTemporalCoordinate
 pub fn surgeist_html::HtmlInputTemporalCoordinate::default_allowed_step(&self) -> surgeist_html::HtmlNonNegativeDecimal

@@ -1,13 +1,14 @@
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
     HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlFloatingPointNumber,
+    HtmlInputNumericAttributeReport, HtmlInputNumericAttributeValue,
     HtmlInputNumericAuthorState as Author, HtmlInputNumericBoundOrigin as BoundOrigin,
-    HtmlInputNumericConstraints, HtmlInputNumericConstraintsError,
+    HtmlInputNumericCommonReport, HtmlInputNumericConstraints, HtmlInputNumericConstraintsError,
     HtmlInputNumericConstraintsOutcome as Outcome, HtmlInputNumericConstraintsReport,
     HtmlInputNumericLimitAuthorState as LimitAuthor, HtmlInputNumericStepBaseOrigin as BaseOrigin,
     HtmlInputNumericStepOrigin as StepOrigin, HtmlInputStep, HtmlInputType as State,
     HtmlNonPositiveInputStepError, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
-    HtmlValueRecoveryState, HtmlValueRepresentationError, HtmlValueSyntaxError,
+    HtmlValueRecoveryState, HtmlValueReport, HtmlValueRepresentationError, HtmlValueSyntaxError,
     KnownHtmlAttribute as A, KnownHtmlElement as E, Namespace, QualifiedName,
 };
 
@@ -38,8 +39,22 @@ fn observe(
 }
 fn computed(report: &HtmlInputNumericConstraintsReport) -> HtmlInputNumericConstraints {
     match report.outcome() {
-        Outcome::Computed(value) => value,
+        Outcome::Computed(value) => *value,
         other => panic!("expected computation, got {other:?}"),
+    }
+}
+fn float_common(
+    side: &HtmlInputNumericAttributeReport,
+) -> &HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber> {
+    match side.common().unwrap() {
+        HtmlInputNumericCommonReport::FloatingPoint(common) => common,
+        other => panic!("expected floating-point evidence, got {other:?}"),
+    }
+}
+fn floating(side: &HtmlInputNumericAttributeReport) -> Option<HtmlFloatingPointNumber> {
+    match side.converted()? {
+        HtmlInputNumericAttributeValue::FloatingPoint(value) => Some(*value),
+        other => panic!("expected floating-point conversion, got {other:?}"),
     }
 }
 fn value(number: Option<HtmlFloatingPointNumber>) -> Option<f64> {
@@ -76,7 +91,7 @@ fn number_and_range_have_distinct_literal_limit_defaults() {
             assert_eq!(side.observation(), HtmlAttributeObservation::Missing);
             assert_eq!(side.author(), Author::Missing);
             assert_eq!(
-                side.common().unwrap().recovery(),
+                float_common(side).recovery(),
                 &HtmlValueRecoveryState::Missing
             );
             assert_eq!(side.input_state(), state);
@@ -306,11 +321,11 @@ fn prefix_recovery_is_independent_from_authored_grammar() {
     ] {
         assert_eq!(side.author(), Author::Nonconforming(syntax_failure()));
         assert!(matches!(
-            side.common().unwrap().author(),
+            float_common(side).author(),
             HtmlValueAuthorState::Invalid(_)
         ));
         assert!(matches!(
-            side.common().unwrap().recovery(),
+            float_common(side).recovery(),
             HtmlValueRecoveryState::Value(_)
         ));
     }
@@ -358,11 +373,11 @@ fn empty_value_author_exception_belongs_only_to_number() {
             HtmlAttributeObservation::PresentEmpty
         );
         assert_eq!(
-            report.value().common().unwrap().author(),
+            float_common(report.value()).author(),
             &HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::InvalidNumericSyntax)
         );
         assert_eq!(
-            report.value().common().unwrap().recovery(),
+            float_common(report.value()).recovery(),
             &HtmlValueRecoveryState::Failed(syntax_failure())
         );
         assert_eq!(computed(&report).step_base_origin(), BaseOrigin::Zero);
@@ -485,16 +500,16 @@ fn grammar_only_overflow_is_conforming_while_step_requires_successful_parsing() 
                 report.value(),
             ] {
                 assert_eq!(
-                    side.common().unwrap().author(),
+                    float_common(side).author(),
                     &HtmlValueAuthorState::Unrepresentable(
                         HtmlValueRepresentationError::FloatingPointOverflow
                     )
                 );
                 assert_eq!(
-                    side.common().unwrap().recovery(),
+                    float_common(side).recovery(),
                     &HtmlValueRecoveryState::Failed(overflow)
                 );
-                assert_eq!(side.recovered(), None);
+                assert_eq!(side.converted(), None);
             }
             let result = computed(&report);
             assert_eq!(
@@ -537,13 +552,13 @@ fn overflow_keeps_representation_failure_and_source_default() {
         report.value(),
     ] {
         assert_eq!(
-            side.common().unwrap().author(),
+            float_common(side).author(),
             &HtmlValueAuthorState::Unrepresentable(
                 HtmlValueRepresentationError::FloatingPointOverflow
             )
         );
         assert_eq!(
-            side.common().unwrap().recovery(),
+            float_common(side).recovery(),
             &HtmlValueRecoveryState::Failed(overflow)
         );
     }
@@ -556,7 +571,7 @@ fn overflow_keeps_representation_failure_and_source_default() {
 }
 
 #[test]
-fn source_applicable_temporal_states_are_explicitly_unsupported() {
+fn source_applicable_temporal_states_execute_their_actual_grammars() {
     for state in [
         State::Date,
         State::Month,
@@ -564,30 +579,21 @@ fn source_applicable_temporal_states_are_explicitly_unsupported() {
         State::Time,
         State::LocalDateTime,
     ] {
-        let report = observe(
-            state,
-            Some("not-numeric"),
-            Some(""),
-            Some("any"),
-            Some("2026-01-01"),
-        );
-        assert_eq!(report.outcome(), Outcome::UnsupportedNumericState(state));
-        for side in [
-            report.minimum(),
-            report.maximum(),
-            report.step(),
-            report.value(),
-        ] {
+        let report = observe(state, Some("not-numeric"), Some(""), Some("any"), None);
+        assert!(matches!(report.outcome(), Outcome::ComputedTemporal(_)));
+        for side in [report.minimum(), report.maximum()] {
             assert_eq!(side.applicability(), HtmlAttributeApplicability::Applicable);
-            assert_eq!(side.author(), Author::NotChecked);
-            assert!(side.common().is_none());
-            assert!(side.recovered().is_none());
+            assert!(matches!(side.author(), Author::Nonconforming(_)));
+            assert!(side.common().is_some());
+            assert!(side.converted().is_none());
         }
         assert_eq!(
             report.minimum().context_author(),
-            HtmlAttributeContextAuthorState::Unchecked
+            HtmlAttributeContextAuthorState::NotRequired
         );
-        assert!(!report.step().any_keyword());
+        assert_eq!(report.step().author(), Author::Conforming);
+        assert!(report.step().any_keyword());
+        assert!(report.step().common().is_none());
     }
 }
 
@@ -595,7 +601,10 @@ fn source_applicable_temporal_states_are_explicitly_unsupported() {
 fn other_states_keep_presence_prohibition_without_parsing_value_as_number() {
     for state in [State::Text, State::Checkbox, State::File] {
         let report = observe(state, Some("1"), None, Some("any"), Some("ordinary text"));
-        assert_eq!(report.outcome(), Outcome::InapplicableInputState(state));
+        assert_eq!(
+            report.outcome().clone(),
+            Outcome::InapplicableInputState(state)
+        );
         for side in [report.minimum(), report.step()] {
             assert_eq!(
                 side.context_author(),
@@ -627,7 +636,7 @@ fn other_states_keep_presence_prohibition_without_parsing_value_as_number() {
         .unwrap();
     assert_eq!(state, State::Text);
     assert_eq!(
-        observe(state, None, None, None, None).outcome(),
+        observe(state, None, None, None, None).outcome().clone(),
         Outcome::InapplicableInputState(State::Text)
     );
 }
@@ -655,7 +664,7 @@ fn each_role_preserves_exact_names_raw_utf16_and_source_metadata() {
     assert_eq!(report.minimum().raw_attribute(), Some(&min));
     assert_eq!(report.minimum().element(), &element);
     assert_eq!(report.minimum().raw().unwrap().code_units(), &[50, 0xd800]);
-    assert_eq!(report.minimum().recovered().unwrap().value(), 2.0);
+    assert_eq!(floating(report.minimum()).unwrap().value(), 2.0);
     assert_eq!(
         report.minimum().author(),
         Author::Nonconforming(syntax_failure())
@@ -704,7 +713,7 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
         )
         .unwrap();
     assert_eq!(
-        report.outcome(),
+        report.outcome().clone(),
         Outcome::Unapplied {
             attribute: A::Min,
             reason: HtmlAttributeApplicability::DifferentAttribute
@@ -714,7 +723,7 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
     assert_eq!(report.maximum().raw_attribute(), Some(&wrong_max));
     assert_eq!(report.value().raw_attribute(), Some(&good_value));
     assert_eq!(report.minimum().author(), Author::Unapplied);
-    assert_eq!(report.value().author(), Author::NotChecked);
+    assert!(matches!(report.value().author(), Author::Nonconforming(_)));
     for (element, reason) in [
         (
             QualifiedName::new(Namespace::svg(), None, "input"),
@@ -733,7 +742,7 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
             .input_numeric_constraints(&element, None, None, None, None, State::Number)
             .unwrap();
         assert_eq!(
-            report.outcome(),
+            report.outcome().clone(),
             Outcome::Unapplied {
                 attribute: A::Min,
                 reason
@@ -752,7 +761,7 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
         )
         .unwrap();
     assert_eq!(
-        report.outcome(),
+        report.outcome().clone(),
         Outcome::Unapplied {
             attribute: A::Max,
             reason: HtmlAttributeApplicability::DifferentAttribute
@@ -761,7 +770,7 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
 }
 
 #[test]
-fn every_supplied_value_is_admitted_before_wrong_names_or_unsupported_states() {
+fn every_supplied_value_is_admitted_before_wrong_names_or_state_processing() {
     let interpreter = HtmlValueInterpreter::new(4);
     let long = raw(A::Title, "12345");
     for slot in 0..4 {
@@ -801,7 +810,7 @@ fn every_supplied_value_is_admitted_before_wrong_names_or_unsupported_states() {
         )
         .unwrap();
     assert_eq!(report.input_code_units(), 16);
-    assert!(matches!(report.outcome(), Outcome::Computed(_)));
+    assert!(matches!(report.outcome().clone(), Outcome::Computed(_)));
 }
 
 #[test]
@@ -935,7 +944,7 @@ fn every_wrong_role_blocks_compound_output_without_erasing_other_members() {
             )
             .unwrap();
         assert_eq!(
-            report.outcome(),
+            report.outcome().clone(),
             Outcome::Unapplied {
                 attribute: role,
                 reason: HtmlAttributeApplicability::DifferentAttribute
@@ -954,7 +963,7 @@ fn every_wrong_role_blocks_compound_output_without_erasing_other_members() {
             if other != slot {
                 assert_eq!(member.raw_attribute(), raws[other]);
                 assert_eq!(member.author(), Author::Conforming);
-                assert!(member.recovered().is_some());
+                assert!(member.converted().is_some());
             }
         }
     }
