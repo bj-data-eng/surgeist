@@ -3698,3 +3698,56 @@ fn present_token_disposal_accounts_for_real_pending_and_payload_moves() {
     tokenizer.release(&mut c).unwrap();
     assert_released(&c);
 }
+
+#[test]
+fn standalone_driver_consumes_body_and_preserves_source_paragraph_topology() {
+    // HTML877d's AfterHead/body and paragraph rules require actual construction
+    // from the real source, rather than returning at an unconsumed body token.
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<body><p>a<div>b</div>c</body></html>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let _boundary = standalone_boundary(&mut driver);
+    let mut input = Some(driver);
+    let (mut c, mut session, _) =
+        StandaloneDocumentDriver::take_standalone_fixture(&mut input).unwrap();
+    assert!(input.is_none());
+    let mut frozen = session.freeze(&mut c).unwrap();
+    let document = frozen.document().unwrap();
+    let mut actual = Vec::new();
+    let mut stack: Vec<_> = document.root().children().map(|id| (0, id)).collect();
+    stack.reverse();
+    while let Some((depth, id)) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        match node.kind() {
+            HtmlNodeKind::Element(element) => {
+                actual.push((depth, element.name().local_name().code_units().to_vec()));
+            }
+            HtmlNodeKind::Text(text) => {
+                let mut value = vec![b'#' as u16];
+                value.extend_from_slice(text.code_units());
+                actual.push((depth, value));
+            }
+            _ => {}
+        }
+        let children: Vec<_> = node.children().map(|id| (depth + 1, id)).collect();
+        stack.extend(children.into_iter().rev());
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    let expected: Vec<_> = [
+        (0, "html"),
+        (1, "head"),
+        (1, "body"),
+        (2, "p"),
+        (3, "#a"),
+        (2, "div"),
+        (3, "#b"),
+        (2, "#c"),
+    ]
+    .into_iter()
+    .map(|(depth, value)| (depth, value.encode_utf16().collect::<Vec<_>>()))
+    .collect();
+    assert_eq!(actual, expected);
+}
