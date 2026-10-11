@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 345 retained source identities and states their representations: 254 full documents/source witnesses, 86 partial witnesses, and 5 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 347 retained source identities and states their representations: 254 full documents/source witnesses, 88 partial witnesses, and 5 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -65,5 +65,11 @@ The [addition verification record](CONVERSION-REPORT.md#dom-selector-execution-a
 The [additional edition mapping](SOURCE-EDITIONS.md#additional-source-question-determinations) retains bounded color/profile, animation/keyframe, generalized-conditional, marker/pseudo-object, bookmark/accessibility and assigned media/preference/border evidence. Reused full source identities gain representation links without duplicate counting. Current published AccName 1.2 and separately pinned browser evidence remain explicitly scoped. The [verification record](CONVERSION-REPORT.md#additional-source-question-references--2026-10-1011) states the conversion checks and metadata-only discussion provenance.
 
 ## Pinned HTML language sources
+
+The [dimension-list cursor witness](html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
+retains bounded WebKit and Blink excerpts, complete original file headers and
+full-source hashes for the narrow decimal-cursor determination under #1133.
+Its selected correction and unadopted browser differences remain explicit in
+the [edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline).
 
 The [HTML language edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline) selects one immutable WHATWG HTML snapshot, split into ten complete-section captures covering all chapter 4 element definitions and the retained language/parser/host clauses. The [supplemental html5ever witness](html5ever-parser-supplemental-contracts--d7232d746d31.md) preserves exact char-reference, tree-builder and buffer excerpts at the independently selected ingestion pin. Historical live HTML captures remain available as proof for their original determinations. Selection does not assert that the current engine already implements the newer standard.

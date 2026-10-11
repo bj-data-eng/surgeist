@@ -2,6 +2,18 @@
 
 Upstream project: [WebKit](https://webkit.org/).
 
+## HTML dimension-list cursor witness
+
+The [dimension-list witness](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
+retains original lines 543–684 of `Source/WebCore/html/parser/HTMLParserIdioms.cpp`
+at immutable revision `73aa6c89e2cb77c46184a81aec944e4ab99d114d`, with the complete
+original file header and full-source SHA-256. The exact
+[two-clause header](html-parser-idioms-bsd-2-clause.txt) retains Copyright
+(C) 2010–2023 Apple Inc., 2014 Google Inc., and 2025 Samuel Weinig, together
+with its conditions and disclaimer. Added labels and the bounded interpretation
+do not alter the excerpt. Reference source is not compiled or linked into
+Surgeist; only the identified cursor correction is selected.
+
 The [container-query source witness](../../references/webkit-cssom-container-query--73aa6c89e2cb.md) retains four complete source files from immutable commit `73aa6c89e2cb77c46184a81aec944e4ab99d114d`, acquired from the existing local checkout on 2026-10-09. Each file’s exact path/hash and complete original license notice remain in that reference. The added headings and evidence map are documentation formatting only; source bytes remain unchanged.
 
 Copyright (C) 2022 Apple Inc. All rights reserved.

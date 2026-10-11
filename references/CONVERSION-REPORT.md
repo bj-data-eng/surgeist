@@ -247,3 +247,15 @@ Every conversion reports zero fidelity errors after 8629 same-snapshot crosslink
 The supplemental html5ever witness adds three partial source identities at `d7232d746d3112f08926d169591576bd12fe2fdf`. All complete-file hashes and nine selected line ranges match original upstream files; original MIT OR Apache-2.0 notices are retained verbatim. One full HTML source identity plus three engine source identities increases the catalog to 345: 254 full, 86 partial and five metadata-only records. Existing legal files are reused after exact byte comparison; WHATWG prose remains Creative Commons Attribution 4.0 International, with BSD scope only for incorporation into code. Source selection does not itself add a production dependency, implement HTML or rewrite historical conformance evidence.
 
 Final integration checks cover 345 catalog rows, 255 reference/notice files and 101,454 local link occurrences without missing paths or fragments. Catalog/legal Markdown passes `git diff --check`. Eight trailing-whitespace lines remain inside verbatim source examples in the forms/tables, scripting and obsolete captures; their preservation is intentional and the literal-source comparisons pass.
+
+## HTML dimension-list cursor determination — 2026-10-11
+
+The [cursor witness](html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
+adds two partial browser source identities. Both full original source hashes
+match the retained raw files. All four literal blocks match exact source bytes:
+WebKit's 25-line original header and lines 543–684, and Blink's 29-line original
+header and lines 43–143. Accompanying license-header files match those originals
+byte-for-byte. Added headings and the explicit bounded interpretation are
+documentation, separate from unchanged source excerpts. No upstream erratum or
+full algorithm parity is claimed. The catalog now contains 347 identities:
+254 full, 88 partial and five metadata-only records.

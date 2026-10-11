@@ -2,6 +2,19 @@
 
 Upstream projects: [Chromium](https://www.chromium.org/) and [Blink](https://www.chromium.org/blink/).
 
+## HTML dimension-list cursor witness
+
+The [dimension-list witness](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
+retains original lines 43–143 of
+`third_party/blink/renderer/core/html/html_dimension.cc` at immutable revision
+`7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2`, with the complete original file
+header and full-source SHA-256. Its exact
+[three-clause header](html-dimension-bsd-3-clause.txt) retains Copyright
+(C) 2013 Google Inc., the redistribution conditions and disclaimer.
+Added labels do not alter the excerpt. This corroborating reference is not
+compiled or linked into Surgeist, and its differing leading-digit and overflow
+behavior is not selected.
+
 The [Page and margin CSSOM source witness](../../references/blink-cssom-page-rules--7984f9d11800.md) retains six complete files at immutable Chromium revision `7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2`, acquired from official Gitiles TEXT responses on 2026-10-09. Every path and exact source hash is retained in that reference, together with all original file headers. Added headings and evidence-map formatting do not change source bytes. The source is documentation material, not compiled or linked product code.
 
 The four Chromium-authored files css_margin_rule.cc, css_margin_rule.idl, css_parser.cc and css_parser_impl.cc carry BSD-style project-license declarations. Their copyright notices (2024 or 2014 The Chromium Authors) remain in full. The exact root [Chromium LICENSE](LICENSE.txt), copyright 2015 The Chromium Authors, is retained from that same immutable revision and contains the BSD redistribution conditions and disclaimer.

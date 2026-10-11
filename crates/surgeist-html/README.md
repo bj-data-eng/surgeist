@@ -2,7 +2,8 @@
 
 This crate owns the pinned HTML language foundation. Its initial public surface
 provides immutable exact UTF-16 strings, namespace identity, qualified names,
-ordered raw attributes and native immutable document/fragment construction.
+ordered raw attributes, native immutable document/fragment construction,
+known-name inventories and common intrinsic value operations.
 The [HTML contribution](https://github.com/bj-data-eng/surgeist/issues/1132)
 tracks the remaining typed vocabulary/value interpretation, parser, semantic
 interpretation, provenance and full parser resource-admission capabilities.
@@ -68,3 +69,32 @@ python3 crates/surgeist-html/tools/generate_vocabulary.py --check
 
 The [incorporation notice](../../licenses/whatwg/NOTICE.md#html-vocabulary-incorporation--2026-10-11)
 identifies the exact edition, upstream license and source adaptations.
+
+Numeric authoring preserves arbitrary integer magnitude and exact decimal
+dimensions. Machine-integer projections report range failure. Floating-point
+values use finite binary64 with the selected HTML rounding contract; native
+decimal output does not claim ECMAScript's separate best-representation
+operation. The dimension-list algorithm applies only the
+[documented decimal-cursor correction](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md).
+Other browser overflow or syntax differences are not adopted.
+
+Temporal authoring checks positive Gregorian years, dates, times, explicit
+offsets, ISO weeks and durations. Years and whole duration seconds have no
+machine-integer magnitude cap. Time and duration author values use millisecond
+precision, matching the strict author grammar. A global date/time retains its
+explicit local value and offset; it does not perform an implicit UTC conversion.
+
+Token authoring preserves exact spelling and order. Unique ordered or unordered
+sets require an explicit case-sensitive or ASCII-insensitive comparison.
+Comma tokens can be empty and retain internal whitespace. These common values
+do not certify an attribute's keywords, cardinality or contextual constraints.
+
+`HtmlValueInterpreter` admits each raw value against a caller-selected finite
+UTF-16 input capacity. Its immutable reports distinguish missing values,
+whole-value author conformance, representation failure and separate recovery
+outcomes. Numeric recovery and common token splitting are available; permissive
+temporal recovery is explicitly unsupported. Raw values remain unchanged,
+including isolated surrogates. Attribute applicability, missing/invalid/empty
+defaults and effective states still require their individual defining clauses.
+This standalone input cap is not full parser accounting, cancellation or an
+allocation-failure guarantee. The parser contribution owns those controls.

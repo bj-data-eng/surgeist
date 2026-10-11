@@ -26,6 +26,16 @@ These 2026-10-10/11 bounded captures retain the complete named clauses and origi
 
 Changes comprise offline section extraction, format conversion, provenance labels and link rewriting; complex tables preserve semantic HTML. Original text, code examples, normative/informative labels, status, copyright and notices remain in each capture. Specification prose remains Creative Commons Attribution 4.0 International; BSD 3-Clause applies only to portions incorporated into source code, not as an alternative license for these Markdown documents. Original sources remain authoritative and no endorsement or full DOM/HTML implementation conformance is implied.
 
+## HTML common microsyntax incorporation — 2026-10-11
+
+The HTML crate's intrinsic numeric, temporal and token values and common
+interpretation algorithms also implement the selected edition's §2.3 common
+microsyntax clauses. Their Rust implementation separates author grammar,
+standard recovery and raw storage. The defining clauses remain in the
+[foundations capture](../../references/html-language-foundations--877d6146487f--b55e73c31978.md).
+The edition and original-source hash below apply to these algorithms as well.
+No full browser or attribute-conformance claim follows from this incorporation.
+
 ## HTML vocabulary incorporation — 2026-10-11
 
 The HTML crate's [vocabulary source](../../crates/surgeist-html/src/vocabulary.rs)

@@ -207,3 +207,12 @@ The collection omits unrelated full browser runtime chapters (microdata, loading
 The previous live [language/direction](dom-html-language-direction--editor-capture-20261010--494ac341fe2b.md), [interaction](dom-html-host-interaction--editor-capture-20261010--8a01a8043e7c.md), [HTML selector facts](dom-html-host-selector-facts--editor-capture-20261010--07d421b207b3.md) and [table processing](style-specialized-determinations-html-tables--editor-capture-20261011--7e90e654e94f.md) captures remain historical source identities and original decision evidence. For unstarted HTML language and HTML-supplied host facts, this pinned baseline supersedes those bounded live source selections. This changes source selection, not completed implementation provenance or the separately selected WHATWG DOM foundation. The repository LICENSE pin previously associated with those live captures did not identify their served chapter bytes; the new immutable full snapshot does identify this retained HTML edition.
 
 The implementation ingestion baseline remains [html5ever 0.40.1 at d7232d746d3112f08926d169591576bd12fe2fdf](html5ever-parser-contracts--d7232d746d31.md), with [supplemental source witnesses](html5ever-parser-supplemental-contracts--d7232d746d31.md). Engine ingestion must be reconciled with the selected HTML language rules, including processing-instruction syntax/tokenization; differences are implementation work, not permission to narrow the standard. Prototype measurements and differential samples remain bounded evidence rather than exhaustive conformance.
+
+For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the
+[dimension-list cursor witness](html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
+selects one bounded correction to §2.3.4.7: advance past a recognized decimal
+point before collecting fractional digits and whitespace. The pinned WebKit
+operation supplies the decisive implementation evidence; Blink corroborates
+integer-prefixed decimals. Their overflow policies and other differences are
+not adopted. This is a source-qualified Surgeist determination, without an
+established upstream erratum. The normative capture retains its original text.

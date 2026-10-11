@@ -23,6 +23,32 @@ pub surgeist_html::HtmlConstructionResource::Depth
 pub surgeist_html::HtmlConstructionResource::Edges
 pub surgeist_html::HtmlConstructionResource::Nodes
 pub surgeist_html::HtmlConstructionResource::Utf16Units
+pub enum surgeist_html::HtmlDateOrTime
+pub surgeist_html::HtmlDateOrTime::Date(surgeist_html::HtmlDate)
+pub surgeist_html::HtmlDateOrTime::Global(surgeist_html::HtmlGlobalDateTime)
+pub surgeist_html::HtmlDateOrTime::Time(surgeist_html::HtmlTime)
+impl surgeist_html::HtmlDateOrTime
+pub fn surgeist_html::HtmlDateOrTime::to_document_string(&self) -> surgeist_html::DocumentString
+pub enum surgeist_html::HtmlDateWithOptionalTime
+pub surgeist_html::HtmlDateWithOptionalTime::Date(surgeist_html::HtmlDate)
+pub surgeist_html::HtmlDateWithOptionalTime::Global(surgeist_html::HtmlGlobalDateTime)
+impl surgeist_html::HtmlDateWithOptionalTime
+pub fn surgeist_html::HtmlDateWithOptionalTime::to_document_string(&self) -> surgeist_html::DocumentString
+pub enum surgeist_html::HtmlDecimalDigitsError
+pub surgeist_html::HtmlDecimalDigitsError::Empty
+pub surgeist_html::HtmlDecimalDigitsError::NonAsciiDigit
+pub surgeist_html::HtmlDecimalDigitsError::NonAsciiDigit::code_unit: u16
+pub surgeist_html::HtmlDecimalDigitsError::NonAsciiDigit::code_unit_offset: usize
+impl core::error::Error for surgeist_html::HtmlDecimalDigitsError
+impl core::fmt::Display for surgeist_html::HtmlDecimalDigitsError
+pub fn surgeist_html::HtmlDecimalDigitsError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlDimension
+pub surgeist_html::HtmlDimension::Absolute(surgeist_html::HtmlNonNegativeDecimal)
+pub surgeist_html::HtmlDimension::Percentage(surgeist_html::HtmlNonNegativeDecimal)
+pub surgeist_html::HtmlDimension::Relative(surgeist_html::HtmlNonNegativeDecimal)
+impl surgeist_html::HtmlDimension
+pub fn surgeist_html::HtmlDimension::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlDimension::value(&self) -> &surgeist_html::HtmlNonNegativeDecimal
 pub enum surgeist_html::HtmlDocumentMode
 pub surgeist_html::HtmlDocumentMode::LimitedQuirks
 pub surgeist_html::HtmlDocumentMode::NoQuirks
@@ -68,6 +94,80 @@ pub surgeist_html::HtmlSourceRangeError::Utf8Boundary::offset: usize
 impl core::error::Error for surgeist_html::HtmlSourceRangeError
 impl core::fmt::Display for surgeist_html::HtmlSourceRangeError
 pub fn surgeist_html::HtmlSourceRangeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlTemporalError
+pub surgeist_html::HtmlTemporalError::DayOutOfRange
+pub surgeist_html::HtmlTemporalError::HourOutOfRange
+pub surgeist_html::HtmlTemporalError::InvalidSyntax
+pub surgeist_html::HtmlTemporalError::InvalidYearDigits
+pub surgeist_html::HtmlTemporalError::MillisecondOutOfRange
+pub surgeist_html::HtmlTemporalError::MinuteOutOfRange
+pub surgeist_html::HtmlTemporalError::MonthOutOfRange
+pub surgeist_html::HtmlTemporalError::OffsetOutOfRange
+pub surgeist_html::HtmlTemporalError::SecondOutOfRange
+pub surgeist_html::HtmlTemporalError::WeekOutOfRange
+pub surgeist_html::HtmlTemporalError::ZeroYear
+impl core::error::Error for surgeist_html::HtmlTemporalError
+impl core::fmt::Display for surgeist_html::HtmlTemporalError
+pub fn surgeist_html::HtmlTemporalError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlTokenComparison
+pub surgeist_html::HtmlTokenComparison::AsciiCaseInsensitive
+pub surgeist_html::HtmlTokenComparison::CaseSensitive
+pub enum surgeist_html::HtmlTokenError
+pub surgeist_html::HtmlTokenError::CommaTokenBoundaryWhitespace
+pub surgeist_html::HtmlTokenError::CommaTokenBoundaryWhitespace::code_unit_offset: usize
+pub surgeist_html::HtmlTokenError::CommaTokenComma
+pub surgeist_html::HtmlTokenError::CommaTokenComma::code_unit_offset: usize
+pub surgeist_html::HtmlTokenError::EmptySpaceToken
+pub surgeist_html::HtmlTokenError::SpaceTokenWhitespace
+pub surgeist_html::HtmlTokenError::SpaceTokenWhitespace::code_unit_offset: usize
+impl core::error::Error for surgeist_html::HtmlTokenError
+impl core::fmt::Display for surgeist_html::HtmlTokenError
+pub fn surgeist_html::HtmlTokenError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlValueAuthorState<T>
+pub surgeist_html::HtmlValueAuthorState::Invalid(surgeist_html::HtmlValueSyntaxError)
+pub surgeist_html::HtmlValueAuthorState::Missing
+pub surgeist_html::HtmlValueAuthorState::NotDefined
+pub surgeist_html::HtmlValueAuthorState::Unrepresentable(surgeist_html::HtmlValueRepresentationError)
+pub surgeist_html::HtmlValueAuthorState::Valid(T)
+pub enum surgeist_html::HtmlValueFailure
+pub surgeist_html::HtmlValueFailure::Representation(surgeist_html::HtmlValueRepresentationError)
+pub surgeist_html::HtmlValueFailure::Syntax(surgeist_html::HtmlValueSyntaxError)
+pub enum surgeist_html::HtmlValueRecoveryState<T>
+pub surgeist_html::HtmlValueRecoveryState::Failed(surgeist_html::HtmlValueFailure)
+pub surgeist_html::HtmlValueRecoveryState::Missing
+pub surgeist_html::HtmlValueRecoveryState::Unsupported
+pub surgeist_html::HtmlValueRecoveryState::Value(T)
+pub enum surgeist_html::HtmlValueRepresentationError
+pub surgeist_html::HtmlValueRepresentationError::FloatingPointOverflow
+pub enum surgeist_html::HtmlValueSyntax
+pub surgeist_html::HtmlValueSyntax::CommaSeparatedTokens
+pub surgeist_html::HtmlValueSyntax::Date
+pub surgeist_html::HtmlValueSyntax::DateOrTime
+pub surgeist_html::HtmlValueSyntax::DateWithOptionalTime
+pub surgeist_html::HtmlValueSyntax::Dimension
+pub surgeist_html::HtmlValueSyntax::DimensionList
+pub surgeist_html::HtmlValueSyntax::Duration
+pub surgeist_html::HtmlValueSyntax::FloatingPointList
+pub surgeist_html::HtmlValueSyntax::FloatingPointNumber
+pub surgeist_html::HtmlValueSyntax::GlobalDateTime
+pub surgeist_html::HtmlValueSyntax::Integer
+pub surgeist_html::HtmlValueSyntax::LocalDateTime
+pub surgeist_html::HtmlValueSyntax::Month
+pub surgeist_html::HtmlValueSyntax::NonnegativeInteger
+pub surgeist_html::HtmlValueSyntax::NonzeroDimension
+pub surgeist_html::HtmlValueSyntax::NormalizedLocalDateTime
+pub surgeist_html::HtmlValueSyntax::SpaceSeparatedTokens
+pub surgeist_html::HtmlValueSyntax::Time
+pub surgeist_html::HtmlValueSyntax::TimeZoneOffset
+pub surgeist_html::HtmlValueSyntax::Week
+pub surgeist_html::HtmlValueSyntax::YearlessDate
+impl surgeist_html::HtmlValueSyntax
+pub fn surgeist_html::HtmlValueSyntax::source_clause(self) -> &'static str
+pub enum surgeist_html::HtmlValueSyntaxError
+pub surgeist_html::HtmlValueSyntaxError::InvalidNumericSyntax
+pub surgeist_html::HtmlValueSyntaxError::NegativeNonnegativeInteger
+pub surgeist_html::HtmlValueSyntaxError::Temporal(surgeist_html::HtmlTemporalError)
+pub surgeist_html::HtmlValueSyntaxError::ZeroNonzeroDimension
 pub enum surgeist_html::KnownHtmlAttribute
 pub surgeist_html::KnownHtmlAttribute::Abbr
 pub surgeist_html::KnownHtmlAttribute::Accept
@@ -395,6 +495,15 @@ impl core::error::Error for surgeist_html::ForeignHtmlResult
 impl core::fmt::Display for surgeist_html::ForeignHtmlResult
 pub fn surgeist_html::ForeignHtmlResult::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlBuilderNode
+pub struct surgeist_html::HtmlCommaSeparatedTokens
+impl surgeist_html::HtmlCommaSeparatedTokens
+pub fn surgeist_html::HtmlCommaSeparatedTokens::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlCommaSeparatedTokens::new(tokens: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlCommaToken>) -> Self
+pub fn surgeist_html::HtmlCommaSeparatedTokens::tokens(&self) -> &[surgeist_html::HtmlCommaToken]
+pub struct surgeist_html::HtmlCommaToken
+impl surgeist_html::HtmlCommaToken
+pub fn surgeist_html::HtmlCommaToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlTokenError>
+pub fn surgeist_html::HtmlCommaToken::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlConstructionLimits
 impl surgeist_html::HtmlConstructionLimits
 pub fn surgeist_html::HtmlConstructionLimits::attributes(self) -> usize
@@ -410,11 +519,23 @@ pub fn surgeist_html::HtmlConstructionUsage::depth(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::edges(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::nodes(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::utf16_units(self) -> usize
+pub struct surgeist_html::HtmlDate
+impl surgeist_html::HtmlDate
+pub fn surgeist_html::HtmlDate::day(&self) -> u8
+pub fn surgeist_html::HtmlDate::month(&self) -> u8
+pub fn surgeist_html::HtmlDate::new(year: surgeist_html::HtmlYear, month: u8, day: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlDate::to_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlDate::year(&self) -> &surgeist_html::HtmlYear
 pub struct surgeist_html::HtmlDeclarativeShadowRoot
 impl surgeist_html::HtmlDeclarativeShadowRoot
 pub fn surgeist_html::HtmlDeclarativeShadowRoot::contents(&self) -> &surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlDeclarativeShadowRoot::host(&self) -> &surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlDeclarativeShadowRoot::properties(&self) -> surgeist_html::HtmlShadowRootProperties
+pub struct surgeist_html::HtmlDimensionList
+impl surgeist_html::HtmlDimensionList
+pub fn surgeist_html::HtmlDimensionList::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlDimensionList::new(values: impl core::convert::Into<alloc::vec::Vec<surgeist_html::HtmlDimension>>) -> Self
+pub fn surgeist_html::HtmlDimensionList::values(&self) -> &[surgeist_html::HtmlDimension]
 pub struct surgeist_html::HtmlDoctype
 impl surgeist_html::HtmlDoctype
 pub fn surgeist_html::HtmlDoctype::name(&self) -> &surgeist_html::DocumentString
@@ -441,10 +562,37 @@ pub fn surgeist_html::HtmlDocumentBuilder::finish(self) -> surgeist_html::HtmlDo
 pub fn surgeist_html::HtmlDocumentBuilder::root(&self) -> surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlDocumentBuilder::template_contents(&self, template: &surgeist_html::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::HtmlBuilderNode>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlDocumentBuilder::usage(&self) -> surgeist_html::HtmlConstructionUsage
+pub struct surgeist_html::HtmlDuplicateTokenError
+impl surgeist_html::HtmlDuplicateTokenError
+pub fn surgeist_html::HtmlDuplicateTokenError::comparison(&self) -> surgeist_html::HtmlTokenComparison
+pub fn surgeist_html::HtmlDuplicateTokenError::duplicate_index(&self) -> usize
+pub fn surgeist_html::HtmlDuplicateTokenError::first_index(&self) -> usize
+pub fn surgeist_html::HtmlDuplicateTokenError::token(&self) -> &surgeist_html::DocumentString
+impl core::error::Error for surgeist_html::HtmlDuplicateTokenError
+impl core::fmt::Display for surgeist_html::HtmlDuplicateTokenError
+pub fn surgeist_html::HtmlDuplicateTokenError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlDuration
+impl surgeist_html::HtmlDuration
+pub fn surgeist_html::HtmlDuration::millisecond(&self) -> u16
+pub fn surgeist_html::HtmlDuration::new(seconds: surgeist_html::HtmlNonNegativeInteger, millisecond: u16) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlDuration::seconds(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlDuration::to_document_string(&self) -> surgeist_html::DocumentString
 pub struct surgeist_html::HtmlElement
 impl surgeist_html::HtmlElement
 pub fn surgeist_html::HtmlElement::attributes(&self) -> &surgeist_html::OrderedAttributes
 pub fn surgeist_html::HtmlElement::name(&self) -> &surgeist_html::QualifiedName
+pub struct surgeist_html::HtmlFloatingPointList
+impl surgeist_html::HtmlFloatingPointList
+pub fn surgeist_html::HtmlFloatingPointList::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlFloatingPointList::new(values: impl core::convert::Into<alloc::vec::Vec<surgeist_html::HtmlFloatingPointNumber>>) -> Self
+pub fn surgeist_html::HtmlFloatingPointList::values(&self) -> &[surgeist_html::HtmlFloatingPointNumber]
+pub struct surgeist_html::HtmlFloatingPointNumber
+impl surgeist_html::HtmlFloatingPointNumber
+pub fn surgeist_html::HtmlFloatingPointNumber::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlFloatingPointNumber::value(&self) -> f64
+impl core::convert::TryFrom<f64> for surgeist_html::HtmlFloatingPointNumber
+pub type surgeist_html::HtmlFloatingPointNumber::Error = surgeist_html::HtmlNonFiniteNumberError
+pub fn surgeist_html::HtmlFloatingPointNumber::try_from(value: f64) -> core::result::Result<Self, Self::Error>
 pub struct surgeist_html::HtmlFragment
 impl surgeist_html::HtmlFragment
 pub fn surgeist_html::HtmlFragment::builder(limits: surgeist_html::HtmlConstructionLimits) -> core::result::Result<surgeist_html::HtmlFragmentBuilder, surgeist_html::HtmlConstructionError>
@@ -464,6 +612,41 @@ pub fn surgeist_html::HtmlFragmentBuilder::finish(self) -> surgeist_html::HtmlFr
 pub fn surgeist_html::HtmlFragmentBuilder::root(&self) -> surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlFragmentBuilder::template_contents(&self, template: &surgeist_html::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::HtmlBuilderNode>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::usage(&self) -> surgeist_html::HtmlConstructionUsage
+pub struct surgeist_html::HtmlGlobalDateTime
+impl surgeist_html::HtmlGlobalDateTime
+pub fn surgeist_html::HtmlGlobalDateTime::local(&self) -> &surgeist_html::HtmlLocalDateTime
+pub fn surgeist_html::HtmlGlobalDateTime::new(local: surgeist_html::HtmlLocalDateTime, offset: surgeist_html::HtmlTimeZoneOffset) -> Self
+pub fn surgeist_html::HtmlGlobalDateTime::offset(&self) -> surgeist_html::HtmlTimeZoneOffset
+pub fn surgeist_html::HtmlGlobalDateTime::to_document_string(&self) -> surgeist_html::DocumentString
+pub struct surgeist_html::HtmlInteger
+impl surgeist_html::HtmlInteger
+pub fn surgeist_html::HtmlInteger::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlInteger::from_magnitude(magnitude: surgeist_html::HtmlNonNegativeInteger, negative: bool) -> Self
+pub fn surgeist_html::HtmlInteger::is_negative(&self) -> bool
+pub fn surgeist_html::HtmlInteger::magnitude(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlInteger::to_i128(&self) -> core::result::Result<i128, surgeist_html::HtmlNumericRangeError>
+pub fn surgeist_html::HtmlInteger::to_i64(&self) -> core::result::Result<i64, surgeist_html::HtmlNumericRangeError>
+impl core::convert::From<i128> for surgeist_html::HtmlInteger
+pub fn surgeist_html::HtmlInteger::from(value: i128) -> Self
+impl core::convert::TryFrom<surgeist_html::HtmlInteger> for surgeist_html::HtmlNonNegativeInteger
+pub type surgeist_html::HtmlNonNegativeInteger::Error = surgeist_html::HtmlNegativeIntegerError
+pub fn surgeist_html::HtmlNonNegativeInteger::try_from(value: surgeist_html::HtmlInteger) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlLocalDateTime
+impl surgeist_html::HtmlLocalDateTime
+pub fn surgeist_html::HtmlLocalDateTime::date(&self) -> &surgeist_html::HtmlDate
+pub fn surgeist_html::HtmlLocalDateTime::new(date: surgeist_html::HtmlDate, time: surgeist_html::HtmlTime) -> Self
+pub fn surgeist_html::HtmlLocalDateTime::time(&self) -> surgeist_html::HtmlTime
+pub fn surgeist_html::HtmlLocalDateTime::to_document_string(&self) -> surgeist_html::DocumentString
+pub struct surgeist_html::HtmlMonth
+impl surgeist_html::HtmlMonth
+pub fn surgeist_html::HtmlMonth::month(&self) -> u8
+pub fn surgeist_html::HtmlMonth::new(year: surgeist_html::HtmlYear, month: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlMonth::to_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlMonth::year(&self) -> &surgeist_html::HtmlYear
+pub struct surgeist_html::HtmlNegativeIntegerError
+impl core::error::Error for surgeist_html::HtmlNegativeIntegerError
+impl core::fmt::Display for surgeist_html::HtmlNegativeIntegerError
+pub fn surgeist_html::HtmlNegativeIntegerError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlNode<'a>
 impl<'a> surgeist_html::HtmlNode<'a>
 pub fn surgeist_html::HtmlNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::HtmlNodeId> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
@@ -479,6 +662,49 @@ impl core::cmp::PartialEq for surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlNodeId::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlNodeId::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_html::HtmlNonFiniteNumberError
+impl core::error::Error for surgeist_html::HtmlNonFiniteNumberError
+impl core::fmt::Display for surgeist_html::HtmlNonFiniteNumberError
+pub fn surgeist_html::HtmlNonFiniteNumberError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlNonNegativeDecimal
+impl surgeist_html::HtmlNonNegativeDecimal
+pub fn surgeist_html::HtmlNonNegativeDecimal::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlNonNegativeDecimal::fractional_digits(&self) -> core::option::Option<&str>
+pub fn surgeist_html::HtmlNonNegativeDecimal::integer_part(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeDecimal::is_zero(&self) -> bool
+pub fn surgeist_html::HtmlNonNegativeDecimal::with_fraction_digits(integer: surgeist_html::HtmlNonNegativeInteger, fraction: &surgeist_html::DocumentString) -> core::result::Result<Self, surgeist_html::HtmlDecimalDigitsError>
+impl core::convert::From<surgeist_html::HtmlNonNegativeInteger> for surgeist_html::HtmlNonNegativeDecimal
+pub fn surgeist_html::HtmlNonNegativeDecimal::from(integer: surgeist_html::HtmlNonNegativeInteger) -> Self
+pub struct surgeist_html::HtmlNonNegativeInteger
+impl surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeInteger::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlNonNegativeInteger::decimal_digits(&self) -> &str
+pub fn surgeist_html::HtmlNonNegativeInteger::from_decimal_digits(input: &surgeist_html::DocumentString) -> core::result::Result<Self, surgeist_html::HtmlDecimalDigitsError>
+pub fn surgeist_html::HtmlNonNegativeInteger::is_zero(&self) -> bool
+pub fn surgeist_html::HtmlNonNegativeInteger::remainder(&self, divisor: core::num::nonzero::NonZeroU32) -> u32
+pub fn surgeist_html::HtmlNonNegativeInteger::to_u128(&self) -> core::result::Result<u128, surgeist_html::HtmlNumericRangeError>
+pub fn surgeist_html::HtmlNonNegativeInteger::to_u64(&self) -> core::result::Result<u64, surgeist_html::HtmlNumericRangeError>
+impl core::convert::From<surgeist_html::HtmlNonNegativeInteger> for surgeist_html::HtmlNonNegativeDecimal
+pub fn surgeist_html::HtmlNonNegativeDecimal::from(integer: surgeist_html::HtmlNonNegativeInteger) -> Self
+impl core::convert::From<u128> for surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeInteger::from(value: u128) -> Self
+impl core::convert::TryFrom<surgeist_html::HtmlInteger> for surgeist_html::HtmlNonNegativeInteger
+pub type surgeist_html::HtmlNonNegativeInteger::Error = surgeist_html::HtmlNegativeIntegerError
+pub fn surgeist_html::HtmlNonNegativeInteger::try_from(value: surgeist_html::HtmlInteger) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlNumericRangeError
+impl core::error::Error for surgeist_html::HtmlNumericRangeError
+impl core::fmt::Display for surgeist_html::HtmlNumericRangeError
+pub fn surgeist_html::HtmlNumericRangeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlOrderedTokenSet
+impl surgeist_html::HtmlOrderedTokenSet
+pub fn surgeist_html::HtmlOrderedTokenSet::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlOrderedTokenSet::comparison(&self) -> surgeist_html::HtmlTokenComparison
+pub fn surgeist_html::HtmlOrderedTokenSet::contains(&self, value: &surgeist_html::DocumentString) -> bool
+pub fn surgeist_html::HtmlOrderedTokenSet::new(comparison: surgeist_html::HtmlTokenComparison, tokens: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSpaceToken>) -> core::result::Result<Self, surgeist_html::HtmlDuplicateTokenError>
+pub fn surgeist_html::HtmlOrderedTokenSet::tokens(&self) -> &[surgeist_html::HtmlSpaceToken]
+impl core::cmp::Eq for surgeist_html::HtmlOrderedTokenSet
+impl core::cmp::PartialEq for surgeist_html::HtmlOrderedTokenSet
+pub fn surgeist_html::HtmlOrderedTokenSet::eq(&self, other: &Self) -> bool
 pub struct surgeist_html::HtmlProcessingInstruction
 impl surgeist_html::HtmlProcessingInstruction
 pub fn surgeist_html::HtmlProcessingInstruction::data(&self) -> &surgeist_html::DocumentString
@@ -518,6 +744,96 @@ pub fn surgeist_html::HtmlSourceRange::is_empty(&self) -> bool
 pub fn surgeist_html::HtmlSourceRange::len(&self) -> usize
 pub fn surgeist_html::HtmlSourceRange::source(&self) -> &surgeist_html::HtmlSourceId
 pub fn surgeist_html::HtmlSourceRange::start(&self) -> usize
+pub struct surgeist_html::HtmlSpaceSeparatedTokens
+impl surgeist_html::HtmlSpaceSeparatedTokens
+pub fn surgeist_html::HtmlSpaceSeparatedTokens::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlSpaceSeparatedTokens::new(tokens: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSpaceToken>) -> Self
+pub fn surgeist_html::HtmlSpaceSeparatedTokens::tokens(&self) -> &[surgeist_html::HtmlSpaceToken]
+pub struct surgeist_html::HtmlSpaceToken
+impl surgeist_html::HtmlSpaceToken
+pub fn surgeist_html::HtmlSpaceToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlTokenError>
+pub fn surgeist_html::HtmlSpaceToken::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlTime
+impl surgeist_html::HtmlTime
+pub fn surgeist_html::HtmlTime::hour(self) -> u8
+pub fn surgeist_html::HtmlTime::millisecond(self) -> u16
+pub fn surgeist_html::HtmlTime::minute(self) -> u8
+pub fn surgeist_html::HtmlTime::new(hour: u8, minute: u8, second: u8, millisecond: u16) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlTime::second(self) -> u8
+pub fn surgeist_html::HtmlTime::to_document_string(self) -> surgeist_html::DocumentString
+pub struct surgeist_html::HtmlTimeZoneOffset
+impl surgeist_html::HtmlTimeZoneOffset
+pub fn surgeist_html::HtmlTimeZoneOffset::minutes(self) -> i16
+pub fn surgeist_html::HtmlTimeZoneOffset::new(minutes: i16) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlTimeZoneOffset::to_document_string(self) -> surgeist_html::DocumentString
+pub struct surgeist_html::HtmlUnorderedTokenSet
+impl surgeist_html::HtmlUnorderedTokenSet
+pub fn surgeist_html::HtmlUnorderedTokenSet::as_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlUnorderedTokenSet::comparison(&self) -> surgeist_html::HtmlTokenComparison
+pub fn surgeist_html::HtmlUnorderedTokenSet::contains(&self, value: &surgeist_html::DocumentString) -> bool
+pub fn surgeist_html::HtmlUnorderedTokenSet::new(comparison: surgeist_html::HtmlTokenComparison, tokens: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSpaceToken>) -> core::result::Result<Self, surgeist_html::HtmlDuplicateTokenError>
+pub fn surgeist_html::HtmlUnorderedTokenSet::tokens(&self) -> &[surgeist_html::HtmlSpaceToken]
+impl core::cmp::Eq for surgeist_html::HtmlUnorderedTokenSet
+impl core::cmp::PartialEq for surgeist_html::HtmlUnorderedTokenSet
+pub fn surgeist_html::HtmlUnorderedTokenSet::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlValueAdmissionError
+impl surgeist_html::HtmlValueAdmissionError
+pub fn surgeist_html::HtmlValueAdmissionError::capacity(self) -> usize
+pub fn surgeist_html::HtmlValueAdmissionError::required(self) -> usize
+impl core::error::Error for surgeist_html::HtmlValueAdmissionError
+impl core::fmt::Display for surgeist_html::HtmlValueAdmissionError
+pub fn surgeist_html::HtmlValueAdmissionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlValueInterpreter
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::comma_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlCommaSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDate>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::date_or_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDateOrTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::date_with_optional_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDateWithOptionalTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::dimension(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimension>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::dimension_list(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimensionList>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::duration(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDuration>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::floating_point_list(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointList>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::floating_point_number(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::global_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlGlobalDateTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::integer(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlInteger>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::max_input_code_units(self) -> usize
+pub fn surgeist_html::HtmlValueInterpreter::month(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlMonth>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::new(max_input_code_units: usize) -> Self
+pub fn surgeist_html::HtmlValueInterpreter::nonnegative_integer(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::nonzero_dimension(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimension>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::normalized_local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::space_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlSpaceSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::time_zone_offset(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeZoneOffset>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::week(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlWeek>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlYearlessDate>, surgeist_html::HtmlValueAdmissionError>
+pub struct surgeist_html::HtmlValueReport<T>
+impl<T> surgeist_html::HtmlValueReport<T>
+pub fn surgeist_html::HtmlValueReport<T>::author(&self) -> &surgeist_html::HtmlValueAuthorState<T>
+pub fn surgeist_html::HtmlValueReport<T>::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlValueReport<T>::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlValueReport<T>::recovery(&self) -> &surgeist_html::HtmlValueRecoveryState<T>
+pub fn surgeist_html::HtmlValueReport<T>::syntax(&self) -> surgeist_html::HtmlValueSyntax
+pub struct surgeist_html::HtmlWeek
+impl surgeist_html::HtmlWeek
+pub fn surgeist_html::HtmlWeek::new(year: surgeist_html::HtmlYear, week: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlWeek::to_document_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlWeek::week(&self) -> u8
+pub fn surgeist_html::HtmlWeek::year(&self) -> &surgeist_html::HtmlYear
+pub struct surgeist_html::HtmlYear
+impl surgeist_html::HtmlYear
+pub fn surgeist_html::HtmlYear::decimal_digits(&self) -> &str
+pub fn surgeist_html::HtmlYear::from_decimal_digits(digits: &str) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlYear::from_number(value: surgeist_html::HtmlNonNegativeInteger) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlYear::is_leap_year(&self) -> bool
+pub fn surgeist_html::HtmlYear::new(year: u64) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub struct surgeist_html::HtmlYearlessDate
+impl surgeist_html::HtmlYearlessDate
+pub fn surgeist_html::HtmlYearlessDate::day(self) -> u8
+pub fn surgeist_html::HtmlYearlessDate::month(self) -> u8
+pub fn surgeist_html::HtmlYearlessDate::new(month: u8, day: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
+pub fn surgeist_html::HtmlYearlessDate::to_document_string(self) -> surgeist_html::DocumentString
 pub struct surgeist_html::Namespace
 impl surgeist_html::Namespace
 pub fn surgeist_html::Namespace::from_uri(uri: impl core::convert::Into<surgeist_html::DocumentString>) -> Self
