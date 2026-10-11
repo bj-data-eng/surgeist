@@ -93,6 +93,7 @@ pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
 pub surgeist_html::HtmlAttributeConformanceError::DetailsNameMustNotBeEmpty
 pub surgeist_html::HtmlAttributeConformanceError::InvalidIdToken(surgeist_html::HtmlTokenError)
+pub surgeist_html::HtmlAttributeConformanceError::InvalidNavigableTarget(surgeist_html::HtmlNavigableTargetError)
 pub surgeist_html::HtmlAttributeConformanceError::NonconformingKeyword
 pub surgeist_html::HtmlAttributeConformanceError::UnrecognizedKeyword
 pub enum surgeist_html::HtmlAttributeContextAuthorState
@@ -1029,6 +1030,31 @@ pub surgeist_html::HtmlModificationTimestamp::Unapplied(surgeist_html::HtmlAttri
 pub enum surgeist_html::HtmlModificationTimestampAbsence
 pub surgeist_html::HtmlModificationTimestampAbsence::ParseFailed
 pub surgeist_html::HtmlModificationTimestampAbsence::RecoveredTimeOnly
+pub enum surgeist_html::HtmlNavigableTarget
+pub surgeist_html::HtmlNavigableTarget::Keyword(surgeist_html::HtmlNavigableTargetKeyword)
+pub surgeist_html::HtmlNavigableTarget::Name(surgeist_html::HtmlNavigableTargetName)
+impl surgeist_html::HtmlNavigableTarget
+pub fn surgeist_html::HtmlNavigableTarget::as_document_string(&self) -> surgeist_html::DocumentString
+pub enum surgeist_html::HtmlNavigableTargetAttribute
+pub surgeist_html::HtmlNavigableTargetAttribute::BaseTarget
+pub surgeist_html::HtmlNavigableTargetAttribute::FormTarget
+pub surgeist_html::HtmlNavigableTargetAttribute::HyperlinkTarget
+pub surgeist_html::HtmlNavigableTargetAttribute::IframeName
+pub surgeist_html::HtmlNavigableTargetAttribute::ObjectName
+pub surgeist_html::HtmlNavigableTargetAttribute::SubmitterFormtarget
+pub enum surgeist_html::HtmlNavigableTargetError
+pub surgeist_html::HtmlNavigableTargetError::Empty
+pub surgeist_html::HtmlNavigableTargetError::ReservedLeadingUnderscore
+pub surgeist_html::HtmlNavigableTargetError::TabOrNewlineWithLessThan
+pub surgeist_html::HtmlNavigableTargetError::TabOrNewlineWithLessThan::less_than_code_unit_offset: usize
+pub surgeist_html::HtmlNavigableTargetError::TabOrNewlineWithLessThan::tab_or_newline_code_unit_offset: usize
+pub enum surgeist_html::HtmlNavigableTargetKeyword
+pub surgeist_html::HtmlNavigableTargetKeyword::Blank
+pub surgeist_html::HtmlNavigableTargetKeyword::Parent
+pub surgeist_html::HtmlNavigableTargetKeyword::SelfTarget
+pub surgeist_html::HtmlNavigableTargetKeyword::Top
+impl surgeist_html::HtmlNavigableTargetKeyword
+pub fn surgeist_html::HtmlNavigableTargetKeyword::as_document_string(self) -> surgeist_html::DocumentString
 pub enum surgeist_html::HtmlNoValidateResolution
 pub surgeist_html::HtmlNoValidateResolution::FormOwner
 pub surgeist_html::HtmlNoValidateResolution::FormOwner::owner: surgeist_html::HtmlFormOwner
@@ -3101,6 +3127,10 @@ pub fn surgeist_html::HtmlMonth::month(&self) -> u8
 pub fn surgeist_html::HtmlMonth::new(year: surgeist_html::HtmlYear, month: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
 pub fn surgeist_html::HtmlMonth::to_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlMonth::year(&self) -> &surgeist_html::HtmlYear
+pub struct surgeist_html::HtmlNavigableTargetName
+impl surgeist_html::HtmlNavigableTargetName
+pub fn surgeist_html::HtmlNavigableTargetName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlNavigableTargetError>
+pub fn surgeist_html::HtmlNavigableTargetName::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlNegativeIntegerError
 impl core::error::Error for surgeist_html::HtmlNegativeIntegerError
 impl core::fmt::Display for surgeist_html::HtmlNegativeIntegerError
@@ -3930,6 +3960,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::meter_attributes(&self, element: &surgeist_html::QualifiedName, input: surgeist_html::HtmlMeterAttributeInput<'_>) -> core::result::Result<surgeist_html::HtmlMeterAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::modification_datetime(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlModificationDatetimeReport, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::navigable_target_attribute(&self, role: surgeist_html::HtmlNavigableTargetAttribute, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlNavigableTarget>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::ol_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlOlType>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

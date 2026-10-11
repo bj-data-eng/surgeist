@@ -307,6 +307,18 @@ with exact accepted content. These operations use ordinary allocation, with a
 per-value admission cap on raw interpretation. They do not validate uniqueness,
 DOM ID behavior in other namespaces, selectors or serialized characters.
 
+`HtmlNavigableTargetName` checks an exact nonempty name: it rejects a leading
+underscore and the combination of TAB, LF or CR with a less-than sign.
+`HtmlNavigableTargetKeyword` supplies the four canonical keywords. The local
+`navigable_target_attribute` reports cover hyperlink, base and form targets,
+submitter formtarget, and iframe/object names. The last two accept names only;
+keyword roles recognize the four spellings without trimming. Reports retain
+original UTF-16, lexical errors and applicable context restrictions separately.
+Present hyperlink, base and submitter attributes leave those restrictions
+unchecked. Checked values compose with the existing Attribute factory. Native
+construction uses ordinary allocation; raw reports apply the per-value cap.
+These values do not select a navigable, apply target fallback or navigate.
+
 `details_name` checks the local specified-nonempty rule for `details[name]`.
 Absence remains missing; supplied empty content is retained and nonconforming.
 Every nonempty name preserves its exact UTF-16, including whitespace and case.

@@ -193,6 +193,8 @@ pub enum HtmlAttributeConformanceError {
     DetailsNameMustNotBeEmpty,
     /// An HTML id violates its local nonempty/no-ASCII-whitespace author rule.
     InvalidIdToken(HtmlTokenError),
+    /// A target/name violates HTML's local navigable-target grammar.
+    InvalidNavigableTarget(HtmlNavigableTargetError),
 }
 
 /// Intrinsic value author conformance is independent of state/applicability.
@@ -2029,6 +2031,9 @@ mod details_name;
 pub use details_name::*;
 
 mod id;
+
+mod navigable_target;
+pub use navigable_target::*;
 
 #[cfg(test)]
 mod stylesheet_context_tests {
