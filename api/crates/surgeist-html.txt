@@ -1155,6 +1155,7 @@ pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<
 pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
 pub surgeist_html::HtmlSemanticFact::Meter(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMeterState>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::OptionFormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionFormOwner>)
 pub surgeist_html::HtmlSemanticFact::OptionIndex(surgeist_html::HtmlSemanticValue<usize>)
 pub surgeist_html::HtmlSemanticFact::OptionLabel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
 pub surgeist_html::HtmlSemanticFact::OptionText(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionReadback>)
@@ -1229,6 +1230,7 @@ pub surgeist_html::HtmlSemanticQuery::ListOwner
 pub surgeist_html::HtmlSemanticQuery::ListStartingValue
 pub surgeist_html::HtmlSemanticQuery::Meter
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
+pub surgeist_html::HtmlSemanticQuery::OptionFormOwner
 pub surgeist_html::HtmlSemanticQuery::OptionIndex
 pub surgeist_html::HtmlSemanticQuery::OptionLabel
 pub surgeist_html::HtmlSemanticQuery::OptionText
@@ -2681,6 +2683,10 @@ pub fn surgeist_html::HtmlOptionControlState::dirtiness(&self) -> core::option::
 pub fn surgeist_html::HtmlOptionControlState::new(subject: surgeist_html::HtmlCaptureSubjectId, selectedness: core::option::Option<bool>, dirtiness: core::option::Option<bool>) -> Self
 pub fn surgeist_html::HtmlOptionControlState::selectedness(&self) -> core::option::Option<bool>
 pub fn surgeist_html::HtmlOptionControlState::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlOptionFormOwner
+impl surgeist_html::HtmlOptionFormOwner
+pub fn surgeist_html::HtmlOptionFormOwner::form_owner(&self) -> core::option::Option<&surgeist_html::HtmlFormOwner>
+pub fn surgeist_html::HtmlOptionFormOwner::select(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
 pub struct surgeist_html::HtmlOptionReadback
 impl surgeist_html::HtmlOptionReadback
 pub fn surgeist_html::HtmlOptionReadback::origin(&self) -> surgeist_html::HtmlOptionReadbackOrigin

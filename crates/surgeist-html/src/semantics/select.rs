@@ -1,6 +1,7 @@
-//! Immutable readback of the source select option list, HTML 877d6146487f.
+//! Immutable readback of select option lists and option form ownership, HTML 877d6146487f.
 //! This is not a live collection or a selection-reset operation. Ordinary
-//! children and producer-established current selectedness are the only inputs.
+//! relations, current selectedness and qualified form associations are consumed
+//! only by the algorithms that require them.
 
 use super::*;
 
@@ -12,6 +13,39 @@ pub struct HtmlSelectOptions {
 impl HtmlSelectOptions {
     pub fn options(&self) -> &[HtmlCaptureSubjectId] {
         &self.options
+    }
+}
+
+/// An option form getter observation with the selecting evidence retained.
+/// A null nearest select differs from a select with an established null form
+/// owner. The latter retains the actual/reset association origin. No current
+/// association is inferred from markup or ownerDocument.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlOptionFormOwner {
+    selection: OptionFormSelection,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum OptionFormSelection {
+    NoSelect,
+    Select {
+        subject: HtmlCaptureSubjectId,
+        owner: HtmlFormOwner,
+    },
+}
+impl HtmlOptionFormOwner {
+    pub fn select(&self) -> Option<&HtmlCaptureSubjectId> {
+        match &self.selection {
+            OptionFormSelection::NoSelect => None,
+            OptionFormSelection::Select { subject, .. } => Some(subject),
+        }
+    }
+    /// Returns the select's complete association, including a known null owner.
+    /// None means that no nearest select exists, not unavailable association.
+    pub fn form_owner(&self) -> Option<&HtmlFormOwner> {
+        match &self.selection {
+            OptionFormSelection::NoSelect => None,
+            OptionFormSelection::Select { owner, .. } => Some(owner),
+        }
     }
 }
 
@@ -101,6 +135,34 @@ impl<'a> HtmlSemanticSession<'a> {
             Ok(Some(select)) => Ok(self
                 .walk_select(&select, SelectWalkMode::Target(subject))?
                 .map(|result| result.index.unwrap_or(0))),
+        }
+    }
+
+    pub(super) fn option_form_owner(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<HtmlOptionFormOwner>, HtmlSemanticFailure> {
+        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Option)? {
+            return Ok(value);
+        }
+        match self.nearest_select(subject)? {
+            Err(missing) => Ok(HtmlSemanticValue::Missing(missing)),
+            Ok(None) => {
+                self.charge(1)?;
+                Ok(HtmlSemanticValue::Known(HtmlOptionFormOwner {
+                    selection: OptionFormSelection::NoSelect,
+                }))
+            }
+            Ok(Some(select)) => {
+                let owner = self.form_owner(&select)?;
+                self.charge(1)?;
+                Ok(owner.map(|owner| HtmlOptionFormOwner {
+                    selection: OptionFormSelection::Select {
+                        subject: select,
+                        owner,
+                    },
+                }))
+            }
         }
     }
 

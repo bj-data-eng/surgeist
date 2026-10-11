@@ -335,7 +335,10 @@ collapsed across text nodes. BR adds no separator; other UTF-16 units remain
 exact. The label getter follows IDL readback, rather than the separate rendering
 label algorithm. Select value reuses the source-defined option list and returns
 the first currently selected option's value. Its result distinguishes a selected
-empty value from a known absence of selection. Consulted attributes, traversal,
+empty value from a known absence of selection. The option form-owner getter
+follows the source-defined nearest-select barriers and returns that select's
+actual or reset-qualified association. It distinguishes no nearest select from
+a select with an established null owner. Consulted attributes, traversal,
 temporary scratch and actual output capacities use the semantic session's
 admission and atomic batch contract; missing influencing facts remain explicit.
 

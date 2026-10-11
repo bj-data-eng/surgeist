@@ -3,7 +3,7 @@
 //! Queries cover hidden state, disabledness, list ownership and ordinals, the
 //! table model, language and directionality, meter and progress state, inertness,
 //! form owners, label targets and control labels, current control flags, global inheritance, select
-//! readbacks, option text/label/value and select value getters, autocomplete
+//! readbacks, option form/text/label/value and select value getters, autocomplete
 //! defaults and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions.
@@ -653,6 +653,7 @@ pub enum HtmlSemanticQuery {
     SelectedOptions,
     SelectSelectedIndex,
     OptionIndex,
+    OptionFormOwner,
     OptionText,
     OptionLabel,
     OptionValue,
@@ -667,6 +668,9 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::OptionFormOwner => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-form"
+            }
             Self::OptionText => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-text"
             }
@@ -888,6 +892,7 @@ pub enum HtmlSemanticFact {
     /// `Known(None)` represents the source selected index of −1.
     SelectSelectedIndex(HtmlSemanticValue<Option<usize>>),
     OptionIndex(HtmlSemanticValue<usize>),
+    OptionFormOwner(HtmlSemanticValue<HtmlOptionFormOwner>),
     OptionText(HtmlSemanticValue<HtmlOptionReadback>),
     OptionLabel(HtmlSemanticValue<HtmlOptionReadback>),
     OptionValue(HtmlSemanticValue<HtmlOptionReadback>),
@@ -2192,6 +2197,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::OptionIndex => {
                             HtmlSemanticFact::OptionIndex(self.option_index(&request.subject)?)
                         }
+                        HtmlSemanticQuery::OptionFormOwner => HtmlSemanticFact::OptionFormOwner(
+                            self.option_form_owner(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::OptionText => {
                             HtmlSemanticFact::OptionText(self.option_readback(
                                 &request.subject,
@@ -2337,6 +2345,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::OptionIndex => {
                         HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::OptionFormOwner => {
+                        HtmlSemanticFact::OptionFormOwner(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::OptionText => {
                         HtmlSemanticFact::OptionText(HtmlSemanticValue::Inapplicable)
