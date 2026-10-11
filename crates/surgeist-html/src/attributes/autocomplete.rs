@@ -20,6 +20,298 @@ const RULE: RuleMetadata = RuleMetadata {
 const PROCESSING_SOURCE: &str = source!("autofill-processing-model");
 const WEBAUTHN: &str = "webauthn";
 
+/// Atomic scan/copy/lookup envelope, not machine instructions or parser polling.
+/// The semantic owner separately admits expanded-name recognition. Two shared
+/// split passes and their boundary visits use four input-length passes; token
+/// copy/validation two; per-token reserve/push visits two; section transform and
+/// validation two; IDL length/copy visits two. Vocabulary comparisons inspect at
+/// most keyword length plus a length check: three field-table searches, two each
+/// of setting/mode/contact, and three credential checks. The fixed remainder
+/// covers section prefixes, at most five IDL and three scope handles, their
+/// bounded prepends/reservations, default/context observations and empty input.
+pub(crate) fn autocomplete_materialization_work_bound(input_code_units: usize) -> Option<usize> {
+    let fields = HtmlAutofillField::ALL
+        .iter()
+        .try_fold(0usize, |sum, field| {
+            sum.checked_add(field.canonical_keyword().len() + 1)
+        })?;
+    let modes = HtmlAutocompleteMode::ALL
+        .iter()
+        .try_fold(0usize, |sum, hint| {
+            sum.checked_add(hint.canonical_keyword().len() + 1)
+        })?;
+    let contacts = HtmlAutocompleteContactHint::ALL
+        .iter()
+        .try_fold(0usize, |sum, hint| {
+            sum.checked_add(hint.canonical_keyword().len() + 1)
+        })?;
+    let settings = FORM_AUTOCOMPLETE
+        .keywords
+        .iter()
+        .try_fold(0usize, |sum, keyword| {
+            sum.checked_add(keyword.spelling.len() + 1)
+        })?;
+    input_code_units
+        .checked_mul(12)?
+        .checked_add(fields.checked_mul(3)?)?
+        .checked_add(modes.checked_mul(2)?)?
+        .checked_add(contacts.checked_mul(2)?)?
+        .checked_add(settings.checked_mul(2)?)?
+        .checked_add((WEBAUTHN.len() + 1).checked_mul(3)?)?
+        .checked_add(128)
+}
+
+/// Remaining session allowances. Fixed Arc wrappers and allocator internals are
+/// excluded; every variable Vec capacity is observed before its next write.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AutocompleteMaterializationLimits {
+    pub(crate) allocated_bytes: usize,
+    pub(crate) nested_output_records: usize,
+    pub(crate) scratch_records: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct AutocompleteMaterializationUsage {
+    pub(crate) allocated_bytes: usize,
+    pub(crate) nested_output_records: usize,
+    pub(crate) peak_scratch_records: usize,
+}
+
+#[derive(Debug)]
+pub(crate) struct AutocompleteMaterialized {
+    pub(crate) report: HtmlAutocompleteReport,
+    pub(crate) usage: AutocompleteMaterializationUsage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AutocompleteMaterializationError {
+    RawAdmission(HtmlValueAdmissionError),
+    BytesLimit { limit: usize, required: usize },
+    OutputLimit { limit: usize, required: usize },
+    ScratchLimit { limit: usize, required: usize },
+    Allocation { requested_bytes: usize },
+    Representation,
+}
+
+#[derive(Debug)]
+pub(crate) struct AutocompleteMaterializationFailure {
+    pub(crate) kind: AutocompleteMaterializationError,
+    pub(crate) usage: AutocompleteMaterializationUsage,
+}
+
+#[derive(Clone, Copy)]
+enum StoragePurpose {
+    Output,
+    Scratch,
+}
+
+/// One reservation owner used by both interpreter front doors. Standalone
+/// retains its ordinary infallible allocation contract, not a resource cap.
+struct Materialization {
+    limits: Option<AutocompleteMaterializationLimits>,
+    usage: AutocompleteMaterializationUsage,
+    scratch: usize,
+}
+
+impl Materialization {
+    fn new(limits: Option<AutocompleteMaterializationLimits>) -> Self {
+        Self {
+            limits,
+            usage: AutocompleteMaterializationUsage::default(),
+            scratch: 0,
+        }
+    }
+
+    fn reserve<T>(
+        &mut self,
+        values: &mut Vec<T>,
+        additional: usize,
+        purpose: StoragePurpose,
+    ) -> Result<(), AutocompleteMaterializationError> {
+        use AutocompleteMaterializationError as E;
+        let needed = values
+            .len()
+            .checked_add(additional)
+            .ok_or(E::Representation)?;
+        if needed <= values.capacity() {
+            return Ok(());
+        }
+        let growth = needed - values.capacity();
+        let bytes = growth
+            .checked_mul(std::mem::size_of::<T>())
+            .ok_or(E::Representation)?;
+        if needed
+            .checked_mul(std::mem::size_of::<T>())
+            .is_none_or(|bytes| bytes > isize::MAX as usize)
+        {
+            return Err(E::Representation);
+        }
+        self.check_growth(growth, bytes, purpose)?;
+        let before = values.capacity();
+        if self.limits.is_some() {
+            values
+                .try_reserve_exact(needed - values.len())
+                .map_err(|_| E::Allocation {
+                    requested_bytes: bytes,
+                })?;
+        } else {
+            values.reserve_exact(needed - values.len());
+        }
+        self.observe_growth(
+            values.capacity() - before,
+            std::mem::size_of::<T>(),
+            purpose,
+        )
+    }
+
+    fn check_growth(
+        &self,
+        growth: usize,
+        bytes: usize,
+        purpose: StoragePurpose,
+    ) -> Result<(), AutocompleteMaterializationError> {
+        use AutocompleteMaterializationError as E;
+        let bytes = self
+            .usage
+            .allocated_bytes
+            .checked_add(bytes)
+            .ok_or(E::Representation)?;
+        let records = match purpose {
+            StoragePurpose::Output => self.usage.nested_output_records,
+            StoragePurpose::Scratch => self.scratch,
+        }
+        .checked_add(growth)
+        .ok_or(E::Representation)?;
+        if let Some(limits) = self.limits {
+            if bytes > limits.allocated_bytes {
+                return Err(E::BytesLimit {
+                    limit: limits.allocated_bytes,
+                    required: bytes,
+                });
+            }
+            match purpose {
+                StoragePurpose::Output if records > limits.nested_output_records => {
+                    return Err(E::OutputLimit {
+                        limit: limits.nested_output_records,
+                        required: records,
+                    });
+                }
+                StoragePurpose::Scratch if records > limits.scratch_records => {
+                    return Err(E::ScratchLimit {
+                        limit: limits.scratch_records,
+                        required: records,
+                    });
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn observe_growth(
+        &mut self,
+        growth: usize,
+        item_bytes: usize,
+        purpose: StoragePurpose,
+    ) -> Result<(), AutocompleteMaterializationError> {
+        use AutocompleteMaterializationError as E;
+        self.usage.allocated_bytes = growth
+            .checked_mul(item_bytes)
+            .and_then(|bytes| self.usage.allocated_bytes.checked_add(bytes))
+            .ok_or(E::Representation)?;
+        match purpose {
+            StoragePurpose::Output => {
+                self.usage.nested_output_records = self
+                    .usage
+                    .nested_output_records
+                    .checked_add(growth)
+                    .ok_or(E::Representation)?
+            }
+            StoragePurpose::Scratch => {
+                self.scratch = self.scratch.checked_add(growth).ok_or(E::Representation)?;
+                self.usage.peak_scratch_records = self.usage.peak_scratch_records.max(self.scratch);
+            }
+        }
+        // Observation precedes the rejection, including allocator overshoot.
+        self.check_growth(0, 0, purpose)
+    }
+
+    fn units(
+        &mut self,
+        units: &[u16],
+        lowercase: bool,
+    ) -> Result<DocumentString, AutocompleteMaterializationError> {
+        let mut output = Vec::new();
+        self.reserve(&mut output, units.len(), StoragePurpose::Output)?;
+        output.extend(units.iter().map(|&unit| {
+            if lowercase && (0x41..=0x5a).contains(&unit) {
+                unit + 0x20
+            } else {
+                unit
+            }
+        }));
+        Ok(DocumentString::from_utf16(output))
+    }
+
+    fn keyword(
+        &mut self,
+        keyword: &'static str,
+    ) -> Result<DocumentString, AutocompleteMaterializationError> {
+        let mut output = Vec::new();
+        self.reserve(&mut output, keyword.len(), StoragePurpose::Output)?;
+        output.extend(keyword.bytes().map(u16::from));
+        Ok(DocumentString::from_utf16(output))
+    }
+
+    fn tokens(
+        &mut self,
+        input: &DocumentString,
+    ) -> Result<HtmlSpaceSeparatedTokens, AutocompleteMaterializationError> {
+        let slices = crate::tokens::space_token_slices(input);
+        let mut tokens = Vec::new();
+        self.reserve(&mut tokens, slices.clone().count(), StoragePurpose::Output)?;
+        for units in slices {
+            let value = self.units(units, false)?;
+            tokens.push(
+                HtmlSpaceToken::new(value).expect("shared split yields a nonempty space token"),
+            );
+        }
+        Ok(HtmlSpaceSeparatedTokens::from_vec(tokens))
+    }
+
+    fn prepend(
+        &mut self,
+        tokens: &mut Vec<HtmlSpaceToken>,
+        token: HtmlSpaceToken,
+        purpose: StoragePurpose,
+    ) -> Result<(), AutocompleteMaterializationError> {
+        self.reserve(tokens, 1, purpose)?;
+        tokens.insert(0, token);
+        Ok(())
+    }
+
+    fn idl(
+        &mut self,
+        tokens: &[HtmlSpaceToken],
+    ) -> Result<DocumentString, AutocompleteMaterializationError> {
+        let units = tokens
+            .iter()
+            .try_fold(tokens.len().saturating_sub(1), |length, token| {
+                length.checked_add(token.value().len())
+            })
+            .ok_or(AutocompleteMaterializationError::Representation)?;
+        let mut output = Vec::new();
+        self.reserve(&mut output, units, StoragePurpose::Output)?;
+        for (index, token) in tokens.iter().enumerate() {
+            if index != 0 {
+                output.push(0x20);
+            }
+            output.extend_from_slice(token.value().code_units());
+        }
+        Ok(DocumentString::from_utf16(output))
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofillFieldCategory {
     Normal,
@@ -736,130 +1028,151 @@ fn identity(value: &DocumentString) -> Option<HtmlAutofillFieldIdentity> {
 fn process(
     tokens: Option<&HtmlSpaceSeparatedTokens>,
     mantle: HtmlAutocompleteMantle,
-) -> HtmlAutocompleteProcessingState {
+    storage: &mut Materialization,
+) -> Result<HtmlAutocompleteProcessingState, AutocompleteMaterializationError> {
+    // All temporary IDL handle storage is local to process_inner, including its
+    // failure/default paths. Drop it before releasing current scratch accounting.
+    let result = process_inner(tokens, mantle, storage);
+    storage.scratch = 0;
+    result
+}
+
+fn process_inner(
+    tokens: Option<&HtmlSpaceSeparatedTokens>,
+    mantle: HtmlAutocompleteMantle,
+    storage: &mut Materialization,
+) -> Result<HtmlAutocompleteProcessingState, AutocompleteMaterializationError> {
     use HtmlAutocompleteDefaultReason as D;
     let Some(tokens) = tokens else {
-        return default_state(mantle, D::MissingAttribute);
+        return Ok(default_state(mantle, D::MissingAttribute));
     };
     let tokens = tokens.tokens();
     let Some(last) = tokens.last() else {
-        return default_state(mantle, D::EmptyTokens);
+        return Ok(default_state(mantle, D::EmptyTokens));
     };
     let Some(field_identity) = identity(last.value()) else {
-        return default_state(mantle, D::UnrecognizedFinalToken);
+        return Ok(default_state(mantle, D::UnrecognizedFinalToken));
     };
     if let HtmlAutofillFieldIdentity::Setting(setting) = field_identity {
         if tokens.len() != 1 {
-            return default_state(mantle, D::SettingWithExtraTokens);
+            return Ok(default_state(mantle, D::SettingWithExtraTokens));
         }
         if mantle == HtmlAutocompleteMantle::Anchor {
-            return default_state(mantle, D::SettingOnAnchor);
+            return Ok(default_state(mantle, D::SettingOnAnchor));
         }
-        let field = DocumentString::from(setting.canonical_keyword());
-        return HtmlAutocompleteProcessingState::Processed(HtmlAutocompleteProcessed {
-            field_identity,
-            idl_value: field.clone(),
-            field,
-            mode: None,
-            contact: None,
-            scope: HtmlSpaceSeparatedTokens::new([]),
-            credential: HtmlAutocompleteCredentialOutcome::NotAssigned,
-        });
+        let field = storage.keyword(setting.canonical_keyword())?;
+        return Ok(HtmlAutocompleteProcessingState::Processed(
+            HtmlAutocompleteProcessed {
+                field_identity,
+                idl_value: field.clone(),
+                field,
+                mode: None,
+                contact: None,
+                scope: HtmlSpaceSeparatedTokens::from_vec(Vec::new()),
+                credential: HtmlAutocompleteCredentialOutcome::NotAssigned,
+            },
+        ));
     }
     let mut index = tokens.len() - 1;
-    let mut credential = HtmlAutocompleteCredentialOutcome::Null;
     let mut detail = match field_identity {
         HtmlAutofillFieldIdentity::Detail(field) => Some(field),
         _ => None,
     };
-    let mut idl = vec![last.clone()];
+    let mut output = ProcessingOutput {
+        field_identity,
+        field: last.value().clone(),
+        mode: None,
+        contact: None,
+        scope: Vec::new(),
+        credential: HtmlAutocompleteCredentialOutcome::Null,
+        idl: Vec::new(),
+    };
+    storage.prepend(&mut output.idl, last.clone(), StoragePurpose::Scratch)?;
     if matches!(field_identity, HtmlAutofillFieldIdentity::Credential(_)) {
-        credential =
+        output.credential =
             HtmlAutocompleteCredentialOutcome::Credential(HtmlAutocompleteCredential::Webauthn);
         if index != 0 {
             index -= 1;
             detail = HtmlAutofillField::from_keyword(tokens[index].value());
             if detail.is_none() {
-                return default_state(mantle, D::InvalidCredentialPrefix);
+                return Ok(default_state(mantle, D::InvalidCredentialPrefix));
             }
-            idl.insert(0, tokens[index].clone());
+            storage.prepend(
+                &mut output.idl,
+                tokens[index].clone(),
+                StoragePurpose::Scratch,
+            )?;
         }
-        // Literal selected pin: `field` remains the original final credential
+        // Literal selected pin: field remains the original final credential
         // token. Category changes for contact processing, not field identity.
     }
-    let mut scope = Vec::new();
-    let mut contact = None;
-    let mut mode = None;
     if index != 0 {
         index -= 1;
         if detail.is_some_and(|field| field.category() == HtmlAutofillFieldCategory::Contact)
             && let Some(hint) = HtmlAutocompleteContactHint::from_keyword(tokens[index].value())
         {
-            contact = Some(hint);
-            let token = keyword_token(hint.canonical_keyword());
-            scope.insert(0, token.clone());
-            idl.insert(0, token);
+            output.contact = Some(hint);
+            let token = HtmlSpaceToken::new(storage.keyword(hint.canonical_keyword())?)
+                .expect("declared hint is a nonempty space token");
+            storage.prepend(&mut output.scope, token.clone(), StoragePurpose::Output)?;
+            storage.prepend(&mut output.idl, token, StoragePurpose::Scratch)?;
             if index == 0 {
-                return processed(field_identity, last, mode, contact, scope, credential, idl);
+                return output.finish(storage);
             }
             index -= 1;
         }
         if let Some(hint) = HtmlAutocompleteMode::from_keyword(tokens[index].value()) {
-            mode = Some(hint);
-            let token = keyword_token(hint.canonical_keyword());
-            scope.insert(0, token.clone());
-            idl.insert(0, token);
+            output.mode = Some(hint);
+            let token = HtmlSpaceToken::new(storage.keyword(hint.canonical_keyword())?)
+                .expect("declared hint is a nonempty space token");
+            storage.prepend(&mut output.scope, token.clone(), StoragePurpose::Output)?;
+            storage.prepend(&mut output.idl, token, StoragePurpose::Scratch)?;
             if index == 0 {
-                return processed(field_identity, last, mode, contact, scope, credential, idl);
+                return output.finish(storage);
             }
             index -= 1;
         }
         if index != 0 {
-            return default_state(mantle, D::ExtraLeadingTokens);
+            return Ok(default_state(mantle, D::ExtraLeadingTokens));
         }
         if !section_prefix(tokens[0].value()) {
-            return default_state(mantle, D::UnrecognizedLeadingToken);
+            return Ok(default_state(mantle, D::UnrecognizedLeadingToken));
         }
-        let section = DocumentString::from_utf16(
-            tokens[0]
-                .value()
-                .code_units()
-                .iter()
-                .map(|&unit| {
-                    if (u16::from(b'A')..=u16::from(b'Z')).contains(&unit) {
-                        unit + u16::from(b'a' - b'A')
-                    } else {
-                        unit
-                    }
-                })
-                .collect::<Vec<_>>(),
-        );
-        let section =
-            HtmlSpaceToken::new(section).expect("ASCII lowercase preserves a nonempty space token");
-        scope.insert(0, section.clone());
-        idl.insert(0, section);
+        let section = HtmlSpaceToken::new(storage.units(tokens[0].value().code_units(), true)?)
+            .expect("ASCII lowercase preserves a nonempty space token");
+        storage.prepend(&mut output.scope, section.clone(), StoragePurpose::Output)?;
+        storage.prepend(&mut output.idl, section, StoragePurpose::Scratch)?;
     }
-    processed(field_identity, last, mode, contact, scope, credential, idl)
+    output.finish(storage)
 }
 
-fn processed(
+struct ProcessingOutput {
     field_identity: HtmlAutofillFieldIdentity,
-    last: &HtmlSpaceToken,
+    field: DocumentString,
     mode: Option<HtmlAutocompleteMode>,
     contact: Option<HtmlAutocompleteContactHint>,
     scope: Vec<HtmlSpaceToken>,
     credential: HtmlAutocompleteCredentialOutcome,
     idl: Vec<HtmlSpaceToken>,
-) -> HtmlAutocompleteProcessingState {
-    HtmlAutocompleteProcessingState::Processed(HtmlAutocompleteProcessed {
-        field_identity,
-        field: last.value().clone(),
-        mode,
-        contact,
-        scope: HtmlSpaceSeparatedTokens::new(scope),
-        credential,
-        idl_value: HtmlSpaceSeparatedTokens::new(idl).as_document_string(),
-    })
+}
+impl ProcessingOutput {
+    fn finish(
+        self,
+        storage: &mut Materialization,
+    ) -> Result<HtmlAutocompleteProcessingState, AutocompleteMaterializationError> {
+        let idl_value = storage.idl(&self.idl)?;
+        Ok(HtmlAutocompleteProcessingState::Processed(
+            HtmlAutocompleteProcessed {
+                field_identity: self.field_identity,
+                field: self.field,
+                mode: self.mode,
+                contact: self.contact,
+                scope: HtmlSpaceSeparatedTokens::from_vec(self.scope),
+                credential: self.credential,
+                idl_value,
+            },
+        ))
+    }
 }
 
 impl HtmlValueInterpreter {
@@ -889,7 +1202,48 @@ impl HtmlValueInterpreter {
         raw: Option<&Attribute>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        let result =
+            self.materialize_autocomplete(element, raw, state, &mut Materialization::new(None));
+        match result {
+            Ok(report) => Ok(report),
+            Err(AutocompleteMaterializationError::RawAdmission(error)) => Err(error),
+            // Standalone has no allocation-limit result contract. Its ordinary
+            // reserve policy already panics/aborts on representation/allocation
+            // failure, as the previous infallible materialization did.
+            Err(error) => panic!("standalone autocomplete storage exhausted: {error:?}"),
+        }
+    }
+
+    pub(crate) fn control_autocomplete_controlled(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        state: Option<HtmlInputType>,
+        limits: AutocompleteMaterializationLimits,
+    ) -> Result<AutocompleteMaterialized, AutocompleteMaterializationFailure> {
+        let mut storage = Materialization::new(Some(limits));
+        let result = self.materialize_autocomplete(element, raw, state, &mut storage);
+        debug_assert_eq!(storage.scratch, 0);
+        result
+            .map(|report| AutocompleteMaterialized {
+                report,
+                usage: storage.usage,
+            })
+            .map_err(|kind| AutocompleteMaterializationFailure {
+                kind,
+                usage: storage.usage,
+            })
+    }
+
+    fn materialize_autocomplete(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+        state: Option<HtmlInputType>,
+        storage: &mut Materialization,
+    ) -> Result<HtmlAutocompleteReport, AutocompleteMaterializationError> {
+        self.admit_attribute_raw(raw.map(Attribute::value))
+            .map_err(AutocompleteMaterializationError::RawAdmission)?;
         let mut input = report(RULE, element, raw);
         if let Some(state) = state {
             input.supplied_context = SuppliedContext::Input(state);
@@ -912,7 +1266,7 @@ impl HtmlValueInterpreter {
             });
         }
         let known = known.expect("autocomplete applicability proves a known HTML control");
-        let tokens = raw.map(|raw| crate::tokens::split_space_tokens(raw.value()));
+        let tokens = raw.map(|raw| storage.tokens(raw.value())).transpose()?;
         let syntax = tokens
             .as_ref()
             .map_or(HtmlAutocompleteSyntaxState::Missing, syntax);
@@ -929,7 +1283,7 @@ impl HtmlValueInterpreter {
                 HtmlAutocompleteProcessingState::InapplicableInputState(state)
             }
             (_, None) => HtmlAutocompleteProcessingState::InputContextRequired,
-            (_, Some(mantle)) => process(tokens.as_ref(), mantle),
+            (_, Some(mantle)) => process(tokens.as_ref(), mantle, storage)?,
         };
         Ok(HtmlAutocompleteReport {
             input,
@@ -939,5 +1293,308 @@ impl HtmlValueInterpreter {
             context_author,
             processing,
         })
+    }
+}
+
+#[cfg(test)]
+mod controlled_tests {
+    use super::*;
+
+    fn limits() -> AutocompleteMaterializationLimits {
+        AutocompleteMaterializationLimits {
+            allocated_bytes: usize::MAX,
+            nested_output_records: usize::MAX,
+            scratch_records: usize::MAX,
+        }
+    }
+    fn raw(value: &str) -> Attribute {
+        Attribute::new(KnownHtmlAttribute::Autocomplete.qualified_name(), value)
+    }
+    fn controlled(
+        value: &str,
+        limits: AutocompleteMaterializationLimits,
+    ) -> Result<AutocompleteMaterialized, AutocompleteMaterializationFailure> {
+        HtmlValueInterpreter::new(200).control_autocomplete_controlled(
+            &KnownHtmlElement::Textarea.qualified_name(),
+            Some(&raw(value)),
+            None,
+            limits,
+        )
+    }
+
+    #[test]
+    fn controlled_producer_preserves_exact_published_observations() {
+        let interpreter = HtmlValueInterpreter::new(200);
+        for value in [
+            "",
+            "ON",
+            "off",
+            "NAME",
+            "webauthn",
+            "USERNAME WEBAUTHN",
+            "SECTION-A SHIPPING HOME TEL WEBAUTHN",
+            "unknown name",
+            "tel home",
+            "on webauthn",
+            "\u{a0}name",
+        ] {
+            let raw = raw(value);
+            for (element, state) in [
+                (KnownHtmlElement::Textarea, None),
+                (KnownHtmlElement::Select, None),
+                (KnownHtmlElement::Input, None),
+                (KnownHtmlElement::Input, Some(HtmlInputType::Hidden)),
+                (KnownHtmlElement::Input, Some(HtmlInputType::Checkbox)),
+            ] {
+                let name = element.qualified_name();
+                let result = interpreter
+                    .control_autocomplete_controlled(&name, Some(&raw), state, limits())
+                    .unwrap();
+                let standalone = if let Some(state) = state {
+                    interpreter.control_autocomplete_for_input(&name, Some(&raw), state)
+                } else {
+                    interpreter.control_autocomplete(&name, Some(&raw))
+                }
+                .unwrap();
+                assert_eq!(result.report, standalone, "{value}, {state:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn controlled_utf16_materialization_preserves_surrogates_and_field_case() {
+        let mut original = b"SECTION-"
+            .iter()
+            .copied()
+            .map(u16::from)
+            .collect::<Vec<_>>();
+        original.extend([0xd800, 0x20, 0x4e, 0x41, 0x4d, 0x45]);
+        let raw = Attribute::new(
+            KnownHtmlAttribute::Autocomplete.qualified_name(),
+            DocumentString::from_utf16(original.clone()),
+        );
+        let result = HtmlValueInterpreter::new(14)
+            .control_autocomplete_controlled(
+                &KnownHtmlElement::Textarea.qualified_name(),
+                Some(&raw),
+                None,
+                limits(),
+            )
+            .unwrap();
+        assert_eq!(result.report.raw().unwrap().code_units(), original);
+        let HtmlAutocompleteProcessingState::Processed(value) = result.report.processing() else {
+            panic!("source section/detail processing succeeds")
+        };
+        assert_eq!(value.field_name(), &DocumentString::from("NAME"));
+        assert_eq!(
+            value.credential_type(),
+            HtmlAutocompleteCredentialOutcome::Null
+        );
+        let mut normalized = b"section-"
+            .iter()
+            .copied()
+            .map(u16::from)
+            .collect::<Vec<_>>();
+        normalized.extend([0xd800, 0x20, 0x4e, 0x41, 0x4d, 0x45]);
+        assert_eq!(value.idl_value().code_units(), normalized);
+        assert_eq!(
+            value.scope().tokens()[0].value().code_units(),
+            &normalized[..9]
+        );
+    }
+
+    #[test]
+    fn exact_observed_allowances_succeed_and_each_one_short_rejects() {
+        let value = "SECTION-A SHIPPING HOME TEL WEBAUTHN";
+        let initial = controlled(value, limits()).unwrap();
+        // Five source tokens and 32 raw units; three scope handles, 21 normalized
+        // units and 36 final IDL units. IDL needs five simultaneous handles.
+        assert!(initial.usage.nested_output_records >= 97);
+        assert!(initial.usage.peak_scratch_records >= 5);
+        let exact = AutocompleteMaterializationLimits {
+            allocated_bytes: initial.usage.allocated_bytes,
+            nested_output_records: initial.usage.nested_output_records,
+            scratch_records: initial.usage.peak_scratch_records,
+        };
+        let repeated = controlled(value, exact).unwrap();
+        assert_eq!(repeated.usage, initial.usage);
+        assert_eq!(repeated.report, initial.report);
+        let error = controlled(
+            value,
+            AutocompleteMaterializationLimits {
+                allocated_bytes: exact.allocated_bytes - 1,
+                ..exact
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind,
+            AutocompleteMaterializationError::BytesLimit {
+                limit: exact.allocated_bytes - 1,
+                required: exact.allocated_bytes
+            }
+        );
+        assert!(error.usage.allocated_bytes > 0);
+        let error = controlled(
+            value,
+            AutocompleteMaterializationLimits {
+                nested_output_records: exact.nested_output_records - 1,
+                ..exact
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind,
+            AutocompleteMaterializationError::OutputLimit {
+                limit: exact.nested_output_records - 1,
+                required: exact.nested_output_records
+            }
+        );
+        let error = controlled(
+            value,
+            AutocompleteMaterializationLimits {
+                scratch_records: exact.scratch_records - 1,
+                ..exact
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind,
+            AutocompleteMaterializationError::ScratchLimit {
+                limit: exact.scratch_records - 1,
+                required: exact.scratch_records
+            }
+        );
+        assert!(error.usage.peak_scratch_records > 0);
+    }
+
+    #[test]
+    fn failed_and_discarded_intermediates_retain_observed_usage() {
+        let error = controlled(
+            "name",
+            AutocompleteMaterializationLimits {
+                scratch_records: 0,
+                ..limits()
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind,
+            AutocompleteMaterializationError::ScratchLimit {
+                limit: 0,
+                required: 1
+            }
+        );
+        assert!(error.usage.allocated_bytes >= std::mem::size_of::<HtmlSpaceToken>() + 8);
+        assert!(error.usage.nested_output_records >= 5);
+        assert_eq!(error.usage.peak_scratch_records, 0);
+        let default = controlled("unknown name", limits()).unwrap();
+        assert!(matches!(
+            default.report.processing(),
+            HtmlAutocompleteProcessingState::Defaulted(_)
+        ));
+        assert!(default.usage.nested_output_records >= 13);
+        assert!(default.usage.peak_scratch_records >= 1);
+        assert!(default.usage.allocated_bytes >= 3 * std::mem::size_of::<HtmlSpaceToken>() + 22);
+        let mut storage = Materialization::new(Some(limits()));
+        let tokens = storage
+            .tokens(&DocumentString::from("unknown name"))
+            .unwrap();
+        process(
+            Some(&tokens),
+            HtmlAutocompleteMantle::Expectation,
+            &mut storage,
+        )
+        .unwrap();
+        assert_eq!(storage.scratch, 0);
+    }
+
+    #[test]
+    fn allocator_overshoot_is_observed_before_resource_rejection() {
+        let mut storage = Materialization::new(Some(AutocompleteMaterializationLimits {
+            allocated_bytes: 8,
+            nested_output_records: 4,
+            scratch_records: 4,
+        }));
+        storage.check_growth(4, 8, StoragePurpose::Output).unwrap();
+        assert_eq!(
+            storage.observe_growth(5, 2, StoragePurpose::Output),
+            Err(AutocompleteMaterializationError::BytesLimit {
+                limit: 8,
+                required: 10
+            })
+        );
+        assert_eq!(storage.usage.allocated_bytes, 10);
+        assert_eq!(storage.usage.nested_output_records, 5);
+        let mut storage = Materialization::new(Some(AutocompleteMaterializationLimits {
+            scratch_records: 4,
+            ..limits()
+        }));
+        assert_eq!(
+            storage.observe_growth(5, 8, StoragePurpose::Scratch),
+            Err(AutocompleteMaterializationError::ScratchLimit {
+                limit: 4,
+                required: 5
+            })
+        );
+        assert_eq!(storage.usage.allocated_bytes, 40);
+        assert_eq!(storage.usage.peak_scratch_records, 5);
+    }
+
+    #[test]
+    fn admission_precedes_irrelevant_context_and_zero_storage_is_valid_when_unused() {
+        let zero = AutocompleteMaterializationLimits {
+            allocated_bytes: 0,
+            nested_output_records: 0,
+            scratch_records: 0,
+        };
+        let raw = raw("name");
+        let foreign = QualifiedName::new(Namespace::svg(), None, "input");
+        let error = HtmlValueInterpreter::new(3)
+            .control_autocomplete_controlled(&foreign, Some(&raw), None, zero)
+            .unwrap_err();
+        assert!(matches!(
+            error.kind,
+            AutocompleteMaterializationError::RawAdmission(_)
+        ));
+        assert_eq!(error.usage, AutocompleteMaterializationUsage::default());
+        let result = HtmlValueInterpreter::new(4)
+            .control_autocomplete_controlled(&foreign, Some(&raw), None, zero)
+            .unwrap();
+        assert_eq!(
+            result.report.applicability(),
+            HtmlAttributeApplicability::ForeignElementNamespace
+        );
+        assert_eq!(result.usage, AutocompleteMaterializationUsage::default());
+        let result = HtmlValueInterpreter::new(0)
+            .control_autocomplete_controlled(
+                &KnownHtmlElement::Input.qualified_name(),
+                None,
+                Some(HtmlInputType::Hidden),
+                zero,
+            )
+            .unwrap();
+        assert!(matches!(
+            result.report.processing(),
+            HtmlAutocompleteProcessingState::Defaulted(_)
+        ));
+        assert_eq!(result.usage, AutocompleteMaterializationUsage::default());
+    }
+
+    #[test]
+    fn representation_and_work_envelope_are_checked_before_growth() {
+        let mut storage = Materialization::new(Some(limits()));
+        assert_eq!(
+            storage.reserve(&mut Vec::<u16>::new(), usize::MAX, StoragePurpose::Output),
+            Err(AutocompleteMaterializationError::Representation)
+        );
+        assert_eq!(storage.usage, AutocompleteMaterializationUsage::default());
+        assert!(autocomplete_materialization_work_bound(0).unwrap() > 0);
+        assert_eq!(
+            autocomplete_materialization_work_bound(1).unwrap()
+                - autocomplete_materialization_work_bound(0).unwrap(),
+            12
+        );
+        assert_eq!(autocomplete_materialization_work_bound(usize::MAX), None);
     }
 }

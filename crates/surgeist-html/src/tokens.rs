@@ -87,14 +87,19 @@ impl Error for HtmlTokenError {}
 /// Uniqueness is a separate contract selected by particular defining clauses.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSpaceSeparatedTokens {
-    tokens: Arc<[HtmlSpaceToken]>,
+    tokens: Arc<Vec<HtmlSpaceToken>>,
 }
 
 impl HtmlSpaceSeparatedTokens {
     /// Constructs a sequence from already-valid tokens in input order.
     pub fn new(tokens: impl IntoIterator<Item = HtmlSpaceToken>) -> Self {
+        Self::from_vec(tokens.into_iter().collect())
+    }
+
+    /// Transfers already-admitted storage without another variable allocation.
+    pub(crate) fn from_vec(tokens: Vec<HtmlSpaceToken>) -> Self {
         Self {
-            tokens: tokens.into_iter().collect(),
+            tokens: Arc::new(tokens),
         }
     }
 
@@ -351,7 +356,7 @@ fn unique_tokens(
     })
 }
 
-fn ascii_whitespace(unit: u16) -> bool {
+pub(crate) fn ascii_whitespace(unit: u16) -> bool {
     matches!(unit, 0x09 | 0x0A | 0x0C | 0x0D | 0x20)
 }
 
@@ -371,15 +376,17 @@ fn concatenate<'a>(
 
 /// Infra split-on-ASCII-whitespace; no attribute-specific conformance claim.
 pub(crate) fn split_space_tokens(input: &DocumentString) -> HtmlSpaceSeparatedTokens {
-    HtmlSpaceSeparatedTokens::new(
-        input
-            .code_units()
-            .split(|&u| ascii_whitespace(u))
-            .filter(|token| !token.is_empty())
-            .map(|token| HtmlSpaceToken {
-                value: DocumentString::from_utf16(token),
-            }),
-    )
+    HtmlSpaceSeparatedTokens::new(space_token_slices(input).map(|token| HtmlSpaceToken {
+        value: DocumentString::from_utf16(token),
+    }))
+}
+
+/// Shared Infra token boundaries for ordinary and controlled materialization.
+pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item = &[u16]> + Clone {
+    input
+        .code_units()
+        .split(|&u| ascii_whitespace(u))
+        .filter(|token| !token.is_empty())
 }
 
 /// Infra split-on-commas, which omits a field following a final comma and
@@ -413,6 +420,28 @@ pub(crate) fn split_comma_tokens(input: &DocumentString) -> HtmlCommaSeparatedTo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admitted_space_token_storage_transfers_without_variable_reallocation() {
+        let mut values = Vec::with_capacity(7);
+        values.push(HtmlSpaceToken::new("A").unwrap());
+        values.push(HtmlSpaceToken::new("A").unwrap());
+        let capacity = values.capacity();
+        let pointer = values.as_ptr();
+        let tokens = HtmlSpaceSeparatedTokens::from_vec(values);
+        assert_eq!(tokens.tokens.capacity(), capacity);
+        assert_eq!(tokens.tokens.as_ptr(), pointer);
+        assert_eq!(
+            tokens,
+            HtmlSpaceSeparatedTokens::new([
+                HtmlSpaceToken::new("A").unwrap(),
+                HtmlSpaceToken::new("A").unwrap(),
+            ])
+        );
+        assert_eq!(tokens.as_document_string(), DocumentString::from("A A"));
+        let cloned = tokens.clone();
+        assert!(Arc::ptr_eq(&tokens.tokens, &cloned.tokens));
+    }
 
     #[test]
     fn space_splitting_uses_only_the_five_ascii_whitespace_units_and_preserves_raw_text() {

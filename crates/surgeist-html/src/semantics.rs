@@ -21,6 +21,8 @@ mod inheritance;
 pub use inheritance::*;
 mod select;
 pub use select::*;
+mod autocomplete;
+pub use autocomplete::*;
 
 use crate::numeric::{
     IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
@@ -640,6 +642,7 @@ pub enum HtmlSemanticQuery {
     SelectedOptions,
     SelectSelectedIndex,
     OptionIndex,
+    ControlAutocomplete,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
@@ -724,6 +727,9 @@ impl HtmlSemanticQuery {
             }
             Self::SelectSelectedIndex => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-selectedindex"
+            }
+            Self::ControlAutocomplete => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#autofill-processing-model"
             }
             Self::OptionIndex => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-index"
@@ -830,6 +836,7 @@ pub enum HtmlSemanticFact {
     /// `Known(None)` represents the source selected index of −1.
     SelectSelectedIndex(HtmlSemanticValue<Option<usize>>),
     OptionIndex(HtmlSemanticValue<usize>),
+    ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlSemanticResult {
@@ -2090,6 +2097,11 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.select_selected_index(&request.subject)?,
                             )
                         }
+                        HtmlSemanticQuery::ControlAutocomplete => {
+                            HtmlSemanticFact::ControlAutocomplete(
+                                self.control_autocomplete(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::OptionIndex => {
                             HtmlSemanticFact::OptionIndex(self.option_index(&request.subject)?)
                         }
@@ -2191,6 +2203,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::SelectSelectedIndex => {
                         HtmlSemanticFact::SelectSelectedIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::ControlAutocomplete => {
+                        HtmlSemanticFact::ControlAutocomplete(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::OptionIndex => {
                         HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Inapplicable)

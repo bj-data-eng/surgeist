@@ -96,6 +96,13 @@ pub surgeist_html::HtmlAutocompleteDefaultReason::SettingOnAnchor
 pub surgeist_html::HtmlAutocompleteDefaultReason::SettingWithExtraTokens
 pub surgeist_html::HtmlAutocompleteDefaultReason::UnrecognizedFinalToken
 pub surgeist_html::HtmlAutocompleteDefaultReason::UnrecognizedLeadingToken
+pub enum surgeist_html::HtmlAutocompleteDefaultResolution
+pub surgeist_html::HtmlAutocompleteDefaultResolution::AnchorEmpty
+pub surgeist_html::HtmlAutocompleteDefaultResolution::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlAutocompleteDefaultResolution::NotRequired
+pub surgeist_html::HtmlAutocompleteDefaultResolution::Resolved
+pub surgeist_html::HtmlAutocompleteDefaultResolution::Resolved::owner: surgeist_html::HtmlFormOwner
+pub surgeist_html::HtmlAutocompleteDefaultResolution::Resolved::setting: surgeist_html::HtmlFormAutocomplete
 pub enum surgeist_html::HtmlAutocompleteMantle
 pub surgeist_html::HtmlAutocompleteMantle::Anchor
 pub surgeist_html::HtmlAutocompleteMantle::Expectation
@@ -897,6 +904,7 @@ pub enum surgeist_html::HtmlSemanticDependencies
 pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
 pub surgeist_html::HtmlSemanticFact::ComputedHeadingLevel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedHeadingLevel>)
+pub surgeist_html::HtmlSemanticFact::ControlAutocomplete(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlAutocomplete>)
 pub surgeist_html::HtmlSemanticFact::CurrentCheckedness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::CurrentSelectedness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Directionality(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDirectionality>)
@@ -960,6 +968,7 @@ pub surgeist_html::HtmlSemanticMissing::SlotAssignment(surgeist_html::HtmlCaptur
 pub surgeist_html::HtmlSemanticMissing::SpellcheckDefault(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlSemanticQuery
 pub surgeist_html::HtmlSemanticQuery::ComputedHeadingLevel
+pub surgeist_html::HtmlSemanticQuery::ControlAutocomplete
 pub surgeist_html::HtmlSemanticQuery::CurrentCheckedness
 pub surgeist_html::HtmlSemanticQuery::CurrentSelectedness
 pub surgeist_html::HtmlSemanticQuery::Directionality
@@ -1742,6 +1751,13 @@ pub fn surgeist_html::HtmlConstructionUsage::depth(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::edges(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::nodes(self) -> usize
 pub fn surgeist_html::HtmlConstructionUsage::utf16_units(self) -> usize
+pub struct surgeist_html::HtmlControlAutocomplete
+impl surgeist_html::HtmlControlAutocomplete
+pub fn surgeist_html::HtmlControlAutocomplete::credential_type(&self) -> core::option::Option<surgeist_html::HtmlAutocompleteCredentialOutcome>
+pub fn surgeist_html::HtmlControlAutocomplete::default_resolution(&self) -> &surgeist_html::HtmlAutocompleteDefaultResolution
+pub fn surgeist_html::HtmlControlAutocomplete::form_autocomplete(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormAutocomplete>>
+pub fn surgeist_html::HtmlControlAutocomplete::input_type(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>>
+pub fn surgeist_html::HtmlControlAutocomplete::intrinsic(&self) -> &surgeist_html::HtmlAutocompleteReport
 pub struct surgeist_html::HtmlControlCurrentValue
 impl surgeist_html::HtmlControlCurrentValue
 pub fn surgeist_html::HtmlControlCurrentValue::new(subject: surgeist_html::HtmlCaptureSubjectId, value: core::option::Option<surgeist_html::DocumentString>) -> Self

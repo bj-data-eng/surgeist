@@ -195,8 +195,8 @@ The [selected credential-edge determination](../../references/html-autocomplete-
 retains the pinned standard's recovery for bare and prefixed WebAuthn tokens,
 independently of author validity. Default reports expose empty IDL/hints/scope
 and distinguish an anchor's empty field from an expectation default requiring
-the actual form owner. That contextual fallback remains pending; missing owner
-evidence is not interpreted as no owner. These reports execute no autofill,
+the actual form owner. Capture-qualified semantic queries resolve that fallback;
+missing owner evidence is not interpreted as no owner. These reports execute no autofill,
 credential mediation or form-control transition.
 
 `HtmlCaptureBuilder` freezes one bounded, flat capture of document, node,
@@ -258,6 +258,17 @@ authored selected attributes, disabledness and multiple do not replace it.
 Collection getters expose capture-qualified subject keys. A known empty selected list
 and no selected index differ from unavailable state or order. These immutable
 results provide no live collection or selection/reset transition.
+
+The control-autocomplete query retains intrinsic syntax and processing, the
+actually consulted input-type report and any consulted form-autocomplete report.
+Only expectation defaults consult the existing form-owner operation: a known
+null owner selects On, while an actual owner supplies its form setting and source
+identity. Missing association evidence leaves the default unresolved. Successful
+detail processing and anchor defaults do not consult unrelated form facts.
+The session admits the shared producer's actual variable vector capacities,
+retained output and temporary scratch, preserving observed usage on failure.
+Fixed shared wrappers and allocator internals are outside that capacity contract.
+These observations perform no autofill or credential mediation.
 
 `HtmlGlobalInheritanceFacts` supplies actual document design-mode states and
 per-element spellcheck default behaviors. The checked supplement joins one
