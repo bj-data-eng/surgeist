@@ -5398,3 +5398,86 @@ fn formatting_after_body_and_after_after_body_whitespace_delegates_to_real_body_
         );
     }
 }
+
+#[test]
+fn ordinary_form_end_removes_only_the_pointed_stack_identity_and_allows_a_later_form() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><form id=f><div>1</form>2</div><form id=g>3</form>4"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        // The published driver retains the actual opener at Form. Release the
+        // real tree/token/controller owners before the runtime RED assertion.
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_outline = outline(document);
+    let html = document.root().children().next().unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let old_form = document.node(&body).unwrap().children().next().unwrap();
+    let later_form = document.node(&body).unwrap().children().nth(1).unwrap();
+    let attributes: Vec<_> = [&old_form, &later_form]
+        .into_iter()
+        .map(|id| {
+            let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                panic!("source-derived form positions must be actual elements");
+            };
+            element
+                .attributes()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute
+                            .name()
+                            .namespace()
+                            .uri()
+                            .map(|uri| uri.code_units().to_vec()),
+                        attribute.name().local_name().code_units().to_vec(),
+                        attribute.value().code_units().to_vec(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // Observations own plain units, not clones of admitted string backing.
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "div"),
+            (4, "#12"),
+            (2, "form"),
+            (3, "#3"),
+            (2, "#4"),
+        ])
+    );
+    assert_ne!(old_form, later_form);
+    assert_eq!(
+        attributes,
+        vec![
+            vec![(
+                None::<Vec<u16>>,
+                vec![b'i' as u16, b'd' as u16],
+                vec![b'f' as u16]
+            )],
+            vec![(
+                None::<Vec<u16>>,
+                vec![b'i' as u16, b'd' as u16],
+                vec![b'g' as u16]
+            )],
+        ]
+    );
+}
