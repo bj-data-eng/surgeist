@@ -448,6 +448,11 @@ pub fn surgeist_html::HtmlContentEditable::into_attribute(self) -> surgeist_html
 pub enum surgeist_html::HtmlContentEditableState
 pub surgeist_html::HtmlContentEditableState::Inherit
 pub surgeist_html::HtmlContentEditableState::Keyword(surgeist_html::HtmlContentEditable)
+pub enum surgeist_html::HtmlControlAttributeApplication
+pub surgeist_html::HtmlControlAttributeApplication::Applicable
+pub surgeist_html::HtmlControlAttributeApplication::IgnoredInputState
+pub surgeist_html::HtmlControlAttributeApplication::InputStateRequired
+pub surgeist_html::HtmlControlAttributeApplication::Unapplied(surgeist_html::HtmlAttributeApplicability)
 pub enum surgeist_html::HtmlControlFactsError
 pub surgeist_html::HtmlControlFactsError::Capture(surgeist_html::HtmlCaptureError)
 pub surgeist_html::HtmlControlFactsError::ContradictoryCustomControlAssociation(surgeist_html::HtmlCaptureSubjectId)
@@ -474,6 +479,51 @@ pub surgeist_html::HtmlControlFlag::DirtyValue
 pub surgeist_html::HtmlControlFlag::Indeterminateness
 pub surgeist_html::HtmlControlFlag::OptionDirtiness
 pub surgeist_html::HtmlControlFlag::Selectedness
+pub enum surgeist_html::HtmlControlGetterOrigin
+pub surgeist_html::HtmlControlGetterOrigin::MissingDefault
+pub surgeist_html::HtmlControlGetterOrigin::OutOfRangeDefault
+pub surgeist_html::HtmlControlGetterOrigin::ParseFailureDefault
+pub surgeist_html::HtmlControlGetterOrigin::Recovered
+pub surgeist_html::HtmlControlGetterOrigin::ZeroDefault
+pub enum surgeist_html::HtmlControlInitialText
+pub surgeist_html::HtmlControlInitialText::InputValue(core::option::Option<surgeist_html::Attribute>)
+pub surgeist_html::HtmlControlInitialText::TextareaDescendantText(surgeist_html::DocumentString)
+pub enum surgeist_html::HtmlControlInitialTextState
+pub surgeist_html::HtmlControlInitialTextState::Conforming
+pub surgeist_html::HtmlControlInitialTextState::Conforming::code_units: usize
+pub surgeist_html::HtmlControlInitialTextState::DifferentContext
+pub surgeist_html::HtmlControlInitialTextState::DifferentValueAttribute
+pub surgeist_html::HtmlControlInitialTextState::ExceedsMaximum
+pub surgeist_html::HtmlControlInitialTextState::ExceedsMaximum::code_units: usize
+pub surgeist_html::HtmlControlInitialTextState::IgnoredInputState
+pub surgeist_html::HtmlControlInitialTextState::InputStateRequired
+pub surgeist_html::HtmlControlInitialTextState::NotRequired
+pub surgeist_html::HtmlControlInitialTextState::Unapplied
+pub surgeist_html::HtmlControlInitialTextState::Unchecked
+pub enum surgeist_html::HtmlControlIntegerAuthorState
+pub surgeist_html::HtmlControlIntegerAuthorState::Conforming
+pub surgeist_html::HtmlControlIntegerAuthorState::Missing
+pub surgeist_html::HtmlControlIntegerAuthorState::Nonconforming(surgeist_html::HtmlValueFailure)
+pub surgeist_html::HtmlControlIntegerAuthorState::Unapplied
+pub surgeist_html::HtmlControlIntegerAuthorState::ZeroMustBePositive
+pub enum surgeist_html::HtmlControlLengthError
+pub surgeist_html::HtmlControlLengthError::Admission(surgeist_html::HtmlValueAdmissionError)
+pub surgeist_html::HtmlControlLengthError::InputCodeUnitsOverflow
+impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlControlLengthError
+pub fn surgeist_html::HtmlControlLengthError::from(error: surgeist_html::HtmlValueAdmissionError) -> Self
+impl core::error::Error for surgeist_html::HtmlControlLengthError
+pub fn surgeist_html::HtmlControlLengthError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlControlLengthError
+pub fn surgeist_html::HtmlControlLengthError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlControlLengthPairState
+pub surgeist_html::HtmlControlLengthPairState::Conforming
+pub surgeist_html::HtmlControlLengthPairState::MinimumExceedsMaximum
+pub surgeist_html::HtmlControlLengthPairState::NotRequired
+pub surgeist_html::HtmlControlLengthPairState::Unapplied
+pub surgeist_html::HtmlControlLengthPairState::Unchecked
+pub enum surgeist_html::HtmlControlLengthValue
+pub surgeist_html::HtmlControlLengthValue::Bound(surgeist_html::HtmlNonNegativeInteger)
+pub surgeist_html::HtmlControlLengthValue::NoBound
 pub enum surgeist_html::HtmlCrossOrigin
 pub surgeist_html::HtmlCrossOrigin::Anonymous
 pub surgeist_html::HtmlCrossOrigin::UseCredentials
@@ -712,6 +762,9 @@ pub surgeist_html::HtmlInputMode::Url
 impl surgeist_html::HtmlInputMode
 pub fn surgeist_html::HtmlInputMode::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputMode::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlInputSizeValue
+pub surgeist_html::HtmlInputSizeValue::NoPositiveRequest
+pub surgeist_html::HtmlInputSizeValue::PositiveCharacters(surgeist_html::HtmlNonNegativeInteger)
 pub enum surgeist_html::HtmlInputType
 pub surgeist_html::HtmlInputType::Button
 pub surgeist_html::HtmlInputType::Checkbox
@@ -1872,6 +1925,43 @@ impl surgeist_html::HtmlControlFactsLimits
 pub fn surgeist_html::HtmlControlFactsLimits::new(record_capacity: usize, validation_work: usize) -> Self
 pub fn surgeist_html::HtmlControlFactsLimits::record_capacity(self) -> usize
 pub fn surgeist_html::HtmlControlFactsLimits::validation_work(self) -> usize
+pub struct surgeist_html::HtmlControlLengthBoundsReport
+impl surgeist_html::HtmlControlLengthBoundsReport
+pub fn surgeist_html::HtmlControlLengthBoundsReport::initial_text(&self) -> core::option::Option<&surgeist_html::HtmlControlInitialText>
+pub fn surgeist_html::HtmlControlLengthBoundsReport::initial_text_author(&self) -> surgeist_html::HtmlControlInitialTextState
+pub fn surgeist_html::HtmlControlLengthBoundsReport::initial_text_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlControlLengthBoundsReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlControlLengthBoundsReport::maximum(&self) -> &surgeist_html::HtmlControlLengthReport
+pub fn surgeist_html::HtmlControlLengthBoundsReport::minimum(&self) -> &surgeist_html::HtmlControlLengthReport
+pub fn surgeist_html::HtmlControlLengthBoundsReport::newline_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlControlLengthBoundsReport::pair_author(&self) -> surgeist_html::HtmlControlLengthPairState
+pub fn surgeist_html::HtmlControlLengthBoundsReport::pair_source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlControlLengthReport
+impl surgeist_html::HtmlControlLengthReport
+pub fn surgeist_html::HtmlControlLengthReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlControlLengthReport::application(&self) -> surgeist_html::HtmlControlAttributeApplication
+pub fn surgeist_html::HtmlControlLengthReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlControlLengthReport::author(&self) -> surgeist_html::HtmlControlIntegerAuthorState
+pub fn surgeist_html::HtmlControlLengthReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>>
+pub fn surgeist_html::HtmlControlLengthReport::context_author(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub fn surgeist_html::HtmlControlLengthReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlControlLengthReport::getter_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlControlLengthReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlControlLengthReport::input_state(&self) -> core::option::Option<surgeist_html::HtmlInputType>
+pub fn surgeist_html::HtmlControlLengthReport::input_state_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlControlLengthReport::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlControlLengthReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlControlLengthReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlControlLengthReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlControlLengthReport::recovered(&self) -> core::option::Option<&surgeist_html::HtmlNonNegativeInteger>
+pub fn surgeist_html::HtmlControlLengthReport::source_clause(&self) -> &'static str
+impl surgeist_html::HtmlControlLengthReport
+pub fn surgeist_html::HtmlControlLengthReport::content(&self) -> core::option::Option<&surgeist_html::HtmlControlLengthValue>
+pub fn surgeist_html::HtmlControlLengthReport::getter_definition_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlControlLengthReport::getter_limitation_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlControlLengthReport::getter_origin(&self) -> core::option::Option<surgeist_html::HtmlControlGetterOrigin>
+pub fn surgeist_html::HtmlControlLengthReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlControlLengthReport::reflected_getter(&self) -> core::option::Option<i32>
 pub struct surgeist_html::HtmlCustomControlClassification
 impl surgeist_html::HtmlCustomControlClassification
 pub fn surgeist_html::HtmlCustomControlClassification::form_associated(&self) -> bool
@@ -2145,6 +2235,34 @@ pub fn surgeist_html::HtmlInputControlState::dirty_value(&self) -> core::option:
 pub fn surgeist_html::HtmlInputControlState::indeterminateness(&self) -> core::option::Option<bool>
 pub fn surgeist_html::HtmlInputControlState::new(subject: surgeist_html::HtmlCaptureSubjectId, checkedness: core::option::Option<bool>, dirty_checkedness: core::option::Option<bool>, dirty_value: core::option::Option<bool>, indeterminateness: core::option::Option<bool>) -> Self
 pub fn surgeist_html::HtmlInputControlState::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlInputSizeReport
+impl surgeist_html::HtmlInputSizeReport
+pub fn surgeist_html::HtmlInputSizeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlInputSizeReport::application(&self) -> surgeist_html::HtmlControlAttributeApplication
+pub fn surgeist_html::HtmlInputSizeReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlInputSizeReport::author(&self) -> surgeist_html::HtmlControlIntegerAuthorState
+pub fn surgeist_html::HtmlInputSizeReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>>
+pub fn surgeist_html::HtmlInputSizeReport::context_author(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub fn surgeist_html::HtmlInputSizeReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlInputSizeReport::getter_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlInputSizeReport::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlInputSizeReport::input_state(&self) -> core::option::Option<surgeist_html::HtmlInputType>
+pub fn surgeist_html::HtmlInputSizeReport::input_state_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlInputSizeReport::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlInputSizeReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlInputSizeReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlInputSizeReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlInputSizeReport::recovered(&self) -> core::option::Option<&surgeist_html::HtmlNonNegativeInteger>
+pub fn surgeist_html::HtmlInputSizeReport::source_clause(&self) -> &'static str
+impl surgeist_html::HtmlInputSizeReport
+pub fn surgeist_html::HtmlInputSizeReport::content(&self) -> core::option::Option<&surgeist_html::HtmlInputSizeValue>
+pub fn surgeist_html::HtmlInputSizeReport::getter_definition_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlInputSizeReport::getter_origin(&self) -> core::option::Option<surgeist_html::HtmlControlGetterOrigin>
+pub fn surgeist_html::HtmlInputSizeReport::reflected_getter(&self) -> core::option::Option<u32>
+pub struct surgeist_html::HtmlInputSizeZeroError
+impl core::error::Error for surgeist_html::HtmlInputSizeZeroError
+impl core::fmt::Display for surgeist_html::HtmlInputSizeZeroError
+pub fn surgeist_html::HtmlInputSizeZeroError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlInteger
 impl surgeist_html::HtmlInteger
 pub fn surgeist_html::HtmlInteger::as_document_string(&self) -> surgeist_html::DocumentString
@@ -2281,6 +2399,10 @@ pub fn surgeist_html::HtmlNonNegativeInteger::into_canvas_height_attribute(self)
 pub fn surgeist_html::HtmlNonNegativeInteger::into_canvas_width_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlNonNegativeInteger::into_textarea_cols_attribute(self) -> core::result::Result<surgeist_html::Attribute, surgeist_html::HtmlNumericAttributeConformanceError>
 pub fn surgeist_html::HtmlNonNegativeInteger::into_textarea_rows_attribute(self) -> core::result::Result<surgeist_html::Attribute, surgeist_html::HtmlNumericAttributeConformanceError>
+impl surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeInteger::into_input_size_attribute(self) -> core::result::Result<surgeist_html::Attribute, surgeist_html::HtmlInputSizeZeroError>
+pub fn surgeist_html::HtmlNonNegativeInteger::into_maxlength_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlNonNegativeInteger::into_minlength_attribute(self) -> surgeist_html::Attribute
 impl core::convert::From<surgeist_html::HtmlNonNegativeInteger> for surgeist_html::HtmlNonNegativeDecimal
 pub fn surgeist_html::HtmlNonNegativeDecimal::from(integer: surgeist_html::HtmlNonNegativeInteger) -> Self
 impl core::convert::From<u128> for surgeist_html::HtmlNonNegativeInteger
@@ -2685,6 +2807,8 @@ pub struct surgeist_html::HtmlValueAdmissionError
 impl surgeist_html::HtmlValueAdmissionError
 pub fn surgeist_html::HtmlValueAdmissionError::capacity(self) -> usize
 pub fn surgeist_html::HtmlValueAdmissionError::required(self) -> usize
+impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlControlLengthError
+pub fn surgeist_html::HtmlControlLengthError::from(error: surgeist_html::HtmlValueAdmissionError) -> Self
 impl core::error::Error for surgeist_html::HtmlValueAdmissionError
 impl core::fmt::Display for surgeist_html::HtmlValueAdmissionError
 pub fn surgeist_html::HtmlValueAdmissionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -2746,6 +2870,10 @@ pub fn surgeist_html::HtmlValueInterpreter::contenteditable(&self, element: &sur
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::control_autocomplete(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAutocompleteReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::control_autocomplete_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAutocompleteReport, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::control_length_bounds(&self, element: &surgeist_html::QualifiedName, minimum: core::option::Option<&surgeist_html::Attribute>, maximum: core::option::Option<&surgeist_html::Attribute>, input_state: core::option::Option<surgeist_html::HtmlInputType>, initial_text: core::option::Option<&surgeist_html::HtmlControlInitialText>) -> core::result::Result<surgeist_html::HtmlControlLengthBoundsReport, surgeist_html::HtmlControlLengthError>
+pub fn surgeist_html::HtmlValueInterpreter::input_size(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlInputSizeReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::input_size_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlInputSizeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::crossorigin(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCrossOriginState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

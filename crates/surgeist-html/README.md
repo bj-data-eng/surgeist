@@ -184,6 +184,19 @@ selected value; the captured form-setting queries below use the actual form
 owner for effective fallback. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
 
+Input size and input/textarea length reports retain exact recovered integers,
+whole-value authorship and actual input-state applicability. A missing, invalid
+or zero input size selects no positive content advisory; its reflected getter
+defaults separately to 20. Missing or invalid length values select no bound;
+their reflected getters separately return −1, including for exact values beyond
+the signed-long range. Bounds and minimum≤maximum checks preserve arbitrarily
+large values. Supplied initial input `value` or textarea descendant text supports
+the separate maximum-length author check, with textarea newline normalization
+and UTF-16 code-unit counting. Unknown control state stays unresolved. These
+operations do not compute runtime tooLong/tooShort, rendering or IDL setters.
+Raw admission is per supplied value; these intrinsic reports do not promise
+allocation recovery, work accounting or cancellation.
+
 Control autocomplete reports preserve ordered tokens, authored detail grammar,
 actual input-state and element constraints, and the separate processing result.
 Native detail construction requires a standard field and checks contact hints;
