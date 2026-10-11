@@ -8959,3 +8959,157 @@ fn ordinary_output_explicit_form_resolves_late_id_and_formatting_reconstruction_
         ])
     );
 }
+
+#[test]
+fn ordinary_hidden_inputs_preserve_ordered_value_rewrite_and_form_sibling_order() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><input value='A&#13;B&#10;C' type=hidden name=before><input type=HiDdEn value='A&#13;B&#10;C' name=after><input value='&#13;&#10;' type=hidden name=empty>Z</form>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        // Dispose every actual tree/lexer/controller owner before the RED assertion.
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let actual_outline = outline(document);
+    // A real doctype precedes the html element in the Document.
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let input_child_counts: Vec<_> = children[..3]
+        .iter()
+        .map(|id| document.node(id).unwrap().children().count())
+        .collect();
+    let HtmlNodeKind::Text(following_text) = document.node(&children[3]).unwrap().kind() else {
+        panic!("the literal Z following three void inputs is actual form child text");
+    };
+    let following_units = following_text.code_units().to_vec();
+    let elements: Vec<_> = [&form, &children[0], &children[1], &children[2]]
+        .into_iter()
+        .map(|id| {
+            let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                panic!("source-derived form/input positions must be actual elements");
+            };
+            (
+                element
+                    .name()
+                    .namespace()
+                    .uri()
+                    .unwrap()
+                    .code_units()
+                    .to_vec(),
+                element.name().local_name().code_units().to_vec(),
+                element
+                    .attributes()
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            attribute
+                                .name()
+                                .namespace()
+                                .uri()
+                                .map(|uri| uri.code_units().to_vec()),
+                            attribute.name().local_name().code_units().to_vec(),
+                            attribute.value().code_units().to_vec(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(children.len(), 4);
+    assert_ne!(children[0], children[1]);
+    assert_ne!(children[0], children[2]);
+    assert_ne!(children[1], children[2]);
+    assert_eq!(input_child_counts, vec![0, 0, 0]);
+    assert_eq!(following_units, vec![90]);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "input"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    let html_namespace: Vec<u16> = "http://www.w3.org/1999/xhtml".encode_utf16().collect();
+    // Before type: Text strips CR/LF; nonempty Text→Hidden writes ABC back.
+    // Type first: Hidden preserves CR/LF. Newline-only before type sanitizes to
+    // empty, so the nonempty transition guard leaves the original attribute.
+    assert_eq!(
+        elements,
+        vec![
+            (
+                html_namespace.clone(),
+                vec![102, 111, 114, 109],
+                vec![(None::<Vec<u16>>, vec![105, 100], vec![102])]
+            ),
+            (
+                html_namespace.clone(),
+                vec![105, 110, 112, 117, 116],
+                vec![
+                    (None, vec![118, 97, 108, 117, 101], vec![65, 66, 67]),
+                    (
+                        None,
+                        vec![116, 121, 112, 101],
+                        vec![104, 105, 100, 100, 101, 110]
+                    ),
+                    (
+                        None,
+                        vec![110, 97, 109, 101],
+                        vec![98, 101, 102, 111, 114, 101]
+                    ),
+                ]
+            ),
+            (
+                html_namespace.clone(),
+                vec![105, 110, 112, 117, 116],
+                vec![
+                    (
+                        None,
+                        vec![116, 121, 112, 101],
+                        vec![72, 105, 68, 100, 69, 110]
+                    ),
+                    (None, vec![118, 97, 108, 117, 101], vec![65, 13, 66, 10, 67]),
+                    (None, vec![110, 97, 109, 101], vec![97, 102, 116, 101, 114]),
+                ]
+            ),
+            (
+                html_namespace,
+                vec![105, 110, 112, 117, 116],
+                vec![
+                    (None, vec![118, 97, 108, 117, 101], vec![13, 10]),
+                    (
+                        None,
+                        vec![116, 121, 112, 101],
+                        vec![104, 105, 100, 100, 101, 110]
+                    ),
+                    (None, vec![110, 97, 109, 101], vec![101, 109, 112, 116, 121]),
+                ]
+            ),
+        ]
+    );
+}
