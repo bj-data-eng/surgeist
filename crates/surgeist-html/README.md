@@ -163,7 +163,8 @@ content and usage. Document self identity is covered by the subject count;
 relationships count references to other retained records.
 
 `HtmlSemanticSession` borrows one capture and a matching `HtmlSemanticContext`
-to answer hidden-state, disabledness, list and table queries. Disabledness includes
+to answer hidden-state, disabledness, language, directionality, list, table,
+meter and progress queries. Disabledness includes
 the fieldset’s first-legend exception and the option/optgroup/select rules;
 custom controls use the supplied form-associated classifications. Results
 distinguish known values, inapplicable subjects, missing captured facts and
@@ -174,8 +175,39 @@ Reports and admitted query failures retain the same immutable qualification:
 HTML revision, capture, context, host-facts revision and selected limits.
 Constructor rejection has no admitted-session qualification. Dependency results
 currently request conservative recomputation. These operations borrow captured
-relationships without constructing a live tree; language, direction and inertness
-remain part of the semantic contribution.
+relationships without constructing a live tree. Inertness and the remaining
+control/form semantics remain part of the contribution.
+
+`HtmlSemanticContextInput` groups supplied classifications and optional qualified
+supplements. The checked context joins them to the exact capture and host
+revision. `HtmlLanguageDirectionFacts` retains processed document-language
+fallbacks, actual current control values and ordered assigned-slot nodes.
+Its finite retention and validation caps are explicit. Missing facts remain
+unavailable; known empty assignments are distinct from missing assignments.
+
+Language selection preserves the exact tag and its origin, including XML
+language precedence, inheritance, explicitly unknown empty language and
+document fallbacks. It does not claim tag validity or language-service support.
+Element directionality follows explicit, inherited and auto states, using
+current control values or source-selected text and slot relationships. The
+private first-strong table selects Unicode 18.0.0 and UAX #9 revision 52; reports
+and failures retain that data qualification. It preserves the selected L class
+for isolated surrogates and combines valid UTF-16 pairs into one code point.
+
+The standard-library-only `tools/generate_bidi_class.py --check` reproduces the
+private table offline from the complete checked-in DerivedBidiClass data.
+Optional `--verify-unicode-data PATH` compares assigned properties with an
+independent UnicodeData witness. The lookup and tests cover the complete code
+point domain without supplying a full bidirectional layout algorithm. See the
+[source selection](../../references/SOURCE-EDITIONS.md#html-language-and-directionality-sources)
+and [data notice](../../licenses/unicode/18.0.0/NOTICE.md).
+
+`HtmlMeterState` retains the recovered and clamped minimum, maximum, value,
+low, high and optimum values. `HtmlProgressState` distinguishes indeterminate
+progress from a determinate maximum, value and position. These operations apply
+the pinned element clauses and finite binary64 recovery; they do not establish
+author conformance. Temporary numeric conversion storage participates in the
+same session allocation cap, including fallback and overflow paths.
 
 List ownership and ordinals consume `HtmlListParticipation`, qualified by the
 capture and separate style and box-participation producer revisions. Computed

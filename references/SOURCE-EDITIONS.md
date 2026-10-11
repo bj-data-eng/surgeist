@@ -236,3 +236,48 @@ changing the color-input state's separate CSS ownership.
 ### Bounded referrer-policy vocabulary
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the [Referrer Policy vocabulary](referrer-policy-vocabulary--cc435b05ca4a.md) selects the finite enumeration from W3C editor-source revision `cc435b05ca4a94f7f1a139be5074b168d20014db` (20 March 2026). The complete original source SHA-256 is `a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1`. Eight nonempty keywords and the empty state are retained. Pinned HTML §2.5.5 supplies ASCII-insensitive whole-value matching without trimming and missing/invalid empty-state defaults. Empty remains unresolved; the implementation does not substitute the external draft's default policy. This selection adopts no network, Fetch, referrer-generation, policy-container, URL or header-list algorithm. The older 2017 CR's surrounding processing model is not mixed into this selection.
+
+### HTML language and directionality sources
+
+For [#1134](https://github.com/bj-data-eng/surgeist/issues/1134), pinned HTML
+§3.2.6.2 selects the effective language tag. The
+[RFC 5646 boundary reference](bcp47-html-language-boundary--rfc5646.md) identifies
+the distinctions between syntax, registry-qualified validity and private
+interpretation. Selecting and preserving the exact nonempty tag does not claim
+language recognition, validity, installed locale data or service support. An
+empty selection represents explicitly unknown language; no universal recognized
+language enumeration or registry filter is required for this operation.
+
+Pinned HTML §3.2.6.4 supplies directionality, including first-strong tests on
+text, current control values and assigned slot content. The selected property
+edition is final Unicode 18.0.0, UAX #9 revision 52 (1 September 2026), with the
+complete [DerivedBidiClass data](unicode-derived-bidi-class--18.0.0.md), SHA-256
+`d9e23222522551348ea1ccfbb4f62efbf98982afb95840f8959c08ed992c5607`.
+Both general and range-specific `@missing` defaults apply; isolated surrogate
+code points have class L. HTML requires only L, R, AL and the remaining classes
+for its first-strong decision. This selection introduces no full bidirectional
+layout algorithm or text-service dependency. The
+[UAX #9 record](uax9--18.0.0--rev52-metadata.md) is metadata only because the
+report's publication terms do not authorize public reproduction of its text.
+The separately licensed data remains available for offline generation and
+verification.
+
+### HTML inertness and DOM flat-tree facts
+
+Pinned HTML §6.3.1–6.3.2 owns inertness. DOM supplies qualified flat-tree facts
+under [CSS Shadow §4.1](selectors-execution-css-shadow-1--editor-capture-20261010--b02c47a6b167.md#flattening),
+source revision `50337328484f7fcdd9ab6fe9ded6011815b1707e`; HTML does not derive
+flattening from ordinary parent links. The
+[pinned WebKit modal witness](html-modal-inert-escape--webkit-73aa6c89e2cb.md)
+resolves one bounded question: the current blocking/topmost modal subject
+resets inherited attribute inertness. A lower modal dialog does not receive an
+independent escape boundary. The blocking subject's own applicable `inert`
+attribute still establishes inertness.
+
+The selected document flat-tree relation excludes detached nodes. That known
+exclusion does not establish empty inherited inert ancestry. Until a separately
+qualified producer supplies detached ancestry, a query requiring it reports
+unavailable context. An own applicable `inert` attribute can establish true
+without that ancestry. Disconnection removes document modal blocking, not all
+inertness causes. This is a producer capability limit, not a new HTML flattening
+rule or a successful false result.

@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 348 retained source identities and states their representations: 254 full documents/source witnesses, 89 partial witnesses, and 5 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 351 retained source identities and states their representations: 255 full documents/source witnesses, 89 partial witnesses, and 7 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -77,3 +77,5 @@ The [HTML language edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline
 The [being-rendered definition](html-being-rendered--877d6146487f.md) retains one
 definition and two notes from that same snapshot. It supplies the participation
 meaning required by HTML list ownership without importing the rendering chapter.
+
+The [HTML language/directionality edition map](SOURCE-EDITIONS.md#html-language-and-directionality-sources) selects complete licensed Unicode 18.0.0 [DerivedBidiClass data](unicode-derived-bidi-class--18.0.0.md). [UAX #9 revision 52](uax9--18.0.0--rev52-metadata.md) and [RFC 5646](bcp47-html-language-boundary--rfc5646.md) retain metadata and external citations only, with their publication limits explicit. The [modal inertness witness](html-modal-inert-escape--webkit-73aa6c89e2cb.md) identifies bounded evidence from two existing WebKit source identities; it does not add a new HTML edition or downstream dependency.

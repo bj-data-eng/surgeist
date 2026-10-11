@@ -41,7 +41,13 @@ fn element(
     .unwrap()
 }
 fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(c, c.host_facts_revision().clone(), vec![], 0, None, None).unwrap()
+    HtmlSemanticContext::new(
+        c,
+        c.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]),
+        0,
+    )
+    .unwrap()
 }
 fn session<'a>(c: &'a HtmlCapture, cx: &'a HtmlSemanticContext) -> HtmlSemanticSession<'a> {
     HtmlSemanticSession::new(
@@ -357,15 +363,18 @@ fn custom_control_participation_requires_explicit_matching_host_revision() {
         HtmlSemanticContext::new(
             &c,
             HtmlHostFactsRevision::fresh(),
-            facts.clone(),
-            2,
-            None,
-            None
+            HtmlSemanticContextInput::new(facts.clone()),
+            2
         ),
         Err(HtmlSemanticContextError::HostRevisionMismatch)
     ));
-    let cx = HtmlSemanticContext::new(&c, c.host_facts_revision().clone(), facts, 2, None, None)
-        .unwrap();
+    let cx = HtmlSemanticContext::new(
+        &c,
+        c.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(facts),
+        2,
+    )
+    .unwrap();
     let r = session(&c, &cx)
         .query(&[&yes, &no, &unknown].map(|e| request(&c, e, HtmlSemanticQuery::Disabledness)))
         .unwrap();
@@ -525,19 +534,15 @@ fn completed_results_survive_later_cancellation_and_qualify_context_changes() {
     let yes = HtmlSemanticContext::new(
         &c,
         c.host_facts_revision().clone(),
-        vec![HtmlCustomControlClassification::new(id.clone(), true)],
+        HtmlSemanticContextInput::new(vec![HtmlCustomControlClassification::new(id.clone(), true)]),
         1,
-        None,
-        None,
     )
     .unwrap();
     let no = HtmlSemanticContext::new(
         &c,
         c.host_facts_revision().clone(),
-        vec![HtmlCustomControlClassification::new(id, false)],
+        HtmlSemanticContextInput::new(vec![HtmlCustomControlClassification::new(id, false)]),
         1,
-        None,
-        None,
     )
     .unwrap();
     let cancel = HtmlSemanticCancellation::new();
@@ -618,10 +623,8 @@ fn producer_context_rejects_duplicate_foreign_and_over_capacity_records() {
         HtmlSemanticContext::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![fact.clone()],
-            0,
-            None,
-            None
+            HtmlSemanticContextInput::new(vec![fact.clone()]),
+            0
         ),
         Err(HtmlSemanticContextError::ClassificationLimit { .. })
     ));
@@ -629,10 +632,8 @@ fn producer_context_rejects_duplicate_foreign_and_over_capacity_records() {
         HtmlSemanticContext::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![fact.clone(), fact.clone()],
-            2,
-            None,
-            None
+            HtmlSemanticContextInput::new(vec![fact.clone(), fact.clone()]),
+            2
         ),
         Err(HtmlSemanticContextError::DuplicateSubject(_))
     ));
@@ -642,10 +643,8 @@ fn producer_context_rejects_duplicate_foreign_and_over_capacity_records() {
         HtmlSemanticContext::new(
             &oc,
             oc.host_facts_revision().clone(),
-            vec![fact],
-            1,
-            None,
-            None
+            HtmlSemanticContextInput::new(vec![fact]),
+            1
         )
         .unwrap_err(),
         HtmlSemanticContextError::Capture(HtmlCaptureError::ForeignCapture)
@@ -681,19 +680,18 @@ fn retained_cancellation_identifies_exact_capture_context_host_and_configuration
     let yes = HtmlSemanticContext::new(
         &c,
         c.host_facts_revision().clone(),
-        vec![HtmlCustomControlClassification::new(subject.clone(), true)],
+        HtmlSemanticContextInput::new(vec![HtmlCustomControlClassification::new(
+            subject.clone(),
+            true,
+        )]),
         1,
-        None,
-        None,
     )
     .unwrap();
     let no = HtmlSemanticContext::new(
         &c,
         c.host_facts_revision().clone(),
-        vec![HtmlCustomControlClassification::new(subject, false)],
+        HtmlSemanticContextInput::new(vec![HtmlCustomControlClassification::new(subject, false)]),
         1,
-        None,
-        None,
     )
     .unwrap();
     let limits = HtmlSemanticLimits::new(1000, 2, 10000, 10000, 1000000, 100000);
@@ -938,10 +936,9 @@ fn list_context(
     HtmlSemanticContext::new(
         c,
         c.host_facts_revision().clone(),
-        vec![],
+        HtmlSemanticContextInput::new(vec![])
+            .with_list_participation(revision, Some(participation)),
         0,
-        Some(revision),
-        Some(participation),
     )
     .unwrap()
 }
@@ -1373,10 +1370,9 @@ fn participation_input_rejects_foreign_duplicate_stale_and_contradictory_records
         HtmlSemanticContext::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![],
-            0,
-            Some(participation_revision()),
-            Some(input)
+            HtmlSemanticContextInput::new(vec![])
+                .with_list_participation(participation_revision(), Some(input)),
+            0
         )
         .unwrap_err(),
         HtmlSemanticContextError::ParticipationRevisionMismatch
@@ -1386,10 +1382,8 @@ fn participation_input_rejects_foreign_duplicate_stale_and_contradictory_records
         HtmlSemanticContext::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![],
-            0,
-            Some(revision),
-            Some(input)
+            HtmlSemanticContextInput::new(vec![]).with_list_participation(revision, Some(input)),
+            0
         )
         .unwrap_err(),
         HtmlSemanticContextError::ParticipationCaptureMismatch
@@ -1755,4 +1749,186 @@ fn html_hidden_and_offscreen_do_not_replace_supplied_rendering_participation() {
         report.results()[1].fact(),
         &HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Known(Some(HtmlInteger::from(1i128))))
     );
+}
+
+fn fallback_context(
+    c: &HtmlCapture,
+    document: &HtmlCaptureBuilderSubject,
+    protocol: HtmlProtocolLanguage,
+) -> HtmlSemanticContext {
+    let facts = HtmlLanguageDirectionFacts::new(
+        c,
+        c.host_facts_revision().clone(),
+        vec![HtmlDocumentLanguageFallback::new(
+            c.subject_id(document).unwrap(),
+            HtmlPragmaLanguage::Absent,
+            protocol,
+        )],
+        vec![],
+        vec![],
+        HtmlLanguageDirectionLimits::new(1, 0, 100, 10000),
+    )
+    .unwrap();
+    HtmlSemanticContext::new(
+        c,
+        c.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_language_direction(facts),
+        0,
+    )
+    .unwrap()
+}
+
+#[test]
+fn aggregate_context_qualifies_changed_language_facts_and_unicode_direction_source() {
+    let (mut b, d) = builder();
+    let owner = element(&mut b, &d, "div", &[("dir", "auto")]);
+    let text = b.add_text(&d, "\u{0627}".into()).unwrap();
+    b.establish_children(&d, std::slice::from_ref(&owner))
+        .unwrap();
+    b.establish_children(&owner, std::slice::from_ref(&text))
+        .unwrap();
+    let c = b.finish().unwrap();
+    let english = fallback_context(
+        &c,
+        &d,
+        HtmlProtocolLanguage::Single(DocumentString::from("en")),
+    );
+    let french = fallback_context(
+        &c,
+        &d,
+        HtmlProtocolLanguage::Single(DocumentString::from("fr")),
+    );
+    let requests = [
+        request(&c, &owner, HtmlSemanticQuery::Language),
+        request(&c, &owner, HtmlSemanticQuery::Directionality),
+    ];
+    let report = session(&c, &english).query(&requests).unwrap();
+    let other = session(&c, &french).query(&requests).unwrap();
+    for (report, tag) in [(&report, "en"), (&other, "fr")] {
+        let HtmlSemanticFact::Language(HtmlSemanticValue::Known(language)) =
+            report.results()[0].fact()
+        else {
+            panic!("language expected")
+        };
+        assert_eq!(language.tag(), &DocumentString::from(tag));
+        assert_eq!(
+            language.origin(),
+            &HtmlLanguageOrigin::Protocol(c.subject_id(&d).unwrap())
+        );
+        assert_eq!(
+            report.results()[1].fact(),
+            &HtmlSemanticFact::Directionality(HtmlSemanticValue::Known(HtmlDirectionality::Rtl))
+        );
+        let source = report.qualification().directionality_source();
+        assert_eq!(source.unicode_version(), "18.0.0");
+        assert_eq!(source.uax9_revision(), 52);
+        assert_eq!(
+            source.derived_bidi_class_sha256(),
+            "d9e23222522551348ea1ccfbb4f62efbf98982afb95840f8959c08ed992c5607"
+        );
+    }
+    assert_eq!(report.capture(), other.capture());
+    assert_eq!(report.host_revision(), other.host_revision());
+    assert_ne!(report.qualification(), other.qualification());
+    assert_eq!(report.usage().scratch_records(), 0);
+}
+
+#[test]
+fn aggregate_context_rejects_foreign_supplement_before_minting_identity() {
+    let (b, _) = builder();
+    let c = b.finish().unwrap();
+    let (other, _) = builder();
+    let other = other.finish().unwrap();
+    let facts = HtmlLanguageDirectionFacts::new(
+        &other,
+        other.host_facts_revision().clone(),
+        vec![],
+        vec![],
+        vec![],
+        HtmlLanguageDirectionLimits::new(0, 0, 0, 0),
+    )
+    .unwrap();
+    assert_eq!(
+        HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]).with_language_direction(facts),
+            0
+        )
+        .unwrap_err(),
+        HtmlSemanticContextError::LanguageDirectionCaptureMismatch
+    );
+}
+
+#[test]
+fn language_supplement_changes_do_not_join_retained_terminal_failures() {
+    let (b, d) = builder();
+    let c = b.finish().unwrap();
+    let absent = fallback_context(&c, &d, HtmlProtocolLanguage::Absent);
+    let unavailable = fallback_context(&c, &d, HtmlProtocolLanguage::Unavailable);
+    let limits = HtmlSemanticLimits::new(1000000, 100, 10000, 10000, 1000000, 100000);
+    let failure = cancelled_failure(&c, &absent, limits, 10000);
+    let changed = cancelled_failure(&c, &unavailable, limits, 10000);
+    assert_ne!(failure.qualification(), changed.qualification());
+    assert_eq!(
+        failure.qualification().unwrap().directionality_source(),
+        changed.qualification().unwrap().directionality_source()
+    );
+    let absent_report = session(&c, &absent)
+        .query(&[request(&c, &d, HtmlSemanticQuery::Language)])
+        .unwrap();
+    let HtmlSemanticFact::Language(HtmlSemanticValue::Known(language)) =
+        absent_report.results()[0].fact()
+    else {
+        panic!("known empty language expected")
+    };
+    assert!(language.is_explicitly_unknown());
+    assert_eq!(
+        language.origin(),
+        &HtmlLanguageOrigin::NoInformation(c.subject_id(&d).unwrap())
+    );
+    let unavailable_report = session(&c, &unavailable)
+        .query(&[request(&c, &d, HtmlSemanticQuery::Language)])
+        .unwrap();
+    assert_eq!(
+        unavailable_report.results()[0].fact(),
+        &HtmlSemanticFact::Language(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::LanguageFallback(c.subject_id(&d).unwrap())
+        ))
+    );
+}
+
+#[test]
+fn one_complete_batch_composes_old_queries_and_fixed_scalar_range_facts() {
+    let (mut b, d) = builder();
+    let meter = element(&mut b, &d, "meter", &[]);
+    let progress = element(&mut b, &d, "progress", &[("max", "4"), ("value", "1")]);
+    let c = b.finish().unwrap();
+    let cx = context(&c);
+    let report = session(&c, &cx)
+        .query(&[
+            request(&c, &meter, HtmlSemanticQuery::Hidden),
+            request(&c, &meter, HtmlSemanticQuery::Meter),
+            request(&c, &progress, HtmlSemanticQuery::Progress),
+        ])
+        .unwrap();
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::Hidden(HtmlSemanticValue::Known(HtmlHiddenState::NotHidden))
+    );
+    let HtmlSemanticFact::Meter(HtmlSemanticValue::Known(meter)) = report.results()[1].fact()
+    else {
+        panic!("meter expected")
+    };
+    assert_eq!(meter.value().value(), 0.0);
+    assert_eq!(meter.maximum().value(), 1.0);
+    let HtmlSemanticFact::Progress(HtmlSemanticValue::Known(HtmlProgressState::Determinate(
+        progress,
+    ))) = report.results()[2].fact()
+    else {
+        panic!("determinate progress expected")
+    };
+    assert_eq!(progress.position().value(), 0.25);
+    assert_eq!(report.usage().scratch_records(), 0);
+    assert!(cx.language_direction().is_none());
 }

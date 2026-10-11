@@ -278,6 +278,20 @@ This entry covers the rule-data companion. The full normative UAX 29 revision 47
 report is excluded from public distribution; its catalog entry is metadata only
 and normative citations remain upstream.
 
+### Unicode 18 bidirectional character data
+
+`surgeist-html` includes the complete Unicode 18.0.0 DerivedBidiClass data and
+an offline-generated private first-strong classification table, distributed by
+Unicode, Inc. The checked-in reference retains the complete data text.
+
+* License: [Unicode License v3](licenses/unicode/18.0.0/LICENSE)
+* Homepage: [Unicode Character Database](https://www.unicode.org/Public/18.0.0/ucd/)
+* Exact source and coverage: [data attribution](licenses/unicode/18.0.0/NOTICE.md)
+
+The 1991–2026 copyright and permission text is retained separately from the
+older Unicode companion's legal material. The normative UAX #9 revision 52
+report remains an external citation with metadata only in the public references.
+
 ### W3C reference documents and CSSWG source witnesses
 
 The checkout includes reformatted W3C documents and readable generated renderings

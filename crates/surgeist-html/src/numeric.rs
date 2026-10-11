@@ -975,10 +975,61 @@ pub(crate) fn parse_floating_point_number(
     floating_point(input.code_units(), true)
 }
 
+/// The source's author grammar and user-agent recovery remain distinct modes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FloatingPointParseMode {
+    Author,
+    Recovery,
+}
+
+/// The conversion outcome and capacity of its already-dropped temporary token.
+/// Numeric rejection after allocation must still be accounted by the caller.
+#[derive(Debug)]
+pub(crate) struct FloatingPointParseResult {
+    pub(crate) value: Result<HtmlFloatingPointNumber, NumericParseError>,
+    pub(crate) capacity_bytes: usize,
+}
+
+/// Allocation admission failures, distinct from source numeric rejection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FloatingPointAllocationError {
+    RepresentationExhausted,
+    RequestedCapacityLimitExceeded {
+        limit: usize,
+        required: usize,
+    },
+    ActualCapacityLimitExceeded {
+        limit: usize,
+        requested: usize,
+        capacity_bytes: usize,
+    },
+    AllocationFailed {
+        requested: usize,
+    },
+}
+
 fn floating_point(
     units: &[u16],
     recover: bool,
 ) -> Result<HtmlFloatingPointNumber, NumericParseError> {
+    let mode = if recover {
+        FloatingPointParseMode::Recovery
+    } else {
+        FloatingPointParseMode::Author
+    };
+    let prefix = floating_point_prefix(units, mode)?;
+    // Preserve all decimal digits until the single final binary64 conversion.
+    // Intermediate floating accumulation can produce spurious overflow for a
+    // long significand with a compensating exponent.
+    let token: String = prefix.iter().map(|&unit| char::from(unit as u8)).collect();
+    convert_floating_point_token(&token)
+}
+
+fn floating_point_prefix(
+    units: &[u16],
+    mode: FloatingPointParseMode,
+) -> Result<&[u16], NumericParseError> {
+    let recover = mode == FloatingPointParseMode::Recovery;
     let mut position = 0;
     if recover {
         skip_whitespace(units, &mut position);
@@ -1023,17 +1074,88 @@ fn floating_point(
     if !recover && position != units.len() {
         return Err(NumericParseError::InvalidSyntax);
     }
-    // Preserve all decimal digits until the single final binary64 conversion.
-    // Accumulating digits in f64 would round intermediate values and can turn
-    // a long significand with a compensating exponent into spurious overflow.
-    let token: String = units[start..position]
-        .iter()
-        .map(|&unit| char::from(unit as u8))
-        .collect();
+    Ok(&units[start..position])
+}
+
+fn convert_floating_point_token(token: &str) -> Result<HtmlFloatingPointNumber, NumericParseError> {
     let value = token
         .parse::<f64>()
         .map_err(|_| NumericParseError::InvalidSyntax)?;
     HtmlFloatingPointNumber::try_from(value).map_err(|_| NumericParseError::FloatingPointOverflow)
+}
+
+fn check_floating_point_requested_capacity(
+    required: usize,
+    max_capacity_bytes: usize,
+) -> Result<(), FloatingPointAllocationError> {
+    if required > isize::MAX as usize {
+        return Err(FloatingPointAllocationError::RepresentationExhausted);
+    }
+    if required > max_capacity_bytes {
+        return Err(
+            FloatingPointAllocationError::RequestedCapacityLimitExceeded {
+                limit: max_capacity_bytes,
+                required,
+            },
+        );
+    }
+    Ok(())
+}
+
+fn check_floating_point_actual_capacity(
+    requested: usize,
+    capacity_bytes: usize,
+    max_capacity_bytes: usize,
+) -> Result<(), FloatingPointAllocationError> {
+    if capacity_bytes > max_capacity_bytes {
+        Err(FloatingPointAllocationError::ActualCapacityLimitExceeded {
+            limit: max_capacity_bytes,
+            requested,
+            capacity_bytes,
+        })
+    } else {
+        Ok(())
+    }
+}
+
+/// Converts the same source-selected ASCII prefix using one fallible reserve.
+///
+/// The semantic session admits the raw input and owns work/cancellation. Prefix
+/// inspection and writing are input-length bounded; native binary64 conversion
+/// is an atomic provider operation, without an internal cancellation poll or a
+/// parser-quantum guarantee. This returns actual temporary String capacity even
+/// when numeric conversion rejects the input; pre-allocation syntax rejection
+/// reports zero capacity. No raw copy, report, or second grammar is constructed.
+pub(crate) fn try_floating_point_number(
+    input: &DocumentString,
+    mode: FloatingPointParseMode,
+    max_capacity_bytes: usize,
+) -> Result<FloatingPointParseResult, FloatingPointAllocationError> {
+    let prefix = match floating_point_prefix(input.code_units(), mode) {
+        Ok(prefix) => prefix,
+        Err(error) => {
+            return Ok(FloatingPointParseResult {
+                value: Err(error),
+                capacity_bytes: 0,
+            });
+        }
+    };
+    let required = prefix.len();
+    check_floating_point_requested_capacity(required, max_capacity_bytes)?;
+    let mut token = String::new();
+    token.try_reserve_exact(required).map_err(|_| {
+        FloatingPointAllocationError::AllocationFailed {
+            requested: required,
+        }
+    })?;
+    check_floating_point_actual_capacity(required, token.capacity(), max_capacity_bytes)?;
+    for &unit in prefix {
+        token.push(char::from(unit as u8));
+    }
+    Ok(FloatingPointParseResult {
+        value: convert_floating_point_token(&token),
+        capacity_bytes: token.capacity(),
+    })
 }
 
 /// Author list grammar is comma-separated author numbers, without whitespace.
@@ -1671,6 +1793,184 @@ mod tests {
         assert_eq!(
             HtmlNonNegativeInteger::try_from(HtmlInteger::from(-1)),
             Err(HtmlNegativeIntegerError)
+        );
+    }
+
+    #[test]
+    fn controlled_float_author_and_recovery_preserve_distinct_prefix_rules() {
+        for (input, expected, token_bytes) in [
+            (" +1tail", 1.0, 2),
+            ("1.", 1.0, 2),
+            ("1.e2", 100.0, 4),
+            ("1e", 1.0, 1),
+            ("1e+", 1.0, 1),
+            ("1e-x", 1.0, 1),
+            ("1.2suffix", 1.2, 3),
+        ] {
+            let raw = text(input);
+            let author =
+                try_floating_point_number(&raw, FloatingPointParseMode::Author, 0).unwrap();
+            assert_eq!(author.value, Err(NumericParseError::InvalidSyntax));
+            assert_eq!(author.capacity_bytes, 0);
+            let recovery =
+                try_floating_point_number(&raw, FloatingPointParseMode::Recovery, token_bytes)
+                    .unwrap();
+            assert_eq!(recovery.value.unwrap().value(), expected);
+            assert_eq!(recovery.capacity_bytes, token_bytes);
+        }
+        for (input, expected) in [(".5", 0.5), ("-.5", -0.5), ("1e+2", 100.0), ("1E-2", 0.01)] {
+            for mode in [
+                FloatingPointParseMode::Author,
+                FloatingPointParseMode::Recovery,
+            ] {
+                let parsed = try_floating_point_number(&text(input), mode, 100).unwrap();
+                assert_eq!(parsed.value.unwrap().value(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn controlled_float_conversion_rounds_once_including_subnormal_and_zero_values() {
+        // HTML §2.3.4.3 conversion chooses nearest binary64 with ties to even,
+        // rejects infinity, and excludes negative zero from its result set.
+        for (input, expected_bits) in [
+            (
+                "1.00000000000000011102230246251565404236316680908203125",
+                0x3ff0000000000000,
+            ),
+            (
+                "1.00000000000000033306690738754696212708950042724609375",
+                0x3ff0000000000002,
+            ),
+            ("0.1", 0x3fb999999999999a),
+            ("5e-324", 1),
+            ("-5e-324", 0x8000000000000001),
+            ("2e-324", 0),
+            ("-2e-324", 0),
+            ("-0", 0),
+            ("1.7976931348623158e308", 0x7fefffffffffffff),
+        ] {
+            for mode in [
+                FloatingPointParseMode::Author,
+                FloatingPointParseMode::Recovery,
+            ] {
+                let parsed = try_floating_point_number(&text(input), mode, 100).unwrap();
+                assert_eq!(parsed.value.unwrap().value().to_bits(), expected_bits);
+                assert!(parsed.capacity_bytes >= input.len());
+            }
+        }
+        // Decimal identity is independently 10^400 * 10^-400 = 1. Retain all
+        // significand digits; no intermediate f64 accumulation is permitted.
+        let input = text(&format!("1{}e-400", "0".repeat(400)));
+        let parsed =
+            try_floating_point_number(&input, FloatingPointParseMode::Recovery, input.len())
+                .unwrap();
+        assert_eq!(parsed.value.unwrap().value(), 1.0);
+        assert_eq!(parsed.capacity_bytes, input.len());
+    }
+
+    #[test]
+    fn controlled_float_overflow_and_huge_exponents_retain_temporary_capacity() {
+        for input in [
+            "1e9999",
+            "-1e9999",
+            "1.7976931348623159e308",
+            "1e999999999999999999999999999999999999999999999999999999999999",
+        ] {
+            let raw = text(input);
+            let parsed =
+                try_floating_point_number(&raw, FloatingPointParseMode::Recovery, raw.len())
+                    .unwrap();
+            assert_eq!(parsed.value, Err(NumericParseError::FloatingPointOverflow));
+            assert_eq!(parsed.capacity_bytes, raw.len());
+        }
+        for input in [
+            "0e999999999999999999999999999999999999999999999999999999999999",
+            "-1e-999999999999999999999999999999999999999999999999999999999999",
+        ] {
+            let raw = text(input);
+            let parsed =
+                try_floating_point_number(&raw, FloatingPointParseMode::Recovery, raw.len())
+                    .unwrap();
+            assert_eq!(parsed.value.unwrap().value().to_bits(), 0);
+            assert_eq!(parsed.capacity_bytes, raw.len());
+        }
+        let raw = text("1e999tail");
+        let author = try_floating_point_number(&raw, FloatingPointParseMode::Author, 0).unwrap();
+        assert_eq!(author.value, Err(NumericParseError::InvalidSyntax));
+        assert_eq!(author.capacity_bytes, 0);
+        let recovered =
+            try_floating_point_number(&raw, FloatingPointParseMode::Recovery, 5).unwrap();
+        assert_eq!(
+            recovered.value,
+            Err(NumericParseError::FloatingPointOverflow)
+        );
+        assert_eq!(recovered.capacity_bytes, 5);
+    }
+
+    #[test]
+    fn controlled_float_rejection_and_utf16_suffixes_allocate_only_the_selected_token() {
+        for input in ["", " \t", ".", "-.", "+", "NaN", "Infinity", "١", "\u{a0}1"] {
+            for mode in [
+                FloatingPointParseMode::Author,
+                FloatingPointParseMode::Recovery,
+            ] {
+                let parsed = try_floating_point_number(&text(input), mode, 0).unwrap();
+                assert_eq!(parsed.value, Err(NumericParseError::InvalidSyntax));
+                assert_eq!(parsed.capacity_bytes, 0);
+            }
+        }
+        let suffix = DocumentString::from_utf16(vec![b'1' as u16, 0xd800, b'2' as u16]);
+        let parsed =
+            try_floating_point_number(&suffix, FloatingPointParseMode::Recovery, 1).unwrap();
+        assert_eq!(parsed.value.unwrap().value(), 1.0);
+        assert_eq!(parsed.capacity_bytes, 1);
+        assert_eq!(suffix.code_units(), &[b'1' as u16, 0xd800, b'2' as u16]);
+        let author = try_floating_point_number(&suffix, FloatingPointParseMode::Author, 0).unwrap();
+        assert_eq!(author.value, Err(NumericParseError::InvalidSyntax));
+        assert_eq!(author.capacity_bytes, 0);
+        let leading = DocumentString::from_utf16(vec![0xdc00, b'1' as u16]);
+        assert_eq!(
+            try_floating_point_number(&leading, FloatingPointParseMode::Recovery, 0)
+                .unwrap()
+                .value,
+            Err(NumericParseError::InvalidSyntax)
+        );
+    }
+
+    #[test]
+    fn controlled_float_reservation_obeys_requested_observed_and_representation_limits() {
+        let input = text("  -1.5tail");
+        assert_eq!(
+            try_floating_point_number(&input, FloatingPointParseMode::Recovery, 3).unwrap_err(),
+            FloatingPointAllocationError::RequestedCapacityLimitExceeded {
+                limit: 3,
+                required: 4
+            }
+        );
+        let parsed =
+            try_floating_point_number(&input, FloatingPointParseMode::Recovery, 4).unwrap();
+        assert_eq!(parsed.value.unwrap().value(), -1.5);
+        assert_eq!(parsed.capacity_bytes, 4);
+        // Exercise the real observed-capacity boundary with independent literal
+        // observations, without a fake allocator or forced out-of-memory claim.
+        assert_eq!(check_floating_point_actual_capacity(3, 3, 3), Ok(()));
+        assert_eq!(check_floating_point_actual_capacity(3, 4, 4), Ok(()));
+        assert_eq!(
+            check_floating_point_actual_capacity(3, 4, 3),
+            Err(FloatingPointAllocationError::ActualCapacityLimitExceeded {
+                limit: 3,
+                requested: 3,
+                capacity_bytes: 4
+            })
+        );
+        assert_eq!(
+            check_floating_point_requested_capacity(isize::MAX as usize + 1, usize::MAX),
+            Err(FloatingPointAllocationError::RepresentationExhausted)
+        );
+        assert_eq!(
+            check_floating_point_requested_capacity(isize::MAX as usize, usize::MAX),
+            Ok(())
         );
     }
 

@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod attributes;
+mod bidi;
 mod capture;
 mod color;
 mod construction;

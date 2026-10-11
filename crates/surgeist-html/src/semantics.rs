@@ -9,13 +9,17 @@
 
 mod table;
 pub use table::*;
+mod language;
+pub use language::*;
+mod range;
+pub use range::*;
 
 use crate::numeric::{
     IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
     try_parse_integer,
 };
 use crate::{
-    Attribute, HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId,
+    Attribute, DocumentString, HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedChildren, HtmlCapturedElement,
     HtmlCapturedNode, HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCustomControlAttributeContext,
     HtmlHiddenState, HtmlHostFactsRevision, HtmlInteger, HtmlValueAdmissionError,
@@ -218,7 +222,41 @@ impl HtmlListParticipation {
     }
 }
 
-/// Checked custom-control and optional list-participation facts for one capture.
+/// Moved inputs for the concrete implemented semantic consumers.
+/// Attaching an optional supplement does not certify coherence; the context
+/// checks capture and host qualification before minting its immutable identity.
+#[derive(Debug)]
+pub struct HtmlSemanticContextInput {
+    classifications: Vec<HtmlCustomControlClassification>,
+    participation_revision: Option<HtmlListParticipationRevision>,
+    participation: Option<HtmlListParticipation>,
+    language_direction: Option<HtmlLanguageDirectionFacts>,
+}
+impl HtmlSemanticContextInput {
+    pub fn new(classifications: Vec<HtmlCustomControlClassification>) -> Self {
+        Self {
+            classifications,
+            participation_revision: None,
+            participation: None,
+            language_direction: None,
+        }
+    }
+    pub fn with_list_participation(
+        mut self,
+        expected: HtmlListParticipationRevision,
+        participation: Option<HtmlListParticipation>,
+    ) -> Self {
+        self.participation_revision = Some(expected);
+        self.participation = participation;
+        self
+    }
+    pub fn with_language_direction(mut self, facts: HtmlLanguageDirectionFacts) -> Self {
+        self.language_direction = Some(facts);
+        self
+    }
+}
+
+/// Checked immutable inputs, shared by queries over one exact capture.
 #[derive(Debug)]
 pub struct HtmlSemanticContext {
     identity: HtmlSemanticContextId,
@@ -227,6 +265,8 @@ pub struct HtmlSemanticContext {
     classifications: Vec<HtmlCustomControlClassification>,
     participation_revision: Option<HtmlListParticipationRevision>,
     participation: Option<HtmlListParticipation>,
+    language_direction: Option<HtmlLanguageDirectionFacts>,
+    empty_language: DocumentString,
 }
 /// Rejected producer context; no query result is created.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -245,6 +285,8 @@ pub enum HtmlSemanticContextError {
     ParticipationCaptureMismatch,
     ParticipationRevisionMismatch,
     ContradictoryParticipation(HtmlCaptureSubjectId),
+    LanguageDirectionCaptureMismatch,
+    LanguageDirectionHostRevisionMismatch,
 }
 impl fmt::Display for HtmlSemanticContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -254,18 +296,31 @@ impl fmt::Display for HtmlSemanticContextError {
 impl Error for HtmlSemanticContextError {}
 impl HtmlSemanticContext {
     /// Moves already supplied records without projecting or copying the tree.
-    /// The explicit cap bounds retained vector capacity and the quadratic
-    /// duplicate validation. Every record must identify an element of `capture`.
+    /// `max_classifications` bounds classification vector capacity and duplicate
+    /// validation. Each optional supplement carries its own checked, finite
+    /// producer construction. Every input must match the capture and host key.
     pub fn new(
         capture: &HtmlCapture,
         host_revision: HtmlHostFactsRevision,
-        classifications: Vec<HtmlCustomControlClassification>,
+        input: HtmlSemanticContextInput,
         max_classifications: usize,
-        participation_revision: Option<HtmlListParticipationRevision>,
-        participation: Option<HtmlListParticipation>,
     ) -> Result<Self, HtmlSemanticContextError> {
         if &host_revision != capture.host_facts_revision() {
             return Err(HtmlSemanticContextError::HostRevisionMismatch);
+        }
+        let HtmlSemanticContextInput {
+            classifications,
+            participation_revision,
+            participation,
+            language_direction,
+        } = input;
+        if let Some(facts) = &language_direction {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::LanguageDirectionCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch);
+            }
         }
         if let Some(input) = &participation {
             if input.capture() != capture.identity() {
@@ -301,6 +356,8 @@ impl HtmlSemanticContext {
             classifications,
             participation_revision,
             participation,
+            language_direction,
+            empty_language: DocumentString::default(),
         })
     }
     pub fn identity(&self) -> &HtmlSemanticContextId {
@@ -321,6 +378,12 @@ impl HtmlSemanticContext {
     pub fn participation(&self) -> Option<&HtmlListParticipation> {
         self.participation.as_ref()
     }
+    pub fn language_direction(&self) -> Option<&HtmlLanguageDirectionFacts> {
+        self.language_direction.as_ref()
+    }
+    fn empty_language(&self) -> &DocumentString {
+        &self.empty_language
+    }
 }
 
 /// Finite cumulative admission for one semantic session.
@@ -334,7 +397,10 @@ impl HtmlSemanticContext {
 /// Integer digits bound each numeric output. Numeric scans/writes and allocator
 /// calls are finite atomic operations with cancellation polls before and after;
 /// these controls do not promise parser cancellation quanta or allocator-internal
-/// memory bounds. Capture retention and parsing have their separate controls.
+/// memory bounds. Floating conversion and static Unicode lookup are bounded
+/// atomic provider operations; work charges their visits and owned inspection
+/// envelopes, without claiming internal instruction counts. Capture retention
+/// and parsing have their separate controls.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticLimits {
     work: usize,
@@ -432,6 +498,10 @@ pub enum HtmlSemanticQuery {
     ListStartingValue,
     ListOrdinal,
     TableModel,
+    Language,
+    Directionality,
+    Meter,
+    Progress,
 }
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
@@ -453,6 +523,18 @@ impl HtmlSemanticQuery {
             }
             Self::TableModel => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#table-processing-model"
+            }
+            Self::Language => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-lang-and-xml:lang-attributes"
+            }
+            Self::Directionality => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dir-attribute"
+            }
+            Self::Meter => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-meter-element"
+            }
+            Self::Progress => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-progress-element"
             }
         }
     }
@@ -482,6 +564,10 @@ pub enum HtmlSemanticMissing {
     ComputedListItem(HtmlCaptureSubjectId),
     BeingRendered(HtmlCaptureSubjectId),
     ProducesCssBox(HtmlCaptureSubjectId),
+    LanguageFallback(HtmlCaptureSubjectId),
+    CurrentValue(HtmlCaptureSubjectId),
+    SlotAssignment(HtmlCaptureSubjectId),
+    ShadowHost(HtmlCaptureSubjectId),
 }
 /// Hidden and disabledness do not implement foreign-language semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -505,7 +591,7 @@ impl<T> HtmlSemanticValue<T> {
         }
     }
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum HtmlSemanticFact {
     Hidden(HtmlSemanticValue<HtmlHiddenState>),
     Disabledness(HtmlSemanticValue<bool>),
@@ -514,8 +600,12 @@ pub enum HtmlSemanticFact {
     /// `Known(None)` is a computed list item whose source list owner is null.
     ListOrdinal(HtmlSemanticValue<Option<HtmlInteger>>),
     TableModel(HtmlSemanticValue<HtmlTableModel>),
+    Language(HtmlSemanticValue<HtmlLanguage>),
+    Directionality(HtmlSemanticValue<HtmlDirectionality>),
+    Meter(HtmlSemanticValue<HtmlMeterState>),
+    Progress(HtmlSemanticValue<HtmlProgressState>),
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HtmlSemanticResult {
     request: HtmlSemanticRequest,
     fact: HtmlSemanticFact,
@@ -533,6 +623,24 @@ impl HtmlSemanticResult {
 pub enum HtmlSemanticDependencies {
     ConservativeRecompute,
 }
+/// Exact Unicode data selected for HTML's first-strong directionality lookup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlDirectionalitySource {
+    unicode_version: &'static str,
+    uax9_revision: u16,
+    derived_bidi_class_sha256: &'static str,
+}
+impl HtmlDirectionalitySource {
+    pub fn unicode_version(self) -> &'static str {
+        self.unicode_version
+    }
+    pub fn uax9_revision(self) -> u16 {
+        self.uax9_revision
+    }
+    pub fn derived_bidi_class_sha256(self) -> &'static str {
+        self.derived_bidi_class_sha256
+    }
+}
 /// Immutable qualification of one admitted session's semantic inputs and controls.
 /// This stores identities and finite configuration, never tree or query payloads.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -543,6 +651,7 @@ pub struct HtmlSemanticQualification {
     limits: HtmlSemanticLimits,
     attribute_input_limit: usize,
     participation_revision: Option<HtmlListParticipationRevision>,
+    directionality_source: HtmlDirectionalitySource,
 }
 impl HtmlSemanticQualification {
     pub fn source_revision(&self) -> &'static str {
@@ -565,6 +674,9 @@ impl HtmlSemanticQualification {
     }
     pub fn participation_revision(&self) -> Option<&HtmlListParticipationRevision> {
         self.participation_revision.as_ref()
+    }
+    pub fn directionality_source(&self) -> HtmlDirectionalitySource {
+        self.directionality_source
     }
 }
 /// Complete ordered results, qualified by every influencing input.
@@ -704,6 +816,11 @@ impl<'a> HtmlSemanticSession<'a> {
                 limits,
                 attribute_input_limit: interpreter.max_input_code_units(),
                 participation_revision: context.participation_revision.clone(),
+                directionality_source: HtmlDirectionalitySource {
+                    unicode_version: crate::bidi::UCD_VERSION,
+                    uax9_revision: crate::bidi::UAX9_REVISION,
+                    derived_bidi_class_sha256: crate::bidi::DERIVED_BIDI_CLASS_SHA256,
+                },
             }),
             usage: HtmlSemanticUsage::default(),
             failure: None,
@@ -780,9 +897,32 @@ impl<'a> HtmlSemanticSession<'a> {
         element: &'a HtmlCapturedElement,
         local: &str,
     ) -> Result<Option<&'a Attribute>, HtmlSemanticFailure> {
+        self.attribute_ns(element, None, local)
+    }
+    fn attribute_ns(
+        &mut self,
+        element: &'a HtmlCapturedElement,
+        namespace: Option<&str>,
+        local: &str,
+    ) -> Result<Option<&'a Attribute>, HtmlSemanticFailure> {
         for attribute in element.attributes().iter() {
             self.charge(1)?;
-            if attribute.name().namespace().uri().is_some() {
+            let namespace_matches = match (attribute.name().namespace().uri(), namespace) {
+                (None, None) => true,
+                (Some(uri), Some(expected)) if uri.len() == expected.len() => {
+                    let mut equal = true;
+                    for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
+                        self.charge(1)?;
+                        if *unit != u16::from(byte) {
+                            equal = false;
+                            break;
+                        }
+                    }
+                    equal
+                }
+                _ => false,
+            };
+            if !namespace_matches {
                 continue;
             }
             let units = attribute.name().local_name().code_units();
@@ -1206,10 +1346,29 @@ impl<'a> HtmlSemanticSession<'a> {
             .and_then(|n| n.checked_add(8))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        Ok(self
-            .limits
+        Ok(self.remaining_allocated_bytes())
+    }
+    fn remaining_allocated_bytes(&self) -> usize {
+        self.limits
             .allocated_bytes
-            .saturating_sub(self.usage.allocated_bytes))
+            .saturating_sub(self.usage.allocated_bytes)
+    }
+    /// Records actual capacity after an admitted allocation, including an
+    /// allocator overshoot. Accounting precedes the next cancellation poll.
+    fn record_allocated_bytes(&mut self, capacity: usize) -> Result<(), HtmlSemanticFailure> {
+        self.usage.allocated_bytes = self
+            .usage
+            .allocated_bytes
+            .checked_add(capacity)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        if self.usage.allocated_bytes > self.limits.allocated_bytes {
+            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::AllocatedBytes,
+                limit: self.limits.allocated_bytes,
+                required: self.usage.allocated_bytes,
+            }));
+        }
+        Ok(())
     }
     fn numeric_result(
         &mut self,
@@ -1222,11 +1381,7 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             _ => 0,
         };
-        self.usage.allocated_bytes = self
-            .usage
-            .allocated_bytes
-            .checked_add(capacity)
-            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        self.record_allocated_bytes(capacity)?;
         let result = result.map_err(|error| {
             let kind = match error {
                 IntegerUnitStepError::RepresentationExhausted => {
@@ -1650,6 +1805,18 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::TableModel => {
                             HtmlSemanticFact::TableModel(self.table_model(&request.subject)?)
                         }
+                        HtmlSemanticQuery::Language => {
+                            HtmlSemanticFact::Language(self.language(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::Directionality => {
+                            HtmlSemanticFact::Directionality(self.directionality(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::Meter => {
+                            HtmlSemanticFact::Meter(self.meter_state(element)?)
+                        }
+                        HtmlSemanticQuery::Progress => {
+                            HtmlSemanticFact::Progress(self.progress_state(element)?)
+                        }
                     }
                 }
                 _ => match request.query {
@@ -1670,6 +1837,18 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::TableModel => {
                         HtmlSemanticFact::TableModel(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::Language => {
+                        HtmlSemanticFact::Language(self.language(&request.subject)?)
+                    }
+                    HtmlSemanticQuery::Directionality => {
+                        HtmlSemanticFact::Directionality(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::Meter => {
+                        HtmlSemanticFact::Meter(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::Progress => {
+                        HtmlSemanticFact::Progress(HtmlSemanticValue::Inapplicable)
                     }
                 },
             };

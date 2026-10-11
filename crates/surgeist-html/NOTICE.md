@@ -11,6 +11,17 @@ retains all 2,231 names, 93 two-scalar values and 27 C1 replacements; it also
 compares them with the acquired html5ever tables as independent witnesses.
 Those engine files are not imported source or required generation inputs.
 
+## Unicode bidirectional character data
+
+The private first-strong lookup and its offline generator use complete Unicode
+18.0.0 DerivedBidiClass data from Unicode, Inc. The source data and generated
+table are distributed under the exact
+[Unicode License v3](../../licenses/unicode/18.0.0/LICENSE), with
+[source attribution](../../licenses/unicode/18.0.0/NOTICE.md). The selected
+UAX #9 revision 52 remains an external normative citation; its report text is
+not bundled. This lookup supplies HTML directionality rather than a full
+bidirectional text-layout implementation.
+
 ## Adapted parser source
 
 The private, test-compiled tokenizer adapts four source files from

@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **341 source identities: 254 full documents/source witnesses, 82 partial witnesses and 5 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **351 source identities: 255 full documents/source witnesses, 89 partial witnesses and 7 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -277,3 +277,39 @@ The excerpt’s scope explanation is separate from its retained original text.
 The existing WHATWG prose license and source identity apply; no code, diagrams,
 tables, styles or browser implementation are incorporated. Catalog counts remain
 348 identities: 254 full, 89 partial and five metadata-only.
+
+## HTML language, directionality and modal sources — 2026-10-11
+
+The complete Unicode 18.0.0 DerivedBidiClass data and its exact Unicode License
+v3 text are retained in literal blocks. Both blocks match their raw sources
+byte-for-byte; the data source SHA-256 is
+`d9e23222522551348ea1ccfbb4f62efbf98982afb95840f8959c08ed992c5607`.
+The separately retained generator input matches the same complete original.
+The 1991–2026 legal text differs from the older Unicode companion's license,
+so it has a separate versioned legal directory. This full data witness includes
+all explicit ranges and general/range-specific missing defaults.
+
+UAX #9 revision 52 and RFC 5646 add metadata-only source identities. The UAX
+report's publication restriction does not apply the data-file license to report
+prose or tables. RFC excerpt permission provenance remains unresolved under its
+pre-November-2008 notice and historic IETF terms. Their technical text remains
+outside the public collection; edition, external citations and complete source
+hashes remain discoverable. The RFC's original legal legend is retained
+verbatim separately. A private draft replaced eight form-feed characters while
+wrapping RFC excerpts, so it is also excluded from any claim of byte-exact
+public conversion.
+
+The modal inertness determination adds only source metadata for the existing
+WebKit StyleAdjuster.cpp and Document.cpp identities. Raw original headers and
+selected ranges were compared exactly during research, but are not reproduced
+in the new public record: the supplied licensing basis did not establish this
+documentation-excerpt distribution. The independent determination, immutable
+URLs, full-file hashes and line ranges remain. This does not expand the scope
+of older source witnesses or claim a blanket restriction on all excerpts.
+
+The catalog contains 351 distinct source identities: 255 full witnesses,
+89 partial witnesses and seven metadata-only records. Counts concern original
+identities, not additional Markdown renderings. Local links and the new source
+anchors are checked; historical conversion records remain unchanged. These
+checks establish provenance and publication handling rather than HTML behavior
+or whole-parser conformance.
