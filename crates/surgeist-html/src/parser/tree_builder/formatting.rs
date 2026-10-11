@@ -353,6 +353,26 @@ impl HeadState<'_> {
         }
         self.finish(c)
     }
+    pub(super) fn push_marker(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+        write(size_of::<Option<FormattingEntry>>(), 2, c)?;
+        self.formatting_pending = Some(FormattingEntry { element: None });
+        self.push_format_pending(c)
+    }
+    pub(super) fn clear_marker(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+        loop {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let index = self
+                .formatting
+                .len()
+                .checked_sub(1)
+                .ok_or(HeadError::InvalidFormattingState)?;
+            let marker = self.format_node(index, c)?.is_none();
+            self.erase_format(index, c)?;
+            if marker {
+                return Ok(());
+            }
+        }
+    }
     pub(super) fn marker_start(
         &mut self,
         close: bool,
@@ -360,9 +380,7 @@ impl HeadState<'_> {
     ) -> Result<HeadStep, HeadError> {
         self.reconstruct_formatting(c)?;
         self.insert_tag(c)?;
-        write(size_of::<Option<FormattingEntry>>(), 2, c)?;
-        self.formatting_pending = Some(FormattingEntry { element: None });
-        self.push_format_pending(c)?;
+        self.push_marker(c)?;
         self.frameset(false, c)?;
         if close {
             self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
@@ -389,19 +407,7 @@ impl HeadState<'_> {
                 break;
             }
         }
-        loop {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            let index = self
-                .formatting
-                .len()
-                .checked_sub(1)
-                .ok_or(HeadError::InvalidFormattingState)?;
-            let marker = self.format_node(index, c)?.is_none();
-            self.erase_format(index, c)?;
-            if marker {
-                break;
-            }
-        }
+        self.clear_marker(c)?;
         self.discard(c)
     }
     pub(super) fn adoption(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {

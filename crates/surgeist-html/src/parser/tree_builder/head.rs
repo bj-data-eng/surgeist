@@ -45,6 +45,13 @@ pub(super) enum InsertionMode {
     InBody,
     AfterBody,
     AfterAfterBody,
+    InTable,
+    InTableText,
+    InCaption,
+    InColumnGroup,
+    InTableBody,
+    InRow,
+    InCell,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HeadCondition {
@@ -59,6 +66,9 @@ pub(super) enum HeadCondition {
     NullInBody,
     UnexpectedOpenElement,
     UnexpectedFormatting,
+    UnexpectedTableToken,
+    NonWhitespaceInTable,
+    NullInTable,
 }
 pub(super) struct HeadDiagnostic {
     pub(super) condition: HeadCondition,
@@ -72,7 +82,6 @@ pub(crate) enum HeadBoundary {
     Template,
     Form,
     Select,
-    Table,
     Frameset,
     Foreign,
     ConstructionEof,
@@ -214,6 +223,7 @@ pub(super) struct HeadState<'source> {
     pub(super) formatting: OwnedVec<FormattingEntry>,
     pub(super) formatting_pending: Option<FormattingEntry>,
     pub(super) formatting_removed: Option<FormattingEntry>,
+    pub(super) table: super::tables::TableCharacters,
     script: Option<StandaloneScriptState<'source>>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
@@ -257,19 +267,23 @@ impl<'source> HeadStage<'source> {
         diagnostics.require_owner(c)?;
         lexical.require_owner(c)?;
         formatting.require_owner(c)?;
-        // Three driver fields + twenty-one state fields + caller BeforeHead and
+        let table = super::tables::TableCharacters::new(c)?;
+        // Three driver fields + twenty-two state fields + caller BeforeHead and
         // Tokenizer slots + the retained BeforeHead input slot are written.
-        // Admit all twenty-seven field writes before the first owning take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 27, c) {
+        // The table constructor separately admits its four actual field writes.
+        // Admit all twenty-eight enclosing field writes before the first owning take.
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 28, c) {
             diagnostics.release(c)?;
             lexical.release(c)?;
             formatting.release(c)?;
+            table.entries.release(c)?;
             return Err(stop.into());
         }
         if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
             diagnostics.release(c)?;
             lexical.release(c)?;
             formatting.release(c)?;
+            table.entries.release(c)?;
             return Err(stop.into());
         }
         let mut before = before.take().expect("verified prologue continuation");
@@ -299,6 +313,7 @@ impl<'source> HeadStage<'source> {
                 formatting,
                 formatting_pending: None,
                 formatting_removed: None,
+                table,
             }),
         })
     }
@@ -383,6 +398,7 @@ impl<'source> HeadStage<'source> {
             .ok_or(HeadError::StandaloneCapabilityUnavailable)?
             .capability
             .validate_session(c, &state.before.kernel.session)?;
+        state.release_table(c)?;
         state.release_body(c)?;
         state.release_formatting(c)?;
         if let Some(pending) = &mut state.pending {
@@ -428,6 +444,11 @@ impl<'source> HeadStage<'source> {
                 .as_mut()
                 .ok_or(KernelError::Consumed)?,
             HtmlParseResource::OpenElements,
+            c,
+        )?;
+        release_fixture_vector(
+            &mut state.table.entries,
+            HtmlParseResource::AuxiliaryEntries,
             c,
         )?;
         release_fixture_vector(
@@ -604,6 +625,7 @@ impl<'source> HeadStage<'source> {
             let Some(text) = text else { break };
             text.release(c)?;
         }
+        state.release_table(c)?;
         state.release_body(c)?;
         state.release_formatting(c)?;
         state.before.kernel.release(c)?;
@@ -618,6 +640,7 @@ impl<'source> HeadStage<'source> {
         state.diagnostics.release(c)?;
         state.lexical.release(c)?;
         state.formatting.release(c)?;
+        state.table.entries.release(c)?;
         Ok(())
     }
 }
@@ -1059,7 +1082,22 @@ impl HeadState<'_> {
                     | InsertionMode::AfterBody
                     | InsertionMode::AfterAfterBody
             ) {
-                if let Some(step) = self.body_advance(source, c)? {
+                if let Some(step) = self.body_rules(mode, source, c)? {
+                    return Ok(step);
+                }
+                continue;
+            }
+            if matches!(
+                mode,
+                InsertionMode::InTable
+                    | InsertionMode::InTableText
+                    | InsertionMode::InCaption
+                    | InsertionMode::InColumnGroup
+                    | InsertionMode::InTableBody
+                    | InsertionMode::InRow
+                    | InsertionMode::InCell
+            ) {
+                if let Some(step) = self.table_rules(mode, source, c)? {
                     return Ok(step);
                 }
                 continue;

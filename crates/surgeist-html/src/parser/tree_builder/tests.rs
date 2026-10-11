@@ -4029,7 +4029,6 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
         ("textarea", HeadBoundary::Form),
         ("select", HeadBoundary::Select),
         ("option", HeadBoundary::Select),
-        ("table", HeadBoundary::Table),
         ("template", HeadBoundary::Template),
         ("svg", HeadBoundary::Foreign),
         ("math", HeadBoundary::Foreign),
@@ -6048,5 +6047,657 @@ fn ordinary_table_implied_tbody_and_cell_end_recovery_preserve_real_sibling_orde
                 0,
             ))
             .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn structural_table_whole_pending_batch_fosters_whitespace_with_nonwhitespace() {
+    for (source, expected) in [
+        (
+            "<!doctype html><table> a<tr><td>b</table>c",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "# a"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#b"),
+                (2, "#c"),
+            ],
+        ),
+        (
+            "<!doctype html><table> \n<tr><td>b</table>c",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "table"),
+                (3, "# \n"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#b"),
+                (2, "#c"),
+            ],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let actual = outline(frozen.document().unwrap());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected_outline(&expected));
+    }
+}
+
+#[test]
+fn structural_table_implied_colgroup_row_and_thead_transitions_are_real() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><table><col><col><thead><td>a<tbody><tr><th>b<tfoot><tr><td>c</table>d",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "colgroup"),
+            (4, "col"),
+            (4, "col"),
+            (3, "thead"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#a"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "th"),
+            (6, "#b"),
+            (3, "tfoot"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#c"),
+            (2, "#d")
+        ])
+    );
+}
+
+#[test]
+fn structural_table_caption_and_cell_markers_bound_formatting_reconstruction() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table><caption><b>a<tr><td><i>b<td>c</table>d"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "caption"),
+            (4, "b"),
+            (5, "#a"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "i"),
+            (7, "#b"),
+            (5, "td"),
+            (6, "#c"),
+            (2, "#d")
+        ])
+    );
+}
+
+#[test]
+fn structural_table_nested_table_restores_real_cell_mode_then_body() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table><tr><td>a<table><tr><td>b</table>c</table>d"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#a"),
+            (6, "table"),
+            (7, "tbody"),
+            (8, "tr"),
+            (9, "td"),
+            (10, "#b"),
+            (6, "#c"),
+            (2, "#d")
+        ])
+    );
+}
+
+#[test]
+fn structural_table_entry_uses_actual_quirks_document_mode() {
+    for (source, expected) in [
+        (
+            "<p>a<table><tr><td>b</table>c",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#a"),
+                (3, "table"),
+                (4, "tbody"),
+                (5, "tr"),
+                (6, "td"),
+                (7, "#b"),
+                (3, "#c"),
+            ],
+        ),
+        (
+            "<!doctype html><p>a<table><tr><td>b</table>c",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#a"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#b"),
+                (2, "#c"),
+            ],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let actual = outline(frozen.document().unwrap());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected_outline(&expected));
+    }
+}
+
+#[test]
+fn structural_table_head_delegation_retains_actual_script_and_style_return_mode() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><table><style>s</style><script>x</script><tr><td>a</table>b",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut returns = Vec::new();
+    for _ in 0..1000 {
+        let step = driver.step().unwrap();
+        if let Some(head) = &driver.head {
+            let state = head.state.as_ref().unwrap();
+            if state.mode == super::head::InsertionMode::Text {
+                returns.push(state.return_mode);
+            }
+        }
+        if matches!(
+            step,
+            super::head::HeadStep::Boundary(super::head::HeadBoundary::ConstructionEof)
+        ) {
+            break;
+        }
+    }
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(
+        state.boundary,
+        Some(super::head::HeadBoundary::ConstructionEof)
+    );
+    assert!(!state.before.kernel.foster_parenting);
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert!(!returns.is_empty());
+    assert!(
+        returns
+            .iter()
+            .all(|mode| *mode == Some(super::head::InsertionMode::InTable))
+    );
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "style"),
+            (4, "#s"),
+            (3, "script"),
+            (4, "#x"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#a"),
+            (2, "#b")
+        ])
+    );
+}
+
+#[test]
+fn structural_table_unsupported_creation_retains_original_before_table_effects() {
+    for (tag, boundary) in [
+        ("<input type=hidden>", super::head::HeadBoundary::Form),
+        ("<input>", super::head::HeadBoundary::Form),
+        ("<select>", super::head::HeadBoundary::Select),
+        ("<template>", super::head::HeadBoundary::Template),
+        ("<svg>", super::head::HeadBoundary::Foreign),
+    ] {
+        let source = format!("<!doctype html><table>{tag}");
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(standalone_boundary(&mut driver), boundary);
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.mode, super::head::InsertionMode::InTable);
+        assert!(!state.before.kernel.foster_parenting);
+        assert_eq!(state.diagnostics.len(), 0);
+        assert!(matches!(
+            state.pending.as_ref().unwrap().payload,
+            Payload::Tag(Some(_))
+        ));
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn structural_table_null_preprocessing_and_literal_utf16_are_retained_exactly() {
+    let prefix = "<!doctype html><table>";
+    let mut units: Vec<u16> = prefix.encode_utf16().collect();
+    let null_start = units.len();
+    units.extend([0, 0x20, 0x0d, 0x0a, 0xd83d, 0xde00, 0xd800, 0x51, 0xdc00]);
+    units.extend("<tr><td>x</table>".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let null_ranges: Vec<_> = driver
+        .head
+        .as_ref()
+        .unwrap()
+        .state
+        .as_ref()
+        .unwrap()
+        .diagnostics
+        .as_slice()
+        .iter()
+        .filter(|diagnostic| diagnostic.condition == super::head::HeadCondition::NullInTable)
+        .map(|diagnostic| (diagnostic.source.start(), diagnostic.source.end()))
+        .collect();
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(null_ranges, vec![(null_start, null_start + 1)]);
+    assert_eq!(
+        actual[3],
+        (
+            2,
+            vec![
+                b'#' as u16,
+                0x20,
+                0x0a,
+                0xd83d,
+                0xde00,
+                0xd800,
+                0x51,
+                0xdc00
+            ]
+        )
+    );
+}
+
+#[test]
+fn structural_table_buffered_collection_cancellation_releases_every_real_owner() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table> a<tr><td>b</table>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut collected = false;
+    for _ in 0..100 {
+        driver.step().unwrap();
+        if let Some(head) = &driver.head {
+            let state = head.state.as_ref().unwrap();
+            if state.mode == super::head::InsertionMode::InTableText
+                && state.table.entries.len() != 0
+            {
+                collected = true;
+                break;
+            }
+        }
+    }
+    assert!(collected);
+    request.cancellation().cancel();
+    assert!(driver.step().is_err());
+    let stop = driver.control.stop().unwrap();
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), Some(stop));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(stop));
+}
+
+#[test]
+fn structural_table_work_exhaustion_retains_coherent_pending_and_flush_owners() {
+    // Finite independent caps exercise tokenizer, collection, list classification,
+    // direct insertion, fostered flush and clearing without using usage to derive
+    // a purported exact grammar budget. Every rejected prefix must dispose fully.
+    for cap in [200, 500, 1000, 2000, 5000, 10000, 20000, 50000] {
+        let bounded = limits(100)
+            .into_builder()
+            .work_credits(cap)
+            .finish()
+            .unwrap();
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><table> a<tr><td><b>b</table>c"),
+            bounded,
+        );
+        let mut driver = match StandaloneDocumentDriver::new(&request) {
+            Ok(driver) => driver,
+            Err(_) => continue,
+        };
+        for _ in 0..1000 {
+            match driver.step() {
+                Ok(super::head::HeadStep::Boundary(_)) => break,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        let first = driver.control.stop();
+        if first.is_some() {
+            assert!(driver.step().is_err());
+        }
+        // Normal disposal can itself reach the finite work stop; retry only the
+        // real terminal cleanup path, without resuming useful parser work.
+        if driver.release().is_err() {
+            driver.release().unwrap();
+        }
+        assert_released(&driver.control);
+        if let Some(first) = first {
+            assert_eq!(driver.control.stop(), Some(first));
+        }
+    }
+}
+
+#[test]
+fn structural_table_disposal_stop_after_vector_pop_keeps_nested_ticket_reachable() {
+    let selected = limits(100);
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table> a<tr>"),
+        selected,
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    for _ in 0..100 {
+        driver.step().unwrap();
+        if let Some(head) = &driver.head {
+            let state = head.state.as_ref().unwrap();
+            if state.mode == super::head::InsertionMode::InTableText
+                && state.table.entries.len() != 0
+            {
+                break;
+            }
+        }
+    }
+    assert!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .table
+            .entries
+            .len()
+            != 0
+    );
+    // Fixture-positioning only: allow the independently known nonempty owning
+    // pop cost (one visit, one write, the fixed Option<TableCharacter> move),
+    // then reject further normal work. The expectation is ticket reachability,
+    // not a usage-derived claimed total tokenizer cost.
+    let pop_cost = 2 + std::mem::size_of::<Option<super::tables::TableCharacter>>() as u64;
+    let remaining = selected.work_credits()
+        - driver
+            .control
+            .usage()
+            .resource(crate::HtmlParseResource::WorkCredits)
+            .current;
+    driver
+        .control
+        .charge(WorkCategory::StateStep, remaining - pop_cost)
+        .unwrap();
+    assert!(
+        driver
+            .head
+            .as_mut()
+            .unwrap()
+            .state
+            .as_mut()
+            .unwrap()
+            .release_table(&mut driver.control)
+            .is_err()
+    );
+    let first = driver.control.stop().unwrap();
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(first));
+}
+
+#[test]
+fn structural_table_diagnostic_caps_preserve_whole_batch_or_coherent_flush_prefix() {
+    // Document, doctype, html, head, body and table precede flush.
+    // Two diagnostics admit the first fostered whitespace text before stop.
+    for (cap, nodes) in [(0, 6), (1, 6), (2, 7)] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><table> a<tr>"),
+            limits(100)
+                .into_builder()
+                .diagnostics(cap)
+                .finish()
+                .unwrap(),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut stopped = false;
+        for _ in 0..100 {
+            if driver.step().is_err() {
+                stopped = true;
+                break;
+            }
+        }
+        assert!(stopped);
+        let first = driver.control.stop().unwrap();
+        assert!(matches!(
+            first,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::Diagnostics,
+                ..
+            }
+        ));
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            nodes
+        );
+        assert!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current
+                > 0
+        );
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.mode, super::head::InsertionMode::InTableText);
+        assert!(matches!(
+            state.pending.as_ref().unwrap().payload,
+            Payload::Tag(Some(_))
+        ));
+        assert!(driver.step().is_err());
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), Some(first));
+    }
+}
+
+#[test]
+fn structural_table_form_and_fostered_image_keep_actual_nonancestor_form_owner() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table><form id=f><img><tr><td>x</table>y"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let image = document.node(&body).unwrap().children().next().unwrap();
+    let table = document.node(&body).unwrap().children().nth(1).unwrap();
+    let form = document.node(&table).unwrap().children().next().unwrap();
+    let state = frozen.image_form_state(&mut c, &image).unwrap();
+    let owner = frozen.image_form_owner(&mut c, &image).unwrap();
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert!(state.parser_inserted);
+    assert_eq!(owner, Some(form));
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "img"),
+            (2, "table"),
+            (3, "form"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#x"),
+            (2, "#y")
+        ])
+    );
+}
+
+#[test]
+fn structural_table_real_comment_pi_and_malformed_column_and_row_recovery() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><table><!--c--><?work d?><colgroup> <col></col></colgroup><thead></tbody><tr></tfoot><td>x</th></td></table>y",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let table_errors = driver
+        .head
+        .as_ref()
+        .unwrap()
+        .state
+        .as_ref()
+        .unwrap()
+        .diagnostics
+        .as_slice()
+        .iter()
+        .filter(|d| d.condition == super::head::HeadCondition::UnexpectedTableToken)
+        .count();
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(table_errors, 4);
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "!c"),
+            (3, "?work"),
+            (3, "colgroup"),
+            (4, "# "),
+            (4, "col"),
+            (3, "thead"),
+            (4, "tr"),
+            (5, "td"),
+            (6, "#x"),
+            (2, "#y")
+        ])
     );
 }

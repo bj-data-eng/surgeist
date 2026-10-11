@@ -17,10 +17,11 @@ head continuation still suspends before script effects when it lacks that
 constructor proof. The fresh driver continues through AfterHead, ordinary InBody
 and the two trailing body modes, with formatting reconstruction and adoption.
 Ordinary form recovery and parser-created image associations use that same fresh
-driver and controlled arena. Listed/resettable control creation,
-table/select/frameset transitions, templates and foreign dispatch retain explicit
-unfinished continuations. Construction EOF is not completed stop-parsing or a
-public report.
+driver and controlled arena. Seven structural table modes now use that driver,
+including pending text and implied column-group, section and row creation.
+Listed/resettable control creation, unsupported table rows, select/frameset
+transitions, templates and foreign dispatch retain explicit unfinished
+continuations. Construction EOF is not completed stop-parsing or a public report.
 
 ## Original source and incorporated files
 
@@ -34,9 +35,9 @@ before adaptation.
 | `html5ever/src/tokenizer/states.rs` | `35ea888082a92b77a428af263224169b05ff5740bd519efdace90e44858a0b7d` | `src/parser/tokenizer/states.rs` |
 | `html5ever/src/tokenizer/interface.rs` | `cdab80709a6e27663b9a349a607cf85da93fcc9ee3b3a54cf97ee635a9ae7cf4` | `src/parser/tokenizer/token.rs` |
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
-| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs`; active formatting, reconstruction and adoption in `src/parser/tree_builder/formatting.rs` |
+| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs`; active formatting, reconstruction and adoption in `src/parser/tree_builder/formatting.rs`; table reset and structural helpers in `src/parser/tree_builder/tables.rs` |
 | `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope, implied-end, heading and special-element lists in `src/parser/tree_builder/tag_sets.rs` |
-| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs`; formatting dispatch in `src/parser/tree_builder/formatting.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs`; formatting dispatch in `src/parser/tree_builder/formatting.rs`; structural table modes in `src/parser/tree_builder/tables.rs` |
 | `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
@@ -177,14 +178,14 @@ same controlled arena. Imported, hosted, shadow-document and template-document
 preparation have no supported execution path in this checkpoint.
 
 The ordinary-body extension adapts selected `rules.rs` rows 356–541, 558–602,
-616–630, 693–731, 796–813, 842–873, 880–892, 947–1004, 1466–1493 and 1563–1583.
+616–630, 693–731, 786–813, 842–873, 880–892, 947–1004, 1466–1493 and 1563–1583.
 Stack/body predicates derive from `mod.rs` lines 1043–1223; generic end handling
 derives from lines 1555–1585. The implied-end, heading and special-element lists
 derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected HTML
 edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
 `keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
-Listed/resettable control and template-form creation, table/foreign creation and
-frameset transitions remain unfinished boundaries.
+Listed/resettable control and template-form creation, unsupported table branches,
+foreign creation and frameset transitions remain unfinished boundaries.
 
 The sole fresh driver consumes its actual AfterHead handoff and retains current
 and return insertion modes, the stored head identity, frameset eligibility and
@@ -241,6 +242,33 @@ continued observation or freeze and leaves only owner-checked terminal disposal.
 Iterative ancestry and registry scans are charged and may require quadratic
 work. This adaptation adds no persistent association tree, external provider,
 resettable initialization or complete parser-accounting claim.
+
+The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
+`mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry
+in the body driver. Its initial adapted SHA-256 is
+`60453ffe30a328824744e7a0dd92419204d25bc1584b35c5a6f5bde484acbba0`.
+Earlier incorporation hashes remain historical. Original source notices are
+retained. The selected HTML edition governs the pending-character current-node
+set, including template, and the tbody/thead/tfoot section predicate rather than
+the upstream table/tbody/tfoot predicate. Processing instructions use actual
+native insertion. Hidden-input dispatch retains a pre-effect control-creation
+continuation rather than adopting the upstream diagnostic before testing its
+type; this branch remains unsupported.
+
+InTable, InTableText, InCaption, InColumnGroup, InTableBody, InRow and InCell use
+the existing stack, scope, formatting markers and sole resource controller.
+Session-owned implied colgroup/tbody/tr factories and checked document-mode
+access are Surgeist-authored providers. Pending characters retain actual managed
+payloads and source ranges; NULL is diagnosed and omitted before whole-batch
+classification. Whitespace batches insert directly; mixed batches use fostered
+body-character handling. Transfer slots retain popped owners before fallible
+disposal, so terminal cleanup can release remaining storage after a stopped
+flush. Actual delegated insertion modes, Text return and foster state survive
+source-ordered reprocessing. Form and image effects reuse their existing owners.
+Unsupported control, select, template and foreign branches retain the original
+token before unavailable effects. This checkpoint does not certify complete
+InTable behavior, fragment initialization, EOF/report completion or complete
+parser resource accounting.
 
 Remaining insertion modes, foreign dispatch,
 context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,

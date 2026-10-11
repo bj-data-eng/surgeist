@@ -8,10 +8,10 @@
 // except according to those terms.
 //
 // Adapted from selected ordinary body rows in tree_builder/rules.rs:
-// 356-541,558-602,616-630,693-731,796-813,842-873,880-892,947-1004,
+// 356-541,558-602,616-630,693-731,786-813,842-873,880-892,947-1004,
 // 1466-1493,1563-1583, plus form rows543-558,632-665;
 // and tree_builder/mod.rs:1043-1223,1555-1585.
-// Listed/resettable form controls, table/foreign creation and frameset transitions are
+// Listed/resettable form controls, foreign creation and frameset transitions are
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
@@ -129,7 +129,7 @@ impl HeadState<'_> {
         }
         Ok(None)
     }
-    fn kind(&self, c: &mut ParseControl) -> Result<Option<(TagKind, bool)>, HeadError> {
+    pub(super) fn kind(&self, c: &mut ParseControl) -> Result<Option<(TagKind, bool)>, HeadError> {
         c.charge(WorkCategory::RecordVisit, 2)?;
         let Payload::Tag(input) = &self
             .pending
@@ -250,13 +250,7 @@ impl HeadState<'_> {
                     c,
                 )?;
                 self.whitespace_pending = self.body_run.take().map(|run| run.text);
-                self.reconstruct_formatting(c)?;
-                self.before
-                    .kernel
-                    .insert_text(&mut self.whitespace_pending, None, c)?;
-                if other {
-                    self.frameset(false, c)?;
-                }
+                self.body_character(other, c)?;
             }
         }
         self.body_runs
@@ -266,6 +260,20 @@ impl HeadState<'_> {
         write(size_of::<Option<BodyTextRuns>>(), 1, c)?;
         self.body_runs = None;
         self.finish(c)
+    }
+    pub(super) fn body_character(
+        &mut self,
+        other: bool,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
+        self.reconstruct_formatting(c)?;
+        self.before
+            .kernel
+            .insert_text(&mut self.whitespace_pending, None, c)?;
+        if other {
+            self.frameset(false, c)?;
+        }
+        Ok(())
     }
     fn close_p(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         self.before.kernel.implied_ends(Some("p"), c)?;
@@ -280,7 +288,7 @@ impl HeadState<'_> {
             }
         }
     }
-    fn close_p_in_scope(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn close_p_in_scope(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         if self.before.kernel.scoped_name("p", Scope::Button, c)? {
             self.close_p(c)?;
         }
@@ -304,7 +312,7 @@ impl HeadState<'_> {
         }
         Ok(())
     }
-    fn head_delegation(
+    pub(super) fn head_delegation(
         &mut self,
         late: bool,
         close: bool,
@@ -352,7 +360,7 @@ impl HeadState<'_> {
         }
         Ok(step)
     }
-    fn end_template(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+    pub(super) fn end_template(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         if self.before.kernel.contains_html_template(c)? {
             return self.stop_at(HeadBoundary::Template, c);
         }
@@ -394,13 +402,6 @@ impl HeadState<'_> {
                 HeadBoundary::Form,
             ),
             (&["select", "option", "optgroup"][..], HeadBoundary::Select),
-            (
-                &[
-                    "table", "caption", "col", "colgroup", "tbody", "td", "tfoot", "th", "thead",
-                    "tr",
-                ][..],
-                HeadBoundary::Table,
-            ),
             (&["frameset", "frame"][..], HeadBoundary::Frameset),
             (&["math", "svg"][..], HeadBoundary::Foreign),
         ] {
@@ -410,15 +411,15 @@ impl HeadState<'_> {
         }
         Ok(None)
     }
-    pub(super) fn body_advance(
+    pub(super) fn body_rules(
         &mut self,
+        mode: InsertionMode,
         source: &HtmlSource,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
         if self.first_lf(c)? {
             return Ok(Some(self.finish(c)?));
         }
-        let mode = self.mode(c)?;
         let kind = self.kind(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let payload = &self
@@ -646,6 +647,18 @@ impl HeadState<'_> {
         close: bool,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
+        if self.token_in(&["table"], c)?.is_some() {
+            if self.before.kernel.session.document_mode(c)? != crate::HtmlDocumentMode::Quirks {
+                self.close_p_in_scope(c)?;
+            }
+            self.insert_tag(c)?;
+            self.frameset(false, c)?;
+            self.set_mode(InsertionMode::InTable, c)?;
+            if close {
+                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            }
+            return Ok(Some(self.finish(c)?));
+        }
         if self.token_in(&["body"], c)?.is_some() {
             self.emit(HeadCondition::UnexpectedBodyToken, c)?;
             c.charge(WorkCategory::RecordVisit, 1)?;

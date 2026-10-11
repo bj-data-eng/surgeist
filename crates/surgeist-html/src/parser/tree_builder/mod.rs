@@ -17,7 +17,8 @@
 //! scripts; a general proofless head stage suspends at script. Ordinary
 //! body/block/list/ruby, formatting/reconstruction/adoption, applet/marquee and
 //! trailing modes, ordinary form pointer recovery and image form associations
-//! are admitted. Listed/resettable form controls, select, table, frameset,
+//! and the bounded structural table family are admitted. Listed/resettable form
+//! controls (including Hidden input), select, frameset,
 //! template and foreign rows retain owning continuations; construction EOF is
 //! not full parse/report success.
 
@@ -26,6 +27,7 @@ mod doctype;
 mod formatting;
 mod head;
 mod prologue;
+mod tables;
 mod tag_sets;
 #[cfg(test)]
 mod tests;

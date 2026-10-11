@@ -648,7 +648,7 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Listed/resettable control creation, table/select/frameset transitions, templates
+Listed/resettable control creation, select/frameset transitions, templates
 and foreign dispatch retain untouched-token continuations when their required
 machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
@@ -671,8 +671,8 @@ pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Template forms,
-listed/resettable controls, table/foreign and contextual fragment execution,
-hosted parsing and full EOF/report completion remain unfinished.
+listed/resettable controls, unfinished table rows, foreign dispatch, contextual
+fragment execution, hosted parsing and full EOF/report completion remain unfinished.
 
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
@@ -685,6 +685,28 @@ Child transfer can stop after a coherent partial move; a terminal failure still
 prevents publication. Work is finite and polled, with potentially quadratic
 comparison and tree-order/depth maintenance costs. This checkpoint makes no
 linear-time or complete parser-accounting claim.
+
+The structural table checkpoint handles InTable, InTableText, InCaption,
+InColumnGroup, InTableBody, InRow and InCell, including implied colgroup, tbody and
+tr elements. Table entry observes the actual document mode; table closure resets
+the insertion mode from the real stack. Caption and cell boundaries use the
+existing formatting markers. Body/head delegation and Text return preserve the
+actual table mode, and fostered form/image insertion uses the existing association
+and tree-mutation owners.
+
+Pending table characters retain their actual text and source ranges. NULL is
+diagnosed and omitted before the complete batch is classified. A wholly
+whitespace batch inserts directly without formatting reconstruction; any
+nonwhitespace makes the entire remaining batch use fostered body-character
+insertion. Auxiliary capacity, scans, diagnostics, mode changes and transfer
+owners use the sole controller. A terminal stop can retain a coherent flush
+prefix, remaining characters and the triggering token for cleanup, while refusing
+continued construction or publication.
+
+This is a structural checkpoint. Hidden input and other unavailable control
+creation, select, templates and foreign branches preserve their original token
+before unsupported effects. It does not establish complete InTable behavior,
+contextual fragment parsing or completed EOF/report publication.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.
