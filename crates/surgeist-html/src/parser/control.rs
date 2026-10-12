@@ -654,6 +654,35 @@ impl ParseControl {
         shared.shared = Arc::downgrade(values);
         Ok(())
     }
+    /// Replaces one actual initialized slot without growing or changing the
+    /// logical attribute count. All rejection precedes ownership transfer.
+    pub(crate) fn replace_attribute_slot(
+        &mut self,
+        values: &mut Arc<Vec<crate::Attribute>>,
+        shared: &mut SharedAllocation<Vec<crate::Attribute>>,
+        vector: &VectorCapacity<crate::Attribute>,
+        index: usize,
+        incoming: &mut Option<crate::Attribute>,
+    ) -> Result<crate::Attribute, ParseStop> {
+        self.prepare_attribute_edit(values, shared, vector)?;
+        self.charge(WorkCategory::RecordVisit, 2)?;
+        if index >= values.len() || incoming.is_none() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let bytes = 3 * size_of::<crate::Attribute>();
+        self.admit_atomic_layout(bytes)?;
+        self.charge_many(&[
+            (WorkCategory::CopyByte, bytes as u64),
+            (WorkCategory::RecordWrite, 3),
+        ])?;
+        drop(std::mem::replace(&mut shared.shared, Weak::new()));
+        let old = std::mem::replace(
+            &mut Arc::get_mut(values).expect("only ticket Weak was removed")[index],
+            incoming.take().expect("checked actual incoming slot"),
+        );
+        shared.shared = Arc::downgrade(values);
+        Ok(old)
+    }
     /// Consumes real storage plus its ticket, returning both on invalid owner
     /// or capacity. Cleanup needs no budget, and releases capacity only: managed
     /// nodes, logical edges/slots, cumulative work and high-water stay admitted.
@@ -1937,6 +1966,279 @@ mod tests {
             assert_eq!(c.usage().actual_capacity_bytes, 0);
         }
     }
+
+    #[test]
+    fn actual_attribute_replacement_qualifies_owner_aliases_and_cancellation_before_take() {
+        for case in 0..4 {
+            let cancellation = HtmlParseCancellation::new();
+            let mut c = ParseControl::new(limits(), cancellation.clone());
+            let (mut values, mut vector) = c.new_vector().unwrap();
+            c.reserve_vector(&mut values, &mut vector, 1).unwrap();
+            values.push(attribute("old"));
+            let (mut backing, mut shared) = c.share_owned(values).unwrap();
+            let strong = (case == 1).then(|| backing.clone());
+            let weak = (case == 2).then(|| Arc::downgrade(&backing));
+            if case == 3 {
+                cancellation.cancel();
+            }
+            let mut incoming = Some(attribute("new"));
+            let mut foreign = control();
+            let active = if case == 0 { &mut foreign } else { &mut c };
+            let stop = active
+                .replace_attribute_slot(&mut backing, &mut shared, &vector, 0, &mut incoming)
+                .unwrap_err();
+            assert_eq!(
+                stop,
+                if case == 0 {
+                    ParseStop::InternalInvariant(Invariant::ForeignControl)
+                } else if case == 3 {
+                    ParseStop::Cancelled
+                } else {
+                    ParseStop::InternalInvariant(Invariant::SharedAllocationAliased)
+                }
+            );
+            assert_eq!(backing[0].name().local_name().to_utf8().unwrap(), "old");
+            assert_eq!(
+                incoming
+                    .as_ref()
+                    .unwrap()
+                    .name()
+                    .local_name()
+                    .to_utf8()
+                    .unwrap(),
+                "new"
+            );
+            drop(strong);
+            drop(weak);
+            assert_eq!(Arc::weak_count(&backing), 1);
+            let values = c.release_shared(backing, shared).unwrap();
+            c.release_vector(values, vector).unwrap();
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            if case == 0 {
+                assert!(c.stop().is_none());
+                assert_eq!(foreign.stop(), Some(stop));
+            } else {
+                assert_eq!(c.stop(), Some(stop));
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_input_metadata_slots_are_admitted_before_take_and_bound_only_to_actual_nodes() {
+        use crate::construction::parser_session::{SessionError, release_token_kind};
+        use crate::parser::tokenizer::{
+            Tokenizer,
+            states::State,
+            token::{Event, TokenKind},
+        };
+        use crate::parser::tree_builder::StandaloneDocumentDriver;
+        for additional in [3, 4] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<html><head></head><input type=hidden>"),
+                limits()
+                    .into_builder()
+                    .atomic_layout_bytes(1_000_000)
+                    .managed_capacity_bytes(1_000_000)
+                    .peak_transient_bytes(2_000_000)
+                    .work_credits(10_000_000)
+                    .finish()
+                    .unwrap(),
+            );
+            let mut driver = Some(StandaloneDocumentDriver::new(&request).unwrap());
+            for _ in 0..128 {
+                if driver.as_mut().unwrap().standalone_parts().is_some() {
+                    break;
+                }
+                driver.as_mut().unwrap().step().unwrap();
+            }
+            let (mut c, mut session, capability) =
+                StandaloneDocumentDriver::take_standalone_fixture(&mut driver).unwrap();
+            let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            let (mut input, token_source) = loop {
+                let event = lexer.next(&mut c, false).unwrap().unwrap();
+                match event {
+                    Event::Token(event) => {
+                        let token = event.into_token(&mut c).unwrap();
+                        if matches!(&token.kind,TokenKind::Tag(tag) if tag.name.value.text().code_units()==[105,110,112,117,116])
+                        {
+                            let TokenKind::Tag(tag) = token.kind else {
+                                unreachable!()
+                            };
+                            break (Some(tag), token.source);
+                        }
+                        release_token_kind(&mut Some(token.kind), &mut c).unwrap();
+                    }
+                    event => event.release(&mut c).unwrap(),
+                }
+            };
+            let parent = session.root(&mut c).unwrap();
+            let pointer = input
+                .as_ref()
+                .unwrap()
+                .name
+                .value
+                .text()
+                .code_units()
+                .as_ptr();
+            let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
+            let slots = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
+            c.limits[HtmlParseResource::AuxiliaryEntries as usize] = slots + additional;
+            assert!(matches!(
+                session.allocate_hidden_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    &parent,
+                    None,
+                    &token_source,
+                    &capability
+                ),
+                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::AuxiliaryEntries,
+                    ..
+                }))
+            ));
+            if additional == 3 {
+                assert_eq!(
+                    input
+                        .as_ref()
+                        .unwrap()
+                        .name
+                        .value
+                        .text()
+                        .code_units()
+                        .as_ptr(),
+                    pointer
+                );
+            } else {
+                assert!(input.is_none());
+            }
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                nodes
+            );
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
+                slots + additional
+            );
+            let first = c.stop();
+            if let Some(tag) = input.take() {
+                release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            assert_eq!(c.stop(), first);
+            for resource in [
+                HtmlParseResource::BufferedUtf16Units,
+                HtmlParseResource::ManagedUtf16Units,
+                HtmlParseResource::TokenAttributes,
+                HtmlParseResource::AuxiliaryEntries,
+                HtmlParseResource::SourceMapEntries,
+                HtmlParseResource::ManagedCapacityBytes,
+            ] {
+                assert_eq!(c.usage().resource(resource).current, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn actual_attribute_replacement_counts_real_moves_without_growth() {
+        let mut c = control();
+        let (mut values, mut capacity) = c.new_vector().unwrap();
+        c.reserve_vector(&mut values, &mut capacity, 1).unwrap();
+        values.push(attribute("old"));
+        let (mut backing, mut shared) = c.share_owned(values).unwrap();
+        let mut incoming = Some(attribute("new"));
+        let before = c.usage().clone();
+        let old = c
+            .replace_attribute_slot(&mut backing, &mut shared, &capacity, 0, &mut incoming)
+            .unwrap();
+        assert!(incoming.is_none());
+        assert_eq!(old.name().local_name().to_utf8().unwrap(), "old");
+        assert_eq!(backing[0].name().local_name().to_utf8().unwrap(), "new");
+        assert_eq!(
+            c.usage().actual_capacity_bytes,
+            before.actual_capacity_bytes
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+            5
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
+            9
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
+            5
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+            (2 * size_of::<Weak<Vec<crate::Attribute>>>() + 3 * size_of::<crate::Attribute>())
+                as u64
+        );
+        assert_eq!(Arc::weak_count(&backing), 1);
+        drop(old);
+        let values = c.release_shared(backing, shared).unwrap();
+        c.release_vector(values, capacity).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
+    fn actual_attribute_replacement_atomic_and_work_caps_preserve_incoming_and_ticket() {
+        for atomic in [true, false] {
+            for short in [true, false] {
+                let mut c = control();
+                let (mut values, mut capacity) = c.new_vector().unwrap();
+                c.reserve_vector(&mut values, &mut capacity, 1).unwrap();
+                values.push(attribute("old"));
+                let (mut backing, mut shared) = c.share_owned(values).unwrap();
+                let mut incoming = Some(attribute("new"));
+                if atomic {
+                    c.limits[HtmlParseResource::AtomicLayoutBytes as usize] =
+                        (3 * size_of::<crate::Attribute>()) as u64 - u64::from(short);
+                } else {
+                    // prepare: 3 visits+9 providers+2 Weak moves+2 writes.
+                    // slot: 2 visits+3 Attribute moves+3 writes.
+                    let work = 5
+                        + 9
+                        + 5
+                        + 2 * size_of::<Weak<Vec<crate::Attribute>>>()
+                        + 3 * size_of::<crate::Attribute>();
+                    c.limits[HtmlParseResource::WorkCredits as usize] =
+                        c.usage().resource(HtmlParseResource::WorkCredits).current + work as u64
+                            - u64::from(short);
+                }
+                let result = c.replace_attribute_slot(
+                    &mut backing,
+                    &mut shared,
+                    &capacity,
+                    0,
+                    &mut incoming,
+                );
+                if short {
+                    assert!(
+                        matches!(result, Err(ParseStop::LimitExceeded { resource, .. }) if resource == if atomic {HtmlParseResource::AtomicLayoutBytes} else {HtmlParseResource::WorkCredits})
+                    );
+                    assert!(incoming.is_some());
+                    assert_eq!(backing[0].name().local_name().to_utf8().unwrap(), "old");
+                } else {
+                    drop(result.unwrap());
+                    assert!(incoming.is_none());
+                }
+                assert_eq!(Arc::weak_count(&backing), 1);
+                let stop = c.stop();
+                let values = c.release_shared(backing, shared).unwrap();
+                c.release_vector(values, capacity).unwrap();
+                assert_eq!(c.stop(), stop);
+                assert_eq!(c.usage().actual_capacity_bytes, 0);
+            }
+        }
+    }
+
     #[test]
     fn actual_attribute_append_moves_slots_without_capacity_or_logical_growth() {
         let mut c = control();

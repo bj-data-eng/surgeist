@@ -324,6 +324,28 @@ disposal. Repeated scans may be superlinear and stay charged and polled. This
 checkpoint adds no setters, nonnull overrides, general form reset, hosted
 initialization or completed public ingestion/report lifecycle.
 
+The Hidden-input extension adapts the existing `rules.rs` body branch at lines
+815–840 and the table branch at lines 1107–1115. The latter is already within
+the incorporated structural-table range; no additional upstream source is
+ingested. Original notices, complete upstream hashes and earlier incorporation
+hashes remain unchanged. The selected HTML edition governs ordered initial
+attribute changes, Text-state value sanitization, nonempty value writeback on
+transition to Hidden, and fresh reset before parser association through
+[the input element](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-input-element).
+
+The existing standalone capability qualifies creation before token transfer.
+Surgeist-owned state and original token/value-attribute ranges use the same
+controlled payload registry. Native attribute replacement uses one admitted
+controller operation; raw value replacement retains independent backing.
+Original ranges identify actual creation writeback without inventing merged
+source ranges for removed CR/LF. Active and frozen private observations preserve
+owner qualification. Actual old and new backing coexist under admission;
+obsolete backing is released while initialized registry slots remain charged
+until disposal. A terminal stop retains partial owners and prevents publication;
+cleanup runs no useful reset. Repeated scans and copies may be quadratic and
+remain charged and polled. Other input states, hosted initialization, general
+setters and public parse/report completion remain separate work.
+
 The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
 `mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry
 in the body driver. Its initial adapted SHA-256 is
@@ -332,9 +354,9 @@ Earlier incorporation hashes remain historical. Original source notices are
 retained. The selected HTML edition governs the pending-character current-node
 set, including template, and the tbody/thead/tfoot section predicate rather than
 the upstream table/tbody/tfoot predicate. Processing instructions use actual
-native insertion. Hidden-input dispatch retains a pre-effect control-creation
-continuation rather than adopting the upstream diagnostic before testing its
-type; this branch remains unsupported.
+native insertion. Hidden-input dispatch checks its type and qualified creation
+capability before the table diagnostic, then uses direct table insertion. Other
+unavailable control creation retains a pre-effect continuation.
 
 InTable, InTableText, InCaption, InColumnGroup, InTableBody, InRow and InCell use
 the existing stack, scope, formatting markers and sole resource controller.

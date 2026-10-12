@@ -10,7 +10,7 @@
 // Adapted from selected ordinary body rows in tree_builder/rules.rs:
 // 356-541,558-602,616-630,693-731,786-813,842-873,880-892,947-1004,
 // 1466-1493,1563-1583, plus form/control rows508-518,543-558,604-665,765-784,
-// and textarea874-878;
+// and textarea874-878, Hidden input815-840;
 // and tree_builder/mod.rs:1043-1223,1555-1585.
 // Other resettable form controls and foreign creation are
 // retained boundaries rather than imported implementations. Origin: html5ever
@@ -107,6 +107,31 @@ const HEAD: &[&str] = &[
 const HEADING: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 
 impl HeadState<'_> {
+    pub(super) fn hidden_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let Payload::Tag(input) = &self
+            .pending
+            .as_ref()
+            .ok_or(HeadError::MissingInput)?
+            .payload
+        else {
+            return Ok(false);
+        };
+        Ok(crate::construction::parser_session::hidden_input_tag(
+            c,
+            input.as_ref().ok_or(HeadError::MissingInput)?,
+        )?)
+    }
+    pub(super) fn admit_hidden_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
+        match self.validate_standalone_capability(c) {
+            Err(HeadError::StandaloneCapabilityUnavailable) => Err(c
+                .stop_unsupported_standalone(
+                    crate::parser::control::StandaloneUnsupported::Provenance,
+                )
+                .into()),
+            other => other,
+        }
+    }
     pub(super) fn token_in(
         &self,
         names: &[&'static str],
@@ -402,6 +427,9 @@ impl HeadState<'_> {
             (&["math", "svg"][..], HeadBoundary::Foreign),
         ] {
             if self.token_in(names, c)?.is_some() {
+                if boundary == HeadBoundary::Form && self.hidden_input(c)? {
+                    continue;
+                }
                 return Ok(Some(boundary));
             }
         }
@@ -576,6 +604,13 @@ impl HeadState<'_> {
             return Err(HeadError::MissingInput);
         };
         if kind == TagKind::Start {
+            if self.token_in(&["input"], c)?.is_some() {
+                self.admit_hidden_capability(c)?;
+                self.reconstruct_formatting(c)?;
+                self.insert_hidden_input(c)?;
+                self.before.kernel.pop(c)?;
+                return Ok(Some(self.finish(c)?));
+            }
             if self.token_in(&["textarea"], c)?.is_some() {
                 match self.validate_standalone_capability(c) {
                     Err(HeadError::StandaloneCapabilityUnavailable) => {

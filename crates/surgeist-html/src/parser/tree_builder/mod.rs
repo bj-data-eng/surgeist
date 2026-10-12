@@ -19,8 +19,8 @@
 //! trailing modes, ordinary form pointer recovery, image and listed non-resettable
 //! button/fieldset/object form associations and bounded structural tables are
 //! admitted, together with ordinary standalone frameset entry and trailing modes,
-//! and textarea RCDATA, raw child-text hooks and parser-pop reset.
-//! Other resettable controls (including Hidden input), select,
+//! textarea RCDATA, raw child-text hooks and parser-pop reset, output creation,
+//! and ordered Hidden-input creation. Other resettable controls, select,
 //! template and foreign rows retain owning continuations; construction EOF is
 //! not full parse/report success.
 

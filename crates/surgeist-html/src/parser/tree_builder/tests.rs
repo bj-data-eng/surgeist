@@ -6326,7 +6326,6 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
 #[test]
 fn structural_table_unsupported_creation_retains_original_before_table_effects() {
     for (tag, boundary) in [
-        ("<input type=hidden>", super::head::HeadBoundary::Form),
         ("<input>", super::head::HeadBoundary::Form),
         ("<select>", super::head::HeadBoundary::Select),
         ("<template>", super::head::HeadBoundary::Template),
@@ -9112,4 +9111,173 @@ fn ordinary_hidden_inputs_preserve_ordered_value_rewrite_and_form_sibling_order(
             ),
         ]
     );
+}
+
+#[test]
+fn hidden_input_table_direct_placement_and_body_formatting_reconstruction_are_source_ordered() {
+    for (source, expected) in [
+        (
+            "<!doctype html><table><input type=hidden value='A&#13;B'><tr><td>C</table>Z",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "table"),
+                (3, "input"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#C"),
+                (2, "#Z"),
+            ]),
+        ),
+        (
+            "<!doctype html><form><p><b>A</p><input value='A&#10;B' type=hidden></form>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "form"),
+                (3, "p"),
+                (4, "b"),
+                (5, "#A"),
+                (3, "b"),
+                (4, "input"),
+            ]),
+        ),
+        (
+            "<!doctype html><table><caption><input type=hidden></caption><tr><td><input type=hidden></table>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "table"),
+                (3, "caption"),
+                (4, "input"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "input"),
+            ]),
+        ),
+        (
+            "<!doctype html><input type=hidden><frameset><frame name='a'/></frameset>",
+            expected_outline(&[(0, "html"), (1, "head"), (1, "frameset"), (2, "frame")]),
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let actual = outline(frozen.document().unwrap());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected, "{source}");
+    }
+}
+#[test]
+fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value_exact() {
+    for (prefix, associated) in [("", true), ("<div id=f></div>", false)] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!(
+                "<!doctype html><input form=f type=hidden value='A&#13;B'>{prefix}<form id=f></form>"
+            )),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let input = document.node(&body).unwrap().children().next().unwrap();
+        let form = document.node(&body).unwrap().children().last().unwrap();
+        let owner = frozen.form_association_owner(&mut c, &input).unwrap();
+        assert_eq!(owner, associated.then(|| form.clone()));
+        assert_eq!(
+            frozen.form_association_state(&mut c, &input).unwrap().kind,
+            crate::construction::parser_session::FormAssociationKind::HiddenInput
+        );
+        let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
+        frozen
+            .append_hidden_input_value(&mut c, &input, &mut value)
+            .unwrap();
+        let actual = value.units().to_vec();
+        value.release(&mut c).unwrap();
+        drop(owner);
+        drop(input);
+        drop(form);
+        drop(body);
+        drop(html);
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, [65, 13, 66]);
+    }
+}
+#[test]
+fn hidden_input_proofless_head_rejects_before_diagnostic_stack_or_creation() {
+    let source = HtmlSource::utf8("<!doctype html><head></head><body><input type='hidden'/>");
+    let mut c = control(100);
+    let mut stage = head_boundary(&source, &mut c).driver;
+    write(size_of::<Option<super::head::HeadBoundary>>(), 1, &mut c).unwrap();
+    stage.state.as_mut().unwrap().boundary = None;
+    stage.step(&mut c).unwrap();
+    let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
+    assert!(stage.step(&mut c).is_err());
+    let first = c.stop().unwrap();
+    assert_eq!(
+        first,
+        ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+    );
+    let state = stage.state.as_ref().unwrap();
+    assert!(state.diagnostics.as_slice().is_empty());
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+    assert!(matches!(
+        state.pending.as_ref().unwrap().payload,
+        Payload::Tag(Some(_))
+    ));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        nodes
+    );
+    assert!(stage.step(&mut c).is_err());
+    assert!(stage.take_continuation(&mut c).is_err());
+    stage.release(&mut c).unwrap();
+    assert_eq!(c.stop(), Some(first));
+    assert_released(&c);
+}
+#[test]
+fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
+    for markup in [
+        "<input>",
+        "<input type=text>",
+        "<input type=' hidden'>",
+        "<input type='hidden '>",
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!("<!doctype html>{markup}")),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let boundary = standalone_boundary(&mut driver);
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert!(matches!(
+            state.pending.as_ref().unwrap().payload,
+            Payload::Tag(Some(_))
+        ));
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::Form);
+    }
 }

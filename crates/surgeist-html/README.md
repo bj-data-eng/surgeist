@@ -981,6 +981,22 @@ freeze; terminal cleanup performs no useful reset. General setters, nonnull
 overrides, form reset, hosted initialization and public parse completion remain
 separate work.
 
+Hidden input creation appends initial attributes in source order. A value seen
+while the fresh input is still in the Text state loses CR and LF; changing to
+Hidden then writes a nonempty internal value back to the native value attribute.
+Creation resets the resulting native value before canonical form association.
+The ordinary body and table branches use this same owner; table diagnostics
+precede direct insertion, and the body branch preserves frameset eligibility.
+
+Private active and frozen observations distinguish internal and native default
+values and retain the original token and value-attribute ranges for an actual
+creation writeback. Replaced native and raw backing coexist under admission;
+successful replacement releases obsolete backing while retired registry slots
+remain charged until disposal. Stops retain partial owners, refuse publication
+and perform no reset during cleanup. Repeated scans and copies may be quadratic
+and remain charged and polled. Other input states, hosted initialization, general
+value setters and public parse completion remain separate work.
+
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
 the actual original tag into independently owned controlled storage, preserving
@@ -1011,8 +1027,8 @@ owners use the sole controller. A terminal stop can retain a coherent flush
 prefix, remaining characters and the triggering token for cleanup, while refusing
 continued construction or publication.
 
-This is a structural checkpoint. Hidden input and other unavailable control
-creation, select, templates and foreign branches preserve their original token
+This is a structural checkpoint. Other unavailable control creation, select,
+templates and foreign branches preserve their original token
 before unsupported effects. It does not establish complete InTable behavior,
 contextual fragment parsing or completed EOF/report publication.
 

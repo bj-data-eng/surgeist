@@ -10,7 +10,7 @@
 // Adapted from html5ever tree_builder/rules.rs:1037-1411 and
 // tree_builder/mod.rs:1236-1320 at d7232d746d3112f08926d169591576bd12fe2fdf.
 // Governing HTML877d syntax5056-5498 controls PI, predicate differences,
-// diagnostic order and source reprocessing. Hidden/resettable controls, templates,
+// diagnostic order and source reprocessing. Other input/resettable controls, templates,
 // fragments and foreign construction remain actual pre-effect continuations.
 
 use super::head::{
@@ -192,6 +192,9 @@ impl HeadState<'_> {
                 (&["math", "svg"][..], HeadBoundary::Foreign),
             ] {
                 if self.token_in(names, c)?.is_some() {
+                    if boundary == HeadBoundary::Form && self.hidden_input(c)? {
+                        continue;
+                    }
                     return Ok(Some(self.stop_at(boundary, c)?));
                 }
             }
@@ -864,7 +867,14 @@ impl HeadState<'_> {
                 return Ok(Some(self.head_delegation(false, close, c)?));
             }
             if self.token_in(&["input"], c)?.is_some() {
-                return Ok(Some(self.stop_at(HeadBoundary::Form, c)?));
+                if !self.hidden_input(c)? {
+                    return Ok(Some(self.stop_at(HeadBoundary::Form, c)?));
+                }
+                self.admit_hidden_capability(c)?;
+                self.table_error(c)?;
+                self.insert_hidden_input(c)?;
+                self.before.kernel.pop(c)?;
+                return Ok(Some(self.finish(c)?));
             }
             if self.token_in(&["form"], c)?.is_some() {
                 self.table_error(c)?;

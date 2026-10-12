@@ -869,6 +869,37 @@ impl HeadState<'_> {
         self.before.kernel.push(&node, c)?;
         Ok(node)
     }
+    pub(super) fn insert_hidden_input(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<ParserNode, HeadError> {
+        let location = self.before.kernel.adjusted_location(None, c)?;
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let capability = &self
+            .script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .capability;
+        let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
+        let Payload::Tag(input) = &mut pending.payload else {
+            return Err(HeadError::MissingInput);
+        };
+        let node = self
+            .before
+            .kernel
+            .session
+            .allocate_hidden_input_for_creation(
+                c,
+                input,
+                &location.parent,
+                self.current_form.as_ref(),
+                &pending.source,
+                capability,
+            )?;
+        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.push(&node, c)?;
+        Ok(node)
+    }
     fn set_head(&mut self, node: &ParserNode, c: &mut ParseControl) -> Result<(), HeadError> {
         let node = copy_node(node, c)?;
         write(size_of::<Option<ParserNode>>(), 1, c)?;
