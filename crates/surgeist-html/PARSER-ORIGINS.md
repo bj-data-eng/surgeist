@@ -25,7 +25,7 @@ Fresh ordinary output creation also completes its empty reset before association
 null-default and current observations read actual ordinary descendant text.
 Ordinary select/option/optgroup/selectedcontent creation and source-ordered
 selection, cloning and intrinsic checkpoint effects now use that driver. Other
-resettable control creation, unsupported table rows, templates and foreign
+resettable control creation, unsupported table rows, templates and SVG script
 dispatch retain explicit unfinished continuations. Construction EOF is not
 completed stop-parsing or a public report.
 
@@ -41,9 +41,9 @@ before adaptation.
 | `html5ever/src/tokenizer/states.rs` | `35ea888082a92b77a428af263224169b05ff5740bd519efdace90e44858a0b7d` | `src/parser/tokenizer/states.rs` |
 | `html5ever/src/tokenizer/interface.rs` | `cdab80709a6e27663b9a349a607cf85da93fcc9ee3b3a54cf97ee635a9ae7cf4` | `src/parser/tokenizer/token.rs` |
 | `html5ever/src/tokenizer/char_ref/mod.rs` | `e753058cb7ab64c63bb13e2156c583bdc60a8468efe6b9c64b8768c6effadf8f` | `src/parser/tokenizer/char_ref.rs` |
-| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs`; active formatting, reconstruction and adoption in `src/parser/tree_builder/formatting.rs`; table reset and structural helpers in `src/parser/tree_builder/tables.rs` |
+| `html5ever/src/tree_builder/mod.rs` | `d69954162f05710cb62fb660666956ec5daa0878e26ba5df9f25db56d3284a36` | bounded insertion-location, stack/scope and body predicates in `src/parser/tree_builder/mod.rs`; raw-mode handoff in `src/parser/tree_builder/head.rs`; generic end handling in `src/parser/tree_builder/body.rs`; active formatting, reconstruction and adoption in `src/parser/tree_builder/formatting.rs`; table reset and structural helpers in `src/parser/tree_builder/tables.rs`; foreign integration/recovery in `src/parser/tree_builder/foreign.rs` and name/attribute adjustment in `src/construction/parser_session/foreign.rs` |
 | `html5ever/src/tree_builder/tag_sets.rs` | `5f1e1adffe46f4af0fe063d5847cf1e0fcc03312ca2e3b0062945a341b836716` | selected scope, implied-end, heading and special-element lists in `src/parser/tree_builder/tag_sets.rs` |
-| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs`; formatting dispatch in `src/parser/tree_builder/formatting.rs`; structural table modes in `src/parser/tree_builder/tables.rs`; frameset entry and trailing modes in `src/parser/tree_builder/frameset.rs` |
+| `html5ever/src/tree_builder/rules.rs` | `877f811266d9d1098f07892473e583b8218d01c0895c8c2d08e40acaec98aa6d` | Initial/BeforeHtml in `src/parser/tree_builder/prologue.rs`; selected head/noscript/Text and Disabled script rules in `src/parser/tree_builder/head.rs`; ordinary body and trailing-mode rows in `src/parser/tree_builder/body.rs`; formatting dispatch in `src/parser/tree_builder/formatting.rs`; structural table modes in `src/parser/tree_builder/tables.rs`; frameset entry and trailing modes in `src/parser/tree_builder/frameset.rs`; MathML/SVG entry in the body driver and foreign rules in `src/parser/tree_builder/foreign.rs` |
 | `html5ever/src/tree_builder/data.rs` | `256c72e7d368b0be3d1f473c7b36907b6f6b602aff7d1441b9be109fea3375b1` | doctype tables and classifier adaptation in `src/parser/tree_builder/doctype.rs` |
 
 The following hashes record the initial adapted source checkpoint on
@@ -370,7 +370,7 @@ body-character handling. Transfer slots retain popped owners before fallible
 disposal, so terminal cleanup can release remaining storage after a stopped
 flush. Actual delegated insertion modes, Text return and foster state survive
 source-ordered reprocessing. Form and image effects reuse their existing owners.
-Unsupported control, template and foreign branches retain the original token
+Unsupported control, template and SVG script branches retain the original token
 before unavailable effects. This checkpoint does not certify complete
 InTable behavior, fragment initialization, EOF/report completion or complete
 parser resource accounting.
@@ -427,11 +427,44 @@ Actual string binding writes are admitted before clone allocation and committed
 immediately afterward, retaining strict alias validation on stopped prefixes.
 These adaptations remain private and test-compiled. They add no second
 controller, public DOM API, generic moveBefore primitive, captured fragment
-initialization, template/shadow/foreign cloning, external execution or completed
+initialization, template/shadow cloning, external execution or completed
 EOF/report contract. Finite admission does not establish linear complexity or
 complete allocator/RSS coverage.
 
-Remaining insertion modes, foreign dispatch,
+The ordinary non-script foreign adaptation incorporates `mod.rs` lines
+1605–1692, 1694–1841 and 1837–1883 and `rules.rs` lines 971–979 and 1608–1688.
+The original complete file hashes above identify these additional slices.
+`src/parser/tree_builder/foreign.rs` owns dispatch/recovery;
+`src/construction/parser_session/foreign.rs` owns controlled adjustment and
+creation. Both retain the original eight-line notice verbatim. Existing head,
+body, table and tree-kernel files retain their notices; earlier incorporation
+hashes remain historical. Qualified cloning and namespace/prefix ticket binding
+extend the existing Surgeist-owned session registry, rather than importing a
+second sink or construction arena.
+
+The selected HTML edition supplies processing instructions, exact UTF-16,
+namespace-driven CDATA at integration points, and encoding-qualified
+annotation-xml breakout guards omitted by the older implementation. Creation
+retains original lexical values/maps plus independent adjusted values/maps;
+prefix removal rebases local-name origins and recovery adjustments retain their
+source ranges. Namespace and prefix literal backing are admitted and bound to
+actual native fields. Clones preserve every qualified value and independent
+identity/backing through the same controlled attribute transfer owner.
+
+Foreign dispatch precedes the current HTML insertion mode and reprocessing
+returns to that actual mode. MathML text exceptions, SVG and annotation-xml
+integration, self-closing acknowledgement, NULL replacement, comments/PI,
+namespace diagnostics, HTML breakout and mismatched-end recovery use existing
+insertion, stack and cleanup owners. SVG script starts, including self-closing
+ones, remain untouched before creation; the HTML Disabled-script preparation
+does not certify the source's separate SVG algorithm. No new dependency or
+external execution domain is introduced. All original/adjusted backing, maps,
+qualified clone slots, writes and variable scans are admitted; failures retain
+owned prefixes and refuse useful continuation/freeze. Repeated registry and
+topology scans may be quadratic. This remains private, test-compiled machinery,
+without a complete allocator/RSS or public parse/report claim.
+
+Remaining insertion modes, SVG script processing,
 context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,
 XML parser and RcDom are not incorporated here. Research prototypes and their
 measurements do not certify this adapted implementation or supply a public

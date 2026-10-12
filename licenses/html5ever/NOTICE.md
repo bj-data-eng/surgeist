@@ -31,7 +31,14 @@ reconstruction, adoption and applet/marquee/object marker handling, followed by
 the listed non-resettable button/fieldset/object rows and ordinary frameset
 entry, InFrameset and its trailing modes, then ordinary textarea entry from
 `rules.rs` lines 874–878, followed by the input/hr select guards and ordinary
-select/option/optgroup rows in `rules.rs` lines 815–862 and 895–945.
+select/option/optgroup rows in `rules.rs` lines 815–862 and 895–945, then ordinary
+non-script MathML/SVG entry from `rules.rs` lines 971–979, foreign dispatch and
+recovery from `rules.rs` lines 1608–1688, and integration/name/attribute/breakout
+machinery from `mod.rs` lines 1605–1692, 1694–1841 and 1837–1883. The new private
+`src/parser/tree_builder/foreign.rs` and
+`src/construction/parser_session/foreign.rs` retain the complete original notice.
+HTML-qualified PI, annotation-xml and exact UTF-16 differences, plus controlled
+backing/registry/qualified-clone ownership, are identified in the origin record.
 Current end-select/selectedcontent dispatch and controlled intrinsic
 selection/cloning/checkpoint machinery are Surgeist-authored adaptations of the
 selected HTML/DOM clauses, distinguished from the upstream excerpts. The

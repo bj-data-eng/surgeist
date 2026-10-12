@@ -1088,7 +1088,7 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Other resettable control creation, templates and foreign dispatch retain
+Other resettable control creation, templates and SVG script dispatch retain
 untouched-token continuations when their required machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
 unfinished lifecycle state; these private operations produce no public parse report.
@@ -1120,7 +1120,7 @@ pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Template forms,
-other resettable controls, unfinished table rows, foreign dispatch, contextual
+other resettable controls, unfinished table rows, SVG script dispatch, contextual
 fragment execution, hosted parsing and full EOF/report completion remain unfinished.
 
 The same association registry now admits parser-created button, fieldset and
@@ -1217,7 +1217,7 @@ prefix, remaining characters and the triggering token for cleanup, while refusin
 continued construction or publication.
 
 This is a structural checkpoint. Other unavailable control creation, templates
-and foreign branches preserve their original token before unsupported effects.
+and SVG script branches preserve their original token before unsupported effects.
 It does not establish complete InTable behavior,
 contextual fragment parsing or completed EOF/report publication.
 
@@ -1251,13 +1251,42 @@ finite and charged; repeated scans and child moves may be quadratic.
 
 These are private construction operations, not a live DOM mutation API. The
 separate DOM moveBefore primitive, captured fragment initialization,
-templates/shadow trees, foreign cloning, external script execution and other
+templates/shadow trees, external script execution and other
 unimplemented control state remain outside this capability. Construction EOF
 does not drain the FIFO or complete stop-parsing/report publication.
 The [select construction owner](src/construction/parser_session/select.rs),
 [managed clone owner](src/construction/parser_session/clone.rs) and
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
 record the consumed boundary.
+
+Ordinary non-script MathML and SVG now use the same controlled creation and
+tree driver. The actual current namespace selects CDATA admission, including
+foreign HTML integration points. MathML text points, encoding-qualified
+annotation-xml and SVG foreignObject/desc/title select HTML processing only for
+the source-defined token cases. Encoding matching is ASCII-insensitive without
+trimming; broader scope membership does not establish integration.
+
+The [foreign creator](src/construction/parser_session/foreign.rs) retains original
+lexical backing and maps alongside independently owned adjusted names. It
+applies the complete SVG element/attribute tables, MathML definitionURL and the
+eleven qualified XLink/XML/XMLNS attributes, preserving unknown colon names and
+exact non-scalar UTF-16. The existing registry owns namespace and prefix tickets
+through native binding, attribute transfers, selectedcontent cloning and cleanup.
+Clones retain qualified values and source order with distinct identities/backing;
+foreign control spellings acquire no HTML form/reset metadata.
+
+The [foreign dispatcher](src/parser/tree_builder/foreign.rs) preserves NULL
+replacement, comments, processing instructions, namespace diagnostics, breakout,
+end-tag recovery and actual table foster placement. These operations admit
+coexisting original/adjusted buffers, map slots, physical capacity and variable
+visits through the sole controller; cancellation and first failure remain sticky.
+Interrupted creation and qualified cloning retain every owner for disposal and
+refuse freeze. Repeated registry/topology scans may be quadratic; no linear-time
+or allocator/RSS guarantee follows. SVG script starts retain the untouched token
+before creation, including self-closing starts. The HTML Disabled-script proof
+does not implement SVG script processing. Construction EOF remains unfinished
+stop-parsing/report publication, and contextual fragments and templates still
+require their own construction facts and effects.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.

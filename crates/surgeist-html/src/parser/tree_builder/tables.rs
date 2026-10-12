@@ -11,7 +11,7 @@
 // tree_builder/mod.rs:1236-1320 at d7232d746d3112f08926d169591576bd12fe2fdf.
 // Governing HTML877d syntax5056-5498 controls PI, predicate differences,
 // diagnostic order and source reprocessing. Other input/resettable controls, templates,
-// fragments and foreign construction remain actual pre-effect continuations.
+// fragments and SVG script remain actual pre-effect continuations.
 
 use super::head::{
     HeadBoundary, HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep, InsertionMode,
@@ -200,7 +200,6 @@ impl HeadState<'_> {
             for (names, boundary) in [
                 (&["input"][..], HeadBoundary::Form),
                 (&["template"][..], HeadBoundary::Template),
-                (&["math", "svg"][..], HeadBoundary::Foreign),
             ] {
                 if self.token_in(names, c)?.is_some() {
                     if boundary == HeadBoundary::Form && self.hidden_input(c)? {

@@ -21,12 +21,14 @@
 //! admitted, together with ordinary standalone frameset entry and trailing modes,
 //! textarea RCDATA, raw child-text hooks and parser-pop reset, output creation,
 //! ordered Hidden-input creation, and ordinary select/option/selectedcontent
-//! effects, clones and intrinsic FIFO work. Other resettable controls, template
-//! and foreign rows retain owning continuations. Pending intrinsic work refuses
+//! effects, clones and intrinsic FIFO work. Ordinary non-script MathML/SVG foreign
+//! dispatch and qualified cloning are admitted; SVG script, other resettable
+//! controls and templates retain owning continuations. Pending intrinsic work refuses
 //! freezing; construction EOF is not full parse/report success.
 
 mod body;
 mod doctype;
+mod foreign;
 mod formatting;
 mod frameset;
 mod head;

@@ -32,12 +32,12 @@ impl SessionStorage {
             }
             match &record.kind {
                 HtmlNodeKind::Element(element) => {
-                    if !exact_ascii(
-                        c,
-                        element.name().namespace().uri(),
-                        "http://www.w3.org/1999/xhtml",
-                    )? || element.name().prefix().is_some()
-                    {
+                    let namespace = element.name().namespace().uri();
+                    let supported = exact_ascii(c, namespace, "http://www.w3.org/1999/xhtml")?
+                        || exact_ascii(c, namespace, "http://www.w3.org/2000/svg")?
+                        || exact_ascii(c, namespace, "http://www.w3.org/1998/Math/MathML")?;
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    if !supported || element.name().prefix().is_some() {
                         return Err(SessionError::WrongToken);
                     }
                     let name = self.field_slot(c, StringLocation::ElementName(node))?;
@@ -48,9 +48,21 @@ impl SessionStorage {
                     for position in 0..element.attributes().len() {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         let attr = &element.attributes().as_slice()[position];
-                        if attr.name().namespace().uri().is_some() || attr.name().prefix().is_some()
+                        c.charge(WorkCategory::RecordVisit, 2)?;
+                        for location in [
+                            attr.name()
+                                .namespace()
+                                .uri()
+                                .map(|_| StringLocation::AttributeNamespace(container, position)),
+                            attr.name()
+                                .prefix()
+                                .map(|_| StringLocation::AttributePrefix(container, position)),
+                        ]
+                        .into_iter()
+                        .flatten()
                         {
-                            return Err(SessionError::WrongToken);
+                            let slot = self.field_slot(c, location)?;
+                            control_field_owner(&self.payloads, c, slot)?;
                         }
                         let name =
                             self.field_slot(c, StringLocation::AttributeName(container, position))?;
@@ -297,7 +309,37 @@ impl SessionStorage {
                 StringLocation::AttributeValue(original_container, position),
             )?;
             let (value, value_slot) = self.copy_registered_field(c, value_slot)?;
-            let units = name.len() + value.len();
+            c.charge(WorkCategory::RecordVisit, 2)?;
+            let HtmlNodeKind::Element(original) = &self.records[source].kind else {
+                unreachable!()
+            };
+            let attribute = &original.attributes().as_slice()[position];
+            let has_namespace = attribute.name().namespace().uri().is_some();
+            let has_prefix = attribute.name().prefix().is_some();
+            let (namespace, namespace_slot) = if has_namespace {
+                let slot = self.field_slot(
+                    c,
+                    StringLocation::AttributeNamespace(original_container, position),
+                )?;
+                let (value, slot) = self.copy_registered_field(c, slot)?;
+                (Namespace::from_uri(value), Some(slot))
+            } else {
+                (Namespace::none(), None)
+            };
+            let (prefix, prefix_slot) = if has_prefix {
+                let slot = self.field_slot(
+                    c,
+                    StringLocation::AttributePrefix(original_container, position),
+                )?;
+                let (value, slot) = self.copy_registered_field(c, slot)?;
+                (Some(value), Some(slot))
+            } else {
+                (None, None)
+            };
+            let units = name.len()
+                + value.len()
+                + namespace.uri().map_or(0, DocumentString::len)
+                + prefix.as_ref().map_or(0, DocumentString::len);
             let (values, allocation) = c.new_vector()?;
             if let Err(error) = self.prepare_payload_slot_owned(c) {
                 release_vector(c, values, allocation)?;
@@ -323,13 +365,25 @@ impl SessionStorage {
             c.reserve_vector(actual, ticket, 1)?;
             payload_write::<Attribute>(c, 1)?;
             payload_write::<[StringLocation; 2]>(c, 2)?;
+            if namespace_slot.is_some() {
+                payload_write::<StringLocation>(c, 1)?;
+            }
+            if prefix_slot.is_some() {
+                payload_write::<StringLocation>(c, 1)?;
+            }
             c.acquire(HtmlParseResource::ManagedAttributes, 1)?;
             actual.push(Attribute::new(
-                QualifiedName::new(Namespace::none(), None, name),
+                QualifiedName::new(namespace, prefix, name),
                 value,
             ));
             self.bind_string(name_slot, StringLocation::AttributeName(stage, 0));
             self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0));
+            if let Some(slot) = namespace_slot {
+                self.bind_string(slot, StringLocation::AttributeNamespace(stage, 0));
+            }
+            if let Some(slot) = prefix_slot {
+                self.bind_string(slot, StringLocation::AttributePrefix(stage, 0));
+            }
             self.edit_attributes(c, node.index, container, stage, 1, false)?;
             self.begin_attribute_transfer(c, stage, container, position)?;
             self.edit_attributes(c, node.index, container, stage, 1, true)?;
@@ -835,7 +889,9 @@ fn same_location(a: StringLocation, b: StringLocation) -> bool {
             StringLocation::ProcessingInstructionData(b),
         ) => a == b,
         (StringLocation::AttributeName(a, x), StringLocation::AttributeName(b, y))
-        | (StringLocation::AttributeValue(a, x), StringLocation::AttributeValue(b, y)) => {
+        | (StringLocation::AttributeValue(a, x), StringLocation::AttributeValue(b, y))
+        | (StringLocation::AttributeNamespace(a, x), StringLocation::AttributeNamespace(b, y))
+        | (StringLocation::AttributePrefix(a, x), StringLocation::AttributePrefix(b, y)) => {
             a == b && x == y
         }
         _ => false,

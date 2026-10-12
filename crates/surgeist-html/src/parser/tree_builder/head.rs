@@ -74,6 +74,9 @@ pub(super) enum HeadCondition {
     NullInTable,
     UnexpectedFramesetToken,
     NullInFrameset,
+    UnexpectedForeignToken,
+    ForeignNamespaceMismatch,
+    NullInForeign,
 }
 pub(super) struct HeadDiagnostic {
     pub(super) condition: HeadCondition,
@@ -516,13 +519,14 @@ impl<'source> HeadStage<'source> {
             }
             c.charge(WorkCategory::StateStep, 1)?;
             write(size_of::<Option<Event>>(), 1, c)?;
-            // This stage admits only the fresh ordinary HTML stack. CDATA is
-            // disallowed by its actual exclusively-HTML element creation paths.
+            // Namespace, including a foreign HTML integration point, controls
+            // CDATA permission. Ordinary parsing has no fragment substitution.
+            let cdata = state.foreign_namespace(c)?.is_some();
             state.lexical_pending = state
                 .tokenizer
                 .as_mut()
                 .ok_or(HeadError::Consumed)?
-                .next(c, false)?;
+                .next(c, cdata)?;
             let event = state
                 .lexical_pending
                 .as_ref()
@@ -1178,6 +1182,11 @@ impl HeadState<'_> {
             c.charge(WorkCategory::StateStep, 1)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
             let mode = self.mode(c)?;
+            if self.foreign_dispatch(c)?
+                && let Some(step) = self.foreign_rules(c)?
+            {
+                return Ok(step);
+            }
             if matches!(
                 mode,
                 InsertionMode::AfterHead

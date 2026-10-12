@@ -10,9 +10,9 @@
 // Adapted from selected ordinary body rows in tree_builder/rules.rs:
 // 356-541,558-602,616-630,693-731,786-813,842-873,880-892,947-1004,
 // 1466-1493,1563-1583, plus form/control rows508-518,543-558,604-665,765-784,
-// and textarea874-878, Hidden input815-840;
+// and textarea874-878, Hidden input815-840, MathML/SVG entry971-979;
 // and tree_builder/mod.rs:1043-1223,1555-1585.
-// Other resettable form controls and foreign creation are
+// Other resettable form controls and SVG script creation are
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
@@ -449,7 +449,6 @@ impl HeadState<'_> {
         for (names, boundary) in [
             (&["template"][..], HeadBoundary::Template),
             (&["input"][..], HeadBoundary::Form),
-            (&["math", "svg"][..], HeadBoundary::Foreign),
         ] {
             if self.token_in(names, c)?.is_some() {
                 if boundary == HeadBoundary::Form && self.hidden_input(c)? {
@@ -636,6 +635,16 @@ impl HeadState<'_> {
             return Err(HeadError::MissingInput);
         };
         if kind == TagKind::Start {
+            if let Some(name) = self.token_in(&["math", "svg"], c)? {
+                self.admit_hidden_capability(c)?;
+                self.reconstruct_formatting(c)?;
+                let namespace = if name == "math" {
+                    crate::construction::parser_session::ForeignNamespace::MathMl
+                } else {
+                    crate::construction::parser_session::ForeignNamespace::Svg
+                };
+                return Ok(Some(self.insert_foreign(namespace, close, c)?));
+            }
             if self.token_in(&["input"], c)?.is_some() {
                 self.admit_hidden_capability(c)?;
                 if self

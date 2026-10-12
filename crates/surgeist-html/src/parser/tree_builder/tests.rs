@@ -4046,8 +4046,6 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     for (name, boundary) in [
         ("input", HeadBoundary::Form),
         ("template", HeadBoundary::Template),
-        ("svg", HeadBoundary::Foreign),
-        ("math", HeadBoundary::Foreign),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept>tail")),
@@ -6349,7 +6347,6 @@ fn structural_table_unsupported_creation_retains_original_before_table_effects()
     for (tag, boundary) in [
         ("<input>", super::head::HeadBoundary::Form),
         ("<template>", super::head::HeadBoundary::Template),
-        ("<svg>", super::head::HeadBoundary::Foreign),
     ] {
         let source = format!("<!doctype html><table>{tag}");
         let request =
@@ -9880,6 +9877,608 @@ fn ordinary_svg_adjusted_names_and_foreign_integration_preserve_native_namespace
     assert_eq!(elements[7].1, vec![texts[1].0.clone()]);
     assert_ne!(elements[6].0, elements[7].0);
     assert_ne!(texts[0].0, texts[1].0);
+}
+
+#[test]
+fn foreign_cdata_null_pi_comment_doctype_and_surrogates_keep_real_native_payloads() {
+    let mut units: Vec<u16> = "<!doctype html><svg><![CDATA[A<]]>\0"
+        .encode_utf16()
+        .collect();
+    units.extend_from_slice(&[0xd800, 0xd83d, 0xde00, 0xdc00]);
+    units.extend("<!--c--><?work data?><!doctype wrong></svg><p>Z</p>".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(!state.frameset_ok);
+    assert_eq!(
+        state
+            .diagnostics
+            .as_slice()
+            .iter()
+            .filter(|d| d.condition == super::head::HeadCondition::NullInForeign)
+            .count(),
+        1
+    );
+    assert_eq!(
+        state
+            .diagnostics
+            .as_slice()
+            .iter()
+            .filter(|d| d.condition == super::head::HeadCondition::UnexpectedDoctype)
+            .count(),
+        1
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual = outline(document);
+    let mut expected = expected_outline(&[(0, "html"), (1, "head"), (1, "body"), (2, "svg")]);
+    let mut text: Vec<u16> = "#A<\u{fffd}".encode_utf16().collect();
+    text.extend_from_slice(&[0xd800, 0xd83d, 0xde00, 0xdc00]);
+    expected.push((3, text));
+    expected.extend(expected_outline(&[
+        (3, "!c"),
+        (3, "?work"),
+        (2, "p"),
+        (3, "#Z"),
+    ]));
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let svg = document.node(&body).unwrap().children().next().unwrap();
+    let pi = document.node(&svg).unwrap().children().nth(2).unwrap();
+    let HtmlNodeKind::ProcessingInstruction(pi) = document.node(&pi).unwrap().kind() else {
+        panic!("real PI");
+    };
+    let data = pi.data().code_units().to_vec();
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(actual, expected);
+    assert_eq!(data, "data".encode_utf16().collect::<Vec<_>>());
+}
+
+#[test]
+fn foreign_encoding_integration_math_text_exceptions_and_annotation_breakout_are_qualified() {
+    for (source, rows) in [
+        (
+            "<!doctype html><math><annotation-xml encoding='TeXt/HtMl'><svg><g><p>X</p></svg></annotation-xml></math><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "math"),
+                (3, "annotation-xml"),
+                (4, "svg"),
+                (5, "g"),
+                (4, "p"),
+                (5, "#X"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+        (
+            "<!doctype html><math><annotation-xml encoding=' text/html'><g><p>X</p></math>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "math"),
+                (3, "annotation-xml"),
+                (4, "g"),
+                (2, "p"),
+                (3, "#X"),
+            ],
+        ),
+        (
+            "<!doctype html><math><mtext><mglyph/><malignmark/><b>X</b></mtext></math>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "math"),
+                (3, "mtext"),
+                (4, "mglyph"),
+                (4, "malignmark"),
+                (4, "b"),
+                (5, "#X"),
+            ],
+        ),
+        (
+            "<!doctype html><svg><desc><![CDATA[X<]]><p>Y</p></desc><title><b>Z</b></title></svg>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "svg"),
+                (3, "desc"),
+                (4, "#X<"),
+                (4, "p"),
+                (5, "#Y"),
+                (3, "title"),
+                (4, "b"),
+                (5, "#Z"),
+            ],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof,
+            "{source}"
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let actual = outline(frozen.document().unwrap());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected_outline(&rows), "{source}");
+    }
+}
+
+#[test]
+fn foreign_font_breakout_mismatched_end_and_table_foster_keep_actual_order() {
+    for (source, rows) in [
+        (
+            "<!doctype html><svg><g><font FACE=x>X</font></svg><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "svg"),
+                (3, "g"),
+                (2, "font"),
+                (3, "#X"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+        (
+            "<!doctype html><svg><g><font foo=x>X</font></svg><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "svg"),
+                (3, "g"),
+                (4, "font"),
+                (5, "#X"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+        (
+            "<!doctype html><svg><g><path/></SVG><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "svg"),
+                (3, "g"),
+                (4, "path"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+        (
+            "<!doctype html><table><svg><g>X</g></svg><tr><td>Y</td></tr></table>Z",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "svg"),
+                (3, "g"),
+                (4, "#X"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#Y"),
+                (2, "#Z"),
+            ],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof,
+            "{source}"
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let actual = outline(frozen.document().unwrap());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected_outline(&rows), "{source}");
+    }
+}
+
+#[test]
+fn foreign_svg_script_retains_untouched_token_before_creation_even_when_self_closing() {
+    for source in [
+        "<!doctype html><svg><script data-x=kept>",
+        "<!doctype html><svg><script data-x='kept'/>",
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::Foreign
+        );
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+        let current = state.before.kernel.current(&mut driver.control).unwrap();
+        let name = state
+            .before
+            .kernel
+            .session
+            .element_name(&mut driver.control, &current)
+            .unwrap()
+            .unwrap();
+        assert_eq!(name.namespace(), &Namespace::svg());
+        assert_eq!(name.local_name(), &DocumentString::from("svg"));
+        let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+            panic!("actual retained start tag");
+        };
+        assert_eq!(tag.name.value.text(), &DocumentString::from("script"));
+        assert_eq!(tag.attributes.len(), 1);
+        assert_eq!(
+            tag.attributes.as_slice()[0].value.value.text(),
+            &DocumentString::from("kept")
+        );
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn foreign_all_svg_name_and_attribute_adjustments_follow_literal_selected_tables() {
+    // Defining HTML877d tables, independent of the implementation's constants.
+    let names = "altGlyph altGlyphDef altGlyphItem animateColor animateMotion animateTransform clipPath feBlend feColorMatrix feComponentTransfer feComposite feConvolveMatrix feDiffuseLighting feDisplacementMap feDistantLight feDropShadow feFlood feFuncA feFuncB feFuncG feFuncR feGaussianBlur feImage feMerge feMergeNode feMorphology feOffset fePointLight feSpecularLighting feSpotLight feTile feTurbulence foreignObject glyphRef linearGradient radialGradient textPath";
+    let attributes = "attributeName attributeType baseFrequency baseProfile calcMode clipPathUnits diffuseConstant edgeMode filterUnits glyphRef gradientTransform gradientUnits kernelMatrix kernelUnitLength keyPoints keySplines keyTimes lengthAdjust limitingConeAngle markerHeight markerUnits markerWidth maskContentUnits maskUnits numOctaves pathLength patternContentUnits patternTransform patternUnits pointsAtX pointsAtY pointsAtZ preserveAlpha preserveAspectRatio primitiveUnits refX refY repeatCount repeatDur requiredExtensions requiredFeatures specularConstant specularExponent spreadMethod startOffset stdDeviation stitchTiles surfaceScale systemLanguage tableValues targetX targetY textLength viewBox viewTarget xChannelSelector yChannelSelector zoomAndPan";
+    // Each independent literal uses the same bounded request rather than one
+    // growing tokenizer name trie obscuring this table-mapping observation.
+    for name in names.split_whitespace() {
+        let source = format!("<!doctype html><svg><{}/></svg>", name.to_ascii_lowercase());
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let svg = document.node(&body).unwrap().children().next().unwrap();
+        let id = document.node(&svg).unwrap().children().next().unwrap();
+        let node = document.node(&id).unwrap();
+        let HtmlNodeKind::Element(element) = node.kind() else {
+            panic!("adjusted element");
+        };
+        let actual = (
+            element.name().namespace() == &Namespace::svg(),
+            element.name().local_name().code_units().to_vec(),
+            node.children().count(),
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, (true, name.encode_utf16().collect::<Vec<_>>(), 0));
+    }
+    for (index, name) in attributes.split_whitespace().enumerate() {
+        let source = format!(
+            "<!doctype html><svg {}='v{index}'/>",
+            name.to_ascii_lowercase()
+        );
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let svg = document.node(&body).unwrap().children().next().unwrap();
+        let HtmlNodeKind::Element(element) = document.node(&svg).unwrap().kind() else {
+            panic!("svg");
+        };
+        let actual: Vec<_> = element
+            .attributes()
+            .iter()
+            .map(|a| {
+                (
+                    a.name().namespace().uri().is_none(),
+                    a.name().prefix().is_none(),
+                    a.name().local_name().code_units().to_vec(),
+                    a.value().code_units().to_vec(),
+                )
+            })
+            .collect();
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(
+            actual,
+            vec![(
+                true,
+                true,
+                name.encode_utf16().collect::<Vec<_>>(),
+                format!("v{index}").encode_utf16().collect::<Vec<_>>()
+            )]
+        );
+    }
+}
+
+#[test]
+fn foreign_all_namespace_adjustments_unknown_colons_and_xmlns_errors_keep_original_values() {
+    let source = "<!doctype html><svg xlink:actuate=0 xlink:arcrole=1 xlink:href=2 xlink:role=3 xlink:show=4 xlink:title=5 xlink:type=6 xml:lang=7 xml:space=8 xmlns=wrong xmlns:xlink=also-wrong xlink:unknown=U foo:bar=V viewboxes='N'/>";
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(
+        state
+            .diagnostics
+            .as_slice()
+            .iter()
+            .filter(|d| d.condition == super::head::HeadCondition::ForeignNamespaceMismatch)
+            .count(),
+        2
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let svg = document.node(&body).unwrap().children().next().unwrap();
+    let HtmlNodeKind::Element(element) = document.node(&svg).unwrap().kind() else {
+        panic!("real svg");
+    };
+    let namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let actual: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|a| {
+            (
+                a.name().namespace().uri().map(|s| s.code_units().to_vec()),
+                a.name().prefix().map(|s| s.code_units().to_vec()),
+                a.name().local_name().code_units().to_vec(),
+                a.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    let xlink = "http://www.w3.org/1999/xlink";
+    let xml = "http://www.w3.org/XML/1998/namespace";
+    let xmlns = "http://www.w3.org/2000/xmlns/";
+    let expected = [
+        (Some(xlink), Some("xlink"), "actuate", "0"),
+        (Some(xlink), Some("xlink"), "arcrole", "1"),
+        (Some(xlink), Some("xlink"), "href", "2"),
+        (Some(xlink), Some("xlink"), "role", "3"),
+        (Some(xlink), Some("xlink"), "show", "4"),
+        (Some(xlink), Some("xlink"), "title", "5"),
+        (Some(xlink), Some("xlink"), "type", "6"),
+        (Some(xml), Some("xml"), "lang", "7"),
+        (Some(xml), Some("xml"), "space", "8"),
+        (Some(xmlns), None, "xmlns", "wrong"),
+        (Some(xmlns), Some("xmlns"), "xlink", "also-wrong"),
+        (None, None, "xlink:unknown", "U"),
+        (None, None, "foo:bar", "V"),
+        (None, None, "viewboxes", "N"),
+    ];
+    let units = |s: &str| s.encode_utf16().collect::<Vec<_>>();
+    assert_eq!(namespace, units("http://www.w3.org/2000/svg"));
+    assert_eq!(
+        actual,
+        expected
+            .into_iter()
+            .map(|(ns, prefix, name, value)| (
+                ns.map(units),
+                prefix.map(units),
+                units(name),
+                units(value)
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn foreign_local_control_spellings_have_no_html_metadata_and_keep_actual_namespace() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><math><input/><textarea/><script/><form/><select/><option/></math><p>Z</p>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(state.current_form.is_none());
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let math = document.node(&body).unwrap().children().next().unwrap();
+    for (id, literal) in document
+        .node(&math)
+        .unwrap()
+        .children()
+        .zip(["input", "textarea", "script", "form", "select", "option"])
+    {
+        let HtmlNodeKind::Element(element) = document.node(&id).unwrap().kind() else {
+            panic!("foreign child");
+        };
+        assert_eq!(element.name().namespace(), &Namespace::mathml());
+        assert_eq!(element.name().local_name(), &DocumentString::from(literal));
+        assert!(matches!(
+            frozen.form_association_state(&mut c, &id),
+            Err(SessionError::FormAssociationMetadataUnavailable)
+        ));
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn foreign_null_diagnostic_limit_preserves_recovery_owner_and_terminal_cleanup() {
+    let source = HtmlSource::utf16(DocumentString::from_utf16(
+        "<!doctype html><svg>"
+            .encode_utf16()
+            .chain([0, 0])
+            .chain("</svg>".encode_utf16())
+            .collect::<Vec<_>>(),
+    ));
+    let request = crate::HtmlDocumentParseRequest::offline(
+        source,
+        limits(100).into_builder().diagnostics(1).finish().unwrap(),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let _first = loop {
+        match driver.step() {
+            Err(error) => break error,
+            Ok(super::head::HeadStep::Boundary(_)) => panic!("diagnostic cap must stop"),
+            _ => {}
+        }
+    };
+    let stop = driver.control.stop().unwrap();
+    assert!(matches!(
+        stop,
+        super::super::control::ParseStop::LimitExceeded {
+            resource: HtmlParseResource::Diagnostics,
+            ..
+        }
+    ));
+    assert!(matches!(driver.step(), Err(StandaloneError::Stop(replay)) if replay == stop));
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(state.body_run.is_some());
+    assert!(state.whitespace_pending.is_none());
+    assert!(state.frameset_ok);
+    driver.release().unwrap();
+    assert_eq!(driver.control.stop(), Some(stop));
+    assert_released(&driver.control);
+}
+
+#[test]
+fn foreign_proofless_head_preserves_start_token_before_reconstruction_and_creation() {
+    for tag in ["svg", "math"] {
+        let source = HtmlSource::utf8(format!(
+            "<!doctype html><head></head><body><{tag} data-x=kept>"
+        ));
+        let mut c = control(100);
+        let mut stage = head_boundary(&source, &mut c).driver;
+        write(size_of::<Option<super::head::HeadBoundary>>(), 1, &mut c).unwrap();
+        stage.state.as_mut().unwrap().boundary = None;
+        stage.step(&mut c).unwrap();
+        let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
+        assert!(stage.step(&mut c).is_err());
+        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
+        assert_eq!(c.stop(), Some(stop));
+        let state = stage.state.as_ref().unwrap();
+        assert!(state.diagnostics.as_slice().is_empty());
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+        let Payload::Tag(Some(input)) = &state.pending.as_ref().unwrap().payload else {
+            panic!("untouched tag");
+        };
+        assert_eq!(input.name.value.text(), &DocumentString::from(tag));
+        assert_eq!(
+            input.attributes.as_slice()[0].value.value.text(),
+            &DocumentString::from("kept")
+        );
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::ManagedNodes).current,
+            nodes
+        );
+        assert!(stage.step(&mut c).is_err());
+        stage.release(&mut c).unwrap();
+        assert_eq!(c.stop(), Some(stop));
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn foreign_attributes_keep_literal_non_scalar_utf16_and_unknown_name_units() {
+    let mut units: Vec<u16> = "<!doctype html><svg data-".encode_utf16().collect();
+    units.push(0xd800);
+    units.extend("='".encode_utf16());
+    let value = [0xd800, 0xd83d, 0xde00, 0xdc00];
+    units.extend(value);
+    units.extend("'/>".encode_utf16());
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(units)),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let svg = document.node(&body).unwrap().children().next().unwrap();
+    let HtmlNodeKind::Element(element) = document.node(&svg).unwrap().kind() else {
+        panic!("svg");
+    };
+    let attr = &element.attributes().as_slice()[0];
+    let observed = (
+        attr.name().namespace().uri().is_none(),
+        attr.name().prefix().is_none(),
+        attr.name().local_name().code_units().to_vec(),
+        attr.value().code_units().to_vec(),
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    let mut name: Vec<u16> = "data-".encode_utf16().collect();
+    name.push(0xd800);
+    assert_eq!(observed, (true, true, name, value.to_vec()));
 }
 
 #[test]

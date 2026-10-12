@@ -102,7 +102,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e055"></a>E055 | main; HTML | [the-main-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-main-element) | Exact container for the dominant contents of the document role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e056"></a>E056 | map; HTML | [the-map-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-map-element) | [Map names](#map-names), MapAreas ordinary membership; usemap processing not full map-name conformance or hit testing. |
 | <a id="e057"></a>E057 | mark; HTML | [the-mark-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-mark-element) | Exact highlight role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e058"></a>E058 | MathML math; MathML | [the-top-level-math-element](https://w3c.github.io/mathml-core/#the-top-level-math-element) | MathML namespace/open qualified names retained; HTML foreign integration separate, MathML semantics/runtime delegated. |
+| <a id="e058"></a>E058 | MathML math; MathML | [the-top-level-math-element](https://w3c.github.io/mathml-core/#the-top-level-math-element) | MathML namespace/open names retained; ordinary private HTML foreign construction/integration implemented, MathML language semantics/runtime delegated. |
 | <a id="e059"></a>E059 | menu; HTML | [the-menu-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-menu-element) | ListOwner source list domain is actual source-selected owner; menu command/UI execution separate from preserving li children. |
 | <a id="e060"></a>E060 | meta; HTML | [the-meta-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-meta-element) | [Metadata](#metadata) and [Encoding labels](#encoding-labels): exact attributes retained, local/static metadata overlays absent at basis. |
 | <a id="e061"></a>E061 | meter; HTML | [the-meter-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-meter-element) | [Meter and progress](#meter-and-progress): coupled author constraints and captured effective state; rendering separate. |
@@ -137,7 +137,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e090"></a>E090 | sub; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact subscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e091"></a>E091 | summary; HTML | [the-summary-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-summary-element) | [Details](#details) first direct summary predicate and captured TabIndex default; disclosure toggle external. |
 | <a id="e092"></a>E092 | sup; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact superscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e093"></a>E093 | SVG svg; SVG | [elementdef-svg](https://w3c.github.io/svgwg/svg2-draft/struct.html#elementdef-svg) | SVG namespace/open qualified names retained; HTML foreign integration separate, SVG semantics/runtime delegated. |
+| <a id="e093"></a>E093 | SVG svg; SVG | [elementdef-svg](https://w3c.github.io/svgwg/svg2-draft/struct.html#elementdef-svg) | SVG namespace/open names retained; ordinary private non-script HTML foreign construction/integration implemented, SVG language semantics/runtime delegated. |
 | <a id="e094"></a>E094 | table; HTML | [the-table-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) | [Tables](#tables): static bodies/rows/cells plus separate slot/column/header model; no live collections/mutation/layout. |
 | <a id="e095"></a>E095 | tbody; HTML | [the-tbody-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tbody-element) | [Tables](#tables) direct row membership; geometric layout and live DOM collection external. |
 | <a id="e096"></a>E096 | td; HTML | [the-td-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-td-element) | [Tables](#tables) cell/span/header model; geometry and live cellIndex/mutation not covered by immutable collection. |
@@ -1260,6 +1260,14 @@ remain relevant beyond the modern indexes. Unknown attributes, data-* and ARIA
 are exact raw storage; ARIA grammar/accessibility mapping is delegated, while
 HTML surrounding role/context remains defined by its clause. Event handler text
 is retained; JS grammar/event compilation/dispatch is not executed here.
+
+Ordinary private foreign construction implements the HTML-defined MathML/SVG
+name/attribute adjustment, integration, CDATA, recovery and qualified native
+cloning through the existing controlled parser owner. It does not implement the
+SVG/MathML languages, SVG script, templates, contextual fragments or completed
+public reports. [Parser origins](PARSER-ORIGINS.md) records the selected upstream
+adaptation and HTML differences; [the crate overview](README.md) records actual
+admission, cleanup and capability limits.
 
 Immutable constructed template/shadow/PI content and explicit metadata/effects
 are not a second live DOM. Private parser machinery is test-compiled and remains

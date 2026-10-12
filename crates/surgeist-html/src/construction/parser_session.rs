@@ -9,9 +9,10 @@
 //! Prologue producers retain comments, recovered PI and doctype fields in the
 //! same arena, with controlled implied-html backing and exact whitespace splits.
 //! Preexisting immutable element inputs retain their earlier physical exclusion.
-//! Foreign-name adjustment, foster-parent selection, full patching/template
-//! metadata, other resettable form metadata, source reports and public parsing
-//! remain later producers; this private checkpoint makes no complete parser claim.
+//! Managed MathML/SVG names and qualified attributes retain lexical originals
+//! and independent adjusted backing/maps; qualified clones use the same registry.
+//! Full patching/template metadata, other resettable form metadata, source reports
+//! and public parsing remain later producers; this is not a complete parser claim.
 //! Hidden initialization installs source-order attributes, retaining original
 //! token/value-attribute ranges and lexical maps for actual conditional writeback.
 //! Script facts are retained for a sealed fresh ordinary Disabled execution;
@@ -31,7 +32,9 @@ use crate::{Attribute, HtmlParseResource};
 use std::{mem, sync::Weak};
 
 mod clone;
+mod foreign;
 mod select;
+pub(crate) use foreign::ForeignNamespace;
 use select::{ConstructionEffects, SelectMetadata};
 
 #[derive(Clone, Debug)]
@@ -417,6 +420,8 @@ enum StringLocation {
     Namespace(usize),
     AttributeName(usize, usize),
     AttributeValue(usize, usize),
+    AttributeNamespace(usize, usize),
+    AttributePrefix(usize, usize),
 }
 pub(crate) struct TextInsertion {
     pub(crate) node: ParserNode,
@@ -650,7 +655,10 @@ impl StringLocation {
                     _ => None,
                 }
             }
-            Self::AttributeName(container, index) | Self::AttributeValue(container, index) => {
+            Self::AttributeName(container, index)
+            | Self::AttributeValue(container, index)
+            | Self::AttributeNamespace(container, index)
+            | Self::AttributePrefix(container, index) => {
                 cleanup_charge(control, WorkCategory::RecordVisit, 2)?;
                 let attribute = match payloads.get(container) {
                     Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
@@ -703,9 +711,11 @@ impl StringLocation {
                     }))) => values.as_slice().get(index),
                     _ => None,
                 };
-                attribute.map(|attribute| match self {
-                    Self::AttributeName(..) => attribute.name().local_name(),
-                    _ => attribute.value(),
+                attribute.and_then(|attribute| match self {
+                    Self::AttributeName(..) => Some(attribute.name().local_name()),
+                    Self::AttributeNamespace(..) => attribute.name().namespace().uri(),
+                    Self::AttributePrefix(..) => attribute.name().prefix(),
+                    _ => Some(attribute.value()),
                 })
             }
         };
@@ -2374,6 +2384,26 @@ impl SessionStorage {
                 }
                 StringLocation::AttributeValue(owner, index) if owner == stage => {
                     StringLocation::AttributeValue(
+                        destination,
+                        start.checked_add(index).ok_or_else(|| {
+                            control
+                                .representation::<()>(HtmlParseResource::ManagedAttributes)
+                                .unwrap_err()
+                        })?,
+                    )
+                }
+                StringLocation::AttributeNamespace(owner, index) if owner == stage => {
+                    StringLocation::AttributeNamespace(
+                        destination,
+                        start.checked_add(index).ok_or_else(|| {
+                            control
+                                .representation::<()>(HtmlParseResource::ManagedAttributes)
+                                .unwrap_err()
+                        })?,
+                    )
+                }
+                StringLocation::AttributePrefix(owner, index) if owner == stage => {
+                    StringLocation::AttributePrefix(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
                             control
