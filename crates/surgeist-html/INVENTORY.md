@@ -211,7 +211,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a040"></a>A040 | defer; script | [attr-script-defer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-defer); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Defer with script context; execution scheduling external. |
 | <a id="a041"></a>A041 | dir; HTML elements | [attr-dir](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dir); [the-directionality](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-directionality); [attr-dir-ltr](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dir-ltr); [attr-dir-rtl](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dir-rtl); [attr-dir-auto](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dir-auto) | [Enumerations](#enumerations) and [Language and direction](#language-and-direction): own dir missing/invalid Undefined; actual inheritance/auto scanning separately bound. |
 | <a id="a042"></a>A042 | dir; bdo | [the-bdo-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-bdo-element); [the-directionality](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-directionality); [attr-dir-ltr](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dir-ltr); [attr-dir-rtl](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dir-rtl) | Same dir owner as A041, with bdo required ltr/rtl author constraint; Undefined recovery is not author conformity. |
-| <a id="a043"></a>A043 | dirname; input; textarea | [attr-fe-dirname](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-dirname); [the-directionality](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-directionality); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Direction submission name](#direction-submission-name): nonempty dirname author check absent; captured Directionality exists, entry-list assembly not performed. |
+| <a id="a043"></a>A043 | dirname; input; textarea | [attr-fe-dirname](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-dirname); [the-directionality](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-directionality); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Direction submission name](#direction-submission-name): checked exact nonempty native/report values and complete input-state presence checks; captured Directionality exists, submission entry assembly remains separate. |
 | <a id="a044"></a>A044 | disabled; button; input; optgroup; option; select; textarea; form-associated custom elements | [attr-fe-disabled](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-disabled); [attr-optgroup-disabled](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-optgroup-disabled); [attr-option-disabled](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-option-disabled); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence) and [Control facts](#control-facts): disabled own content vs inherited fieldset/optgroup and actual custom classification. |
 | <a id="a045"></a>A045 | disabled; fieldset | [attr-fieldset-disabled](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fieldset-disabled); [the-legend-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-legend-element); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | Fieldset disabled presence plus first-legend ancestry algorithm in [Control facts](#control-facts). |
 | <a id="a046"></a>A046 | disabled; link | [attr-link-disabled](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-disabled); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): stylesheet_disabled requires actual stylesheet rel context; captured StylesheetDisabledAttribute uses it. CSSOM lifecycle separate. |
@@ -285,7 +285,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a114"></a>A114 | optimum; meter | [attr-meter-optimum](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meter-optimum); [valid-floating-point-number](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-floating-point-number) | [Meter and progress](#meter-and-progress): optimum author bounds, effective default midpoint(min,max) then clamp. |
 | <a id="a115"></a>A115 | pattern; input | [attr-input-pattern](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-pattern); [prod-Pattern](https://tc39.es/ecma262/#prod-Pattern) | [Pattern](#pattern): JS UnicodeSets grammar external; HTML compilation/anchoring/current mismatch contextual, no compiled provider currently advertised. |
 | <a id="a116"></a>A116 | ping; a; area | [ping](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#ping); [concept-url](https://url.spec.whatwg.org/#concept-url); [set-of-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#set-of-space-separated-tokens); [valid-non-empty-url](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-empty-url) | [URLs and references](#urls-and-references): ping whitespace URL list primitive available; no attribute-specific token/URL/host ping processing report. |
-| <a id="a117"></a>A117 | placeholder; input; textarea | [attr-input-placeholder](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-placeholder); [attr-textarea-placeholder](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-placeholder); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Placeholder](#placeholder): input no CR/LF author check/newline-stripped hint vs textarea allowed multiline display; specific local report absent, UI separate. |
+| <a id="a117"></a>A117 | placeholder; input; textarea | [attr-input-placeholder](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-placeholder); [attr-textarea-placeholder](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-placeholder); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Placeholder](#placeholder): input no-CR/LF author/native check and separate stripped content projection; textarea exact multiline text, complete input-state presence checks, actual hint presentation separate. |
 | <a id="a118"></a>A118 | playsinline; video | [attr-video-playsinline](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-video-playsinline); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): PlaysInline; media presentation external. |
 | <a id="a119"></a>A119 | popover; HTML elements | [attr-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover); [attr-popover-auto](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover-auto); [attr-popover-manual](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover-manual); [attr-popover-hint](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover-hint) | [Enumerations](#enumerations): popover missing NoPopover, invalid Manual, empty Auto; target/toggle/open transitions separate. |
 | <a id="a120"></a>A120 | popovertarget; button; input | [attr-popovertarget](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertarget); [concept-id](https://dom.spec.whatwg.org/#concept-id) | [Commands and popovers](#commands-and-popovers): same-tree popovertarget ID must target element with popover; static target query absent. |
@@ -528,6 +528,48 @@ newline normalization distinct from input) are explicit. It does not derive
 current dirty-value validation, edit truncation or DOM setters.
 [Control lengths](tests/attributes_control_length.rs) and
 [select size](tests/attributes_select_size.rs) preserve those different facts.
+
+## Direction submission name
+
+A043 uses [control_text.rs](src/attributes/control_text.rs) for the
+[specified nonempty dirname constraint](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-dirname).
+`HtmlDirectionSubmissionName` accepts every nonempty exact UTF-16 string,
+including spaces, NULL and isolated surrogates, and emits the canonical
+no-namespace attribute. Missing and present empty have separate author
+observations and no fabricated default name.
+
+`dirname` checks input/textarea local content; `dirname_for_input` additionally
+checks the supplied actual `HtmlInputType`. The complete normative input matrix
+allows Hidden, Text, Search, Telephone, URL, Email, Password and Submit.
+Forbidden authored presence is distinct from local text validity. Present
+input content without that state remains Unchecked; textarea needs no input
+state, and the input-only companion is Unapplied there. Raw admission precedes
+expanded-name and text checks. Ordinary allocation and the original per-value
+UTF-16 cap do not establish aggregate work, physical-memory or cancellation
+bounds. Captured Directionality exists; submitted direction-entry assembly
+still requires the form-submission consumer.
+
+## Placeholder
+
+A117 uses the same owner for separate
+[input](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-placeholder)
+and [textarea](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-placeholder)
+text rules. `HtmlInputPlaceholder` checks exact text without CR/LF and emits
+the canonical attribute; textarea needs no redundant native wrapper.
+`placeholder` retains missing/empty/raw/local-author phases. Input CR/LF is an
+author error at the first UTF-16 unit offset, while its independent content
+projection removes only those units. Textarea retains conforming multiline
+text exactly; empty is conforming and absence invents no hint.
+
+`placeholder_for_input` checks present authored eligibility independently for
+Text, Search, Telephone, URL, Email, Password and Number. Content-only input
+remains Unchecked. The original raw cap applies before qualification or
+projection, with ordinary allocation and no aggregate resource guarantee.
+[Fifteen public tests](tests/attributes_control_text.rs) cover both declarations,
+all 22 input states, exact UTF-16/native emission, simultaneous local/context
+violations, source rows, expanded names and admission boundaries. Actual
+value/focus/autofocus-dependent hint presentation remains a separate consumer;
+the local projection does not imply a shown hint or applied ignored attribute.
 
 ## Input quantities
 
@@ -1123,12 +1165,6 @@ refresh, policy and other context/resource effects require their defining
 consumer and may consume delegated grammar. No single external label covers all
 static metadata rules.
 
-### Direction submission name
-
-A043 dirname must be nonempty and source-state applicable. No attribute-specific
-native/report check currently applies this local constraint. Directionality is
-implemented, but entry-list direction field assembly needs a submission consumer.
-
 ### Template marker reference
 
 A054 for requires same-tree named marker/start ProcessingInstruction relation.
@@ -1165,13 +1201,6 @@ A115 delegates JS UnicodeSets regexp grammar, while HTML defines anchoring and
 missing/compile-error behavior for actual compiled patterns. No source-qualified
 compiled provider/current pattern-mismatch operation is advertised. Raw strings
 are retained; unavailable compilation is not Invalid or a match success.
-
-### Placeholder
-
-A117: input forbids authored CR/LF and processing strips them for hint display;
-textarea's multiline source role differs. No local element-specific placeholder
-report applies those rules. Rendering/focus/value-dependent hint display belongs
-host/control presentation; lexical newline handling is HTML-owned.
 
 ### Link relationships
 

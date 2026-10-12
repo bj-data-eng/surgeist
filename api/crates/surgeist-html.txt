@@ -92,6 +92,9 @@ pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionMustBeLtrOrRtl
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
 pub surgeist_html::HtmlAttributeConformanceError::DetailsNameMustNotBeEmpty
+pub surgeist_html::HtmlAttributeConformanceError::DirnameMustNotBeEmpty
+pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewline
+pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewline::code_unit_offset: usize
 pub surgeist_html::HtmlAttributeConformanceError::InvalidIdToken(surgeist_html::HtmlTokenError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidNavigableTarget(surgeist_html::HtmlNavigableTargetError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidUtf8EncodingLabel(surgeist_html::HtmlUtf8EncodingLabelError)
@@ -2758,6 +2761,11 @@ impl surgeist_html::HtmlDimensionList
 pub fn surgeist_html::HtmlDimensionList::as_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlDimensionList::new(values: impl core::convert::Into<alloc::vec::Vec<surgeist_html::HtmlDimension>>) -> Self
 pub fn surgeist_html::HtmlDimensionList::values(&self) -> &[surgeist_html::HtmlDimension]
+pub struct surgeist_html::HtmlDirectionSubmissionName
+impl surgeist_html::HtmlDirectionSubmissionName
+pub fn surgeist_html::HtmlDirectionSubmissionName::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlDirectionSubmissionName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAttributeConformanceError>
+pub fn surgeist_html::HtmlDirectionSubmissionName::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlDirectionalitySource
 impl surgeist_html::HtmlDirectionalitySource
 pub fn surgeist_html::HtmlDirectionalitySource::derived_bidi_class_sha256(self) -> &'static str
@@ -3060,6 +3068,11 @@ pub fn surgeist_html::HtmlInputNumericConstraintsReport::outcome(&self) -> &surg
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::step(&self) -> &surgeist_html::HtmlInputNumericAttributeReport
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::step_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlInputNumericConstraintsReport::value(&self) -> &surgeist_html::HtmlInputNumericAttributeReport
+pub struct surgeist_html::HtmlInputPlaceholder
+impl surgeist_html::HtmlInputPlaceholder
+pub fn surgeist_html::HtmlInputPlaceholder::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlInputPlaceholder::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAttributeConformanceError>
+pub fn surgeist_html::HtmlInputPlaceholder::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlInputSizeReport
 impl surgeist_html::HtmlInputSizeReport
 pub fn surgeist_html::HtmlInputSizeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
@@ -4107,6 +4120,11 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::decoding(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDecoding>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::details_name(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDetailsName>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::dirname(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDirectionSubmissionName>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::dirname_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDirectionSubmissionName>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::placeholder(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::DocumentString>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::placeholder_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::DocumentString>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::draggable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDraggableState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

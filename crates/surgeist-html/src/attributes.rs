@@ -197,6 +197,12 @@ pub enum HtmlAttributeConformanceError {
     BdoDirectionMustBeLtrOrRtl,
     /// A specified details name must not be the empty string.
     DetailsNameMustNotBeEmpty,
+    /// A specified direction submission name must not be the empty string.
+    DirnameMustNotBeEmpty,
+    /// An authored input placeholder contains a forbidden CR or LF code unit.
+    InputPlaceholderContainsNewline {
+        code_unit_offset: usize,
+    },
     /// An HTML id violates its local nonempty/no-ASCII-whitespace author rule.
     InvalidIdToken(HtmlTokenError),
     /// A target/name violates HTML's local navigable-target grammar.
@@ -342,6 +348,21 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the defining clause for additional element-context facts.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if matches!(
+            self.rule.attribute,
+            KnownHtmlAttribute::Dirname | KnownHtmlAttribute::Placeholder
+        ) {
+            match KnownHtmlElement::from_name(&self.element) {
+                Some(KnownHtmlElement::Input) => {
+                    return Some(match &self.supplied_context {
+                        SuppliedContext::Input(state) => input_state_source(*state),
+                        _ => INPUT_SOURCE,
+                    });
+                }
+                Some(KnownHtmlElement::Textarea) => return Some(self.rule.source),
+                _ => {}
+            }
+        }
         if self.rule.context == Context::PopoverTargetAction
             && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Input)
         {
@@ -2119,6 +2140,9 @@ pub use accept::*;
 
 mod control_length;
 pub use control_length::*;
+
+mod control_text;
+pub use control_text::*;
 
 mod sandbox;
 pub use sandbox::*;

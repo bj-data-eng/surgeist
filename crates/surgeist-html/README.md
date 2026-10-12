@@ -514,6 +514,22 @@ the actual form owner. Capture-qualified semantic queries resolve that fallback;
 missing owner evidence is not interpreted as no owner. These reports execute no autofill,
 credential mediation or form-control transition.
 
+`HtmlDirectionSubmissionName` checks exact nonempty `dirname` text and emits
+its canonical attribute. `HtmlInputPlaceholder` checks input placeholder text
+without CR or LF; textarea placeholders use ordinary exact attributes and may
+contain line breaks. The `dirname` and `placeholder` reports retain missing,
+empty, raw and local author observations independently of input-state eligibility.
+Their `_for_input` companions consume an explicitly supplied `HtmlInputType`;
+content-only input calls leave that contextual check Unchecked. The complete
+normative state matrix includes Submit for `dirname` and Number for placeholder.
+
+An author-invalid input placeholder retains its raw UTF-16 and separately
+exposes the projection removing exactly CR/LF. Textarea keeps its original
+multiline text. These operations apply the original per-value cap before role
+checks or projection, using ordinary allocation. They do not provide aggregate
+work, physical-memory or cancellation guarantees. Submitted direction entries
+and value/focus-dependent hint presentation remain separate consumers.
+
 Input `accept` authoring retains ordered wildcard, leading-dot extension and
 symbolic MIME specifiers with ASCII-insensitive uniqueness checks. Extensions
 follow HTML's leading-dot rule without a filename or registered-type lookup.
