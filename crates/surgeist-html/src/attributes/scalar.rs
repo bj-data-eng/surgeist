@@ -95,6 +95,9 @@ impl<A, T> HtmlNumericAttributeReport<A, T> {
     pub fn processing_source_clause(&self) -> &'static str {
         match self.attribute() {
             KnownHtmlAttribute::Tabindex => source!("tabindex-value"),
+            KnownHtmlAttribute::Headingoffset => {
+                source!("get-an-element's-computed-heading-offset")
+            }
             KnownHtmlAttribute::Colspan
             | KnownHtmlAttribute::Rowspan
             | KnownHtmlAttribute::Span => {
@@ -181,6 +184,20 @@ nonnegative_rule!(
     2,
     true
 );
+
+// Author maximum only: the computed-offset algorithm accepts larger recovery.
+const HEADING_OFFSET_MAXIMUM: u16 = 8;
+const HEADING_OFFSET: NonnegativeRule = NonnegativeRule {
+    metadata: RuleMetadata {
+        attribute: KnownHtmlAttribute::Headingoffset,
+        rows: &[62],
+        source: source!("attr-headingoffset"),
+        context: Context::Global,
+        vocabulary_source: None,
+    },
+    default: 0,
+    positive: false,
+};
 
 const SELECT_SIZE: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Size,
@@ -505,6 +522,35 @@ impl HtmlValueInterpreter {
         self.bounded_span(COLGROUP_SPAN, element, raw)
     }
 
+    /// Interprets global headingoffset's local author range and offset contribution.
+    /// Whole valid nonnegative syntax must be in 0..=8 for author conformance.
+    /// Successful prefix recovery retains its exact magnitude, including values
+    /// above eight; missing/failed recovery contributes zero with distinct origins.
+    /// This is not an ancestor-summed offset, final heading level or live IDL getter.
+    ///
+    /// Whole original UTF-16 admission precedes expanded-name applicability. The
+    /// result uses ordinary shared report/value allocation and the per-value cap,
+    /// without aggregate work, physical-memory or cancellation accounting. Actual
+    /// captured ancestor/reset/shadow-host computation remains with its own owner.
+    pub fn heading_offset(
+        &self,
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Result<
+        HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+        HtmlValueAdmissionError,
+    > {
+        let mut result = self.nonnegative_attribute(HEADING_OFFSET, element, raw)?;
+        if let Some(common) = result.common.as_ref() {
+            result.author = constrained_nonnegative_author(
+                common,
+                HEADING_OFFSET.positive,
+                Some(HEADING_OFFSET_MAXIMUM),
+            );
+        }
+        Ok(result)
+    }
+
     /// Interprets exact canvas bitmap width content, including valid zero.
     /// Missing or failed nonnegative recovery selects 300, without bitmap effects.
     pub fn canvas_width(
@@ -686,6 +732,20 @@ fn bounded_span_author_attribute(
 }
 
 impl HtmlNonNegativeInteger {
+    /// Emits canonical global headingoffset author syntax in 0..=8.
+    /// Larger exact magnitudes are rejected rather than clamped or called invalid
+    /// integer syntax. This proves no computed ancestor offset or final level.
+    /// Attribute construction uses ordinary allocation without a captured budget.
+    pub fn into_heading_offset_attribute(
+        self,
+    ) -> Result<Attribute, HtmlNumericAttributeConformanceError> {
+        nonnegative_constraint(&self, HEADING_OFFSET.positive, Some(HEADING_OFFSET_MAXIMUM))?;
+        Ok(Attribute::new(
+            HEADING_OFFSET.metadata.attribute.qualified_name(),
+            self.decimal_digits(),
+        ))
+    }
+
     /// Constructs canonical span numeric syntax in 1..=1000 for col/colgroup.
     /// Zero and exact larger magnitudes are rejected rather than clamped.
     /// This establishes intrinsic numeric conformance only, not the colgroup

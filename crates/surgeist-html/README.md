@@ -193,6 +193,14 @@ separately from each attribute's selected default: canvas defaults to 300/150
 while accepting zero, and textarea defaults to 20/2 when recovery fails or yields
 zero. Tabindex retains an exact signed integer or source-null; the separate
 captured tabIndex query below owns its signed-long getter and element defaults.
+Global `heading_offset` reports whole author syntax in 0..=8 separately from
+exact recovered magnitude. Successful recovery above eight remains intact;
+missing and failed recovery contribute zero with distinct origins.
+`HtmlNonNegativeInteger::into_heading_offset_attribute` emits canonical values
+in that author range and rejects larger magnitudes. These local operations use
+ordinary allocation; interpreter reports admit the entire selected raw UTF-16
+value before applicability. Captured ancestor/reset/shadow-host traversal and
+the final heading-level limit of nine remain separate operations.
 Formmethod and formenctype overrides reuse the defining keyword rules and
 separate submitter
 author restrictions from their intrinsic values. A missing override retains no

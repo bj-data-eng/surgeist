@@ -1,7 +1,7 @@
 # HTML language inventory associations
 
-This reference describes the published HTML-owned values and intrinsic interpretation
-at `4997bae8b3e9f550d97fd33ce31b587f7b0bd346`. It associates original index
+This reference describes the HTML-owned values and intrinsic interpretation
+implemented in the current crate source. It associates original index
 identities with defining rules, real producers and source-qualified limits.
 Association coverage does not certify all listed algorithms or whole HTML
 conformance. Active unpublished implementation drafts are excluded.
@@ -22,8 +22,8 @@ Every E/A row retains the [raw and construction](#raw-and-construction) contract
 Every HTML E row can consume applicable [captured global states](#captured-global-states).
 The contextual bindings below add narrower rules. **Implemented** always means
 the named contract, not an entire element. **Required absent** means a specific
-HTML-defined value/static operation has no corresponding producer at the stated
-basis. **External** names actual delegated grammar or execution; HTML surrounding
+HTML-defined value/static operation has no corresponding producer in the current
+crate source. **External** names actual delegated grammar or execution; HTML surrounding
 rules remain separately bound. A source-defined grouping/concept does not need a
 fake parsing API. No unchecked external text is called Valid.
 
@@ -230,7 +230,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a059"></a>A059 | formnovalidate; button; input | [attr-fs-formnovalidate](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fs-formnovalidate); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence) plus SubmitterNoValidate; actual submit-button classification/owner needed, no constraint-validation execution. |
 | <a id="a060"></a>A060 | formtarget; button; input | [attr-fs-formtarget](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fs-formtarget); [navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigable); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target): formtarget lexical target; actual input/button submitter eligibility remains unchecked by this local report, and navigable selection external. |
 | <a id="a061"></a>A061 | headers; td; th | [attr-tdth-headers](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tdth-headers); [unordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#unordered-set-of-unique-space-separated-tokens) | [Tables](#tables): author unordered unique tokens must identify same-table th elements; retained raw/token encounter order and TableModel header association are separate processing observations. |
-| <a id="a062"></a>A062 | headingoffset; HTML elements | Discovery: [attr-tabindex](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tabindex); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer); defining: [attr-headingoffset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingoffset); [computed heading level](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-level) | [Heading offset](#heading-offset): shared numeric and captured level recovery exist; own author 0..8 check absent. |
+| <a id="a062"></a>A062 | headingoffset; HTML elements | Discovery: [attr-tabindex](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tabindex); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer); defining: [attr-headingoffset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingoffset); [computed heading level](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-level) | [Heading offset](#heading-offset): local author 0..8 report/emission preserves exact recovery; captured level traversal remains separate. |
 | <a id="a063"></a>A063 | headingreset; HTML elements | Discovery: [attr-tabindex](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tabindex); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute); defining: [attr-headingreset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingreset); [computed heading offset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-offset) | [Boolean presence](#boolean-presence) and ComputedHeadingLevel traversal reset in [Captured global states](#captured-global-states). |
 | <a id="a064"></a>A064 | height; canvas; embed; iframe; img; input; object; source (in picture); video | [attr-canvas-height](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-canvas-height); [attr-dim-height](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dim-height); [the-picture-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-picture-element); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | Canvas height content defaults 150 via [Numeric content](#numeric-content). [Input Image and embedded dimensions](#input-image-and-embedded-dimensions) binds other roles, source/picture and coupled natural-dimension constraints; no corresponding complete producer exists at this basis. |
 | <a id="a065"></a>A065 | hidden; HTML elements | [attr-hidden](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hidden); [attr-hidden-until-found](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hidden-until-found) | [Enumerations](#enumerations): hidden missing NotHidden, invalid/empty Hidden; no rendered/layout boolean derived from it. |
@@ -906,6 +906,29 @@ and the [Color state](https://html.spec.whatwg.org/commit-snapshots/877d6146487f
 are the defining rules. Shared legacy_color is unrelated; CSS parsing/conversion,
 actual mutable well updates and live reflection require their owning consumers.
 
+## Heading offset
+
+A062's [headingoffset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingoffset)
+uses [scalar.rs](src/attributes/scalar.rs). `heading_offset` separates whole
+nonnegative author syntax constrained to 0..=8 from exact successful recovery,
+including values above eight. Missing and failed recovery contribute zero with
+distinct origins; lexical failures are not overwritten by range errors.
+`HtmlNonNegativeInteger::into_heading_offset_attribute` emits canonical 0..=8
+values and rejects larger exact magnitudes. [Nine public tests](tests/attributes_heading_offset.rs)
+cover ranges, huge recovery, origins, applicability, provenance and raw caps.
+
+Both operations use ordinary allocation. Reports admit the entire original
+selected UTF-16 value before applicability through the per-value interpreter cap;
+native emission has no captured budget. Neither operation claims aggregate work,
+physical-memory or cancellation accounting, summed offset or live reflection.
+[Computed heading offset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-offset)
+and [computed heading level](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-level)
+ancestor/reset/shadow-host traversal, including the separate final level limit
+nine, remain with the captured global owner. A063's Boolean
+[headingreset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingreset)
+stops traversal beyond that element. Defining clauses remain distinct from the
+retained labeled printed-index discovery links.
+
 ## HTML-local operations with no corresponding complete producer
 
 The following entries specify remaining rule/consumer boundaries. They are not
@@ -992,18 +1015,6 @@ A054 for requires same-tree named marker/start ProcessingInstruction relation.
 Native PI storage is available; no captured template-for reference query exists.
 Template insertion/replacement effects require actual parser/DOM owner and cannot
 be equated with label for or output for token syntax.
-
-### Heading offset
-
-A062's [headingoffset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingoffset) author value is a
-nonnegative integer from 0 through 8. A063's [headingreset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingreset)
-is Boolean and stops the offset traversal beyond that element. Those defining
-clauses differ from the retained labeled printed-index discovery links.
-[Computed heading level](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-level) and
-[computed heading offset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-computed-heading-offset)
-recovery/traversal (including the level limit 9) exist in the captured global
-owner. Shared numeric grammar exists; a local headingoffset-specific author
-range construction/report is not exposed.
 
 ### Microdata
 
