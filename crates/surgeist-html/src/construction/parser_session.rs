@@ -42,6 +42,7 @@ use context::{DocumentRef, FragmentContextStorage};
 pub(crate) mod evidence;
 use evidence::ParseEvidence;
 mod foreign;
+pub(crate) mod history;
 pub(crate) mod native_view;
 mod pi;
 pub(crate) mod provenance;

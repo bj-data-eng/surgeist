@@ -69,6 +69,13 @@ pub(crate) struct OriginGroup {
     pub(crate) cause: usize,
     pub(crate) retirement: Option<usize>,
 }
+/// Canonical fixed storage, lent only after the actual D1/lexical EOF proof.
+pub(super) struct HistoryData<'a> {
+    pub(super) source: &'a crate::HtmlSource,
+    pub(super) origins: &'a [TextOrigin],
+    pub(super) groups: &'a [OriginGroup],
+    pub(super) causes: &'a [ConstructionCause],
+}
 #[derive(Clone, Copy)]
 pub(crate) enum LeafValue {
     Pending,
@@ -836,6 +843,21 @@ impl ParseEvidence {
             .as_slice()
             .get(group.index)
             .ok_or(SessionError::WrongToken)
+    }
+    pub(super) fn history_data(&self) -> Result<HistoryData<'_>, SessionError> {
+        // Do not mint an immutable history lender from a native-only projection
+        // or an unfinished lexical prefix.
+        self.associations()?;
+        Ok(HistoryData {
+            source: self
+                .native
+                .source
+                .as_ref()
+                .ok_or(SessionError::WrongToken)?,
+            origins: self.native.origins.as_slice(),
+            groups: self.native.groups.as_slice(),
+            causes: self.native.causes.as_slice(),
+        })
     }
     #[cfg(test)]
     pub(super) fn history_counts(&self) -> (usize, usize, usize) {
