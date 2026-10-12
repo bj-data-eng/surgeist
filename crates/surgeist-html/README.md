@@ -500,7 +500,77 @@ can satisfy the pair while omission still fails for a missing natural axis.
 Degenerate or unrepresentable arithmetic has an explicit unsupported outcome.
 Fact construction has separate record, retained-byte and validation-work limits;
 query arithmetic uses the existing semantic work, scratch, digit, byte and
-cancellation controls. Rendered determine-dimensions processing remains required.
+cancellation controls.
+
+<a id="captured-image-dimensions"></a>
+
+The captured `ImageDimensions` query supplies the HTML img/input width and height
+getter interpretation over qualified completed producer facts. Its
+[owner](src/semantics/image_dimensions.rs) returns named CSS-pixel axes, the
+actual Img/Input role and selected branch, inspected attribute evidence and
+source origins. `EmbeddedDimensionAuthorConformance` remains the separate
+intrinsic author check; getter recovery does not certify author spelling or
+resource-dependent omission and ratio requirements.
+
+Only exact HTML img/input subjects apply. Every non-Image input state returns
+zero on both axes before consulting rendering, image resources or width/height;
+missing or invalid type follows the existing Text-state default. Those dimension
+attributes remain `Uninspected`. For img or Image input, actual `BeingRendered`
+participation selects the branch. Unavailable rendering remains an outer Missing
+result even when both attributes could recover. Rendered elements use supplied
+content-box axes, including a genuine zero box; absent or unsupported measurements
+remain explicit rather than falling back to attributes or natural dimensions.
+
+Unrendered elements recover exact no-namespace width and height independently
+through the common nonnegative-integer owner. A successful prefix, including
+` +12tail` or `-0`, overrides that axis; invalid syntax and negative nonzero
+values retain their own evidence and leave the axis dependent on image facts.
+Original raw admission precedes inspected-value recovery. Attribute observations
+distinguish `Uninspected`, `Missing` and retained `Present` with its recovery
+outcome. Two successful attributes prove both axes without resource lookup.
+
+Known image unavailability supplies the source's null natural-dimensions
+argument and therefore zero for each unoverridden axis. Img Unavailable/Broken
+request states differ from missing request evidence; PartiallyAvailable and
+CompletelyAvailable establish availability. Input has its separately observed
+Available/NotAvailable state. Known no selected resource does not establish
+unavailability. An available image requires the actual completed precursor
+result: ImgPreferredDensityCorrected, ImgDefaultSized or InputDefaultSized.
+The two default-sizing roles identify completed CSS calls with the source's
+300×150 default object size; HTML does not execute those CSS calls here.
+Missing or unsupported completed axes affect only the axes that still depend
+on them. Known axes carry their actual ContentBox, ContentAttribute, zero or
+completed-operation origin.
+
+[Image dimension facts](src/semantics/image_dimensions.rs) join capture and host
+identities, independently expected resource and participation revisions, current
+selection/resource/content/metadata keys, request revisions and the completed
+operation's producer/configuration, density/preferred and CSS-sizing revisions.
+Context admission rejects stale or contradictory supplied facts even if a query
+would bypass their branch. Intrinsic-author natural axes are never substituted
+for a completed getter argument. Expected combined revision keys remain in
+qualification when optional facts are unavailable.
+Producers remain responsible for the truth of completed measurements.
+
+Fact admission separately bounds incoming vector capacities, rational digit
+storage and validation work. Fact/native construction and caller cloning use
+ordinary allocation. Query execution uses the sole semantic ledger for actual
+output-record layout, original inspected raw caps and fallible numeric copies.
+Numeric-owner operations use length-derived work bounds and record cumulative
+actual capacities, including a copied first axis or numerator discarded after
+later failure. Sticky work, digit, byte, allocation or cancellation stops discard
+the whole batch; there is no parser cancellation quantum or allocator/RSS promise.
+
+`HtmlNonNegativeRational` is the supported exact CSS-pixel measurement domain,
+not a claim that every CSS result is rational. Readback equality retains stored
+numerator/denominator representation and evidence rather than reducing fractions.
+The [independent cases](tests/semantics_image_dimensions.rs) cover branch influence,
+literal origins, joins, raw admission and resource boundaries. The
+[pinned img getter](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#img-dimensions),
+[input getter](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#input-img-dimensions)
+and [common kernel](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#determine-dimensions)
+define this interpretation. CSS production/default sizing, decoding/loading,
+selection and DOM unsigned-long conversion/setters remain outside it.
 
 `modification_datetime` interprets `datetime` on HTML `ins` and `del` using the
 [pinned modification clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#attr-mod-datetime).

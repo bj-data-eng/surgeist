@@ -910,6 +910,90 @@ pub surgeist_html::HtmlImageControlsAttributeContext::AltEmpty
 pub surgeist_html::HtmlImageControlsAttributeContext::AltMissing
 pub surgeist_html::HtmlImageControlsAttributeContext::AltNonempty
 pub surgeist_html::HtmlImageControlsAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImageDimensionAttributeObservation
+pub surgeist_html::HtmlImageDimensionAttributeObservation::Missing
+pub surgeist_html::HtmlImageDimensionAttributeObservation::Present
+pub surgeist_html::HtmlImageDimensionAttributeObservation::Present::attribute: surgeist_html::Attribute
+pub surgeist_html::HtmlImageDimensionAttributeObservation::Present::recovery: surgeist_html::HtmlImageDimensionRecovery
+pub surgeist_html::HtmlImageDimensionAttributeObservation::Uninspected
+pub enum surgeist_html::HtmlImageDimensionAxisResult
+pub surgeist_html::HtmlImageDimensionAxisResult::Known(surgeist_html::HtmlImageDimensionValue)
+pub surgeist_html::HtmlImageDimensionAxisResult::Missing(surgeist_html::HtmlImageDimensionMissing)
+pub surgeist_html::HtmlImageDimensionAxisResult::Unsupported(surgeist_html::HtmlNaturalDimensionUnsupported)
+pub enum surgeist_html::HtmlImageDimensionBranch
+pub surgeist_html::HtmlImageDimensionBranch::NonImageInput
+pub surgeist_html::HtmlImageDimensionBranch::RenderedContentBox
+pub surgeist_html::HtmlImageDimensionBranch::Unrendered
+pub enum surgeist_html::HtmlImageDimensionFactsError
+pub surgeist_html::HtmlImageDimensionFactsError::BindingMismatch(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::ByteLimit
+pub surgeist_html::HtmlImageDimensionFactsError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlImageDimensionFactsError::CaptureMismatch
+pub surgeist_html::HtmlImageDimensionFactsError::ContradictoryBox(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::ContradictoryResource(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::DuplicateSubject(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::HostRevisionMismatch
+pub surgeist_html::HtmlImageDimensionFactsError::InvalidAvailability(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::InvalidOperation(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::ParticipationRevisionMismatch
+pub surgeist_html::HtmlImageDimensionFactsError::RecordLimit
+pub surgeist_html::HtmlImageDimensionFactsError::RepresentationExhausted
+pub surgeist_html::HtmlImageDimensionFactsError::ResourceRevisionMismatch
+pub surgeist_html::HtmlImageDimensionFactsError::ResourceRevisionMissing
+pub surgeist_html::HtmlImageDimensionFactsError::RoleMismatch(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::UnexpectedObservation(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlImageDimensionFactsError::WorkLimit
+impl core::error::Error for surgeist_html::HtmlImageDimensionFactsError
+impl core::fmt::Display for surgeist_html::HtmlImageDimensionFactsError
+pub fn surgeist_html::HtmlImageDimensionFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlImageDimensionMeasurement
+pub surgeist_html::HtmlImageDimensionMeasurement::Known(surgeist_html::HtmlNonNegativeRational)
+pub surgeist_html::HtmlImageDimensionMeasurement::Unavailable
+pub surgeist_html::HtmlImageDimensionMeasurement::Unsupported(surgeist_html::HtmlNaturalDimensionUnsupported)
+impl core::cmp::PartialEq for surgeist_html::HtmlImageDimensionMeasurement
+pub fn surgeist_html::HtmlImageDimensionMeasurement::eq(&self, other: &Self) -> bool
+pub enum surgeist_html::HtmlImageDimensionMissingReason
+pub surgeist_html::HtmlImageDimensionMissingReason::Availability
+pub surgeist_html::HtmlImageDimensionMissingReason::CompletedHeight
+pub surgeist_html::HtmlImageDimensionMissingReason::CompletedWidth
+pub surgeist_html::HtmlImageDimensionMissingReason::ContentBoxHeight
+pub surgeist_html::HtmlImageDimensionMissingReason::ContentBoxWidth
+pub surgeist_html::HtmlImageDimensionMissingReason::ResourceObservation
+pub enum surgeist_html::HtmlImageDimensionOperationKey
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgDefaultSized
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgDefaultSized::css: surgeist_html::HtmlImageSizingRevision
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgDefaultSized::density: u64
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgDefaultSized::operation: surgeist_html::HtmlImageSizingRevision
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgDefaultSized::preferred: u64
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgDefaultSized::request: u64
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgPreferredDensityCorrected
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgPreferredDensityCorrected::density: u64
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgPreferredDensityCorrected::operation: surgeist_html::HtmlImageSizingRevision
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgPreferredDensityCorrected::preferred: u64
+pub surgeist_html::HtmlImageDimensionOperationKey::ImgPreferredDensityCorrected::request: u64
+pub surgeist_html::HtmlImageDimensionOperationKey::InputDefaultSized
+pub surgeist_html::HtmlImageDimensionOperationKey::InputDefaultSized::css: surgeist_html::HtmlImageSizingRevision
+pub surgeist_html::HtmlImageDimensionOperationKey::InputDefaultSized::operation: surgeist_html::HtmlImageSizingRevision
+pub surgeist_html::HtmlImageDimensionOperationKey::InputDefaultSized::request: u64
+pub enum surgeist_html::HtmlImageDimensionOrigin
+pub surgeist_html::HtmlImageDimensionOrigin::ContentAttribute
+pub surgeist_html::HtmlImageDimensionOrigin::ContentBox
+pub surgeist_html::HtmlImageDimensionOrigin::ImgDefaultSized
+pub surgeist_html::HtmlImageDimensionOrigin::ImgPreferredDensityCorrected
+pub surgeist_html::HtmlImageDimensionOrigin::InputDefaultSized
+pub surgeist_html::HtmlImageDimensionOrigin::NonImageInputZero
+pub surgeist_html::HtmlImageDimensionOrigin::UnavailableImageZero
+pub enum surgeist_html::HtmlImageDimensionRecovery
+pub surgeist_html::HtmlImageDimensionRecovery::InvalidSyntax
+pub surgeist_html::HtmlImageDimensionRecovery::Negative
+pub surgeist_html::HtmlImageDimensionRecovery::Recovered
+pub enum surgeist_html::HtmlImageDimensionRole
+pub surgeist_html::HtmlImageDimensionRole::Img
+pub surgeist_html::HtmlImageDimensionRole::Input
+pub enum surgeist_html::HtmlImageDimensionSelection
+pub surgeist_html::HtmlImageDimensionSelection::KnownNone
+pub surgeist_html::HtmlImageDimensionSelection::Selected(surgeist_html::HtmlNaturalResourceKey)
+pub surgeist_html::HtmlImageDimensionSelection::Unavailable
 pub enum surgeist_html::HtmlImageExternalConformance
 pub surgeist_html::HtmlImageExternalConformance::NotRequired
 pub surgeist_html::HtmlImageExternalConformance::Unapplied
@@ -928,6 +1012,11 @@ pub enum surgeist_html::HtmlImageSourceParent
 pub surgeist_html::HtmlImageSourceParent::NoParent
 pub surgeist_html::HtmlImageSourceParent::Parent(surgeist_html::QualifiedName)
 pub surgeist_html::HtmlImageSourceParent::Unavailable
+pub enum surgeist_html::HtmlImgRequestState
+pub surgeist_html::HtmlImgRequestState::Broken
+pub surgeist_html::HtmlImgRequestState::CompletelyAvailable
+pub surgeist_html::HtmlImgRequestState::PartiallyAvailable
+pub surgeist_html::HtmlImgRequestState::Unavailable
 pub enum surgeist_html::HtmlImplicitSubmissionBlockingFields
 pub surgeist_html::HtmlImplicitSubmissionBlockingFields::Multiple
 pub surgeist_html::HtmlImplicitSubmissionBlockingFields::One
@@ -970,6 +1059,9 @@ pub surgeist_html::HtmlInputImageAttributeError::EmptySource
 impl core::error::Error for surgeist_html::HtmlInputImageAttributeError
 impl core::fmt::Display for surgeist_html::HtmlInputImageAttributeError
 pub fn surgeist_html::HtmlInputImageAttributeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlInputImageAvailability
+pub surgeist_html::HtmlInputImageAvailability::Available
+pub surgeist_html::HtmlInputImageAvailability::NotAvailable
 pub enum surgeist_html::HtmlInputMode
 pub surgeist_html::HtmlInputMode::Decimal
 pub surgeist_html::HtmlInputMode::Email
@@ -1556,6 +1648,10 @@ pub surgeist_html::HtmlSemanticContextError::GlobalInheritanceCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::GlobalInheritanceHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::GlobalInheritanceRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::HostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::ImageDimensionsCaptureMismatch
+pub surgeist_html::HtmlSemanticContextError::ImageDimensionsFacts(surgeist_html::HtmlImageDimensionFactsError)
+pub surgeist_html::HtmlSemanticContextError::ImageDimensionsHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::ImageDimensionsRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::InertCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::InertHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::InertRevisionMismatch
@@ -1609,6 +1705,7 @@ pub surgeist_html::HtmlSemanticFact::FormOwner(surgeist_html::HtmlSemanticValue<
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
 pub surgeist_html::HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHyperlinkReferrerPolicyReadback>)
 pub surgeist_html::HtmlSemanticFact::ImageControlsAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
+pub surgeist_html::HtmlSemanticFact::ImageDimensions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImageDimensionReadback>)
 pub surgeist_html::HtmlSemanticFact::ImageMapAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
 pub surgeist_html::HtmlSemanticFact::Indeterminateness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Inertness(surgeist_html::HtmlSemanticValue<bool>)
@@ -1731,6 +1828,7 @@ pub surgeist_html::HtmlSemanticQuery::FormOwner
 pub surgeist_html::HtmlSemanticQuery::Hidden
 pub surgeist_html::HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute
 pub surgeist_html::HtmlSemanticQuery::ImageControlsAttribute
+pub surgeist_html::HtmlSemanticQuery::ImageDimensions
 pub surgeist_html::HtmlSemanticQuery::ImageMapAttribute
 pub surgeist_html::HtmlSemanticQuery::Indeterminateness
 pub surgeist_html::HtmlSemanticQuery::Inertness
@@ -3296,6 +3394,82 @@ pub fn surgeist_html::HtmlIconSizesReport::input(&self) -> &surgeist_html::HtmlT
 pub fn surgeist_html::HtmlIconSizesReport::keywords(&self) -> core::option::Option<&[surgeist_html::HtmlIconSizeKeyword]>
 pub fn surgeist_html::HtmlIconSizesReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlIconSizesReport::resource_conformance(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub struct surgeist_html::HtmlImageContentBoxObservation
+impl surgeist_html::HtmlImageContentBoxObservation
+pub fn surgeist_html::HtmlImageContentBoxObservation::height(&self) -> &surgeist_html::HtmlImageDimensionMeasurement
+pub fn surgeist_html::HtmlImageContentBoxObservation::new(capture: surgeist_html::HtmlCaptureId, host: surgeist_html::HtmlHostFactsRevision, subject: surgeist_html::HtmlCaptureSubjectId, revision: surgeist_html::HtmlListParticipationRevision, width: surgeist_html::HtmlImageDimensionMeasurement, height: surgeist_html::HtmlImageDimensionMeasurement) -> Self
+pub fn surgeist_html::HtmlImageContentBoxObservation::revision(&self) -> &surgeist_html::HtmlListParticipationRevision
+pub fn surgeist_html::HtmlImageContentBoxObservation::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlImageContentBoxObservation::width(&self) -> &surgeist_html::HtmlImageDimensionMeasurement
+pub struct surgeist_html::HtmlImageDimensionCompleted
+impl surgeist_html::HtmlImageDimensionCompleted
+pub fn surgeist_html::HtmlImageDimensionCompleted::height(&self) -> &surgeist_html::HtmlImageDimensionMeasurement
+pub fn surgeist_html::HtmlImageDimensionCompleted::key(&self) -> &surgeist_html::HtmlImageDimensionOperationKey
+pub fn surgeist_html::HtmlImageDimensionCompleted::new(key: surgeist_html::HtmlImageDimensionOperationKey, width: surgeist_html::HtmlImageDimensionMeasurement, height: surgeist_html::HtmlImageDimensionMeasurement) -> Self
+pub fn surgeist_html::HtmlImageDimensionCompleted::width(&self) -> &surgeist_html::HtmlImageDimensionMeasurement
+pub struct surgeist_html::HtmlImageDimensionExpectation
+impl surgeist_html::HtmlImageDimensionExpectation
+pub fn surgeist_html::HtmlImageDimensionExpectation::new(subject: surgeist_html::HtmlCaptureSubjectId, role: surgeist_html::HtmlImageDimensionRole, selection: surgeist_html::HtmlImageDimensionSelection, request: u64, operation: core::option::Option<surgeist_html::HtmlImageDimensionOperationKey>) -> Self
+pub fn surgeist_html::HtmlImageDimensionExpectation::operation(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionOperationKey>
+pub fn surgeist_html::HtmlImageDimensionExpectation::request_revision(&self) -> u64
+pub fn surgeist_html::HtmlImageDimensionExpectation::role(&self) -> surgeist_html::HtmlImageDimensionRole
+pub fn surgeist_html::HtmlImageDimensionExpectation::selection(&self) -> &surgeist_html::HtmlImageDimensionSelection
+pub fn surgeist_html::HtmlImageDimensionExpectation::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlImageDimensionFacts
+impl surgeist_html::HtmlImageDimensionFacts
+pub fn surgeist_html::HtmlImageDimensionFacts::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlImageDimensionFacts::content_boxes(&self) -> &[surgeist_html::HtmlImageContentBoxObservation]
+pub fn surgeist_html::HtmlImageDimensionFacts::expectations(&self) -> &[surgeist_html::HtmlImageDimensionExpectation]
+pub fn surgeist_html::HtmlImageDimensionFacts::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlImageDimensionFacts::new(capture: &surgeist_html::HtmlCapture, host: surgeist_html::HtmlHostFactsRevision, revision: surgeist_html::HtmlImageDimensionRevision, expected: alloc::vec::Vec<surgeist_html::HtmlImageDimensionExpectation>, resources: alloc::vec::Vec<surgeist_html::HtmlImageDimensionResourceObservation>, boxes: alloc::vec::Vec<surgeist_html::HtmlImageContentBoxObservation>, limits: surgeist_html::HtmlImageDimensionFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlImageDimensionFactsError>
+pub fn surgeist_html::HtmlImageDimensionFacts::resource_observations(&self) -> &[surgeist_html::HtmlImageDimensionResourceObservation]
+pub fn surgeist_html::HtmlImageDimensionFacts::revision(&self) -> &surgeist_html::HtmlImageDimensionRevision
+pub struct surgeist_html::HtmlImageDimensionFactsLimits
+impl surgeist_html::HtmlImageDimensionFactsLimits
+pub fn surgeist_html::HtmlImageDimensionFactsLimits::bytes(self) -> usize
+pub fn surgeist_html::HtmlImageDimensionFactsLimits::new(records: usize, bytes: usize, work: usize) -> Self
+pub fn surgeist_html::HtmlImageDimensionFactsLimits::records(self) -> usize
+pub fn surgeist_html::HtmlImageDimensionFactsLimits::work(self) -> usize
+pub struct surgeist_html::HtmlImageDimensionMissing
+impl surgeist_html::HtmlImageDimensionMissing
+pub fn surgeist_html::HtmlImageDimensionMissing::reason(&self) -> surgeist_html::HtmlImageDimensionMissingReason
+pub fn surgeist_html::HtmlImageDimensionMissing::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlImageDimensionReadback
+impl surgeist_html::HtmlImageDimensionReadback
+pub fn surgeist_html::HtmlImageDimensionReadback::branch(&self) -> surgeist_html::HtmlImageDimensionBranch
+pub fn surgeist_html::HtmlImageDimensionReadback::height(&self) -> &surgeist_html::HtmlImageDimensionAxisResult
+pub fn surgeist_html::HtmlImageDimensionReadback::height_attribute(&self) -> &surgeist_html::HtmlImageDimensionAttributeObservation
+pub fn surgeist_html::HtmlImageDimensionReadback::operation(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionOperationKey>
+pub fn surgeist_html::HtmlImageDimensionReadback::role(&self) -> surgeist_html::HtmlImageDimensionRole
+pub fn surgeist_html::HtmlImageDimensionReadback::source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlImageDimensionReadback::width(&self) -> &surgeist_html::HtmlImageDimensionAxisResult
+pub fn surgeist_html::HtmlImageDimensionReadback::width_attribute(&self) -> &surgeist_html::HtmlImageDimensionAttributeObservation
+pub struct surgeist_html::HtmlImageDimensionResourceObservation
+impl surgeist_html::HtmlImageDimensionResourceObservation
+pub fn surgeist_html::HtmlImageDimensionResourceObservation::completed(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionCompleted>
+pub fn surgeist_html::HtmlImageDimensionResourceObservation::expectation(&self) -> &surgeist_html::HtmlImageDimensionExpectation
+pub fn surgeist_html::HtmlImageDimensionResourceObservation::img(revision: surgeist_html::HtmlNaturalDimensionRevision, expected: surgeist_html::HtmlImageDimensionExpectation, state: core::option::Option<surgeist_html::HtmlImgRequestState>, completed: core::option::Option<surgeist_html::HtmlImageDimensionCompleted>) -> Self
+pub fn surgeist_html::HtmlImageDimensionResourceObservation::img_request_state(&self) -> core::option::Option<surgeist_html::HtmlImgRequestState>
+pub fn surgeist_html::HtmlImageDimensionResourceObservation::input(revision: surgeist_html::HtmlNaturalDimensionRevision, expected: surgeist_html::HtmlImageDimensionExpectation, availability: core::option::Option<surgeist_html::HtmlInputImageAvailability>, completed: core::option::Option<surgeist_html::HtmlImageDimensionCompleted>) -> Self
+pub fn surgeist_html::HtmlImageDimensionResourceObservation::input_availability(&self) -> core::option::Option<surgeist_html::HtmlInputImageAvailability>
+pub fn surgeist_html::HtmlImageDimensionResourceObservation::revision(&self) -> &surgeist_html::HtmlNaturalDimensionRevision
+pub struct surgeist_html::HtmlImageDimensionRevision
+impl surgeist_html::HtmlImageDimensionRevision
+pub fn surgeist_html::HtmlImageDimensionRevision::new(resource: core::option::Option<surgeist_html::HtmlNaturalDimensionRevision>, participation: core::option::Option<surgeist_html::HtmlListParticipationRevision>) -> Self
+pub fn surgeist_html::HtmlImageDimensionRevision::participation(&self) -> core::option::Option<&surgeist_html::HtmlListParticipationRevision>
+pub fn surgeist_html::HtmlImageDimensionRevision::resource(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
+pub struct surgeist_html::HtmlImageDimensionValue
+impl surgeist_html::HtmlImageDimensionValue
+pub fn surgeist_html::HtmlImageDimensionValue::css_pixels(&self) -> &surgeist_html::HtmlNonNegativeRational
+pub fn surgeist_html::HtmlImageDimensionValue::origin(&self) -> surgeist_html::HtmlImageDimensionOrigin
+impl core::cmp::PartialEq for surgeist_html::HtmlImageDimensionValue
+pub fn surgeist_html::HtmlImageDimensionValue::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlImageSizingRevision
+impl surgeist_html::HtmlImageSizingRevision
+pub fn surgeist_html::HtmlImageSizingRevision::configuration(&self) -> u64
+pub fn surgeist_html::HtmlImageSizingRevision::new(producer: surgeist_html::HtmlParticipationProducerId, configuration: u64, revision: u64) -> Self
+pub fn surgeist_html::HtmlImageSizingRevision::producer(&self) -> &surgeist_html::HtmlParticipationProducerId
+pub fn surgeist_html::HtmlImageSizingRevision::revision(&self) -> u64
 pub struct surgeist_html::HtmlInertFactLimits
 impl surgeist_html::HtmlInertFactLimits
 pub fn surgeist_html::HtmlInertFactLimits::new(record_capacity: usize, validation_work: usize) -> Self
@@ -4011,6 +4185,8 @@ pub fn surgeist_html::HtmlSemanticContext::global_inheritance(&self) -> core::op
 pub fn surgeist_html::HtmlSemanticContext::global_inheritance_revision(&self) -> core::option::Option<&surgeist_html::HtmlGlobalInheritanceRevision>
 pub fn surgeist_html::HtmlSemanticContext::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlSemanticContext::identity(&self) -> &surgeist_html::HtmlSemanticContextId
+pub fn surgeist_html::HtmlSemanticContext::image_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionRevision>
+pub fn surgeist_html::HtmlSemanticContext::image_dimensions(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionFacts>
 pub fn surgeist_html::HtmlSemanticContext::inert(&self) -> core::option::Option<&surgeist_html::HtmlInertFacts>
 pub fn surgeist_html::HtmlSemanticContext::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticContext::language_direction(&self) -> core::option::Option<&surgeist_html::HtmlLanguageDirectionFacts>
@@ -4030,6 +4206,7 @@ pub fn surgeist_html::HtmlSemanticContextInput::new(classifications: alloc::vec:
 pub fn surgeist_html::HtmlSemanticContextInput::with_controls(self, facts: surgeist_html::HtmlControlFacts) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_element_references(self, facts: surgeist_html::HtmlElementReferenceFacts) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_global_inheritance(self, expected: surgeist_html::HtmlGlobalInheritanceRevision, facts: core::option::Option<surgeist_html::HtmlGlobalInheritanceFacts>) -> Self
+pub fn surgeist_html::HtmlSemanticContextInput::with_image_dimensions(self, expected: surgeist_html::HtmlImageDimensionRevision, facts: core::option::Option<surgeist_html::HtmlImageDimensionFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_inert(self, expected: surgeist_html::HtmlFlatTreeRevision, facts: core::option::Option<surgeist_html::HtmlInertFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_language_direction(self, facts: surgeist_html::HtmlLanguageDirectionFacts) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_list_participation(self, expected: surgeist_html::HtmlListParticipationRevision, participation: core::option::Option<surgeist_html::HtmlListParticipation>) -> Self
@@ -4061,6 +4238,7 @@ pub fn surgeist_html::HtmlSemanticQualification::directionality_source(&self) ->
 pub fn surgeist_html::HtmlSemanticQualification::editability_source(&self) -> surgeist_html::HtmlEditabilitySource
 pub fn surgeist_html::HtmlSemanticQualification::global_inheritance_revision(&self) -> core::option::Option<&surgeist_html::HtmlGlobalInheritanceRevision>
 pub fn surgeist_html::HtmlSemanticQualification::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlSemanticQualification::image_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionRevision>
 pub fn surgeist_html::HtmlSemanticQualification::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticQualification::limits(&self) -> surgeist_html::HtmlSemanticLimits
 pub fn surgeist_html::HtmlSemanticQualification::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>

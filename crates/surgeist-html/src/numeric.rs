@@ -1792,6 +1792,24 @@ impl IntegerPrefixScanner {
     }
 }
 
+impl ScannedIntegerPrefix {
+    /// The same nonnegative recovery decision as the ordinary parser, with no
+    /// allocation. The caller admits the original input and precharges at most
+    /// one visit per prefix digit before this atomic sign/zero inspection.
+    pub(crate) fn nonnegative_digits(self, units: &[u16]) -> Result<&[u16], NumericParseError> {
+        let digits = &units[self.start..self.end];
+        nonnegative_prefix_digits(self.negative, digits)
+    }
+}
+
+fn nonnegative_prefix_digits(negative: bool, digits: &[u16]) -> Result<&[u16], NumericParseError> {
+    if negative && digits.iter().any(|&unit| unit != b'0' as u16) {
+        Err(NumericParseError::Negative)
+    } else {
+        Ok(digits)
+    }
+}
+
 fn integer_prefix(units: &[u16], recover: bool) -> Result<IntegerPrefix<'_>, NumericParseError> {
     let mut scanner = IntegerPrefixScanner::new(recover);
     for &unit in units {
@@ -1905,15 +1923,9 @@ pub(crate) fn parse_nonnegative_integer_capped(
     cap: usize,
 ) -> Result<usize, NumericParseError> {
     let prefix = integer_prefix(input.code_units(), true)?;
-    if prefix.negative {
-        return if prefix.digits.iter().all(|&unit| unit == b'0' as u16) {
-            Ok(0)
-        } else {
-            Err(NumericParseError::Negative)
-        };
-    }
+    let digits = nonnegative_prefix_digits(prefix.negative, prefix.digits)?;
     let mut value = 0_usize;
-    for &unit in prefix.digits {
+    for &unit in digits {
         let digit = usize::from(unit - b'0' as u16);
         value = value
             .checked_mul(10)
@@ -1941,9 +1953,10 @@ pub(crate) fn validate_nonnegative_integer(
 pub(crate) fn parse_nonnegative_integer(
     input: &DocumentString,
 ) -> Result<HtmlNonNegativeInteger, NumericParseError> {
-    parse_integer(input)?
-        .try_into()
-        .map_err(|_| NumericParseError::Negative)
+    let prefix = integer_prefix(input.code_units(), true)?;
+    Ok(HtmlNonNegativeInteger::from_digits(
+        nonnegative_prefix_digits(prefix.negative, prefix.digits)?,
+    ))
 }
 
 /// Author grammar, followed by the binary64 conversion contract.
@@ -3792,6 +3805,38 @@ mod tests {
         );
     }
 
+    #[test]
+    fn borrowed_nonnegative_prefix_preserves_zero_sign_and_digit_suffix_boundaries() {
+        for (raw, expected) in [
+            (" +12tail", Ok("12")),
+            (" -000tail", Ok("000")),
+            ("-001", Err(NumericParseError::Negative)),
+            ("+", Err(NumericParseError::InvalidSyntax)),
+            (
+                "340282366920938463463374607431768211456z",
+                Ok("340282366920938463463374607431768211456"),
+            ),
+        ] {
+            let input = text(raw);
+            let mut scanner = IntegerPrefixScanner::new(true);
+            for &unit in input.code_units() {
+                if !scanner.feed(unit) {
+                    break;
+                }
+            }
+            let actual = scanner
+                .finish()
+                .and_then(|prefix| prefix.nonnegative_digits(input.code_units()));
+            assert_eq!(
+                actual,
+                expected
+                    .as_ref()
+                    .map(|s| s.encode_utf16().collect::<Vec<_>>())
+                    .as_deref()
+                    .map_err(|e| **e)
+            );
+        }
+    }
     #[test]
     fn nonnegative_recovery_accepts_negative_zero_but_author_grammar_does_not() {
         assert!(

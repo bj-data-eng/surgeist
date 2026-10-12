@@ -4,7 +4,10 @@
 //! rationals are this API's supported domain, not a universal measurement rule;
 //! this owner introduces no geometry or resource loader.
 
-use super::HtmlNonNegativeInteger;
+use super::{
+    HtmlNonNegativeInteger, IntegerUnitStepError, NumericMaterializationFailure,
+    NumericMaterialized,
+};
 use std::{cmp::Ordering, error::Error, fmt};
 
 /// An exact nonnegative rational. Construction and cloning use ordinary
@@ -54,6 +57,76 @@ impl HtmlNonNegativeRational {
             .digits
             .capacity()
             .checked_add(self.denominator.digits.capacity())
+    }
+
+    /// Stored representation equality, deliberately not fraction reduction.
+    pub(crate) fn same_representation(&self, other: &Self) -> bool {
+        self.numerator == other.numerator && self.denominator == other.denominator
+    }
+
+    pub(crate) fn copy_work_bound(&self) -> Option<usize> {
+        self.numerator
+            .copy_work_bound()?
+            .checked_add(self.denominator.copy_work_bound()?)
+    }
+
+    /// Copies both admitted canonical integers. Failure retains the cumulative
+    /// actual capacity, including a numerator copied before denominator failure.
+    pub(crate) fn try_copy(
+        &self,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let numerator = self.numerator.try_copy(max_digits, max_bytes)?;
+        let denominator = self
+            .denominator
+            .try_copy(max_digits, max_bytes - numerator.capacity_bytes)
+            .map_err(|mut error| {
+                error.capacity_bytes += numerator.capacity_bytes;
+                match &mut error.kind {
+                    super::NumericMaterializationError::Boundary(
+                        IntegerUnitStepError::RequestedCapacityLimitExceeded { limit, required },
+                    ) => {
+                        *limit = max_bytes;
+                        *required += numerator.capacity_bytes;
+                    }
+                    super::NumericMaterializationError::Boundary(
+                        IntegerUnitStepError::ActualCapacityLimitExceeded { limit, .. },
+                    ) => {
+                        *limit = max_bytes;
+                    }
+                    _ => {}
+                }
+                error
+            })?;
+        Ok(NumericMaterialized {
+            capacity_bytes: numerator.capacity_bytes + denominator.capacity_bytes,
+            value: Self {
+                numerator: numerator.value,
+                denominator: denominator.value,
+            },
+        })
+    }
+
+    pub(crate) fn integer_work_bound() -> Option<usize> {
+        HtmlNonNegativeInteger::from_u32_work_bound()
+    }
+
+    /// Takes an already admitted integer and materializes only denominator one.
+    /// Unlike ordinary `new`, zero does not allocate a discarded replacement.
+    pub(crate) fn try_from_integer(
+        numerator: HtmlNonNegativeInteger,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+        let denominator = HtmlNonNegativeInteger::try_from_u32(1, max_digits, max_bytes)?;
+        Ok(NumericMaterialized {
+            capacity_bytes: denominator.capacity_bytes,
+            value: Self {
+                numerator,
+                denominator: denominator.value,
+            },
+        })
     }
 }
 
@@ -212,6 +285,67 @@ mod tests {
     use crate::DocumentString;
     fn integer(v: &str) -> HtmlNonNegativeInteger {
         HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from(v)).unwrap()
+    }
+    #[test]
+    fn controlled_rational_copy_preserves_arbitrary_unreduced_digits_and_capacity() {
+        let r = HtmlNonNegativeRational::new(
+            integer("340282366920938463463374607431768211456"),
+            integer("10"),
+        )
+        .unwrap();
+        let c = r.try_copy(100, 1000).unwrap();
+        assert!(r.same_representation(&c.value));
+        assert!(c.capacity_bytes >= 41);
+        assert!(
+            !HtmlNonNegativeRational::new(integer("2"), integer("4"))
+                .unwrap()
+                .same_representation(
+                    &HtmlNonNegativeRational::new(integer("1"), integer("2")).unwrap()
+                )
+        );
+    }
+    #[test]
+    fn denominator_failure_retains_successful_numerator_capacity_and_global_request() {
+        let r = HtmlNonNegativeRational::new(integer("12345"), integer("67")).unwrap();
+        let failure = r.try_copy(5, 5).unwrap_err();
+        assert_eq!(failure.capacity_bytes, 5);
+        assert_eq!(
+            failure.kind,
+            super::super::NumericMaterializationError::Boundary(
+                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+                    limit: 5,
+                    required: 7
+                }
+            )
+        );
+        let failure = r.try_copy(1, 100).unwrap_err();
+        assert_eq!(failure.capacity_bytes, 0);
+        assert_eq!(
+            failure.kind,
+            super::super::NumericMaterializationError::Boundary(
+                IntegerUnitStepError::DigitLimitExceeded {
+                    limit: 1,
+                    required: 5
+                }
+            )
+        );
+    }
+    #[test]
+    fn controlled_integer_assembly_allocates_only_one_positive_denominator_even_for_zero() {
+        for digits in ["0", "123456789012345678901234567890123456789"] {
+            let r = HtmlNonNegativeRational::try_from_integer(integer(digits), 100, 1).unwrap();
+            assert_eq!(r.capacity_bytes, 1);
+            assert_eq!(r.value.numerator().decimal_digits(), digits);
+            assert_eq!(r.value.denominator().decimal_digits(), "1");
+        }
+        let e = HtmlNonNegativeRational::try_from_integer(integer("0"), 1, 0).unwrap_err();
+        assert_eq!(e.capacity_bytes, 0);
+        assert!(matches!(
+            e.kind,
+            super::super::NumericMaterializationError::Boundary(
+                IntegerUnitStepError::RequestedCapacityLimitExceeded { required: 1, .. }
+            )
+        ));
     }
     fn text(v: &[u8]) -> String {
         v.iter().rev().map(|v| char::from(b'0' + v)).collect()
