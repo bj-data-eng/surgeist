@@ -112,6 +112,7 @@ pub surgeist_html::HtmlAttributeContextConformanceError::InputStateForbidsAttrib
 pub surgeist_html::HtmlAttributeContextConformanceError::ReferrerPolicyRequiresHref
 pub surgeist_html::HtmlAttributeContextConformanceError::ScriptContextForbidsAttribute
 pub surgeist_html::HtmlAttributeContextConformanceError::StylesheetDisabledRequiresStylesheetRel
+pub surgeist_html::HtmlAttributeContextConformanceError::TextareaHardWrapRequiresCols
 pub enum surgeist_html::HtmlAttributeObservation
 pub surgeist_html::HtmlAttributeObservation::Missing
 pub surgeist_html::HtmlAttributeObservation::PresentEmpty
@@ -1729,6 +1730,12 @@ pub surgeist_html::HtmlTemporalError::ZeroYear
 impl core::error::Error for surgeist_html::HtmlTemporalError
 impl core::fmt::Display for surgeist_html::HtmlTemporalError
 pub fn surgeist_html::HtmlTemporalError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlTextareaWrap
+pub surgeist_html::HtmlTextareaWrap::Hard
+pub surgeist_html::HtmlTextareaWrap::Soft
+impl surgeist_html::HtmlTextareaWrap
+pub fn surgeist_html::HtmlTextareaWrap::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlTextareaWrap::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlTimeElementDescendantAuthorState
 pub surgeist_html::HtmlTimeElementDescendantAuthorState::Conforming
 pub surgeist_html::HtmlTimeElementDescendantAuthorState::Nonconforming(surgeist_html::HtmlCaptureSubjectId)
@@ -2291,6 +2298,8 @@ pub fn surgeist_html::HtmlAttributeReport<T>::script_context(&self) -> core::opt
 pub fn surgeist_html::HtmlAttributeReport<T>::source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlAttributeReport<T>::stylesheet_link_context(&self) -> core::option::Option<&surgeist_html::HtmlStylesheetLinkAttributeContext>
 pub fn surgeist_html::HtmlAttributeReport<T>::vocabulary_source_clause(&self) -> core::option::Option<&'static str>
+impl<T> surgeist_html::HtmlAttributeReport<T>
+pub fn surgeist_html::HtmlAttributeReport<T>::textarea_wrap_cols_context(&self) -> core::option::Option<core::option::Option<&surgeist_html::Attribute>>
 pub struct surgeist_html::HtmlAuthoredProcessingInstruction
 impl surgeist_html::HtmlAuthoredProcessingInstruction
 pub fn surgeist_html::HtmlAuthoredProcessingInstruction::data(&self) -> &surgeist_html::DocumentString
@@ -4028,6 +4037,9 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::shadowrootslotassignment(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSlotAssignment>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::spellcheck(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpellcheckState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::textarea_wrap(&self, element: &surgeist_html::QualifiedName, wrap: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTextareaWrap>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::textarea_wrap_with_cols(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTextareaWrap>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::track_kind(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTrackKind>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

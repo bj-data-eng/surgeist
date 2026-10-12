@@ -149,6 +149,8 @@ pub enum HtmlAttributeContextConformanceError {
     FormnovalidateRequiresSubmitButton,
     /// A formmethod or formenctype override was authored on a non-submit button.
     FormOverrideRequiresSubmitButton,
+    /// Hard textarea wrap requires a specified cols attribute, independently of its value.
+    TextareaHardWrapRequiresCols,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -162,6 +164,7 @@ enum SuppliedContext {
     ImageMap(HtmlImageMapAttributeContext),
     ImageControls(HtmlImageControlsAttributeContext),
     StylesheetLink(HtmlStylesheetLinkAttributeContext),
+    TextareaCols(Option<Attribute>),
 }
 
 /// Recognition of literal value syntax; a fallback never changes this result.
@@ -334,6 +337,11 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the defining clause for additional element-context facts.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if self.rule.attribute == KnownHtmlAttribute::Wrap
+            && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Textarea)
+        {
+            return Some(self.rule.source);
+        }
         if matches!(
             (
                 self.rule.context,
@@ -1531,7 +1539,8 @@ impl HtmlValueInterpreter {
             }
             SuppliedContext::ImageMap(_)
             | SuppliedContext::ImageControls(_)
-            | SuppliedContext::StylesheetLink(_) => {
+            | SuppliedContext::StylesheetLink(_)
+            | SuppliedContext::TextareaCols(_) => {
                 result.applicability = HtmlAttributeApplicability::DifferentContext;
             }
         }
@@ -1626,6 +1635,16 @@ impl HtmlValueInterpreter {
             }
         }
         match supplied_context {
+            SuppliedContext::TextareaCols(_) => {
+                if matches!(
+                    result.applicability,
+                    HtmlAttributeApplicability::Applicable
+                        | HtmlAttributeApplicability::ScriptContextRequired
+                        | HtmlAttributeApplicability::CustomControlContextRequired
+                ) {
+                    result.applicability = HtmlAttributeApplicability::DifferentContext;
+                }
+            }
             SuppliedContext::Input(_) => {
                 if !matches!(
                     (result.rule.context, KnownHtmlElement::from_name(element)),
@@ -2075,6 +2094,9 @@ mod id;
 
 mod navigable_target;
 pub use navigable_target::*;
+
+mod textarea_wrap;
+pub use textarea_wrap::*;
 
 #[cfg(test)]
 mod stylesheet_context_tests {

@@ -197,6 +197,16 @@ selected value; the captured form-setting queries below use the actual form
 owner for effective fallback. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
 
+`textarea_wrap` retains Soft/Hard content state, raw spelling and lexical
+conformance separately; missing and invalid content select Soft. Hard leaves
+its cols-presence author requirement unchecked until `textarea_wrap_with_cols`
+observes one complete `OrderedAttributes` collection. That companion retains
+actual cols or known absence and admits both selected raw values before
+applicability. Any present cols satisfies this presence rule; numeric validity
+remains with `textarea_cols`. Missing cols reports a separate context violation
+without changing Hard. These ordinary reports do not perform wrapping or
+submission and use the per-selected-value UTF-16 cap.
+
 `ol_start` and `li_value` report exact local signed list declarations through
 the shared integer interpreter. Whole author syntax and independent prefix
 recovery retain their own evidence, including arbitrarily large signed values.
