@@ -827,6 +827,12 @@ pub enum HtmlSemanticQuery {
     TableRows,
     TableSectionRows,
     TableRowCells,
+    /// Native zero-based table.rows ordinal; None represents source −1.
+    TableRowIndex,
+    /// Native zero-based immediate parent's rows ordinal; None represents source −1.
+    TableSectionRowIndex,
+    /// Native zero-based immediate row's cells ordinal; None represents source −1.
+    TableCellIndex,
     Language,
     Directionality,
     /// Normalized own/inherited advisory information, including empty suppression.
@@ -1129,6 +1135,15 @@ impl HtmlSemanticQuery {
             Self::TableRowCells => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells"
             }
+            Self::TableRowIndex => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-rowindex"
+            }
+            Self::TableSectionRowIndex => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-sectionrowindex"
+            }
+            Self::TableCellIndex => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tdth-cellindex"
+            }
             Self::TableHead => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead"
             }
@@ -1341,6 +1356,9 @@ pub enum HtmlSemanticFact {
     TableRows(HtmlSemanticValue<HtmlTableRowCollection>),
     TableSectionRows(HtmlSemanticValue<HtmlTableRowCollection>),
     TableRowCells(HtmlSemanticValue<HtmlTableCellCollection>),
+    TableRowIndex(HtmlSemanticValue<Option<usize>>),
+    TableSectionRowIndex(HtmlSemanticValue<Option<usize>>),
+    TableCellIndex(HtmlSemanticValue<Option<usize>>),
     TableCaption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     TableHead(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     TableFoot(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
@@ -2855,6 +2873,17 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::TableRowCells => {
                             HtmlSemanticFact::TableRowCells(self.table_row_cells(&request.subject)?)
                         }
+                        HtmlSemanticQuery::TableRowIndex => {
+                            HtmlSemanticFact::TableRowIndex(self.table_row_index(&request.subject)?)
+                        }
+                        HtmlSemanticQuery::TableSectionRowIndex => {
+                            HtmlSemanticFact::TableSectionRowIndex(
+                                self.table_section_row_index(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::TableCellIndex => HtmlSemanticFact::TableCellIndex(
+                            self.table_cell_index(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::TableHead => {
                             HtmlSemanticFact::TableHead(self.table_head(&request.subject)?)
                         }
@@ -3268,6 +3297,15 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::TableRowCells => {
                         HtmlSemanticFact::TableRowCells(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableRowIndex => {
+                        HtmlSemanticFact::TableRowIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableSectionRowIndex => {
+                        HtmlSemanticFact::TableSectionRowIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableCellIndex => {
+                        HtmlSemanticFact::TableCellIndex(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::TableHead => {
                         HtmlSemanticFact::TableHead(HtmlSemanticValue::Inapplicable)

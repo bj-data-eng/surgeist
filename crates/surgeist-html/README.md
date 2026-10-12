@@ -1805,6 +1805,40 @@ they use the semantic session's work and output limits and report missing ordere
 children explicitly. They provide captured membership rather than live collection
 access or table mutation.
 
+<a id="captured-table-indices"></a>
+
+`TableRowIndex`, `TableSectionRowIndex` and `TableCellIndex` return native
+zero-based collection positions as `HtmlSemanticValue<Option<usize>>`.
+`Some(index)` is the position; `None` represents the source's −1 when the
+ordinary parent relationships do not select a qualifying collection.
+
+`TableRowIndex` uses the table's rows when a tr has an immediate table parent,
+or an immediate thead/tbody/tfoot parent with an immediate table grandparent.
+`TableSectionRowIndex` uses the immediate table or section parent's rows;
+a direct table child therefore uses header-first/body/footer-last table order,
+while a detached section needs no table grandparent. `TableCellIndex` uses
+the immediate tr parent's direct HTML td/th cells. Nearest-table ancestry,
+template/shadow hosts, spans and implied model slots do not supply positions.
+
+The [shared collection owner](src/semantics/table/collections.rs) counts qualified
+members through the existing source-order passes, stopping at the target only
+after preceding phases are established. A known header index can ignore later
+section gaps; a body index still needs all header counts. Influencing unavailable
+parent or child order remains typed Missing. Wrong HTML roles/non-elements are
+Inapplicable; foreign subjects remain Unsupported. Attribute/text values and
+member descendants are uninspected.
+
+These scalar queries retain no intermediate member vector or traversal scratch.
+Actual comparisons/counts, outer result capacity, cumulative usage, cancellation,
+qualified sticky failures and atomic batches use the existing session owner.
+The pinned [rowIndex](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-tr-rowindex),
+[sectionRowIndex](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-tr-sectionrowindex)
+and [cellIndex](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-tdth-cellindex)
+clauses and [literal/resource tests](tests/semantics_table_indices.rs) define this
+native boundary. Closed Query/Fact additions intentionally break exhaustive
+matches. Live collections, insertion/deletion, WebIDL signed-long conversion,
+layout and full table author conformance remain separate.
+
 `HtmlFragmentContext` selects an actual captured element or hosted fragment,
 retaining its context and target documents, integration facts and nearest form.
 It derives the initial tokenizer/insertion state and checked scripting mode:

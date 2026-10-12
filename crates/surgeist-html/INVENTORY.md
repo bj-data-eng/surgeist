@@ -138,17 +138,17 @@ not assert all child/content constraints are machine checked.
 | <a id="e091"></a>E091 | summary; HTML | [the-summary-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-summary-element) | [Details](#details) first direct summary predicate and captured TabIndex default; disclosure toggle external. |
 | <a id="e092"></a>E092 | sup; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact superscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e093"></a>E093 | SVG svg; SVG | [elementdef-svg](https://w3c.github.io/svgwg/svg2-draft/struct.html#elementdef-svg) | SVG namespace/open names retained; ordinary private HTML foreign construction/integration and [restricted SVG script processing](README.md#private-svg-script) implemented, broader SVG language semantics/runtime delegated. |
-| <a id="e094"></a>E094 | table; HTML | [the-table-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) | [Tables](#tables): independent TableCaption/TableHead/TableFoot getters, static bodies/rows/cells and separate slot/column/header model; no live collections/mutation/layout or full author-conformance certificate. |
+| <a id="e094"></a>E094 | table; HTML | [the-table-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) | [Tables](#tables): independent TableCaption/TableHead/TableFoot getters, static bodies/rows/cells and native collection indices, separately from the slot/column/header model; no live collections/mutation/layout or full author-conformance certificate. |
 | <a id="e095"></a>E095 | tbody; HTML | [the-tbody-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tbody-element) | [Tables](#tables) direct row membership; geometric layout and live DOM collection external. |
-| <a id="e096"></a>E096 | td; HTML | [the-td-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-td-element) | [Tables](#tables) cell/span/header model; geometry and live cellIndex/mutation not covered by immutable collection. |
+| <a id="e096"></a>E096 | td; HTML | [the-td-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-td-element) | [Tables](#tables) cell/span/header model and native TableCellIndex in the immediate row's cells; geometry, live getters and mutation remain separate. |
 | <a id="e097"></a>E097 | template; HTML | [the-template-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element) | Native separate template contents and explicit declarative shadow effects; [private fresh ordinary templates](README.md#private-ordinary-templates) implement contents/patching. [Private context fragments](README.md#private-context-fragments) retain qualified template caches and shadow construction effects. [Template marker reference](#template-marker-reference) has no public captured query. Public complete parsing/live DOM shadow attachment unfinished. |
 | <a id="e098"></a>E098 | textarea; HTML | [the-textarea-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-textarea-element) | [Control lengths](#control-lengths), cols/rows/wrap, captured defaultValue/autocomplete/text assistance/current flags and TextareaValueMissing in [Control facts](#control-facts); editing/reset/validation execution separate. |
 | <a id="e099"></a>E099 | tfoot; HTML | [the-tfoot-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tfoot-element) | [Tables](#tables) supplies independent first direct TableFoot selection and direct row membership/footer-last tableRows; no live mutation or full author-conformance certificate. |
-| <a id="e100"></a>E100 | th; HTML | [the-th-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-th-element) | [Tables](#tables) cell/span/header model and [Table header scope](#table-header-scope); no layout. |
+| <a id="e100"></a>E100 | th; HTML | [the-th-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-th-element) | [Tables](#tables) cell/span/header model and native TableCellIndex, plus [Table header scope](#table-header-scope); live getters, mutation and layout remain separate. |
 | <a id="e101"></a>E101 | thead; HTML | [the-thead-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-thead-element) | [Tables](#tables) supplies independent first direct TableHead selection and direct row membership/header-first tableRows; no live mutation or full author-conformance certificate. |
 | <a id="e102"></a>E102 | time; HTML | [the-time-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-time-element) | [Time element](#time-element) ten-format author/processing and captured explicit-value/text selection; inverse/host-zone conversion not supplied. |
 | <a id="e103"></a>E103 | title; HTML | [the-title-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-title-element) | [Document title](#document-title): exact TitleText child-text getter and qualified DocumentTitle selection with ASCII whitespace normalization; setters and lifecycle notification remain separate. |
-| <a id="e104"></a>E104 | tr; HTML | [the-tr-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tr-element) | [Tables](#tables) direct td/th cell membership; live insertion/index APIs not covered. |
+| <a id="e104"></a>E104 | tr; HTML | [the-tr-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tr-element) | [Tables](#tables) direct td/th membership and native TableRowIndex/TableSectionRowIndex; live collection, WebIDL conversion and insertion/deletion remain separate. |
 | <a id="e105"></a>E105 | track; HTML | [the-track-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-track-element) | Own kind/default/src/srclang/label retained; WebVTT parsing, media readiness and track selection external. |
 | <a id="e106"></a>E106 | u; HTML | [the-u-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-u-element) | Exact unarticulated annotation role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e107"></a>E107 | ul; HTML | [the-ul-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-ul-element) | [Lists](#lists): ListOwner recognizes ul/ol/menu and ListOrdinal interprets participating li children with qualified display/box facts. No ul starting-value getter or full content-conformance certificate is implied. Applicable global facts remain independently queryable. |
@@ -993,7 +993,24 @@ including malformed spans/overlap, separately from static
 [collections](src/semantics/table/collections.rs): bodies direct tbody; rows
 header-first then direct/body then footer; section direct tr; row direct td/th.
 Immutable membership does not require irrelevant cell/spans/attributes or imply
-live collections, indices, mutation or geometric layout.
+live collections, mutation or geometric layout.
+
+`TableRowIndex`, `TableSectionRowIndex` and `TableCellIndex` use the same
+[collection owner](src/semantics/table/collections.rs) to return native zero-based
+positions; None represents source −1, separately from influencing Missing.
+The row's immediate table parent, or section parent plus table grandparent,
+selects table.rows; sectionRowIndex needs only its immediate table/section
+parent, and cellIndex needs an immediate tr parent. Direct table rows use
+header-first/body/footer-last order. Spans and implied slots do not contribute
+ordinals. No nearest ancestor or template/shadow host substitutes for these
+ordinary relationships. Target projection retains no member vector or scratch;
+actual traversal, scalar output, physical outer capacity and terminal atomic
+failure use the existing qualified session.
+[Canonical explanation](README.md#captured-table-indices) and
+[tests](tests/semantics_table_indices.rs) preserve the source/null/Missing,
+qualification and resource distinctions. This does not provide live collection
+or mutation, a WebIDL long binding or full table author conformance.
+
 The [headers author rule](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tdth-headers) is an unordered set
 of unique space-separated tokens, each identifying a th participating in the
 same table. That author relation is distinct from retaining exact raw/token
