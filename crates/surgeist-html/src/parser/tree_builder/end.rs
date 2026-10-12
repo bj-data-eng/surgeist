@@ -1833,4 +1833,89 @@ mod tests {
         assert!(!session.svg_script_state(c, &script).unwrap().processed);
         cleanup(&mut driver);
     }
+
+    #[test]
+    fn failed_transfer_preserves_first_stop_usage_before_reference_scratch_cleanup() {
+        // Missing doctype is the one retained diagnostic. The actual unknown
+        // named reference then reaches the next diagnostic cap while its
+        // literal text and reference-query scratch are still owned.
+        let limits = super::super::tests::limits(100)
+            .into_builder()
+            .diagnostics(1)
+            .finish()
+            .unwrap();
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>&bogus;"), limits);
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+        let mut stopped = false;
+        for _ in 0..128 {
+            if driver.step().is_err() {
+                stopped = true;
+                break;
+            }
+        }
+        assert!(stopped, "literal reference reaches the second diagnostic");
+        let first = driver.control.stop().unwrap();
+        assert!(matches!(
+            first,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::Diagnostics,
+                limit: 1,
+                current: 1,
+                requested_delta: 1,
+            }
+        ));
+        let latched = driver.control.first_stop_usage().unwrap().clone();
+        let after_unwind = driver.control.usage().clone();
+        // The literal ampersand plus five letters were retained at the latch.
+        // Normal reference unwinding disposes them before returning the error.
+        assert!(
+            latched
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current
+                >= after_unwind
+                    .resource(HtmlParseResource::BufferedUtf16Units)
+                    .current
+                    + 6
+        );
+        assert!(
+            latched
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current
+                > after_unwind
+                    .resource(HtmlParseResource::ManagedCapacityBytes)
+                    .current
+        );
+        assert_eq!(
+            latched.resource(HtmlParseResource::WorkCredits),
+            after_unwind.resource(HtmlParseResource::WorkCredits)
+        );
+        let mut input = Some(driver);
+        let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
+        assert!(input.is_none());
+        assert_eq!(failed.stop(), first);
+        assert_eq!(failed.source().identity(), request.source().identity());
+        let evidence = failed.diagnostics().unwrap();
+        assert_eq!(evidence.len(), 1);
+        let (record, source) = evidence.retained_record(0).unwrap();
+        assert_eq!(
+            record.kind,
+            crate::construction::parser_session::evidence::DiagnosticKind::Prologue(
+                prologue::PrologueCondition::MissingDoctype
+            )
+        );
+        assert_eq!((source.start(), source.end()), (0, 3));
+        let exported_at_stop = failed.at_stop().clone();
+        let after_cleanup = failed.after_cleanup().clone();
+        assert_eq!(
+            after_cleanup.resource(HtmlParseResource::WorkCredits),
+            latched.resource(HtmlParseResource::WorkCredits)
+        );
+        failed.release().unwrap();
+        super::super::tests::assert_released(&failed.control);
+        assert_eq!(failed.stop(), first);
+        assert_eq!(failed.at_stop(), &exported_at_stop);
+        // This is the published failure observation contract, not a demand for
+        // a particular staging layout: at_stop is the canonical latch snapshot.
+        assert_eq!(exported_at_stop, latched);
+    }
 }
