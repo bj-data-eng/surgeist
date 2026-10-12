@@ -1396,6 +1396,39 @@ mod tests {
             ("tables01.dat", 4, HtmlDocumentMode::Quirks),
             ("comments01.dat", 1, HtmlDocumentMode::Quirks),
             ("template.dat", 1, HtmlDocumentMode::Quirks),
+            // Complete the four already-bundled lexical/prologue families.
+            // Modes come from HTML877d initial rules, never the actual output.
+            ("tests14.dat", 2, HtmlDocumentMode::NoQuirks),
+            ("tests14.dat", 3, HtmlDocumentMode::NoQuirks),
+            ("tests14.dat", 4, HtmlDocumentMode::NoQuirks),
+            ("tests14.dat", 5, HtmlDocumentMode::NoQuirks),
+            ("tests14.dat", 7, HtmlDocumentMode::NoQuirks),
+            ("tests24.dat", 1, HtmlDocumentMode::NoQuirks),
+            ("tests24.dat", 2, HtmlDocumentMode::NoQuirks),
+            ("tests24.dat", 3, HtmlDocumentMode::NoQuirks),
+            ("tests24.dat", 4, HtmlDocumentMode::NoQuirks),
+            ("tests24.dat", 5, HtmlDocumentMode::NoQuirks),
+            ("tests24.dat", 6, HtmlDocumentMode::NoQuirks),
+            ("tests24.dat", 8, HtmlDocumentMode::NoQuirks),
+            ("comments01.dat", 2, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 3, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 4, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 5, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 6, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 7, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 8, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 9, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 10, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 11, HtmlDocumentMode::Quirks),
+            // Reserved xml is bogus-comment recovery even in the newer PI edition.
+            ("comments01.dat", 12, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 13, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 14, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 15, HtmlDocumentMode::Quirks),
+            ("comments01.dat", 16, HtmlDocumentMode::Quirks),
+            ("quirks01.dat", 2, HtmlDocumentMode::Quirks),
+            ("quirks01.dat", 3, HtmlDocumentMode::Quirks),
+            ("quirks01.dat", 4, HtmlDocumentMode::Quirks),
         ];
         for (path, ordinal, mode) in selected {
             let (_, raw) = DATA.iter().find(|(p, _)| p == path).unwrap();
@@ -1407,6 +1440,15 @@ mod tests {
             check(&request(fixture.input), &expected)
                 .unwrap_or_else(|e| panic!("{path}/{ordinal}: {e}"));
         }
+    }
+
+    #[test]
+    fn initial_pi_preserves_later_doctype_and_no_quirks_selection() {
+        // HTML877d raw96334–96347: an initial PI does not leave Initial;
+        // the following doctype is created with empty missing identifiers.
+        let f = decode("#data\n<?Target data><!doctype html><p>X\n#errors\n#document\n| <?Target data>\n| <!DOCTYPE html>\n| <html>\n|   <head>\n|   <body>\n|     <p>\n|       \"X\"\n").unwrap();
+        let e = parsed_expected(&f[0], HtmlDocumentMode::NoQuirks).unwrap();
+        check(&request(f[0].input), &e).unwrap();
     }
 
     #[test]

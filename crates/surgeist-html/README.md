@@ -1829,18 +1829,18 @@ completed owner through their existing cleanup paths.
 The bundled [html5lib-tests subset](tests/fixtures/html5lib-f994590f/tree-construction/README.md)
 at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains eight complete
 data files, with 169 cases. All 169 are decoded as fixture-format coverage.
-Exactly ten stable file/ordinal bindings are replayed through the completed
+Exactly 40 stable file/ordinal bindings are replayed through the completed
 ordinary parser with scripting Disabled and no fragment context:
 
 | Whole retained file | Replayed one-based case ordinals |
 | --- | --- |
 | adoption02.dat | 1 |
 | namespace-sensitivity.dat | 1 |
-| quirks01.dat | 1 |
-| tests14.dat | 1, 6 |
-| tests24.dat | 7 |
+| quirks01.dat | 1–4 |
+| tests14.dat | 1–7 |
+| tests24.dat | 1–8 |
 | tables01.dat | 1, 4 |
-| comments01.dat | 1 |
+| comments01.dat | 1–16 |
 | template.dat | 1 |
 
 The adapter compares native document mode, expanded names, prefixes, exact
