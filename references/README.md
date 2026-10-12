@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 364 retained source identities and states their representations: 257 full documents/source witnesses, 93 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 366 retained source identities and states their representations: 257 full documents/source witnesses, 95 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -115,3 +115,13 @@ retains the finite Fetch vocabulary and adjacent warning delegated by pinned
 HTML link destinations. The [edition selection](SOURCE-EDITIONS.md#html-link-destinations-and-fetch-vocabulary)
 keeps enumeration, author context and later processing recovery distinct.
 This selects no networking or JavaScript runtime.
+
+## DOM-delegated XML pseudo-attribute grammar
+
+The [complete XML-stylesheet §3 operation](xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md#pseudo-attributes)
+and [bounded XML grammar closure](xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md#sec-notation)
+retain the dated 2010/2008 Recommendations, complete selected productions and
+notation, original notices and STATUS, and applicable document-use terms.
+The [source-edition boundary](SOURCE-EDITIONS.md#dom-delegated-xml-pseudo-attribute-grammar)
+keeps parsing an existing PI string separate from XML document processing,
+stylesheet loading and parser implementation acceptance.

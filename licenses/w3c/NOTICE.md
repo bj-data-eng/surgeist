@@ -1451,3 +1451,46 @@ Applicable legal material remains the local complete
 [official 5 February 2015 update](https://www.w3.org/news/2015/w3c-updates-general-document-license/)
 extends the software-support derivative permission to existing publications.
 No upstream code component or executable example is transcribed.
+
+## DOM-delegated XML pseudo-attribute grammar
+
+Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document
+includes material copied from or derived from
+[Associating Style Sheets with XML documents 1.0 (Second Edition)](https://www.w3.org/TR/2010/REC-xml-stylesheet-20101028/).
+
+Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document
+includes material copied from or derived from
+[Extensible Markup Language (XML) 1.0 (Fifth Edition)](https://www.w3.org/TR/2008/REC-xml-20081126/).
+
+The [XML-stylesheet reference](../../references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md) preserves the
+28 October 2010 Recommendation's original ©2010 W3C® (MIT, ERCIM, Keio),
+All Rights Reserved notice, editors and complete original STATUS. Its complete
+original SHA-256 is
+`a0e1a5198a21c2aa4b623fc35b3c890d6e51c6c14ee126aed71cf3b93157515a`.
+Coverage is the whole delegated §3 parsing operation with the exact raw header,
+STATUS and grammar bounds recorded in the reference.
+
+The [XML reference](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md) preserves the 26 November
+2008 Recommendation's original ©2008 W3C® (MIT, ERCIM, Keio), All Rights Reserved
+notice, editors and complete original STATUS, including its actual notice of
+the 7 February 2013 in-place RFC-link correction. Its complete original SHA-256
+is `f58a4b9e1e5b8bac13fb55c4e5c7c8c5e2c176aa45ee68e2f1ab2498511927ec`.
+Coverage is the complete selected Char/S/Name/CharRef grammar closure and
+complete §6 Notation, not the entire document.
+
+Changes by Surgeist on 2026-10-12: bounded extraction, Markdown headings and
+paragraphs, semantic HTML tables/lists, retained explicit anchors, dated absolute
+or specifically selected local links, removal of inline layout styles, and
+normalized inter-element whitespace. Original selected prose, productions,
+table rows/cells, conditions and list order remain unchanged. Both original
+liability/trademark/document-use links are retained.
+
+Applicable complete material is the [W3C Document License 2015](document-license-2015.txt)
+with the [historical 2002 document-use terms](document-license-2002.txt).
+The [official 5 February 2015 update](https://www.w3.org/news/2015/w3c-updates-general-document-license/)
+extends software/software-support derivative permission to existing
+publications. These conversions accompany software-support material; they are
+not published as replacement technical specifications. The additional 2015
+notices do not replace the original ©2008/©2010 notices. No generic software
+license is substituted for the document terms and no marked upstream code
+component, XML loader or executable example is incorporated.

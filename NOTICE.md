@@ -466,3 +466,16 @@ supplies the finite vocabulary delegated by HTML link destinations. The
 [WHATWG attribution](licenses/whatwg/NOTICE.md#html-delegated-fetch-destinations--2026-10-12)
 and complete local license cover the Markdown extraction. This source selection
 incorporates no Fetch runtime or new dependency.
+
+## DOM-delegated XML pseudo-attribute grammar
+
+The bounded [XML-stylesheet parsing reference](references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md) and
+[XML grammar closure](references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md) retain the actual 2010/2008
+Recommendation titles, editors, original copyright and complete STATUS.
+The [source-specific attribution](licenses/w3c/NOTICE.md#dom-delegated-xml-pseudo-attribute-grammar)
+and complete local [2002](licenses/w3c/document-license-2002.txt) and
+[2015](licenses/w3c/document-license-2015.txt) document terms accompany these
+implementation-support conversions, including separate required 2015 derivative
+notices. The official 2015 update applies to existing publications. These are
+not replacement technical specifications, a complete XML parser, or evidence
+of stylesheet loading; no software dependency or project license changes.

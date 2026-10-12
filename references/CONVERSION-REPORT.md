@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **364 source identities: 257 full documents/source witnesses, 93 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **366 source identities: 257 full documents/source witnesses, 95 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -527,3 +527,44 @@ prose attribution and modification notice are retained.
 This adds one partial identity. The current collection is **364 identities:
 257 full, 93 partial and 14 metadata-only**, with all prior 363 identities and
 81 passive SVG assets preserved. Earlier dated counts remain historical.
+
+## DOM-delegated XML pseudo-attribute grammar — 2026-10-12
+
+Two distinct partial identities retain the
+[whole XML-stylesheet §3](xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md#pseudo-attributes)
+and [bounded XML grammar closure](xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md).
+Complete originals are respectively 34,841 and 219,926 bytes, SHA-256
+`a0e1a5198a21c2aa4b623fc35b3c890d6e51c6c14ee126aed71cf3b93157515a`
+and `f58a4b9e1e5b8bac13fb55c4e5c7c8c5e2c176aa45ee68e2f1ab2498511927ec`.
+The latter retains its own disclosed 2013 in-place RFC-link correction.
+
+The stylesheet selection covers raw 35–43 (title/editors/notice), 45–88
+(complete original STATUS) and 164–196 (entire §3). XML covers raw 39–53 and
+59–95 for its corresponding original header/complete STATUS; 306–320 for the
+complete Char table and following encoding paragraph/discouraged-character note;
+322–331 for complete S context/table/note; 331–357 for Name context and exactly
+the first three complete production rows at 358; 1141–1150 for complete CharRef,
+constraint and interpretation; and 1724–1780 for complete §6 Notation.
+Unselected Names/Nmtoken/Nmtokens rows and the rest of both documents are not
+represented as converted text.
+
+Selected original text is equal under HTML-collapsible whitespace comparison;
+inline code, grammar operators/ranges, ordered anchors and table row/cell models
+were checked directly against the retained originals. Headings/paragraphs use
+Markdown; grammar tables, ordered and definition lists retain semantic HTML.
+Explicit source anchors remain. Original-relative and unselected-fragment links
+become dated absolute references; only the selected XML dependency fragments
+are linked locally. Inline layout styles and inter-element whitespace change.
+No source script, linked resource, XML parser or stylesheet loader is executed.
+
+Original ©2008/©2010 notices, editor material and full original STATUS remain.
+Each reference adds the prescribed separate ©2015 implementation-support
+derivative notice and links complete local 2002/2015 document terms, supported
+by the official 2015 existing-publications update. These references accompany
+software/support material and are not replacement technical specifications.
+No generic software-license substitution or pending erratum is introduced.
+
+The current collection is **366 identities: 257 full, 95 partial and
+14 metadata-only**; all prior 364 identities, dated historical counts and
+**81 passive SVG assets** remain unchanged. Source retention does not certify
+ordinary-template implementation or whole-parser completion.

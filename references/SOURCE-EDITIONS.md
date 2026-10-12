@@ -485,3 +485,36 @@ modulepreload author constraints remain independent when both rel tokens occur.
 This is one bounded external vocabulary selection, not a new HTML edition,
 Fetch translation/loading, worker execution or JavaScript binding. Source
 selection does not certify the corresponding HTML operation as implemented.
+
+### DOM-delegated XML pseudo-attribute grammar
+
+The retained [DOM initialization](dom-foundation--editor-capture-20261010--08dff0a4827f.md#processinginstruction-initialize)
+and [PI attribute-map update](dom-foundation--editor-capture-20261010--08dff0a4827f.md#update-attributes-from-data)
+delegate parsing an existing data string to the
+[whole XML-stylesheet §3](xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md#pseudo-attributes),
+W3C Recommendation 28 October 2010, Second Edition. Its complete original
+SHA-256 is `a0e1a5198a21c2aa4b623fc35b3c890d6e51c6c14ee126aed71cf3b93157515a`.
+The [XML Fifth Edition grammar dependency](xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md)
+selects the 26 November 2008 Recommendation; complete original SHA-256
+`f58a4b9e1e5b8bac13fb55c4e5c7c8c5e2c176aa45ee68e2f1ab2498511927ec`.
+That retained original explicitly discloses its 7 February 2013 RFC-link
+correction. Neither selection upgrades the pinned HTML edition.
+
+The XML dependency retains complete Char and S productions, exactly the three
+complete NameStartChar/NameChar/Name rows, CharRef with its Legal Character
+constraint and numeric interpretation, and complete §6 Notation. Negated classes
+range over Char; discouraged-but-permitted characters are not extra errors.
+Parsing is whole-string with exact names, the five predefined entity references
+and numeric references, three prescribed value modifications, and duplicate or
+illegal-character-reference failure. Empty sets and quoted empty values remain
+permitted. DOM owns map clearing before parse and leaving it empty on error.
+
+This does not select XML-stylesheet §4 style loading, XML document EOL
+preprocessing, DTD/external entities, generic attribute normalization, case
+folding or Unicode normalization. XML name reservation prose remains context,
+not an additional Name-production exclusion. The partial references preserve
+complete original STATUS and copyright/editor material and include the separate
+2015 software-support derivative notices with complete local document terms.
+They are not replacement technical specifications. Source retention does not
+certify PI construction, runtime-source-index accounting, cancellation or
+ordinary-template parser implementation.
