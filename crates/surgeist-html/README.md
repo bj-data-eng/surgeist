@@ -1732,6 +1732,66 @@ The [end owner](src/parser/tree_builder/end.rs),
 [qualified completion facts](src/construction/parser_session/completion.rs) and
 [origin record](PARSER-ORIGINS.md#ordinary-eof-completion) record this boundary.
 
+<a id="private-conformance-observation"></a>
+
+The test-compiled [completed native observer](src/construction/parser_session/native_view.rs)
+lends the whole successfully completed ordinary owner described above. It borrows
+qualified native records and UTF-16 units through the same controller; it does
+not freeze, clone backing, extract an incomplete arena or manufacture a public
+parse report. The [structural adapter](src/parser/tree_builder/conformance.rs)
+runs the real ordinary driver through completion, compares its actual output
+with independently decoded expected data, and releases consumer storage and the
+completed owner through their existing cleanup paths.
+
+The bundled [html5lib-tests subset](tests/fixtures/html5lib-f994590f/tree-construction/README.md)
+at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains eight complete
+data files, with 169 cases. All 169 are decoded as fixture-format coverage.
+Exactly ten stable file/ordinal bindings are replayed through the completed
+ordinary parser with scripting Disabled and no fragment context:
+
+| Whole retained file | Replayed one-based case ordinals |
+| --- | --- |
+| adoption02.dat | 1 |
+| namespace-sensitivity.dat | 1 |
+| quirks01.dat | 1 |
+| tests14.dat | 1, 6 |
+| tests24.dat | 7 |
+| tables01.dat | 1, 4 |
+| comments01.dat | 1 |
+| template.dat | 1 |
+
+The adapter compares native document mode, expanded names, prefixes, exact
+UTF-16 text and attributes, child order and parent/owner relationships.
+Associated template contents remain separate fragment trees, and distinct equal
+siblings retain distinct identities. Native attribute order is preserved;
+comparison with the corpus's sorted attribute dump uses an explicit permutation
+rather than rewriting the native output. Additional literal native tests cover
+processing instructions, absent versus empty doctype identifiers, template and
+shadow ownership and properties. Source-literal completed-parser tests separately
+cover current HTML processing instructions, isolated UTF-16 surrogates,
+CRLF normalization, supplementary character references, NUL recovery and the
+doctype creator's empty identifier strings.
+
+The corpus edition is implementation evidence, not a replacement for the pinned
+HTML language. Its historical format statement that HTML cannot emit processing
+instructions disagrees with this pinned edition; current source-literal
+expectations exercise that distinction. The corpus doctype dump also collapses
+absent and empty identifiers, so source supplements disambiguate actual parser
+creation without erasing native null/empty fields. Retained `#errors` and
+`#new-errors` metadata is explicitly unverified: ordered diagnostics and source
+offset comparison still need their own consumer. The other retained cases,
+fragment contexts and scripting-Enabled replay remain unexecuted here; newer
+HTML disagreements require source-qualified expectations before expansion.
+
+Expected fixtures and native literal construction use ordinary test allocations.
+Actual completed-parser observation and its flat consumer vectors share the
+parser's admission, work, cancellation and physical-capacity ledger. Resource
+failure and cancellation tests check sticky first stop, retained-owner integrity
+and consumer-ticket cleanup. This does not establish a linear-work, allocator
+preemption, RSS, full-corpus conformance, public parse-report or whole-parser
+accounting guarantee. The [fixture attribution](NOTICE.md#html5lib-tests-fixtures)
+links the exact bundled MIT license and contributor credits.
+
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.
 The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,

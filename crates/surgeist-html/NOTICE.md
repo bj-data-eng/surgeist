@@ -163,6 +163,33 @@ The Rust adaptation incorporates only this recovery disposition, with native
 exact values and standalone admission. It imports no WebKit dependency or
 other grammar, integer bound, normalization or resource-selection pipeline.
 
+## html5lib-tests fixtures
+
+The selected tree-construction fixture subset comes from
+[html5lib-tests](https://github.com/html5lib/html5lib-tests), revision
+[`f994590f528ac8b6073665791ddb1ed85c66dfb2`](https://github.com/html5lib/html5lib-tests/tree/f994590f528ac8b6073665791ddb1ed85c66dfb2).
+The bundled files retain their exact upstream bytes; no upstream harness,
+parser implementation or new runtime dependency is included.
+
+* License: [complete upstream MIT license](tests/fixtures/html5lib-f994590f/LICENSE)
+* Credits: [complete upstream AUTHORS.rst](tests/fixtures/html5lib-f994590f/AUTHORS.rst)
+* Format: [upstream tree-construction README](tests/fixtures/html5lib-f994590f/tree-construction/README.md)
+
+The license's original notice is Copyright (c) 2006-2013 James Graham,
+Geoffrey Sneddon, and other contributors. Its copyright, permission notice and
+disclaimer remain unchanged in the bundled LICENSE. Preserve LICENSE and
+AUTHORS.rst with redistributed copies or substantial portions.
+
+The eight complete data files are adoption02.dat, namespace-sensitivity.dat,
+quirks01.dat, tests14.dat, tests24.dat, tables01.dat, comments01.dat and template.dat
+under tests/fixtures/html5lib-f994590f/tree-construction/. Together with its
+README, LICENSE and AUTHORS.rst, this subset contains 46,382 upstream bytes and
+169 cases. Retaining those cases does not mean all cases were executed or passed.
+The [crate overview](README.md#private-conformance-observation) identifies the
+actual structural replay boundary and pending error-metadata comparison.
+Surgeist's private checked native observer and structural adapter are separately
+authored; they do not change this project's own license.
+
 ## Dependencies
 
 This notice covers the 16 registry packages in this crate’s default-feature

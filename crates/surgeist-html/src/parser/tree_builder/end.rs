@@ -252,6 +252,26 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
 }
 impl CompletedStandaloneDocument<'_> {
+    /// Borrows the actual completed native records and the same control. No
+    /// session mutation, fixture extraction, freeze or evidence disposal occurs.
+    pub(crate) fn native_view(
+        &mut self,
+    ) -> Result<crate::construction::parser_session::NativeView<'_>, StandaloneError> {
+        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+        driver.control.require_source(driver.source)?;
+        let head = driver.head.as_ref().ok_or(StandaloneError::Consumed)?;
+        head.require(&mut driver.control)?;
+        let state = head.state.as_ref().ok_or(StandaloneError::Consumed)?;
+        state.qualify_completed(&mut driver.control)?;
+        state
+            .before
+            .kernel
+            .session
+            .native_view(&mut driver.control)
+            .map_err(KernelError::from)
+            .map_err(HeadError::from)
+            .map_err(StandaloneError::from)
+    }
     pub(crate) fn document_state(&mut self) -> Result<StandaloneDocumentState, StandaloneError> {
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         driver.control.require_source(driver.source)?;
@@ -300,7 +320,399 @@ impl CompletedStandaloneDocument<'_> {
 mod tests {
     use super::*;
     use crate::construction::parser_session::ConstructionCompletion;
+    use crate::construction::parser_session::native_view::{
+        NativeFragmentOwner, NativeKind, NativeString, NativeView,
+    };
     use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
+
+    fn units(view: &mut NativeView<'_>, text: NativeString<'_>) -> Vec<u16> {
+        (0..text.len())
+            .map(|i| view.unit(&text, i).unwrap().unwrap())
+            .collect()
+    }
+    fn child_named(view: &mut NativeView<'_>, parent: &ParserNode, local: &str) -> ParserNode {
+        for i in 0..view.child_count(parent).unwrap() {
+            let child = view.child_at(parent, i).unwrap().unwrap();
+            if let NativeKind::Element(name) = view.kind(&child).unwrap()
+                && units(view, name.local) == local.encode_utf16().collect::<Vec<_>>()
+            {
+                return child;
+            }
+        }
+        panic!("literal native child {local} missing");
+    }
+    fn completed<'a>(request: &'a HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'a> {
+        let mut driver = StandaloneDocumentDriver::new(request).unwrap();
+        finish(&mut driver);
+        StandaloneDocumentDriver::take_completed(&mut Some(driver)).unwrap()
+    }
+
+    #[test]
+    fn completed_native_view_retains_exact_payloads_and_template_backlinks() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(
+                "<!DOCTYPE html SYSTEM 'about:legacy-compat'><?probe data><html lang='en'><head><template id='t'><svg><a xlink:href='x'>A&#x1F600;</a><!--C--></svg></template></head><body><p>B</p></body></html>",
+            ),
+            super::super::tests::limits(100),
+        );
+        let mut owner = completed(&request);
+        {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            assert!(matches!(
+                view.kind(&root).unwrap(),
+                NativeKind::Document(crate::HtmlDocumentMode::NoQuirks)
+            ));
+            assert!(view.parent(&root).unwrap().is_none());
+            assert_eq!(view.child_count(&root).unwrap(), 3);
+            let doctype = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Doctype {
+                name,
+                public_id,
+                system_id,
+            } = view.kind(&doctype).unwrap()
+            else {
+                panic!("doctype")
+            };
+            assert_eq!(
+                units(&mut view, name),
+                "html".encode_utf16().collect::<Vec<_>>()
+            );
+            assert!(units(&mut view, public_id.unwrap()).is_empty());
+            assert_eq!(
+                units(&mut view, system_id.unwrap()),
+                "about:legacy-compat".encode_utf16().collect::<Vec<_>>()
+            );
+            let pi = view.child_at(&root, 1).unwrap().unwrap();
+            let NativeKind::ProcessingInstruction { target, data } = view.kind(&pi).unwrap() else {
+                panic!("PI")
+            };
+            assert_eq!(
+                units(&mut view, target),
+                "probe".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                units(&mut view, data),
+                "data".encode_utf16().collect::<Vec<_>>()
+            );
+            let html = child_named(&mut view, &root, "html");
+            let attr = view.attribute_at(&html, 0).unwrap().unwrap();
+            assert_eq!(view.attribute_count(&html).unwrap(), 1);
+            assert!(attr.name.namespace.is_none());
+            assert!(attr.name.prefix.is_none());
+            assert_eq!(
+                units(&mut view, attr.name.local),
+                "lang".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(units(&mut view, attr.value), vec![101, 110]);
+            assert!(view.attribute_at(&html, 1).unwrap().is_none());
+            let parent = view.parent(&html).unwrap().unwrap();
+            assert!(view.same_node(&parent, &root).unwrap());
+            assert!(view.shadow(&html).unwrap().is_none());
+            let head = child_named(&mut view, &html, "head");
+            let template = child_named(&mut view, &head, "template");
+            assert_eq!(view.child_count(&template).unwrap(), 0);
+            let contents = view.template_contents(&template).unwrap().unwrap();
+            assert!(matches!(
+                view.kind(&contents).unwrap(),
+                NativeKind::Fragment
+            ));
+            assert!(view.parent(&contents).unwrap().is_none());
+            let Some(NativeFragmentOwner::Template(backlink)) =
+                view.fragment_owner(&contents).unwrap()
+            else {
+                panic!("template owner")
+            };
+            assert!(view.same_node(&backlink, &template).unwrap());
+            let svg = child_named(&mut view, &contents, "svg");
+            let a = child_named(&mut view, &svg, "a");
+            let NativeKind::Element(name) = view.kind(&a).unwrap() else {
+                panic!("element")
+            };
+            assert_eq!(
+                units(&mut view, name.namespace.unwrap()),
+                "http://www.w3.org/2000/svg"
+                    .encode_utf16()
+                    .collect::<Vec<_>>()
+            );
+            let href = view.attribute_at(&a, 0).unwrap().unwrap();
+            assert_eq!(
+                units(&mut view, href.name.namespace.unwrap()),
+                "http://www.w3.org/1999/xlink"
+                    .encode_utf16()
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                units(&mut view, href.name.prefix.unwrap()),
+                "xlink".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                units(&mut view, href.name.local),
+                "href".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(units(&mut view, href.value), vec![120]);
+            let text_node = view.child_at(&a, 0).unwrap().unwrap();
+            let NativeKind::Text(text) = view.kind(&text_node).unwrap() else {
+                panic!("text")
+            };
+            assert_eq!(units(&mut view, text), vec![65, 0xd83d, 0xde00]);
+            let comment_node = view.child_at(&svg, 1).unwrap().unwrap();
+            let NativeKind::Comment(comment) = view.kind(&comment_node).unwrap() else {
+                panic!("comment")
+            };
+            assert_eq!(units(&mut view, comment), vec![67]);
+            assert!(view.child_at(&svg, 2).unwrap().is_none());
+            let body = child_named(&mut view, &html, "body");
+            let p = child_named(&mut view, &body, "p");
+            assert!(view.template_contents(&p).unwrap().is_none());
+            assert!(view.fragment_owner(&p).unwrap().is_none());
+            assert!(matches!(
+                view.attribute_count(&root),
+                Err(SessionError::WrongToken)
+            ));
+        }
+        assert_eq!(
+            owner.document_state().unwrap().completion,
+            crate::construction::parser_session::ConstructionCompletion::Complete
+        );
+        owner.release().unwrap();
+        assert!(matches!(
+            owner.native_view(),
+            Err(StandaloneError::Consumed)
+        ));
+    }
+
+    #[test]
+    fn completed_native_units_are_exact_and_admitted_before_each_read() {
+        let mut input = "<!doctype html><p>".encode_utf16().collect::<Vec<_>>();
+        input.extend([0xd800, 0, 0xdc00, 13, 10]);
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf16(crate::DocumentString::from_utf16(input)),
+            super::super::tests::limits(100),
+        );
+        let mut owner = completed(&request);
+        {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            let p = child_named(&mut view, &body, "p");
+            let text_node = view.child_at(&p, 0).unwrap().unwrap();
+            let NativeKind::Text(text) = view.kind(&text_node).unwrap() else {
+                panic!("text")
+            };
+            assert_eq!(units(&mut view, text), vec![0xd800, 0xdc00, 10]);
+            let visits = view.usage().work(WorkCategory::RecordVisit);
+            let reads = view.usage().work(WorkCategory::InspectByte);
+            assert_eq!(view.unit(&text, 0).unwrap(), Some(0xd800));
+            assert_eq!(view.usage().work(WorkCategory::RecordVisit) - visits, 7);
+            assert_eq!(view.usage().work(WorkCategory::InspectByte) - reads, 2);
+            let reads = view.usage().work(WorkCategory::InspectByte);
+            assert_eq!(view.unit(&text, text.len()).unwrap(), None);
+            assert_eq!(view.usage().work(WorkCategory::InspectByte), reads);
+            let used = view
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
+            view.control()
+                .charge(
+                    WorkCategory::StateStep,
+                    request.limits().work_credits() - used - 8,
+                )
+                .unwrap();
+            let reads = view.usage().work(WorkCategory::InspectByte);
+            let Err(SessionError::Stop(first)) = view.unit(&text, 0) else {
+                panic!("one short")
+            };
+            assert!(matches!(
+                first,
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    ..
+                }
+            ));
+            assert_eq!(view.usage().work(WorkCategory::InspectByte), reads);
+            assert!(matches!(view.kind(&root), Err(SessionError::Stop(stop)) if stop == first));
+        }
+        owner.release().unwrap();
+        assert!(owner.driver.is_none());
+    }
+
+    #[test]
+    fn completed_native_view_rejects_foreign_nodes_and_cancel_without_mutation() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><p>A"),
+            super::super::tests::limits(100),
+        );
+        let mut first = completed(&request);
+        let other_request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><p>A"),
+            super::super::tests::limits(100),
+        );
+        let mut second = completed(&other_request);
+        let foreign = second.native_view().unwrap().root().unwrap();
+        {
+            let mut view = first.native_view().unwrap();
+            assert!(matches!(
+                view.kind(&foreign),
+                Err(SessionError::ForeignNode)
+            ));
+            let root = view.root().unwrap();
+            let work = view
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
+            request.cancellation().cancel();
+            assert!(matches!(
+                view.child_count(&root),
+                Err(SessionError::Stop(ParseStop::Cancelled))
+            ));
+            assert_eq!(
+                view.usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current,
+                work
+            );
+        }
+        first.release().unwrap();
+        second.release().unwrap();
+    }
+
+    #[test]
+    fn completed_native_view_preserves_backing_alias_rejection_and_incomplete_take() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><p>A"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        to_phase(&mut driver, EndPhase::InsertionPoint);
+        let node = driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .current(&mut driver.control)
+            .unwrap();
+        let mut input = Some(driver);
+        assert!(StandaloneDocumentDriver::take_completed(&mut input).is_err());
+        let mut driver = input.take().unwrap();
+        finish(&mut driver);
+        let mut owner = StandaloneDocumentDriver::take_completed(&mut Some(driver)).unwrap();
+        let alias = {
+            let driver = owner.driver.as_mut().unwrap();
+            let (c, session, _) = driver.standalone_parts().unwrap();
+            session
+                .element_name(c, &node)
+                .unwrap()
+                .unwrap()
+                .local_name()
+                .clone()
+        };
+        assert!(owner.native_view().is_err());
+        assert!(owner.release().is_err());
+        assert!(owner.driver.is_some());
+        drop(alias);
+        {
+            let mut view = owner.native_view().unwrap();
+            let NativeKind::Element(name) = view.kind(&node).unwrap() else {
+                panic!("element")
+            };
+            assert_eq!(units(&mut view, name.local), vec![112]);
+        }
+        owner.release().unwrap();
+    }
+
+    #[test]
+    fn completed_native_view_rejects_a_string_from_the_other_control() {
+        let first_request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>A"),
+            super::super::tests::limits(100),
+        );
+        let second_request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>B"),
+            super::super::tests::limits(100),
+        );
+        let mut first = completed(&first_request);
+        let mut second = completed(&second_request);
+        {
+            let mut other = second.native_view().unwrap();
+            let root = other.root().unwrap();
+            let html = child_named(&mut other, &root, "html");
+            let NativeKind::Element(name) = other.kind(&html).unwrap() else {
+                panic!("element")
+            };
+            let mut view = first.native_view().unwrap();
+            let reads = view.usage().work(WorkCategory::InspectByte);
+            let Err(SessionError::Stop(first_stop)) = view.unit(&name.local, 0) else {
+                panic!("foreign control")
+            };
+            assert!(matches!(
+                first_stop,
+                ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
+            ));
+            assert_eq!(view.usage().work(WorkCategory::InspectByte), reads);
+            assert!(matches!(view.root(), Err(SessionError::Stop(stop)) if stop == first_stop));
+            assert_eq!(other.unit(&name.local, 0).unwrap(), Some(104));
+        }
+        first.release().unwrap();
+        second.release().unwrap();
+    }
+
+    #[test]
+    fn completed_native_lender_one_short_retains_whole_owner_for_cleanup() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><p>A"),
+            super::super::tests::limits(100),
+        );
+        let mut first = completed(&request);
+        let used = first
+            .usage()
+            .unwrap()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let cost = {
+            let view = first.native_view().unwrap();
+            view.usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+                - used
+        };
+        assert!(cost > 0);
+        first.release().unwrap();
+        let mut owner = completed(&request);
+        let driver = owner.driver.as_mut().unwrap();
+        let used = driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        driver
+            .control
+            .charge(
+                WorkCategory::StateStep,
+                request.limits().work_credits() - used - cost + 1,
+            )
+            .unwrap();
+        assert!(owner.native_view().is_err());
+        let driver = owner.driver.as_ref().unwrap();
+        assert!(driver.head.is_some());
+        let stop = driver.control.stop().unwrap();
+        assert!(matches!(
+            stop,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            }
+        ));
+        assert!(owner.native_view().is_err());
+        assert_eq!(owner.driver.as_ref().unwrap().control.stop(), Some(stop));
+        owner.release().unwrap();
+        assert!(owner.driver.is_none());
+    }
 
     fn phase(driver: &StandaloneDocumentDriver<'_>) -> Option<EndPhase> {
         driver

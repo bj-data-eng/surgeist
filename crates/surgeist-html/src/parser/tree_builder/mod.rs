@@ -29,6 +29,8 @@
 //! construction EOF is not full parse/report success.
 
 mod body;
+#[cfg(test)]
+mod conformance;
 mod doctype;
 mod end;
 mod foreign;

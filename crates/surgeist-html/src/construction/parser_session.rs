@@ -36,6 +36,7 @@ use std::{mem, sync::Weak};
 mod clone;
 mod completion;
 mod foreign;
+pub(crate) mod native_view;
 mod pi;
 mod select;
 mod svg;
@@ -44,6 +45,7 @@ pub(crate) use completion::{
     ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState,
 };
 pub(crate) use foreign::ForeignNamespace;
+pub(crate) use native_view::NativeView;
 use select::{ConstructionEffects, SelectMetadata};
 pub(crate) use svg::{SvgScriptOrigin, SvgScriptState};
 pub(crate) use template::{CreationContext, CreationLocation, ParserDocument, TemplateState};

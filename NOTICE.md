@@ -94,6 +94,23 @@ are recorded separately from the Parley excerpts.
 * Licenses: [Apache-2.0](crates/surgeist-render/licenses/fontations/LICENSE-APACHE) OR [MIT](crates/surgeist-render/licenses/fontations/LICENSE-MIT)
 * Homepage: [Fontations](https://github.com/googlefonts/fontations)
 
+### html5lib-tests fixtures
+
+The HTML crate bundles selected tree-construction test data and its upstream
+format, license and credits from html5lib-tests revision
+`f994590f528ac8b6073665791ddb1ed85c66dfb2`. This is test-only material, not an
+upstream parser implementation or runtime dependency.
+
+* License: [MIT](crates/surgeist-html/tests/fixtures/html5lib-f994590f/LICENSE)
+* Credits: [complete upstream AUTHORS.rst](crates/surgeist-html/tests/fixtures/html5lib-f994590f/AUTHORS.rst)
+* Homepage: [html5lib-tests](https://github.com/html5lib/html5lib-tests)
+* Selected source: [pinned revision](https://github.com/html5lib/html5lib-tests/tree/f994590f528ac8b6073665791ddb1ed85c66dfb2)
+* Bundled scope: [HTML crate notice](crates/surgeist-html/NOTICE.md#html5lib-tests-fixtures)
+
+The exact included license retains Copyright (c) 2006-2013 James Graham,
+Geoffrey Sneddon, and other contributors, with its full permission notice and
+disclaimer. Keep that license and credits with redistributed fixture files.
+
 ### Parley 0.9.0 source references
 
 The [text contract witness](references/parley-0.9-text-contract-witness.md)
