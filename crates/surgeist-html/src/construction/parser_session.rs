@@ -7415,78 +7415,39 @@ fn script_attribute<'a>(
     }
     Ok(None)
 }
-/// ASCII-insensitive exact match of a virtual prefix and exact UTF16 range.
-/// The language branch never allocates a synthetic `text/` string.
+fn script_type_charge(
+    control: &mut ParseControl,
+    work: crate::script_type::ScriptTypeWork,
+) -> Result<(), SessionError> {
+    match work {
+        crate::script_type::ScriptTypeWork::RecordVisit(units) => {
+            control.charge(WorkCategory::RecordVisit, units)?
+        }
+        crate::script_type::ScriptTypeWork::InspectUnit(units) => {
+            control.charge(WorkCategory::InspectByte, units)?
+        }
+    }
+    Ok(())
+}
+// Actual hidden-input comparison and classification share the one borrowed
+// literal matcher. The owning ParseControl admits every step before unit reads.
 fn script_match(
     control: &mut ParseControl,
-    prefix: &[u8],
+    prefix: &'static [u8],
     value: &DocumentString,
     start: usize,
     end: usize,
-    expected: &[u8],
+    expected: &'static [u8],
 ) -> Result<bool, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
-    if prefix.len() + end - start != expected.len() {
-        return Ok(false);
+    let mut cursor =
+        crate::script_type::ScriptTypeMatchCursor::new(prefix, value, start, end, expected);
+    while let Some(work) = cursor.required_work() {
+        script_type_charge(control, work)?;
+        cursor.advance();
     }
-    let mut position = 0;
-    while position < expected.len() {
-        control.charge(
-            WorkCategory::InspectByte,
-            if position < prefix.len() { 2 } else { 3 },
-        )?;
-        let actual = if position < prefix.len() {
-            u16::from(prefix[position])
-        } else {
-            value.code_units()[start + position - prefix.len()]
-        };
-        let folded = if (0x41..=0x5a).contains(&actual) {
-            actual + 0x20
-        } else {
-            actual
-        };
-        if folded != u16::from(expected[position].to_ascii_lowercase()) {
-            return Ok(false);
-        }
-        position += 1;
-    }
-    Ok(true)
-}
-fn javascript_essence(
-    control: &mut ParseControl,
-    prefix: &[u8],
-    value: &DocumentString,
-    start: usize,
-    end: usize,
-) -> Result<bool, SessionError> {
-    // MIME39aa535 §4.6's complete essence list; parameters are never removed.
-    const ESSENCES: [&[u8]; 16] = [
-        b"application/ecmascript",
-        b"application/javascript",
-        b"application/x-ecmascript",
-        b"application/x-javascript",
-        b"text/ecmascript",
-        b"text/javascript",
-        b"text/javascript1.0",
-        b"text/javascript1.1",
-        b"text/javascript1.2",
-        b"text/javascript1.3",
-        b"text/javascript1.4",
-        b"text/javascript1.5",
-        b"text/jscript",
-        b"text/livescript",
-        b"text/x-ecmascript",
-        b"text/x-javascript",
-    ];
-    let mut position = 0;
-    while position < ESSENCES.len() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        if script_match(control, prefix, value, start, end, ESSENCES[position])? {
-            return Ok(true);
-        }
-        position += 1;
-    }
-    Ok(false)
+    Ok(cursor
+        .result()
+        .expect("all admitted comparison actions completed"))
 }
 fn classify_script(
     control: &mut ParseControl,
@@ -7494,55 +7455,22 @@ fn classify_script(
 ) -> Result<Option<ScriptType>, SessionError> {
     let explicit = script_attribute(control, element, "type")?;
     let language = script_attribute(control, element, "language")?;
-    control.charge(WorkCategory::RecordVisit, 2)?;
-    if explicit.is_some_and(DocumentString::is_empty)
-        || (explicit.is_none() && language.is_none_or(DocumentString::is_empty))
-    {
-        return Ok(Some(ScriptType::Classic));
+    let mut cursor = crate::script_type::ScriptTypeCursor::preparation(explicit, language);
+    while let Some(work) = cursor.required_work() {
+        script_type_charge(control, work)?;
+        cursor.advance();
     }
-    let (prefix, value): (&[u8], _) = if let Some(value) = explicit {
-        (b"", value)
-    } else {
-        (b"text/", language.expect("nonempty language branch"))
-    };
-    if javascript_essence(control, prefix, value, 0, value.len())? {
-        return Ok(Some(ScriptType::Classic));
-    }
-    if explicit.is_some() {
-        let mut start = 0;
-        let mut end = value.len();
-        while start < end {
-            control.charge(WorkCategory::InspectByte, 2)?;
-            if !matches!(value.code_units()[start], 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
-                break;
-            }
-            start += 1;
-        }
-        while end > start {
-            control.charge(WorkCategory::InspectByte, 2)?;
-            if !matches!(
-                value.code_units()[end - 1],
-                0x09 | 0x0a | 0x0c | 0x0d | 0x20
-            ) {
-                break;
-            }
-            end -= 1;
-        }
-        if javascript_essence(control, prefix, value, start, end)? {
-            return Ok(Some(ScriptType::Classic));
-        }
-    }
-    for (literal, kind) in [
-        (b"module".as_slice(), ScriptType::Module),
-        (b"importmap".as_slice(), ScriptType::ImportMap),
-        (b"speculationrules".as_slice(), ScriptType::SpeculationRules),
-    ] {
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        if script_match(control, prefix, value, 0, value.len(), literal)? {
-            return Ok(Some(kind));
-        }
-    }
-    Ok(None)
+    // Current-content classification is distinct from this existing saved
+    // preparation-metadata type. No metadata field or effect is installed here.
+    Ok(cursor
+        .result()
+        .expect("all admitted classification actions completed")
+        .map(|kind| match kind {
+            crate::HtmlScriptKind::Classic => ScriptType::Classic,
+            crate::HtmlScriptKind::Module => ScriptType::Module,
+            crate::HtmlScriptKind::ImportMap => ScriptType::ImportMap,
+            crate::HtmlScriptKind::SpeculationRules => ScriptType::SpeculationRules,
+        }))
 }
 fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize, SessionError> {
     control.charge(WorkCategory::RecordVisit, 4)?;
@@ -12757,6 +12685,99 @@ mod tests {
         session.release(&mut c).unwrap();
         storage_zero(&c);
         kind
+    }
+
+    #[test]
+    fn shared_literal_match_keeps_repeated_hidden_comparison_credits_and_stops() {
+        let mut c = control();
+        let before = c.usage().clone();
+        for (value, expected) in [("HiDdEn", true), ("hiddEX", false), ("other", false)] {
+            let value = DocumentString::from(value);
+            assert_eq!(
+                script_match(&mut c, b"", &value, 0, value.len(), b"hidden").unwrap(),
+                expected
+            );
+        }
+        assert_eq!(
+            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+            3
+        );
+        assert_eq!(
+            c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
+            36
+        );
+        let value = DocumentString::from("hidden");
+        for available in [0, 18] {
+            let mut c = control();
+            c.charge(WorkCategory::StateStep, limits().work_credits() - available)
+                .unwrap();
+            assert!(script_match(&mut c, b"", &value, 0, value.len(), b"hidden").is_err());
+            assert!(c.stop().is_some());
+        }
+        let cancellation = HtmlParseCancellation::new();
+        cancellation.cancel();
+        let mut c = ParseControl::new(limits(), cancellation);
+        assert!(script_match(&mut c, b"", &value, 0, value.len(), b"hidden").is_err());
+        assert_eq!(c.usage().work(WorkCategory::InspectByte), 0);
+    }
+
+    #[test]
+    fn script_type_classification_preserves_preexisting_charge_totals() {
+        for (explicit, language, expected, visits_expected, inspections_expected) in [
+            (None, None, Some(ScriptType::Classic), 4, 0),
+            (Some(""), Some("unknown"), Some(ScriptType::Classic), 16, 36),
+            (
+                Some("text/javascript"),
+                None,
+                Some(ScriptType::Classic),
+                24,
+                75,
+            ),
+            (
+                Some(" \tTEXT/JAVASCRIPT\n"),
+                None,
+                Some(ScriptType::Classic),
+                56,
+                103,
+            ),
+            (Some("MoDuLe"), None, Some(ScriptType::Module), 78, 34),
+            (Some(" module "), None, None, 82, 20),
+            (None, Some("javascript"), Some(ScriptType::Classic), 24, 77),
+            (None, Some(" javascript "), None, 50, 50),
+            (Some("unknown"), Some("javascript"), None, 86, 40),
+            (Some("application/json"), None, None, 82, 19),
+        ] {
+            let mut element = html("script");
+            element.attributes = OrderedAttributes::new(
+                explicit
+                    .map(|v| Attribute::new(crate::KnownHtmlAttribute::Type.qualified_name(), v))
+                    .into_iter()
+                    .chain(language.map(|v| {
+                        Attribute::new(QualifiedName::new(Namespace::none(), None, "language"), v)
+                    })),
+            )
+            .unwrap();
+            let mut c = control();
+            let before = c.usage().clone();
+            assert_eq!(classify_script(&mut c, &element).unwrap(), expected);
+            let visits =
+                c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit);
+            let inspections =
+                c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte);
+            assert_eq!(
+                (visits, inspections),
+                (visits_expected, inspections_expected),
+                "{explicit:?}/{language:?}"
+            );
+            for available in [0, visits_expected + inspections_expected - 1] {
+                let mut short = control();
+                short
+                    .charge(WorkCategory::StateStep, limits().work_credits() - available)
+                    .unwrap();
+                assert!(classify_script(&mut short, &element).is_err());
+                assert!(short.stop().is_some());
+            }
+        }
     }
 
     #[test]

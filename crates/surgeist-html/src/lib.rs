@@ -16,6 +16,7 @@ mod numeric;
 #[cfg(test)]
 mod parser;
 mod request;
+mod script_type;
 mod semantics;
 mod settings;
 mod source;
@@ -32,6 +33,7 @@ pub use custom_names::*;
 pub use interpretation::*;
 pub use numeric::*;
 pub use request::*;
+pub use script_type::HtmlScriptKind;
 pub use semantics::*;
 pub use settings::*;
 pub use source::*;

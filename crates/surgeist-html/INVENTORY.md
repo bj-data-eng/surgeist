@@ -339,7 +339,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a168"></a>A168 | type; embed; object; source | [attr-embed-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-embed-type); [attr-object-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-object-type); [attr-source-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-source-type); [valid-mime-type](https://mimesniff.spec.whatwg.org/#valid-mime-type) | MIME type embed/object/source string retained unchecked; supported resource representation needs actual resource capability, no fake enum or shared script-type dispatch. |
 | <a id="a169"></a>A169 | type; input | [attr-input-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-type) | [Enumerations](#enumerations): input type missing/invalid Text; state-specific content/attribute/semantics still explicit per binding. |
 | <a id="a170"></a>A170 | type; ol | [attr-ol-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-ol-type); [attr-ol-type-keyword-decimal](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-ol-type-keyword-decimal); [attr-ol-type-keyword-lower-alpha](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-ol-type-keyword-lower-alpha); [attr-ol-type-keyword-upper-alpha](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-ol-type-keyword-upper-alpha); [attr-ol-type-keyword-lower-roman](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-ol-type-keyword-lower-roman); [attr-ol-type-keyword-upper-roman](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-ol-type-keyword-upper-roman) | [Enumerations](#enumerations): ol type exact case-sensitive 1/a/A/i/I, missing/invalid Decimal; ordinal algorithm in Lists. |
-| <a id="a171"></a>A171 | type; script | [attr-script-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-type); [valid-mime-type](https://mimesniff.spec.whatwg.org/#valid-mime-type); [javascript-mime-type-essence-match](https://mimesniff.spec.whatwg.org/#javascript-mime-type-essence-match) | [Script type](#script-type): actual private script classification exists; public content-only author/report API absent. MIME grammar, JSON data/import map and script execution distinct. |
+| <a id="a171"></a>A171 | type; script | [attr-script-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-type); [valid-mime-type](https://mimesniff.spec.whatwg.org/#valid-mime-type); [javascript-mime-type-essence-match](https://mimesniff.spec.whatwg.org/#javascript-mime-type-essence-match) | [Script type](#script-type): public canonical keywords, content meaning/advice and actual type/language classification; external MIME/body/context checks and execution remain separate. |
 | <a id="a172"></a>A172 | usemap; img | [attr-hyperlink-usemap](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-usemap); [image-map](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#image-map); [valid-hash-name-reference](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-hash-name-reference) | [Hash and map reference](#hash-and-map-reference): own syntax vs same-tree first id/name match and separate existential name author witness; positive witness past deferred gaps retained. |
 | <a id="a173"></a>A173 | value; button; option | [attr-button-value](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-value); [attr-option-value](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-option-value); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | OptionValue fallback text via [Options and selection](#options-and-selection); button exact value content retained, entry-list/submission contribution external execution. |
 | <a id="a174"></a>A174 | value; data | [attr-data-value](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-data-value); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Data value exact machine-readable string retained; HTML defines no shared numeric/default conversion for all data values. |
@@ -1170,6 +1170,40 @@ boundaries, UTF-16, native emission, companion roles, huge integers and exact
 capacity precedence. Ordinary allocation and the per-original UTF-16 cap do
 not establish aggregate physical-memory, work/cancellation or RSS guarantees.
 
+## Script type
+
+A171: `HtmlScriptTypeKeyword` emits canonical module/importmap/speculationrules
+attributes. `HtmlValueInterpreter::script_type` retains exact raw evidence,
+role applicability and presence independently of current content meaning,
+HTML-defined author state and omission advice. Missing/empty or an exact
+ASCII-insensitive JavaScript essence selects nominal Classic; untrimmed keywords
+select their kinds, and other values select DataBlock with
+`ExternalMimeUnchecked`. `HtmlDefined` establishes only the local type-value
+branch. Specified applicable context remains Unchecked.
+
+`script_type_with_attributes` reads complete actual ordered attributes and
+retains type/language slots or known absence. Empty type, or absent type with
+empty/absent language, selects Classic; otherwise explicit type overrides
+language, or the virtual `text/` language branch supplies the classification
+input. Only explicit JavaScript essence matching adds ASCII boundary stripping.
+Keywords and language remain untrimmed, with no MIME parameter parsing.
+`NoScript` records the source classification step's return without a kind;
+it is independent of DataBlock meaning and unchecked MIME author grammar.
+
+Both selected original values are admitted before role/override processing.
+Standalone reports use ordinary allocation and a per-value UTF-16 cap. The sole
+[borrowed classifier](src/script_type.rs) also serves the private parser under its
+actual controller; public `HtmlScriptKind` does not set saved preparation
+metadata. Public Boolean script operations still require their explicit context.
+External MIME, script/JSON body, wider placement/source conditions and language
+author conformance remain unasserted; no execution or whole-element validity
+follows. The [overview](README.md#script-type-values),
+[public owner](src/attributes/script_type.rs),
+[source-derived tests](tests/attributes_script_type.rs) and
+[pinned MIME reference](../../references/mimesniff-javascript-essence--39aa53511b13.md)
+record this boundary. Private checkpoint provenance remains in
+[PARSER-ORIGINS](PARSER-ORIGINS.md).
+
 ## HTML-local operations with no corresponding complete producer
 
 The following entries specify remaining rule/consumer boundaries. They are not
@@ -1410,17 +1444,6 @@ M:mq/A095: delegated CSS media grammar and environment matching need real CSS/
 host capability. HTML's empty/ASCII-whitespace match branch and per-element
 placement remain source-owned; the current surface has no uniform media
 attribute/environment operation. Unavailable environment must not mean mismatch.
-
-### Script type
-
-A171: source missing/empty/JavaScript MIME essence→classic, module/importmap/
-speculationrules keywords and other data-block author handling are already used
-by the private Disabled-script construction checkpoint. That is not a public
-content/report API or complete parser. Public Boolean script-kind methods accept
-explicit context, not infer MIME from a guessed enum. MIME conformance, JSON
-interpretation and execution need their appropriate consumers. Source/checkpoint
-provenance is in [PARSER-ORIGINS](PARSER-ORIGINS.md); no published runtime stub is
-added merely to populate this inventory.
 
 ## Supplemental source domains
 

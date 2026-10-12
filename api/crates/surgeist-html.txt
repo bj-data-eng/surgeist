@@ -1685,6 +1685,32 @@ pub surgeist_html::HtmlScriptAttributeContext::ImportMap
 pub surgeist_html::HtmlScriptAttributeContext::InlineClassic
 pub surgeist_html::HtmlScriptAttributeContext::InlineModule
 pub surgeist_html::HtmlScriptAttributeContext::SpeculationRules
+pub enum surgeist_html::HtmlScriptKind
+pub surgeist_html::HtmlScriptKind::Classic
+pub surgeist_html::HtmlScriptKind::ImportMap
+pub surgeist_html::HtmlScriptKind::Module
+pub surgeist_html::HtmlScriptKind::SpeculationRules
+pub enum surgeist_html::HtmlScriptTypeAuthorAdvice
+pub surgeist_html::HtmlScriptTypeAuthorAdvice::None
+pub surgeist_html::HtmlScriptTypeAuthorAdvice::OmitRedundantType
+pub enum surgeist_html::HtmlScriptTypeAuthorState
+pub surgeist_html::HtmlScriptTypeAuthorState::ExternalMimeUnchecked
+pub surgeist_html::HtmlScriptTypeAuthorState::HtmlDefined
+pub surgeist_html::HtmlScriptTypeAuthorState::Unapplied
+pub enum surgeist_html::HtmlScriptTypeClassification
+pub surgeist_html::HtmlScriptTypeClassification::NoScript
+pub surgeist_html::HtmlScriptTypeClassification::Script(surgeist_html::HtmlScriptKind)
+pub surgeist_html::HtmlScriptTypeClassification::Unapplied
+pub enum surgeist_html::HtmlScriptTypeKeyword
+pub surgeist_html::HtmlScriptTypeKeyword::ImportMap
+pub surgeist_html::HtmlScriptTypeKeyword::Module
+pub surgeist_html::HtmlScriptTypeKeyword::SpeculationRules
+impl surgeist_html::HtmlScriptTypeKeyword
+pub fn surgeist_html::HtmlScriptTypeKeyword::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlScriptTypeKeyword::keyword(self) -> &'static str
+pub enum surgeist_html::HtmlScriptTypeMeaning
+pub surgeist_html::HtmlScriptTypeMeaning::DataBlock
+pub surgeist_html::HtmlScriptTypeMeaning::Script(surgeist_html::HtmlScriptKind)
 pub enum surgeist_html::HtmlScriptingStatus
 pub surgeist_html::HtmlScriptingStatus::Disabled
 pub surgeist_html::HtmlScriptingStatus::Enabled
@@ -4247,6 +4273,25 @@ pub fn surgeist_html::HtmlSandboxValue::flags(&self) -> surgeist_html::HtmlSandb
 pub fn surgeist_html::HtmlSandboxValue::into_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlSandboxValue::new(keywords: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSandboxKeyword>) -> core::result::Result<Self, surgeist_html::HtmlSandboxValueError>
 pub fn surgeist_html::HtmlSandboxValue::tokens(&self) -> &surgeist_html::HtmlUnorderedTokenSet
+pub struct surgeist_html::HtmlScriptTypePreparationReport
+impl surgeist_html::HtmlScriptTypePreparationReport
+pub fn surgeist_html::HtmlScriptTypePreparationReport::classification(&self) -> surgeist_html::HtmlScriptTypeClassification
+pub fn surgeist_html::HtmlScriptTypePreparationReport::content(&self) -> &surgeist_html::HtmlScriptTypeReport
+pub fn surgeist_html::HtmlScriptTypePreparationReport::language_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlScriptTypePreparationReport::source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlScriptTypeReport
+impl surgeist_html::HtmlScriptTypeReport
+pub fn surgeist_html::HtmlScriptTypeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlScriptTypeReport::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlScriptTypeReport::author(&self) -> surgeist_html::HtmlScriptTypeAuthorState
+pub fn surgeist_html::HtmlScriptTypeReport::author_advice(&self) -> surgeist_html::HtmlScriptTypeAuthorAdvice
+pub fn surgeist_html::HtmlScriptTypeReport::context_author(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub fn surgeist_html::HtmlScriptTypeReport::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlScriptTypeReport::inventory_row_indices(&self) -> &'static [usize]
+pub fn surgeist_html::HtmlScriptTypeReport::meaning(&self) -> core::option::Option<surgeist_html::HtmlScriptTypeMeaning>
+pub fn surgeist_html::HtmlScriptTypeReport::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlScriptTypeReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlScriptTypeReport::source_clause(&self) -> &'static str
 pub struct surgeist_html::HtmlSelectSizeReport
 impl surgeist_html::HtmlSelectSizeReport
 pub fn surgeist_html::HtmlSelectSizeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
@@ -4898,6 +4943,9 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_hyperlink(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlHyperlinkAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::script_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlScriptTypeReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::script_type_with_attributes(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlScriptTypePreparationReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::select_size(&self, element: &surgeist_html::QualifiedName, size: core::option::Option<&surgeist_html::Attribute>, multiple: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlSelectSizeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

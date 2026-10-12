@@ -2326,3 +2326,6 @@ mod stylesheet_context_tests {
         assert_eq!(context.rel().unwrap().code_units(), raw.code_units());
     }
 }
+
+mod script_type;
+pub use script_type::*;

@@ -291,6 +291,45 @@ its empty state remains unresolved rather than selecting a host network default.
 These views do not compute inheritance or claim runtime effects,
 and the remaining attribute families are tracked by the contribution.
 
+<a id="script-type-values"></a>
+
+`HtmlScriptTypeKeyword` emits the three canonical authored `type` keywords:
+module, importmap and speculationrules. The
+[script type reports](src/attributes/script_type.rs) keep current content meaning
+separate from type/language preparation classification. `script_type` observes
+the exact HTML script/type role: missing, empty and any of the sixteen
+[pinned JavaScript MIME essences](../../references/mimesniff-javascript-essence--39aa53511b13.md)
+mean nominal Classic. The three keywords match ASCII-insensitively without
+trimming; other values mean DataBlock. Empty or essence-valued types carry
+`OmitRedundantType` advice. `HtmlDefined` establishes only the HTML-defined
+type-value branch; data-block MIME grammar remains `ExternalMimeUnchecked`.
+An applicable specified value leaves wider author context Unchecked.
+
+`script_type_with_attributes` selects the actual exact no-namespace lowercase
+type/language slots from a complete `OrderedAttributes` set, preserving their
+raw evidence and known absence. Empty type, or absent type with empty/absent
+language, classifies as Classic. Otherwise explicit type wins; absent type uses
+the virtual `text/` language prefix. Only explicit JavaScript essence comparison
+also strips leading/trailing ASCII whitespace. Keywords and language remain
+untrimmed, and MIME parameters are never removed. `NoScript` is the selected
+classification step's no-classification return. For example, ` module ` remains
+DataBlock/NoScript, while ` text/javascript ` remains DataBlock in the content
+report but classifies as Classic in this companion. The operation does not
+validate obsolete language authoring, MIME grammar, JavaScript/JSON bodies or
+the whole script element.
+
+These standalone reports admit each complete selected raw UTF-16 value before
+applicability or override, including language overridden by type. They use
+ordinary allocation and the per-value cap, with no aggregate physical-memory,
+controlled-work or cancellation promise. The [shared borrowed cursor](src/script_type.rs)
+also drives the actual private classifier through its existing controller;
+each comparison/trim read follows admission, without allocating a synthetic
+language string. Public `HtmlScriptKind` describes current classification and
+remains distinct from saved private preparation metadata. No saved metadata,
+preparation effects, resource loading or execution is produced by these reports.
+The [source-derived tests](tests/attributes_script_type.rs) cover both meanings,
+exact slots, raw preservation and admission boundaries.
+
 Numeric attribute reports cover canvas width/height, textarea cols/rows and
 tabindex content values. They preserve whole authored syntax and prefix recovery
 separately from each attribute's selected default: canvas defaults to 300/150
