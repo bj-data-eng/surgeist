@@ -2455,3 +2455,249 @@ fn lexical_close_admission_exact_each_short_cancel_and_record_cap_keep_actual_pe
         }
     }
 }
+
+#[test]
+fn radix_name_storage_growth_submits_bounded_layouts_for_unique_prefixes_and_duplicates() {
+    // Independently enumerated prefixes of the 16-bit units in the literal
+    // names sharedprefix0000.., including the empty root. Duplicate replay
+    // requires no new prefix; this is not an expectation read from Names.
+    let cases = [(1, 257), (8, 268), (16, 298), (64, 463), (256, 1_140)];
+    let mut observations = Vec::new();
+    for (count, expected_branches) in cases {
+        let bytes = size_of::<Branch>() as u64;
+        // Room for <2B final slots and old/new overlap, independent of observed
+        // capacity. Logical slots remain exactly the necessary B prefixes.
+        let capacity_budget = 4 * expected_branches as u64 * bytes;
+        let caps = limits()
+            .into_builder()
+            .auxiliary_entries(expected_branches as u64)
+            .managed_capacity_bytes(capacity_budget)
+            .peak_transient_bytes(capacity_budget)
+            .atomic_layout_bytes(capacity_budget)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let mut names = Names::new().unwrap();
+        for i in 0..count {
+            assert!(
+                !names
+                    .insert(&units(&format!("sharedprefix{i:04}")), &mut c)
+                    .unwrap()
+            );
+        }
+        assert_eq!(names.nodes.len(), expected_branches);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            expected_branches as u64
+        );
+        let reserve = c.usage().work(WorkCategory::ReserveByte);
+        let provider = c.usage().work(WorkCategory::ProviderCall);
+        let retained = c.usage().actual_capacity_bytes;
+        assert_eq!(retained, names.nodes.capacity() as u64 * bytes);
+        for i in 0..count {
+            assert!(
+                names
+                    .insert(&units(&format!("sharedprefix{i:04}")), &mut c)
+                    .unwrap()
+            );
+        }
+        assert_eq!(names.nodes.len(), expected_branches);
+        assert_eq!(c.usage().work(WorkCategory::ReserveByte), reserve);
+        assert_eq!(c.usage().work(WorkCategory::ProviderCall), provider);
+        assert_eq!(c.usage().actual_capacity_bytes, retained);
+        assert_eq!(c.stop(), None);
+        let before_cleanup = c.usage().clone();
+        names.nodes.release(&mut c).unwrap();
+        assert_storage_released(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits),
+            before_cleanup.resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(
+            c.usage().actual_capacity_high_water,
+            before_cleanup.actual_capacity_high_water
+        );
+        observations.push((count, expected_branches, reserve / bytes, provider));
+    }
+    // Unclipped admitted doubling submits old+new layouts below 6B slots.
+    // A generous 8B fixture allowance distinguishes repeated exact growth;
+    // it is not a normative HTML coefficient or the diagnostic 100M cap.
+    for (count, branches, submitted_slots, provider_calls) in observations {
+        assert!(
+            submitted_slots <= 8 * branches as u64,
+            "names={count}, required prefixes={branches}, submitted old/new slots={submitted_slots}, provider calls={provider_calls}"
+        );
+    }
+}
+
+#[test]
+fn retained_attribute_growth_is_bounded_without_charging_duplicates_as_new_slots() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K,
+    };
+    // Every expected name, value and raw interval comes from the authored
+    // literal sequence. Uppercase second occurrences normalize to duplicates.
+    const COUNT: usize = 64;
+    let mut raw = "<p".to_owned();
+    let mut expected = Vec::new();
+    let mut duplicate_ranges = Vec::new();
+    let mut declarations = Vec::new();
+    for duplicate in [false, true] {
+        for i in 0..COUNT {
+            let local = format!("sharedprefix{i:04}");
+            let spelling = if duplicate {
+                local.to_ascii_uppercase()
+            } else {
+                local.clone()
+            };
+            let value = if duplicate { "discard" } else { "first" };
+            raw.push(' ');
+            let start = raw.len();
+            raw.push_str(&format!("{spelling}='{value}'"));
+            let end = raw.len();
+            declarations.push((start, end, duplicate));
+            if duplicate {
+                let equal = start + spelling.len();
+                duplicate_ranges.push((equal, equal + 1));
+            } else {
+                expected.push((units(&local), units(value), start, end));
+            }
+        }
+    }
+    raw.push('>');
+    let source = HtmlSource::utf8(raw.clone());
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut finished = 0;
+    let mut retained_capacity_slots = 0usize;
+    let mut capacity_changes = 0;
+    let mut finish_reserve_all_writers = 0;
+    let mut diagnostic_count = 0;
+    let mut tag_count = 0;
+    let mut eof_count = 0;
+    loop {
+        if t.pending_len != 0 || t.done {
+            let Some(event) = t.next(&mut c, false).unwrap() else {
+                break;
+            };
+            match &event {
+                Event::Diagnostic(id) => {
+                    let d = t.diagnostic(id);
+                    assert_eq!(d.code, DiagnosticCode::DuplicateAttribute);
+                    assert_eq!(d.phase, token::DiagnosticPhase::Tokenizer);
+                    assert_eq!(d.state, State::AttributeName);
+                    assert_eq!(d.source.source(), source.identity());
+                    assert_eq!(
+                        (d.source.start(), d.source.end()),
+                        duplicate_ranges[diagnostic_count]
+                    );
+                    diagnostic_count += 1;
+                }
+                Event::Token(event) => match &event.token().kind {
+                    TokenKind::Tag(tag) => {
+                        assert_eq!(tag.kind, TagKind::Start);
+                        assert_eq!(text(&tag.name), units("p"));
+                        assert!(tag.had_duplicate_attributes);
+                        assert_eq!(tag.attributes.len(), COUNT);
+                        for (a, (name, value, start, end)) in
+                            tag.attributes.as_slice().iter().zip(&expected)
+                        {
+                            assert_eq!(text(&a.name), *name);
+                            assert_eq!(text(&a.value), *value);
+                            assert_eq!(a.source.source(), source.identity());
+                            assert_eq!((a.source.start(), a.source.end()), (*start, *end));
+                        }
+                        assert_eq!(
+                            (event.token().source.start(), event.token().source.end()),
+                            (0, raw.len())
+                        );
+                        tag_count += 1;
+                    }
+                    TokenKind::Eof => eof_count += 1,
+                    _ => panic!("unexpected actual token"),
+                },
+                _ => panic!("unexpected actual event"),
+            }
+            event.release(&mut c).unwrap();
+            continue;
+        }
+        if t.state == State::AfterAttributeValue && t.tag.as_ref().unwrap().attribute.is_some() {
+            let before = t.tag.as_ref().unwrap().attributes.capacity();
+            let duplicate = t
+                .tag
+                .as_ref()
+                .unwrap()
+                .attribute
+                .as_ref()
+                .unwrap()
+                .duplicate;
+            let reserve_before = c.usage().work(WorkCategory::ReserveByte);
+            // Exercise the real existing owner while the completed current
+            // attribute remains intact. Subsequent normal state dispatch sees
+            // the already finished slot, just as another owner call does.
+            t.finish_attribute(&mut c).unwrap();
+            let after = t.tag.as_ref().unwrap().attributes.capacity();
+            finish_reserve_all_writers +=
+                c.usage().work(WorkCategory::ReserveByte) - reserve_before;
+            if duplicate {
+                assert_eq!(before, after);
+                assert_eq!(t.tag.as_ref().unwrap().attributes.len(), COUNT);
+            } else {
+                assert_eq!(t.tag.as_ref().unwrap().attributes.len(), finished + 1);
+                if before != after {
+                    // Actual retained vector replacement capacities, not a
+                    // claim about allocator copy bytes or all ReserveByte.
+                    retained_capacity_slots += before + after;
+                    capacity_changes += 1;
+                }
+            }
+            finished += 1;
+        } else {
+            t.step(&mut c, false).unwrap();
+        }
+    }
+    assert_eq!(finished, 2 * COUNT);
+    assert_eq!((tag_count, eof_count, diagnostic_count), (1, 1, COUNT));
+    let (occurrences, _, _) = t.evidence.lexical_observations();
+    let attrs: Vec<_> = occurrences
+        .iter()
+        .filter(|o| o.kind == K::Attribute)
+        .collect();
+    assert_eq!(attrs.len(), 2 * COUNT);
+    for (o, &(start, end, duplicate)) in attrs.iter().zip(&declarations) {
+        assert_eq!(
+            o.disposition,
+            if duplicate {
+                D::DuplicateAttribute
+            } else {
+                D::StoredAttribute
+            }
+        );
+        assert_eq!(o.source.source(), source.identity());
+        assert_eq!((o.source.start(), o.source.end()), (start, end));
+        assert_eq!(source.as_utf8().unwrap()[start..end], raw[start..end]);
+    }
+    assert_eq!(c.stop(), None);
+    let before_cleanup = c.usage().clone();
+    t.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.usage().actual_capacity_bytes, 0);
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits),
+        before_cleanup.resource(HtmlParseResource::WorkCredits)
+    );
+    // The span also includes lexical and frozen buffer fees. This observation
+    // is deliberately not called Attribute-only reservation work.
+    assert!(
+        finish_reserve_all_writers
+            >= retained_capacity_slots as u64 * size_of::<Attribute>() as u64
+    );
+    assert!(
+        retained_capacity_slots <= 8 * COUNT,
+        "actual unique attributes={COUNT}, observed old/new capacity slots={retained_capacity_slots}, capacity changes={capacity_changes}, all finish-span ReserveByte={finish_reserve_all_writers}"
+    );
+}
