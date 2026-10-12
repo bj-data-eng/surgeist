@@ -931,6 +931,11 @@ pub surgeist_html::HtmlIconSizeError::ZeroDimension
 impl core::error::Error for surgeist_html::HtmlIconSizeError
 impl core::fmt::Display for surgeist_html::HtmlIconSizeError
 pub fn surgeist_html::HtmlIconSizeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlIdUniqueness
+pub surgeist_html::HtmlIdUniqueness::Duplicate(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlIdUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlIdUniqueness::NoId
+pub surgeist_html::HtmlIdUniqueness::Unique
 pub enum surgeist_html::HtmlImageAttributeAuthorState
 pub surgeist_html::HtmlImageAttributeAuthorState::Conforming
 pub surgeist_html::HtmlImageAttributeAuthorState::Missing
@@ -1794,6 +1799,7 @@ pub surgeist_html::HtmlSemanticFact::FormLength(surgeist_html::HtmlSemanticValue
 pub surgeist_html::HtmlSemanticFact::FormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFormOwner>)
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
 pub surgeist_html::HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHyperlinkReferrerPolicyReadback>)
+pub surgeist_html::HtmlSemanticFact::IdAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlIdAuthorReport>)
 pub surgeist_html::HtmlSemanticFact::ImageControlsAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
 pub surgeist_html::HtmlSemanticFact::ImageDimensions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImageDimensionReadback>)
 pub surgeist_html::HtmlSemanticFact::ImageMapAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
@@ -1919,6 +1925,7 @@ pub surgeist_html::HtmlSemanticQuery::FormLength
 pub surgeist_html::HtmlSemanticQuery::FormOwner
 pub surgeist_html::HtmlSemanticQuery::Hidden
 pub surgeist_html::HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute
+pub surgeist_html::HtmlSemanticQuery::IdAuthor
 pub surgeist_html::HtmlSemanticQuery::ImageControlsAttribute
 pub surgeist_html::HtmlSemanticQuery::ImageDimensions
 pub surgeist_html::HtmlSemanticQuery::ImageMapAttribute
@@ -3511,6 +3518,10 @@ pub fn surgeist_html::HtmlIconSizesReport::input(&self) -> &surgeist_html::HtmlT
 pub fn surgeist_html::HtmlIconSizesReport::keywords(&self) -> core::option::Option<&[surgeist_html::HtmlIconSizeKeyword]>
 pub fn surgeist_html::HtmlIconSizesReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlIconSizesReport::resource_conformance(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub struct surgeist_html::HtmlIdAuthorReport
+impl surgeist_html::HtmlIdAuthorReport
+pub fn surgeist_html::HtmlIdAuthorReport::local(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>
+pub fn surgeist_html::HtmlIdAuthorReport::uniqueness(&self) -> &surgeist_html::HtmlIdUniqueness
 pub struct surgeist_html::HtmlImageContentBoxObservation
 impl surgeist_html::HtmlImageContentBoxObservation
 pub fn surgeist_html::HtmlImageContentBoxObservation::height(&self) -> &surgeist_html::HtmlImageDimensionMeasurement

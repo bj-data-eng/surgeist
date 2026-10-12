@@ -44,24 +44,95 @@ impl HtmlValueInterpreter {
         raw: Option<&Attribute>,
     ) -> Result<HtmlAttributeReport<HtmlSpaceToken>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(Attribute::value))?;
-        let mut result = report(
-            RuleMetadata {
+        Ok(Self::id_report_from_borrowed(element, raw))
+    }
+
+    /// Atomic borrowed assembly envelope: eight actions per URI position cover
+    /// the HTML namespace guard; four per attribute-name candidate position
+    /// cover recognition. Eight per value unit cover the shared token scan.
+    /// Fixed 128 covers guards, exact shared-handle retentions and report fields.
+    /// The caller admits original raw length and polls around this bounded work;
+    /// this is not a guarantee of per-unit cancellation inside the token owner.
+    pub(crate) fn id_report_work_bound(
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> Option<usize> {
+        let mut work = 128usize.checked_add(
+            element
+                .namespace()
+                .uri()
+                .map_or(0, DocumentString::len)
+                .checked_add(1)?
+                .checked_mul(8)?,
+        )?;
+        if let Some(raw) = raw {
+            work = work
+                .checked_add(
+                    raw.name()
+                        .local_name()
+                        .len()
+                        .checked_add(1)?
+                        .checked_mul(KnownHtmlAttribute::ALL.len())?
+                        .checked_mul(4)?,
+                )?
+                .checked_add(raw.value().len().checked_add(1)?.checked_mul(8)?)?;
+        }
+        Some(work)
+    }
+
+    /// No temporary namespace/name or token buffer: the same local semantics
+    /// as the standalone report, with immutable backing retained by handles.
+    pub(crate) fn id_report_from_borrowed(
+        element: &QualifiedName,
+        raw: Option<&Attribute>,
+    ) -> HtmlAttributeReport<HtmlSpaceToken> {
+        let applicability = if raw.is_some_and(|a| {
+            KnownHtmlAttribute::from_name(a.name()) != Some(KnownHtmlAttribute::Id)
+        }) {
+            HtmlAttributeApplicability::DifferentAttribute
+        } else if !element.namespace().uri().is_some_and(|uri| {
+            uri.code_units()
+                .iter()
+                .copied()
+                .eq("http://www.w3.org/1999/xhtml".encode_utf16())
+        }) {
+            HtmlAttributeApplicability::ForeignElementNamespace
+        } else {
+            HtmlAttributeApplicability::Applicable
+        };
+        let mut result = HtmlAttributeReport {
+            element: element.clone(),
+            raw_attribute: raw.cloned(),
+            rule: RuleMetadata {
                 attribute: KnownHtmlAttribute::Id,
                 rows: &[72],
                 source: source!("the-id-attribute"),
                 context: Context::Global,
                 vocabulary_source: None,
             },
-            element,
-            raw,
-        );
+            observation: match raw {
+                None => HtmlAttributeObservation::Missing,
+                Some(a) if a.value().is_empty() => HtmlAttributeObservation::PresentEmpty,
+                Some(_) => HtmlAttributeObservation::PresentNonempty,
+            },
+            applicability,
+            recognition: HtmlAttributeRecognition::Unapplied,
+            author: HtmlAttributeAuthorState::Unapplied,
+            context_author: if applicability == HtmlAttributeApplicability::Applicable {
+                HtmlAttributeContextAuthorState::NotRequired
+            } else {
+                HtmlAttributeContextAuthorState::Unapplied
+            },
+            intrinsic: None,
+            supplied_context: SuppliedContext::None,
+        };
         if result.applicability != HtmlAttributeApplicability::Applicable {
-            return Ok(result);
+            return result;
         }
         let Some(raw) = raw else {
             result.recognition = HtmlAttributeRecognition::Missing;
             result.author = HtmlAttributeAuthorState::Missing;
-            return Ok(result);
+            return result;
         };
         result.context_author = HtmlAttributeContextAuthorState::Unchecked;
         match HtmlSpaceToken::new(raw.value().clone()) {
@@ -81,6 +152,6 @@ impl HtmlValueInterpreter {
                 );
             }
         }
-        Ok(result)
+        result
     }
 }

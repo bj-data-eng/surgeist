@@ -536,6 +536,45 @@ with exact accepted content. These operations use ordinary allocation, with a
 per-value admission cap on raw interpretation. They do not validate uniqueness,
 DOM ID behavior in other namespaces, selectors or serialized characters.
 
+<a id="captured-id-author"></a>
+
+Captured `HtmlSemanticQuery::IdAuthor` separately retains that local report and
+observes ordinary-tree DOM-ID uniqueness. The
+[qualified report](src/semantics/id_author.rs) exposes `local()` and
+`uniqueness()` independently: `NoId`, `Unique`, `Duplicate` with the actual
+capture-qualified witness, or `Missing` with the influencing relation. Absent
+and supplied-empty id both yield `NoId` and skip unrelated topology and competing
+raw values, while absence remains locally Missing and supplied empty remains
+locally nonconforming. Applicable present local context stays Unchecked; a
+Known captured report is not an overall author-conformance certificate.
+
+The subject must be an actual captured HTML element, including open/custom
+names. Non-elements are Inapplicable and foreign subjects Unsupported. Competing
+elements may have any namespace: only exact lowercase no-namespace nonempty
+`id` supplies a DOM ID. Prefix does not change expanded-name identity.
+Nonempty locally invalid IDs still compete; equality preserves exact UTF-16
+without trimming, folding or normalization. Traversal follows ordinary parents
+and children, including detached roots and document/fragment trees, without
+crossing template/shadow associations, slots, hosts or node-document membership.
+Incomplete influencing ancestry or children prevents `Unique`; a known duplicate
+in the subject's shared subtree can resolve a nonterminal coverage gap. A witness
+returns before its children or later values, while an earlier terminal stop
+cannot be rescued by a later duplicate.
+
+Every consulted whole id crosses raw admission before local assembly or
+comparison. The captured operation uses the existing qualified semantic session,
+checked atomic local-assembly work envelope and borrowed traversal cursor.
+Actual scratch, one nested report record and compiled outer result capacities
+use its shared ledger; scratch is released on success/failure and cumulative
+usage remains charged. Late failure discards the requested batch and preserves
+first stop and capture/context/host/configuration qualification. Capture building,
+standalone value construction and public cloning retain ordinary allocation;
+this is no per-code-unit cancellation, linear-work, allocator/RSS or live-ID
+indexing guarantee. The closed Query/Fact additions are intentionally breaking
+for exhaustive matches. [Literal tests](tests/semantics_id_author.rs) cover these
+observations; DOM mutation, named properties, URL fragments, selectors and
+complete element/document conformance remain separate.
+
 `HtmlNavigableTargetName` checks an exact nonempty name: it rejects a leading
 underscore and the combination of TAB, LF or CR with a less-than sign.
 `HtmlNavigableTargetKeyword` supplies the four canonical keywords. The local

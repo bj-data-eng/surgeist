@@ -240,7 +240,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a069"></a>A069 | href; base | [attr-base-href](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-base-href); [document-base-url](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document-base-url); [valid-url-potentially-surrounded-by-spaces](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-url-potentially-surrounded-by-spaces) | [Document base](#document-base): base href affects frozen/current document base only with actual document URL; algorithm absent, no default invented. |
 | <a id="a070"></a>A070 | hreflang; a; link | [attr-hyperlink-hreflang](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-hreflang); [attr-link-hreflang](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-hreflang) | BCP47 hreflang string is retained unchecked; advisory destination language does not override captured lang. No full external grammar validator. |
 | <a id="a071"></a>A071 | http-equiv; meta | [attr-meta-http-equiv](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-http-equiv); [attr-meta-http-equiv-keyword-content-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-http-equiv-keyword-content-type); [attr-meta-http-equiv-keyword-default-style](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-http-equiv-keyword-default-style); [attr-meta-http-equiv-keyword-refresh](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-http-equiv-keyword-refresh); [attr-meta-http-equiv-keyword-x-ua-compatible](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-http-equiv-keyword-x-ua-compatible); [attr-meta-http-equiv-keyword-content-security-policy](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-http-equiv-keyword-content-security-policy) | [Metadata](#metadata): http-equiv pragma keyword/default and content-specific algorithms absent; cannot be classified as generic free text. |
-| <a id="a072"></a>A072 | id; HTML elements | [the-id-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-id-attribute); [concept-id](https://dom.spec.whatwg.org/#concept-id); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [IDs](#ids): id native/nonempty/no-ASCII-whitespace check exists; uniqueness needs actual tree and is not certified by HtmlSpaceToken. |
+| <a id="a072"></a>A072 | id; HTML elements | [the-id-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-id-attribute); [concept-id](https://dom.spec.whatwg.org/#concept-id); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [IDs](#ids): native/local nonempty/no-ASCII-whitespace evidence plus captured `IdAuthor` for independent ordinary-tree NoId/Unique/Duplicate/Missing; local present context remains Unchecked, with no overall conformance certificate. |
 | <a id="a073"></a>A073 | imagesizes; link | [attr-link-imagesizes](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-imagesizes); [attr-link-rel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-rel); [link-type-preload](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#link-type-preload); [valid-source-size-list](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-source-size-list) | [Responsive images](#responsive-images): imagesizes requires preload/image context and width-descriptor relation; sizes-list parser absent. |
 | <a id="a074"></a>A074 | imagesrcset; link | [attr-link-imagesrcset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-imagesrcset); [attr-link-rel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-rel); [link-type-preload](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#link-type-preload); [image-candidate-string](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#image-candidate-string) | [Responsive images](#responsive-images): link_imagesrcset author+recovery, actual supplied rel/as/sizes context; no resource choice. |
 | <a id="a075"></a>A075 | inert; HTML elements | [the-inert-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-inert-attribute); [inert](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#inert); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence) plus Inertness actual flat facts/modal qualification in [Inertness](#inertness). |
@@ -684,6 +684,32 @@ empty, invalid and differently named slots remain distinct.
 [ID tests](tests/attributes_id.rs) cover local behavior. Same-tree/document
 uniqueness is a contextual author condition; collection lookups and form/label
 algorithms use actual IDs but do not certify global uniqueness.
+
+[Captured IdAuthor](src/semantics/id_author.rs) now independently retains that
+local report and observes ordinary-tree DOM-ID uniqueness. The
+[overview](README.md#captured-id-author) and
+[literal tests](tests/semantics_id_author.rs) distinguish NoId, Unique, an actual
+capture-qualified Duplicate witness and influencing Missing. Applicable present
+local author context remains Unchecked; absent and supplied-empty values both
+have no DOM ID without erasing their different local author states.
+
+HTML subjects may be open/custom; foreign subjects are Unsupported and
+non-elements Inapplicable. Competing nonempty lowercase no-namespace id values
+on any element namespace count, even when HTML local syntax fails. Equality is
+exact UTF-16, with no trim/fold/normalization. Only ordinary parent/child edges
+participate, including detached/fragment trees; template/shadow/slot/host/
+node-document associations do not substitute for that tree. Incomplete coverage
+prevents Unique; a known equal-ID witness can establish Duplicate despite
+nonterminal gaps. Whole consulted values are admitted before assembly/comparison;
+terminal raw/work/cancellation/resource failure cannot be rescued by a witness.
+
+The actual borrowed traversal, one retained nested data record and compiled
+outer result capacities use the existing qualified semantic ledger, with
+scratch cleanup and atomic batch failure. Input backing remains shared and
+capture/standalone/cloning allocation stays ordinary. No live ID mutation/index,
+DOM named properties, URL fragment/selector behavior, whole author conformance,
+linear-work or complete process-memory guarantee follows. The closed Query/Fact
+extensions are intentionally breaking; no compatibility adapter is provided.
 
 ## Hash and map reference
 

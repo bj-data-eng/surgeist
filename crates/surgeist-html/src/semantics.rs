@@ -47,8 +47,10 @@ pub use text_assistance::*;
 mod select;
 pub use select::*;
 mod datalist;
+mod id_author;
 mod image_map;
 mod map_name;
+pub use id_author::*;
 pub use image_map::*;
 pub use map_name::*;
 mod tabindex;
@@ -851,6 +853,8 @@ pub enum HtmlSemanticQuery {
     MapAreas,
     /// Independent local, own-id and same-tree map-name author observations.
     MapNameAuthor,
+    /// Independent local HTML id grammar and ordinary-tree DOM-ID uniqueness.
+    IdAuthor,
     /// Independent img usemap author witness and first processing map.
     UsemapReference,
     ConstraintValidationCandidate,
@@ -968,6 +972,9 @@ impl HtmlSemanticQuery {
             }
             Self::MapNameAuthor => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name"
+            }
+            Self::IdAuthor => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-id-attribute"
             }
             Self::MapAreas => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-map-areas"
@@ -1299,6 +1306,7 @@ pub enum HtmlSemanticFact {
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
     MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
     MapNameAuthor(HtmlSemanticValue<HtmlMapNameAuthorReport>),
+    IdAuthor(HtmlSemanticValue<HtmlIdAuthorReport>),
     UsemapReference(HtmlSemanticValue<HtmlUsemapReferenceResult>),
     ConstraintValidationCandidate(HtmlSemanticValue<bool>),
     TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
@@ -2831,6 +2839,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::MapNameAuthor => {
                             HtmlSemanticFact::MapNameAuthor(self.map_name_author(&request.subject)?)
                         }
+                        HtmlSemanticQuery::IdAuthor => {
+                            HtmlSemanticFact::IdAuthor(self.id_author(&request.subject)?)
+                        }
                         HtmlSemanticQuery::MapAreas => {
                             HtmlSemanticFact::MapAreas(self.map_areas(&request.subject)?)
                         }
@@ -3167,6 +3178,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::MapNameAuthor => {
                         HtmlSemanticFact::MapNameAuthor(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::IdAuthor => {
+                        HtmlSemanticFact::IdAuthor(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::MapAreas => {
                         HtmlSemanticFact::MapAreas(HtmlSemanticValue::Inapplicable)
