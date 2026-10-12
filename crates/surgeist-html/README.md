@@ -464,9 +464,25 @@ or a source element's actual parent: input requires Image, and source requires
 an HTML picture parent. Unavailable parent evidence remains distinct from an
 established other parent or no parent. Missing and failed dimensions receive no
 canvas defaults. These [local image values](src/attributes/image_values.rs) use
-ordinary allocation and per-original-value UTF-16 admission; natural-resource
-omission, coupled dimension relations and determine-dimensions processing remain
-required separate operations.
+ordinary allocation and per-original-value UTF-16 admission.
+
+The semantic query `EmbeddedDimensionAuthorConformance` checks resource-dependent
+omission and paired author dimensions independently, retaining both raw attributes.
+Its [natural-dimension inputs](src/semantics/natural_dimensions.rs) join independent
+current resource selections with observations qualified by capture, host, producer,
+configuration, selection, content and metadata revisions. The caller supplies
+intrinsic CSS-pixel measurements; the crate does not extract or load them.
+Known absence, present but unrepresentable measurements and unavailable evidence
+have separate outcomes.
+
+`HtmlNonNegativeRational` retains exact nonnegative fractions with nonzero
+denominators. Positive natural dimensions use exact cross products for the
+inclusive half-unit alternatives, with no rounded ratio. Both authored zeros
+can satisfy the pair while omission still fails for a missing natural axis.
+Degenerate or unrepresentable arithmetic has an explicit unsupported outcome.
+Fact construction has separate record, retained-byte and validation-work limits;
+query arithmetic uses the existing semantic work, scratch, digit, byte and
+cancellation controls. Rendered determine-dimensions processing remains required.
 
 `modification_datetime` interprets `datetime` on HTML `ins` and `del` using the
 [pinned modification clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#attr-mod-datetime).

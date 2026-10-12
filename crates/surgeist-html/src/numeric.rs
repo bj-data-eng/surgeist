@@ -6,6 +6,8 @@
 
 use crate::DocumentString;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
+pub(crate) mod natural_ratio;
+pub use natural_ratio::*;
 
 fn integer_sum_capacity(left_digits: usize, right_digits: usize) -> Option<usize> {
     left_digits

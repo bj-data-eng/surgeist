@@ -665,6 +665,36 @@ pub surgeist_html::HtmlDimension::Relative(surgeist_html::HtmlNonNegativeDecimal
 impl surgeist_html::HtmlDimension
 pub fn surgeist_html::HtmlDimension::as_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlDimension::value(&self) -> &surgeist_html::HtmlNonNegativeDecimal
+pub enum surgeist_html::HtmlDimensionApplicability
+pub surgeist_html::HtmlDimensionApplicability::Applicable
+pub surgeist_html::HtmlDimensionApplicability::Inapplicable
+pub surgeist_html::HtmlDimensionApplicability::Unavailable(surgeist_html::HtmlSemanticMissing)
+pub enum surgeist_html::HtmlDimensionAuthorSyntax
+pub surgeist_html::HtmlDimensionAuthorSyntax::Invalid
+pub surgeist_html::HtmlDimensionAuthorSyntax::Missing
+pub surgeist_html::HtmlDimensionAuthorSyntax::Unapplied
+pub surgeist_html::HtmlDimensionAuthorSyntax::Valid
+pub enum surgeist_html::HtmlDimensionOmission
+pub surgeist_html::HtmlDimensionOmission::ApplicabilityUnavailable
+pub surgeist_html::HtmlDimensionOmission::NotApplicable
+pub surgeist_html::HtmlDimensionOmission::OmittedBoth
+pub surgeist_html::HtmlDimensionOmission::PresentDimensions
+pub surgeist_html::HtmlDimensionOmission::Unavailable(surgeist_html::HtmlNaturalDimensionMissing)
+pub surgeist_html::HtmlDimensionOmission::Violated
+pub enum surgeist_html::HtmlDimensionPair
+pub surgeist_html::HtmlDimensionPair::ApplicabilityUnavailable
+pub surgeist_html::HtmlDimensionPair::Conforming(surgeist_html::HtmlDimensionTolerance)
+pub surgeist_html::HtmlDimensionPair::InvalidAuthoredInputs
+pub surgeist_html::HtmlDimensionPair::NaturalDimensionsAbsent
+pub surgeist_html::HtmlDimensionPair::Nonconforming
+pub surgeist_html::HtmlDimensionPair::NotApplicable
+pub surgeist_html::HtmlDimensionPair::NotRequired
+pub surgeist_html::HtmlDimensionPair::Unavailable(surgeist_html::HtmlNaturalDimensionMissing)
+pub surgeist_html::HtmlDimensionPair::UnsupportedNaturalArithmetic
+pub enum surgeist_html::HtmlDimensionTolerance
+pub surgeist_html::HtmlDimensionTolerance::BothZero
+pub surgeist_html::HtmlDimensionTolerance::Height
+pub surgeist_html::HtmlDimensionTolerance::Width
 pub enum surgeist_html::HtmlDir
 pub surgeist_html::HtmlDir::Auto
 pub surgeist_html::HtmlDir::Ltr
@@ -1138,6 +1168,37 @@ pub surgeist_html::HtmlModificationTimestamp::Unapplied(surgeist_html::HtmlAttri
 pub enum surgeist_html::HtmlModificationTimestampAbsence
 pub surgeist_html::HtmlModificationTimestampAbsence::ParseFailed
 pub surgeist_html::HtmlModificationTimestampAbsence::RecoveredTimeOnly
+pub enum surgeist_html::HtmlNaturalDimensionAxis
+pub surgeist_html::HtmlNaturalDimensionAxis::KnownAbsent
+pub surgeist_html::HtmlNaturalDimensionAxis::KnownPresent(surgeist_html::HtmlNonNegativeRational)
+pub surgeist_html::HtmlNaturalDimensionAxis::KnownPresentButUnrepresentable(surgeist_html::HtmlNaturalDimensionUnsupported)
+pub surgeist_html::HtmlNaturalDimensionAxis::Unavailable
+pub enum surgeist_html::HtmlNaturalDimensionFactsError
+pub surgeist_html::HtmlNaturalDimensionFactsError::ByteLimit
+pub surgeist_html::HtmlNaturalDimensionFactsError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlNaturalDimensionFactsError::DuplicateSubject(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlNaturalDimensionFactsError::HostRevisionMismatch
+pub surgeist_html::HtmlNaturalDimensionFactsError::InvalidExpectedSelection
+pub surgeist_html::HtmlNaturalDimensionFactsError::InvalidObservation
+pub surgeist_html::HtmlNaturalDimensionFactsError::RecordLimit
+pub surgeist_html::HtmlNaturalDimensionFactsError::RepresentationExhausted
+pub surgeist_html::HtmlNaturalDimensionFactsError::ResourceMismatch(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlNaturalDimensionFactsError::SelectionRevisionMismatch(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlNaturalDimensionFactsError::UnexpectedObservation(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlNaturalDimensionFactsError::WorkLimit
+impl core::error::Error for surgeist_html::HtmlNaturalDimensionFactsError
+impl core::fmt::Display for surgeist_html::HtmlNaturalDimensionFactsError
+pub fn surgeist_html::HtmlNaturalDimensionFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlNaturalDimensionMissing
+pub surgeist_html::HtmlNaturalDimensionMissing::Height
+pub surgeist_html::HtmlNaturalDimensionMissing::Observation
+pub surgeist_html::HtmlNaturalDimensionMissing::Selection
+pub surgeist_html::HtmlNaturalDimensionMissing::SubjectSelection
+pub surgeist_html::HtmlNaturalDimensionMissing::Supplement
+pub surgeist_html::HtmlNaturalDimensionMissing::Width
+pub enum surgeist_html::HtmlNaturalDimensionUnsupported
+pub surgeist_html::HtmlNaturalDimensionUnsupported::NonFinite
+pub surgeist_html::HtmlNaturalDimensionUnsupported::NonRational
 pub enum surgeist_html::HtmlNavigableTarget
 pub surgeist_html::HtmlNavigableTarget::Keyword(surgeist_html::HtmlNavigableTargetKeyword)
 pub surgeist_html::HtmlNavigableTarget::Name(surgeist_html::HtmlNavigableTargetName)
@@ -1352,6 +1413,11 @@ pub surgeist_html::HtmlProtocolLanguage::Absent
 pub surgeist_html::HtmlProtocolLanguage::Multiple
 pub surgeist_html::HtmlProtocolLanguage::Single(surgeist_html::DocumentString)
 pub surgeist_html::HtmlProtocolLanguage::Unavailable
+pub enum surgeist_html::HtmlRationalError
+pub surgeist_html::HtmlRationalError::ZeroDenominator
+impl core::error::Error for surgeist_html::HtmlRationalError
+impl core::fmt::Display for surgeist_html::HtmlRationalError
+pub fn surgeist_html::HtmlRationalError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlReferrerPolicy
 pub surgeist_html::HtmlReferrerPolicy::Empty
 pub surgeist_html::HtmlReferrerPolicy::NoReferrer
@@ -1461,6 +1527,9 @@ pub surgeist_html::HtmlSemanticContextError::InertHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::InertRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsCaptureMismatch
+pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::OutputDefaultsCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::OutputDefaultsHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::ParticipationCaptureMismatch
@@ -1496,6 +1565,7 @@ pub surgeist_html::HtmlSemanticFact::Disabledness(surgeist_html::HtmlSemanticVal
 pub surgeist_html::HtmlSemanticFact::DocumentTitle(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDocumentTitle>)
 pub surgeist_html::HtmlSemanticFact::Editable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::EditingHost(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::EmbeddedDimensionAuthorConformance(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlEmbeddedDimensionAuthorReadback>)
 pub surgeist_html::HtmlSemanticFact::FieldsetControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FormControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDefaultButton>>)
@@ -1617,6 +1687,7 @@ pub surgeist_html::HtmlSemanticQuery::Disabledness
 pub surgeist_html::HtmlSemanticQuery::DocumentTitle
 pub surgeist_html::HtmlSemanticQuery::Editable
 pub surgeist_html::HtmlSemanticQuery::EditingHost
+pub surgeist_html::HtmlSemanticQuery::EmbeddedDimensionAuthorConformance
 pub surgeist_html::HtmlSemanticQuery::FieldsetControls
 pub surgeist_html::HtmlSemanticQuery::FormControls
 pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
@@ -3014,6 +3085,16 @@ impl surgeist_html::HtmlEmbeddedDimensionAttributeReport
 pub fn surgeist_html::HtmlEmbeddedDimensionAttributeReport::context(&self) -> core::option::Option<&surgeist_html::HtmlEmbeddedDimensionContext>
 pub fn surgeist_html::HtmlEmbeddedDimensionAttributeReport::height(&self) -> &surgeist_html::HtmlEmbeddedDimensionReport
 pub fn surgeist_html::HtmlEmbeddedDimensionAttributeReport::width(&self) -> &surgeist_html::HtmlEmbeddedDimensionReport
+pub struct surgeist_html::HtmlEmbeddedDimensionAuthorReadback
+impl surgeist_html::HtmlEmbeddedDimensionAuthorReadback
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::applicability(&self) -> &surgeist_html::HtmlDimensionApplicability
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::height_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::height_syntax(&self) -> surgeist_html::HtmlDimensionAuthorSyntax
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::omission(&self) -> surgeist_html::HtmlDimensionOmission
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::pair(&self) -> surgeist_html::HtmlDimensionPair
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::resource(&self) -> core::option::Option<&surgeist_html::HtmlNaturalResourceKey>
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::width_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlEmbeddedDimensionAuthorReadback::width_syntax(&self) -> surgeist_html::HtmlDimensionAuthorSyntax
 pub struct surgeist_html::HtmlEmbeddedDimensionReport
 impl surgeist_html::HtmlEmbeddedDimensionReport
 pub fn surgeist_html::HtmlEmbeddedDimensionReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
@@ -3485,6 +3566,50 @@ pub fn surgeist_html::HtmlMonth::month(&self) -> u8
 pub fn surgeist_html::HtmlMonth::new(year: surgeist_html::HtmlYear, month: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
 pub fn surgeist_html::HtmlMonth::to_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlMonth::year(&self) -> &surgeist_html::HtmlYear
+pub struct surgeist_html::HtmlNaturalDimensionFact
+impl surgeist_html::HtmlNaturalDimensionFact
+pub fn surgeist_html::HtmlNaturalDimensionFact::axes(&self) -> core::option::Option<(&surgeist_html::HtmlNaturalDimensionAxis, &surgeist_html::HtmlNaturalDimensionAxis)>
+pub fn surgeist_html::HtmlNaturalDimensionFact::observation(subject: surgeist_html::HtmlCaptureSubjectId, revision: surgeist_html::HtmlNaturalDimensionRevision, key: surgeist_html::HtmlNaturalResourceKey, width: surgeist_html::HtmlNaturalDimensionAxis, height: surgeist_html::HtmlNaturalDimensionAxis) -> Self
+pub fn surgeist_html::HtmlNaturalDimensionFact::resource(&self) -> core::option::Option<&surgeist_html::HtmlNaturalResourceKey>
+pub fn surgeist_html::HtmlNaturalDimensionFact::selection(subject: surgeist_html::HtmlCaptureSubjectId, key: core::option::Option<surgeist_html::HtmlNaturalResourceKey>) -> Self
+pub fn surgeist_html::HtmlNaturalDimensionFact::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlNaturalDimensionLimits
+impl surgeist_html::HtmlNaturalDimensionLimits
+pub fn surgeist_html::HtmlNaturalDimensionLimits::bytes(self) -> usize
+pub fn surgeist_html::HtmlNaturalDimensionLimits::new(records: usize, bytes: usize, work: usize) -> Self
+pub fn surgeist_html::HtmlNaturalDimensionLimits::records(self) -> usize
+pub fn surgeist_html::HtmlNaturalDimensionLimits::work(self) -> usize
+pub struct surgeist_html::HtmlNaturalDimensionProducerId(_)
+impl surgeist_html::HtmlNaturalDimensionProducerId
+pub fn surgeist_html::HtmlNaturalDimensionProducerId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlNaturalDimensionProducerId
+impl core::cmp::PartialEq for surgeist_html::HtmlNaturalDimensionProducerId
+pub fn surgeist_html::HtmlNaturalDimensionProducerId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlNaturalDimensionRevision
+impl surgeist_html::HtmlNaturalDimensionRevision
+pub fn surgeist_html::HtmlNaturalDimensionRevision::configuration(&self) -> u64
+pub fn surgeist_html::HtmlNaturalDimensionRevision::new(producer: surgeist_html::HtmlNaturalDimensionProducerId, configuration: u64, selection: u64) -> Self
+pub fn surgeist_html::HtmlNaturalDimensionRevision::producer(&self) -> &surgeist_html::HtmlNaturalDimensionProducerId
+pub fn surgeist_html::HtmlNaturalDimensionRevision::selection(&self) -> u64
+pub struct surgeist_html::HtmlNaturalDimensions
+impl surgeist_html::HtmlNaturalDimensions
+pub fn surgeist_html::HtmlNaturalDimensions::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlNaturalDimensions::facts(&self) -> &[surgeist_html::HtmlNaturalDimensionFact]
+pub fn surgeist_html::HtmlNaturalDimensions::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlNaturalDimensions::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, revision: surgeist_html::HtmlNaturalDimensionRevision, expected: alloc::vec::Vec<surgeist_html::HtmlNaturalDimensionFact>, observations: alloc::vec::Vec<surgeist_html::HtmlNaturalDimensionFact>, limits: surgeist_html::HtmlNaturalDimensionLimits) -> core::result::Result<Self, surgeist_html::HtmlNaturalDimensionFactsError>
+pub fn surgeist_html::HtmlNaturalDimensions::revision(&self) -> &surgeist_html::HtmlNaturalDimensionRevision
+pub struct surgeist_html::HtmlNaturalResourceId(_)
+impl surgeist_html::HtmlNaturalResourceId
+pub fn surgeist_html::HtmlNaturalResourceId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlNaturalResourceId
+impl core::cmp::PartialEq for surgeist_html::HtmlNaturalResourceId
+pub fn surgeist_html::HtmlNaturalResourceId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlNaturalResourceKey
+impl surgeist_html::HtmlNaturalResourceKey
+pub fn surgeist_html::HtmlNaturalResourceKey::content_revision(&self) -> u64
+pub fn surgeist_html::HtmlNaturalResourceKey::metadata_revision(&self) -> u64
+pub fn surgeist_html::HtmlNaturalResourceKey::new(resource: surgeist_html::HtmlNaturalResourceId, content_revision: u64, metadata_revision: u64) -> Self
+pub fn surgeist_html::HtmlNaturalResourceKey::resource(&self) -> &surgeist_html::HtmlNaturalResourceId
 pub struct surgeist_html::HtmlNavigableTargetName
 impl surgeist_html::HtmlNavigableTargetName
 pub fn surgeist_html::HtmlNavigableTargetName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlNavigableTargetError>
@@ -3551,6 +3676,11 @@ pub fn surgeist_html::HtmlNonNegativeInteger::from(value: u128) -> Self
 impl core::convert::TryFrom<surgeist_html::HtmlInteger> for surgeist_html::HtmlNonNegativeInteger
 pub type surgeist_html::HtmlNonNegativeInteger::Error = surgeist_html::HtmlNegativeIntegerError
 pub fn surgeist_html::HtmlNonNegativeInteger::try_from(value: surgeist_html::HtmlInteger) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlNonNegativeRational
+impl surgeist_html::HtmlNonNegativeRational
+pub fn surgeist_html::HtmlNonNegativeRational::denominator(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeRational::new(numerator: surgeist_html::HtmlNonNegativeInteger, denominator: surgeist_html::HtmlNonNegativeInteger) -> core::result::Result<Self, surgeist_html::HtmlRationalError>
+pub fn surgeist_html::HtmlNonNegativeRational::numerator(&self) -> &surgeist_html::HtmlNonNegativeInteger
 pub struct surgeist_html::HtmlNonPositiveInputStepError
 impl core::error::Error for surgeist_html::HtmlNonPositiveInputStepError
 impl core::fmt::Display for surgeist_html::HtmlNonPositiveInputStepError
@@ -3836,6 +3966,8 @@ pub fn surgeist_html::HtmlSemanticContext::identity(&self) -> &surgeist_html::Ht
 pub fn surgeist_html::HtmlSemanticContext::inert(&self) -> core::option::Option<&surgeist_html::HtmlInertFacts>
 pub fn surgeist_html::HtmlSemanticContext::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticContext::language_direction(&self) -> core::option::Option<&surgeist_html::HtmlLanguageDirectionFacts>
+pub fn surgeist_html::HtmlSemanticContext::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
+pub fn surgeist_html::HtmlSemanticContext::natural_dimensions(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensions>
 pub fn surgeist_html::HtmlSemanticContext::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, input: surgeist_html::HtmlSemanticContextInput, max_classifications: usize) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
 pub fn surgeist_html::HtmlSemanticContext::output_defaults(&self) -> core::option::Option<&surgeist_html::HtmlOutputDefaultFacts>
 pub fn surgeist_html::HtmlSemanticContext::participation(&self) -> core::option::Option<&surgeist_html::HtmlListParticipation>
@@ -3853,6 +3985,7 @@ pub fn surgeist_html::HtmlSemanticContextInput::with_global_inheritance(self, ex
 pub fn surgeist_html::HtmlSemanticContextInput::with_inert(self, expected: surgeist_html::HtmlFlatTreeRevision, facts: core::option::Option<surgeist_html::HtmlInertFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_language_direction(self, facts: surgeist_html::HtmlLanguageDirectionFacts) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_list_participation(self, expected: surgeist_html::HtmlListParticipationRevision, participation: core::option::Option<surgeist_html::HtmlListParticipation>) -> Self
+pub fn surgeist_html::HtmlSemanticContextInput::with_natural_dimensions(self, expected: surgeist_html::HtmlNaturalDimensionRevision, facts: core::option::Option<surgeist_html::HtmlNaturalDimensions>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_output_defaults(self, facts: surgeist_html::HtmlOutputDefaultFacts) -> Self
 pub struct surgeist_html::HtmlSemanticFailure
 impl surgeist_html::HtmlSemanticFailure
@@ -3882,6 +4015,7 @@ pub fn surgeist_html::HtmlSemanticQualification::global_inheritance_revision(&se
 pub fn surgeist_html::HtmlSemanticQualification::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlSemanticQualification::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticQualification::limits(&self) -> surgeist_html::HtmlSemanticLimits
+pub fn surgeist_html::HtmlSemanticQualification::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
 pub fn surgeist_html::HtmlSemanticQualification::participation_revision(&self) -> core::option::Option<&surgeist_html::HtmlListParticipationRevision>
 pub fn surgeist_html::HtmlSemanticQualification::source_revision(&self) -> &'static str
 pub struct surgeist_html::HtmlSemanticReport

@@ -60,6 +60,8 @@ mod form_settings;
 pub use form_settings::*;
 mod form_default;
 pub use form_default::*;
+mod natural_dimensions;
+pub use natural_dimensions::*;
 
 use crate::numeric::{
     IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
@@ -274,6 +276,8 @@ impl HtmlListParticipation {
 /// checks capture and host qualification before minting its immutable identity.
 #[derive(Debug)]
 pub struct HtmlSemanticContextInput {
+    natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
+    natural_dimensions: Option<HtmlNaturalDimensions>,
     classifications: Vec<HtmlCustomControlClassification>,
     participation_revision: Option<HtmlListParticipationRevision>,
     participation: Option<HtmlListParticipation>,
@@ -289,6 +293,8 @@ pub struct HtmlSemanticContextInput {
 impl HtmlSemanticContextInput {
     pub fn new(classifications: Vec<HtmlCustomControlClassification>) -> Self {
         Self {
+            natural_dimension_revision: None,
+            natural_dimensions: None,
             classifications,
             participation_revision: None,
             participation: None,
@@ -309,6 +315,15 @@ impl HtmlSemanticContextInput {
     ) -> Self {
         self.participation_revision = Some(expected);
         self.participation = participation;
+        self
+    }
+    pub fn with_natural_dimensions(
+        mut self,
+        expected: HtmlNaturalDimensionRevision,
+        facts: Option<HtmlNaturalDimensions>,
+    ) -> Self {
+        self.natural_dimension_revision = Some(expected);
+        self.natural_dimensions = facts;
         self
     }
     pub fn with_inert(
@@ -350,6 +365,8 @@ impl HtmlSemanticContextInput {
 /// Checked immutable inputs, shared by queries over one exact capture.
 #[derive(Debug)]
 pub struct HtmlSemanticContext {
+    natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
+    natural_dimensions: Option<HtmlNaturalDimensions>,
     identity: HtmlSemanticContextId,
     capture: HtmlCaptureId,
     host_revision: HtmlHostFactsRevision,
@@ -369,6 +386,9 @@ pub struct HtmlSemanticContext {
 /// Rejected producer context; no query result is created.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticContextError {
+    NaturalDimensionsCaptureMismatch,
+    NaturalDimensionsHostRevisionMismatch,
+    NaturalDimensionsRevisionMismatch,
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
     ClassificationLimit {
@@ -421,6 +441,8 @@ impl HtmlSemanticContext {
             return Err(HtmlSemanticContextError::HostRevisionMismatch);
         }
         let HtmlSemanticContextInput {
+            natural_dimension_revision,
+            natural_dimensions,
             classifications,
             participation_revision,
             participation,
@@ -433,6 +455,17 @@ impl HtmlSemanticContext {
             global_inheritance_revision,
             global_inheritance,
         } = input;
+        if let Some(facts) = &natural_dimensions {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::NaturalDimensionsCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::NaturalDimensionsHostRevisionMismatch);
+            }
+            if natural_dimension_revision.as_ref() != Some(facts.revision()) {
+                return Err(HtmlSemanticContextError::NaturalDimensionsRevisionMismatch);
+            }
+        }
         if let Some(facts) = &global_inheritance {
             if facts.capture() != capture.identity() {
                 return Err(HtmlSemanticContextError::GlobalInheritanceCaptureMismatch);
@@ -525,6 +558,8 @@ impl HtmlSemanticContext {
             })?;
         Ok(Self {
             identity: HtmlSemanticContextId(Arc::new(())),
+            natural_dimension_revision,
+            natural_dimensions,
             capture: capture.identity().clone(),
             host_revision,
             classifications,
@@ -543,6 +578,12 @@ impl HtmlSemanticContext {
     }
     pub fn identity(&self) -> &HtmlSemanticContextId {
         &self.identity
+    }
+    pub fn natural_dimension_revision(&self) -> Option<&HtmlNaturalDimensionRevision> {
+        self.natural_dimension_revision.as_ref()
+    }
+    pub fn natural_dimensions(&self) -> Option<&HtmlNaturalDimensions> {
+        self.natural_dimensions.as_ref()
     }
     pub fn capture(&self) -> &HtmlCaptureId {
         &self.capture
@@ -694,6 +735,7 @@ impl HtmlSemanticCancellation {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticQuery {
+    EmbeddedDimensionAuthorConformance,
     Hidden,
     Disabledness,
     ListOwner,
@@ -793,6 +835,9 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::EmbeddedDimensionAuthorConformance => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dimension-attributes"
+            }
             Self::TitleText => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-title-text"
             }
@@ -1127,6 +1172,7 @@ impl HtmlOptionCollection {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlSemanticFact {
+    EmbeddedDimensionAuthorConformance(HtmlSemanticValue<HtmlEmbeddedDimensionAuthorReadback>),
     Hidden(HtmlSemanticValue<HtmlHiddenState>),
     Disabledness(HtmlSemanticValue<bool>),
     ListOwner(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
@@ -1260,6 +1306,7 @@ impl HtmlDirectionalitySource {
 /// This stores identities and finite configuration, never tree or query payloads.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticQualification {
+    natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
     capture: HtmlCaptureId,
     context: HtmlSemanticContextId,
     host_revision: HtmlHostFactsRevision,
@@ -1272,6 +1319,9 @@ pub struct HtmlSemanticQualification {
     inert_revision: Option<HtmlFlatTreeRevision>,
 }
 impl HtmlSemanticQualification {
+    pub fn natural_dimension_revision(&self) -> Option<&HtmlNaturalDimensionRevision> {
+        self.natural_dimension_revision.as_ref()
+    }
     pub fn source_revision(&self) -> &'static str {
         "877d6146487f15b15bc8dd0e3c625063a37b456a"
     }
@@ -1441,6 +1491,7 @@ impl<'a> HtmlSemanticSession<'a> {
             // Prepare this fixed-size key before execution. Terminal stops and
             // repeated failures only clone its Arc; they do not allocate.
             qualification: Arc::new(HtmlSemanticQualification {
+                natural_dimension_revision: context.natural_dimension_revision.clone(),
                 capture: capture.identity().clone(),
                 context: context.identity.clone(),
                 host_revision: context.host_revision.clone(),
@@ -2464,6 +2515,14 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlCapturedNodeKind::Element(element) => {
                     let foreign = !self.html_namespace(element)?;
                     match request.query {
+                        HtmlSemanticQuery::EmbeddedDimensionAuthorConformance => {
+                            HtmlSemanticFact::EmbeddedDimensionAuthorConformance(
+                                self.embedded_dimension_author_conformance(
+                                    &request.subject,
+                                    element,
+                                )?,
+                            )
+                        }
                         HtmlSemanticQuery::TitleText => HtmlSemanticFact::TitleText(if foreign {
                             HtmlSemanticValue::Unsupported(
                                 HtmlSemanticUnsupported::ForeignNamespace,
@@ -2849,6 +2908,11 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 _ => match request.query {
+                    HtmlSemanticQuery::EmbeddedDimensionAuthorConformance => {
+                        HtmlSemanticFact::EmbeddedDimensionAuthorConformance(
+                            HtmlSemanticValue::Inapplicable,
+                        )
+                    }
                     HtmlSemanticQuery::TitleText => {
                         HtmlSemanticFact::TitleText(HtmlSemanticValue::Inapplicable)
                     }

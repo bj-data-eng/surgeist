@@ -260,6 +260,67 @@ const IMAGE_ELEMENTS: &[KnownHtmlElement] = &[
     KnownHtmlElement::Input,
 ];
 
+/// Already established expanded-name evidence; None is known non-HTML/unknown,
+/// never a missing capture relation. This classifier owns no tree or controller.
+#[derive(Clone, Copy)]
+pub(crate) enum EmbeddedDimensionParent {
+    Parent(Option<KnownHtmlElement>),
+    NoParent,
+    Unavailable,
+}
+#[derive(Clone, Copy)]
+pub(crate) enum EmbeddedDimensionContext {
+    InputState(HtmlInputType),
+    SourceParent(EmbeddedDimensionParent),
+}
+#[derive(Clone, Copy)]
+pub(crate) enum EmbeddedDimensionEvidenceNeeded {
+    InputState,
+    SourceParent,
+}
+#[derive(Clone, Copy)]
+pub(crate) enum EmbeddedDimensionApplicability {
+    Applicable,
+    Inapplicable,
+    Unavailable(EmbeddedDimensionEvidenceNeeded),
+    DifferentContext,
+}
+pub(crate) fn embedded_dimension_applicability(
+    element: Option<KnownHtmlElement>,
+    context: Option<EmbeddedDimensionContext>,
+) -> EmbeddedDimensionApplicability {
+    use EmbeddedDimensionApplicability as A;
+    let Some(element) = element.filter(|e| IMAGE_ELEMENTS.contains(e)) else {
+        return A::Inapplicable;
+    };
+    match (element, context) {
+        (KnownHtmlElement::Input, None) => {
+            A::Unavailable(EmbeddedDimensionEvidenceNeeded::InputState)
+        }
+        (
+            KnownHtmlElement::Input,
+            Some(EmbeddedDimensionContext::InputState(HtmlInputType::Image)),
+        ) => A::Applicable,
+        (KnownHtmlElement::Input, Some(EmbeddedDimensionContext::InputState(_))) => A::Inapplicable,
+        (
+            KnownHtmlElement::Source,
+            None
+            | Some(EmbeddedDimensionContext::SourceParent(EmbeddedDimensionParent::Unavailable)),
+        ) => A::Unavailable(EmbeddedDimensionEvidenceNeeded::SourceParent),
+        (
+            KnownHtmlElement::Source,
+            Some(EmbeddedDimensionContext::SourceParent(EmbeddedDimensionParent::Parent(Some(
+                KnownHtmlElement::Picture,
+            )))),
+        ) => A::Applicable,
+        (KnownHtmlElement::Source, Some(EmbeddedDimensionContext::SourceParent(_))) => {
+            A::Inapplicable
+        }
+        (_, Some(_)) => A::DifferentContext,
+        (_, None) => A::Applicable,
+    }
+}
+
 fn image_metadata(attribute: KnownHtmlAttribute) -> RuleMetadata {
     let (rows, clause, elements): (&'static [u16], _, _) = match attribute {
         KnownHtmlAttribute::Alt => (&[9][..], ALT_SOURCE, &[KnownHtmlElement::Input][..]),
@@ -323,45 +384,69 @@ fn dimension_selection(
     if attribute.applicability != HtmlAttributeApplicability::Applicable {
         return ImageRuleSelection::Unselected;
     }
-    match (KnownHtmlElement::from_name(attribute.element()), context) {
-        (Some(KnownHtmlElement::Input), None) => input_image_selection(attribute, None),
-        (Some(KnownHtmlElement::Input), Some(HtmlEmbeddedDimensionContext::InputState(state))) => {
-            input_image_selection(attribute, Some(*state))
+    let classified = context.map(|context| match context {
+        HtmlEmbeddedDimensionContext::InputState(state) => {
+            EmbeddedDimensionContext::InputState(*state)
         }
-        (Some(KnownHtmlElement::Source), None) => {
-            attribute.context_author = HtmlAttributeContextAuthorState::Unchecked;
-            ImageRuleSelection::Unknown
+        HtmlEmbeddedDimensionContext::SourceParent(parent) => {
+            EmbeddedDimensionContext::SourceParent(match parent {
+                HtmlImageSourceParent::Parent(name) => {
+                    EmbeddedDimensionParent::Parent(KnownHtmlElement::from_name(name))
+                }
+                HtmlImageSourceParent::NoParent => EmbeddedDimensionParent::NoParent,
+                HtmlImageSourceParent::Unavailable => EmbeddedDimensionParent::Unavailable,
+            })
         }
-        (
-            Some(KnownHtmlElement::Source),
-            Some(HtmlEmbeddedDimensionContext::SourceParent(HtmlImageSourceParent::Unavailable)),
-        ) => {
-            attribute.context_author = HtmlAttributeContextAuthorState::Unavailable;
-            ImageRuleSelection::Unknown
-        }
-        (
-            Some(KnownHtmlElement::Source),
-            Some(HtmlEmbeddedDimensionContext::SourceParent(HtmlImageSourceParent::Parent(parent))),
-        ) if KnownHtmlElement::from_name(parent) == Some(KnownHtmlElement::Picture) => {
-            attribute.context_author = HtmlAttributeContextAuthorState::Conforming;
+    });
+    match embedded_dimension_applicability(
+        KnownHtmlElement::from_name(attribute.element()),
+        classified,
+    ) {
+        EmbeddedDimensionApplicability::Applicable => {
+            if let Some(context) = context {
+                if let HtmlEmbeddedDimensionContext::InputState(state) = context {
+                    attribute.supplied_context = SuppliedContext::Input(*state);
+                }
+                attribute.context_author = HtmlAttributeContextAuthorState::Conforming;
+            }
             ImageRuleSelection::Selected
         }
-        (Some(KnownHtmlElement::Source), Some(HtmlEmbeddedDimensionContext::SourceParent(_))) => {
+        EmbeddedDimensionApplicability::Unavailable(_) => {
+            attribute.context_author = if matches!(
+                context,
+                Some(HtmlEmbeddedDimensionContext::SourceParent(
+                    HtmlImageSourceParent::Unavailable
+                ))
+            ) {
+                HtmlAttributeContextAuthorState::Unavailable
+            } else {
+                HtmlAttributeContextAuthorState::Unchecked
+            };
+            ImageRuleSelection::Unknown
+        }
+        EmbeddedDimensionApplicability::Inapplicable => {
+            let error = match context {
+                Some(HtmlEmbeddedDimensionContext::InputState(state)) => {
+                    attribute.supplied_context = SuppliedContext::Input(*state);
+                    HtmlAttributeContextConformanceError::InputStateForbidsAttribute
+                }
+                Some(HtmlEmbeddedDimensionContext::SourceParent(_)) => {
+                    HtmlAttributeContextConformanceError::SourceDimensionsRequirePictureParent
+                }
+                None => return ImageRuleSelection::Unselected,
+            };
             attribute.context_author = if attribute.raw_attribute.is_some() {
-                HtmlAttributeContextAuthorState::Nonconforming(
-                    HtmlAttributeContextConformanceError::SourceDimensionsRequirePictureParent,
-                )
+                HtmlAttributeContextAuthorState::Nonconforming(error)
             } else {
                 HtmlAttributeContextAuthorState::NotRequired
             };
             ImageRuleSelection::Unselected
         }
-        (_, Some(_)) => {
+        EmbeddedDimensionApplicability::DifferentContext => {
             attribute.applicability = HtmlAttributeApplicability::DifferentContext;
             attribute.context_author = HtmlAttributeContextAuthorState::Unapplied;
             ImageRuleSelection::Unselected
         }
-        (_, None) => ImageRuleSelection::Selected,
     }
 }
 
