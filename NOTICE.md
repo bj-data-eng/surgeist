@@ -458,3 +458,11 @@ The [W3C attribution](licenses/w3c/NOTICE.md#html-delegated-svg-script-processin
 and existing complete local document licenses accompany the software-support
 Markdown conversion. No browser source excerpt, SVG runtime or new dependency
 is incorporated.
+
+## HTML-delegated Fetch vocabulary
+
+The bounded [Fetch script-like destination definition](references/fetch-script-like-destinations--e9460d1b22ea.md)
+supplies the finite vocabulary delegated by HTML link destinations. The
+[WHATWG attribution](licenses/whatwg/NOTICE.md#html-delegated-fetch-destinations--2026-10-12)
+and complete local license cover the Markdown extraction. This source selection
+incorporates no Fetch runtime or new dependency.

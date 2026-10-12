@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 363 retained source identities and states their representations: 257 full documents/source witnesses, 92 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 364 retained source identities and states their representations: 257 full documents/source witnesses, 93 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -107,3 +107,11 @@ selects the bounded Tiny processing operation, the explicit offline capabilities
 and namespace-specific clone correction. Dated SVG2 observations are metadata
 rather than another operative edition. Source retention does not certify parser
 completion.
+
+## HTML-delegated Fetch destinations
+
+The [bounded script-like destination definition](fetch-script-like-destinations--e9460d1b22ea.md)
+retains the finite Fetch vocabulary and adjacent warning delegated by pinned
+HTML link destinations. The [edition selection](SOURCE-EDITIONS.md#html-link-destinations-and-fetch-vocabulary)
+keeps enumeration, author context and later processing recovery distinct.
+This selects no networking or JavaScript runtime.

@@ -465,3 +465,23 @@ are required; unknown does not become false. Non-parser insertion retains actual
 document-order processing and topology effects without the parser wrapper.
 These source selections do not certify implemented SVG script handling or a
 complete parser.
+
+### HTML link destinations and Fetch vocabulary
+
+For [#1133 A010](https://github.com/bj-data-eng/surgeist/issues/1133#a010-link-destinations-selected-fetch-vocabulary),
+HTML revision `877d6146487f15b15bc8dd0e3c625063a37b456a` delegates its module-preload
+destination vocabulary to the [selected Fetch definition](fetch-script-like-destinations--e9460d1b22ea.md#request-destination-script-like)
+at immutable revision `e9460d1b22ead1c6a72eeac37fb2ec0dc01aeb1d`.
+The finite script-like set is audioworklet, paintworklet, script, serviceworker,
+sharedworker and worker. The adjacent warning does not include xslt in that set.
+HTML adds json, style and text, giving nine module-preload destinations. Its
+union with fetch/font/image/script/style/track gives thirteen `as` states.
+
+HTML owns whole-value ASCII-insensitive enumeration without trimming and without
+missing, invalid or empty defaults. Later modulepreload processing selects
+script for no state, including invalid values; a recognized image state stays
+image and fails membership rather than recovering to script. Preload and
+modulepreload author constraints remain independent when both rel tokens occur.
+This is one bounded external vocabulary selection, not a new HTML edition,
+Fetch translation/loading, worker execution or JavaScript binding. Source
+selection does not certify the corresponding HTML operation as implemented.

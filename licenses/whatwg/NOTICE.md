@@ -147,3 +147,25 @@ source pin, retained snapshot or algorithm incorporation is claimed. The
 [edition selection](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
 and [conversion record](../../references/CONVERSION-REPORT.md#javascript-mime-essence-and-html-checkpoint-sources--2026-10-11)
 bound this source use without certifying a complete parser.
+
+## HTML-delegated Fetch destinations — 2026-10-12
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded Fetch definition](../../references/fetch-script-like-destinations--e9460d1b22ea.md)
+retains the script-like destination definition and adjacent warning from
+[immutable Fetch revision `e9460d1b22ead1c6a72eeac37fb2ec0dc01aeb1d`](https://fetch.spec.whatwg.org/commit-snapshots/e9460d1b22ead1c6a72eeac37fb2ec0dc01aeb1d/),
+original rendered lines 2820–2828, complete original HTML SHA-256
+`639d437c000a870bf161804a92f9e0ce1b22dae61f39d8975a7b8429302534eb`.
+The exact upstream LICENSE from that revision is byte-identical to the retained
+[complete local LICENSE](LICENSE), SHA-256
+`85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`.
+Specification prose remains CC BY 4.0; BSD 3-Clause applies instead only to
+portions incorporated into source code, not this Markdown document.
+
+Changes by Surgeist on 2026-10-12 comprise bounded extraction, hand conversion
+to Markdown, typography and link formatting, plus explicitly labelled source
+selection commentary. No normative destination is added or removed; the warning
+retains `xslt` outside the finite definition. Original text remains authoritative
+and no endorsement is implied. This is source reference retention; it does not
+claim a Fetch implementation or completed HTML link-destination operation.

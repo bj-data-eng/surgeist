@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **363 source identities: 257 full documents/source witnesses, 92 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **364 source identities: 257 full documents/source witnesses, 93 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -509,3 +509,21 @@ acceptance. The catalog contains **363 identities: 257 full, 92 partial and
 fourteen metadata-only**. Historical dated counts and **81 passive SVG assets**
 remain unchanged. Original captures and conversion-fidelity evidence remain
 available for the active parser implementation and review.
+
+## HTML-delegated Fetch destinations — 2026-10-12
+
+The [bounded Fetch witness](fetch-script-like-destinations--e9460d1b22ea.md)
+retains the complete script-like definition and adjacent warning from immutable
+revision `e9460d1b22ead1c6a72eeac37fb2ec0dc01aeb1d`, rendered lines 2820–2828.
+The complete original is 1,932,351 bytes, SHA-256
+`639d437c000a870bf161804a92f9e0ce1b22dae61f39d8975a7b8429302534eb`.
+Hand conversion changes heading/anchor presentation, quotes/typography and links;
+the exact six definition keywords and excluded xslt warning remain. Explicit
+Surgeist selection commentary is separate from the source paragraphs. There
+are no tables or diagrams in the selection and no source scripts are executed.
+The exact upstream LICENSE matches the existing complete local WHATWG license;
+prose attribution and modification notice are retained.
+
+This adds one partial identity. The current collection is **364 identities:
+257 full, 93 partial and 14 metadata-only**, with all prior 363 identities and
+81 passive SVG assets preserved. Earlier dated counts remain historical.
