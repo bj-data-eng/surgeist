@@ -150,4 +150,3 @@ Note that a [`load`](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/interact.
 Modifying or removing the ['script'](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/script.html#ScriptElement) element (or content) after the script has started its execution must have no effect on the script execution.
 
 Modifying a ['script'](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/script.html#ScriptElement) element's ['xlink:href'](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/script.html#ScriptElementHrefAttribute) attribute after its "already processed" flag is set to true will not cause any new script content to be fetched or executed.
-
