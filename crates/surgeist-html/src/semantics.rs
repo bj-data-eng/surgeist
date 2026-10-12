@@ -850,6 +850,8 @@ pub enum HtmlSemanticQuery {
     LabeledControl,
     /// Form owner of the labeled control; this does not associate the label.
     LabelFormOwner,
+    /// Form owner of a legend's immediate fieldset parent, otherwise null.
+    LegendFormOwner,
     ControlLabels,
     FormControls,
     FormLength,
@@ -1160,6 +1162,9 @@ impl HtmlSemanticQuery {
             Self::LabelFormOwner => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-label-form"
             }
+            Self::LegendFormOwner => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-legend-form"
+            }
             Self::LabeledControl => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#labeled-control"
             }
@@ -1358,6 +1363,8 @@ pub enum HtmlSemanticFact {
     LabeledControl(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     /// Known(None) is established null; unavailable association remains Missing.
     LabelFormOwner(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    /// The immediate fieldset parent's owner; unavailable parent/owner remains Missing.
+    LegendFormOwner(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     /// Known(None) is the source Hidden-input null; Some(empty) is a complete empty list.
     ControlLabels(HtmlSemanticValue<Option<HtmlControlLabels>>),
     FormControls(HtmlSemanticValue<HtmlListedControlCollection>),
@@ -3142,6 +3149,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::LabelFormOwner => HtmlSemanticFact::LabelFormOwner(
                             self.label_form_owner(&request.subject)?,
                         ),
+                        HtmlSemanticQuery::LegendFormOwner => HtmlSemanticFact::LegendFormOwner(
+                            self.legend_form_owner(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::LabeledControl => HtmlSemanticFact::LabeledControl(
                             self.labeled_control(&request.subject)?,
                         ),
@@ -3480,6 +3490,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::LabelFormOwner => {
                         HtmlSemanticFact::LabelFormOwner(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::LegendFormOwner => {
+                        HtmlSemanticFact::LegendFormOwner(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::LabeledControl => {
                         HtmlSemanticFact::LabeledControl(HtmlSemanticValue::Inapplicable)

@@ -96,7 +96,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e049"></a>E049 | ins; HTML | [the-ins-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-ins-element) | [Modification datetime](#modification-datetime) and exact citation reference; no edit transition. |
 | <a id="e050"></a>E050 | kbd; HTML | [the-kbd-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-kbd-element) | Exact user input role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e051"></a>E051 | label; HTML | [the-label-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-label-element) | [Labels and form ownership](#labels-and-form-ownership): labeled control, associated form, control labels; activation/event forwarding external. |
-| <a id="e052"></a>E052 | legend; HTML | [the-legend-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-legend-element) | Fieldset first-legend disabledness exception consumed by [Control facts](#control-facts); generic fieldset caption getter not exposed. |
+| <a id="e052"></a>E052 | legend; HTML | [the-legend-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-legend-element) | [Legend form owner](#legend-form-owner) supplies the immediate fieldset parent's actual form getter; first-legend disabledness remains in [Control facts](#control-facts). Caption selection and author content conformance remain separate. |
 | <a id="e053"></a>E053 | li; HTML | [the-li-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-li-element) | [Lists](#lists) owner/value/ordinal consumes actual list participation; not CSS box geometry. |
 | <a id="e054"></a>E054 | link; HTML | [the-link-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element) | Own fetch/referrer/loading/stylesheet-disabled plus srcset; [Link destinations](#link-destinations) and [Link relationships](#link-relationships) retain local gaps; [Icon sizes](#icon-sizes) supplies local grammar/rel reports; fetching/CSSOM execution separate. |
 | <a id="e055"></a>E055 | main; HTML | [the-main-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-main-element) | Exact container for the dominant contents of the document role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
@@ -795,6 +795,21 @@ from Missing and does not prove noninherited inertness. Document is inherently
 connected. [Inert tests](tests/semantics_inert.rs) exercise source cases and
 qualification. DOM owns flat relationships; host/runtime owns modal/top-layer
 transitions. No live state or generic flattening is rebuilt here.
+
+## Legend form owner
+
+`LegendFormOwner` in [control.rs](src/semantics/control.rs) returns the actual
+form getter of an immediate HTML fieldset parent, otherwise known null. An
+established current pointer, including null, differs from unavailable association
+or parent evidence; explicit reset interpretation reuses the existing form-owner
+algorithm. This applies to every direct legend without requiring first-child or
+ordered-child facts. Generic `FormOwner(legend)` stays inapplicable.
+[The source clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-legend-form),
+[canonical explanation](README.md#captured-legend-form-owner) and
+[tests](tests/semantics_legend_form.rs) cover qualified results, consulted raw
+admission, actual session resource bounds, cancellation and atomic batches.
+No runtime association transition, caption selection or author content
+conformance is certified.
 
 ## Control facts
 

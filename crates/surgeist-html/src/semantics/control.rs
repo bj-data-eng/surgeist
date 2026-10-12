@@ -1340,6 +1340,46 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
 
+    /// HTMLLegendElement.form observes only an immediate fieldset parent.
+    /// <https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-legend-form>
+    pub(super) fn legend_form_owner(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        };
+        if !self.html_namespace(element)? {
+            return Ok(HtmlSemanticValue::Unsupported(
+                HtmlSemanticUnsupported::ForeignNamespace,
+            ));
+        }
+        if self.known(element)? != Some(KnownHtmlElement::Legend) {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        let parent = match self.parent(node)? {
+            Ok(Some(parent)) => parent,
+            Ok(None) => return Ok(HtmlSemanticValue::Known(None)),
+            Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+        };
+        let parent_node = self.node(&parent)?;
+        let HtmlCapturedNodeKind::Element(parent_element) = parent_node.kind() else {
+            return Ok(HtmlSemanticValue::Known(None));
+        };
+        if self.known(parent_element)? != Some(KnownHtmlElement::Fieldset) {
+            return Ok(HtmlSemanticValue::Known(None));
+        }
+        let owner = self.form_owner(&parent)?;
+        self.charge(1)?;
+        Ok(match owner {
+            HtmlSemanticValue::Known(owner) => HtmlSemanticValue::Known(owner.owner().cloned()),
+            HtmlSemanticValue::Missing(missing) => HtmlSemanticValue::Missing(missing),
+            HtmlSemanticValue::Inapplicable => HtmlSemanticValue::Inapplicable,
+            HtmlSemanticValue::Unsupported(reason) => HtmlSemanticValue::Unsupported(reason),
+        })
+    }
+
     fn control_label_inner(
         &mut self,
         subject: &HtmlCaptureSubjectId,

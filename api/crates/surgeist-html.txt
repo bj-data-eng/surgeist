@@ -1936,6 +1936,7 @@ pub surgeist_html::HtmlSemanticFact::IsContentEditable(surgeist_html::HtmlSemant
 pub surgeist_html::HtmlSemanticFact::LabelFormOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::LabeledControl(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::Language(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlLanguage>)
+pub surgeist_html::HtmlSemanticFact::LegendFormOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::ListOrdinal(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlInteger>>)
 pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
@@ -2074,6 +2075,7 @@ pub surgeist_html::HtmlSemanticQuery::IsContentEditable
 pub surgeist_html::HtmlSemanticQuery::LabelFormOwner
 pub surgeist_html::HtmlSemanticQuery::LabeledControl
 pub surgeist_html::HtmlSemanticQuery::Language
+pub surgeist_html::HtmlSemanticQuery::LegendFormOwner
 pub surgeist_html::HtmlSemanticQuery::ListOrdinal
 pub surgeist_html::HtmlSemanticQuery::ListOwner
 pub surgeist_html::HtmlSemanticQuery::ListStartingValue

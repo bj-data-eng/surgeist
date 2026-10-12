@@ -918,6 +918,30 @@ The query reuses labeled-control targeting and form-owner resolution; a label’
 ancestor form or authored `form` spelling does not supply this result.
 It observes one immutable capture and performs no association mutation.
 
+<a id="captured-legend-form-owner"></a>
+`LegendFormOwner` returns an exact HTML legend's immediate fieldset parent's
+actual form getter value, or known null when there is no such parent. It reuses
+[form-owner resolution](src/semantics/control.rs): an established current owner
+can be outside the legend's ancestor chain, and an established null owner remains
+known null. Only an explicit ResetAgainstCapture association selects the existing
+reset interpretation. An unavailable ordinary parent or fieldset association
+remains Missing; a template or shadow host does not replace the ordinary parent.
+
+This getter does not consult the legend's own `form` spelling, child order or
+text, and does not require it to be the first legend. Established-current
+branches need no traversal scratch or attribute-value admission; reset branches
+use the fieldset's actual consulted attributes and ordinary topology through
+the existing charged owner. Results retain capture/context/configuration
+qualification and use the session's cumulative work, actual retained capacity,
+cancellation, scratch release and atomic batch rules. No association transition
+or live DOM getter is performed.
+
+The [pinned legend form clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-legend-form)
+and [public tests](tests/semantics_legend_form.rs) define this separate query.
+Its closed Query/Fact additions are breaking; generic `FormOwner(legend)` remains
+inapplicable. Author placement, caption selection and first-legend disabledness
+remain distinct obligations.
+
 `FormControls` returns listed elements in the form’s ordinary tree whose actual
 form owner is that form, excluding Image Button inputs. `FormLength` counts the
 same membership without retaining a member vector. External controls participate
