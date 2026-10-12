@@ -1737,6 +1737,34 @@ Closed Query/Fact additions intentionally break exhaustive matches. Setter,
 create/deleteCaption, live mutation, author content conformance and layout
 remain separate.
 
+<a id="captured-table-sections"></a>
+
+`HtmlSemanticQuery::TableHead` and `TableFoot` return the first direct HTML
+`thead` or `tfoot` child of an HTML `table` as an optional capture-qualified
+subject. Each getter follows ordinary source order, even with interleaved or
+repeated sections, and selects an empty first section before later nonempty
+ones. It does not project TableModel row groups or TableRows phase order, and
+requires neither the selected section's children nor row/header facts.
+
+Complete direct order establishes `Known(Some(section))` or `Known(None)`;
+unavailable influencing table order remains `Missing`. Exact role/namespace,
+prefix independence and Inapplicable/Unsupported outcomes follow the existing
+TableCaption boundary. Nested and template/shadow-associated sections are
+excluded; attributes, text, ancestry and later names after the first witness
+are uninspected.
+
+The [paired getters](src/semantics/table.rs) share table classification and the
+same charged borrowed child-scan owner as TableCaption. Actual outer-result
+capacity, cumulative work, qualified sticky failure and atomic batches use
+the existing session; selection adds no scratch or nested-output vector.
+Fixed immutable handle/backing limits remain. The pinned
+[tHead](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-table-thead)
+and [tFoot](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-table-tfoot)
+clauses and [paired literal/resource tests](tests/semantics_table_sections.rs)
+define this readback. Closed Query/Fact additions intentionally break exhaustive
+matches; setters/create/delete, live mutation, author conformance and layout
+remain separate.
+
 `HtmlTableModel` retains semantic cell rectangles, row/column and group records,
 header associations and table-model errors. It handles delayed footers, implied
 rows, zero row spans, overlap recovery, explicit header IDs and automatic header

@@ -214,6 +214,32 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        self.table_first_child(subject, KnownHtmlElement::Caption)
+    }
+
+    /// First direct HTML thead child, or null, HTML 877d §4.9.1:
+    /// <https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead>.
+    pub(super) fn table_head(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        self.table_first_child(subject, KnownHtmlElement::Thead)
+    }
+
+    /// First direct HTML tfoot child, or null, HTML 877d §4.9.1:
+    /// <https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot>.
+    pub(super) fn table_foot(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        self.table_first_child(subject, KnownHtmlElement::Tfoot)
+    }
+
+    fn table_first_child(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        expected: KnownHtmlElement,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
         let node = self.node(subject)?;
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
             return Ok(HtmlSemanticValue::Inapplicable);
@@ -226,12 +252,10 @@ impl<'a> HtmlSemanticSession<'a> {
         if self.known(element)? != Some(KnownHtmlElement::Table) {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
-        Ok(
-            match self.first_html_element_child(subject, KnownHtmlElement::Caption)? {
-                Ok(caption) => HtmlSemanticValue::Known(caption),
-                Err(missing) => HtmlSemanticValue::Missing(missing),
-            },
-        )
+        Ok(match self.first_html_element_child(subject, expected)? {
+            Ok(child) => HtmlSemanticValue::Known(child),
+            Err(missing) => HtmlSemanticValue::Missing(missing),
+        })
     }
 
     pub(super) fn table_model(
