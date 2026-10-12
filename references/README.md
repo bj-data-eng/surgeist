@@ -125,3 +125,14 @@ notation, original notices and STATUS, and applicable document-use terms.
 The [source-edition boundary](SOURCE-EDITIONS.md#dom-delegated-xml-pseudo-attribute-grammar)
 keeps parsing an existing PI string separate from XML document processing,
 stylesheet loading and parser implementation acceptance.
+
+## HTML EOF lifecycle source
+
+The [complete spin-event-loop algorithm and notes](html-spin-event-loop--877d6146487f.md#spin-the-event-loop)
+retain checkpoint-before-wait and task-continuation ordering from the existing
+immutable HTML snapshot. This is another bounded rendering of its already
+cataloged source identity, not a new edition or identity. The
+[EOF source mapping](SOURCE-EDITIONS.md#fresh-standalone-eof-lifecycle-sources)
+separates this original algorithm from the selected fresh standalone
+construction reduction. Source retention supplies no public event loop,
+browser load lifecycle or complete parser acceptance.

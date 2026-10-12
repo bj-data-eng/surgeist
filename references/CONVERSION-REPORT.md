@@ -568,3 +568,35 @@ The current collection is **366 identities: 257 full, 95 partial and
 14 metadata-only**; all prior 364 identities, dated historical counts and
 **81 passive SVG assets** remain unchanged. Source retention does not certify
 ordinary-template implementation or whole-parser completion.
+
+## HTML spin-event-loop reference — 2026-10-12
+
+The [bounded spin reference](html-spin-event-loop--877d6146487f.md#spin-the-event-loop)
+retains the entire algorithm wrapper at full-original raw 81620–81655: seven
+outer steps, two nested two-step lists and four Note paragraphs. The complete
+HTML877d original is 14,930,614 bytes, SHA-256
+877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f.
+The byte-exact contiguous raw wrapper is 3,016 bytes, SHA-256
+a74d317d6c0fe82edf2496cb8e5c998be863cb04b2181618e4e0231b2b9fe028.
+The normalized bounded HTML input is 4,215 bytes, SHA-256
+a9ae6309c8c229a9953f02c9e01d5e826d638ae826a06f454f46154be410a6be.
+Its quoted attributes, explicit closing list tags and absolute links are
+presentation conversions, not original-byte identity.
+
+The supplied Pandoc 3.1.11.1 conversion is preserved with an expanded provenance
+wrapper, the source algorithm marker and explicit Note labels. Selected display
+text is equal under HTML-collapsible whitespace and paragraph-boundary comparison;
+the complete list structure, four note texts, 12 variable occurrences, 15 links
+and 16 ordered published IDs were checked against the full raw and normalized
+input. No source script, task scheduler, resource, code example, table or diagram
+is executed or acquired. Variables use inline-code presentation, with exact token
+text; original link labels and source-qualified destinations remain intact.
+
+Existing WHATWG attribution and complete local license apply. This is an
+additional partial rendering of the already cataloged full HTML source identity:
+366 identities remain 257 full, 95 partial and 14 metadata-only; 81 passive SVG assets
+and historical dated counts are unchanged. The
+[source mapping](SOURCE-EDITIONS.md#fresh-standalone-eof-lifecycle-sources)
+distinguishes the normative algorithm from the separately selected restricted
+construction completion. Reference retention does not certify its implementation
+or provide a browser event loop.

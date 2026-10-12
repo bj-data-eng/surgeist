@@ -518,3 +518,26 @@ complete original STATUS and copyright/editor material and include the separate
 They are not replacement technical specifications. Source retention does not
 certify PI construction, runtime-source-index accounting, cancellation or
 ordinary-template parser implementation.
+
+### Fresh standalone EOF lifecycle sources
+
+For [#1136](https://github.com/bj-data-eng/surgeist/issues/1136), the existing
+HTML877d snapshot remains the language authority. The
+[complete spin-event-loop algorithm](html-spin-event-loop--877d6146487f.md#spin-the-event-loop)
+retains the whole wrapper and all four notes at original raw 81620–81655,
+including the checkpoint before the parallel wait and queued task continuation.
+The complete original is 14,930,614 bytes, SHA-256
+877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f.
+This adds a rendering to that existing identity; neither the language revision
+nor catalog counts change.
+
+The existing [end-of-parsing clause](html-language-syntax-parser--877d6146487f--37a9ba51eed8.md#the-end),
+[readiness operation](html-language-foundations--877d6146487f--b55e73c31978.md#update-the-current-document-readiness)
+and [complete checkpoint](html-microtask-checkpoint--877d6146487f.md) remain
+separate owning source operations. The selected fresh standalone completion
+reduces structurally absent browser domains explicitly; those eliminations are
+a capability selection, not inserted normative early returns. In particular,
+the spin source's checkpoint occurs even if its wait goal is already met.
+Retaining this reference does not implement task scheduling, JavaScript stacks,
+global event delivery, loading, a live Document lifecycle or complete parser
+success. Hosted/captured/shadow domains require their own qualified facts.
