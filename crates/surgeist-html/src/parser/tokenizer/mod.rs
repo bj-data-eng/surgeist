@@ -72,6 +72,7 @@ impl Names {
     }
     fn insert(&mut self, units: &[u16], c: &mut ParseControl) -> Result<bool, ParseStop> {
         if self.nodes.len() == 0 {
+            self.nodes.reserve_geometric(c, 1)?;
             self.nodes.try_push(
                 c,
                 Branch {
@@ -97,6 +98,7 @@ impl Names {
                     next
                 } else {
                     let next = self.nodes.len();
+                    self.nodes.reserve_geometric(c, 1)?;
                     self.nodes.try_push(
                         c,
                         Branch {
@@ -833,6 +835,15 @@ impl<'source> Tokenizer<'source> {
                 LexicalDisposition::StoredAttribute
             },
         )?;
+        if !a.duplicate {
+            // Reserve while both draft buffers remain in their original owner.
+            // A denied physical layout must not consume their cleanup tickets.
+            self.tag
+                .as_mut()
+                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                .attributes
+                .reserve_geometric(c, 1)?;
+        }
         admit_record_write(size_of::<Option<DraftAttribute>>(), 1, c)?;
         let t = self
             .tag

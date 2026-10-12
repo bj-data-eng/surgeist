@@ -2701,3 +2701,226 @@ fn retained_attribute_growth_is_bounded_without_charging_duplicates_as_new_slots
         "actual unique attributes={COUNT}, observed old/new capacity slots={retained_capacity_slots}, capacity changes={capacity_changes}, all finish-span ReserveByte={finish_reserve_all_writers}"
     );
 }
+
+#[test]
+fn name_growth_clips_to_exact_physical_room_and_retains_one_short_failure() {
+    // One UTF-16 unit requires the root plus its sixteen bit prefixes.
+    let bytes = size_of::<Branch>() as u64;
+    for slots in [16, 17] {
+        let caps = limits()
+            .into_builder()
+            .auxiliary_entries(17)
+            .managed_capacity_bytes(slots * bytes)
+            .peak_transient_bytes(33 * bytes)
+            .atomic_layout_bytes(17 * bytes)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let mut names = Names::new().unwrap();
+        let result = names.insert(&[97], &mut c);
+        if slots == 17 {
+            assert_eq!(result, Ok(false));
+            assert_eq!(names.nodes.len(), 17);
+            assert_eq!(names.nodes.capacity(), 17);
+            assert_eq!(names.insert(&[97], &mut c), Ok(true));
+            // Final clipped growth retains 16 old and submits 17 new slots.
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::PeakTransientBytes)
+                    .high_water,
+                33 * bytes
+            );
+        } else {
+            let stop = result.unwrap_err();
+            assert!(matches!(
+                stop,
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::ManagedCapacityBytes,
+                    ..
+                }
+            ));
+            assert_eq!(names.nodes.len(), 16);
+            assert_eq!(names.nodes.capacity(), 16);
+            assert!(names.nodes.as_slice().iter().all(|node| !node.terminal));
+            assert_eq!(names.insert(&[97], &mut c), Err(stop));
+        }
+        assert_eq!(c.usage().actual_capacity_bytes, slots * bytes);
+        let snapshot = c.first_stop_usage().cloned();
+        let before = c.usage().clone();
+        names.nodes.release(&mut c).unwrap();
+        assert_storage_released(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.first_stop_usage(), snapshot.as_ref());
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(
+            c.usage().actual_capacity_high_water,
+            before.actual_capacity_high_water
+        );
+    }
+}
+
+#[test]
+fn name_growth_foreign_and_cancelled_owners_keep_the_actual_index_for_cleanup() {
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(), cancellation.clone());
+    let mut names = Names::new().unwrap();
+    assert_eq!(names.insert(&[97], &mut c), Ok(false));
+    let len = names.nodes.len();
+    let capacity = names.nodes.capacity();
+    let before = c.usage().clone();
+    let mut foreign = ParseControl::new(limits(), HtmlParseCancellation::new());
+    assert_eq!(
+        names.insert(&[98], &mut foreign),
+        Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+    );
+    assert_eq!(c.usage(), &before);
+    assert_eq!((names.nodes.len(), names.nodes.capacity()), (len, capacity));
+    assert_eq!(names.insert(&[97], &mut c), Ok(true));
+    cancellation.cancel();
+    assert_eq!(names.insert(&[98], &mut c), Err(ParseStop::Cancelled));
+    assert_eq!((names.nodes.len(), names.nodes.capacity()), (len, capacity));
+    let snapshot = c.first_stop_usage().unwrap().clone();
+    names.nodes.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.usage().actual_capacity_bytes, 0);
+    assert_eq!(c.first_stop_usage(), Some(&snapshot));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits),
+        snapshot.resource(HtmlParseResource::WorkCredits)
+    );
+}
+
+#[test]
+fn retained_attribute_growth_denial_keeps_draft_buffers_and_canonical_stop() {
+    let source = HtmlSource::utf8("<a x='v' >");
+    let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
+    baseline.admit_source(&source).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut baseline).unwrap();
+    prepare_quoted_attribute(&mut t, &mut baseline);
+    t.finish_attribute(&mut baseline).unwrap();
+    // Freeze transfers the two existing variable buffers unchanged and admits
+    // one known Arc<Vec<u16>> payload per name/value. Remove only those fixed
+    // payloads to derive the actual capacity at the new pre-freeze reservation.
+    let reserve_capacity =
+        baseline.usage().actual_capacity_bytes - 2 * size_of::<Vec<u16>>() as u64;
+    t.release(&mut baseline).unwrap();
+    assert_storage_released(&baseline);
+    let caps = limits()
+        .into_builder()
+        .managed_capacity_bytes(reserve_capacity - 1)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    prepare_quoted_attribute(&mut t, &mut c);
+    let before = t.tag.as_ref().unwrap().attributes.capacity();
+    let stop = t.finish_attribute(&mut c).unwrap_err();
+    assert!(matches!(
+        stop,
+        ParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            ..
+        }
+    ));
+    let tag = t.tag.as_ref().unwrap();
+    assert_eq!(
+        (tag.attributes.len(), tag.attributes.capacity()),
+        (0, before)
+    );
+    let draft = tag.attribute.as_ref().unwrap();
+    assert_eq!(draft.name.value.units(), [120]);
+    assert_eq!(draft.value.value.units(), [118]);
+    let snapshot = c.first_stop_usage().unwrap().clone();
+    assert_eq!(t.finish_attribute(&mut c), Err(stop));
+    t.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.usage().actual_capacity_bytes, 0);
+    assert_eq!(c.first_stop_usage(), Some(&snapshot));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits),
+        snapshot.resource(HtmlParseResource::WorkCredits)
+    );
+}
+
+#[test]
+fn retained_attribute_growth_preserves_live_payload_alias_and_cancelled_draft() {
+    let source = HtmlSource::utf8("<a x='v' y='w' z='u' >");
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(), cancellation.clone());
+    c.admit_source(&source).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    prepare_quoted_attribute(&mut t, &mut c);
+    t.finish_attribute(&mut c).unwrap();
+    let alias = t.tag.as_ref().unwrap().attributes.as_slice()[0]
+        .value
+        .value
+        .text()
+        .clone();
+    // Advance out of the old AfterAttributeValue state into the second draft.
+    t.step(&mut c, false).unwrap();
+    prepare_quoted_attribute(&mut t, &mut c);
+    t.finish_attribute(&mut c).unwrap();
+    assert_eq!(t.tag.as_ref().unwrap().attributes.len(), 2);
+    assert_eq!(alias.code_units(), [118]);
+    t.step(&mut c, false).unwrap();
+    prepare_quoted_attribute(&mut t, &mut c);
+    let retained = t.tag.as_ref().unwrap().attributes.capacity();
+    cancellation.cancel();
+    assert_eq!(t.finish_attribute(&mut c), Err(ParseStop::Cancelled));
+    let tag = t.tag.as_ref().unwrap();
+    assert_eq!(
+        (tag.attributes.len(), tag.attributes.capacity()),
+        (2, retained)
+    );
+    let draft = tag.attribute.as_ref().unwrap();
+    assert_eq!(draft.name.value.units(), [122]);
+    assert_eq!(draft.value.value.units(), [117]);
+    assert_eq!(alias.code_units(), [118]);
+    let snapshot = c.first_stop_usage().unwrap().clone();
+    // The caller-owned alias remains valid and is dropped before normal
+    // terminal disposal, without creating a second accounting ticket.
+    drop(alias);
+    t.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.usage().actual_capacity_bytes, 0);
+    assert_eq!(c.first_stop_usage(), Some(&snapshot));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits),
+        snapshot.resource(HtmlParseResource::WorkCredits)
+    );
+}
+
+#[test]
+fn retained_attribute_growth_foreign_controller_refuses_without_consuming_draft() {
+    let source = HtmlSource::utf8("<a x='v' >");
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    prepare_quoted_attribute(&mut t, &mut c);
+    let before = c.usage().clone();
+    let mut foreign = ParseControl::new(limits(), HtmlParseCancellation::new());
+    foreign.admit_source(&source).unwrap();
+    assert_eq!(
+        t.finish_attribute(&mut foreign),
+        Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+    );
+    assert_eq!(c.usage(), &before);
+    let tag = t.tag.as_ref().unwrap();
+    assert_eq!(tag.attributes.len(), 0);
+    let draft = tag.attribute.as_ref().unwrap();
+    assert_eq!(draft.name.value.units(), [120]);
+    assert_eq!(draft.value.value.units(), [118]);
+    t.finish_attribute(&mut c).unwrap();
+    assert_eq!(
+        text(&t.tag.as_ref().unwrap().attributes.as_slice()[0].value),
+        [118]
+    );
+    t.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.usage().actual_capacity_bytes, 0);
+    assert_eq!(foreign.usage().actual_capacity_bytes, 0);
+}
