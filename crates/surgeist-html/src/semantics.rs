@@ -47,9 +47,11 @@ pub use text_assistance::*;
 mod select;
 pub use select::*;
 mod datalist;
+mod form_name;
 mod id_author;
 mod image_map;
 mod map_name;
+pub use form_name::*;
 pub use id_author::*;
 pub use image_map::*;
 pub use map_name::*;
@@ -853,6 +855,8 @@ pub enum HtmlSemanticQuery {
     MapAreas,
     /// Independent local, own-id and same-tree map-name author observations.
     MapNameAuthor,
+    /// Independent local and actual Document forms-collection name observations.
+    FormNameAuthor,
     /// Independent local HTML id grammar and ordinary-tree DOM-ID uniqueness.
     IdAuthor,
     /// Independent img usemap author witness and first processing map.
@@ -969,6 +973,9 @@ impl HtmlSemanticQuery {
             }
             Self::UsemapReference => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-usemap"
+            }
+            Self::FormNameAuthor => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-form-name"
             }
             Self::MapNameAuthor => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name"
@@ -1306,6 +1313,7 @@ pub enum HtmlSemanticFact {
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
     MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
     MapNameAuthor(HtmlSemanticValue<HtmlMapNameAuthorReport>),
+    FormNameAuthor(HtmlSemanticValue<HtmlFormNameAuthorReport>),
     IdAuthor(HtmlSemanticValue<HtmlIdAuthorReport>),
     UsemapReference(HtmlSemanticValue<HtmlUsemapReferenceResult>),
     ConstraintValidationCandidate(HtmlSemanticValue<bool>),
@@ -2836,6 +2844,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::UsemapReference => HtmlSemanticFact::UsemapReference(
                             self.usemap_reference(&request.subject)?,
                         ),
+                        HtmlSemanticQuery::FormNameAuthor => HtmlSemanticFact::FormNameAuthor(
+                            self.form_name_author(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::MapNameAuthor => {
                             HtmlSemanticFact::MapNameAuthor(self.map_name_author(&request.subject)?)
                         }
@@ -3175,6 +3186,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::UsemapReference => {
                         HtmlSemanticFact::UsemapReference(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FormNameAuthor => {
+                        HtmlSemanticFact::FormNameAuthor(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::MapNameAuthor => {
                         HtmlSemanticFact::MapNameAuthor(HtmlSemanticValue::Inapplicable)

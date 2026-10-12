@@ -272,7 +272,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a101"></a>A101 | muted; audio; video | [attr-media-muted](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-media-muted); [media-resource](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#media-resource); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Muted default content; current muted audio state/transition external. |
 | <a id="a102"></a>A102 | name; button; fieldset; input; output; select; textarea; form-associated custom elements | [attr-fe-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-name); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [dom-form-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-elements); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Labels and form ownership](#labels-and-form-ownership): name used by qualified collection predicates; entry-list construction/HTML named-property lookup is separate from immutable membership. Radio group missingness uses exact nonempty name plus actual ordinary tree/form owner, not name alone. |
 | <a id="a103"></a>A103 | name; details | [attr-details-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-details-name); [the-details-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Details](#details): nonempty native name and exact same-ordinary-tree group, absent/empty singleton; no exclusive-open mutation. |
-| <a id="a104"></a>A104 | name; form | [attr-form-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-form-name); [dom-document-forms](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-forms); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Form name nonempty and unique in actual forms collection; no checked contextual form-name conformance producer. Native raw and form controls membership do not establish this uniqueness. |
+| <a id="a104"></a>A104 | name; form | [attr-form-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-form-name); [dom-document-forms](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-forms); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Form names](#form-names): exact nonempty native/local report and captured `FormNameAuthor` distinguish actual Document-collection uniqueness, no collection and influencing Missing; local absence/empty stay independent, with no overall conformance certificate. |
 | <a id="a105"></a>A105 | name; iframe; object | [attr-iframe-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-name); [attr-object-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-object-name); [content-navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#content-navigable); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target) names identify browsing contexts; actual iframe/object navigable name registration/current state belongs host. |
 | <a id="a106"></a>A106 | name; map | [attr-map-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name); [image-map](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#image-map); [referenced](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#referenced); [attr-hyperlink-usemap](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-usemap); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Map names](#map-names): checked local emission/report and captured `MapNameAuthor` independently supply local syntax, own-id relation and same-tree uniqueness or Missing; no overall conformance or map-processing certificate. |
 | <a id="a107"></a>A107 | name; meta | [attr-meta-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-name); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Metadata](#metadata): actual meta name selects value meaning and context constraints; names compared ASCII-insensitively, no metadata algorithm report. |
@@ -837,6 +837,37 @@ these queries add no traversal scratch or value copying. They do not perform
 validation, sanitization or a live control transition. Source:
 [input required](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-required) and
 [textarea required](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-required).
+
+## Form names
+
+A104's [local owner](src/attributes/form_name.rs) supplies exact nonempty
+`HtmlFormName`, canonical no-namespace name emission and optional `form_name`
+reports. Absence is Missing observation/recognition but locally Conforming;
+specified empty is a local violation. Whitespace, case, NULL and isolated UTF-16
+surrogates remain exact. Applicable present context remains Unchecked.
+
+[FormNameAuthor](src/semantics/form_name.rs) independently retains that local
+report and actual Document forms-collection uniqueness: NoSpecifiedName,
+NoFormsCollection, Unique, an actual qualified Duplicate witness, or influencing
+Missing. Absence skips topology/other values. An established ordinary Element/
+Fragment root supplies no forms collection; node-document and form-owner facts
+are not membership. Unknown ancestry cannot be resolved by an equal form in the
+known component. After Document membership is established, a known duplicate
+can resolve unrelated child gaps; Unique requires complete influencing coverage.
+Only exact HTML forms with specified lowercase no-namespace name compete.
+Specified-empty comparisons preserve local failure; missing name reflection is
+not an authored competitor. Ordinary foreign wrappers permit HTML descendants,
+while template/shadow/host/slot relations do not join collections.
+
+The [overview](README.md#captured-form-name-author),
+[local tests](tests/attributes_form_name.rs) and
+[captured tests](tests/semantics_form_name.rs) explain exact raw admission,
+borrowed traversal and the existing qualified session's work/storage/cancellation
+and atomic-batch contract. Known(report) is not overall conformance; a terminal
+failure cannot be rescued by a witness. Capture/standalone/cloning allocation
+stays ordinary, with no live-collection/DOM named-property/reflection/submission,
+linear-work, complete allocator/RSS or public parse/report guarantee. Closed
+Query/Fact/local-error additions are intentionally breaking.
 
 ## Labels and form ownership
 

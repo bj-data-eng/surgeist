@@ -93,6 +93,7 @@ pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
 pub surgeist_html::HtmlAttributeConformanceError::DetailsNameMustNotBeEmpty
 pub surgeist_html::HtmlAttributeConformanceError::DirnameMustNotBeEmpty
+pub surgeist_html::HtmlAttributeConformanceError::FormNameMustNotBeEmpty
 pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewline
 pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewline::code_unit_offset: usize
 pub surgeist_html::HtmlAttributeConformanceError::InvalidCustomElementName(surgeist_html::HtmlCustomElementNameError)
@@ -858,6 +859,12 @@ pub surgeist_html::HtmlFormMethodSelection::Override(surgeist_html::HtmlFormMeth
 pub surgeist_html::HtmlFormMethodSelection::Owner
 pub surgeist_html::HtmlFormMethodSelection::Owner::owner: surgeist_html::HtmlFormOwner
 pub surgeist_html::HtmlFormMethodSelection::Owner::value: surgeist_html::HtmlFormMethod
+pub enum surgeist_html::HtmlFormNameUniqueness
+pub surgeist_html::HtmlFormNameUniqueness::Duplicate(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlFormNameUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlFormNameUniqueness::NoFormsCollection
+pub surgeist_html::HtmlFormNameUniqueness::NoSpecifiedName
+pub surgeist_html::HtmlFormNameUniqueness::Unique
 pub enum surgeist_html::HtmlFormOwnerOrigin
 pub surgeist_html::HtmlFormOwnerOrigin::EstablishedCurrent
 pub surgeist_html::HtmlFormOwnerOrigin::ResetAgainstCapture
@@ -1796,6 +1803,7 @@ pub surgeist_html::HtmlSemanticFact::FormControls(surgeist_html::HtmlSemanticVal
 pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDefaultButton>>)
 pub surgeist_html::HtmlSemanticFact::FormImplicitSubmissionCondition(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImplicitSubmissionCondition>)
 pub surgeist_html::HtmlSemanticFact::FormLength(surgeist_html::HtmlSemanticValue<usize>)
+pub surgeist_html::HtmlSemanticFact::FormNameAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFormNameAuthorReport>)
 pub surgeist_html::HtmlSemanticFact::FormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFormOwner>)
 pub surgeist_html::HtmlSemanticFact::Hidden(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHiddenState>)
 pub surgeist_html::HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlHyperlinkReferrerPolicyReadback>)
@@ -1922,6 +1930,7 @@ pub surgeist_html::HtmlSemanticQuery::FormControls
 pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
 pub surgeist_html::HtmlSemanticQuery::FormImplicitSubmissionCondition
 pub surgeist_html::HtmlSemanticQuery::FormLength
+pub surgeist_html::HtmlSemanticQuery::FormNameAuthor
 pub surgeist_html::HtmlSemanticQuery::FormOwner
 pub surgeist_html::HtmlSemanticQuery::Hidden
 pub surgeist_html::HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute
@@ -3392,6 +3401,15 @@ impl surgeist_html::HtmlFormAssociation
 pub fn surgeist_html::HtmlFormAssociation::new(subject: surgeist_html::HtmlCaptureSubjectId, state: surgeist_html::HtmlFormAssociationState) -> Self
 pub fn surgeist_html::HtmlFormAssociation::state(&self) -> &surgeist_html::HtmlFormAssociationState
 pub fn surgeist_html::HtmlFormAssociation::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlFormName
+impl surgeist_html::HtmlFormName
+pub fn surgeist_html::HtmlFormName::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlFormName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAttributeConformanceError>
+pub fn surgeist_html::HtmlFormName::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlFormNameAuthorReport
+impl surgeist_html::HtmlFormNameAuthorReport
+pub fn surgeist_html::HtmlFormNameAuthorReport::local(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormName>
+pub fn surgeist_html::HtmlFormNameAuthorReport::uniqueness(&self) -> &surgeist_html::HtmlFormNameUniqueness
 pub struct surgeist_html::HtmlFormOwner
 impl surgeist_html::HtmlFormOwner
 pub fn surgeist_html::HtmlFormOwner::origin(&self) -> surgeist_html::HtmlFormOwnerOrigin
@@ -4887,6 +4905,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::form_enctype(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormEnctype>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::form_method(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::form_name(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormName>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::formenctype(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormEnctype>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::formenctype_for_button(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlButtonSubmitterContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormEnctype>, surgeist_html::HtmlValueAdmissionError>

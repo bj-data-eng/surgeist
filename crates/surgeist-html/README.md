@@ -1111,6 +1111,53 @@ their supplied classification. The result is an immutable association snapshot;
 it does not attach ElementInternals or provide a live NodeList. Traversal and
 nested output retain the semantic session's admission and atomic batch contract.
 
+<a id="captured-form-name-author"></a>
+
+[Form names](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#attr-form-name)
+are optional, but a specified value must be nonempty. The local
+[HtmlFormName and form_name report](src/attributes/form_name.rs) preserve exact
+UTF-16, including whitespace, NULL and isolated surrogates, without trimming,
+tokenization or case folding. Native emission moves the checked value into
+canonical no-namespace lowercase `name`; it does not certify uniqueness.
+Original raw admission precedes expanded-name applicability. Absence has Missing
+observation/recognition with locally Conforming author state and no default;
+supplied empty is locally nonconforming. Applicable present context remains
+Unchecked.
+
+Captured [FormNameAuthor](src/semantics/form_name.rs) retains `local()` and
+`uniqueness()` independently. `NoSpecifiedName` skips topology and competitor
+values. For every specified value, actual ordinary ancestry determines whether
+it belongs to a [Document forms collection](../../references/html-language-foundations--877d6146487f--b55e73c31978.md#dom-document-forms).
+An established Element/Fragment root yields `NoFormsCollection`; node-document
+identity, a form owner, or an equal form in a detached component cannot establish
+membership. Unknown ancestry remains `Missing`, even with a known equal form in
+that component. Once an actual Document root is proved, only other exact HTML
+forms with specified lowercase no-namespace `name` compete in ordinary tree
+order. Prefixes do not change expanded identity. Foreign wrappers do not prune
+ordinary HTML form descendants, while shadow/template contents, hosts and slots
+do not join the collection. Distinct Documents retain distinct collections.
+
+Specified empty names also compare as actual values, with their local failure
+preserved; absent names never become reflected empty competitors. `Duplicate`
+carries the actual capture-qualified form witness and can resolve unrelated
+unknown children after Document membership is proved. `Unique` requires complete
+influencing coverage; otherwise the relation remains inner `Missing`. A witness
+returns before its children/later values, but cannot rescue an earlier terminal
+stop. Known(report), including `Unique`, is not complete author conformance.
+
+The captured query shares the [semantic session](src/semantics.rs), borrowed
+traversal/comparison, whole consulted raw-value caps, checked atomic local-work
+envelope and actual scratch/nested/outer output capacity admission. Scratch is
+released on success/failure; cumulative usage and first stop remain retained.
+Late failure discards the requested batch with capture/context/host/configuration
+qualification. Builders, native/standalone construction and public cloning retain
+ordinary allocation; no per-code-unit cancellation, linear work or complete
+allocator/RSS bound is claimed. The closed Query/Fact/local-error additions are
+intentionally breaking. [Local tests](tests/attributes_form_name.rs) and
+[captured tests](tests/semantics_form_name.rs) cover these observations. Live
+collections, DOM named properties/reflection, submission, full form conformance
+and public parse/report completion remain separate.
+
 <a id="captured-map-name-author"></a>
 
 [Map names](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#attr-map-name)

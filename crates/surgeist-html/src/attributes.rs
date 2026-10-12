@@ -203,6 +203,8 @@ pub enum HtmlAttributeConformanceError {
     BdoDirectionMustBeLtrOrRtl,
     /// A specified details name must not be the empty string.
     DetailsNameMustNotBeEmpty,
+    /// A specified form name must not be the empty string.
+    FormNameMustNotBeEmpty,
     /// A specified direction submission name must not be the empty string.
     DirnameMustNotBeEmpty,
     /// An authored input placeholder contains a forbidden CR or LF code unit.
@@ -2200,8 +2202,10 @@ mod details_name;
 pub use details_name::*;
 
 mod custom_name;
+mod form_name;
 mod id;
 mod map_name;
+pub use form_name::*;
 
 mod navigable_target;
 pub use navigable_target::*;
