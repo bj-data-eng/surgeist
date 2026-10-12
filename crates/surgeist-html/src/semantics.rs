@@ -708,6 +708,8 @@ pub enum HtmlSemanticQuery {
     DatalistOptions,
     /// Ordinary HTML area descendants in source tree order.
     MapAreas,
+    /// Independent img usemap author witness and first processing map.
+    UsemapReference,
     ConstraintValidationCandidate,
     TabIndex,
     DetailsSummary,
@@ -784,6 +786,9 @@ impl HtmlSemanticQuery {
             }
             Self::DetailsNameGroup => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#details-name-group"
+            }
+            Self::UsemapReference => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-usemap"
             }
             Self::MapAreas => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-map-areas"
@@ -1089,6 +1094,7 @@ pub enum HtmlSemanticFact {
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
     MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
+    UsemapReference(HtmlSemanticValue<HtmlUsemapReferenceResult>),
     ConstraintValidationCandidate(HtmlSemanticValue<bool>),
     TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
     DetailsSummary(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
@@ -1419,13 +1425,22 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             frames.push(children);
         }
+        Ok(Ok(self.ordinary_tree_resume(frames)?))
+    }
+
+    // Resume only established ancestor iterators. A caller that skips unavailable
+    // children must retain that dependency unless an independent proof resolves it.
+    fn ordinary_tree_resume(
+        &mut self,
+        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
+    ) -> Result<Option<HtmlCaptureSubjectId>, HtmlSemanticFailure> {
         loop {
             self.charge(1)?;
             let Some(frame) = frames.last_mut() else {
-                return Ok(Ok(None));
+                return Ok(None);
             };
             if let Some(subject) = frame.next() {
-                return Ok(Ok(Some(subject)));
+                return Ok(Some(subject));
             }
             frames.pop();
         }
@@ -2527,6 +2542,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::DetailsNameGroup => HtmlSemanticFact::DetailsNameGroup(
                             self.details_name_group(&request.subject)?,
                         ),
+                        HtmlSemanticQuery::UsemapReference => HtmlSemanticFact::UsemapReference(
+                            self.usemap_reference(&request.subject)?,
+                        ),
                         HtmlSemanticQuery::MapAreas => {
                             HtmlSemanticFact::MapAreas(self.map_areas(&request.subject)?)
                         }
@@ -2796,6 +2814,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::DetailsNameGroup => {
                         HtmlSemanticFact::DetailsNameGroup(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::UsemapReference => {
+                        HtmlSemanticFact::UsemapReference(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::MapAreas => {
                         HtmlSemanticFact::MapAreas(HtmlSemanticValue::Inapplicable)

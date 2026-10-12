@@ -2098,6 +2098,9 @@ pub use navigable_target::*;
 mod textarea_wrap;
 pub use textarea_wrap::*;
 
+mod hash_name;
+pub use hash_name::*;
+
 #[cfg(test)]
 mod stylesheet_context_tests {
     use super::*;

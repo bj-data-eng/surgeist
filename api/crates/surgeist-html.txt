@@ -776,6 +776,15 @@ pub surgeist_html::HtmlGlobalInheritanceError::ValidationWork::required: usize
 impl core::error::Error for surgeist_html::HtmlGlobalInheritanceError
 impl core::fmt::Display for surgeist_html::HtmlGlobalInheritanceError
 pub fn surgeist_html::HtmlGlobalInheritanceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlHashNameAuthorForm
+pub surgeist_html::HtmlHashNameAuthorForm::LeadingHashName
+pub surgeist_html::HtmlHashNameAuthorForm::Missing
+pub surgeist_html::HtmlHashNameAuthorForm::NoLeadingHash
+pub enum surgeist_html::HtmlHashNameProcessing
+pub surgeist_html::HtmlHashNameProcessing::EmptyTail
+pub surgeist_html::HtmlHashNameProcessing::Missing
+pub surgeist_html::HtmlHashNameProcessing::Name
+pub surgeist_html::HtmlHashNameProcessing::NoHash
 pub enum surgeist_html::HtmlHidden
 pub surgeist_html::HtmlHidden::Hidden
 pub surgeist_html::HtmlHidden::UntilFound
@@ -1430,6 +1439,7 @@ pub surgeist_html::HtmlSemanticFact::TimeElement(surgeist_html::HtmlSemanticValu
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
 pub surgeist_html::HtmlSemanticFact::UsedAutocapitalizationHint(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsedAutocapitalizationHint>)
 pub surgeist_html::HtmlSemanticFact::UsedAutocorrectionState(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsedAutocorrectionState>)
+pub surgeist_html::HtmlSemanticFact::UsemapReference(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsemapReferenceResult>)
 pub enum surgeist_html::HtmlSemanticFailureKind
 pub surgeist_html::HtmlSemanticFailureKind::AllocationFailed
 pub surgeist_html::HtmlSemanticFailureKind::Attribute(surgeist_html::HtmlValueAdmissionError)
@@ -1537,6 +1547,7 @@ pub surgeist_html::HtmlSemanticQuery::TimeElement
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
 pub surgeist_html::HtmlSemanticQuery::UsedAutocapitalizationHint
 pub surgeist_html::HtmlSemanticQuery::UsedAutocorrectionState
+pub surgeist_html::HtmlSemanticQuery::UsemapReference
 impl surgeist_html::HtmlSemanticQuery
 pub fn surgeist_html::HtmlSemanticQuery::source_clause(self) -> &'static str
 pub enum surgeist_html::HtmlSemanticResource
@@ -1798,6 +1809,25 @@ pub enum surgeist_html::HtmlUsedAutocapitalizationBranch
 pub surgeist_html::HtmlUsedAutocapitalizationBranch::Control
 pub surgeist_html::HtmlUsedAutocapitalizationBranch::EditingHost
 pub surgeist_html::HtmlUsedAutocapitalizationBranch::SuppressedInput
+pub enum surgeist_html::HtmlUsemapAuthorDefinition
+pub surgeist_html::HtmlUsemapAuthorDefinition::Missing
+pub surgeist_html::HtmlUsemapAuthorDefinition::NameMatch(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlUsemapAuthorDefinition::NoLeadingHash
+pub surgeist_html::HtmlUsemapAuthorDefinition::NoNameMatch
+pub enum surgeist_html::HtmlUsemapMatch
+pub surgeist_html::HtmlUsemapMatch::Id
+pub surgeist_html::HtmlUsemapMatch::IdAndName
+pub surgeist_html::HtmlUsemapMatch::Name
+pub enum surgeist_html::HtmlUsemapProcessingResult
+pub surgeist_html::HtmlUsemapProcessingResult::EmptyTail
+pub surgeist_html::HtmlUsemapProcessingResult::Map
+pub surgeist_html::HtmlUsemapProcessingResult::Map::matched_by: surgeist_html::HtmlUsemapMatch
+pub surgeist_html::HtmlUsemapProcessingResult::Map::subject: surgeist_html::HtmlCaptureSubjectId
+pub surgeist_html::HtmlUsemapProcessingResult::Missing
+pub surgeist_html::HtmlUsemapProcessingResult::NoHash
+pub surgeist_html::HtmlUsemapProcessingResult::NoMatchingMap
+pub enum surgeist_html::HtmlUsemapSelectedTargetDiagnostic
+pub surgeist_html::HtmlUsemapSelectedTargetDiagnostic::IdOnlyMatch
 pub enum surgeist_html::HtmlValueAuthorState<T>
 pub surgeist_html::HtmlValueAuthorState::Invalid(surgeist_html::HtmlValueSyntaxError)
 pub surgeist_html::HtmlValueAuthorState::Missing
@@ -2865,6 +2895,16 @@ pub fn surgeist_html::HtmlGlobalInheritanceRevision::configuration(&self) -> u64
 pub fn surgeist_html::HtmlGlobalInheritanceRevision::new(producer: surgeist_html::HtmlGlobalInheritanceProducerId, configuration: u64, revision: u64) -> Self
 pub fn surgeist_html::HtmlGlobalInheritanceRevision::producer(&self) -> &surgeist_html::HtmlGlobalInheritanceProducerId
 pub fn surgeist_html::HtmlGlobalInheritanceRevision::revision(&self) -> u64
+pub struct surgeist_html::HtmlHashNameReferenceReport
+impl surgeist_html::HtmlHashNameReferenceReport
+pub fn surgeist_html::HtmlHashNameReferenceReport::author_form(&self) -> surgeist_html::HtmlHashNameAuthorForm
+pub fn surgeist_html::HtmlHashNameReferenceReport::author_name_units(&self) -> core::option::Option<&[u16]>
+pub fn surgeist_html::HtmlHashNameReferenceReport::author_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlHashNameReferenceReport::first_hash_offset(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlHashNameReferenceReport::processing(&self) -> surgeist_html::HtmlHashNameProcessing
+pub fn surgeist_html::HtmlHashNameReferenceReport::processing_name_units(&self) -> core::option::Option<&[u16]>
+pub fn surgeist_html::HtmlHashNameReferenceReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlHashNameReferenceReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
 pub struct surgeist_html::HtmlHostFactsRevision(_)
 impl surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlHostFactsRevision::fresh() -> Self
@@ -3869,6 +3909,18 @@ pub fn surgeist_html::HtmlUsedAutocorrectionState::input_type(&self) -> core::op
 pub fn surgeist_html::HtmlUsedAutocorrectionState::own_report(&self) -> core::option::Option<&surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocorrect>>
 pub fn surgeist_html::HtmlUsedAutocorrectionState::owner(&self) -> core::option::Option<&surgeist_html::HtmlFormOwner>
 pub fn surgeist_html::HtmlUsedAutocorrectionState::state(&self) -> surgeist_html::HtmlAutocorrect
+pub struct surgeist_html::HtmlUsemapReference
+impl surgeist_html::HtmlUsemapReference
+pub fn surgeist_html::HtmlUsemapReference::for_map_name(name: surgeist_html::HtmlSpaceToken) -> Self
+pub fn surgeist_html::HtmlUsemapReference::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlUsemapReference::map_name(&self) -> &surgeist_html::HtmlSpaceToken
+pub struct surgeist_html::HtmlUsemapReferenceResult
+impl surgeist_html::HtmlUsemapReferenceResult
+pub fn surgeist_html::HtmlUsemapReferenceResult::author_definition(&self) -> &surgeist_html::HtmlUsemapAuthorDefinition
+pub fn surgeist_html::HtmlUsemapReferenceResult::processing(&self) -> &surgeist_html::HtmlUsemapProcessingResult
+pub fn surgeist_html::HtmlUsemapReferenceResult::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlUsemapReferenceResult::reference(&self) -> &surgeist_html::HtmlHashNameReferenceReport
+pub fn surgeist_html::HtmlUsemapReferenceResult::selected_target_diagnostic(&self) -> core::option::Option<surgeist_html::HtmlUsemapSelectedTargetDiagnostic>
 pub struct surgeist_html::HtmlUtcInstant
 impl surgeist_html::HtmlUtcInstant
 pub fn surgeist_html::HtmlUtcInstant::day(&self) -> &surgeist_html::HtmlInteger
@@ -3984,6 +4036,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::formmethod(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::formmethod_for_button(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlButtonSubmitterContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::formmethod_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormMethod>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::hash_name_reference(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlHashNameReferenceReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::hidden(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlHiddenState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

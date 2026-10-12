@@ -207,6 +207,15 @@ remains with `textarea_cols`. Missing cols reports a separate context violation
 without changing Hard. These ordinary reports do not perform wrapping or
 submission and use the per-selected-value UTF-16 cap.
 
+`hash_name_reference` retains exact raw UTF-16 and borrowed suffixes, separating
+leading-`#` author form from first-`#` processing. A lone `#` has an empty author
+name and a null processing result. The local report does not prove a same-tree
+name witness. `HtmlUsemapReference::for_map_name` accepts a checked nonempty space
+token and emits literal `#` followed by its exact units as a usemap attribute;
+it makes no tree, uniqueness or serialized-character conformance claim. Local
+interpretation admits the whole selected raw value; both operations use ordinary
+allocation.
+
 `ol_start` and `li_value` report exact local signed list declarations through
 the shared integer interpreter. Whole author syntax and independent prefix
 recovery retain their own evidence, including arbitrarily large signed values.
@@ -690,6 +699,19 @@ immutable observation, using the shared traversal and semantic resource ledger.
 The [map areas clause](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#dom-map-areas)
 defines membership; this result supplies no live collection, named lookup,
 image-map selection, geometry or activation.
+
+`UsemapReference` observes an HTML img's authored usemap against its ordinary
+tree. It reports the existential map-name witness separately from the first
+map whose id or name matches the parsed suffix. A selected id-only match retains
+its diagnostic even if a later map supplies the author-definition name witness.
+For `#`, a recovered empty map name can supply that witness while processing
+still returns null. This follows the pinned [hash-name rules](../../references/html-language-foundations--877d6146487f--b55e73c31978.md#rules-for-parsing-a-hash-name-reference)
+and [image-map processing](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#image-map-processing-model).
+Once the processing result is fixed, a later known name witness can resolve an
+unavailable subtree. Influencing unavailable topology yields missing evidence.
+The query preserves
+capture qualification, whole-value admission, metered traversal and atomic batch
+results; it does not certify overall conformance or perform geometry or activation.
 
 `DetailsSummary` observes the first actual direct HTML summary child; complete
 absence returns no captured identity. `SummaryForParentDetails` tests whether a

@@ -1024,11 +1024,18 @@ impl<'a> HtmlSemanticSession<'a> {
         left: &crate::DocumentString,
         right: &crate::DocumentString,
     ) -> Result<bool, HtmlSemanticFailure> {
+        self.control_equal_units(left.code_units(), right.code_units())
+    }
+    pub(super) fn control_equal_units(
+        &mut self,
+        left: &[u16],
+        right: &[u16],
+    ) -> Result<bool, HtmlSemanticFailure> {
         self.charge(1)?;
         if left.len() != right.len() {
             return Ok(false);
         }
-        for (left, right) in left.code_units().iter().zip(right.code_units()) {
+        for (left, right) in left.iter().zip(right) {
             self.charge(2)?;
             if left != right {
                 return Ok(false);
@@ -1575,5 +1582,60 @@ impl<'a> HtmlSemanticSession<'a> {
                 flag,
             }),
         })
+    }
+}
+
+#[cfg(test)]
+mod exact_comparison_tests {
+    use super::*;
+
+    #[test]
+    fn exact_borrowed_and_shared_string_comparison_preserve_literal_action_costs() {
+        let mut builder = crate::HtmlCaptureBuilder::new(
+            crate::HtmlCaptureLimits::new(10, 100, 10, 10000, 10, 1, 1),
+            HtmlHostFactsRevision::fresh(),
+        );
+        builder
+            .add_document(
+                crate::HtmlDocumentMode::NoQuirks,
+                crate::HtmlScriptingStatus::Unavailable,
+                crate::HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let capture = builder.finish().unwrap();
+        let context = HtmlSemanticContext::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]),
+            0,
+        )
+        .unwrap();
+        for (left, right, equal, work) in [
+            ("a", "", false, 1),
+            ("", "", true, 1),
+            ("ab", "ab", true, 5),
+            ("ab", "ax", false, 5),
+            ("ab", "xb", false, 3),
+        ] {
+            let left = DocumentString::from(left);
+            let right = DocumentString::from(right);
+            for shared in [false, true] {
+                let mut session = HtmlSemanticSession::new(
+                    &capture,
+                    &context,
+                    HtmlValueInterpreter::new(100),
+                    HtmlSemanticLimits::new(work, 0, 0, 0, 0, 0),
+                    HtmlSemanticCancellation::new(),
+                )
+                .unwrap();
+                let result = if shared {
+                    session.control_equal(&left, &right)
+                } else {
+                    session.control_equal_units(left.code_units(), right.code_units())
+                };
+                assert_eq!(result.unwrap(), equal);
+                assert_eq!(session.usage().work(), work);
+            }
+        }
     }
 }
