@@ -1367,6 +1367,7 @@ pub fn surgeist_html::HtmlSemanticContextError::fmt(&self, f: &mut core::fmt::Fo
 pub enum surgeist_html::HtmlSemanticDependencies
 pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
+pub surgeist_html::HtmlSemanticFact::CheckableInputValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::ComputedHeadingLevel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedHeadingLevel>)
 pub surgeist_html::HtmlSemanticFact::ComputedWritingSuggestions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedWritingSuggestions>)
 pub surgeist_html::HtmlSemanticFact::ConstraintValidationCandidate(surgeist_html::HtmlSemanticValue<bool>)
@@ -1475,6 +1476,7 @@ pub surgeist_html::HtmlSemanticMissing::ShadowHost(surgeist_html::HtmlCaptureSub
 pub surgeist_html::HtmlSemanticMissing::SlotAssignment(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::SpellcheckDefault(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlSemanticQuery
+pub surgeist_html::HtmlSemanticQuery::CheckableInputValueMissing
 pub surgeist_html::HtmlSemanticQuery::ComputedHeadingLevel
 pub surgeist_html::HtmlSemanticQuery::ComputedWritingSuggestions
 pub surgeist_html::HtmlSemanticQuery::ConstraintValidationCandidate

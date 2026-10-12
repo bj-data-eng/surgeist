@@ -590,6 +590,20 @@ Consulted intermediate text still consumes the shared admission budget.
 This immutable Boolean observation performs no validation, selection reset or
 live validity-state transition.
 
+`CheckableInputValueMissing` observes the pinned Checkbox and Radio missingness
+conditions from supplied current checkedness. Checkbox uses required presence
+and its own checkedness. Radio includes itself, then groups other radios by
+exact nonempty name, ordinary tree and actual form owner; absent or empty own
+name yields a singleton. A disabled required radio still contributes.
+
+A checked witness can establish false despite unrelated unavailable facts.
+Otherwise the bounded summary preserves possible group membership and genuinely
+influencing missing evidence; unavailable checkedness is never inferred from
+authored checked attributes. Consulted type, name and form values retain their
+existing admission caps, traversal releases scratch on every result, and terminal
+failures preserve the session's sticky, atomic-batch contract. This immutable
+Boolean observation performs no validation or radio-state transition.
+
 `TextareaDefaultValue` concatenates exact Text data from immediate ordinary
 children only. `OutputValue` concatenates exact Text data from all ordinary
 descendants. Both preserve UTF-16 units and whitespace; output traversal includes

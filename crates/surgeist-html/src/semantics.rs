@@ -4,7 +4,7 @@
 //! table model and immutable table collections, language and directionality,
 //! meter and progress state, inertness,
 //! form owners, form/fieldset listed collections and form length, label targets, label form owners and control labels, current control flags, global inheritance, select
-//! readbacks, placeholder-label-option classification and static select missingness, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
+//! readbacks, placeholder-label-option classification and static select and checkable-input missingness, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, the static tabIndex getter,
@@ -23,6 +23,7 @@ mod inert;
 pub use inert::*;
 mod control;
 pub use control::*;
+mod checkable;
 mod control_text;
 pub use control_text::*;
 mod attribute_context;
@@ -735,6 +736,8 @@ pub enum HtmlSemanticQuery {
     SelectPlaceholderLabelOption,
     /// Static select missingness from supplied current selectedness.
     SelectValueMissing,
+    /// Static Checkbox/Radio missingness from supplied current checkedness.
+    CheckableInputValueMissing,
     ControlAutocomplete,
     SubmitterFormMethod,
     SubmitterFormEnctype,
@@ -810,6 +813,9 @@ impl HtmlSemanticQuery {
             }
             Self::OptionValue => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
+            }
+            Self::CheckableInputValueMissing => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#suffering-from-being-missing"
             }
             Self::SelectValueMissing => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-select-element"
@@ -1121,6 +1127,7 @@ pub enum HtmlSemanticFact {
     /// Known(None) establishes that no source placeholder label option exists.
     SelectPlaceholderLabelOption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     SelectValueMissing(HtmlSemanticValue<bool>),
+    CheckableInputValueMissing(HtmlSemanticValue<bool>),
     ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
     SubmitterFormMethod(HtmlSemanticValue<HtmlSubmitterFormMethod>),
     SubmitterFormEnctype(HtmlSemanticValue<HtmlSubmitterFormEnctype>),
@@ -2621,6 +2628,11 @@ impl<'a> HtmlSemanticSession<'a> {
                                 HtmlOptionReadbackOrigin::ValueAttribute,
                             )?)
                         }
+                        HtmlSemanticQuery::CheckableInputValueMissing => {
+                            HtmlSemanticFact::CheckableInputValueMissing(
+                                self.checkable_input_value_missing(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::SelectValueMissing => {
                             HtmlSemanticFact::SelectValueMissing(
                                 self.select_value_missing(&request.subject)?,
@@ -2870,6 +2882,11 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::OptionValue => {
                         HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::CheckableInputValueMissing => {
+                        HtmlSemanticFact::CheckableInputValueMissing(
+                            HtmlSemanticValue::Inapplicable,
+                        )
                     }
                     HtmlSemanticQuery::SelectValueMissing => {
                         HtmlSemanticFact::SelectValueMissing(HtmlSemanticValue::Inapplicable)
