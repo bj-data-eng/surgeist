@@ -9281,3 +9281,144 @@ fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
         assert_eq!(boundary, super::head::HeadBoundary::Form);
     }
 }
+
+#[test]
+fn ordinary_select_option_pop_clones_selected_content_with_distinct_native_children() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><select name=s><button><selectedcontent></selectedcontent></button><option value=a><b>A&amp;B</b></option><optgroup label=g><option selected value=b><i>C</i></option></optgroup></select>Z</form>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        // Dispose the actual tree, lexer and payload owners before asserting RED.
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let actual_outline = outline(document);
+    // Snapshot the real native tree without assuming the expected structure.
+    // The doctype is observed separately by mode and is skipped as an element.
+    let mut stack: Vec<_> = document.root().children().collect();
+    stack.reverse();
+    let mut elements = Vec::new();
+    let mut texts = Vec::new();
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        let children: Vec<_> = node.children().collect();
+        stack.extend(children.iter().rev().cloned());
+        match node.kind() {
+            HtmlNodeKind::Element(element) => elements.push((
+                id,
+                children,
+                element
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                element.name().local_name().code_units().to_vec(),
+                element
+                    .attributes()
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            attribute
+                                .name()
+                                .namespace()
+                                .uri()
+                                .map(|uri| uri.code_units().to_vec()),
+                            attribute.name().local_name().code_units().to_vec(),
+                            attribute.value().code_units().to_vec(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )),
+            HtmlNodeKind::Text(text) => texts.push((id, text.code_units().to_vec())),
+            _ => {}
+        }
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+
+    // HTML selectedness keeps the later selected option. Its parser pop clones
+    // the option's children into selectedcontent, not the option element itself.
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "select"),
+            (4, "button"),
+            (5, "selectedcontent"),
+            (6, "i"),
+            (7, "#C"),
+            (4, "option"),
+            (5, "b"),
+            (6, "#A&B"),
+            (4, "optgroup"),
+            (5, "option"),
+            (6, "i"),
+            (7, "#C"),
+            (3, "#Z"),
+        ])
+    );
+    let units = |value: &str| value.encode_utf16().collect::<Vec<_>>();
+    let html_namespace = units("http://www.w3.org/1999/xhtml");
+    let actual_elements: Vec<_> = elements
+        .iter()
+        .map(|(_, _, namespace, name, attributes)| {
+            (namespace.clone(), name.clone(), attributes.clone())
+        })
+        .collect();
+    let expected_elements: Vec<_> = [
+        ("html", vec![]),
+        ("head", vec![]),
+        ("body", vec![]),
+        ("form", vec![("id", "f")]),
+        ("select", vec![("name", "s")]),
+        ("button", vec![]),
+        ("selectedcontent", vec![]),
+        ("i", vec![]),
+        ("option", vec![("value", "a")]),
+        ("b", vec![]),
+        ("optgroup", vec![("label", "g")]),
+        ("option", vec![("selected", ""), ("value", "b")]),
+        ("i", vec![]),
+    ]
+    .into_iter()
+    .map(|(name, attributes)| {
+        (
+            Some(html_namespace.clone()),
+            units(name),
+            attributes
+                .into_iter()
+                .map(|(name, value)| (None::<Vec<u16>>, units(name), units(value)))
+                .collect::<Vec<_>>(),
+        )
+    })
+    .collect();
+    assert_eq!(actual_elements, expected_elements);
+    assert_eq!(
+        texts
+            .iter()
+            .map(|(_, text)| text.clone())
+            .collect::<Vec<_>>(),
+        vec![units("C"), units("A&B"), units("C"), units("Z")]
+    );
+    assert_ne!(elements[7].0, elements[12].0);
+    assert_ne!(texts[0].0, texts[2].0);
+    assert_eq!(elements[6].1, vec![elements[7].0.clone()]);
+    assert_eq!(elements[7].1, vec![texts[0].0.clone()]);
+    assert_eq!(elements[11].1, vec![elements[12].0.clone()]);
+    assert_eq!(elements[12].1, vec![texts[2].0.clone()]);
+}
