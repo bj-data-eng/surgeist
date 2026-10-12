@@ -380,11 +380,21 @@ pub fn surgeist_html::HtmlButtonType::into_attribute(self) -> surgeist_html::Att
 pub enum surgeist_html::HtmlButtonTypeState
 pub surgeist_html::HtmlButtonTypeState::Auto
 pub surgeist_html::HtmlButtonTypeState::Keyword(surgeist_html::HtmlButtonType)
+pub enum surgeist_html::HtmlCaptureDefinitionInput
+pub surgeist_html::HtmlCaptureDefinitionInput::Definition(surgeist_html::HtmlCaptureBuilderDefinition)
+pub surgeist_html::HtmlCaptureDefinitionInput::Null
+pub surgeist_html::HtmlCaptureDefinitionInput::Unavailable
 pub enum surgeist_html::HtmlCaptureError
 pub surgeist_html::HtmlCaptureError::AssociationAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::CannotBeOrdinaryChild(surgeist_html::HtmlCaptureSubjectKind)
 pub surgeist_html::HtmlCaptureError::CannotHaveChildren(surgeist_html::HtmlCaptureSubjectKind)
 pub surgeist_html::HtmlCaptureError::ChildrenAlreadyEstablished
+pub surgeist_html::HtmlCaptureError::CompleteRegistry
+pub surgeist_html::HtmlCaptureError::CustomElementContextAlreadyEstablished
+pub surgeist_html::HtmlCaptureError::CustomElementDefinitionNameMismatch
+pub surgeist_html::HtmlCaptureError::CustomElementDefinitionNamespaceMismatch
+pub surgeist_html::HtmlCaptureError::CustomElementDefinitionRequired
+pub surgeist_html::HtmlCaptureError::CustomElementSavedIsMismatch
 pub surgeist_html::HtmlCaptureError::Cycle
 pub surgeist_html::HtmlCaptureError::DocumentMismatch
 pub surgeist_html::HtmlCaptureError::DuplicateChild
@@ -407,6 +417,7 @@ pub surgeist_html::HtmlCaptureError::ParentChildConflict
 pub surgeist_html::HtmlCaptureError::RepresentationExhausted
 pub surgeist_html::HtmlCaptureError::UnavailableDefinitions(surgeist_html::HtmlCaptureRegistryId)
 pub surgeist_html::HtmlCaptureError::UnhostedFragment
+pub surgeist_html::HtmlCaptureError::UnknownDefinition
 pub surgeist_html::HtmlCaptureError::UnsupportedExecution(surgeist_html::HtmlParserScriptingMode)
 pub surgeist_html::HtmlCaptureError::WrongKind
 pub surgeist_html::HtmlCaptureError::WrongKind::actual: surgeist_html::HtmlCaptureSubjectKind
@@ -447,6 +458,13 @@ pub surgeist_html::HtmlCaptureSubjectKind::Text
 pub enum surgeist_html::HtmlCapturedChildren<'a>
 pub surgeist_html::HtmlCapturedChildren::Complete(surgeist_html::HtmlCapturedChildIds<'a>)
 pub surgeist_html::HtmlCapturedChildren::Unavailable
+pub enum surgeist_html::HtmlCapturedCustomElementDefinition
+pub surgeist_html::HtmlCapturedCustomElementDefinition::Definition(surgeist_html::HtmlCaptureDefinitionId)
+pub surgeist_html::HtmlCapturedCustomElementDefinition::Null
+pub surgeist_html::HtmlCapturedCustomElementDefinition::Unavailable
+pub enum surgeist_html::HtmlCapturedCustomElementState
+pub surgeist_html::HtmlCapturedCustomElementState::Known(surgeist_html::HtmlCustomElementState)
+pub surgeist_html::HtmlCapturedCustomElementState::Unavailable
 pub enum surgeist_html::HtmlCapturedDefinitions<'a>
 pub surgeist_html::HtmlCapturedDefinitions::Complete(&'a [surgeist_html::HtmlCustomElementDefinition])
 pub surgeist_html::HtmlCapturedDefinitions::Unavailable
@@ -640,6 +658,12 @@ pub surgeist_html::HtmlCustomElementNameError::ReservedName
 impl core::error::Error for surgeist_html::HtmlCustomElementNameError
 impl core::fmt::Display for surgeist_html::HtmlCustomElementNameError
 pub fn surgeist_html::HtmlCustomElementNameError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlCustomElementState
+pub surgeist_html::HtmlCustomElementState::Custom
+pub surgeist_html::HtmlCustomElementState::Failed
+pub surgeist_html::HtmlCustomElementState::Precustomized
+pub surgeist_html::HtmlCustomElementState::Uncustomized
+pub surgeist_html::HtmlCustomElementState::Undefined
 pub enum surgeist_html::HtmlDateOrTime
 pub surgeist_html::HtmlDateOrTime::Date(surgeist_html::HtmlDate)
 pub surgeist_html::HtmlDateOrTime::Global(surgeist_html::HtmlParsedGlobalDateTime)
@@ -1170,6 +1194,23 @@ pub surgeist_html::HtmlInputType::Week
 impl surgeist_html::HtmlInputType
 pub fn surgeist_html::HtmlInputType::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputType::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlIsAutonomousRequirement
+pub surgeist_html::HtmlIsAutonomousRequirement::Allowed
+pub surgeist_html::HtmlIsAutonomousRequirement::Forbidden(surgeist_html::HtmlCaptureDefinitionId)
+pub surgeist_html::HtmlIsAutonomousRequirement::NotRequired
+pub surgeist_html::HtmlIsAutonomousRequirement::Unavailable(surgeist_html::HtmlIsContextUnavailable)
+pub enum surgeist_html::HtmlIsContextUnavailable
+pub surgeist_html::HtmlIsContextUnavailable::AssociatedDefinition(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlIsContextUnavailable::CustomElementState(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlIsContextUnavailable::Definitions(surgeist_html::HtmlCaptureRegistryId)
+pub surgeist_html::HtmlIsContextUnavailable::Registry(surgeist_html::HtmlCaptureSubjectId)
+pub enum surgeist_html::HtmlIsDefinitionRequirement
+pub surgeist_html::HtmlIsDefinitionRequirement::BlockedByLocalSyntax
+pub surgeist_html::HtmlIsDefinitionRequirement::Matched(surgeist_html::HtmlCaptureDefinitionId)
+pub surgeist_html::HtmlIsDefinitionRequirement::NoMatchingCustomizedDefinition
+pub surgeist_html::HtmlIsDefinitionRequirement::NoMatchingCustomizedDefinition::selected: core::option::Option<surgeist_html::HtmlCaptureDefinitionId>
+pub surgeist_html::HtmlIsDefinitionRequirement::NotRequired
+pub surgeist_html::HtmlIsDefinitionRequirement::Unavailable(surgeist_html::HtmlIsContextUnavailable)
 pub enum surgeist_html::HtmlLanguageDirectionError
 pub surgeist_html::HtmlLanguageDirectionError::AssignedNodeCapacity
 pub surgeist_html::HtmlLanguageDirectionError::AssignedNodeCapacity::limit: usize
@@ -1723,6 +1764,7 @@ pub surgeist_html::HtmlSemanticFact::Indeterminateness(surgeist_html::HtmlSemant
 pub surgeist_html::HtmlSemanticFact::Inertness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::InputSuggestionsSource(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::InputTextValueMissing(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::IsAttributeAuthorContext(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlCustomElementIsAuthorContext>)
 pub surgeist_html::HtmlSemanticFact::IsContentEditable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::LabelFormOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::LabeledControl(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
@@ -1846,6 +1888,7 @@ pub surgeist_html::HtmlSemanticQuery::Indeterminateness
 pub surgeist_html::HtmlSemanticQuery::Inertness
 pub surgeist_html::HtmlSemanticQuery::InputSuggestionsSource
 pub surgeist_html::HtmlSemanticQuery::InputTextValueMissing
+pub surgeist_html::HtmlSemanticQuery::IsAttributeAuthorContext
 pub surgeist_html::HtmlSemanticQuery::IsContentEditable
 pub surgeist_html::HtmlSemanticQuery::LabelFormOwner
 pub surgeist_html::HtmlSemanticQuery::LabeledControl
@@ -2828,6 +2871,8 @@ pub fn surgeist_html::HtmlBooleanAuthorContextReadback::evidence(&self) -> &surg
 pub struct surgeist_html::HtmlBuilderNode
 pub struct surgeist_html::HtmlCapture(_)
 impl surgeist_html::HtmlCapture
+pub fn surgeist_html::HtmlCapture::definition(&self, id: &surgeist_html::HtmlCaptureDefinitionId) -> core::result::Result<&surgeist_html::HtmlCustomElementDefinition, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCapture::definition_id(&self, handle: &surgeist_html::HtmlCaptureBuilderDefinition) -> core::result::Result<surgeist_html::HtmlCaptureDefinitionId, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::definitions(&self, registry: &surgeist_html::HtmlCaptureRegistryId) -> core::result::Result<surgeist_html::HtmlCapturedDefinitions<'_>, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::document_id(&self, id: &surgeist_html::HtmlCaptureSubjectId) -> core::result::Result<surgeist_html::HtmlCaptureDocumentId, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::element_id(&self, id: &surgeist_html::HtmlCaptureSubjectId) -> core::result::Result<surgeist_html::HtmlCaptureElementId, surgeist_html::HtmlCaptureError>
@@ -2844,6 +2889,7 @@ pub fn surgeist_html::HtmlCapture::usage(&self) -> surgeist_html::HtmlCaptureUsa
 pub struct surgeist_html::HtmlCaptureBuilder
 impl surgeist_html::HtmlCaptureBuilder
 pub fn surgeist_html::HtmlCaptureBuilder::add_comment(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, text: surgeist_html::DocumentString) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::add_definition(&mut self, registry: &surgeist_html::HtmlCaptureBuilderRegistry, definition: surgeist_html::HtmlCustomElementDefinition) -> core::result::Result<surgeist_html::HtmlCaptureBuilderDefinition, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_doctype(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, doctype: surgeist_html::HtmlDoctype) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_document(&mut self, mode: surgeist_html::HtmlDocumentMode, scripting: surgeist_html::HtmlScriptingStatus, registry: surgeist_html::HtmlCaptureRegistryInput) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_element(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, name: surgeist_html::QualifiedName, attributes: surgeist_html::OrderedAttributes, is_value: surgeist_html::HtmlCapturedIsValue, registry: surgeist_html::HtmlCaptureRegistryInput) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
@@ -2852,7 +2898,9 @@ pub fn surgeist_html::HtmlCaptureBuilder::add_processing_instruction(&mut self, 
 pub fn surgeist_html::HtmlCaptureBuilder::add_registry(&mut self, definitions: core::option::Option<alloc::vec::Vec<surgeist_html::HtmlCustomElementDefinition>>) -> core::result::Result<surgeist_html::HtmlCaptureBuilderRegistry, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_shadow_root(&mut self, host: &surgeist_html::HtmlCaptureBuilderSubject, properties: surgeist_html::HtmlCapturedShadowProperties, registry: surgeist_html::HtmlCaptureRegistryInput) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_text(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, text: surgeist_html::DocumentString) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::definition_handle(&self, registry: &surgeist_html::HtmlCaptureBuilderRegistry, index: usize) -> core::result::Result<surgeist_html::HtmlCaptureBuilderDefinition, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_children(&mut self, parent: &surgeist_html::HtmlCaptureBuilderSubject, children: &[surgeist_html::HtmlCaptureBuilderSubject]) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::establish_custom_element_context(&mut self, subject: &surgeist_html::HtmlCaptureBuilderSubject, state: surgeist_html::HtmlCapturedCustomElementState, definition: surgeist_html::HtmlCaptureDefinitionInput) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_no_shadow_root(&mut self, element: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_parent(&mut self, child: &surgeist_html::HtmlCaptureBuilderSubject, parent: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_root(&mut self, child: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
@@ -2861,8 +2909,12 @@ pub fn surgeist_html::HtmlCaptureBuilder::establish_unhosted(&mut self, fragment
 pub fn surgeist_html::HtmlCaptureBuilder::finish(self) -> core::result::Result<surgeist_html::HtmlCapture, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::new(limits: surgeist_html::HtmlCaptureLimits, host_revision: surgeist_html::HtmlHostFactsRevision) -> Self
 pub fn surgeist_html::HtmlCaptureBuilder::usage(&self) -> surgeist_html::HtmlCaptureUsage
+pub struct surgeist_html::HtmlCaptureBuilderDefinition
 pub struct surgeist_html::HtmlCaptureBuilderRegistry
 pub struct surgeist_html::HtmlCaptureBuilderSubject
+pub struct surgeist_html::HtmlCaptureDefinitionId
+impl surgeist_html::HtmlCaptureDefinitionId
+pub fn surgeist_html::HtmlCaptureDefinitionId::registry(&self) -> &surgeist_html::HtmlCaptureRegistryId
 pub struct surgeist_html::HtmlCaptureDocumentId(_)
 impl surgeist_html::HtmlCaptureDocumentId
 pub fn surgeist_html::HtmlCaptureDocumentId::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
@@ -2916,6 +2968,8 @@ pub fn surgeist_html::HtmlCapturedDocument::scripting(&self) -> surgeist_html::H
 pub struct surgeist_html::HtmlCapturedElement
 impl surgeist_html::HtmlCapturedElement
 pub fn surgeist_html::HtmlCapturedElement::attributes(&self) -> &surgeist_html::OrderedAttributes
+pub fn surgeist_html::HtmlCapturedElement::custom_element_definition(&self) -> &surgeist_html::HtmlCapturedCustomElementDefinition
+pub fn surgeist_html::HtmlCapturedElement::custom_element_state(&self) -> surgeist_html::HtmlCapturedCustomElementState
 pub fn surgeist_html::HtmlCapturedElement::is_value(&self) -> &surgeist_html::HtmlCapturedIsValue
 pub fn surgeist_html::HtmlCapturedElement::name(&self) -> &surgeist_html::QualifiedName
 pub struct surgeist_html::HtmlCapturedFragment
@@ -3073,6 +3127,12 @@ pub fn surgeist_html::HtmlCustomElementDefinition::form_associated(&self) -> boo
 pub fn surgeist_html::HtmlCustomElementDefinition::local_name(&self) -> &surgeist_html::DocumentString
 pub fn surgeist_html::HtmlCustomElementDefinition::name(&self) -> &surgeist_html::DocumentString
 pub fn surgeist_html::HtmlCustomElementDefinition::new(name: surgeist_html::DocumentString, local_name: surgeist_html::DocumentString, form_associated: bool, disable_shadow: bool) -> Self
+pub struct surgeist_html::HtmlCustomElementIsAuthorContext
+impl surgeist_html::HtmlCustomElementIsAuthorContext
+pub fn surgeist_html::HtmlCustomElementIsAuthorContext::autonomous_requirement(&self) -> &surgeist_html::HtmlIsAutonomousRequirement
+pub fn surgeist_html::HtmlCustomElementIsAuthorContext::definition_requirement(&self) -> &surgeist_html::HtmlIsDefinitionRequirement
+pub fn surgeist_html::HtmlCustomElementIsAuthorContext::local(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCustomElementName>
+pub fn surgeist_html::HtmlCustomElementIsAuthorContext::source_clause(&self) -> &'static str
 pub struct surgeist_html::HtmlCustomElementName
 impl surgeist_html::HtmlCustomElementName
 pub fn surgeist_html::HtmlCustomElementName::into_is_attribute(self) -> surgeist_html::Attribute

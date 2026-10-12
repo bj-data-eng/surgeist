@@ -106,7 +106,8 @@ default checked name.
 
 Every applicable present `is` report leaves author context Unchecked, including
 locally invalid content. A matching definition and `extends` relation, and the
-prohibition on `is` on autonomous custom elements, require actual context.
+prohibition on `is` on autonomous custom elements, require the separate
+[captured author-context observation](#captured-custom-element-author-context).
 A valid hyphenated name alone does not establish registration or element
 classification. Content `is` interpretation does not set the saved runtime
 `is` value or change an existing element's behavior. Registry execution,
@@ -116,6 +117,41 @@ per-original-value cap. They supply no work, physical-memory or cancellation
 budget. The existing capture admission and custom-host classification consume
 the same borrowed predicate. [The public tests](tests/custom_names.rs) cover
 exact units, reserved names, report states and raw admission boundaries.
+
+<a id="captured-custom-element-author-context"></a>
+
+The captured [IsAttributeAuthorContext query](src/semantics/custom_element_context.rs)
+returns the local `is` report, the current matching-definition requirement and
+the autonomous-element prohibition as independent results. A Known observation
+can contain nonconformance or an unavailable obligation; it is not an overall
+author-conformance verdict. Absent current `is` makes both obligations NotRequired
+without consulting unrelated registry, state or association facts. Invalid local
+syntax blocks definition matching while the autonomous prohibition is still
+checked. Influencing unavailable facts remain typed evidence, not false results.
+
+The [capture producer](src/capture.rs) admits the actual custom-element state and
+associated-definition pair once, with capture-qualified record identities.
+An incomplete registry can retain independently known records without claiming
+a complete lookup set. Current content matching uses the element's current lookup
+registry and the source's autonomous-first definition search; it does not fall
+back to the saved runtime `is` value or an earlier association after adoption.
+The autonomous prohibition uses the actual Custom state and associated definition
+independently of that lookup. Known customized Custom associations check the
+saved name; autonomous associations may retain a different saved value.
+Neither this admission nor the query reconstructs creation or upgrade history.
+
+Capture builders retain ordinary allocation with logical retention limits.
+The [semantic session](src/semantics.rs) uses its existing qualified, finite ledger
+for raw admission, the shared borrowed local validator's checked work envelope,
+the actual definition cursor and result-vector layout. Retained capture backing
+is shared after admission; it is not a newly allocated copy charged to the
+session. Limits and cancellation failures stay sticky and discard the entire
+query batch. These bounds do not promise process RSS, a universal polling
+quantum or linear total work. [Public tests](tests/semantics_custom_element_context.rs)
+cover current versus saved values, adoption, partial registries, independent
+unavailable obligations and exact/one-short admission. Registry execution,
+constructors, upgrades, callbacks and full custom-element conformance remain
+outside this observation.
 
 Numeric authoring preserves arbitrary integer magnitude and exact decimal
 dimensions. Machine-integer projections report range failure. Floating-point

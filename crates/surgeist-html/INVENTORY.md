@@ -155,7 +155,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e108"></a>E108 | var; HTML | [the-var-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-var-element) | Exact variable role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e109"></a>E109 | video; HTML | [the-video-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-video-element) | Own media Boolean/fetch/preload/loading/dimensions/poster; decoding/playback/media UI external. |
 | <a id="e110"></a>E110 | wbr; HTML | [the-wbr-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-wbr-element) | Exact line breaking opportunity role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e111"></a>E111 | autonomous custom elements; HTML | [autonomous-custom-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#autonomous-custom-element) | [Checked local name](#custom-element-names) and exact HTML-name emission implemented; actual registry/autonomous/form-associated classification remains supplied context. |
+| <a id="e111"></a>E111 | autonomous custom elements; HTML | [autonomous-custom-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#autonomous-custom-element) | [Custom element names](#custom-element-names): checked local name and exact HTML-name emission, plus captured actual state/association and independent `is` author obligations. Registry execution and complete element conformance remain separate. |
 
 ## Contextual attribute identities
 
@@ -246,7 +246,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a075"></a>A075 | inert; HTML elements | [the-inert-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-inert-attribute); [inert](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#inert); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence) plus Inertness actual flat facts/modal qualification in [Inertness](#inertness). |
 | <a id="a076"></a>A076 | inputmode; HTML elements | [attr-inputmode](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode); [attr-inputmode-keyword-none](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-none); [attr-inputmode-keyword-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-text); [attr-inputmode-keyword-tel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-tel); [attr-inputmode-keyword-email](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-email); [attr-inputmode-keyword-url](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-url); [attr-inputmode-keyword-numeric](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-numeric); [attr-inputmode-keyword-decimal](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-decimal); [attr-inputmode-keyword-search](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-inputmode-keyword-search) | [Enumerations](#enumerations): inputmode no missing/invalid state; virtual keyboard selection external. |
 | <a id="a077"></a>A077 | integrity; link; script | [attr-link-integrity](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-integrity); [attr-script-integrity](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-integrity); [refsSRI](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#refsSRI); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | SRI grammar/cryptographic verification delegated; exact integrity metadata retained. HTML link/script placement and fetch integration need actual context, not success from string storage. |
-| <a id="a078"></a>A078 | is; HTML elements | [attr-is](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-is); [customized-built-in-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#customized-built-in-element); [valid-custom-element-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-custom-element-name) | [Custom element names](#custom-element-names): local `is` valid-name report implemented with raw-first admission; present author context remains Unchecked, with registry/extends/autonomous restrictions separate. |
+| <a id="a078"></a>A078 | is; HTML elements | [attr-is](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-is); [customized-built-in-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#customized-built-in-element); [valid-custom-element-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-custom-element-name) | [Custom element names](#custom-element-names): raw-first local `is` report remains context Unchecked for present content; captured `IsAttributeAuthorContext` separately observes current definition matching and the actual autonomous-element prohibition. |
 | <a id="a079"></a>A079 | ismap; img | [attr-img-ismap](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-img-ismap); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): ismap own true independent of prohibited author context; ImageMapAttribute checks actual a[href] ancestor. Server-side navigation coordinates external. |
 | <a id="a080"></a>A080 | itemid; HTML elements | [attr-itemid](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-itemid); [global-identifier](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#global-identifier); [valid-url-potentially-surrounded-by-spaces](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-url-potentially-surrounded-by-spaces) | [Microdata](#microdata): itemid requires itemscope/itemtype and context-relative URL; missing/failed URL means no global identifier only after real parser context. |
 | <a id="a081"></a>A081 | itemprop; HTML elements | [names:-the-itemprop-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#names:-the-itemprop-attribute); [property-names](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#property-names); [unordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#unordered-set-of-unique-space-separated-tokens); [syntax-url-absolute](https://url.spec.whatwg.org/#syntax-url-absolute); [defined-property-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#defined-property-name) | [Microdata](#microdata): nonempty unique property-name tokens and typed/untyped restrictions need item/vocabulary context; common sets alone do not certify them. |
@@ -1347,18 +1347,38 @@ other exclusions. This is local-name syntax proof, not serialized HTML syntax.
 original raw value before expanded-name applicability and uses the same checked
 name owner. Missing, Empty, locally nonconforming and Unapplied states remain
 distinct; no default name is manufactured. Every applicable present value leaves
-context Unchecked independently of lexical success. The matching definition,
-`extends` relation and autonomous-element prohibition require actual context.
-The existing [capture](src/capture.rs) registry admission and custom-host
-classification share the borrowed predicate; neither a hyphen nor this report
-proves a registered definition or form-associated classification.
+context Unchecked independently of lexical success. The separate captured
+[IsAttributeAuthorContext](src/semantics/custom_element_context.rs) observation
+supplies local syntax, current matching-definition and autonomous-prohibition
+results independently. Its Known result can retain a nonconforming or unavailable
+obligation; it does not certify complete author conformance. Absent content skips
+unrelated context facts, and invalid syntax does not suppress a known autonomous
+prohibition. Unavailable registry, definition set, state or association is typed
+evidence rather than a guessed mismatch.
 
-Native checking and raw interpretation use ordinary allocation; the raw report
-has a per-original-value UTF-16 cap, without work, physical-memory or cancellation
-guarantees. Registry, upgrade and callbacks remain actual host execution.
-Content `is` checking does not set the saved runtime `is` value or change an
-existing element's behavior. [The crate overview](README.md#checked-custom-element-names)
-and [public tests](tests/custom_names.rs) describe the implemented local surface.
+The [capture producer](src/capture.rs) retains actual state and associated
+definition, including independently known records in an incomplete registry.
+Such records do not make current lookup complete. Current content lookup uses
+the current registry and autonomous-first source order; saved runtime `is` and an
+old association after adoption do not substitute for it. Autonomous prohibition
+uses actual Custom state and association separately. Customized Custom joins
+check a known saved name; autonomous Custom associations may retain a different
+saved Value. Neither a hyphen nor a local report proves registration or
+form-associated classification.
+
+Native checking and raw interpretation use ordinary allocation, with a
+per-original-value UTF-16 cap for raw interpretation. Capture construction has
+ordinary allocation and logical retention limits. The captured semantic query
+uses the existing qualified session ledger, shared borrowed local predicate,
+charged definition cursor and actual result layout; retained capture backing is
+shared after admission. Work, output and cancellation failures are sticky and
+discard the whole batch. No process-RSS, universal polling-quantum or linear-work
+guarantee is supplied. Registry execution, construction, upgrade and callbacks
+remain with their execution owner. Content checking does not set saved runtime
+`is` or change an element's behavior. [The crate overview](README.md#captured-custom-element-author-context),
+[local tests](tests/custom_names.rs) and
+[captured tests](tests/semantics_custom_element_context.rs) describe these
+separate surfaces.
 
 ### Media queries
 

@@ -79,6 +79,56 @@ pub struct HtmlCaptureRegistryId {
     capture: HtmlCaptureId,
     index: usize,
 }
+/// A checked record handle issued by one capture builder.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlCaptureBuilderDefinition {
+    capture: HtmlCaptureId,
+    registry_index: usize,
+    record_index: usize,
+}
+/// A definition record qualified by its owning captured registry.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct HtmlCaptureDefinitionId {
+    registry: HtmlCaptureRegistryId,
+    record_index: usize,
+}
+impl HtmlCaptureDefinitionId {
+    pub fn registry(&self) -> &HtmlCaptureRegistryId {
+        &self.registry
+    }
+}
+/// Actual DOM custom-element state, independent of names and current attributes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlCustomElementState {
+    Undefined,
+    Failed,
+    Uncustomized,
+    Precustomized,
+    Custom,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlCapturedCustomElementState {
+    Known(HtmlCustomElementState),
+    Unavailable,
+}
+/// Actual association supplied independently of registry-set completeness.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HtmlCaptureDefinitionInput {
+    Null,
+    Definition(HtmlCaptureBuilderDefinition),
+    Unavailable,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HtmlCapturedCustomElementDefinition {
+    Null,
+    Definition(HtmlCaptureDefinitionId),
+    Unavailable,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CustomElementContext {
+    state: HtmlCapturedCustomElementState,
+    definition: HtmlCapturedCustomElementDefinition,
+}
 macro_rules! subject_kind_id {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
@@ -372,6 +422,13 @@ pub enum HtmlCaptureError {
     CannotBeOrdinaryChild(HtmlCaptureSubjectKind),
     Cycle,
     InvalidDefinitionName,
+    UnknownDefinition,
+    CompleteRegistry,
+    CustomElementContextAlreadyEstablished,
+    CustomElementDefinitionRequired,
+    CustomElementDefinitionNameMismatch,
+    CustomElementDefinitionNamespaceMismatch,
+    CustomElementSavedIsMismatch,
     DuplicateDefinitionName,
     LimitExceeded {
         resource: HtmlCaptureResource,
@@ -432,8 +489,21 @@ pub struct HtmlCapturedElement {
     registry: Registry,
     template: Association,
     shadow: Association,
+    custom_context: Option<CustomElementContext>,
 }
 impl HtmlCapturedElement {
+    pub fn custom_element_state(&self) -> HtmlCapturedCustomElementState {
+        self.custom_context
+            .as_ref()
+            .map_or(HtmlCapturedCustomElementState::Unavailable, |c| c.state)
+    }
+    pub fn custom_element_definition(&self) -> &HtmlCapturedCustomElementDefinition {
+        self.custom_context
+            .as_ref()
+            .map_or(&HtmlCapturedCustomElementDefinition::Unavailable, |c| {
+                &c.definition
+            })
+    }
     pub fn name(&self) -> &QualifiedName {
         &self.name
     }
@@ -567,11 +637,16 @@ impl Record {
     }
 }
 #[derive(Debug)]
+struct RegistryRecord {
+    definitions: Vec<HtmlCustomElementDefinition>,
+    complete: bool,
+}
+#[derive(Debug)]
 struct CaptureData {
     identity: HtmlCaptureId,
     host_revision: HtmlHostFactsRevision,
     records: Vec<Record>,
-    registries: Vec<Option<Vec<HtmlCustomElementDefinition>>>,
+    registries: Vec<RegistryRecord>,
     usage: HtmlCaptureUsage,
 }
 /// One immutable bounded producer capture, reusable across context queries.
@@ -832,6 +907,7 @@ impl HtmlCaptureBuilder {
                 registry,
                 template,
                 shadow: Association::Unavailable,
+                custom_context: None,
             }),
             document,
             Parent::Unavailable,
@@ -939,12 +1015,160 @@ impl HtmlCaptureBuilder {
         let usage = self.admit(0, 0, 0, units, 1, definitions.as_ref().map_or(0, Vec::len))?;
         reserve(&mut self.data.registries, 1)?;
         let index = self.data.registries.len();
-        self.data.registries.push(definitions);
+        self.data.registries.push(RegistryRecord {
+            complete: definitions.is_some(),
+            definitions: definitions.unwrap_or_default(),
+        });
         self.data.usage = usage;
         Ok(HtmlCaptureBuilderRegistry {
             capture: self.data.identity.clone(),
             index,
         })
+    }
+    /// Obtains a handle to an actual retained definition, even in a partial set.
+    pub fn definition_handle(
+        &self,
+        registry: &HtmlCaptureBuilderRegistry,
+        index: usize,
+    ) -> Result<HtmlCaptureBuilderDefinition, HtmlCaptureError> {
+        if registry.capture != self.data.identity {
+            return Err(HtmlCaptureError::ForeignBuilder);
+        }
+        if index >= self.data.registries[registry.index].definitions.len() {
+            return Err(HtmlCaptureError::UnknownDefinition);
+        }
+        Ok(HtmlCaptureBuilderDefinition {
+            capture: self.data.identity.clone(),
+            registry_index: registry.index,
+            record_index: index,
+        })
+    }
+    /// Retains one independently known record in an incomplete registry. This
+    /// does not complete the set or execute `customElements.define`.
+    pub fn add_definition(
+        &mut self,
+        registry: &HtmlCaptureBuilderRegistry,
+        definition: HtmlCustomElementDefinition,
+    ) -> Result<HtmlCaptureBuilderDefinition, HtmlCaptureError> {
+        if registry.capture != self.data.identity {
+            return Err(HtmlCaptureError::ForeignBuilder);
+        }
+        let records = &self.data.registries[registry.index];
+        if records.complete {
+            return Err(HtmlCaptureError::CompleteRegistry);
+        }
+        if validate_custom_element_name(&definition.name).is_err()
+            || definition.local_name.is_empty()
+        {
+            return Err(HtmlCaptureError::InvalidDefinitionName);
+        }
+        if records
+            .definitions
+            .iter()
+            .any(|d| d.name == definition.name)
+        {
+            return Err(HtmlCaptureError::DuplicateDefinitionName);
+        }
+        let usage = self.admit(
+            0,
+            0,
+            0,
+            add(definition.name.len(), definition.local_name.len())?,
+            0,
+            1,
+        )?;
+        let records = &mut self.data.registries[registry.index].definitions;
+        reserve(records, 1)?;
+        let record_index = records.len();
+        records.push(definition);
+        self.data.usage = usage;
+        Ok(HtmlCaptureBuilderDefinition {
+            capture: self.data.identity.clone(),
+            registry_index: registry.index,
+            record_index,
+        })
+    }
+    /// Supplies actual state and definition slots once. Saved runtime `is` is
+    /// never inferred from current content. Custom associations check the HTML
+    /// namespace/local join and customized saved-name join; autonomous records
+    /// may retain a saved value after source-defined creation and upgrade.
+    /// Association keys may belong to a different current lookup registry after
+    /// adoption. Other states retain transient/null/non-null facts independently.
+    pub fn establish_custom_element_context(
+        &mut self,
+        subject: &HtmlCaptureBuilderSubject,
+        state: HtmlCapturedCustomElementState,
+        definition: HtmlCaptureDefinitionInput,
+    ) -> Result<(), HtmlCaptureError> {
+        let index = self.index(subject)?;
+        self.require(index, HtmlCaptureSubjectKind::Element)?;
+        let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
+            unreachable!()
+        };
+        if element.custom_context.is_some() {
+            return Err(HtmlCaptureError::CustomElementContextAlreadyEstablished);
+        }
+        let definition = match definition {
+            HtmlCaptureDefinitionInput::Null => HtmlCapturedCustomElementDefinition::Null,
+            HtmlCaptureDefinitionInput::Unavailable => {
+                HtmlCapturedCustomElementDefinition::Unavailable
+            }
+            HtmlCaptureDefinitionInput::Definition(handle) => {
+                if handle.capture != self.data.identity {
+                    return Err(HtmlCaptureError::ForeignBuilder);
+                }
+                let d = self
+                    .data
+                    .registries
+                    .get(handle.registry_index)
+                    .and_then(|r| r.definitions.get(handle.record_index))
+                    .ok_or(HtmlCaptureError::UnknownDefinition)?;
+                if state == HtmlCapturedCustomElementState::Known(HtmlCustomElementState::Custom) {
+                    if !namespace(element.name.namespace(), "http://www.w3.org/1999/xhtml") {
+                        return Err(HtmlCaptureError::CustomElementDefinitionNamespaceMismatch);
+                    }
+                    if element.name.local_name() != &d.local_name {
+                        return Err(HtmlCaptureError::CustomElementDefinitionNameMismatch);
+                    }
+                    if d.name != d.local_name {
+                        match &element.is_value {
+                            HtmlCapturedIsValue::Unavailable => {}
+                            HtmlCapturedIsValue::Value(value) if value == &d.name => {}
+                            _ => return Err(HtmlCaptureError::CustomElementSavedIsMismatch),
+                        }
+                    }
+                }
+                HtmlCapturedCustomElementDefinition::Definition(HtmlCaptureDefinitionId {
+                    registry: HtmlCaptureRegistryId {
+                        capture: self.data.identity.clone(),
+                        index: handle.registry_index,
+                    },
+                    record_index: handle.record_index,
+                })
+            }
+        };
+        if state == HtmlCapturedCustomElementState::Known(HtmlCustomElementState::Custom)
+            && definition == HtmlCapturedCustomElementDefinition::Null
+        {
+            return Err(HtmlCaptureError::CustomElementDefinitionRequired);
+        }
+        let usage = self.admit(
+            0,
+            usize::from(matches!(
+                definition,
+                HtmlCapturedCustomElementDefinition::Definition(_)
+            )),
+            0,
+            0,
+            0,
+            0,
+        )?;
+        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
+            unreachable!()
+        };
+        element.custom_context = Some(CustomElementContext { state, definition });
+        self.data.usage = usage;
+        Ok(())
     }
     pub fn establish_root(
         &mut self,
@@ -1472,6 +1696,72 @@ impl HtmlCapture {
         self.require(id, HtmlCaptureSubjectKind::Fragment)?;
         Ok(HtmlCaptureFragmentId(id.clone()))
     }
+    pub fn definition_id(
+        &self,
+        handle: &HtmlCaptureBuilderDefinition,
+    ) -> Result<HtmlCaptureDefinitionId, HtmlCaptureError> {
+        if handle.capture != self.0.identity {
+            return Err(HtmlCaptureError::ForeignCapture);
+        }
+        let id = HtmlCaptureDefinitionId {
+            registry: HtmlCaptureRegistryId {
+                capture: self.0.identity.clone(),
+                index: handle.registry_index,
+            },
+            record_index: handle.record_index,
+        };
+        self.definition(&id)?;
+        Ok(id)
+    }
+    pub fn definition(
+        &self,
+        id: &HtmlCaptureDefinitionId,
+    ) -> Result<&HtmlCustomElementDefinition, HtmlCaptureError> {
+        if id.registry.capture != self.0.identity {
+            return Err(HtmlCaptureError::ForeignCapture);
+        }
+        self.0
+            .registries
+            .get(id.registry.index)
+            .and_then(|r| r.definitions.get(id.record_index))
+            .ok_or(HtmlCaptureError::UnknownDefinition)
+    }
+    pub(crate) fn definition_lookup_cursor<'a>(
+        &'a self,
+        registry: &'a HtmlCapturedRegistry,
+        local: &'a DocumentString,
+        is_value: Option<&'a DocumentString>,
+    ) -> Result<DefinitionLookupCursor<'a>, HtmlCaptureError> {
+        let (id, definitions) = match registry {
+            HtmlCapturedRegistry::Null => (None, &[][..]),
+            HtmlCapturedRegistry::Unavailable => {
+                return Err(HtmlCaptureError::MissingFact {
+                    subject: None,
+                    fact: HtmlCaptureFact::Registry,
+                });
+            }
+            HtmlCapturedRegistry::Registry(id) => {
+                let definitions = match self.definitions(id)? {
+                    HtmlCapturedDefinitions::Complete(d) => d,
+                    HtmlCapturedDefinitions::Unavailable => {
+                        return Err(HtmlCaptureError::UnavailableDefinitions(id.clone()));
+                    }
+                };
+                (Some(id), definitions)
+            }
+        };
+        Ok(DefinitionLookupCursor {
+            registry: id,
+            definitions,
+            local,
+            is_value,
+            phase: 0,
+            record: 0,
+            field: 0,
+            offset: None,
+            ready: if id.is_none() { Some(None) } else { None },
+        })
+    }
     pub fn definitions(
         &self,
         registry: &HtmlCaptureRegistryId,
@@ -1479,9 +1769,11 @@ impl HtmlCapture {
         if registry.capture != self.0.identity {
             return Err(HtmlCaptureError::ForeignCapture);
         }
-        Ok(match &self.0.registries[registry.index] {
-            Some(d) => HtmlCapturedDefinitions::Complete(d),
-            None => HtmlCapturedDefinitions::Unavailable,
+        let record = &self.0.registries[registry.index];
+        Ok(if record.complete {
+            HtmlCapturedDefinitions::Complete(&record.definitions)
+        } else {
+            HtmlCapturedDefinitions::Unavailable
         })
     }
     /// Pure pinned HTML definition lookup. It neither upgrades nor executes elements.
@@ -1502,31 +1794,14 @@ impl HtmlCapture {
         {
             return Ok(None);
         }
-        let id = match registry {
-            HtmlCapturedRegistry::Registry(id) => id,
-            _ => {
-                return Err(HtmlCaptureError::MissingFact {
-                    subject: None,
-                    fact: HtmlCaptureFact::Registry,
-                });
+        let mut cursor = self.definition_lookup_cursor(registry, local_name, is_value)?;
+        loop {
+            if let DefinitionLookupStep::Ready(id) = cursor.step() {
+                return id.as_ref().map(|id| self.definition(id)).transpose();
             }
-        };
-        let definitions = match self.definitions(id)? {
-            HtmlCapturedDefinitions::Complete(d) => d,
-            HtmlCapturedDefinitions::Unavailable => {
-                return Err(HtmlCaptureError::UnavailableDefinitions(id.clone()));
-            }
-        };
-        if let Some(d) = definitions
-            .iter()
-            .find(|d| &d.name == local_name && &d.local_name == local_name)
-        {
-            return Ok(Some(d));
         }
-        Ok(definitions
-            .iter()
-            .find(|d| Some(&d.name) == is_value && &d.local_name == local_name))
     }
+
     /// Resolves the actual inclusive ordinary ancestor form, without following hosts.
     pub fn nearest_form(
         &self,
@@ -1927,4 +2202,174 @@ fn ascii_case_equal(value: &DocumentString, literal: &str) -> bool {
             }
         })
         .eq(literal.encode_utf16())
+}
+
+/// Allocation-free ordered lookup. Every action is admitted before `step`;
+/// comparison headers cost one, each pair two, and Ready transfer one.
+pub(crate) struct DefinitionLookupCursor<'a> {
+    registry: Option<&'a HtmlCaptureRegistryId>,
+    definitions: &'a [HtmlCustomElementDefinition],
+    local: &'a DocumentString,
+    is_value: Option<&'a DocumentString>,
+    phase: u8,
+    record: usize,
+    field: u8,
+    offset: Option<usize>,
+    ready: Option<Option<usize>>,
+}
+pub(crate) enum DefinitionLookupStep {
+    Searching,
+    Ready(Option<HtmlCaptureDefinitionId>),
+}
+impl DefinitionLookupCursor<'_> {
+    pub(crate) fn next_cost(&self) -> usize {
+        if self.offset.is_some() { 2 } else { 1 }
+    }
+    fn next_record(&mut self) {
+        self.record += 1;
+        self.field = 0;
+        self.offset = None;
+    }
+    pub(crate) fn step(&mut self) -> DefinitionLookupStep {
+        if let Some(record) = self.ready {
+            return DefinitionLookupStep::Ready(record.map(|record_index| {
+                HtmlCaptureDefinitionId {
+                    registry: self.registry.expect("selected record has registry").clone(),
+                    record_index,
+                }
+            }));
+        }
+        if self.record == self.definitions.len() {
+            if self.phase == 0 && self.is_value.is_some() {
+                self.phase = 1;
+                self.record = 0;
+            } else {
+                self.ready = Some(None);
+            }
+            return DefinitionLookupStep::Searching;
+        }
+        let d = &self.definitions[self.record];
+        let (left, right) = if self.field == 0 {
+            (
+                &d.name,
+                if self.phase == 0 {
+                    self.local
+                } else {
+                    self.is_value.expect("second phase has is")
+                },
+            )
+        } else {
+            (&d.local_name, self.local)
+        };
+        match self.offset {
+            None => {
+                if left.len() != right.len() {
+                    self.next_record();
+                } else if left.is_empty() {
+                    self.field_finished();
+                } else {
+                    self.offset = Some(0);
+                }
+            }
+            Some(offset) => {
+                if left.code_units()[offset] != right.code_units()[offset] {
+                    self.next_record();
+                } else if offset + 1 == left.len() {
+                    self.field_finished();
+                } else {
+                    self.offset = Some(offset + 1);
+                }
+            }
+        }
+        DefinitionLookupStep::Searching
+    }
+    fn field_finished(&mut self) {
+        self.offset = None;
+        if self.field == 0 {
+            self.field = 1;
+        } else {
+            self.ready = Some(Some(self.record));
+        }
+    }
+}
+
+#[cfg(test)]
+mod definition_cursor_tests {
+    use super::*;
+
+    fn capture(
+        definitions: Vec<HtmlCustomElementDefinition>,
+    ) -> (HtmlCapture, HtmlCapturedRegistry) {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(0, 0, 0, 1000, 0, 1, 10),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let r = builder.add_registry(Some(definitions)).unwrap();
+        let capture = builder.finish().unwrap();
+        let registry = HtmlCapturedRegistry::Registry(capture.registry_id(&r).unwrap());
+        (capture, registry)
+    }
+    fn run(cursor: &mut DefinitionLookupCursor<'_>) -> (usize, Option<HtmlCaptureDefinitionId>) {
+        let mut work = 0;
+        loop {
+            work += cursor.next_cost();
+            if let DefinitionLookupStep::Ready(id) = cursor.step() {
+                return (work, id);
+            }
+        }
+    }
+    #[test]
+    fn autonomous_lookup_charges_two_exact_comparisons_then_ready_transfer() {
+        let (capture, registry) = capture(vec![HtmlCustomElementDefinition::new(
+            "x-host".into(),
+            "x-host".into(),
+            false,
+            false,
+        )]);
+        let local = DocumentString::from("x-host");
+        let current = DocumentString::from("x-other");
+        let mut cursor = capture
+            .definition_lookup_cursor(&registry, &local, Some(&current))
+            .unwrap();
+        // Two six-unit equality checks: 2*(one header + 2*6), then Ready.
+        let (work, id) = run(&mut cursor);
+        assert_eq!(work, 27);
+        assert_eq!(capture.definition(&id.unwrap()).unwrap().name(), &local);
+    }
+    #[test]
+    fn second_lookup_search_keeps_header_short_circuit_and_transition_costs() {
+        let (capture, registry) = capture(vec![HtmlCustomElementDefinition::new(
+            "x-good".into(),
+            "button".into(),
+            false,
+            false,
+        )]);
+        let local = DocumentString::from("button");
+        let current = DocumentString::from("x-good");
+        let (work, id) = run(&mut capture
+            .definition_lookup_cursor(&registry, &local, Some(&current))
+            .unwrap());
+        // First field mismatches on its first pair:3; phase transition:1;
+        // two six-unit checks:26; Ready transfer:1.
+        assert_eq!(work, 31);
+        assert_eq!(capture.definition(&id.unwrap()).unwrap().name(), &current);
+    }
+    #[test]
+    fn null_and_complete_empty_lookup_have_distinct_admitted_search_completion() {
+        let (capture, registry) = capture(vec![]);
+        let local = DocumentString::from("button");
+        let current = DocumentString::from("x-good");
+        assert_eq!(
+            run(&mut capture
+                .definition_lookup_cursor(&registry, &local, Some(&current))
+                .unwrap()),
+            (3, None)
+        );
+        assert_eq!(
+            run(&mut capture
+                .definition_lookup_cursor(&HtmlCapturedRegistry::Null, &local, None)
+                .unwrap()),
+            (1, None)
+        );
+    }
 }

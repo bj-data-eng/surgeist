@@ -63,6 +63,8 @@ mod form_default;
 pub use form_default::*;
 mod natural_dimensions;
 pub use natural_dimensions::*;
+mod custom_element_context;
+pub use custom_element_context::*;
 mod image_dimensions;
 pub use image_dimensions::*;
 
@@ -786,6 +788,7 @@ impl HtmlSemanticCancellation {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticQuery {
+    IsAttributeAuthorContext,
     ImageDimensions,
     EmbeddedDimensionAuthorConformance,
     Hidden,
@@ -887,6 +890,9 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::IsAttributeAuthorContext => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-is"
+            }
             Self::ImageDimensions => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#determine-dimensions"
             }
@@ -1227,6 +1233,7 @@ impl HtmlOptionCollection {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlSemanticFact {
+    IsAttributeAuthorContext(HtmlSemanticValue<HtmlCustomElementIsAuthorContext>),
     ImageDimensions(HtmlSemanticValue<HtmlImageDimensionReadback>),
     EmbeddedDimensionAuthorConformance(HtmlSemanticValue<HtmlEmbeddedDimensionAuthorReadback>),
     Hidden(HtmlSemanticValue<HtmlHiddenState>),
@@ -2574,8 +2581,17 @@ impl<'a> HtmlSemanticSession<'a> {
             let node = self.node(&request.subject)?;
             let fact = match node.kind() {
                 HtmlCapturedNodeKind::Element(element) => {
-                    let foreign = !self.html_namespace(element)?;
+                    let foreign = if request.query == HtmlSemanticQuery::IsAttributeAuthorContext {
+                        false
+                    } else {
+                        !self.html_namespace(element)?
+                    };
                     match request.query {
+                        HtmlSemanticQuery::IsAttributeAuthorContext => {
+                            HtmlSemanticFact::IsAttributeAuthorContext(
+                                self.is_attribute_author_context(&request.subject, element)?,
+                            )
+                        }
                         HtmlSemanticQuery::ImageDimensions => {
                             HtmlSemanticFact::ImageDimensions(if foreign {
                                 HtmlSemanticValue::Inapplicable
@@ -2976,6 +2992,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 _ => match request.query {
+                    HtmlSemanticQuery::IsAttributeAuthorContext => {
+                        HtmlSemanticFact::IsAttributeAuthorContext(HtmlSemanticValue::Inapplicable)
+                    }
                     HtmlSemanticQuery::ImageDimensions => {
                         HtmlSemanticFact::ImageDimensions(HtmlSemanticValue::Inapplicable)
                     }
