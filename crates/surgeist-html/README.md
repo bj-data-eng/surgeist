@@ -449,6 +449,25 @@ image dimensions, map association, layering or hit testing. Native values and
 reports use ordinary Rust allocation and the interpreter's per-value UTF-16
 admission cap; they supply no semantic-session ledger or cancellation guarantee.
 
+`input_image_attributes` retains the exact input `alt` and `src` attributes;
+`input_image_attributes_for_state` selects the Image Button requirements using
+the actual InputType classification. It checks required nonempty `alt` and
+nonempty `src` after borrowing its ASCII-edge-stripped reference. Unknown state
+leaves those checks Unchecked. `HtmlInputImageAttributes` stores the original
+UTF-16 strings and emits `type=image`, `alt` and `src`; it does not certify label
+adequacy, URL validity or image-resource restrictions.
+
+`embedded_dimension_attributes` reports local `width` and `height` author grammar
+and exact nonnegative-integer prefix recovery on img/iframe/embed/object/video.
+`embedded_dimension_attributes_with_context` also observes actual input state
+or a source element's actual parent: input requires Image, and source requires
+an HTML picture parent. Unavailable parent evidence remains distinct from an
+established other parent or no parent. Missing and failed dimensions receive no
+canvas defaults. These [local image values](src/attributes/image_values.rs) use
+ordinary allocation and per-original-value UTF-16 admission; natural-resource
+omission, coupled dimension relations and determine-dimensions processing remain
+required separate operations.
+
 `modification_datetime` interprets `datetime` on HTML `ins` and `del` using the
 [pinned modification clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#attr-mod-datetime).
 Its report keeps strict date-with-optional-time authorship separate from common

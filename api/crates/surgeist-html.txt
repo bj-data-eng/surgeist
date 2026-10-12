@@ -117,6 +117,7 @@ pub surgeist_html::HtmlAttributeContextConformanceError::ImageMapRequiresAncesto
 pub surgeist_html::HtmlAttributeContextConformanceError::InputStateForbidsAttribute
 pub surgeist_html::HtmlAttributeContextConformanceError::ReferrerPolicyRequiresHref
 pub surgeist_html::HtmlAttributeContextConformanceError::ScriptContextForbidsAttribute
+pub surgeist_html::HtmlAttributeContextConformanceError::SourceDimensionsRequirePictureParent
 pub surgeist_html::HtmlAttributeContextConformanceError::StylesheetDisabledRequiresStylesheetRel
 pub surgeist_html::HtmlAttributeContextConformanceError::TextareaHardWrapRequiresCols
 pub enum surgeist_html::HtmlAttributeObservation
@@ -723,6 +724,9 @@ pub surgeist_html::HtmlElementReferenceKey::PopoverTarget
 pub enum surgeist_html::HtmlElementReferenceOrigin
 pub surgeist_html::HtmlElementReferenceOrigin::ContentAttribute
 pub surgeist_html::HtmlElementReferenceOrigin::ExplicitPointer
+pub enum surgeist_html::HtmlEmbeddedDimensionContext
+pub surgeist_html::HtmlEmbeddedDimensionContext::InputState(surgeist_html::HtmlInputType)
+pub surgeist_html::HtmlEmbeddedDimensionContext::SourceParent(surgeist_html::HtmlImageSourceParent)
 pub enum surgeist_html::HtmlEnterKeyHint
 pub surgeist_html::HtmlEnterKeyHint::Done
 pub surgeist_html::HtmlEnterKeyHint::Enter
@@ -860,11 +864,26 @@ pub surgeist_html::HtmlIconSizeError::ZeroDimension
 impl core::error::Error for surgeist_html::HtmlIconSizeError
 impl core::fmt::Display for surgeist_html::HtmlIconSizeError
 pub fn surgeist_html::HtmlIconSizeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlImageAttributeAuthorState
+pub surgeist_html::HtmlImageAttributeAuthorState::Conforming
+pub surgeist_html::HtmlImageAttributeAuthorState::Missing
+pub surgeist_html::HtmlImageAttributeAuthorState::Nonconforming(surgeist_html::HtmlImageAttributeConformanceError)
+pub surgeist_html::HtmlImageAttributeAuthorState::Unapplied
+pub surgeist_html::HtmlImageAttributeAuthorState::Unchecked
+pub enum surgeist_html::HtmlImageAttributeConformanceError
+pub surgeist_html::HtmlImageAttributeConformanceError::CommonValue(surgeist_html::HtmlValueFailure)
+pub surgeist_html::HtmlImageAttributeConformanceError::EmptyAlt
+pub surgeist_html::HtmlImageAttributeConformanceError::EmptySource
+pub surgeist_html::HtmlImageAttributeConformanceError::RequiredAttributeMissing
 pub enum surgeist_html::HtmlImageControlsAttributeContext
 pub surgeist_html::HtmlImageControlsAttributeContext::AltEmpty
 pub surgeist_html::HtmlImageControlsAttributeContext::AltMissing
 pub surgeist_html::HtmlImageControlsAttributeContext::AltNonempty
 pub surgeist_html::HtmlImageControlsAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImageExternalConformance
+pub surgeist_html::HtmlImageExternalConformance::NotRequired
+pub surgeist_html::HtmlImageExternalConformance::Unapplied
+pub surgeist_html::HtmlImageExternalConformance::Unchecked
 pub enum surgeist_html::HtmlImageMapAncestorEvidence
 pub surgeist_html::HtmlImageMapAncestorEvidence::AncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAncestorEvidence::AncestorAnchorWithHref::ancestor: surgeist_html::HtmlCaptureSubjectId
@@ -875,6 +894,10 @@ pub enum surgeist_html::HtmlImageMapAttributeContext
 pub surgeist_html::HtmlImageMapAttributeContext::AncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAttributeContext::NoAncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImageSourceParent
+pub surgeist_html::HtmlImageSourceParent::NoParent
+pub surgeist_html::HtmlImageSourceParent::Parent(surgeist_html::QualifiedName)
+pub surgeist_html::HtmlImageSourceParent::Unavailable
 pub enum surgeist_html::HtmlImplicitSubmissionBlockingFields
 pub surgeist_html::HtmlImplicitSubmissionBlockingFields::Multiple
 pub surgeist_html::HtmlImplicitSubmissionBlockingFields::One
@@ -911,6 +934,12 @@ pub surgeist_html::HtmlInputColorSpace::LimitedSrgb
 impl surgeist_html::HtmlInputColorSpace
 pub fn surgeist_html::HtmlInputColorSpace::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputColorSpace::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlInputImageAttributeError
+pub surgeist_html::HtmlInputImageAttributeError::EmptyAlt
+pub surgeist_html::HtmlInputImageAttributeError::EmptySource
+impl core::error::Error for surgeist_html::HtmlInputImageAttributeError
+impl core::fmt::Display for surgeist_html::HtmlInputImageAttributeError
+pub fn surgeist_html::HtmlInputImageAttributeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlInputMode
 pub surgeist_html::HtmlInputMode::Decimal
 pub surgeist_html::HtmlInputMode::Email
@@ -2980,6 +3009,17 @@ impl surgeist_html::HtmlElementReferenceFactsLimits
 pub fn surgeist_html::HtmlElementReferenceFactsLimits::new(record_capacity: usize, validation_work: usize) -> Self
 pub fn surgeist_html::HtmlElementReferenceFactsLimits::record_capacity(self) -> usize
 pub fn surgeist_html::HtmlElementReferenceFactsLimits::validation_work(self) -> usize
+pub struct surgeist_html::HtmlEmbeddedDimensionAttributeReport
+impl surgeist_html::HtmlEmbeddedDimensionAttributeReport
+pub fn surgeist_html::HtmlEmbeddedDimensionAttributeReport::context(&self) -> core::option::Option<&surgeist_html::HtmlEmbeddedDimensionContext>
+pub fn surgeist_html::HtmlEmbeddedDimensionAttributeReport::height(&self) -> &surgeist_html::HtmlEmbeddedDimensionReport
+pub fn surgeist_html::HtmlEmbeddedDimensionAttributeReport::width(&self) -> &surgeist_html::HtmlEmbeddedDimensionReport
+pub struct surgeist_html::HtmlEmbeddedDimensionReport
+impl surgeist_html::HtmlEmbeddedDimensionReport
+pub fn surgeist_html::HtmlEmbeddedDimensionReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
+pub fn surgeist_html::HtmlEmbeddedDimensionReport::author(&self) -> surgeist_html::HtmlImageAttributeAuthorState
+pub fn surgeist_html::HtmlEmbeddedDimensionReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>>
+pub fn surgeist_html::HtmlEmbeddedDimensionReport::recovered(&self) -> core::option::Option<&surgeist_html::HtmlNonNegativeInteger>
 pub struct surgeist_html::HtmlFlatTreeProducerId(_)
 impl surgeist_html::HtmlFlatTreeProducerId
 pub fn surgeist_html::HtmlFlatTreeProducerId::fresh() -> Self
@@ -3168,6 +3208,24 @@ pub fn surgeist_html::HtmlInputControlState::dirty_value(&self) -> core::option:
 pub fn surgeist_html::HtmlInputControlState::indeterminateness(&self) -> core::option::Option<bool>
 pub fn surgeist_html::HtmlInputControlState::new(subject: surgeist_html::HtmlCaptureSubjectId, checkedness: core::option::Option<bool>, dirty_checkedness: core::option::Option<bool>, dirty_value: core::option::Option<bool>, indeterminateness: core::option::Option<bool>) -> Self
 pub fn surgeist_html::HtmlInputControlState::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlInputImageAttributeReport
+impl surgeist_html::HtmlInputImageAttributeReport
+pub fn surgeist_html::HtmlInputImageAttributeReport::alt(&self) -> &surgeist_html::HtmlInputImageStringReport
+pub fn surgeist_html::HtmlInputImageAttributeReport::src(&self) -> &surgeist_html::HtmlInputImageStringReport
+pub struct surgeist_html::HtmlInputImageAttributes
+impl surgeist_html::HtmlInputImageAttributes
+pub fn surgeist_html::HtmlInputImageAttributes::alt(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlInputImageAttributes::into_attributes(self) -> [surgeist_html::Attribute; 3]
+pub fn surgeist_html::HtmlInputImageAttributes::new(alt: impl core::convert::Into<surgeist_html::DocumentString>, src: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlInputImageAttributeError>
+pub fn surgeist_html::HtmlInputImageAttributes::src(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlInputImageStringReport
+impl surgeist_html::HtmlInputImageStringReport
+pub fn surgeist_html::HtmlInputImageStringReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
+pub fn surgeist_html::HtmlInputImageStringReport::author(&self) -> surgeist_html::HtmlImageAttributeAuthorState
+pub fn surgeist_html::HtmlInputImageStringReport::label_adequacy(&self) -> surgeist_html::HtmlImageExternalConformance
+pub fn surgeist_html::HtmlInputImageStringReport::resource_conformance(&self) -> surgeist_html::HtmlImageExternalConformance
+pub fn surgeist_html::HtmlInputImageStringReport::source_reference(&self) -> core::option::Option<&[u16]>
+pub fn surgeist_html::HtmlInputImageStringReport::url_conformance(&self) -> surgeist_html::HtmlImageExternalConformance
 pub struct surgeist_html::HtmlInputNumericAttributeReport
 impl surgeist_html::HtmlInputNumericAttributeReport
 pub fn surgeist_html::HtmlInputNumericAttributeReport::any_keyword(&self) -> bool
@@ -4294,6 +4352,11 @@ pub fn surgeist_html::HtmlValueInterpreter::placeholder(&self, element: &surgeis
 pub fn surgeist_html::HtmlValueInterpreter::placeholder_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::DocumentString>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::draggable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlDraggableState>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::embedded_dimension_attributes(&self, element: &surgeist_html::QualifiedName, width: core::option::Option<&surgeist_html::Attribute>, height: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlEmbeddedDimensionAttributeReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::embedded_dimension_attributes_with_context(&self, element: &surgeist_html::QualifiedName, width: core::option::Option<&surgeist_html::Attribute>, height: core::option::Option<&surgeist_html::Attribute>, context: &surgeist_html::HtmlEmbeddedDimensionContext) -> core::result::Result<surgeist_html::HtmlEmbeddedDimensionAttributeReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::input_image_attributes(&self, element: &surgeist_html::QualifiedName, alt: core::option::Option<&surgeist_html::Attribute>, src: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlInputImageAttributeReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::input_image_attributes_for_state(&self, element: &surgeist_html::QualifiedName, state: surgeist_html::HtmlInputType, alt: core::option::Option<&surgeist_html::Attribute>, src: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlInputImageAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::enterkeyhint(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlEnterKeyHint>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

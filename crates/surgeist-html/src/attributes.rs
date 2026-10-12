@@ -155,6 +155,8 @@ pub enum HtmlAttributeContextConformanceError {
     BlockingRequiresStylesheetOrExpectRel,
     /// Specified link icon sizes require icon or apple-touch-icon rel.
     IconSizesRequireIconRel,
+    /// Source dimension attributes require an actual HTML picture parent.
+    SourceDimensionsRequirePictureParent,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -374,6 +376,21 @@ impl<T> HtmlAttributeReport<T> {
                 SuppliedContext::Input(state) => input_state_source(*state),
                 _ => INPUT_SOURCE,
             });
+        }
+        if self.rule.source == image_values::ALT_SOURCE
+            || self.rule.source == image_values::SRC_SOURCE
+            || self.rule.source == image_values::DIMENSIONS_SOURCE
+        {
+            match KnownHtmlElement::from_name(&self.element) {
+                Some(KnownHtmlElement::Input) => {
+                    return Some(match &self.supplied_context {
+                        SuppliedContext::Input(state) => input_state_source(*state),
+                        _ => INPUT_SOURCE,
+                    });
+                }
+                Some(KnownHtmlElement::Source) => return Some(image_values::SOURCE_ELEMENT_SOURCE),
+                _ => {}
+            }
         }
         if self.rule.attribute == KnownHtmlAttribute::Colorspace
             && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Input)
@@ -2197,6 +2214,9 @@ pub use encoding_label::*;
 
 mod table_header_scope;
 pub use table_header_scope::*;
+
+mod image_values;
+pub use image_values::*;
 
 #[cfg(test)]
 mod stylesheet_context_tests {
