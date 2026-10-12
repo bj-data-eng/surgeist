@@ -184,6 +184,24 @@ impl ParseControl {
     pub(crate) fn owns_request(&self, cancellation: &HtmlParseCancellation) -> bool {
         self.cancellation.same_handle(cancellation)
     }
+    /// Fixed stopped-prefix observation. None means source admission never
+    /// installed a binding; it is not an invented zero-length source.
+    pub(crate) fn stopped_source_binding(
+        &self,
+    ) -> Result<Option<&(HtmlSourceId, HtmlSourceCoordinates)>, ParseStop> {
+        if self.terminal.is_none() {
+            return Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning));
+        }
+        Ok(self.source.as_ref())
+    }
+    /// Cleanup-only move of the actual optional binding, including a prefix
+    /// stopped before source admission. The caller preflights its owning slots.
+    pub(crate) fn take_stopped_optional_source_binding(
+        &mut self,
+    ) -> Result<Option<(HtmlSourceId, HtmlSourceCoordinates)>, ParseStop> {
+        self.stopped_source_binding()?;
+        Ok(self.source.take())
+    }
     /// A stopped, cleaned consumer moves the already-admitted source binding.
     /// Refusal leaves it intact; no polling, charging or handle clone follows
     /// stop. The caller retains this controller for diagnostic ticket disposal.
@@ -1910,6 +1928,37 @@ mod tests {
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
     }
     use super::*;
+
+    #[test]
+    fn optional_source_binding_move_refuses_running_control_and_preserves_stopped_usage() {
+        let source = HtmlSource::utf8("x");
+        let request = crate::HtmlDocumentParseRequest::offline(
+            source.clone(),
+            crate::parser::tree_builder::tests::limits(100),
+        );
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        assert_eq!(
+            c.take_stopped_optional_source_binding(),
+            Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning))
+        );
+        assert!(c.stop().is_none());
+        c.require_source(&source).unwrap();
+        request.cancellation().cancel();
+        assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
+        let first = c.first_stop_usage().unwrap().clone();
+        let current = c.usage().clone();
+        assert_eq!(
+            c.stopped_source_binding().unwrap().unwrap().0,
+            *source.identity()
+        );
+        let binding = c.take_stopped_optional_source_binding().unwrap().unwrap();
+        assert_eq!(&binding.0, source.identity());
+        assert_eq!(binding.1, source.coordinates());
+        assert!(c.stopped_source_binding().unwrap().is_none());
+        assert_eq!(c.usage(), &current);
+        assert_eq!(c.first_stop_usage(), Some(&first));
+    }
     use crate::DocumentString;
 
     #[test]

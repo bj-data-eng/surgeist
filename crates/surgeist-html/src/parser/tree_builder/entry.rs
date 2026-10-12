@@ -11,6 +11,25 @@ pub(crate) enum EntryRejection {
     DocumentInitialization,
     ExecutionProfile,
 }
+impl EntryRejection {
+    pub(super) fn for_request(request: &HtmlDocumentParseRequest) -> Option<Self> {
+        if request.capture().is_some() || request.document().is_some() {
+            Some(Self::DocumentInitialization)
+        } else if request.scripting_mode() != HtmlParserScriptingMode::Disabled
+            || request.allow_declarative_shadow_roots()
+        {
+            Some(Self::ExecutionProfile)
+        } else {
+            None
+        }
+    }
+    pub(super) fn error(self) -> StandaloneError {
+        match self {
+            Self::DocumentInitialization => StandaloneError::UnsupportedDocumentInitialization,
+            Self::ExecutionProfile => StandaloneError::UnsupportedExecutionProfile,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum InitializationFailure {
     Rejected(EntryRejection),
@@ -37,15 +56,13 @@ pub(crate) struct OrdinaryDocumentEntry<'source> {
 }
 impl<'source> OrdinaryDocumentEntry<'source> {
     pub(crate) fn new(request: &'source HtmlDocumentParseRequest) -> Self {
-        let rejection = if request.capture().is_some() || request.document().is_some() {
-            Some(EntryRejection::DocumentInitialization)
-        } else if request.scripting_mode() != HtmlParserScriptingMode::Disabled
-            || request.allow_declarative_shadow_roots()
-        {
-            Some(EntryRejection::ExecutionProfile)
-        } else {
-            None
-        };
+        Self::create(request, false)
+    }
+    pub(super) fn owned(request: &'source HtmlDocumentParseRequest) -> Self {
+        Self::create(request, true)
+    }
+    fn create(request: &'source HtmlDocumentParseRequest, owned: bool) -> Self {
+        let rejection = EntryRejection::for_request(request);
         let mut entry = Self {
             source: request.source(),
             driver: None,
@@ -72,7 +89,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             failed_evidence: None,
             failure_usage: None,
         });
-        if entry.prepare().is_err() {
+        if entry.prepare(owned).is_err() {
             let driver = entry.driver.as_mut().expect("actual initialization guard");
             // Resource/cancellation failure already owns the first stop. An
             // unexpected nonterminal stage error cannot leave a runnable prefix.
@@ -87,11 +104,21 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         }
         entry
     }
-    fn prepare(&mut self) -> Result<(), StandaloneError> {
+    fn prepare(&mut self, owned: bool) -> Result<(), StandaloneError> {
         let driver = self.driver.as_mut().expect("actual initialization guard");
         let c = &mut driver.control;
         // Preserve source-admission precedence and use actual compiled layouts.
         c.admit_source(driver.source)?;
+        if owned {
+            let (bytes, writes) = super::seal::initialization_bootstrap_layout();
+            write(bytes, writes, c)?;
+            c.charge(
+                super::super::control::WorkCategory::InspectByte,
+                super::seal::initialization_qualification_bytes() as u64,
+            )?;
+            c.charge(super::super::control::WorkCategory::ProviderCall, 3)?;
+            c.charge(super::super::control::WorkCategory::RecordVisit, 6)?;
+        }
         write(size_of::<StandaloneDocumentDriver>(), 11, c)?;
         write(
             size_of::<Option<ParseUsage>>()
@@ -248,6 +275,106 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         }
         Ok(())
     }
+    /// Move a cleaned stopped prefix into the caller's fixed bootstrap slot.
+    /// Both slots and the admitted binding survive every qualification/cleanup
+    /// refusal. No polling, charging, cloning or allocation follows stop.
+    pub(super) fn retain_failure(
+        &mut self,
+        request: &HtmlDocumentParseRequest,
+        output: &mut Option<StoppedInitialization>,
+    ) -> Result<(), StandaloneError> {
+        if !matches!(self.phase, Phase::Failed) || output.is_some() {
+            return Err(StandaloneError::Consumed);
+        }
+        let driver = self.driver.as_ref().ok_or(StandaloneError::Consumed)?;
+        if !driver.control.owns_request(request.cancellation())
+            || self.source.identity() != request.source().identity()
+            || self.source.coordinates() != request.source().coordinates()
+        {
+            return Err(StandaloneError::Consumed);
+        }
+        if let Some((identity, coordinates)) = driver.control.stopped_source_binding()?
+            && (identity != request.source().identity()
+                || *coordinates != request.source().coordinates())
+        {
+            return Err(StandaloneError::Consumed);
+        }
+        self.cleanup_failure()?;
+        let binding = self
+            .driver
+            .as_mut()
+            .expect("qualified cleaned initialization")
+            .control
+            .take_stopped_optional_source_binding()?;
+        let driver = self.driver.take().expect("cleaned initialization owner");
+        *output = Some(StoppedInitialization {
+            control: driver.control,
+            binding,
+            after_cleanup: self
+                .after_cleanup
+                .take()
+                .expect("actual cleanup observation"),
+            evidence: driver.failed_evidence,
+        });
+        self.phase = Phase::Transferred;
+        Ok(())
+    }
+}
+
+/// No source borrow or native owner survives this actual cleaned prefix.
+/// The original controller remains the sole authority for diagnostic tickets.
+pub(super) struct StoppedInitialization {
+    control: ParseControl,
+    binding: Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>,
+    after_cleanup: ParseUsage,
+    evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
+}
+impl StoppedInitialization {
+    pub(super) fn stop(&self) -> ParseStop {
+        self.control.stop().expect("stopped initialization")
+    }
+    pub(super) fn source_admitted(&self) -> bool {
+        self.binding.is_some()
+    }
+    pub(super) fn at_stop(&self) -> &ParseUsage {
+        self.control
+            .first_stop_usage()
+            .expect("canonical first stop")
+    }
+    pub(super) fn after_cleanup(&self) -> &ParseUsage {
+        &self.after_cleanup
+    }
+    pub(super) fn retained_usage(&self) -> &ParseUsage {
+        self.control.usage()
+    }
+    pub(super) fn diagnostics(
+        &self,
+    ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
+        self.evidence
+            .as_ref()
+            .map(|evidence| evidence.diagnostics())
+    }
+    pub(super) fn release(&mut self) -> Result<(), StandaloneError> {
+        if let Some(evidence) = self.evidence.take() {
+            evidence.release(&mut self.control)?;
+        }
+        Ok(())
+    }
+}
+
+/// Actual fixed transfer: four stopped fields, three cleared owner/binding/
+/// observation slots, one output write and one entry phase write. This layout
+/// is included only by the real source-owning bootstrap consumer.
+pub(super) fn initialization_transfer_layout() -> (usize, usize) {
+    (
+        size_of::<StoppedInitialization>()
+            + size_of::<Option<StandaloneDocumentDriver>>()
+            + size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+            + size_of::<Option<ParseUsage>>()
+            + size_of::<Option<StoppedInitialization>>()
+            + size_of::<Phase>(),
+        4 + 3 + 1 + 1,
+    )
 }
 
 #[cfg(test)]

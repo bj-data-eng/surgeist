@@ -6,6 +6,175 @@
 use super::{StandaloneError, end::FrozenStandaloneParts};
 use crate::{HtmlDocumentParseRequest, request::DocumentRequestParts};
 
+#[derive(Clone, Copy)]
+enum InitializationPhase {
+    Fresh,
+    Rejected(super::entry::EntryRejection),
+    Executing,
+    Stopped,
+    Transferred,
+    Consumed,
+}
+
+/// Fixed source-owning bootstrap carrier. Its request and failure slot exist
+/// before the first admission; no source-owning envelope is allocated after a
+/// pre-source stop. The control/Arc bootstrap remains the existing documented
+/// provider limitation. The native-only seal and full lexical D1 remain separate.
+pub(crate) struct OrdinaryInitializationOwner {
+    request: Option<HtmlDocumentParseRequest>,
+    failure: Option<super::entry::StoppedInitialization>,
+    phase: InitializationPhase,
+}
+impl OrdinaryInitializationOwner {
+    pub(crate) fn new(request: HtmlDocumentParseRequest) -> Self {
+        let phase = super::entry::EntryRejection::for_request(&request)
+            .map_or(InitializationPhase::Fresh, InitializationPhase::Rejected);
+        Self {
+            request: Some(request),
+            failure: None,
+            phase,
+        }
+    }
+    pub(crate) fn source(&self) -> Option<&crate::HtmlSource> {
+        self.request.as_ref().map(|request| request.source())
+    }
+    pub(crate) fn request(&self) -> Option<&HtmlDocumentParseRequest> {
+        self.request.as_ref()
+    }
+    /// The attempt retains every real borrowed prefix on refusal. It must be
+    /// explicitly transferred or cleaned before dropping; no infallible Drop
+    /// cleanup is implied. Only this consumer admits its actual fixed carrier.
+    pub(crate) fn begin(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        match self.phase {
+            InitializationPhase::Rejected(reason) => return Err(reason.error()),
+            InitializationPhase::Fresh => {}
+            _ => return Err(StandaloneError::Consumed),
+        }
+        let request = self.request.as_ref().ok_or(StandaloneError::Consumed)?;
+        self.phase = InitializationPhase::Executing;
+        Ok(InitializationAttempt {
+            entry: super::entry::OrdinaryDocumentEntry::owned(request),
+            request,
+            failure: &mut self.failure,
+            phase: &mut self.phase,
+        })
+    }
+    pub(crate) fn failure(&self) -> Option<super::entry::InitializationFailure> {
+        match self.phase {
+            InitializationPhase::Rejected(reason) => {
+                Some(super::entry::InitializationFailure::Rejected(reason))
+            }
+            InitializationPhase::Stopped => Some(super::entry::InitializationFailure::Stopped(
+                self.failure
+                    .as_ref()
+                    .expect("retained initialization failure")
+                    .stop(),
+            )),
+            _ => None,
+        }
+    }
+    /// None means no stopped owner in this carrier, including pre-execution
+    /// rejection or a transferred driver. Some(false) is a real pre-admission
+    /// stop. An admitted empty source is Some(true).
+    pub(crate) fn source_admitted(&self) -> Option<bool> {
+        self.failure
+            .as_ref()
+            .map(|failure| failure.source_admitted())
+    }
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.failure.as_ref().map(|failure| failure.at_stop())
+    }
+    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.failure.as_ref().map(|failure| failure.after_cleanup())
+    }
+    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.failure
+            .as_ref()
+            .map(|failure| failure.retained_usage())
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
+        self.failure
+            .as_ref()
+            .and_then(|failure| failure.diagnostics())
+    }
+    pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
+        match self.phase {
+            InitializationPhase::Rejected(_) => Ok(()),
+            InitializationPhase::Stopped => self
+                .failure
+                .as_mut()
+                .expect("actual stopped owner")
+                .release(),
+            _ => Err(StandaloneError::Consumed),
+        }
+    }
+    /// A ready actual driver no longer borrows the carrier once its execution
+    /// scope ends. Move the same original request to the existing final seal.
+    pub(crate) fn take_request(&mut self) -> Result<HtmlDocumentParseRequest, StandaloneError> {
+        match self.phase {
+            InitializationPhase::Fresh | InitializationPhase::Transferred => {}
+            _ => return Err(StandaloneError::Consumed),
+        }
+        let request = self.request.take().ok_or(StandaloneError::Consumed)?;
+        self.phase = InitializationPhase::Consumed;
+        Ok(request)
+    }
+}
+
+pub(crate) struct InitializationAttempt<'request> {
+    entry: super::entry::OrdinaryDocumentEntry<'request>,
+    request: &'request HtmlDocumentParseRequest,
+    failure: &'request mut Option<super::entry::StoppedInitialization>,
+    phase: &'request mut InitializationPhase,
+}
+impl<'request> InitializationAttempt<'request> {
+    pub(crate) fn failure(&self) -> Option<super::entry::InitializationFailure> {
+        self.entry.failure()
+    }
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.entry.at_stop()
+    }
+    pub(crate) fn take_driver(
+        &mut self,
+    ) -> Result<super::StandaloneDocumentDriver<'request>, StandaloneError> {
+        let driver = self.entry.take_driver()?;
+        *self.phase = InitializationPhase::Transferred;
+        Ok(driver)
+    }
+    pub(crate) fn retain_failure(&mut self) -> Result<(), StandaloneError> {
+        self.entry.retain_failure(self.request, self.failure)?;
+        *self.phase = InitializationPhase::Stopped;
+        Ok(())
+    }
+}
+
+/// Three carrier fields, four attempt fields and its three phase transitions,
+/// plus the cleared original request slot;
+/// plus the exact entry transfer slots. All are fixed bootstrap storage, not
+/// variable source/native copies. Running admission follows source precedence;
+/// an earlier stop cannot pretend this layout was admitted.
+pub(super) fn initialization_bootstrap_layout() -> (usize, usize) {
+    use std::mem::size_of;
+    let (bytes, writes) = super::entry::initialization_transfer_layout();
+    (
+        bytes
+            + size_of::<OrdinaryInitializationOwner>()
+            + size_of::<InitializationAttempt>()
+            + 3 * size_of::<InitializationPhase>()
+            + size_of::<Option<HtmlDocumentParseRequest>>(),
+        writes + 3 + 4 + 3 + 1,
+    )
+}
+/// One cancellation identity and two source identity/basis comparisons, plus
+/// six fixed phase/slot/stop/optional-binding visits, precede the stopped moves.
+pub(super) fn initialization_qualification_bytes() -> usize {
+    2 * std::mem::size_of::<crate::HtmlParseCancellation>()
+        + 4 * std::mem::size_of::<crate::HtmlSourceId>()
+        + 4 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+}
+
 /// Exact physical transfer layouts are prepaid by the initialization owner.
 /// Four cleared owning options, five detached fields, four request fields and
 /// two joined fields: every terminal move is fixed and needs no new admission.
@@ -188,6 +357,462 @@ mod tests {
             .work_credits(work)
             .finish()
             .unwrap()
+    }
+
+    fn initialized_failure(request: HtmlDocumentParseRequest) -> OrdinaryInitializationOwner {
+        let mut owner = OrdinaryInitializationOwner::new(request);
+        {
+            let mut attempt = owner.begin().unwrap();
+            assert!(attempt.failure().is_some());
+            assert!(attempt.take_driver().is_err());
+            attempt.retain_failure().unwrap();
+            assert!(matches!(
+                attempt.retain_failure(),
+                Err(StandaloneError::Consumed)
+            ));
+        }
+        owner
+    }
+    fn no_retained_storage(usage: &crate::parser::control::ParseUsage) {
+        for resource in crate::settings::RESOURCES {
+            if resource.storage() && resource != HtmlParseResource::ManagedNodes {
+                assert_eq!(usage.resource(resource).current, 0, "{resource:?}");
+            }
+        }
+        assert_eq!(usage.actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn owned_cancelled_initialization_retains_exact_source_without_admitted_binding() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf16(crate::DocumentString::from_utf16(vec![
+                0xfeff, 0xd800, 0x41, 0xdc00,
+            ])),
+            work_limits(0),
+        );
+        let source_id = request.source().identity().clone();
+        request.cancellation().cancel();
+        let mut owner = initialized_failure(request);
+        assert_eq!(owner.source().unwrap().identity(), &source_id);
+        assert_eq!(
+            owner.source().unwrap().as_utf16().unwrap().code_units(),
+            &[0xfeff, 0xd800, 0x41, 0xdc00]
+        );
+        assert_eq!(
+            owner.failure(),
+            Some(super::super::entry::InitializationFailure::Stopped(
+                crate::parser::control::ParseStop::Cancelled
+            ))
+        );
+        assert_eq!(owner.source_admitted(), Some(false));
+        let first = owner.at_stop().unwrap().clone();
+        assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 0);
+        assert_eq!(first.resource(HtmlParseResource::WorkCredits).current, 0);
+        assert_eq!(owner.after_cleanup(), Some(&first));
+        assert!(owner.diagnostics().is_none());
+        owner.release_failure().unwrap();
+        assert_eq!(owner.retained_usage(), Some(&first));
+        assert!(matches!(owner.begin(), Err(StandaloneError::Consumed)));
+    }
+
+    #[test]
+    fn owned_zero_work_stops_before_source_and_never_counts_denied_record_visit() {
+        let mut owner = initialized_failure(HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("x"),
+            work_limits(0),
+        ));
+        assert_eq!(
+            owner.failure(),
+            Some(super::super::entry::InitializationFailure::Stopped(
+                crate::parser::control::ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    limit: 0,
+                    current: 0,
+                    requested_delta: 1,
+                }
+            ))
+        );
+        assert_eq!(owner.source_admitted(), Some(false));
+        let first = owner.at_stop().unwrap().clone();
+        assert_eq!(
+            first.work(crate::parser::control::WorkCategory::RecordVisit),
+            0
+        );
+        assert_eq!(first.largest_atomic_layout, 0);
+        assert!(matches!(
+            owner.take_request(),
+            Err(StandaloneError::Consumed)
+        ));
+        assert_eq!(owner.source().unwrap().as_utf8(), Some("x"));
+        assert_eq!(owner.at_stop(), Some(&first));
+        owner.request().unwrap().cancellation().cancel();
+        owner.release_failure().unwrap();
+        assert_eq!(owner.at_stop(), Some(&first));
+        assert_eq!(owner.after_cleanup(), Some(&first));
+        assert_eq!(owner.retained_usage(), Some(&first));
+    }
+
+    #[test]
+    fn owned_zero_source_cap_precedes_zero_layout_but_empty_source_is_admitted() {
+        let limits = work_limits(1_000_000)
+            .into_builder()
+            .source_units(0)
+            .atomic_layout_bytes(0)
+            .finish()
+            .unwrap();
+        for text in ["x", ""] {
+            let mut owner = initialized_failure(HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8(text),
+                limits,
+            ));
+            let first = owner.at_stop().unwrap().clone();
+            assert_eq!(
+                first.work(crate::parser::control::WorkCategory::RecordVisit),
+                1
+            );
+            assert_eq!(
+                first.work(crate::parser::control::WorkCategory::CopyByte),
+                0
+            );
+            assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 0);
+            assert_eq!(owner.source_admitted(), Some(text.is_empty()));
+            let expected = if text.is_empty() {
+                crate::parser::control::ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::AtomicLayoutBytes,
+                    limit: 0,
+                    current: 0,
+                    requested_delta: initialization_bootstrap_layout().0 as u64,
+                }
+            } else {
+                crate::parser::control::ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::SourceUnits,
+                    limit: 0,
+                    current: 0,
+                    requested_delta: 1,
+                }
+            };
+            assert_eq!(
+                owner.failure(),
+                Some(super::super::entry::InitializationFailure::Stopped(
+                    expected
+                ))
+            );
+            owner.release_failure().unwrap();
+            assert_eq!(owner.at_stop(), Some(&first));
+            no_retained_storage(owner.retained_usage().unwrap());
+        }
+    }
+
+    #[test]
+    fn owned_bootstrap_copy_and_write_cuts_preserve_actual_admitted_prefix() {
+        let (bytes, writes) = initialization_bootstrap_layout();
+        for (cap, copied, denied) in [
+            (1, 0, bytes as u64),
+            (1 + bytes as u64, bytes as u64, writes as u64),
+        ] {
+            let mut owner = initialized_failure(HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8("x"),
+                work_limits(cap),
+            ));
+            let first = owner.at_stop().unwrap().clone();
+            assert_eq!(
+                owner.failure(),
+                Some(super::super::entry::InitializationFailure::Stopped(
+                    crate::parser::control::ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        limit: cap,
+                        current: 1 + copied,
+                        requested_delta: denied,
+                    }
+                ))
+            );
+            assert_eq!(owner.source_admitted(), Some(true));
+            assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 1);
+            assert_eq!(
+                first.work(crate::parser::control::WorkCategory::CopyByte),
+                copied
+            );
+            assert_eq!(
+                first.work(crate::parser::control::WorkCategory::RecordWrite),
+                0
+            );
+            assert_eq!(first.largest_atomic_layout, bytes as u64);
+            owner.release_failure().unwrap();
+            assert_eq!(owner.at_stop(), Some(&first));
+            assert_eq!(owner.after_cleanup(), Some(&first));
+            no_retained_storage(owner.retained_usage().unwrap());
+        }
+    }
+
+    #[test]
+    fn owned_nested_initialization_cleanup_keeps_canonical_capacity_observation() {
+        let limits = work_limits(1_000_000)
+            .into_builder()
+            .auxiliary_entries(1)
+            .finish()
+            .unwrap();
+        let mut owner = initialized_failure(HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(""),
+            limits,
+        ));
+        assert_eq!(
+            owner.failure(),
+            Some(super::super::entry::InitializationFailure::Stopped(
+                crate::parser::control::ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::AuxiliaryEntries,
+                    limit: 1,
+                    current: 1,
+                    requested_delta: 1,
+                }
+            ))
+        );
+        let first = owner.at_stop().unwrap().clone();
+        assert!(first.actual_capacity_bytes > 0);
+        assert_eq!(first.resource(HtmlParseResource::ManagedNodes).current, 1);
+        assert_eq!(owner.source_admitted(), Some(true));
+        assert!(owner.diagnostics().is_none());
+        no_retained_storage(owner.retained_usage().unwrap());
+        assert_eq!(
+            owner
+                .retained_usage()
+                .unwrap()
+                .resource(HtmlParseResource::ManagedNodes)
+                .current,
+            1
+        );
+        owner.release_failure().unwrap();
+        assert_eq!(owner.at_stop(), Some(&first));
+        assert_eq!(
+            owner.after_cleanup().unwrap().actual_capacity_high_water,
+            first.actual_capacity_high_water
+        );
+    }
+
+    #[test]
+    fn owned_ready_entry_cancelled_before_take_keeps_initialized_empty_diagnostics() {
+        let request =
+            HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), work_limits(1_000_000));
+        let cancel = request.cancellation().clone();
+        let mut owner = OrdinaryInitializationOwner::new(request);
+        let first;
+        {
+            let mut attempt = owner.begin().unwrap();
+            assert!(attempt.failure().is_none());
+            cancel.cancel();
+            assert!(matches!(
+                attempt.take_driver(),
+                Err(StandaloneError::Stop(
+                    crate::parser::control::ParseStop::Cancelled
+                ))
+            ));
+            first = attempt.at_stop().unwrap().clone();
+            attempt.retain_failure().unwrap();
+        }
+        assert_eq!(owner.source_admitted(), Some(true));
+        assert_eq!(owner.diagnostics().unwrap().len(), 0);
+        // The initialized empty store retains its actual zero-sized issuer
+        // ticket, not an invented nonzero Vec capacity or Arc-header estimate.
+        no_retained_storage(owner.retained_usage().unwrap());
+        let after = owner.after_cleanup().unwrap().clone();
+        assert_eq!(owner.at_stop(), Some(&first));
+        owner.release_failure().unwrap();
+        assert!(owner.diagnostics().is_none());
+        no_retained_storage(owner.retained_usage().unwrap());
+        assert_eq!(owner.at_stop(), Some(&first));
+        assert_eq!(owner.after_cleanup(), Some(&after));
+    }
+
+    #[test]
+    fn owned_initialization_foreign_and_same_source_fresh_requests_refuse_without_losing_prefix() {
+        let mut owner = OrdinaryInitializationOwner::new(HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("x"),
+            work_limits(0),
+        ));
+        let fresh = HtmlDocumentParseRequest::offline(
+            owner.source().unwrap().clone(),
+            work_limits(1_000_000),
+        );
+        let foreign = HtmlDocumentParseRequest::offline(HtmlSource::utf8("x"), work_limits(0));
+        {
+            let mut attempt = owner.begin().unwrap();
+            let first = attempt.at_stop().unwrap().clone();
+            for wrong in [&fresh, &foreign] {
+                let mut refused = None;
+                assert!(matches!(
+                    attempt.entry.retain_failure(wrong, &mut refused),
+                    Err(StandaloneError::Consumed)
+                ));
+                assert!(refused.is_none());
+                assert_eq!(attempt.at_stop(), Some(&first));
+            }
+            attempt.retain_failure().unwrap();
+        }
+        assert_eq!(owner.source_admitted(), Some(false));
+        owner.release_failure().unwrap();
+    }
+
+    #[test]
+    fn captured_owned_request_is_rejected_without_control_or_usage_and_preserves_context() {
+        let mut builder = crate::HtmlCaptureBuilder::new(
+            crate::HtmlCaptureLimits::new(10, 10, 0, 0, 10, 0, 0),
+            crate::HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                crate::HtmlDocumentMode::Quirks,
+                crate::HtmlScriptingStatus::Disabled,
+                crate::HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let capture = builder.finish().unwrap();
+        let document = capture
+            .document_id(&capture.subject_id(&document).unwrap())
+            .unwrap();
+        let request = HtmlDocumentParseRequest::captured(
+            HtmlSource::utf8("<p>x"),
+            capture,
+            document,
+            work_limits(0),
+        )
+        .unwrap();
+        let source_id = request.source().identity().clone();
+        let capture_id = request.capture().unwrap().identity().clone();
+        let document_id = request.document().unwrap().clone();
+        let mut owner = OrdinaryInitializationOwner::new(request);
+        assert_eq!(
+            owner.failure(),
+            Some(super::super::entry::InitializationFailure::Rejected(
+                super::super::entry::EntryRejection::DocumentInitialization
+            ))
+        );
+        assert!(matches!(
+            owner.begin(),
+            Err(StandaloneError::UnsupportedDocumentInitialization)
+        ));
+        assert_eq!(owner.source().unwrap().identity(), &source_id);
+        assert_eq!(owner.source().unwrap().as_utf8(), Some("<p>x"));
+        assert_eq!(
+            owner.request().unwrap().capture().unwrap().identity(),
+            &capture_id
+        );
+        assert_eq!(owner.request().unwrap().document(), Some(&document_id));
+        assert_eq!(owner.source_admitted(), None);
+        assert!(owner.at_stop().is_none());
+        assert!(owner.after_cleanup().is_none());
+        assert!(owner.retained_usage().is_none());
+        assert!(owner.diagnostics().is_none());
+        owner.release_failure().unwrap();
+        assert!(owner.take_request().is_err());
+        assert_eq!(owner.source().unwrap().identity(), &source_id);
+        assert_eq!(
+            owner.request().unwrap().capture().unwrap().identity(),
+            &capture_id
+        );
+    }
+
+    #[test]
+    fn actual_owned_ready_driver_preserves_original_request_for_native_seal() {
+        let request = request();
+        let source_id = request.source().identity().clone();
+        let mut owner = OrdinaryInitializationOwner::new(request);
+        let parts = {
+            let mut attempt = owner.begin().unwrap();
+            assert!(matches!(
+                attempt.retain_failure(),
+                Err(StandaloneError::Consumed)
+            ));
+            let mut driver = Some(attempt.take_driver().unwrap());
+            assert!(matches!(
+                attempt.take_driver(),
+                Err(StandaloneError::Consumed)
+            ));
+            for _ in 0..4096 {
+                if driver.as_mut().unwrap().step().unwrap() == HeadStep::Complete {
+                    break;
+                }
+            }
+            let mut completed = StandaloneDocumentDriver::take_completed(&mut driver).unwrap();
+            completed.prepare_native_associations().unwrap();
+            completed.freeze_parts().unwrap()
+        };
+        let original = owner.take_request().unwrap();
+        assert!(owner.source().is_none());
+        assert!(matches!(
+            owner.take_request(),
+            Err(StandaloneError::Consumed)
+        ));
+        let mut original = Some(original);
+        let mut parts = Some(parts);
+        let mut sealed = SealedOrdinaryConstruction::take(&mut original, &mut parts).unwrap();
+        assert_eq!(sealed.source().identity(), &source_id);
+        assert_eq!(sealed.source().as_utf8(), Some("<!doctype html><p>A&amp;B"));
+        assert!(sealed.document().is_some());
+        sealed.release().unwrap();
+    }
+
+    #[test]
+    fn owned_initialization_work_cuts_keep_real_prefix_tickets_and_first_stop() {
+        for cap in (0..80_000).step_by(313) {
+            let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), work_limits(cap));
+            let mut owner = OrdinaryInitializationOwner::new(request);
+            let expected;
+            {
+                let mut attempt = owner.begin().unwrap();
+                match attempt.take_driver() {
+                    Ok(mut driver) => {
+                        if driver.release().is_err() {
+                            driver.release().unwrap();
+                        }
+                        no_retained_storage(driver.control.usage());
+                        expected = None;
+                    }
+                    Err(_) => {
+                        let first = attempt.at_stop().unwrap().clone();
+                        assert!(matches!(
+                            attempt.failure(),
+                            Some(super::super::entry::InitializationFailure::Stopped(
+                                crate::parser::control::ParseStop::LimitExceeded {
+                                    resource: HtmlParseResource::WorkCredits,
+                                    ..
+                                }
+                            ))
+                        ));
+                        attempt.retain_failure().unwrap();
+                        assert_eq!(attempt.failure(), None);
+                        assert_eq!(
+                            owner_failure_stop(&first),
+                            first.resource(HtmlParseResource::WorkCredits).current
+                        );
+                        expected = Some(first);
+                    }
+                }
+            }
+            if let Some(first) = expected {
+                assert_eq!(owner.at_stop(), Some(&first));
+                let after = owner.after_cleanup().unwrap().clone();
+                owner.request().unwrap().cancellation().cancel();
+                owner.release_failure().unwrap();
+                assert_eq!(owner.at_stop(), Some(&first));
+                assert_eq!(owner.after_cleanup(), Some(&after));
+                no_retained_storage(owner.retained_usage().unwrap());
+            }
+        }
+    }
+    fn owner_failure_stop(first: &crate::parser::control::ParseUsage) -> u64 {
+        use crate::parser::control::WorkCategory;
+        [
+            WorkCategory::InputUnitRead,
+            WorkCategory::InspectByte,
+            WorkCategory::CopyByte,
+            WorkCategory::StateStep,
+            WorkCategory::RecordVisit,
+            WorkCategory::RecordWrite,
+            WorkCategory::ReserveByte,
+            WorkCategory::ProviderCall,
+        ]
+        .into_iter()
+        .map(|category| first.work(category))
+        .sum()
     }
     #[test]
     fn actual_seal_write_admission_cut_preserves_both_slots_and_terminal_cleanup() {
