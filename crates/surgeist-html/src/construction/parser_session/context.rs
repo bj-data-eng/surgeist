@@ -2142,6 +2142,272 @@ impl FrozenArena {
         Ok(None)
     }
 }
+// Fixed borrowed views over the actual frozen records. These are immutable
+// observations, not controller operations or a copied publication registry.
+#[cfg(test)]
+pub(crate) fn registry_binding_layout() -> usize {
+    mem::size_of::<usize>() + mem::size_of::<RegistryRef>()
+}
+pub(crate) struct FrozenFragmentEffects<'a> {
+    storage: &'a FrozenStorage,
+    arena: &'a Arena,
+    fragment: &'a FragmentContextStorage,
+}
+pub(crate) enum FrozenFragmentHost<'a> {
+    Owned(HtmlNode<'a>),
+    Captured(&'a crate::HtmlCaptureElementId),
+}
+pub(crate) enum FrozenFragmentEffect<'a> {
+    TemplateCache {
+        document: crate::HtmlCapturedNode<'a>,
+        inert: HtmlNode<'a>,
+    },
+    AttachShadow {
+        host: FrozenFragmentHost<'a>,
+        template: HtmlNode<'a>,
+        contents: HtmlNode<'a>,
+        properties: &'a HtmlShadowRootProperties,
+        keep_registry_null: bool,
+        declarative: bool,
+        available_to_internals: bool,
+        source: &'a crate::HtmlSourceRange,
+    },
+}
+pub(crate) struct FrozenCapturedRegistry<'a> {
+    capture: &'a crate::HtmlCapture,
+    index: usize,
+}
+impl FrozenCapturedRegistry<'_> {
+    pub(crate) fn is_registry(&self, id: &crate::HtmlCaptureRegistryId) -> bool {
+        self.capture
+            .registry_index(id)
+            .is_ok_and(|index| index == self.index)
+    }
+}
+pub(crate) enum FrozenFragmentRegistry<'a> {
+    Null,
+    Unavailable,
+    Captured(FrozenCapturedRegistry<'a>),
+}
+pub(crate) struct FrozenFragmentRegistryBinding<'a> {
+    pub(crate) node: HtmlNode<'a>,
+    pub(crate) registry: FrozenFragmentRegistry<'a>,
+}
+impl<'a> FrozenFragmentEffects<'a> {
+    pub(crate) fn len(&self) -> usize {
+        self.fragment.effects.len()
+    }
+    pub(crate) fn registry_slots(&self) -> usize {
+        self.storage.payloads.values.len()
+    }
+    fn node(&self, index: usize) -> Result<HtmlNode<'a>, SessionError> {
+        self.arena
+            .records
+            .get(index)
+            .ok_or(SessionError::ForeignNode)?;
+        Ok(HtmlNode {
+            arena: self.arena,
+            index,
+        })
+    }
+    /// Exactly one actual effect slot; there is no hidden ordinal scan.
+    pub(crate) fn get(
+        &self,
+        index: usize,
+    ) -> Result<Option<FrozenFragmentEffect<'a>>, SessionError> {
+        let Some(effect) = self.fragment.effects.as_slice().get(index) else {
+            return Ok(None);
+        };
+        Ok(Some(match effect {
+            ContextEffect::TemplateCache {
+                document,
+                inert: Some(inert),
+            } => FrozenFragmentEffect::TemplateCache {
+                document: self
+                    .fragment
+                    .context
+                    .capture()
+                    .document_at(*document)
+                    .map_err(|_| SessionError::ContextUnavailable)?,
+                inert: self.node(*inert)?,
+            },
+            ContextEffect::AttachShadow {
+                host,
+                template,
+                contents: Some(contents),
+                properties,
+                keep_registry_null,
+                declarative,
+                available_to_internals,
+                source,
+            } => FrozenFragmentEffect::AttachShadow {
+                host: match host {
+                    ShadowHostKey::Owned(index) => FrozenFragmentHost::Owned(self.node(*index)?),
+                    ShadowHostKey::Captured(host) => FrozenFragmentHost::Captured(host),
+                },
+                template: self.node(*template)?,
+                contents: self.node(*contents)?,
+                properties,
+                keep_registry_null: *keep_registry_null,
+                declarative: *declarative,
+                available_to_internals: *available_to_internals,
+                source,
+            },
+            _ => return Err(SessionError::ContextUnavailable),
+        }))
+    }
+    /// Exactly one canonical payload slot. The reader chooses its next index;
+    /// the lender never scans, clones a registry handle or duplicates facts.
+    pub(crate) fn registry_binding(
+        &self,
+        index: usize,
+    ) -> Result<Option<FrozenFragmentRegistryBinding<'a>>, SessionError> {
+        let Some(RetainedPayload::LookupRegistry {
+            node: Some(node),
+            registry,
+            ..
+        }) = self.storage.payloads.values.get(index)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(FrozenFragmentRegistryBinding {
+            node: self.node(*node)?,
+            registry: match registry {
+                RegistryRef::Null => FrozenFragmentRegistry::Null,
+                RegistryRef::Unavailable => FrozenFragmentRegistry::Unavailable,
+                RegistryRef::Captured(index) => {
+                    FrozenFragmentRegistry::Captured(FrozenCapturedRegistry {
+                        capture: self.fragment.context.capture(),
+                        index: *index,
+                    })
+                }
+            },
+        }))
+    }
+}
+impl FrozenArena {
+    pub(crate) fn frozen_fragment_effects(
+        &self,
+    ) -> Result<FrozenFragmentEffects<'_>, SessionError> {
+        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
+        let arena = match &storage.view {
+            FrozenView::Document(document) => &document.arena,
+            FrozenView::Fragment(fragment) => &fragment.arena,
+        };
+        let fragment = storage
+            .fragment
+            .as_ref()
+            .ok_or(SessionError::ContextUnavailable)?;
+        Ok(FrozenFragmentEffects {
+            storage,
+            arena,
+            fragment,
+        })
+    }
+    /// Qualified before sealing. All later reads are fixed/indexed borrows of
+    /// these same immutable rows, including their original source and capture.
+    pub(crate) fn prepare_fragment_effects(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
+        c.require_identity(&storage.control)?;
+        let view = self.frozen_fragment_effects()?;
+        for effect in view.fragment.effects.as_slice() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(
+                WorkCategory::InspectByte,
+                mem::size_of::<ContextEffect>() as u64,
+            )?;
+            let mut node = |index: usize, fragment: bool| -> Result<(), SessionError> {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(
+                    WorkCategory::InspectByte,
+                    mem::size_of::<HtmlNodeKind>() as u64,
+                )?;
+                let record = view
+                    .arena
+                    .records
+                    .get(index)
+                    .ok_or(SessionError::ForeignNode)?;
+                if fragment && !matches!(record.kind, HtmlNodeKind::Fragment) {
+                    return Err(SessionError::ContextUnavailable);
+                }
+                Ok(())
+            };
+            match effect {
+                ContextEffect::TemplateCache {
+                    document,
+                    inert: Some(inert),
+                } => {
+                    node(*inert, false)?;
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    view.fragment
+                        .context
+                        .capture()
+                        .document_at(*document)
+                        .map_err(|_| SessionError::ContextUnavailable)?;
+                    if !matches!(view.arena.records[*inert].kind, HtmlNodeKind::Document(_)) {
+                        return Err(SessionError::ContextUnavailable);
+                    }
+                }
+                ContextEffect::AttachShadow {
+                    host,
+                    template,
+                    contents: Some(contents),
+                    source,
+                    ..
+                } => {
+                    node(*template, false)?;
+                    node(*contents, true)?;
+                    match host {
+                        ShadowHostKey::Owned(index) => node(*index, false)?,
+                        ShadowHostKey::Captured(host) => {
+                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            view.fragment
+                                .context
+                                .capture()
+                                .node(host.subject())
+                                .map_err(|_| SessionError::ContextUnavailable)?;
+                        }
+                    }
+                    c.require_source_range(source)?;
+                }
+                _ => return Err(SessionError::ContextUnavailable),
+            }
+        }
+        for payload in &storage.payloads.values {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let RetainedPayload::LookupRegistry {
+                node: Some(node),
+                registry,
+                ..
+            } = payload
+            else {
+                continue;
+            };
+            c.charge(
+                WorkCategory::InspectByte,
+                (mem::size_of::<usize>() + mem::size_of::<RegistryRef>()) as u64,
+            )?;
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            view.node(*node)?;
+            if let RegistryRef::Captured(index) = registry {
+                // This validation creates one actual fixed capture handle
+                // before commit; the immutable lender itself creates none.
+                payload_write::<crate::HtmlCaptureRegistryId>(c, 1)?;
+                c.charge(WorkCategory::ProviderCall, 1)?;
+                view.fragment
+                    .context
+                    .capture()
+                    .registry_at(*index)
+                    .map_err(|_| SessionError::ContextUnavailable)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

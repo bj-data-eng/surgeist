@@ -185,6 +185,20 @@ pub struct HtmlFragmentParseRequest {
     allow_declarative_shadow_roots: bool,
 }
 impl HtmlFragmentParseRequest {
+    /// Moves the original checked request after borrowed execution has ended.
+    /// No source backing, capture, or cancellation authority is reconstructed.
+    #[cfg(test)]
+    pub(crate) fn into_parts(self) -> FragmentRequestParts {
+        FragmentRequestParts {
+            source: self.source,
+            limits: self.limits,
+            cancellation: self.cancellation,
+            context: self.context,
+            requested: self.requested,
+            effective: self.effective,
+            allow_declarative_shadow_roots: self.allow_declarative_shadow_roots,
+        }
+    }
     /// Selects Inert mode and disallows declarative shadow roots. A disabled
     /// context still forces effective Disabled under the fragment algorithm.
     pub fn new(
@@ -246,6 +260,42 @@ impl HtmlFragmentParseRequest {
     }
     /// Explicit permission retained for the future source-owned tree builder.
     pub fn allow_declarative_shadow_roots(&self) -> bool {
+        self.allow_declarative_shadow_roots
+    }
+}
+
+/// Source-owning private assembly input, not a public parse-success proof.
+#[cfg(test)]
+pub(crate) struct FragmentRequestParts {
+    source: HtmlSource,
+    limits: HtmlParseLimits,
+    cancellation: HtmlParseCancellation,
+    context: HtmlFragmentContext,
+    requested: HtmlParserScriptingMode,
+    effective: HtmlParserScriptingMode,
+    allow_declarative_shadow_roots: bool,
+}
+#[cfg(test)]
+impl FragmentRequestParts {
+    pub(crate) fn source(&self) -> &HtmlSource {
+        &self.source
+    }
+    pub(crate) fn limits(&self) -> &HtmlParseLimits {
+        &self.limits
+    }
+    pub(crate) fn cancellation(&self) -> &HtmlParseCancellation {
+        &self.cancellation
+    }
+    pub(crate) fn context(&self) -> &HtmlFragmentContext {
+        &self.context
+    }
+    pub(crate) fn requested_scripting_mode(&self) -> HtmlParserScriptingMode {
+        self.requested
+    }
+    pub(crate) fn effective_scripting_mode(&self) -> HtmlParserScriptingMode {
+        self.effective
+    }
+    pub(crate) fn allow_declarative_shadow_roots(&self) -> bool {
         self.allow_declarative_shadow_roots
     }
 }
