@@ -572,6 +572,15 @@ even when the result is absent. This immutable query follows the
 [placeholder definition](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#placeholder-label-option)
 and performs no selection or validity transition.
 
+`SelectValueMissing` observes the pinned required/no-selection-or-only-placeholder
+condition from supplied current selectedness. It reuses the option list,
+placeholder and option-value owners. Two selected options, known nonfirst or
+optgroup membership, or a known nonempty selected value can establish false
+despite unrelated unavailable facts; influencing unknowns remain Missing.
+Consulted intermediate text still consumes the shared admission budget.
+This immutable Boolean observation performs no validation, selection reset or
+live validity-state transition.
+
 `TextareaDefaultValue` concatenates exact Text data from immediate ordinary
 children only. `OutputValue` concatenates exact Text data from all ordinary
 descendants. Both preserve UTF-16 units and whitespace; output traversal includes

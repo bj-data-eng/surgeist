@@ -1411,6 +1411,7 @@ pub surgeist_html::HtmlSemanticFact::SelectOptions(surgeist_html::HtmlSemanticVa
 pub surgeist_html::HtmlSemanticFact::SelectPlaceholderLabelOption(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::SelectSelectedIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
 pub surgeist_html::HtmlSemanticFact::SelectValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlSelectValue>)
+pub surgeist_html::HtmlSemanticFact::SelectValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::SelectedOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::Spellcheck(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::StylesheetDisabledAttribute(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlBooleanAuthorContextReadback>)
@@ -1517,6 +1518,7 @@ pub surgeist_html::HtmlSemanticQuery::SelectOptions
 pub surgeist_html::HtmlSemanticQuery::SelectPlaceholderLabelOption
 pub surgeist_html::HtmlSemanticQuery::SelectSelectedIndex
 pub surgeist_html::HtmlSemanticQuery::SelectValue
+pub surgeist_html::HtmlSemanticQuery::SelectValueMissing
 pub surgeist_html::HtmlSemanticQuery::SelectedOptions
 pub surgeist_html::HtmlSemanticQuery::Spellcheck
 pub surgeist_html::HtmlSemanticQuery::StylesheetDisabledAttribute
