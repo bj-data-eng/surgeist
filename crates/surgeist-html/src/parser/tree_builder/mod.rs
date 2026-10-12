@@ -30,6 +30,7 @@
 
 mod body;
 mod doctype;
+mod end;
 mod foreign;
 mod formatting;
 mod frameset;
@@ -772,8 +773,8 @@ impl From<head::HeadError> for StandaloneError {
 
 /// Fresh ordinary request admission owns the sole controller and actual lexer /
 /// prologue/head state. Captured/hosted initialization cannot enter this path.
-/// This bounded driver retains unsupported row continuations and construction
-/// EOF; full parser lifecycle and public parse/report publication are unfinished.
+/// This bounded driver retains unsupported row continuations and qualified
+/// completion; full public parse/report publication is unfinished.
 pub(crate) struct StandaloneDocumentDriver<'source> {
     source: &'source crate::HtmlSource,
     control: ParseControl,
@@ -856,6 +857,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     SessionError::ScriptMetadataUnavailable
                     | SessionError::SvgScriptMetadataUnavailable,
                 ))) => StandaloneUnsupported::ScriptDocument,
+                StandaloneError::Head(head::HeadError::IncompleteCompletion)
+                | StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
+                    SessionError::CompletionMetadataUnavailable
+                    | SessionError::CompletionIncomplete,
+                ))) => StandaloneUnsupported::Completion,
                 _ => StandaloneUnsupported::InvalidNesting,
             };
             self.control.stop_unsupported_standalone(reason);

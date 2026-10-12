@@ -1286,8 +1286,9 @@ storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
 Other resettable control creation retains untouched-token continuations when
 its required machinery is unavailable.
-Source-defined error-and-ignore rows still execute. Construction EOF remains an
-unfinished lifecycle state; these private operations produce no public parse report.
+Source-defined error-and-ignore rows still execute. The fresh ordinary driver
+uses the [private EOF completion](#private-ordinary-eof) described below;
+these private operations produce no public parse report.
 
 Ordinary frameset documents use that same constructor-proved driver. AfterHead
 and eligible InBody entry lead to InFrameset, AfterFrameset and AfterAfterFrameset.
@@ -1297,7 +1298,8 @@ Frame insertion returns at the actual node-document's null browsing-context
 guard. Noframes uses RAWTEXT and restores its saved caller mode. Mixed character
 runs preserve exact origins while diagnosing and omitting nonwhitespace and NULL.
 Generic or imported owners cannot establish the required constructor proof.
-This adds no hosted navigation, fragment execution or completed EOF lifecycle.
+This adds no hosted navigation or fragment execution. Ordinary EOF completion
+uses the same [private end owner](#private-ordinary-eof).
 
 The fresh ordinary Disabled driver also retains the actual current-form pointer
 and handles ordinary form starts and ends. A nested start is diagnosed and
@@ -1317,7 +1319,8 @@ formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Other resettable
 controls, unfinished table rows, contextual fragment execution, hosted parsing
-and full EOF/report completion remain unfinished.
+and public diagnostic/source-map/report transfer remain unfinished.
+Ordinary EOF uses the [private completion owner](#private-ordinary-eof).
 
 The same association registry now admits parser-created button, fieldset and
 object elements. These are listed and form-associated, but not resettable.
@@ -1415,7 +1418,8 @@ continued construction or publication.
 This is a structural checkpoint. Other unavailable control creation preserves
 its original token before unsupported effects.
 It does not establish complete InTable behavior,
-contextual fragment parsing or completed EOF/report publication.
+contextual fragment parsing or public report publication. The fresh ordinary
+driver has its separately qualified [EOF completion](#private-ordinary-eof).
 
 Ordinary select, option, optgroup and selectedcontent construction now uses the
 same fresh standalone driver and controlled arena. Modern InBody dispatch and
@@ -1449,8 +1453,10 @@ These are private construction operations, not a live DOM mutation API. The
 separate DOM moveBefore primitive, captured fragment initialization,
 imported templates with unavailable facts, shadow trees, external script execution
 and other
-unimplemented control state remain outside this capability. Construction EOF
-does not drain the FIFO or complete stop-parsing/report publication.
+unimplemented control state remain outside this capability. Ordinary EOF now
+runs two source-positioned intrinsic checkpoints after canonical end pops,
+through the [private completion owner](#private-ordinary-eof). Public report
+publication remains separate.
 The [select construction owner](src/construction/parser_session/select.rs),
 [managed clone owner](src/construction/parser_session/clone.rs) and
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
@@ -1476,7 +1482,8 @@ exact names; start/end nesting counts following siblings independently of their
 names. An admitted static sibling list is completed before source-ordered
 removal. Insertion uses the actual target and a still-parented end marker.
 Explicit template end removes currently parented markers and clears patch state;
-EOF unwinds stacks/modes without those explicit-end effects or an invented task
+Template EOF recovery unwinds stacks/modes without those explicit-end effects
+or an invented task
 drain. The fresh operation's established shadow permission is false, so a
 recognized declarative shadow mode takes the source-required ordinary-template
 branch before considering for; it attaches no shadow root.
@@ -1534,9 +1541,10 @@ Interrupted creation and qualified cloning retain every owner for disposal and
 refuse freeze. Repeated registry/topology scans may be quadratic; no linear-time
 or allocator/RSS guarantee follows. The separately qualified
 [restricted SVG script operation](#private-svg-script) uses the same foreign
-creator and dispatcher. Construction EOF remains unfinished stop-parsing/report
-publication; contextual fragments and imported templates still require their
-own construction facts and effects.
+creator and dispatcher. Ordinary EOF uses the separately qualified
+[private completion owner](#private-ordinary-eof); public report publication,
+contextual fragments and imported templates still require their own
+construction facts and effects.
 
 <a id="private-svg-script"></a>
 
@@ -1595,10 +1603,60 @@ maps, registry capacities, handles and tickets without rescue processing.
 Repeated scans, subtree walks, copies and moves can be quadratic; finite charged
 and polled work is not linearity, allocator cancellation or an RSS guarantee.
 These operations remain private and test-compiled. Imported/hosted execution,
-captured context fragments, shadow attachment and completed public EOF/report
-publication remain separate work. The [origin record](PARSER-ORIGINS.md#restricted-svg-script-extension)
+captured context fragments, shadow attachment and public diagnostic/source-map/
+report transfer remain separate work. Ordinary EOF completion is described below.
+The [origin record](PARSER-ORIGINS.md#restricted-svg-script-extension)
 and [source attribution](NOTICE.md#restricted-svg-script-processing) record the
 distinct HTML, Tiny and implementation-provenance terms.
+
+<a id="private-ordinary-eof"></a>
+
+The fresh test-compiled ordinary driver completes the selected private end-of-parsing
+operation after the actual final EOF token's insertion-mode recovery. Its
+qualified construction Document starts with source-initial Complete readiness,
+post-load readiness false and parsing unfinished. Initial Complete is not proof
+of parsing completion; source-free native builders, inert template documents and
+captured documents acquire no ordinary completion fact.
+
+The end owner makes the insertion point undefined and updates readiness to
+Interactive before popping the open-elements stack through its canonical owner.
+Actual pop effects,
+including option/selectedcontent updates and clones, retain their source order.
+The selected DOMContentLoaded disposition precedes both checkpoints.
+The existing intrinsic FIFO runs at two distinct
+[source-positioned checkpoints](../../references/html-spin-event-loop--877d6146487f.md#spin-the-event-loop),
+even when the respective wait goals are already satisfied. The fixed
+complete-readiness continuation is retained before the outer post-load milestone;
+that milestone is written while readiness remains Interactive, then the
+continuation updates readiness to Complete. The actual null browsing context
+excludes the remaining load/navigation tail.
+
+This is the [selected closed construction reduction](../../references/SOURCE-EDITIONS.md#fresh-standalone-eof-lifecycle-sources),
+not browser lifecycle execution. Constructor and admitted-producer provenance
+establish the absent executable-script, loader, timing, event and host domains;
+Disabled alone, an empty queue or a null browsing context is insufficient.
+No global task queue, browser event, timestamp, navigation result or later DOM
+replay intent is synthesized. EOF does not invent an SVG script-end invocation.
+
+Successful private completion retains the whole original driver: the same
+controller, arena, diagnostics, lexical events, source evidence and capacities.
+Its qualified completed owner is neither a second parser nor a public parse
+report. First stop remains sticky through readiness, pops, cloning, checkpoints
+and owner transfer; failed completion cannot publish a partial success. Terminal
+cleanup releases actual retained storage without useful pops, task execution or
+readiness progression. Actual fixed layouts and vector capacities remain admitted
+by the sole controller; existing scans, copies and moves can be quadratic.
+Recurring intrinsic tasks can exhaust the finite work budget; a finite input
+does not guarantee successful completion. No linear-time, allocator/RSS or
+cancellation-preemption guarantee follows.
+
+Public parsed document/fragment results, atomic diagnostic/source-map/report transfer
+and contextual fragment execution remain unimplemented. Private completion does
+not certify unsupported input families, captured/hosted execution, shadow
+attachment, full parser accounting or whole HTML contribution completion.
+The [end owner](src/parser/tree_builder/end.rs),
+[qualified completion facts](src/construction/parser_session/completion.rs) and
+[origin record](PARSER-ORIGINS.md#ordinary-eof-completion) record this boundary.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.

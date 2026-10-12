@@ -34,11 +34,15 @@ use crate::{Attribute, HtmlParseResource};
 use std::{mem, sync::Weak};
 
 mod clone;
+mod completion;
 mod foreign;
 mod pi;
 mod select;
 mod svg;
 mod template;
+pub(crate) use completion::{
+    ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState,
+};
 pub(crate) use foreign::ForeignNamespace;
 use select::{ConstructionEffects, SelectMetadata};
 pub(crate) use svg::{SvgScriptOrigin, SvgScriptState};
@@ -80,6 +84,8 @@ pub(crate) enum SessionError {
     TemplateMetadataUnavailable,
     ProcessingInstructionMapUnavailable,
     PendingIntrinsicWork,
+    CompletionMetadataUnavailable,
+    CompletionIncomplete,
 }
 /// Pinned element-placement guards; generic storage moves remain independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -223,6 +229,10 @@ struct PayloadStorage {
     preexisting_attributes: usize,
 }
 enum RetainedPayload {
+    StandaloneDocumentCompletion {
+        node: usize,
+        state: StandaloneDocumentState,
+    },
     PiAttributes {
         node: Option<usize>,
         values: OwnedVec<pi::PseudoAttribute>,
@@ -542,6 +552,7 @@ impl PayloadStorage {
                 RetainedPayload::SvgScript { .. }
                 | RetainedPayload::Script { .. }
                 | RetainedPayload::NodeDocument { .. }
+                | RetainedPayload::StandaloneDocumentCompletion { .. }
                 | RetainedPayload::Document { .. }
                 | RetainedPayload::Template { .. }
                 | RetainedPayload::FormAssociation { .. }
@@ -3829,6 +3840,7 @@ impl SessionStorage {
         self.require(control)?;
         self.validate_template_facts(control)?;
         self.validate_svg_facts(control)?;
+        self.validate_completion_facts(control)?;
         let depth = self.maximum_depth(control, None)?;
         control.observe_tree_depth(depth as u64)?;
         for index in 0..self.records.len() {
@@ -12590,12 +12602,12 @@ mod tests {
     fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable()
     {
         use crate::parser::tokenizer::{Tokenizer, states::State};
-        // Root/html use8 retained slots, with prologue stack coexistence9.
+        // Root/html plus completion use9 retained slots, with prologue stack coexistence10.
         // Script metadata is reserved BEFORE transfer, followed by its actual
-        // document binding, name/URI/attrs and native ticket: completed14.
-        // Nine stops after metadata but before document/native preflight;
-        // thirteen stops at native-ticket admission after lexical transfer.
-        for cap in [9, 13, 14] {
+        // document binding, name/URI/attrs and native ticket: completed15.
+        // Ten stops after metadata but before document/native preflight;
+        // fourteen stops at native-ticket admission after lexical transfer.
+        for cap in [10, 14, 15] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head><script>"),
                 limits()
@@ -12625,10 +12637,10 @@ mod tests {
                 crate::construction::parser_session::CreationContext::Ordinary,
                 &capability,
             );
-            assert_eq!(incoming.is_some(), cap == 9);
+            assert_eq!(incoming.is_some(), cap == 10);
             assert_eq!(
                 session.active().unwrap().records.len(),
-                if cap == 14 { 3 } else { 2 }
+                if cap == 15 { 3 } else { 2 }
             );
             let count = session
                 .active()
@@ -12638,14 +12650,14 @@ mod tests {
                 .iter()
                 .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
                 .count();
-            if cap == 14 {
+            if cap == 15 {
                 result.unwrap();
                 assert_eq!(count, 1);
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    14
+                    15
                 );
             } else {
                 assert!(matches!(
@@ -12671,7 +12683,7 @@ mod tests {
             assert_eq!(c.stop(), first);
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
-                if cap == 14 { 3 } else { 2 }
+                if cap == 15 { 3 } else { 2 }
             );
         }
     }

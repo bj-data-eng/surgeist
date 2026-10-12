@@ -30,8 +30,9 @@ unfinished continuations. Fresh ordinary templates now
 use that same driver with real inert-document/contents ownership and PI patching.
 Exact SVG scripts now retain separate processed state under the selected
 restricted offline operation, with source-ordered foreign-end and nonparser
-connection handling. Construction EOF is not
-completed stop-parsing or a public report.
+connection handling. The [ordinary EOF completion](#ordinary-eof-completion)
+retains the whole private driver after the selected end operation; public
+report assembly remains unfinished.
 
 ## Original source and incorporated files
 
@@ -207,8 +208,9 @@ Text runs, implied body/paragraph factories, body-attribute merges and image/end
 recovery use the existing arena, actual payload owners and controller. NULL
 diagnostics and recovered character runs retain original UTF-16/source evidence;
 recovered tags do not invent lexical origins. Source-defined ignore rows execute,
-while unavailable families preserve the token before effects. EOF retains an
-unfinished construction continuation rather than certifying report publication.
+while unavailable families preserve the token before effects. Ordinary EOF now
+uses the separately qualified [completion owner](#ordinary-eof-completion),
+without certifying public report publication.
 
 The formatting extension adapts `mod.rs` lines 713–921, 963–1035, 1516–1553
 and 1587–1604, with `rules.rs` lines 730–784, into the private
@@ -378,8 +380,9 @@ disposal, so terminal cleanup can release remaining storage after a stopped
 flush. Actual delegated insertion modes, Text return and foster state survive
 source-ordered reprocessing. Form and image effects reuse their existing owners.
 Unsupported control branches retain the original token before unavailable effects. This checkpoint does not certify complete
-InTable behavior, fragment initialization, EOF/report completion or complete
-parser resource accounting.
+InTable behavior, fragment initialization, public report completion or complete
+parser resource accounting. Ordinary EOF uses the separate
+[completion owner](#ordinary-eof-completion).
 
 The ordinary frameset extension adapts `rules.rs` lines 378–383, 458–475,
 1494–1563 and 1584–1608 into `src/parser/tree_builder/frameset.rs`, with entry
@@ -400,7 +403,8 @@ owner preserves mixed-run source ranges and NULL/nonwhitespace diagnostics.
 Noframes uses the existing RAWTEXT handoff and restores its actual caller mode
 at end-tag or EOF. These operations retain one controller, arena and terminal
 cleanup path. They do not supply hosted frame navigation, fragment initialization
-or completed stop-parsing/report publication.
+or public report publication. Ordinary EOF completion is owned separately
+[below](#ordinary-eof-completion).
 
 The ordinary select extension adapts the input/hr guards and
 select/option/optgroup rows in upstream `rules.rs` lines 815–862 and 895–945
@@ -433,8 +437,10 @@ Actual string binding writes are admitted before clone allocation and committed
 immediately afterward, retaining strict alias validation on stopped prefixes.
 These adaptations remain private and test-compiled. They add no second
 controller, public DOM API, generic moveBefore primitive, captured fragment
-initialization, imported template/shadow cloning, external execution or completed
-EOF/report contract. Finite admission does not establish linear complexity or
+initialization, imported template/shadow cloning, external execution or a public
+report contract. Ordinary EOF now runs its two real checkpoints through the
+separate [completion owner](#ordinary-eof-completion). Finite admission does not
+establish linear complexity or
 complete allocator/RSS coverage.
 
 The ordinary non-script foreign adaptation incorporates `mod.rs` lines
@@ -599,6 +605,41 @@ linear-work or public parsing/report lifecycle promise. Separate
 [W3C attribution](../../licenses/w3c/NOTICE.md#html-delegated-svg-script-processing)
 and [crate attribution](NOTICE.md#restricted-svg-script-processing) cover Tiny
 algorithm incorporation; WHATWG terms do not replace those W3C terms.
+
+## Ordinary EOF completion
+
+The [private ordinary completion](README.md#private-ordinary-eof) follows the
+pinned HTML end-of-parsing and readiness clauses under the
+[separately recorded source selection](../../references/SOURCE-EDITIONS.md#fresh-standalone-eof-lifecycle-sources).
+The complete [spin algorithm](../../references/html-spin-event-loop--877d6146487f.md)
+and existing checkpoint source retain the normative ordering; the closed
+construction reduction does not attribute its no-host eliminations to a
+normative early return. Earlier adapted source hashes remain historical
+incorporation checkpoints, not hashes of the extended current files.
+The new [end owner](src/parser/tree_builder/end.rs) and
+[completion fact owner](src/construction/parser_session/completion.rs) are
+Surgeist-owned implementations of that selected reduction. No new third-party
+implementation file or source slice is ingested; existing original notices and
+source hashes remain unchanged.
+
+Fresh ordinary construction retains a qualified source-initial Complete
+readiness fact, with post-load readiness false and parsing unfinished. After
+actual EOF recovery, Interactive precedes canonical pops and their real effects.
+Two separate intrinsic checkpoints preserve the source wait positions.
+The fixed Complete-readiness continuation runs after the outer post-load
+milestone, which is committed while readiness remains Interactive.
+Constructor and admitted-producer closure qualify absent external domains;
+no browser event, global queue, timing value or deferred replay record is added.
+
+The completed private owner retains the whole same driver/control/arena,
+diagnostics, lexical events, maps and capacity ownership for later report work.
+A rejected or interrupted move keeps actual owners available for terminal
+cleanup; cleanup performs no useful readiness progression, canonical pops or
+task draining. Compiled fixed layouts and real vector capacities remain with
+the existing controller. Finite admission does not establish linear complexity
+or complete allocator/RSS coverage. Public document/fragment parsing,
+diagnostic/source-map/report transfer and contextual execution remain unfinished.
+No new public API or complete enclosing parser capability follows.
 
 ## Attribution and verification
 

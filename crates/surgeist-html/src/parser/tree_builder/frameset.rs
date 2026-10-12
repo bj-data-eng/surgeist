@@ -176,7 +176,7 @@ impl HeadState<'_> {
                         self.emit(HeadCondition::UnexpectedOpenElement, c)?;
                     }
                 }
-                return self.stop_at(super::head::HeadBoundary::ConstructionEof, c);
+                return self.begin_end(c);
             }
             Payload::Tag(_) => {}
         }

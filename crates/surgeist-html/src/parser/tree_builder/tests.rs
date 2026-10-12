@@ -2704,13 +2704,29 @@ fn script_text_node(driver: &mut StandaloneDocumentDriver<'_>) -> ParserNode {
     }
     panic!("actual script fixture must enter Text");
 }
-fn standalone_boundary(driver: &mut StandaloneDocumentDriver<'_>) -> super::head::HeadBoundary {
+fn standalone_boundary(driver: &mut StandaloneDocumentDriver<'_>) -> super::head::HeadStep {
     for _ in 0..1_000 {
-        if let super::head::HeadStep::Boundary(boundary) = driver.step().unwrap() {
-            return boundary;
+        let step = driver.step().unwrap();
+        if step != super::head::HeadStep::Consumed {
+            return step;
         }
     }
-    panic!("finite actual source must reach an unfinished dispatch boundary");
+    panic!("finite actual source must reach completion or an unsupported boundary");
+}
+
+fn before_ordinary_end(driver: &mut StandaloneDocumentDriver<'_>) {
+    for _ in 0..1_000 {
+        driver.step().unwrap();
+        if driver
+            .head
+            .as_ref()
+            .and_then(|h| h.state.as_ref())
+            .is_some_and(|s| s.end == Some(super::end::EndPhase::InsertionPoint))
+        {
+            return;
+        }
+    }
+    panic!("actual source EOF must begin its owning end phase");
 }
 
 #[test]
@@ -2766,7 +2782,7 @@ fn standalone_script_end_prepares_disabled_classic_and_restores_head_and_inserti
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (c, session, _) = driver.standalone_parts().unwrap();
     let metadata = session.script_metadata(c, &node).unwrap();
@@ -2838,7 +2854,7 @@ fn standalone_repeated_script_endings_restore_actual_nesting_pause_and_current_r
     let second = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     assert_eq!(
         driver
@@ -2870,7 +2886,7 @@ fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_fac
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let head = driver.head.as_ref().unwrap();
     let state = head.state.as_ref().unwrap();
@@ -2884,10 +2900,8 @@ fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_fac
         (diagnostics[0].source.start(), diagnostics[0].source.end()),
         (21, 21)
     );
-    assert!(matches!(
-        state.pending.as_ref().unwrap().payload,
-        super::prologue::Payload::Eof
-    ));
+    assert!(state.pending.is_none());
+    assert_eq!(state.end, Some(super::end::EndPhase::Done));
     let (c, session, _) = driver.standalone_parts().unwrap();
     let metadata = session.script_metadata(c, &node).unwrap();
     assert!(metadata.already_started);
@@ -2961,7 +2975,7 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
         let node = script_text_node(&mut driver);
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (c, session, _) = driver.standalone_parts().unwrap();
         let metadata = session.script_metadata(c, &node).unwrap();
@@ -3005,7 +3019,7 @@ fn standalone_scriptdata_preserves_literal_utf16_and_escaped_script_content() {
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let mut owning = Some(driver);
     let (mut c, mut session, _) =
@@ -3038,7 +3052,7 @@ fn standalone_scriptdata_preserves_newline_origins_and_state_specific_null_recov
     script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     let null_error = state
@@ -3173,13 +3187,11 @@ fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
     let script = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert!(matches!(
-        state.pending.as_ref().unwrap().payload,
-        Payload::Eof
-    ));
+    assert!(state.pending.is_none());
+    assert_eq!(state.end, Some(super::end::EndPhase::Done));
     let (c, session, _) = driver.standalone_parts().unwrap();
     assert!(session.script_metadata(c, &script).unwrap().already_started);
     drop(script);
@@ -3470,7 +3482,7 @@ fn standalone_selfclosing_script_is_not_void_and_emits_exact_source_qualified_er
     );
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (c, session, _) = driver.standalone_parts().unwrap();
     assert!(session.script_metadata(c, &node).unwrap().already_started);
@@ -3756,7 +3768,7 @@ fn present_token_disposal_accounts_for_real_pending_and_payload_moves() {
     assert_released(&c);
 }
 
-fn body_document(driver: StandaloneDocumentDriver<'_>) -> (ParseControl, FrozenArena) {
+pub(super) fn body_document(driver: StandaloneDocumentDriver<'_>) -> (ParseControl, FrozenArena) {
     let mut input = Some(driver);
     let (mut c, mut session, _) =
         StandaloneDocumentDriver::take_standalone_fixture(&mut input).unwrap();
@@ -3764,7 +3776,7 @@ fn body_document(driver: StandaloneDocumentDriver<'_>) -> (ParseControl, FrozenA
     let frozen = session.freeze(&mut c).unwrap();
     (c, frozen)
 }
-fn outline(document: &crate::HtmlDocument) -> Vec<(usize, Vec<u16>)> {
+pub(super) fn outline(document: &crate::HtmlDocument) -> Vec<(usize, Vec<u16>)> {
     // A test observer only: expected outlines below are literal source outcomes.
     // No serialization/reparse or synthetic producer drives construction.
     let mut output = Vec::new();
@@ -3797,7 +3809,7 @@ fn outline(document: &crate::HtmlDocument) -> Vec<(usize, Vec<u16>)> {
     }
     output
 }
-fn expected_outline(rows: &[(usize, &str)]) -> Vec<(usize, Vec<u16>)> {
+pub(super) fn expected_outline(rows: &[(usize, &str)]) -> Vec<(usize, Vec<u16>)> {
     rows.iter()
         .map(|(depth, value)| (*depth, value.encode_utf16().collect()))
         .collect()
@@ -3812,15 +3824,13 @@ fn ordinary_body_recovers_paragraphs_blocks_and_missing_end_p_with_actual_topolo
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.mode, super::head::InsertionMode::AfterAfterBody);
     assert!(!state.frameset_ok);
-    assert!(matches!(
-        state.pending.as_ref().unwrap().payload,
-        super::prologue::Payload::Eof
-    ));
+    assert!(state.pending.is_none());
+    assert_eq!(state.end, Some(super::end::EndPhase::Done));
     let (mut c, mut frozen) = body_document(driver);
     assert_eq!(
         outline(frozen.document().unwrap()),
@@ -3885,7 +3895,7 @@ fn body_heading_list_and_ruby_implied_end_rules_preserve_literal_sibling_order()
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let mut expected = vec![(0, "html"), (1, "head"), (1, "body")];
@@ -3997,7 +4007,7 @@ fn late_head_style_and_disabled_script_remove_the_specific_head_stack_entry_and_
         }
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         driver.release().unwrap();
         assert_released(&driver.control);
@@ -4016,7 +4026,7 @@ fn body_first_lf_and_null_recovery_preserve_exact_units_and_omitted_origin_evide
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.before.whitespace.len(), 3);
@@ -4053,7 +4063,7 @@ fn body_after_modes_place_comments_and_pi_under_html_then_document() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     assert_eq!(
@@ -4083,7 +4093,11 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
             limits(100),
         );
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
-        assert_eq!(standalone_boundary(&mut driver), boundary, "{name}");
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadStep::Boundary(boundary),
+            "{name}"
+        );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
         let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload
@@ -4165,7 +4179,7 @@ fn body_generic_names_void_recovery_rawtext_and_plaintext_follow_actual_source_r
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let mut expected = vec![(0, "html"), (1, "head"), (1, "body")];
@@ -4193,7 +4207,7 @@ fn body_explicit_implied_and_repeated_body_merge_keep_source_frameset_state_and_
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         assert_eq!(
             driver
@@ -4217,7 +4231,7 @@ fn body_explicit_implied_and_repeated_body_merge_keep_source_frameset_state_and_
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -4260,7 +4274,7 @@ fn body_ignored_table_parts_and_frame_are_not_generic_nodes_and_keygen_has_sourc
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     assert_eq!(
@@ -4287,7 +4301,7 @@ fn body_eof_predicate_accepts_rb_rtc_and_reports_one_actual_unexpected_open_node
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert_eq!(
@@ -4299,10 +4313,8 @@ fn body_eof_predicate_accepts_rb_rtc_and_reports_one_actual_unexpected_open_node
                 .count(),
             errors
         );
-        assert!(matches!(
-            state.pending.as_ref().unwrap().payload,
-            super::prologue::Payload::Eof
-        ));
+        assert!(state.pending.is_none());
+        assert_eq!(state.end, Some(super::end::EndPhase::Done));
         driver.release().unwrap();
         assert_released(&driver.control);
     }
@@ -4323,7 +4335,7 @@ fn body_first_lf_applies_to_only_the_next_real_token_and_afterbody_other_input_r
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let mut rows = vec![(0, "html"), (1, "head"), (1, "body")];
@@ -4454,7 +4466,7 @@ fn body_source_void_keygen_is_immediately_popped_and_sets_frameset_not_ok() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     assert!(
         !driver
@@ -4492,7 +4504,7 @@ fn body_source_void_end_br_discards_real_end_tag_attributes_before_insertion() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -4519,7 +4531,7 @@ fn body_source_void_frameset_not_ok_row_ignores_token_without_an_unsupported_tra
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     assert_eq!(
@@ -4595,12 +4607,12 @@ fn body_frameset_entry_uses_actual_flag_and_replaces_the_implied_body() {
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert_eq!(state.mode, super::head::InsertionMode::InFrameset);
         assert!(state.frameset_ok);
-        assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 0);
         let (mut c, mut frozen) = body_document(driver);
         let actual = outline(frozen.document().unwrap());
         frozen.release(&mut c).unwrap();
@@ -4622,7 +4634,7 @@ fn late_script_eof_returns_afterhead_then_creates_body_without_preparation() {
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.mode, super::head::InsertionMode::InBody);
@@ -4768,12 +4780,12 @@ fn misnested_inline_formatting_reconstructs_a_distinct_element_from_original_att
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         let boundary = standalone_boundary(&mut driver);
-        if boundary != super::head::HeadBoundary::ConstructionEof {
+        if boundary != super::head::HeadStep::Complete {
             // Current real driver suspends at the formatting opener. Dispose
             // all actual owners before the expected runtime RED assertion.
             driver.release().unwrap();
             assert_released(&driver.control);
-            assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+            assert_eq!(boundary, super::head::HeadStep::Complete);
             return;
         }
         let (mut c, mut frozen) = body_document(driver);
@@ -4863,10 +4875,10 @@ fn formatting_adoption_moves_furthest_block_children_into_a_distinct_element_wit
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         let boundary = standalone_boundary(&mut driver);
-        if boundary != super::head::HeadBoundary::ConstructionEof {
+        if boundary != super::head::HeadStep::Complete {
             driver.release().unwrap();
             assert_released(&driver.control);
-            assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+            assert_eq!(boundary, super::head::HeadStep::Complete);
             return;
         }
         let (mut c, mut frozen) = body_document(driver);
@@ -4942,7 +4954,7 @@ fn formatting_outline(source: &str) -> Vec<(usize, Vec<u16>)> {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
         assert_released(&driver.control);
         panic!("selected formatting source stopped at {boundary:?}");
@@ -5241,7 +5253,7 @@ fn formatting_cancellation_reclaims_original_recipes_and_native_replays() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     request.cancellation().cancel();
     let mut retained = Some(driver);
@@ -5264,7 +5276,7 @@ fn formatting_replay_preserves_literal_utf16_pairs_and_isolated_surrogates() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -5364,7 +5376,7 @@ fn formatting_noah_replay_keeps_each_retained_original_attribute_order() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -5459,12 +5471,12 @@ fn ordinary_form_end_removes_only_the_pointed_stack_identity_and_allows_a_later_
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // The published driver retains the actual opener at Form. Release the
         // real tree/token/controller owners before the runtime RED assertion.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -5751,10 +5763,10 @@ fn form_image_observations(
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return Vec::new();
     }
     let (mut c, mut frozen) = body_document(driver);
@@ -5907,7 +5919,7 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     {
@@ -5958,7 +5970,11 @@ fn ordinary_form_control_and_template_continuations_preserve_pointer_and_origina
             limits(100),
         );
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
-        assert_eq!(standalone_boundary(&mut driver), expected, "{name}");
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadStep::Boundary(expected),
+            "{name}"
+        );
         {
             let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
             assert!(state.current_form.is_some());
@@ -6000,12 +6016,12 @@ fn ordinary_table_implied_tbody_and_cell_end_recovery_preserve_real_sibling_orde
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // The existing driver retains the actual table opener at Table. Dispose
         // its real tree/token/controller owners before the runtime assertion.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -6131,7 +6147,7 @@ fn structural_table_whole_pending_batch_fosters_whitespace_with_nonwhitespace() 
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let actual = outline(frozen.document().unwrap());
@@ -6152,7 +6168,7 @@ fn structural_table_implied_colgroup_row_and_thead_transitions_are_real() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let actual = outline(frozen.document().unwrap());
@@ -6194,7 +6210,7 @@ fn structural_table_caption_and_cell_markers_bound_formatting_reconstruction() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let actual = outline(frozen.document().unwrap());
@@ -6231,7 +6247,7 @@ fn structural_table_nested_table_restores_real_cell_mode_then_body() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let actual = outline(frozen.document().unwrap());
@@ -6300,7 +6316,7 @@ fn structural_table_entry_uses_actual_quirks_document_mode() {
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let actual = outline(frozen.document().unwrap());
@@ -6328,18 +6344,13 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
                 returns.push(state.return_mode);
             }
         }
-        if matches!(
-            step,
-            super::head::HeadStep::Boundary(super::head::HeadBoundary::ConstructionEof)
-        ) {
+        if matches!(step, super::head::HeadStep::Complete) {
             break;
         }
     }
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert_eq!(
-        state.boundary,
-        Some(super::head::HeadBoundary::ConstructionEof)
-    );
+    assert_eq!(state.boundary, None);
+    assert_eq!(state.end, Some(super::end::EndPhase::Done));
     assert!(!state.before.kernel.foster_parenting);
     let (mut c, mut frozen) = body_document(driver);
     let actual = outline(frozen.document().unwrap());
@@ -6379,7 +6390,10 @@ fn structural_table_unsupported_creation_retains_original_before_table_effects()
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
-        assert_eq!(standalone_boundary(&mut driver), boundary);
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadStep::Boundary(boundary)
+        );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert_eq!(state.mode, super::head::InsertionMode::InTable);
         assert!(!state.before.kernel.foster_parenting);
@@ -6407,7 +6421,7 @@ fn structural_table_null_preprocessing_and_literal_utf16_are_retained_exactly() 
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let null_ranges: Vec<_> = driver
         .head
@@ -6497,7 +6511,7 @@ fn structural_table_work_exhaustion_retains_coherent_pending_and_flush_owners() 
         };
         for _ in 0..1000 {
             match driver.step() {
-                Ok(super::head::HeadStep::Boundary(_)) => break,
+                Ok(super::head::HeadStep::Boundary(_) | super::head::HeadStep::Complete) => break,
                 Ok(_) => {}
                 Err(_) => break,
             }
@@ -6650,7 +6664,7 @@ fn structural_table_form_and_fostered_image_keep_actual_nonancestor_form_owner()
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -6699,7 +6713,7 @@ fn structural_table_real_comment_pi_and_malformed_column_and_row_recovery() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let table_errors = driver
         .head
@@ -6749,11 +6763,11 @@ fn ordinary_listed_controls_preserve_nested_button_recovery_and_object_marker() 
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // Dispose actual tree, lexical and controller owners before checking completion.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -6970,7 +6984,7 @@ fn listed_controls_exact_utf16_text_preserves_pairs_and_isolates() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let actual = {
@@ -7024,7 +7038,7 @@ fn listed_controls_open_slot_exact_and_one_short_retains_actual_owners() {
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         frozen.release(&mut c).unwrap();
@@ -7062,10 +7076,10 @@ fn listed_control_owner_observations(source: &str) -> Vec<(Vec<u16>, Option<Vec<
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return Vec::new();
     }
     let (mut c, mut frozen) = body_document(driver);
@@ -7239,12 +7253,12 @@ fn ordinary_frameset_nested_frames_and_noframes_preserve_trailing_nodes() {
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // Dispose the actual retained opener, tree, tokenizer and controller
         // owners before asserting the existing callable's missing behavior.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -7341,7 +7355,7 @@ fn ordinary_frameset_nested_frames_and_noframes_preserve_trailing_nodes() {
 
 #[test]
 fn frameset_body_removal_preserves_form_facts_and_reconstructs_surviving_formatting() {
-    use super::head::{HeadBoundary, InsertionMode};
+    use super::head::InsertionMode;
     use crate::construction::parser_session::FormAssociationEvidence;
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<!doctype html><form><fieldset><b><frameset></frameset></html> "),
@@ -7362,10 +7376,7 @@ fn frameset_body_removal_preserves_form_facts_and_reconstructs_surviving_formatt
             );
         }
     };
-    assert_eq!(
-        standalone_boundary(&mut driver),
-        HeadBoundary::ConstructionEof
-    );
+    before_ordinary_end(&mut driver);
     let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
     assert_eq!(state.mode, InsertionMode::AfterAfterFrameset);
     assert_eq!(state.formatting.len(), 1);
@@ -7422,6 +7433,10 @@ fn frameset_body_removal_preserves_form_facts_and_reconstructs_surviving_formatt
             .same_node(&mut driver.control, &new_b, &old_b)
             .unwrap()
     );
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadStep::Complete
+    );
     let (mut c, mut frozen) = body_document(driver);
     let actual = outline(frozen.document().unwrap());
     frozen.release(&mut c).unwrap();
@@ -7440,13 +7455,13 @@ fn frameset_body_removal_preserves_form_facts_and_reconstructs_surviving_formatt
 
 #[test]
 fn frameset_mixed_text_keeps_every_whitespace_run_and_exact_omitted_origins() {
-    use super::head::{HeadBoundary, HeadCondition, InsertionMode};
+    use super::head::{HeadCondition, InsertionMode};
     let literal = "<!doctype html><frameset>A \0\tB\r\nC</frameset>D \u{c}E</html>F \tG";
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits(100));
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     let errors: Vec<_> = state
@@ -7508,7 +7523,7 @@ fn frameset_mixed_text_keeps_every_whitespace_run_and_exact_omitted_origins() {
 
 #[test]
 fn frameset_noframes_restores_each_actual_return_mode_on_end_and_eof() {
-    use super::head::{HeadBoundary, HeadCondition, InsertionMode};
+    use super::head::{HeadCondition, InsertionMode};
     for (prefix, mode, depth) in [
         ("<!doctype html><frameset>", InsertionMode::InFrameset, 2),
         (
@@ -7543,7 +7558,7 @@ fn frameset_noframes_restores_each_actual_return_mode_on_end_and_eof() {
             assert!(entered);
             assert_eq!(
                 standalone_boundary(&mut driver),
-                HeadBoundary::ConstructionEof
+                super::head::HeadStep::Complete
             );
             let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
             assert_eq!(state.mode, mode);
@@ -7577,7 +7592,6 @@ fn frameset_noframes_restores_each_actual_return_mode_on_end_and_eof() {
 
 #[test]
 fn frameset_rawtext_preserves_utf16_isolates_pairs_and_recovers_null() {
-    use super::head::HeadBoundary;
     let mut units: Vec<_> = "<!doctype html><frameset><noframes>"
         .encode_utf16()
         .collect();
@@ -7590,7 +7604,7 @@ fn frameset_rawtext_preserves_utf16_isolates_pairs_and_recovers_null() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let mut expected =
@@ -7639,7 +7653,7 @@ fn frameset_comment_and_pi_placement_tracks_current_node_then_document() {
 
 #[test]
 fn frameset_selfclosing_acknowledgement_and_open_eof_follow_actual_stack() {
-    use super::head::{HeadBoundary, HeadCondition};
+    use super::head::HeadCondition;
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<!doctype html><frameset/><frame/><frameset></frameset>"),
         limits(100),
@@ -7647,10 +7661,10 @@ fn frameset_selfclosing_acknowledgement_and_open_eof_follow_actual_stack() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 0);
     let conditions: Vec<_> = state
         .diagnostics
         .as_slice()
@@ -7717,7 +7731,7 @@ fn frameset_body_diagnostic_cap_stops_before_removal_or_stack_changes() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     assert_eq!(
         driver
@@ -7880,7 +7894,7 @@ fn frameset_exact_node_and_temporary_open_element_caps_preserve_terminal_owners(
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         let result = (0..100)
             .find_map(|_| match driver.step() {
-                Ok(super::head::HeadStep::Boundary(b)) => Some(Ok(b)),
+                Ok(step) if step != super::head::HeadStep::Consumed => Some(Ok(step)),
                 Err(e) => Some(Err(e)),
                 _ => None,
             })
@@ -7896,10 +7910,7 @@ fn frameset_exact_node_and_temporary_open_element_caps_preserve_terminal_owners(
             driver.release().unwrap();
             assert_released(&driver.control);
         } else {
-            assert!(matches!(
-                result,
-                Ok(super::head::HeadBoundary::ConstructionEof)
-            ));
+            assert!(matches!(result, Ok(super::head::HeadStep::Complete)));
             driver.release().unwrap();
             assert_released(&driver.control);
         }
@@ -8121,7 +8132,8 @@ fn frameset_finite_work_exhaustion_disposes_every_retained_transition_owner() {
         };
         for _ in 0..1000 {
             match driver.step() {
-                Ok(super::head::HeadStep::Boundary(_)) | Err(_) => break,
+                Ok(super::head::HeadStep::Boundary(_) | super::head::HeadStep::Complete)
+                | Err(_) => break,
                 _ => {}
             }
         }
@@ -8151,11 +8163,11 @@ fn ordinary_textarea_rcdata_first_lf_and_form_sibling_order_preserve_exact_nativ
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // Dispose real tree, lexical and controller owners before the RED assertion.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -8248,7 +8260,7 @@ fn textarea_native_observation(source: HtmlSource) -> TextareaNativeObservation 
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -8288,10 +8300,10 @@ fn ordinary_table_textarea_delegation_preserves_foster_tree_and_returns_to_table
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
     let (mut c, mut frozen) = body_document(driver);
@@ -8387,7 +8399,7 @@ fn textarea_form_association_is_actual_known_state_with_or_without_explicit_form
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let doc = frozen.document().unwrap();
@@ -8436,7 +8448,7 @@ fn textarea_eof_reset_failure_occurs_after_real_pop_before_return_and_stays_term
         let mut failure = None;
         for _ in 0..1000 {
             match driver.step() {
-                Ok(super::head::HeadStep::Boundary(super::head::HeadBoundary::ConstructionEof)) => {
+                Ok(super::head::HeadStep::Complete) => {
                     break;
                 }
                 Ok(_) => {}
@@ -8575,7 +8587,8 @@ fn textarea_finite_work_stops_retain_all_lexical_native_and_raw_owners_for_dispo
         };
         for _ in 0..1000 {
             match driver.step() {
-                Ok(super::head::HeadStep::Boundary(_)) | Err(_) => break,
+                Ok(super::head::HeadStep::Boundary(_) | super::head::HeadStep::Complete)
+                | Err(_) => break,
                 _ => {}
             }
         }
@@ -8709,7 +8722,7 @@ fn textarea_late_form_id_reset_observes_first_element_order_without_changing_raw
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let doc = frozen.document().unwrap();
@@ -8754,11 +8767,11 @@ fn ordinary_output_descendant_text_and_form_sibling_order_preserve_native_struct
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // Dispose real tree, lexical and controller owners before the RED assertion.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -8889,7 +8902,7 @@ fn output_native_observation(source: HtmlSource) -> OutputNativeObservation {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -9023,11 +9036,11 @@ fn ordinary_hidden_inputs_preserve_ordered_value_rewrite_and_form_sibling_order(
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // Dispose every actual tree/lexer/controller owner before the RED assertion.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -9224,7 +9237,7 @@ fn hidden_input_table_direct_placement_and_body_formatting_reconstruction_are_so
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let actual = outline(frozen.document().unwrap());
@@ -9245,7 +9258,7 @@ fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -9332,7 +9345,10 @@ fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
         ));
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::Form);
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Boundary(super::head::HeadBoundary::Form)
+        );
     }
 }
 
@@ -9346,11 +9362,11 @@ fn ordinary_select_option_pop_clones_selected_content_with_distinct_native_child
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         // Dispose the actual tree, lexer and payload owners before asserting RED.
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -9517,7 +9533,7 @@ fn select_family_native_states_follow_size_multiple_disabled_and_last_selected_r
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -9633,7 +9649,7 @@ fn select_family_modern_body_dispatch_keeps_generic_children_and_hidden_guard() 
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof,
+            super::head::HeadStep::Complete,
             "{source}"
         );
         let (mut c, mut frozen) = body_document(driver);
@@ -9683,7 +9699,7 @@ fn select_family_selectedcontent_disabled_and_multiple_are_intrinsic_not_empty_c
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let doc = frozen.document().unwrap();
@@ -9728,7 +9744,7 @@ fn select_fragment_siblings_finish_insertion_before_post_connection_cloning() {
         limits(100),
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
-    let boundary = standalone_boundary(&mut driver);
+    before_ordinary_end(&mut driver);
     // Four implicit structural records + doctype; nine source element/text
     // records; one outer-clone fragment; six sibling-subtree clones; the final
     // B update's fragment and text clone.
@@ -9745,7 +9761,6 @@ fn select_fragment_siblings_finish_insertion_before_post_connection_cloning() {
     ));
     driver.release().unwrap();
     assert_released(&driver.control);
-    assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
     assert_eq!(before_checkpoint, 23);
 }
 #[test]
@@ -9758,10 +9773,10 @@ fn ordinary_svg_adjusted_names_and_foreign_integration_preserve_native_namespace
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -9930,7 +9945,7 @@ fn foreign_cdata_null_pi_comment_doctype_and_surrogates_keep_real_native_payload
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert!(!state.frameset_ok);
@@ -10051,7 +10066,7 @@ fn foreign_encoding_integration_math_text_exceptions_and_annotation_breakout_are
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof,
+            super::head::HeadStep::Complete,
             "{source}"
         );
         let (mut c, mut frozen) = body_document(driver);
@@ -10129,7 +10144,7 @@ fn foreign_font_breakout_mismatched_end_and_table_foster_keep_actual_order() {
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof,
+            super::head::HeadStep::Complete,
             "{source}"
         );
         let (mut c, mut frozen) = body_document(driver);
@@ -10152,7 +10167,7 @@ fn foreign_svg_script_fresh_start_and_self_closing_preserve_native_attributes_an
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let doc = frozen.document().unwrap();
@@ -10203,7 +10218,7 @@ fn foreign_all_svg_name_and_attribute_adjustments_follow_literal_selected_tables
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -10238,7 +10253,7 @@ fn foreign_all_svg_name_and_attribute_adjustments_follow_literal_selected_tables
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -10285,7 +10300,7 @@ fn foreign_all_namespace_adjustments_unknown_colons_and_xmlns_errors_keep_origin
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(
@@ -10376,7 +10391,7 @@ fn foreign_local_control_spellings_have_no_html_metadata_and_keep_actual_namespa
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert!(state.current_form.is_none());
@@ -10500,7 +10515,7 @@ fn foreign_attributes_keep_literal_non_scalar_utf16_and_unknown_name_units() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -10538,10 +10553,10 @@ fn ordinary_selectedcontent_clones_foreign_children_with_distinct_qualified_nati
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
     let (mut c, mut frozen) = body_document(driver);
@@ -10709,10 +10724,10 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     let boundary = standalone_boundary(&mut driver);
-    if boundary != super::head::HeadBoundary::ConstructionEof {
+    if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
         assert_released(&driver.control);
-        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
         return;
     }
 
@@ -10975,7 +10990,7 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
     drop((outer, state, ordinary, inert));
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -11045,7 +11060,7 @@ fn template_pi_lookup_uses_whole_xml_grammar_without_html_character_reference_re
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -11130,7 +11145,7 @@ fn template_patch_removes_original_range_and_inserts_before_attached_end_marker(
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let actual = outline(frozen.document().unwrap());
@@ -11150,7 +11165,7 @@ fn template_form_pointer_survives_nested_form_recovery_and_template_parser_assoc
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -11213,7 +11228,7 @@ fn template_selectedcontent_deep_clone_keeps_distinct_contents_and_adopts_real_d
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -11318,7 +11333,7 @@ fn template_pi_xml_unicode_names_values_and_invalid_whole_maps_preserve_native_u
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -11351,7 +11366,7 @@ fn template_valid_shadow_mode_returns_to_plain_contents_before_for_patching() {
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -11428,7 +11443,7 @@ fn template_modes_reprocess_table_families_and_head_text_into_real_contents() {
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert_eq!(state.template_modes.len(), 0);
@@ -11482,7 +11497,7 @@ fn template_eof_unwinds_both_mode_markers_but_does_not_remove_patch_markers() {
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.template_modes.len(), 0);
@@ -11527,16 +11542,12 @@ fn ordinary_svg_script_foreign_text_and_self_closing_preserve_native_siblings() 
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         let boundary = standalone_boundary(&mut driver);
-        if boundary != super::head::HeadBoundary::ConstructionEof {
+        if boundary != super::head::HeadStep::Complete {
             // Dispose the actual parser/tree/controller owners before asserting
             // the source-required continuation beyond the unsupported branch.
             driver.release().unwrap();
             assert_released(&driver.control);
-            assert_eq!(
-                boundary,
-                super::head::HeadBoundary::ConstructionEof,
-                "{source}"
-            );
+            assert_eq!(boundary, super::head::HeadStep::Complete, "{source}");
             return;
         }
 
@@ -11596,11 +11607,7 @@ fn ordinary_svg_script_foreign_text_and_self_closing_preserve_native_siblings() 
         frozen.release(&mut c).unwrap();
         assert_released(&c);
 
-        assert_eq!(
-            boundary,
-            super::head::HeadBoundary::ConstructionEof,
-            "{source}"
-        );
+        assert_eq!(boundary, super::head::HeadStep::Complete, "{source}");
         assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks, "{source}");
         assert_eq!(root_child_count, 2, "{source}");
         let mut rows = vec![
@@ -11727,7 +11734,7 @@ fn ordinary_svg_script_foreign_text_and_self_closing_preserve_native_siblings() 
     }
 }
 
-fn svg_open_node(driver: &mut StandaloneDocumentDriver<'_>) -> ParserNode {
+pub(super) fn svg_open_node(driver: &mut StandaloneDocumentDriver<'_>) -> ParserNode {
     for _ in 0..1_000 {
         driver.step().unwrap();
         let Some(head) = &driver.head else { continue };
@@ -11795,7 +11802,7 @@ fn svg_script_parser_end_defers_then_restores_wrapper_without_html_preparation()
     );
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     driver.release().unwrap();
     assert_released(&driver.control);
@@ -11913,7 +11920,7 @@ fn svg_script_inert_template_and_actual_patch_connection_have_distinct_processed
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::ConstructionEof
+            super::head::HeadStep::Complete
         );
         let (mut c, mut frozen) = body_document(driver);
         let document = frozen.document().unwrap();
@@ -11953,10 +11960,10 @@ fn svg_script_foreign_end_does_not_drain_pending_select_tasks_as_an_html_checkpo
         limits(100),
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
-    assert_eq!(
-        standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
-    );
+    let script = svg_open_node(&mut driver);
+    assert_eq!(driver.step().unwrap(), super::head::HeadStep::Consumed);
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(session.svg_script_state(c, &script).unwrap().processed);
     let (c, session, _) = driver.standalone_parts().unwrap();
     assert_eq!(
         session.freeze(c).err(),
@@ -11978,7 +11985,7 @@ fn svg_script_selectedcontent_deep_clone_preserves_true_bits_and_inert_nested_fa
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -12032,7 +12039,7 @@ fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_termina
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::ConstructionEof
+        super::head::HeadStep::Complete
     );
     // Native allocator/layout observations qualify physical boundaries, not a
     // semantic oracle. Each subsequent cap admits the same real producer sequence.
@@ -12075,9 +12082,7 @@ fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_termina
             let mut reached = false;
             for _ in 0..1_000 {
                 match driver.step() {
-                    Ok(super::head::HeadStep::Boundary(
-                        super::head::HeadBoundary::ConstructionEof,
-                    )) => {
+                    Ok(super::head::HeadStep::Complete) => {
                         reached = true;
                         break;
                     }

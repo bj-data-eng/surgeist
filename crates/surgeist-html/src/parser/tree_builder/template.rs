@@ -198,7 +198,7 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
         if !self.before.kernel.contains_html_template(c)? {
-            return Ok(Some(self.stop_at(HeadBoundary::ConstructionEof, c)?));
+            return Ok(Some(self.begin_end(c)?));
         }
         self.emit(HeadCondition::UnexpectedOpenElement, c)?;
         self.close_template(c, false)?;

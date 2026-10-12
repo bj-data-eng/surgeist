@@ -90,11 +90,11 @@ pub(crate) enum HeadBoundary {
     Script,
     Template,
     Form,
-    ConstructionEof,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HeadStep {
     Consumed,
+    Complete,
     Boundary(HeadBoundary),
 }
 pub(crate) enum HeadError {
@@ -114,6 +114,7 @@ pub(crate) enum HeadError {
     UnsupportedPendingScript,
     InvalidScriptNesting,
     InvalidFormattingState,
+    IncompleteCompletion,
 }
 impl std::fmt::Debug for HeadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -133,6 +134,7 @@ impl std::fmt::Debug for HeadError {
             Self::UnsupportedScriptPause => f.write_str("UnsupportedScriptPause"),
             Self::UnsupportedPendingScript => f.write_str("UnsupportedPendingScript"),
             Self::InvalidScriptNesting => f.write_str("InvalidScriptNesting"),
+            Self::IncompleteCompletion => f.write_str("IncompleteCompletion"),
             Self::InvalidFormattingState => f.write_str("InvalidFormattingState"),
         }
     }
@@ -233,6 +235,7 @@ pub(super) struct HeadState<'source> {
     pub(super) template_modes: OwnedVec<InsertionMode>,
     pub(super) script: Option<StandaloneScriptState<'source>>,
     pub(super) svg_pending: Option<ParserNode>,
+    pub(super) end: Option<super::end::EndPhase>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
 /// host, srcdoc, mode-fixed state or execution mode can be supplied here.
@@ -278,11 +281,10 @@ impl<'source> HeadStage<'source> {
         let table = super::tables::TableCharacters::new(c)?;
         let mut template_modes = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         template_modes.require_owner(c)?;
-        // Three driver fields + twenty-two state fields + caller BeforeHead and
-        // Tokenizer slots + the retained BeforeHead input slot are written.
-        // The table constructor separately admits its four actual field writes.
-        // Admit all twenty-eight enclosing field writes before the first owning take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 29, c) {
+        // Preserve the existing enclosing ownership-transfer admission and add
+        // the actual end-continuation field. The table constructor separately
+        // admits its four field writes. All admissions precede the first take.
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 30, c) {
             diagnostics.release(c)?;
             lexical.release(c)?;
             formatting.release(c)?;
@@ -318,6 +320,7 @@ impl<'source> HeadStage<'source> {
                 whitespace_pending: None,
                 script: None,
                 svg_pending: None,
+                end: None,
                 frameset_ok: true,
                 ignore_first_lf: false,
                 temporary_head: None,
@@ -505,7 +508,7 @@ impl<'source> HeadStage<'source> {
             state.script.expect("actual issued capability").capability,
         )
     }
-    fn require(&self, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn require(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         c.require_identity(&self.owner)?;
         c.require_source(self.source)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -527,6 +530,10 @@ impl<'source> HeadStage<'source> {
         }
         if state.svg_pending.is_some() {
             return Err(HeadError::UnsupportedScriptPause);
+        }
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if state.end.is_some() {
+            return state.end_step(c);
         }
         if state.boundary.is_some() {
             return Err(HeadError::AlreadyAtBoundary);
@@ -1041,6 +1048,38 @@ impl HeadState<'_> {
             self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
         }
         self.finish(c)
+    }
+    pub(super) fn qualify_end_script(&self, c: &mut ParseControl) -> Result<(), HeadError> {
+        self.validate_standalone_capability(c)?;
+        let script = self
+            .script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+        c.charge(WorkCategory::RecordVisit, 7)?;
+        c.charge(
+            WorkCategory::InspectByte,
+            size_of::<StandaloneScriptState>() as u64,
+        )?;
+        if script.nesting != 0
+            || script.pause
+            || script.pending_blocking.is_some()
+            || script.saved_insertion_point.is_some()
+            || self.svg_pending.is_some()
+            || self.return_mode.is_some()
+            || self.template_modes.len() != 0
+        {
+            return Err(HeadError::IncompleteCompletion);
+        }
+        Ok(())
+    }
+    pub(super) fn end_insertion_point(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+        self.qualify_end_script(c)?;
+        write(size_of::<Option<HtmlSourceRange>>(), 1, c)?;
+        self.script
+            .as_mut()
+            .expect("qualified end script state")
+            .insertion_point = None;
+        Ok(())
     }
     pub(super) fn validate_standalone_capability(
         &self,

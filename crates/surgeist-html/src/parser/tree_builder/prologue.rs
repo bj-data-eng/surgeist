@@ -206,6 +206,16 @@ impl<'a> DocumentPrologue<'a> {
                     return Err(error.into());
                 }
             };
+        if let Err(error) = session
+            .as_mut()
+            .expect("fresh Document")
+            .initialize_standalone_document(c)
+        {
+            session.as_mut().expect("retained Document").release(c)?;
+            diagnostics.release(c)?;
+            whitespace.release(c)?;
+            return Err(error.into());
+        }
         let mut kernel = match LocationKernel::new(&mut session, c) {
             Ok(kernel) => kernel,
             Err(error) => {
@@ -526,5 +536,46 @@ impl<'a> DocumentPrologue<'a> {
         self.kernel = None;
         self.pending = None;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+    use crate::construction::parser_session::{ConstructionCompletion, ConstructionReadiness};
+
+    #[test]
+    fn fresh_source_document_initial_readiness_is_complete_but_parsing_is_unfinished() {
+        let source = HtmlSource::utf8("");
+        let mut c = ParseControl::new(
+            super::super::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        c.admit_source(&source).unwrap();
+        let mut prologue = DocumentPrologue::new(&source, &mut c).unwrap();
+        let session = &mut prologue.kernel.as_mut().unwrap().session;
+        let state = session.standalone_document_state(&mut c).unwrap();
+        assert_eq!(state.readiness, ConstructionReadiness::Complete);
+        assert!(!state.ready_for_post_load_tasks);
+        assert_eq!(state.completion, ConstructionCompletion::Parsing);
+        let writes = c.usage().work(WorkCategory::RecordWrite);
+        session
+            .update_standalone_readiness(&mut c, ConstructionReadiness::Complete)
+            .unwrap();
+        assert_eq!(c.usage().work(WorkCategory::RecordWrite), writes);
+        prologue.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
+        for root in [
+            RootKind::Document(HtmlDocumentMode::NoQuirks),
+            RootKind::Fragment,
+        ] {
+            let mut session = ParserArenaSession::new(&mut c, root).unwrap();
+            assert_eq!(
+                session.standalone_document_state(&mut c),
+                Err(SessionError::CompletionMetadataUnavailable)
+            );
+            session.release(&mut c).unwrap();
+            super::super::tests::assert_released(&c);
+        }
     }
 }

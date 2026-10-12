@@ -489,7 +489,7 @@ impl HeadState<'_> {
             if mode == InsertionMode::InBody {
                 self.body_end_check(c)?;
             }
-            return Ok(Some(self.stop_at(HeadBoundary::ConstructionEof, c)?));
+            return Ok(Some(self.begin_end(c)?));
         }
         if matches!(payload, Payload::Comment(_) | Payload::Pi(_)) {
             return Ok(Some(match mode {

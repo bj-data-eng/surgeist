@@ -760,10 +760,10 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
 #[test]
 fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slot_caps() {
     // Fresh fixture: Document/html two node slots plus html name/URI/attrs
-    // three registry slots plus actual root facts2/html binding1 =8. Prologue stack coexistence needs6. Select adds
+    // three registry slots plus actual root facts2/html binding1/completion1 =9. Prologue stack coexistence needs10. Select adds
     // Select/form metadata2, name/URI/attrs3, node1, ordered-attribute staging1, reset option snapshot1:
-    // completed empty Select exactly13; twelve stops after take at snapshot.
-    for cap in [9, 16, 17] {
+    // completed empty Select exactly18; seventeen stops after take at snapshot.
+    for cap in [10, 17, 18] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -790,7 +790,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             &token.source,
             &proof,
         );
-        if cap == 17 {
+        if cap == 18 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(!session.select_state(&mut c, &node).unwrap().user_validity);
@@ -798,7 +798,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                17
+                18
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -811,7 +811,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             assert!(
                 matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 9);
+            assert_eq!(input.is_some(), cap == 10);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))

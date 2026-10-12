@@ -1401,6 +1401,15 @@ reports remain unfinished. [Parser origins](PARSER-ORIGINS.md) records the selec
 adaptation and HTML differences; [the crate overview](README.md) records actual
 admission, cleanup and capability limits.
 
+The fresh ordinary driver has [private EOF completion](README.md#private-ordinary-eof):
+source-initial Complete readiness is distinct from parsing completion; Interactive
+precedes canonical pops, two source checkpoints run, and the post-load milestone
+precedes execution of the retained Complete-readiness continuation. The whole
+completed owner
+retains construction evidence. Public diagnostic/source-map/report transfer and
+contextual fragment execution remain unfinished; no browser events or queue are
+synthesized.
+
 Immutable constructed template/shadow/PI content and explicit metadata/effects
 are not a second live DOM. Private parser machinery is test-compiled and remains
 an unfinished capability, with selected source-limited checkpoints and retained

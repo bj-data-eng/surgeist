@@ -73,6 +73,7 @@ pub(crate) enum StandaloneUnsupported {
     ScriptPause,
     PendingScript,
     InvalidNesting,
+    Completion,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
