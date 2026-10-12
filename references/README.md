@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 355 retained source identities and states their representations: 257 full documents/source witnesses, 90 partial witnesses, and 8 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 356 retained source identities and states their representations: 257 full documents/source witnesses, 90 partial witnesses, and 9 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -65,6 +65,12 @@ The [addition verification record](CONVERSION-REPORT.md#dom-selector-execution-a
 The [additional edition mapping](SOURCE-EDITIONS.md#additional-source-question-determinations) retains bounded color/profile, animation/keyframe, generalized-conditional, marker/pseudo-object, bookmark/accessibility and assigned media/preference/border evidence. Reused full source identities gain representation links without duplicate counting. Current published AccName 1.2 and separately pinned browser evidence remain explicitly scoped. The [verification record](CONVERSION-REPORT.md#additional-source-question-references--2026-10-1011) states the conversion checks and metadata-only discussion provenance.
 
 ## Pinned HTML language sources
+
+The [absent SVG document-title witness](webkit-document-title--73aa6c89e2cb-metadata.md)
+retains pinned WebKit file hashes and inspected ranges without source excerpts.
+The [edition determination](SOURCE-EDITIONS.md#absent-svg-document-title)
+selects only empty readback when an SVG document element has no direct SVG title;
+other title text and lifecycle behavior remains unadopted.
 
 The [dimension-list cursor witness](html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
 retains bounded WebKit and Blink excerpts, complete original file headers and

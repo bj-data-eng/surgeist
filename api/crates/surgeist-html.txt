@@ -1411,6 +1411,7 @@ pub surgeist_html::HtmlSemanticFact::Directionality(surgeist_html::HtmlSemanticV
 pub surgeist_html::HtmlSemanticFact::DirtyCheckednessFlag(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::DirtyValueFlag(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Disabledness(surgeist_html::HtmlSemanticValue<bool>)
+pub surgeist_html::HtmlSemanticFact::DocumentTitle(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDocumentTitle>)
 pub surgeist_html::HtmlSemanticFact::Editable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::EditingHost(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::FieldsetControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
@@ -1467,6 +1468,7 @@ pub surgeist_html::HtmlSemanticFact::TableSectionRows(surgeist_html::HtmlSemanti
 pub surgeist_html::HtmlSemanticFact::TextareaDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::TextareaValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::TimeElement(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTimeElementReadback>)
+pub surgeist_html::HtmlSemanticFact::TitleText(surgeist_html::HtmlSemanticValue<surgeist_html::DocumentString>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
 pub surgeist_html::HtmlSemanticFact::UsedAutocapitalizationHint(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsedAutocapitalizationHint>)
 pub surgeist_html::HtmlSemanticFact::UsedAutocorrectionState(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsedAutocorrectionState>)
@@ -1523,6 +1525,7 @@ pub surgeist_html::HtmlSemanticQuery::Directionality
 pub surgeist_html::HtmlSemanticQuery::DirtyCheckednessFlag
 pub surgeist_html::HtmlSemanticQuery::DirtyValueFlag
 pub surgeist_html::HtmlSemanticQuery::Disabledness
+pub surgeist_html::HtmlSemanticQuery::DocumentTitle
 pub surgeist_html::HtmlSemanticQuery::Editable
 pub surgeist_html::HtmlSemanticQuery::EditingHost
 pub surgeist_html::HtmlSemanticQuery::FieldsetControls
@@ -1579,6 +1582,7 @@ pub surgeist_html::HtmlSemanticQuery::TableSectionRows
 pub surgeist_html::HtmlSemanticQuery::TextareaDefaultValue
 pub surgeist_html::HtmlSemanticQuery::TextareaValueMissing
 pub surgeist_html::HtmlSemanticQuery::TimeElement
+pub surgeist_html::HtmlSemanticQuery::TitleText
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
 pub surgeist_html::HtmlSemanticQuery::UsedAutocapitalizationHint
 pub surgeist_html::HtmlSemanticQuery::UsedAutocorrectionState
@@ -1593,6 +1597,7 @@ pub surgeist_html::HtmlSemanticResource::OutputRecords
 pub surgeist_html::HtmlSemanticResource::ScratchRecords
 pub surgeist_html::HtmlSemanticResource::Work
 pub enum surgeist_html::HtmlSemanticUnsupported
+pub surgeist_html::HtmlSemanticUnsupported::AmbiguousDocumentElement
 pub surgeist_html::HtmlSemanticUnsupported::ForeignNamespace
 pub enum surgeist_html::HtmlSemanticValue<T>
 pub surgeist_html::HtmlSemanticValue::Inapplicable
@@ -2811,6 +2816,10 @@ pub fn surgeist_html::HtmlDocumentParseRequest::limits(&self) -> &surgeist_html:
 pub fn surgeist_html::HtmlDocumentParseRequest::offline(source: surgeist_html::HtmlSource, limits: surgeist_html::HtmlParseLimits) -> Self
 pub fn surgeist_html::HtmlDocumentParseRequest::scripting_mode(&self) -> surgeist_html::HtmlParserScriptingMode
 pub fn surgeist_html::HtmlDocumentParseRequest::source(&self) -> &surgeist_html::HtmlSource
+pub struct surgeist_html::HtmlDocumentTitle
+impl surgeist_html::HtmlDocumentTitle
+pub fn surgeist_html::HtmlDocumentTitle::title_element(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlDocumentTitle::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlDuplicateTokenError
 impl surgeist_html::HtmlDuplicateTokenError
 pub fn surgeist_html::HtmlDuplicateTokenError::comparison(&self) -> surgeist_html::HtmlTokenComparison

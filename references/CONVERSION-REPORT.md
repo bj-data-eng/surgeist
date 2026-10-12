@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **354 source identities: 255 full documents/source witnesses, 91 partial witnesses and 8 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **356 source identities: 257 full documents/source witnesses, 90 partial witnesses and 9 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -433,3 +433,27 @@ WebKit behavior, source-set normalization, URL validation or image selection.
 The catalog now contains **355 identities: 257 full, 90 partial and eight
 metadata-only**. Historical dated counts and **81 passive SVG assets** remain
 unchanged.
+
+## Absent SVG document-title metadata — 2026-10-12
+
+The [bounded WebKit witness](webkit-document-title--73aa6c89e2cb-metadata.md)
+retains original file URLs, SHA-256 identities and inspected ranges at revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`. Document.cpp's complete original
+hash is `c3f64c3d98f23601ffa74b2e63b82f30aaeb4035bb537c657475a8c00095c55c`;
+the title evidence concerns original lines 2462–2475, 2524–2527 and 2550–2561.
+Document.h's complete original hash is
+`d834dcea6916301c50febc380c74c28f0162c72c75b510b34d4b3feb409fa542`;
+its getter evidence is original line 1203. Retained private originals match
+those hashes. No original source excerpt, body, converted browser code or
+new license text is redistributed in this metadata addition.
+
+Document.cpp reuses its existing partial identity and legal-header witness;
+its earlier coverage is not upgraded. Document.h adds exactly one metadata
+identity. Existing pinned URL/hash identities remain unchanged, including
+byte-identical bodies at distinct historical revisions. Local source and
+heading links resolve, text uses UTF-8/LF and whitespace checks pass. The
+[edition determination](SOURCE-EDITIONS.md#absent-svg-document-title) fills
+only the absent direct SVG title case; it does not certify WebKit parity or
+adopt its other title processing. The catalog now contains **356 identities:
+257 full, 90 partial and nine metadata-only**. Current overview counts match;
+dated historical records and **81 passive SVG assets** remain unchanged.

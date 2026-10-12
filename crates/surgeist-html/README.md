@@ -953,6 +953,25 @@ allocation retains the existing provider limitation. This query computes
 advisory information; link titles, stylesheet-set names and tooltip or
 accessibility exposure remain separate operations.
 
+`TitleText` returns the exact direct-child Text data of an HTML `title` element.
+`DocumentTitle` selects the first HTML title in ordinary document tree order,
+then strips and collapses only ASCII whitespace. `HtmlDocumentTitle` retains
+the actual selecting element: an empty selected title has a source, while
+complete absence has none. Unknown influencing children remain missing;
+shadow trees, template contents and detached nodes do not enter this selection.
+Multiple direct document Elements are query-local unsupported input.
+
+An exact SVG `svg` document element instead selects its first direct SVG
+`title` child. The [selected absence determination](../../references/SOURCE-EDITIONS.md#absent-svg-document-title)
+returns known empty without a source when those children are complete and no
+such title exists. It searches neither deeper SVG titles nor an HTML fallback.
+Text extraction and whitespace processing otherwise follow the HTML clauses.
+The existing child-text owner and semantic ledger admit both the raw and
+normalized buffers, traversal capacity and cumulative output; failures remain
+sticky and batches atomic. Fixed shared wrapper allocation retains the
+existing provider limitation. These are captured getters; title mutation and
+browser lifecycle notification remain separate operations.
+
 `HtmlMeterState` retains the recovered and clamped minimum, maximum, value,
 low, high and optimum values. `HtmlProgressState` distinguishes indeterminate
 progress from a determinate maximum, value and position. These operations apply

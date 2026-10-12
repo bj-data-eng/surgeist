@@ -147,7 +147,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e100"></a>E100 | th; HTML | [the-th-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-th-element) | [Tables](#tables) cell/span/header model and [Table header scope](#table-header-scope); no layout. |
 | <a id="e101"></a>E101 | thead; HTML | [the-thead-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-thead-element) | [Tables](#tables) direct row membership/header-first tableRows; no live mutation. |
 | <a id="e102"></a>E102 | time; HTML | [the-time-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-time-element) | [Time element](#time-element) ten-format author/processing and captured explicit-value/text selection; inverse/host-zone conversion not supplied. |
-| <a id="e103"></a>E103 | title; HTML | [the-title-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-title-element) | Exact title text retained; source document title whitespace/text getter and document-title selection not exposed by a dedicated query. |
+| <a id="e103"></a>E103 | title; HTML | [the-title-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-title-element) | [Document title](#document-title): exact TitleText child-text getter and qualified DocumentTitle selection with ASCII whitespace normalization; setters and lifecycle notification remain separate. |
 | <a id="e104"></a>E104 | tr; HTML | [the-tr-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tr-element) | [Tables](#tables) direct td/th cell membership; live insertion/index APIs not covered. |
 | <a id="e105"></a>E105 | track; HTML | [the-track-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-track-element) | Own kind/default/src/srclang/label retained; WebVTT parsing, media readiness and track selection external. |
 | <a id="e106"></a>E106 | u; HTML | [the-u-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-u-element) | Exact unarticulated annotation role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
@@ -987,6 +987,38 @@ selection, boundaries, exact UTF-16, work/storage/cancellation and retained repo
 A163 title-of-link and stylesheet-set names still require their distinct
 document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
 contextual author meaning; this query is no semantic-adequacy or exposure proof.
+
+## Document title
+
+E103 uses [document_title.rs](src/semantics/document_title.rs), the existing
+child-text owner and the captured `TitleText`/`DocumentTitle` queries.
+[Title text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-title-text)
+is exact direct-child Text data, excluding nested element text. The
+[document getter](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document.title)
+selects the first HTML title in ordinary document tree order and strips and
+collapses only TAB/LF/FF/CR/SPACE. Other UTF-16 units remain exact.
+`HtmlDocumentTitle` retains the actual selected subject, including when its
+text is empty. Complete absence is known empty without a source; influencing
+unavailable ordered children remain Missing. Shadow trees, template contents
+and detached nodes are excluded. More than one direct document Element is
+query-local Unsupported rather than a rejected capture.
+
+An exact SVG `svg` document element selects only its first direct SVG `title`.
+The [narrow source determination](../../references/SOURCE-EDITIONS.md#absent-svg-document-title)
+fills HTML's omitted no-title case with known empty and no source when direct
+children are complete. Deeper SVG or HTML fallback titles are not selected.
+This is a selected correction, not an upstream erratum or adoption of WebKit's
+text extraction, canonicalization or lifecycle machinery.
+
+Both actual text buffers, ordinary traversal capacity and cumulative output
+are admitted through the shared semantic ledger before writes. Failures are
+sticky, batches atomic and traversal scratch released on every stop. The
+existing fixed Arc wrapper allocation limitation remains explicit.
+[Twenty-four public tests](tests/semantics_document_title.rs) cover exact
+selection, missing/empty distinctions, namespaces, excluded trees, UTF-16,
+literal work and capacity limits, cancellation and retained qualified reports.
+Title setters, author placement/content conformance and browser title-update
+notifications remain required distinct operations.
 
 ## Commands and popovers
 

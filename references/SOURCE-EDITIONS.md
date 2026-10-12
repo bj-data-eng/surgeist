@@ -278,6 +278,27 @@ HTMLSrcsetParser.cpp adds an identity. Complete original headers and the
 accompany both bodies. This is not an upstream erratum or whole-engine parity
 claim.
 
+### Absent SVG document title
+
+For [#1134](https://github.com/bj-data-eng/surgeist/issues/1134), HTML
+`877d6146487f15b15bc8dd0e3c625063a37b456a` remains authoritative for title
+selection, direct-child text and ASCII whitespace strip/collapse. Its
+`document.title` getter's SVG branch does not specify the null-title case.
+The [selected determination](https://github.com/bj-data-eng/surgeist/issues/1134#issuecomment-6117688267)
+uses bounded [WebKit evidence](webkit-document-title--73aa6c89e2cb-metadata.md)
+at `73aa6c89e2cb77c46184a81aec944e4ab99d114d`: a complete SVG `svg` document
+element with no direct SVG `title` returns empty text without a selecting
+element. Unknown required children remain missing information; an existing
+empty title retains its identity. Neither deeper SVG descendants nor HTML
+fallback titles are selected in this branch.
+
+The witness retains exact original file hashes and inspected line ranges as
+metadata. Document.cpp shares its already retained partial source identity;
+Document.h adds one metadata-only identity. This determination adopts no
+WebKit descendant-text extraction, canonicalization, mutation, scheduling or
+notification behavior. It fills this source omission without claiming an
+upstream erratum, complete SVG behavior or a different HTML edition.
+
 ### Bounded referrer-policy vocabulary
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the [Referrer Policy vocabulary](referrer-policy-vocabulary--cc435b05ca4a.md) selects the finite enumeration from W3C editor-source revision `cc435b05ca4a94f7f1a139be5074b168d20014db` (20 March 2026). The complete original source SHA-256 is `a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1`. Eight nonempty keywords and the empty state are retained. Pinned HTML §2.5.5 supplies ASCII-insensitive whole-value matching without trimming and missing/invalid empty-state defaults. Empty remains unresolved; the implementation does not substitute the external draft's default policy. This selection adopts no network, Fetch, referrer-generation, policy-container, URL or header-list algorithm. The older 2017 CR's surrounding processing model is not mixed into this selection.

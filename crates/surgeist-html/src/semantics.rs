@@ -8,7 +8,7 @@
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
-//! advisory information, and own/used capitalization, used autocorrection and computed writing suggestions.
+//! advisory information, title-element text and document titles, and own/used capitalization, used autocorrection and computed writing suggestions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
@@ -18,6 +18,8 @@ pub use table::*;
 mod language;
 pub use language::*;
 mod advisory_title;
+mod document_title;
+pub use document_title::*;
 mod range;
 mod value_missing;
 pub use advisory_title::*;
@@ -680,6 +682,10 @@ pub enum HtmlSemanticQuery {
     Directionality,
     /// Normalized own/inherited advisory information, including empty suppression.
     AdvisoryInformation,
+    /// Exact direct-child Text data of an HTML title element.
+    TitleText,
+    /// Selected document title with ASCII whitespace stripped and collapsed.
+    DocumentTitle,
     Meter,
     Progress,
     Inertness,
@@ -757,6 +763,12 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::TitleText => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-title-text"
+            }
+            Self::DocumentTitle => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document.title"
+            }
             Self::AdvisoryInformation => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#advisory-information"
             }
@@ -1033,10 +1045,12 @@ pub enum HtmlSemanticMissing {
         flag: HtmlControlFlag,
     },
 }
-/// Hidden and disabledness do not implement foreign-language semantics.
+/// Source-domain boundaries of an otherwise applicable semantic query.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticUnsupported {
     ForeignNamespace,
+    /// A document capture has more than one direct Element child.
+    AmbiguousDocumentElement,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticValue<T> {
@@ -1084,6 +1098,8 @@ pub enum HtmlSemanticFact {
     Language(HtmlSemanticValue<HtmlLanguage>),
     Directionality(HtmlSemanticValue<HtmlDirectionality>),
     AdvisoryInformation(HtmlSemanticValue<HtmlAdvisoryInformation>),
+    TitleText(HtmlSemanticValue<DocumentString>),
+    DocumentTitle(HtmlSemanticValue<HtmlDocumentTitle>),
     Meter(HtmlSemanticValue<HtmlMeterState>),
     Progress(HtmlSemanticValue<HtmlProgressState>),
     Inertness(HtmlSemanticValue<bool>),
@@ -2401,6 +2417,16 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlCapturedNodeKind::Element(element) => {
                     let foreign = !self.html_namespace(element)?;
                     match request.query {
+                        HtmlSemanticQuery::TitleText => HtmlSemanticFact::TitleText(if foreign {
+                            HtmlSemanticValue::Unsupported(
+                                HtmlSemanticUnsupported::ForeignNamespace,
+                            )
+                        } else {
+                            self.title_text(&request.subject, element)?
+                        }),
+                        HtmlSemanticQuery::DocumentTitle => {
+                            HtmlSemanticFact::DocumentTitle(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::AdvisoryInformation => {
                             HtmlSemanticFact::AdvisoryInformation(if foreign {
                                 HtmlSemanticValue::Unsupported(
@@ -2754,6 +2780,16 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 _ => match request.query {
+                    HtmlSemanticQuery::TitleText => {
+                        HtmlSemanticFact::TitleText(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DocumentTitle => HtmlSemanticFact::DocumentTitle(
+                        if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
+                            self.document_title(node)?
+                        } else {
+                            HtmlSemanticValue::Inapplicable
+                        },
+                    ),
                     HtmlSemanticQuery::AdvisoryInformation => {
                         HtmlSemanticFact::AdvisoryInformation(HtmlSemanticValue::Inapplicable)
                     }
