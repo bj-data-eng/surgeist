@@ -81,6 +81,42 @@ python3 crates/surgeist-html/tools/generate_vocabulary.py --check
 The [incorporation notice](../../licenses/whatwg/NOTICE.md#html-vocabulary-incorporation--2026-10-11)
 identifies the exact edition, upstream license and source adaptations.
 
+<a id="checked-custom-element-names"></a>
+
+[HtmlCustomElementName](src/custom_names.rs) checks the pinned
+[valid-custom-element-name predicate](../../references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md#valid-custom-element-name).
+Its private value retains exact UTF-16 without trimming, case folding or
+normalization. The name must begin with a lowercase ASCII letter, contain a
+hyphen, exclude uppercase ASCII and the eight reserved names, and satisfy the
+selected [DOM local-name rule](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md#valid-element-local-name).
+That rule's ASCII-first branch excludes ASCII whitespace, NULL, slash and
+greater-than; it permits less-than, equals, quotes, noncharacters and isolated
+surrogates after the first letter. This local-name proof does not certify
+serialized HTML syntax.
+
+Moving `into_qualified_name` emits an unprefixed HTML name;
+`into_is_attribute` emits a lowercase no-namespace `is` attribute. Both preserve
+the checked value. [HtmlValueInterpreter::is_attribute](src/attributes/custom_name.rs)
+admits the original raw value's UTF-16 length before expanded-name applicability
+and checks this same predicate. An applicable absent attribute remains Missing;
+empty or invalid content remains raw and locally Nonconforming with a typed
+error; valid content exposes the checked name. Wrong element namespace or
+attribute identity remains Unapplied. No missing or invalid value supplies a
+default checked name.
+
+Every applicable present `is` report leaves author context Unchecked, including
+locally invalid content. A matching definition and `extends` relation, and the
+prohibition on `is` on autonomous custom elements, require actual context.
+A valid hyphenated name alone does not establish registration or element
+classification. Content `is` interpretation does not set the saved runtime
+`is` value or change an existing element's behavior. Registry execution,
+upgrades and callbacks remain with their execution owner. Native checking and
+raw interpretation use ordinary allocation; only raw interpretation has the
+per-original-value cap. They supply no work, physical-memory or cancellation
+budget. The existing capture admission and custom-host classification consume
+the same borrowed predicate. [The public tests](tests/custom_names.rs) cover
+exact units, reserved names, report states and raw admission boundaries.
+
 Numeric authoring preserves arbitrary integer magnitude and exact decimal
 dimensions. Machine-integer projections report range failure. Floating-point
 values use finite binary64 with the selected HTML rounding contract; native

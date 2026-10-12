@@ -95,6 +95,7 @@ pub surgeist_html::HtmlAttributeConformanceError::DetailsNameMustNotBeEmpty
 pub surgeist_html::HtmlAttributeConformanceError::DirnameMustNotBeEmpty
 pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewline
 pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewline::code_unit_offset: usize
+pub surgeist_html::HtmlAttributeConformanceError::InvalidCustomElementName(surgeist_html::HtmlCustomElementNameError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidIdToken(surgeist_html::HtmlTokenError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidNavigableTarget(surgeist_html::HtmlNavigableTargetError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidUtf8EncodingLabel(surgeist_html::HtmlUtf8EncodingLabelError)
@@ -628,6 +629,17 @@ pub surgeist_html::HtmlCustomCommandError::MissingPrefix
 pub enum surgeist_html::HtmlCustomControlAttributeContext
 pub surgeist_html::HtmlCustomControlAttributeContext::FormAssociated
 pub surgeist_html::HtmlCustomControlAttributeContext::NotFormAssociated
+pub enum surgeist_html::HtmlCustomElementNameError
+pub surgeist_html::HtmlCustomElementNameError::Empty
+pub surgeist_html::HtmlCustomElementNameError::FirstCodePointNotLowercaseAscii
+pub surgeist_html::HtmlCustomElementNameError::ForbiddenCodeUnit
+pub surgeist_html::HtmlCustomElementNameError::ForbiddenCodeUnit::code_unit: u16
+pub surgeist_html::HtmlCustomElementNameError::ForbiddenCodeUnit::code_unit_offset: usize
+pub surgeist_html::HtmlCustomElementNameError::MissingHyphen
+pub surgeist_html::HtmlCustomElementNameError::ReservedName
+impl core::error::Error for surgeist_html::HtmlCustomElementNameError
+impl core::fmt::Display for surgeist_html::HtmlCustomElementNameError
+pub fn surgeist_html::HtmlCustomElementNameError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlDateOrTime
 pub surgeist_html::HtmlDateOrTime::Date(surgeist_html::HtmlDate)
 pub surgeist_html::HtmlDateOrTime::Global(surgeist_html::HtmlParsedGlobalDateTime)
@@ -3061,6 +3073,12 @@ pub fn surgeist_html::HtmlCustomElementDefinition::form_associated(&self) -> boo
 pub fn surgeist_html::HtmlCustomElementDefinition::local_name(&self) -> &surgeist_html::DocumentString
 pub fn surgeist_html::HtmlCustomElementDefinition::name(&self) -> &surgeist_html::DocumentString
 pub fn surgeist_html::HtmlCustomElementDefinition::new(name: surgeist_html::DocumentString, local_name: surgeist_html::DocumentString, form_associated: bool, disable_shadow: bool) -> Self
+pub struct surgeist_html::HtmlCustomElementName
+impl surgeist_html::HtmlCustomElementName
+pub fn surgeist_html::HtmlCustomElementName::into_is_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlCustomElementName::into_qualified_name(self) -> surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlCustomElementName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlCustomElementNameError>
+pub fn surgeist_html::HtmlCustomElementName::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlDate
 impl surgeist_html::HtmlDate
 pub fn surgeist_html::HtmlDate::day(&self) -> u8
@@ -4767,6 +4785,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::input_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::inputmode(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputMode>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::is_attribute(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCustomElementName>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::li_value(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlListIntegerAttributeReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::ol_start(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlListIntegerAttributeReport, surgeist_html::HtmlValueAdmissionError>

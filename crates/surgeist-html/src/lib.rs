@@ -10,6 +10,7 @@ mod bidi;
 mod capture;
 mod color;
 mod construction;
+mod custom_names;
 mod interpretation;
 mod numeric;
 #[cfg(test)]
@@ -27,6 +28,7 @@ pub use attributes::*;
 pub use capture::*;
 pub use color::*;
 pub use construction::*;
+pub use custom_names::*;
 pub use interpretation::*;
 pub use numeric::*;
 pub use request::*;

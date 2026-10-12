@@ -3,6 +3,7 @@
 //! Fragment queries follow HTML 877d6146487f §13.4 and §13.2.4–6. Captured
 //! availability describes producer evidence; it never advertises host execution.
 
+use crate::custom_names::validate_custom_element_name;
 use crate::{
     DocumentString, HtmlDoctype, HtmlDocumentMode, HtmlShadowRootProperties, Namespace,
     OrderedAttributes, QualifiedName,
@@ -611,29 +612,6 @@ fn html(name: &QualifiedName, local: &str) -> bool {
 fn namespace(ns: &Namespace, uri: &str) -> bool {
     ns.uri().is_some_and(|v| exact(v, uri))
 }
-// Selected HTML valid-custom-element-name delegates local-name validity to DOM.
-// With a lowercase ASCII first code point, DOM only excludes these characters.
-fn valid_custom_name(name: &DocumentString) -> bool {
-    let u = name.code_units();
-    matches!(u.first(), Some(0x61..=0x7a))
-        && u.contains(&0x2d)
-        && !u
-            .iter()
-            .any(|v| matches!(v, 0 | 9 | 10 | 12 | 13 | 32 | 47 | 62 | 0x41..=0x5a))
-        && ![
-            "annotation-xml",
-            "color-profile",
-            "font-face",
-            "font-face-src",
-            "font-face-uri",
-            "font-face-format",
-            "font-face-name",
-            "missing-glyph",
-        ]
-        .iter()
-        .any(|n| exact(name, n))
-}
-
 impl HtmlCaptureBuilder {
     pub fn new(limits: HtmlCaptureLimits, host_revision: HtmlHostFactsRevision) -> Self {
         Self {
@@ -949,7 +927,7 @@ impl HtmlCaptureBuilder {
                 .try_reserve(definitions.len())
                 .map_err(|_| HtmlCaptureError::RepresentationExhausted)?;
             for d in definitions {
-                if !valid_custom_name(&d.name) || d.local_name.is_empty() {
+                if validate_custom_element_name(&d.name).is_err() || d.local_name.is_empty() {
                     return Err(HtmlCaptureError::InvalidDefinitionName);
                 }
                 if !names.insert(&d.name) {
@@ -1586,7 +1564,7 @@ impl HtmlCapture {
         let HtmlCapturedNodeKind::Element(e) = node.kind() else {
             unreachable!()
         };
-        let custom_name = valid_custom_name(e.name.local_name());
+        let custom_name = validate_custom_element_name(e.name.local_name()).is_ok();
         let ordinary_host = [
             "article",
             "aside",

@@ -9,9 +9,9 @@
 //! Referrer-policy vocabulary is qualified separately in its report metadata.
 
 use crate::{
-    Attribute, DocumentString, HtmlShadowRootMode, HtmlSlotAssignment, HtmlTokenError,
-    HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, Namespace,
-    QualifiedName,
+    Attribute, DocumentString, HtmlCustomElementNameError, HtmlShadowRootMode, HtmlSlotAssignment,
+    HtmlTokenError, HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute,
+    KnownHtmlElement, Namespace, QualifiedName,
 };
 
 /// Exact presence of the supplied attribute, independent of validity/defaults.
@@ -215,6 +215,8 @@ pub enum HtmlAttributeConformanceError {
     InvalidNavigableTarget(HtmlNavigableTargetError),
     /// The specified encoding label does not match HTML's required UTF-8 spelling.
     InvalidUtf8EncodingLabel(HtmlUtf8EncodingLabelError),
+    /// A specified `is` value violates HTML's local custom-element-name predicate.
+    InvalidCustomElementName(HtmlCustomElementNameError),
 }
 
 /// Intrinsic value author conformance is independent of state/applicability.
@@ -2195,6 +2197,7 @@ pub use meter::*;
 mod details_name;
 pub use details_name::*;
 
+mod custom_name;
 mod id;
 
 mod navigable_target;
