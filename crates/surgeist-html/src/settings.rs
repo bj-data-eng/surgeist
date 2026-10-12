@@ -342,6 +342,11 @@ impl Error for HtmlParseLimitsError {}
 #[derive(Clone, Debug)]
 pub struct HtmlParseCancellation(Arc<AtomicBool>);
 impl HtmlParseCancellation {
+    /// Request constructors issue this identity freshly; clones retain it.
+    #[cfg(test)]
+    pub(crate) fn same_handle(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
     pub(crate) fn new() -> Self {
         Self(Arc::new(AtomicBool::new(false)))
     }

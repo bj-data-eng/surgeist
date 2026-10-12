@@ -101,11 +101,18 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                     >,
                 >()
                 + size_of::<super::end::FailedStandaloneDocument>()
+                + super::seal::terminal_transfer_layout().0
                 + size_of::<Option<StandaloneDocumentDriver>>()
                 + size_of::<Self>(),
-            1 + 2 + 6 + 1 + 4,
+            1 + 2 + 6 + super::seal::terminal_transfer_layout().1 + 1 + 4,
             c,
         )?;
+        c.charge(
+            super::super::control::WorkCategory::InspectByte,
+            super::seal::terminal_qualification_bytes() as u64,
+        )?;
+        c.charge(super::super::control::WorkCategory::ProviderCall, 2)?;
+        c.charge(super::super::control::WorkCategory::RecordVisit, 2)?;
         let mut lexical =
             crate::parser::control::OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         lexical.require_owner(c)?;

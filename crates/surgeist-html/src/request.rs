@@ -53,6 +53,17 @@ pub struct HtmlDocumentParseRequest {
     context: DocumentContext,
 }
 impl HtmlDocumentParseRequest {
+    /// Consumes the original configuration after borrowed execution ends.
+    /// This move does not clone source backing or imply parse admission.
+    #[cfg(test)]
+    pub(crate) fn into_parts(self) -> DocumentRequestParts {
+        DocumentRequestParts {
+            source: self.source,
+            limits: self.limits,
+            cancellation: self.cancellation,
+            context: self.context,
+        }
+    }
     /// Selects the no-browsing-context operation: scripting is Disabled and
     /// declarative shadow roots are disallowed. No URL/origin is fabricated.
     pub fn offline(source: HtmlSource, limits: HtmlParseLimits) -> Self {
@@ -133,6 +144,31 @@ impl HtmlDocumentParseRequest {
             DocumentContext::Offline => None,
             DocumentContext::Captured { document, .. } => Some(document),
         }
+    }
+}
+
+/// The request owner keeps source and context together across private report
+/// assembly. Promotion belongs to the eventual complete public parse boundary.
+#[cfg(test)]
+pub(crate) struct DocumentRequestParts {
+    source: HtmlSource,
+    limits: HtmlParseLimits,
+    cancellation: HtmlParseCancellation,
+    context: DocumentContext,
+}
+#[cfg(test)]
+impl DocumentRequestParts {
+    pub(crate) fn source(&self) -> &HtmlSource {
+        &self.source
+    }
+    pub(crate) fn limits(&self) -> &HtmlParseLimits {
+        &self.limits
+    }
+    pub(crate) fn cancellation(&self) -> &HtmlParseCancellation {
+        &self.cancellation
+    }
+    pub(crate) fn is_offline(&self) -> bool {
+        matches!(self.context, DocumentContext::Offline)
     }
 }
 

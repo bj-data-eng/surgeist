@@ -603,6 +603,95 @@ pub(crate) struct FrozenStandaloneParts {
     after_cleanup: Option<super::super::control::ParseUsage>,
 }
 impl FrozenStandaloneParts {
+    /// Consumes only a successfully reclaimed stopped frozen owner. A cleanup
+    /// refusal preserves the input slot, actual binding and safe evidence.
+    pub(crate) fn detach_failure(
+        input: &mut Option<Self>,
+    ) -> Result<DetachedStandaloneFailure, StandaloneError> {
+        let parts = input.as_mut().ok_or(StandaloneError::Consumed)?;
+        parts.cleanup_failure()?;
+        let stop = parts.control.stop().ok_or(StandaloneError::Consumed)?;
+        if parts.control.first_stop_usage().is_none() {
+            return Err(StandaloneError::Consumed);
+        }
+        let binding = parts.control.take_stopped_source_binding()?;
+        let parts = input.take().expect("reclaimed stopped frozen owner");
+        Ok(DetachedStandaloneFailure {
+            binding,
+            control: parts.control,
+            stop,
+            after_cleanup: parts.after_cleanup.expect("real frozen cleanup snapshot"),
+            evidence: parts.failed_evidence,
+        })
+    }
+    /// Admits the private source-owning immutable construction transfer. The
+    /// complete lexical/D1 proof is a separate required public-assembly input.
+    pub(super) fn prepare_seal(
+        &mut self,
+        request: &crate::HtmlDocumentParseRequest,
+    ) -> Result<(), StandaloneError> {
+        if request.capture().is_some() || request.document().is_some() {
+            return Err(StandaloneError::UnsupportedDocumentInitialization);
+        }
+        self.control.charge(WorkCategory::ProviderCall, 1)?;
+        if !self.control.owns_request(request.cancellation()) {
+            return Err(StandaloneError::Consumed);
+        }
+        self.control.require_source(request.source())?;
+        self.control.charge(WorkCategory::RecordVisit, 5)?;
+        if self.source_binding()
+            != (
+                request.source().identity(),
+                request.source().coordinates(),
+                request.source().len(),
+            )
+            || self.failed_evidence.is_some()
+            || self.after_cleanup.is_some()
+            || self
+                .arena
+                .as_ref()
+                .and_then(|arena| arena.document())
+                .is_none()
+        {
+            return Err(StandaloneError::Consumed);
+        }
+        write(
+            size_of::<super::seal::SealedOrdinaryConstruction>()
+                + size_of::<Option<Self>>()
+                + size_of::<Option<crate::HtmlDocumentParseRequest>>()
+                + size_of::<crate::request::DocumentRequestParts>()
+                + size_of::<super::super::control::ParseUsage>(),
+            9,
+            &mut self.control,
+        )?;
+        self.control.checkpoint()?;
+        self.final_usage = self.control.usage().clone();
+        Ok(())
+    }
+    pub(super) fn immutable_document(&self) -> Option<&crate::HtmlDocument> {
+        self.arena.as_ref()?.document()
+    }
+    pub(super) fn immutable_evidence(
+        &self,
+    ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
+    {
+        self.arena
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .retained_evidence()
+            .map_err(frozen_error)
+    }
+    /// Disposal of an already sealed success never partitions its evidence into
+    /// a failed parse. Refusal preserves the same arena/evidence/ticket owner.
+    pub(super) fn release_sealed(&mut self) -> Result<(), StandaloneError> {
+        let Some(arena) = &mut self.arena else {
+            return Ok(());
+        };
+        arena.release(&mut self.control).map_err(frozen_error)?;
+        self.arena = None;
+        self.after_cleanup = Some(self.control.usage().clone());
+        Ok(())
+    }
     pub(crate) fn source_binding(
         &self,
     ) -> (&crate::HtmlSourceId, crate::HtmlSourceCoordinates, usize) {
@@ -698,6 +787,47 @@ pub(crate) struct FailedStandaloneDocument<'source> {
     after_cleanup: super::super::control::ParseUsage,
     evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
 }
+/// Lifetime-free stopped owner after all borrowed parse owners were reclaimed.
+/// Its binding is moved from the actual controller, never cloned after stop.
+pub(crate) struct DetachedStandaloneFailure {
+    pub(super) binding: (crate::HtmlSourceId, crate::HtmlSourceCoordinates),
+    control: ParseControl,
+    stop: ParseStop,
+    after_cleanup: super::super::control::ParseUsage,
+    evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
+}
+impl DetachedStandaloneFailure {
+    pub(super) fn owns_request(&self, cancellation: &crate::HtmlParseCancellation) -> bool {
+        self.control.owns_request(cancellation)
+    }
+    pub(super) fn stop(&self) -> ParseStop {
+        self.stop
+    }
+    pub(super) fn at_stop(&self) -> &super::super::control::ParseUsage {
+        self.control
+            .first_stop_usage()
+            .expect("qualified canonical first stop")
+    }
+    pub(super) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
+        &self.after_cleanup
+    }
+    pub(super) fn retained_usage(&self) -> &super::super::control::ParseUsage {
+        self.control.usage()
+    }
+    pub(super) fn diagnostics(
+        &self,
+    ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
+        self.evidence
+            .as_ref()
+            .map(|evidence| evidence.diagnostics())
+    }
+    pub(super) fn release(&mut self) -> Result<(), StandaloneError> {
+        if let Some(evidence) = self.evidence.take() {
+            evidence.release(&mut self.control)?;
+        }
+        Ok(())
+    }
+}
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(crate) fn take_failed(
         input: &mut Option<Self>,
@@ -754,6 +884,22 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
 }
 impl FailedStandaloneDocument<'_> {
+    /// The constructor of this owner already completed cleanup before moving
+    /// out the driver. All storage left is committed diagnostic retention.
+    pub(crate) fn detach(
+        input: &mut Option<Self>,
+    ) -> Result<DetachedStandaloneFailure, StandaloneError> {
+        let failed = input.as_mut().ok_or(StandaloneError::Consumed)?;
+        let binding = failed.control.take_stopped_source_binding()?;
+        let failed = input.take().expect("cleaned stopped original owner");
+        Ok(DetachedStandaloneFailure {
+            binding,
+            control: failed.control,
+            stop: failed.stop,
+            after_cleanup: failed.after_cleanup,
+            evidence: failed.evidence,
+        })
+    }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
         self.source
     }

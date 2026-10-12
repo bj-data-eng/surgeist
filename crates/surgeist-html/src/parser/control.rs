@@ -179,6 +179,24 @@ impl ParseControl {
     pub(crate) fn first_stop_usage(&self) -> Option<&ParseUsage> {
         self.first_stop_usage.as_ref()
     }
+    /// Fixed identity readback, including after stop. The actual entry copies
+    /// the fresh immutable request's capability into this sole controller.
+    pub(crate) fn owns_request(&self, cancellation: &HtmlParseCancellation) -> bool {
+        self.cancellation.same_handle(cancellation)
+    }
+    /// A stopped, cleaned consumer moves the already-admitted source binding.
+    /// Refusal leaves it intact; no polling, charging or handle clone follows
+    /// stop. The caller retains this controller for diagnostic ticket disposal.
+    pub(crate) fn take_stopped_source_binding(
+        &mut self,
+    ) -> Result<(HtmlSourceId, HtmlSourceCoordinates), ParseStop> {
+        if self.terminal.is_none() {
+            return Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning));
+        }
+        self.source
+            .take()
+            .ok_or(ParseStop::InternalInvariant(Invariant::MissingSource))
+    }
     fn latch_stop(&mut self, reason: ParseStop) -> ParseStop {
         if let Some(first) = self.terminal {
             return first;

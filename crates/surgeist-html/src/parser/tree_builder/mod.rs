@@ -39,6 +39,7 @@ mod formatting;
 mod frameset;
 pub(crate) mod head;
 pub(crate) mod prologue;
+pub(crate) mod seal;
 mod tables;
 mod tag_sets;
 mod template;
