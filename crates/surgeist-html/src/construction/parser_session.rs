@@ -11591,7 +11591,9 @@ mod tests {
         crate::parser::tree_builder::StandaloneCapability<'a>,
     ) {
         use crate::parser::tree_builder::StandaloneDocumentDriver;
-        let mut driver = Some(StandaloneDocumentDriver::new(request).unwrap());
+        let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
+            request,
+        ));
         for _ in 0..128 {
             let owner = driver.as_mut().unwrap();
             if owner.standalone_parts().is_some() {

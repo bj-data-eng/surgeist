@@ -1785,7 +1785,7 @@ mod script_state_tests {
             HtmlSource::utf8("<script>x</script>"),
             super::super::tests::limits(100),
         );
-        let mut driver = super::super::StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         for _ in 0..100 {
             driver.step().unwrap();
             if driver

@@ -477,7 +477,7 @@ mod tests {
         panic!("literal native child {local} missing");
     }
     fn completed<'a>(request: &'a HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'a> {
-        let mut driver = StandaloneDocumentDriver::new(request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(request);
         finish(&mut driver);
         StandaloneDocumentDriver::take_completed(&mut Some(driver)).unwrap()
     }
@@ -719,7 +719,7 @@ mod tests {
             HtmlSource::utf8("<!doctype html><p>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         to_phase(&mut driver, EndPhase::InsertionPoint);
         let node = driver
             .head
@@ -898,7 +898,7 @@ mod tests {
             HtmlSource::utf8("<table>A<!--\0-->\0</table>"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         finish(&mut driver);
         let pointer = driver
             .head
@@ -1011,7 +1011,7 @@ mod tests {
             HtmlSource::utf8("<p/>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         finish(&mut driver);
         let mut input = Some(driver);
         let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
@@ -1031,7 +1031,7 @@ mod tests {
             HtmlSource::utf8("<div>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         to_phase(&mut driver, EndPhase::InsertionPoint);
         let node = driver
             .head
@@ -1097,7 +1097,7 @@ mod tests {
             .finish()
             .unwrap();
         let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<table>\0"), limits);
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         loop {
             if driver.step().is_err() {
                 break;
@@ -1193,7 +1193,7 @@ mod tests {
             HtmlSource::utf8("<div>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         to_phase(&mut driver, EndPhase::VerifyComplete);
         request.cancellation().cancel();
         assert!(driver.step().is_err());
@@ -1218,7 +1218,7 @@ mod tests {
             HtmlSource::utf8("<!doctype html><div>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         to_phase(&mut driver, EndPhase::InsertionPoint);
         assert_eq!(
             state(&mut driver),
@@ -1326,7 +1326,7 @@ mod tests {
             HtmlSource::utf8(""),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         to_phase(&mut driver, EndPhase::DomContentLoadedDisposition);
         let writes = driver.control.usage().work(WorkCategory::RecordWrite);
         driver.step().unwrap();
@@ -1366,7 +1366,7 @@ mod tests {
             ),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let option = loop {
             driver.step().unwrap();
             let Some(state) = driver.head.as_mut().and_then(|h| h.state.as_mut()) else {
@@ -1440,7 +1440,7 @@ mod tests {
                 ),
                 super::super::tests::limits(100),
             );
-            let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+            let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
             to_phase(&mut driver, target);
             let work = driver
                 .control
@@ -1488,7 +1488,7 @@ mod tests {
                 ),
                 super::super::tests::limits(100),
             );
-            let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+            let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
             to_phase(&mut driver, target);
             let before = driver
                 .control
@@ -1505,7 +1505,7 @@ mod tests {
             assert!(cost > 0);
             cleanup(&mut driver);
             for allowance in [0, cost - 1] {
-                let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+                let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
                 to_phase(&mut driver, target);
                 let used = driver
                     .control
@@ -1561,7 +1561,7 @@ mod tests {
             ),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         finish(&mut driver);
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         let lexical = state.lexical.as_slice().as_ptr();
@@ -1637,7 +1637,7 @@ mod tests {
             HtmlSource::utf8("<!doctype html><div>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         to_phase(&mut driver, EndPhase::InsertionPoint);
         let node = driver
             .head
@@ -1680,7 +1680,7 @@ mod tests {
             HtmlSource::utf8("<!doctype html><div>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         finish(&mut driver);
         let before = driver
             .control
@@ -1696,7 +1696,7 @@ mod tests {
             .current
             - before;
         completed.release().unwrap();
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         finish(&mut driver);
         let used = driver
             .control
@@ -1731,7 +1731,7 @@ mod tests {
             HtmlSource::utf8("<!doctype html><div>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         to_phase(&mut driver, EndPhase::InsertionPoint);
         let node = driver
             .head
@@ -1778,7 +1778,7 @@ mod tests {
             HtmlSource::utf8("<!doctype html><div>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         finish(&mut driver);
         let mut input = Some(driver);
         let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
@@ -1826,7 +1826,7 @@ mod tests {
             HtmlSource::utf8("<!doctype html><svg><script>A"),
             super::super::tests::limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let script = super::super::tests::svg_open_node(&mut driver);
         finish(&mut driver);
         let (c, session, _) = driver.standalone_parts().unwrap();

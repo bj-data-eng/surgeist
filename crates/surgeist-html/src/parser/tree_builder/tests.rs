@@ -2835,7 +2835,7 @@ fn standalone_script_start_retains_actual_document_and_initial_metadata_before_p
         HtmlSource::utf8("<script src='x'>body</script>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = script_text_node(&mut driver);
     let (c, session, capability) = driver.standalone_parts().unwrap();
     capability.validate_session(c, session).unwrap();
@@ -2877,7 +2877,7 @@ fn standalone_script_end_prepares_disabled_classic_and_restores_head_and_inserti
         HtmlSource::utf8("<script>x</script><meta name=m></head><body>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
@@ -2931,7 +2931,7 @@ fn standalone_repeated_script_endings_restore_actual_nesting_pause_and_current_r
         HtmlSource::utf8("<script>x</script><script type=module>y</script></head>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let first = script_text_node(&mut driver);
     for _ in 0..100 {
         driver.step().unwrap();
@@ -2981,7 +2981,7 @@ fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_fac
         HtmlSource::utf8("<script type=module>x"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
@@ -3070,7 +3070,7 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
             HtmlSource::utf8(format!("<script {attrs}>{body}</script></head>")),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let node = script_text_node(&mut driver);
         assert_eq!(
             standalone_boundary(&mut driver),
@@ -3114,7 +3114,7 @@ fn standalone_scriptdata_preserves_literal_utf16_and_escaped_script_content() {
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
@@ -3147,7 +3147,7 @@ fn standalone_scriptdata_preserves_newline_origins_and_state_specific_null_recov
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
@@ -3196,7 +3196,7 @@ fn standalone_script_import_revocation_stops_required_end_checkpoint_before_pop_
         HtmlSource::utf8("<script>x</script><meta>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = script_text_node(&mut driver);
     driver.step().unwrap(); // actual script character token
     let (c, session, _) = driver.standalone_parts().unwrap();
@@ -3250,7 +3250,7 @@ fn standalone_script_cancellation_is_sticky_before_next_input_and_cleanup_has_no
         HtmlSource::utf8("<script>x</script>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     script_text_node(&mut driver);
     request.cancellation().cancel();
     let reads = driver.control.usage().work(WorkCategory::InputUnitRead);
@@ -3289,7 +3289,7 @@ fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
         HtmlSource::utf8("<script>x</script><template data-x=q>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let script = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
@@ -3431,10 +3431,21 @@ fn standalone_constructor_rejects_real_captured_initialization_before_source_or_
             .unwrap(),
     )
     .unwrap();
+    let mut entry = super::entry::OrdinaryDocumentEntry::new(&request);
+    assert!(std::ptr::eq(entry.source(), request.source()));
+    assert_eq!(
+        entry.failure(),
+        Some(super::entry::InitializationFailure::Rejected(
+            super::entry::EntryRejection::DocumentInitialization,
+        ))
+    );
+    assert!(entry.at_stop().is_none());
+    assert!(entry.retained_usage().is_none());
     assert!(matches!(
-        StandaloneDocumentDriver::new(&request),
+        entry.take_driver(),
         Err(StandaloneError::UnsupportedDocumentInitialization)
     ));
+    entry.release_failure().unwrap();
 }
 
 #[test]
@@ -3443,10 +3454,12 @@ fn standalone_constructor_source_cancellation_and_atomic_layout_failures_are_typ
     let cancellation_request =
         crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<script>"), limits(100));
     cancellation_request.cancellation().cancel();
+    let mut entry = super::entry::OrdinaryDocumentEntry::new(&cancellation_request);
     assert!(matches!(
-        StandaloneDocumentDriver::new(&cancellation_request),
+        entry.take_driver(),
         Err(StandaloneError::Stop(ParseStop::Cancelled))
     ));
+    entry.release_failure().unwrap();
     let cap_request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8(""),
         limits(100)
@@ -3455,24 +3468,28 @@ fn standalone_constructor_source_cancellation_and_atomic_layout_failures_are_typ
             .finish()
             .unwrap(),
     );
+    let mut entry = super::entry::OrdinaryDocumentEntry::new(&cap_request);
     assert!(matches!(
-        StandaloneDocumentDriver::new(&cap_request),
+        entry.take_driver(),
         Err(StandaloneError::Stop(ParseStop::LimitExceeded {
             resource: HtmlParseResource::AtomicLayoutBytes,
             ..
         }))
     ));
+    entry.release_failure().unwrap();
     let source_request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<script>"),
         limits(100).into_builder().source_units(1).finish().unwrap(),
     );
+    let mut entry = super::entry::OrdinaryDocumentEntry::new(&source_request);
     assert!(matches!(
-        StandaloneDocumentDriver::new(&source_request),
+        entry.take_driver(),
         Err(StandaloneError::Stop(ParseStop::LimitExceeded {
             resource: HtmlParseResource::SourceUnits,
             ..
         }))
     ));
+    entry.release_failure().unwrap();
 }
 
 #[test]
@@ -3523,7 +3540,7 @@ fn standalone_script_resource_caps_retain_created_payloads_and_stop_without_part
             HtmlSource::utf8("<!doctype html><script/>x</script>"),
             caps,
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let error = (0..100)
             .find_map(|_| driver.step().err())
             .expect("actual source must hit selected cap");
@@ -3555,7 +3572,7 @@ fn real_standalone_fixture_failed_cleanup_keeps_driver_and_first_stop_without_is
         HtmlSource::utf8("<script>x</script>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     script_text_node(&mut driver);
     request.cancellation().cancel();
     let mut input = Some(driver);
@@ -3576,7 +3593,7 @@ fn standalone_selfclosing_script_is_not_void_and_emits_exact_source_qualified_er
         HtmlSource::utf8("<!doctype html><script/>x</script></head>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = script_text_node(&mut driver);
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
@@ -3709,7 +3726,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
             HtmlSource::utf8("<script>x</script>"),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let node = script_text_node(&mut driver);
         let (c, session, proof) = driver.standalone_parts().unwrap();
         assert!(!session.script_metadata(c, &node).unwrap().already_started);
@@ -3945,7 +3962,7 @@ fn assert_pre_listing_self_closing_rule(
     };
 
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(standalone_boundary(&mut driver), HeadStep::Complete);
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert!(!state.frameset_ok);
@@ -4052,7 +4069,7 @@ fn assert_caller_rule_evidence(
         DiagnosticToken,
     };
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(standalone_boundary(&mut driver), HeadStep::Complete);
     let evidence = driver
         .head
@@ -4728,7 +4745,7 @@ fn ordinary_body_recovers_paragraphs_blocks_and_missing_end_p_with_actual_topolo
         HtmlSource::utf8("<body><p>a<div>b</div>c</p><p>d<p>e</body></html>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -4799,7 +4816,7 @@ fn body_heading_list_and_ruby_implied_end_rules_preserve_literal_sibling_order()
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -4845,7 +4862,7 @@ fn late_head_style_and_disabled_script_remove_the_specific_head_stack_entry_and_
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let mut raw_node = None;
         for _ in 0..100 {
             driver.step().unwrap();
@@ -4930,7 +4947,7 @@ fn body_first_lf_and_null_recovery_preserve_exact_units_and_omitted_origin_evide
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -4966,7 +4983,7 @@ fn body_after_modes_place_comments_and_pi_under_html_then_document() {
         HtmlSource::utf8("<body>x</body><!--a--><?one data?></html><!--b--><?two data?>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -4998,7 +5015,7 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
             HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept>tail")),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Boundary(boundary),
@@ -5082,7 +5099,7 @@ fn body_generic_names_void_recovery_rawtext_and_plaintext_follow_actual_source_r
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -5110,7 +5127,7 @@ fn body_explicit_implied_and_repeated_body_merge_keep_source_frameset_state_and_
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -5134,7 +5151,7 @@ fn body_explicit_implied_and_repeated_body_merge_keep_source_frameset_state_and_
         HtmlSource::utf8("<html root=a><body old=a><body old=b new=c NEW=d><html root=b extra=e>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -5177,7 +5194,7 @@ fn body_ignored_table_parts_and_frame_are_not_generic_nodes_and_keygen_has_sourc
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -5204,7 +5221,7 @@ fn body_eof_predicate_accepts_rb_rtc_and_reports_one_actual_unexpected_open_node
     for (source, errors) in [("<body><rb><rtc>", 0), ("<body><widget><div>", 1)] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -5237,7 +5254,7 @@ fn body_first_lf_applies_to_only_the_next_real_token_and_afterbody_other_input_r
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -5261,7 +5278,7 @@ fn body_temporary_head_open_cap_failure_retains_obligation_and_created_raw_node_
         HtmlSource::utf8("<head></head><style>x</style>"),
         limits(2),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut stopped = None;
     for _ in 0..100 {
         match driver.step() {
@@ -5307,7 +5324,7 @@ fn body_null_diagnostic_cap_and_cancel_stop_without_successful_partial_continuat
     );
     // Missing-doctype and lexical NULL evidence consume two slots before
     // the independent tree-construction NULL error.
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut error = None;
     for _ in 0..100 {
         match driver.step() {
@@ -5336,7 +5353,7 @@ fn body_null_diagnostic_cap_and_cancel_stop_without_successful_partial_continuat
     assert_released(&driver.control);
     let request =
         crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<body><p>x"), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     for _ in 0..100 {
         driver.step().unwrap();
         if driver
@@ -5368,7 +5385,7 @@ fn body_source_void_keygen_is_immediately_popped_and_sets_frameset_not_ok() {
         HtmlSource::utf8("<body><keygen>a<p>b"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -5406,7 +5423,7 @@ fn body_source_void_end_br_discards_real_end_tag_attributes_before_insertion() {
         HtmlSource::utf8("<body></br x=kept>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -5433,7 +5450,7 @@ fn body_source_void_frameset_not_ok_row_ignores_token_without_an_unsupported_tra
         HtmlSource::utf8("<body><frameset><widget>x"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -5509,7 +5526,7 @@ fn body_frameset_entry_uses_actual_flag_and_replaces_the_implied_body() {
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -5535,7 +5552,7 @@ fn late_script_eof_returns_afterhead_then_creates_body_without_preparation() {
         HtmlSource::utf8("<head></head><script type=module>x"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
@@ -5565,7 +5582,7 @@ fn late_script_revoked_provenance_rejects_before_temporary_head_push_or_delegati
         HtmlSource::utf8("<head></head><script>x</script>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     loop {
         driver.step().unwrap();
         if driver.head.as_ref().is_some_and(|h| {
@@ -5624,7 +5641,7 @@ fn standalone_driver_consumes_body_and_preserves_source_paragraph_topology() {
         HtmlSource::utf8("<body><p>a<div>b</div>c</body></html>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let _boundary = standalone_boundary(&mut driver);
     let mut input = Some(driver);
     let (mut c, mut session, _) =
@@ -5683,7 +5700,7 @@ fn misnested_inline_formatting_reconstructs_a_distinct_element_from_original_att
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let boundary = standalone_boundary(&mut driver);
         if boundary != super::head::HeadStep::Complete {
             // Current real driver suspends at the formatting opener. Dispose
@@ -5778,7 +5795,7 @@ fn formatting_adoption_moves_furthest_block_children_into_a_distinct_element_wit
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let boundary = standalone_boundary(&mut driver);
         if boundary != super::head::HeadStep::Complete {
             driver.release().unwrap();
@@ -5857,7 +5874,7 @@ fn formatting_adoption_moves_furthest_block_children_into_a_distinct_element_wit
 
 fn formatting_outline(source: &str) -> Vec<(usize, Vec<u16>)> {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
@@ -6127,7 +6144,7 @@ fn formatting_adoption_outer_loop_stops_after_exactly_eight_source_iterations() 
 #[test]
 fn formatting_real_open_slot_exhaustion_retains_pending_recipe_and_sticky_first_stop() {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<b>x"), limits(2));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut failed = false;
     for _ in 0..100 {
         if driver.step().is_err() {
@@ -6155,7 +6172,7 @@ fn formatting_real_open_slot_exhaustion_retains_pending_recipe_and_sticky_first_
 fn formatting_cancellation_reclaims_original_recipes_and_native_replays() {
     let request =
         crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p><b a=x>1</p>2"), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -6178,7 +6195,7 @@ fn formatting_replay_preserves_literal_utf16_pairs_and_isolated_surrogates() {
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -6280,7 +6297,7 @@ fn formatting_noah_replay_keeps_each_retained_original_attribute_order() {
         HtmlSource::utf8("<p><b a=1 b=2><b b=2 a=1><b a=1 b=2><b b=2 a=1>1</p>2"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -6323,7 +6340,7 @@ fn formatting_nested_a_diagnostic_cap_stops_before_adoption_or_second_creation()
         HtmlSource::utf8("<!doctype html><a>1<a id=kept>2"),
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut stopped = false;
     for _ in 0..100 {
         if driver.step().is_err() {
@@ -6376,7 +6393,7 @@ fn ordinary_form_end_removes_only_the_pointed_stack_identity_and_allows_a_later_
         HtmlSource::utf8("<!doctype html><form id=f><div>1</form>2</div><form id=g>3</form>4"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // The published driver retains the actual opener at Form. Release the
@@ -6518,7 +6535,7 @@ fn ordinary_form_end_diagnostic_cap_clears_pointer_before_error_but_keeps_stack_
         HtmlSource::utf8("<!doctype html><form id=f><div></form>"),
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut failed = false;
     for _ in 0..100 {
         if driver.step().is_err() {
@@ -6556,7 +6573,7 @@ fn ordinary_form_nested_diagnostic_cap_preserves_pointer_paragraph_and_original_
         HtmlSource::utf8("<!doctype html><form><p>1<form id=kept>"),
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut failed = false;
     for _ in 0..100 {
         if driver.step().is_err() {
@@ -6596,7 +6613,7 @@ fn ordinary_form_open_slot_exhaustion_keeps_created_payload_but_cannot_set_point
         HtmlSource::utf8("<!doctype html><form id=kept>"),
         limits(2),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut failed = false;
     for _ in 0..100 {
         if driver.step().is_err() {
@@ -6636,7 +6653,7 @@ fn ordinary_form_cancellation_releases_the_real_pointer_and_lexical_owners() {
         HtmlSource::utf8("<!doctype html><form id=f><img>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut opened = false;
     for _ in 0..100 {
         driver.step().unwrap();
@@ -6668,7 +6685,7 @@ fn form_image_observations(
     crate::construction::parser_session::FormAssociationEvidence,
 )> {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
@@ -6823,7 +6840,7 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -6876,7 +6893,7 @@ fn ordinary_form_control_and_template_continuations_preserve_pointer_and_origina
             HtmlSource::utf8(format!("<!doctype html><form id=f><{name} id=kept>")),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Boundary(expected),
@@ -6921,7 +6938,7 @@ fn ordinary_table_implied_tbody_and_cell_end_recovery_preserve_real_sibling_orde
         HtmlSource::utf8("<!doctype html><table><tr><td>1<td>2</table>3"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // The existing driver retains the actual table opener at Table. Dispose
@@ -7051,7 +7068,7 @@ fn structural_table_whole_pending_batch_fosters_whitespace_with_nonwhitespace() 
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -7072,7 +7089,7 @@ fn structural_table_implied_colgroup_row_and_thead_transitions_are_real() {
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -7114,7 +7131,7 @@ fn structural_table_caption_and_cell_markers_bound_formatting_reconstruction() {
         HtmlSource::utf8("<!doctype html><table><caption><b>a<tr><td><i>b<td>c</table>d"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -7151,7 +7168,7 @@ fn structural_table_nested_table_restores_real_cell_mode_then_body() {
         HtmlSource::utf8("<!doctype html><table><tr><td>a<table><tr><td>b</table>c</table>d"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -7220,7 +7237,7 @@ fn structural_table_entry_uses_actual_quirks_document_mode() {
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -7241,7 +7258,7 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut returns = Vec::new();
     for _ in 0..1000 {
         let step = driver.step().unwrap();
@@ -7296,7 +7313,7 @@ fn structural_table_unsupported_creation_retains_original_before_table_effects()
         let source = format!("<!doctype html><table>{tag}");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Boundary(boundary)
@@ -7325,7 +7342,7 @@ fn structural_table_null_preprocessing_and_literal_utf16_are_retained_exactly() 
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -7371,7 +7388,7 @@ fn structural_table_buffered_collection_cancellation_releases_every_real_owner()
         HtmlSource::utf8("<!doctype html><table> a<tr><td>b</table>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut collected = false;
     for _ in 0..100 {
         driver.step().unwrap();
@@ -7411,9 +7428,13 @@ fn structural_table_work_exhaustion_retains_coherent_pending_and_flush_owners() 
             HtmlSource::utf8("<!doctype html><table> a<tr><td><b>b</table>c"),
             bounded,
         );
-        let mut driver = match StandaloneDocumentDriver::new(&request) {
+        let mut entry = super::entry::OrdinaryDocumentEntry::new(&request);
+        let mut driver = match entry.take_driver() {
             Ok(driver) => driver,
-            Err(_) => continue,
+            Err(_) => {
+                entry.release_failure().unwrap();
+                continue;
+            }
         };
         for _ in 0..1000 {
             match driver.step() {
@@ -7445,7 +7466,7 @@ fn structural_table_disposal_stop_after_vector_pop_keeps_nested_ticket_reachable
         HtmlSource::utf8("<!doctype html><table> a<tr>"),
         selected,
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     for _ in 0..100 {
         driver.step().unwrap();
         if let Some(head) = &driver.head {
@@ -7515,7 +7536,7 @@ fn structural_table_diagnostic_caps_preserve_whole_batch_or_coherent_flush_prefi
                 .finish()
                 .unwrap(),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let mut stopped = false;
         for _ in 0..100 {
             if driver.step().is_err() {
@@ -7567,7 +7588,7 @@ fn structural_table_form_and_fostered_image_keep_actual_nonancestor_form_owner()
         HtmlSource::utf8("<!doctype html><table><form id=f><img><tr><td>x</table>y"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -7616,7 +7637,7 @@ fn structural_table_real_comment_pi_and_malformed_column_and_row_recovery() {
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -7666,7 +7687,7 @@ fn ordinary_listed_controls_preserve_nested_button_recovery_and_object_marker() 
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // Dispose actual tree, lexical and controller owners before checking completion.
@@ -7792,7 +7813,7 @@ fn listed_controls_nested_button_diagnostic_cap_retains_old_stack_and_original_t
         HtmlSource::utf8("<!doctype html><button><p>A<button id=kept>"),
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut failed = false;
     for _ in 0..100 {
         if driver.step().is_err() {
@@ -7853,7 +7874,7 @@ fn listed_controls_cancellation_releases_canonical_node_and_object_marker_owners
         HtmlSource::utf8("<!doctype html><object><button>A"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut opened = false;
     for _ in 0..100 {
         driver.step().unwrap();
@@ -7886,7 +7907,7 @@ fn listed_controls_exact_utf16_text_preserves_pairs_and_isolates() {
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -7918,7 +7939,7 @@ fn listed_controls_open_slot_exact_and_one_short_retains_actual_owners() {
         let source = format!("<!doctype html><{name}></{name}>");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source.as_str()), limits(2));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let mut failed = false;
         for _ in 0..100 {
             if driver.step().is_err() {
@@ -7940,7 +7961,7 @@ fn listed_controls_open_slot_exact_and_one_short_retains_actual_owners() {
         assert_released(&driver.control);
 
         let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(3));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -7979,7 +8000,7 @@ fn listed_controls_table_foster_delegation_restores_structural_mode_before_rows(
 
 fn listed_control_owner_observations(source: &str) -> Vec<(Vec<u16>, Option<Vec<u16>>)> {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
@@ -8128,7 +8149,7 @@ fn listed_controls_frameset_flag_follows_each_actual_start_row() {
             HtmlSource::utf8(format!("<!doctype html><{name}>")),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let mut opened = false;
         for _ in 0..100 {
             driver.step().unwrap();
@@ -8156,7 +8177,7 @@ fn ordinary_frameset_nested_frames_and_noframes_preserve_trailing_nodes() {
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // Dispose the actual retained opener, tree, tokenizer and controller
@@ -8266,7 +8287,7 @@ fn frameset_body_removal_preserves_form_facts_and_reconstructs_surviving_formatt
         HtmlSource::utf8("<!doctype html><form><fieldset><b><frameset></frameset></html> "),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let (old_body, old_form, fieldset, old_b) = loop {
         driver.step().unwrap();
         if let Some(state) = driver.head.as_mut().and_then(|head| head.state.as_mut())
@@ -8363,7 +8384,7 @@ fn frameset_mixed_text_keeps_every_whitespace_run_and_exact_omitted_origins() {
     use super::head::{HeadCondition, InsertionMode};
     let literal = "<!doctype html><frameset>A \0\tB\r\nC</frameset>D \u{c}E</html>F \tG";
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -8447,7 +8468,7 @@ fn frameset_noframes_restores_each_actual_return_mode_on_end_and_eof() {
                 HtmlSource::utf8(literal.as_str()),
                 limits(100),
             );
-            let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+            let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
             let mut entered = false;
             for _ in 0..100 {
                 driver.step().unwrap();
@@ -8504,7 +8525,7 @@ fn frameset_rawtext_preserves_utf16_isolates_pairs_and_recovers_null() {
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -8561,7 +8582,7 @@ fn frameset_selfclosing_acknowledgement_and_open_eof_follow_actual_stack() {
         HtmlSource::utf8("<!doctype html><frameset/><frame/><frameset></frameset>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -8586,7 +8607,7 @@ fn frameset_body_diagnostic_cap_stops_before_removal_or_stack_changes() {
         HtmlSource::utf8("<!doctype html><form><frameset>"),
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let error = (0..100)
         .find_map(|_| driver.step().err())
         .expect("frameset source error consumes diagnostic slot");
@@ -8626,7 +8647,7 @@ fn frameset_body_diagnostic_cap_stops_before_removal_or_stack_changes() {
         HtmlSource::utf8("<!doctype html><form><frameset></frameset>"),
         limits(100).into_builder().diagnostics(1).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -8660,7 +8681,7 @@ fn frameset_afterafter_whitespace_reconstruction_stop_retains_exact_original_ran
             .finish()
             .unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     // Reach the real return mode, then retain the next actual event from the
     // SAME tokenizer/control in the ordinary driver's pending owning slot.
     let mut reached = false;
@@ -8795,7 +8816,7 @@ fn frameset_exact_node_and_temporary_open_element_caps_preserve_terminal_owners(
             HtmlSource::utf8("<!doctype html><frameset><frame></frameset>"),
             caps,
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let result = (0..100)
             .find_map(|_| match driver.step() {
                 Ok(step) if step != super::head::HeadStep::Consumed => Some(Ok(step)),
@@ -8827,7 +8848,7 @@ fn frameset_partition_diagnostic_failure_retains_popped_run_and_all_origin_owner
         HtmlSource::utf8("<!doctype html><frameset>A \0\tB</frameset>"),
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let error = (0..100).find_map(|_| driver.step().err()).unwrap();
     let stop = driver.control.stop().unwrap();
     assert!(
@@ -8848,7 +8869,7 @@ fn frameset_partition_diagnostic_failure_retains_popped_run_and_all_origin_owner
         HtmlSource::utf8("<!doctype html><frameset>A \tB</frameset>"),
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert!((0..100).find_map(|_| driver.step().err()).is_some());
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert!(state.body_runs.is_some());
@@ -8887,7 +8908,7 @@ fn frameset_each_mode_cancellation_is_sticky_and_cleanup_performs_no_parse_work(
             HtmlSource::utf8(format!("{prefix}<noframes>x")),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let mut reached = false;
         for _ in 0..100 {
             driver.step().unwrap();
@@ -8967,7 +8988,7 @@ fn frameset_import_taint_rejects_frame_before_diagnostic_stack_and_creation_effe
         HtmlSource::utf8("<!doctype html><frameset><frame>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     for _ in 0..100 {
         driver.step().unwrap();
         if driver
@@ -9030,9 +9051,13 @@ fn frameset_finite_work_exhaustion_disposes_every_retained_transition_owner() {
             ),
             caps,
         );
-        let mut driver = match StandaloneDocumentDriver::new(&request) {
+        let mut entry = super::entry::OrdinaryDocumentEntry::new(&request);
+        let mut driver = match entry.take_driver() {
             Ok(d) => d,
-            Err(_) => continue,
+            Err(_) => {
+                entry.release_failure().unwrap();
+                continue;
+            }
         };
         for _ in 0..1000 {
             match driver.step() {
@@ -9065,7 +9090,7 @@ fn ordinary_textarea_rcdata_first_lf_and_form_sibling_order_preserve_exact_nativ
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // Dispose real tree, lexical and controller owners before the RED assertion.
@@ -9161,7 +9186,7 @@ struct TextareaNativeObservation {
 
 fn textarea_native_observation(source: HtmlSource) -> TextareaNativeObservation {
     let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -9202,7 +9227,7 @@ fn ordinary_table_textarea_delegation_preserves_foster_tree_and_returns_to_table
         HtmlSource::utf8("<!doctype html><table><textarea>\nA</textarea><tr><td>B</table>C"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
@@ -9300,7 +9325,7 @@ fn textarea_form_association_is_actual_known_state_with_or_without_explicit_form
         let input = format!("<!doctype html><form id=f><textarea {attrs}>A</textarea></form>");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(input), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -9348,7 +9373,7 @@ fn textarea_eof_reset_failure_occurs_after_real_pop_before_return_and_stays_term
             HtmlSource::utf8("<!doctype html><textarea>A"),
             caps,
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let mut failure = None;
         for _ in 0..1000 {
             match driver.step() {
@@ -9422,7 +9447,7 @@ fn textarea_text_cancellation_preserves_raw_owner_and_cleanup_runs_no_reset() {
         HtmlSource::utf8("<!doctype html><textarea>A&amp;B</textarea>Z"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut reached = false;
     for _ in 0..1000 {
         driver.step().unwrap();
@@ -9485,9 +9510,13 @@ fn textarea_finite_work_stops_retain_all_lexical_native_and_raw_owners_for_dispo
             ),
             caps,
         );
-        let mut driver = match StandaloneDocumentDriver::new(&request) {
+        let mut entry = super::entry::OrdinaryDocumentEntry::new(&request);
+        let mut driver = match entry.take_driver() {
             Ok(d) => d,
-            Err(_) => continue,
+            Err(_) => {
+                entry.release_failure().unwrap();
+                continue;
+            }
         };
         for _ in 0..1000 {
             match driver.step() {
@@ -9623,7 +9652,7 @@ fn textarea_late_form_id_reset_observes_first_element_order_without_changing_raw
             format!("<!doctype html>{prefix}<textarea form=f>A</textarea><form id=f></form>");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -9669,7 +9698,7 @@ fn ordinary_output_descendant_text_and_form_sibling_order_preserve_native_struct
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // Dispose real tree, lexical and controller owners before the RED assertion.
@@ -9803,7 +9832,7 @@ struct OutputNativeObservation {
 fn output_native_observation(source: HtmlSource) -> OutputNativeObservation {
     use crate::construction::parser_session::{FormAssociationKind, OutputDefaultValueOverride};
     let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -9938,7 +9967,7 @@ fn ordinary_hidden_inputs_preserve_ordered_value_rewrite_and_form_sibling_order(
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // Dispose every actual tree/lexer/controller owner before the RED assertion.
@@ -10138,7 +10167,7 @@ fn hidden_input_table_direct_placement_and_body_formatting_reconstruction_are_so
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -10159,7 +10188,7 @@ fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value
             )),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -10240,7 +10269,7 @@ fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
             HtmlSource::utf8(format!("<!doctype html>{markup}")),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let boundary = standalone_boundary(&mut driver);
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert!(matches!(
@@ -10264,7 +10293,7 @@ fn ordinary_select_option_pop_clones_selected_content_with_distinct_native_child
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         // Dispose the actual tree, lexer and payload owners before asserting RED.
@@ -10434,7 +10463,7 @@ fn select_family_native_states_follow_size_multiple_disabled_and_last_selected_r
             )),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -10550,7 +10579,7 @@ fn select_family_modern_body_dispatch_keeps_generic_children_and_hidden_guard() 
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete,
@@ -10600,7 +10629,7 @@ fn select_family_selectedcontent_disabled_and_multiple_are_intrinsic_not_empty_c
         );
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -10647,7 +10676,7 @@ fn select_fragment_siblings_finish_insertion_before_post_connection_cloning() {
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     before_ordinary_end(&mut driver);
     // Four implicit structural records + doctype; nine source element/text
     // records; one outer-clone fragment; six sibling-subtree clones; the final
@@ -10675,7 +10704,7 @@ fn ordinary_svg_adjusted_names_and_foreign_integration_preserve_native_namespace
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
@@ -10846,7 +10875,7 @@ fn foreign_cdata_null_pi_comment_doctype_and_surrogates_keep_real_native_payload
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -10965,7 +10994,7 @@ fn foreign_encoding_integration_math_text_exceptions_and_annotation_breakout_are
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete,
@@ -11043,7 +11072,7 @@ fn foreign_font_breakout_mismatched_end_and_table_foster_keep_actual_order() {
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete,
@@ -11066,7 +11095,7 @@ fn foreign_svg_script_fresh_start_and_self_closing_preserve_native_attributes_an
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -11117,7 +11146,7 @@ fn foreign_all_svg_name_and_attribute_adjustments_follow_literal_selected_tables
         let source = format!("<!doctype html><svg><{}/></svg>", name.to_ascii_lowercase());
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -11152,7 +11181,7 @@ fn foreign_all_svg_name_and_attribute_adjustments_follow_literal_selected_tables
         );
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -11199,7 +11228,7 @@ fn foreign_all_svg_name_and_attribute_adjustments_follow_literal_selected_tables
 fn foreign_all_namespace_adjustments_unknown_colons_and_xmlns_errors_keep_original_values() {
     let source = "<!doctype html><svg xlink:actuate=0 xlink:arcrole=1 xlink:href=2 xlink:role=3 xlink:show=4 xlink:title=5 xlink:type=6 xml:lang=7 xml:space=8 xmlns=wrong xmlns:xlink=also-wrong xlink:unknown=U foo:bar=V viewboxes='N'/>";
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -11289,7 +11318,7 @@ fn foreign_local_control_spellings_have_no_html_metadata_and_keep_actual_namespa
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -11338,7 +11367,7 @@ fn foreign_null_diagnostic_limit_preserves_recovery_owner_and_terminal_cleanup()
         source,
         limits(100).into_builder().diagnostics(1).finish().unwrap(),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let _first = loop {
         match driver.step() {
             Err(error) => break error,
@@ -11413,7 +11442,7 @@ fn foreign_attributes_keep_literal_non_scalar_utf16_and_unknown_name_units() {
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -11452,7 +11481,7 @@ fn ordinary_selectedcontent_clones_foreign_children_with_distinct_qualified_nati
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
@@ -11623,7 +11652,7 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let boundary = standalone_boundary(&mut driver);
     if boundary != super::head::HeadStep::Complete {
         driver.release().unwrap();
@@ -11855,7 +11884,7 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     // Obtain the qualified active subjects from the actual open stack.
     let outer = loop {
         driver.step().unwrap();
@@ -11958,7 +11987,7 @@ fn template_pi_lookup_uses_whole_xml_grammar_without_html_character_reference_re
         let source = format!("<body><?marker {data}?><p>Z</p>");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -12043,7 +12072,7 @@ fn template_patch_removes_original_range_and_inserts_before_attached_end_marker(
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -12063,7 +12092,7 @@ fn template_form_pointer_survives_nested_form_recovery_and_template_parser_assoc
         HtmlSource::utf8("<form id=f><template><form id=g><img></form></template><img></form>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -12126,7 +12155,7 @@ fn template_selectedcontent_deep_clone_keeps_distinct_contents_and_adopts_real_d
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -12231,7 +12260,7 @@ fn template_pi_xml_unicode_names_values_and_invalid_whole_maps_preserve_native_u
             )),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -12264,7 +12293,7 @@ fn template_valid_shadow_mode_returns_to_plain_contents_before_for_patching() {
         );
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -12341,7 +12370,7 @@ fn template_modes_reprocess_table_families_and_head_text_into_real_contents() {
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -12395,7 +12424,7 @@ fn template_modes_reprocess_table_families_and_head_text_into_real_contents() {
 fn template_eof_unwinds_both_mode_markers_but_does_not_remove_patch_markers() {
     let source = "<body><div><?marker name='x'?></div><template for=x><p>N";
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -12441,7 +12470,7 @@ fn ordinary_svg_script_foreign_text_and_self_closing_preserve_native_siblings() 
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let boundary = standalone_boundary(&mut driver);
         if boundary != super::head::HeadStep::Complete {
             // Dispose the actual parser/tree/controller owners before asserting
@@ -12670,7 +12699,7 @@ fn svg_script_parser_end_defers_then_restores_wrapper_without_html_preparation()
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = svg_open_node(&mut driver);
     let (c, session, _) = driver.standalone_parts().unwrap();
     assert!(!session.svg_script_state(c, &node).unwrap().processed);
@@ -12713,7 +12742,7 @@ fn svg_end_cost() -> u64 {
         HtmlSource::utf8("<!doctype html><svg><script></script>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let _node = svg_open_node(&mut driver);
     let before = driver
         .control
@@ -12740,7 +12769,7 @@ fn svg_script_every_foreign_end_work_cut_including_flag_and_restore_has_terminal
             HtmlSource::utf8("<!doctype html><svg><script></script>"),
             limits(100),
         );
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let _node = svg_open_node(&mut driver);
         let used = driver
             .control
@@ -12793,7 +12822,7 @@ fn svg_script_cancelled_foreign_end_keeps_false_and_original_first_stop() {
         HtmlSource::utf8("<svg><script></script>"),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let _node = svg_open_node(&mut driver);
     request.cancellation().cancel();
     assert!(matches!(
@@ -12818,7 +12847,7 @@ fn svg_script_inert_template_and_actual_patch_connection_have_distinct_processed
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         assert_eq!(
             standalone_boundary(&mut driver),
             super::head::HeadStep::Complete
@@ -12860,7 +12889,7 @@ fn svg_script_foreign_end_does_not_drain_pending_select_tasks_as_an_html_checkpo
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let script = svg_open_node(&mut driver);
     assert_eq!(driver.step().unwrap(), super::head::HeadStep::Consumed);
     let (c, session, _) = driver.standalone_parts().unwrap();
@@ -12883,7 +12912,7 @@ fn svg_script_selectedcontent_deep_clone_preserves_true_bits_and_inert_nested_fa
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -12937,7 +12966,7 @@ fn svg_script_selectedcontent_deep_clone_preserves_true_bits_and_inert_nested_fa
 fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_terminal_boundaries() {
     let source = "<!doctype html><svg><script xlink:href='#saved'/></svg>";
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -12968,7 +12997,8 @@ fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_termina
             .finish()
             .unwrap();
             let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), caps);
-            let mut driver = match StandaloneDocumentDriver::new(&request) {
+            let mut entry = super::entry::OrdinaryDocumentEntry::new(&request);
+            let mut driver = match entry.take_driver() {
                 Ok(driver) => driver,
                 Err(error) => {
                     // Initial fixed layouts can dominate the same aggregate cap;
@@ -12977,6 +13007,7 @@ fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_termina
                         short && resource == HtmlParseResource::AtomicLayoutBytes,
                         "{error:?}"
                     );
+                    entry.release_failure().unwrap();
                     continue;
                 }
             };
@@ -13013,7 +13044,7 @@ fn ordinary_eof_pops_open_option_and_clones_selected_content_before_completion()
         ),
         limits(100),
     );
-    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let mut reached_endpoint = false;
     for _ in 0..1_000 {
         match driver.step() {

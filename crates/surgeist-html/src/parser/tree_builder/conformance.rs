@@ -1054,8 +1054,15 @@ fn check(
     request: &crate::HtmlDocumentParseRequest,
     expected: &Projection,
 ) -> Result<(), CaseError> {
-    let mut driver =
-        Some(super::StandaloneDocumentDriver::new(request).map_err(CaseError::Parser)?);
+    let mut entry = super::entry::OrdinaryDocumentEntry::new(request);
+    let driver = match entry.take_driver() {
+        Ok(driver) => driver,
+        Err(error) => {
+            entry.release_failure().map_err(CaseError::Parser)?;
+            return Err(CaseError::Parser(error));
+        }
+    };
+    let mut driver = Some(driver);
     let parsed = (|| {
         loop {
             match driver.as_mut().expect("actual driver owned").step()? {
@@ -1517,7 +1524,9 @@ mod tests {
     fn metered_projection_cancel_and_work_failure_release_all_consumer_storage() {
         for cancel in [false, true] {
             let request = request("<template><p>payload</template>");
-            let mut driver = Some(super::super::StandaloneDocumentDriver::new(&request).unwrap());
+            let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
+                &request,
+            ));
             loop {
                 match driver.as_mut().unwrap().step().unwrap() {
                     super::super::head::HeadStep::Consumed => {}
@@ -1563,7 +1572,9 @@ mod tests {
     fn completed<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
     ) -> super::super::end::CompletedStandaloneDocument<'a> {
-        let mut driver = Some(super::super::StandaloneDocumentDriver::new(request).unwrap());
+        let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
+            request,
+        ));
         loop {
             match driver.as_mut().unwrap().step().unwrap() {
                 super::super::head::HeadStep::Consumed => {}

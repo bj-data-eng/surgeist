@@ -33,6 +33,7 @@ mod body;
 mod conformance;
 mod doctype;
 mod end;
+pub(crate) mod entry;
 mod foreign;
 mod formatting;
 mod frameset;
@@ -791,72 +792,6 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
     failure_usage: Option<super::control::ParseUsage>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
-    pub(crate) fn new(
-        request: &'source crate::HtmlDocumentParseRequest,
-    ) -> Result<Self, StandaloneError> {
-        // Actual request facts precede construction/source scans. No label,
-        // Disabled enum alone, native Document, or caller boolean grants proof.
-        if request.capture().is_some() || request.document().is_some() {
-            return Err(StandaloneError::UnsupportedDocumentInitialization);
-        }
-        if request.scripting_mode() != crate::HtmlParserScriptingMode::Disabled
-            || request.allow_declarative_shadow_roots()
-        {
-            return Err(StandaloneError::UnsupportedExecutionProfile);
-        }
-        let source = request.source();
-        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
-        c.admit_source(source)?;
-        write(size_of::<Self>(), 11, &mut c)?;
-        // Prepare the actual terminal transfers before any pull: the at-stop
-        // snapshot slot, evidence source/destination slots, six envelope fields
-        // and consumed driver slot. Completion may leave this preparation unused.
-        // No allocation, variable copy, fee or poll follows a latched stop.
-        write(
-            size_of::<Option<super::control::ParseUsage>>()
-                + 2 * size_of::<Option<crate::construction::parser_session::evidence::ParseEvidence>>(
-                )
-                + size_of::<end::FailedStandaloneDocument>()
-                + size_of::<Option<Self>>(),
-            1 + 2 + 6 + 1,
-            &mut c,
-        )?;
-        let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        lexical.require_owner(&mut c)?;
-        let tokenizer = match super::tokenizer::Tokenizer::new(
-            source,
-            super::tokenizer::states::State::Data,
-            None,
-            &mut c,
-        ) {
-            Ok(tokenizer) => tokenizer,
-            Err(stop) => {
-                lexical.release(&mut c)?;
-                return Err(stop.into());
-            }
-        };
-        let prologue = match prologue::DocumentPrologue::new(source, &mut c) {
-            Ok(prologue) => prologue,
-            Err(error) => {
-                tokenizer.release(&mut c)?;
-                lexical.release(&mut c)?;
-                return Err(error.into());
-            }
-        };
-        Ok(Self {
-            source,
-            control: c,
-            prologue: Some(prologue),
-            tokenizer: Some(tokenizer),
-            event: None,
-            token: None,
-            before: None,
-            head: None,
-            lexical: Some(lexical),
-            failed_evidence: None,
-            failure_usage: None,
-        })
-    }
     pub(crate) fn step(&mut self) -> Result<head::HeadStep, StandaloneError> {
         let result = self.step_inner();
         if let Err(error) = &result {

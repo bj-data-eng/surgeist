@@ -109,6 +109,8 @@ pub(crate) struct ParseControl {
     usage: ParseUsage,
     cancellation: HtmlParseCancellation,
     terminal: Option<ParseStop>,
+    // Fixed first-stop observation, captured before any producer cleanup.
+    first_stop_usage: Option<ParseUsage>,
     source: Option<(HtmlSourceId, HtmlSourceCoordinates)>,
     identity: Arc<()>,
     #[cfg(test)]
@@ -150,6 +152,7 @@ impl ParseControl {
             },
             cancellation,
             terminal: None,
+            first_stop_usage: None,
             source: None,
             identity: Arc::new(()),
             #[cfg(test)]
@@ -173,13 +176,24 @@ impl ParseControl {
     pub(crate) fn stop(&self) -> Option<ParseStop> {
         self.terminal
     }
+    pub(crate) fn first_stop_usage(&self) -> Option<&ParseUsage> {
+        self.first_stop_usage.as_ref()
+    }
+    fn latch_stop(&mut self, reason: ParseStop) -> ParseStop {
+        if let Some(first) = self.terminal {
+            return first;
+        }
+        // No allocation or useful progression: the fixed control layout owns
+        // this observation. Denied requests remain in the stop, not in usage.
+        self.first_stop_usage = Some(self.usage.clone());
+        self.terminal = Some(reason);
+        reason
+    }
     pub(crate) fn fail_invariant(&mut self, invariant: Invariant) -> ParseStop {
         if let Err(reason) = self.checkpoint() {
             return reason;
         }
-        *self
-            .terminal
-            .get_or_insert(ParseStop::InternalInvariant(invariant))
+        self.latch_stop(ParseStop::InternalInvariant(invariant))
     }
     pub(crate) fn stop_unsupported_standalone(
         &mut self,
@@ -188,12 +202,10 @@ impl ParseControl {
         if let Err(first) = self.checkpoint() {
             return first;
         }
-        *self
-            .terminal
-            .get_or_insert(ParseStop::UnsupportedStandaloneState(reason))
+        self.latch_stop(ParseStop::UnsupportedStandaloneState(reason))
     }
     fn fail<T>(&mut self, reason: ParseStop) -> Result<T, ParseStop> {
-        let first = *self.terminal.get_or_insert(reason);
+        let first = self.latch_stop(reason);
         Err(first)
     }
     pub(crate) fn checkpoint(&mut self) -> Result<(), ParseStop> {
@@ -1905,6 +1917,86 @@ mod tests {
         assert_eq!(cancelled.stop(), Some(ParseStop::Cancelled));
     }
 
+    #[test]
+    fn first_stop_snapshot_excludes_denied_growth_and_survives_terminal_refund() {
+        let caps = limits()
+            .into_builder()
+            .auxiliary_entries(5)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        assert!(c.first_stop_usage().is_none());
+        c.acquire(HtmlParseResource::AuxiliaryEntries, 4).unwrap();
+        c.charge(WorkCategory::RecordWrite, 3).unwrap();
+        let before = c.usage().clone();
+        let stop = c
+            .acquire(HtmlParseResource::AuxiliaryEntries, 2)
+            .unwrap_err();
+        assert_eq!(
+            stop,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::AuxiliaryEntries,
+                limit: 5,
+                current: 4,
+                requested_delta: 2,
+            }
+        );
+        assert_eq!(c.first_stop_usage(), Some(&before));
+        let owner = c.identity();
+        c.cleanup_release(&owner, HtmlParseResource::AuxiliaryEntries, 4)
+            .unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+        assert_eq!(
+            c.first_stop_usage()
+                .unwrap()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            4
+        );
+        c.cancellation.cancel();
+        assert_eq!(c.checkpoint(), Err(stop));
+        assert_eq!(c.fail_invariant(Invariant::ForeignControl), stop);
+        assert_eq!(c.first_stop_usage(), Some(&before));
+    }
+    #[test]
+    fn cancellation_snapshot_retains_real_vector_capacity_before_disposal() {
+        let cancellation = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancellation.clone());
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        values.try_push(&mut c, 7_u16).unwrap();
+        let before = c.usage().clone();
+        assert_eq!(
+            before.resource(HtmlParseResource::AuxiliaryEntries).current,
+            1
+        );
+        assert!(before.actual_capacity_bytes >= size_of::<u16>() as u64);
+        cancellation.cancel();
+        assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
+        assert_eq!(c.first_stop_usage(), Some(&before));
+        values.release(&mut c).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+        assert_eq!(c.first_stop_usage(), Some(&before));
+        assert_eq!(
+            c.usage().actual_capacity_high_water,
+            before.actual_capacity_high_water
+        );
+        assert_eq!(
+            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
+            ParseStop::Cancelled
+        );
+        assert_eq!(c.first_stop_usage(), Some(&before));
+    }
     fn limits() -> HtmlParseLimits {
         HtmlParseLimits::builder()
             .source_units(1_000)
@@ -2070,7 +2162,9 @@ mod tests {
                     .finish()
                     .unwrap(),
             );
-            let mut driver = Some(StandaloneDocumentDriver::new(&request).unwrap());
+            let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
+                &request,
+            ));
             for _ in 0..128 {
                 if driver.as_mut().unwrap().standalone_parts().is_some() {
                     break;

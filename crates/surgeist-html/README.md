@@ -1525,6 +1525,27 @@ HTML rules, and explicit or implied HTML roots lead to an owned BeforeHead
 continuation. It retains exact reprocessed input, diagnostics and ignored
 whitespace origins. The constructor creates a fresh ordinary document; hosted,
 srcdoc, mode-fixed and captured-document execution remain unsupported.
+
+<a id="private-ordinary-entry"></a>
+
+The private [OrdinaryDocumentEntry](src/parser/tree_builder/entry.rs) borrows the
+actual request's original source and retains every admitted initialization
+prefix with its sole controller and partial driver. Profile/captured-document
+refusals before control creation carry no invented usage. A ready entry
+source-qualifies and admits transfer of the real driver once; failure exposes no
+usable tree. Source admission still precedes driver layout admission.
+
+The [controller](src/parser/control.rs) fixes first-stop usage at the canonical
+latch, before a nested constructor can reclaim storage. This observation stays
+distinct from the entry's after-cleanup snapshot and current retained usage.
+Prefix cleanup and retained safe-evidence disposal are separate operations;
+reclaimed live storage does not refund work, cumulative fees or high-water
+values. Initialization pulls no tokens: evidence is honestly absent before its
+owner exists, or the actual initialized empty prefix after failure while taking
+a ready driver, rather than fabricated diagnostics. This remains a private
+cfg(test) producer checkpoint. Public source-owning success/failure reports, FrozenParts transfer,
+D1 all-overlap source lookup and contextual fragment assembly remain separate.
+
 The owning head-stage driver consumes that continuation and the same paused
 tokenizer. It implements BeforeHead, ordinary non-script/non-template InHead,
 Disabled InHeadNoscript and RCDATA/RAWTEXT Text processing. Text restores its

@@ -583,8 +583,7 @@ mod tests {
     fn actual_active_to_frozen_move_and_alias_refusal_preserve_the_same_store() {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p/>A"), limits(100));
-        let mut driver =
-            crate::parser::tree_builder::StandaloneDocumentDriver::new(&request).unwrap();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         for _ in 0..1000 {
             if driver.step().unwrap() == crate::parser::tree_builder::head::HeadStep::Complete {
                 break;
