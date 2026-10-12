@@ -121,6 +121,20 @@ sets require an explicit case-sensitive or ASCII-insensitive comparison.
 Comma tokens can be empty and retain internal whitespace. These common values
 do not certify an attribute's keywords, cardinality or contextual constraints.
 
+The attribute-specific token owner supplies checked `HtmlAccessKeys`, explicit
+`HtmlBlockingTokens` and exact `HtmlIconSizes`. `accesskey` checks an ordered,
+case-sensitive unique set of single code points while its processing candidates
+retain eligible repetitions. `blocking` separates exact authored `render`
+tokens from case-folded explicit membership. Its link and script companions
+observe actual rel membership or supplied script kind independently of token
+validity. `icon_sizes` preserves each keyword's processing outcome and exact
+positive bitmap dimensions beyond machine-integer range; its link companion
+checks icon/apple-touch-icon membership. Reports retain raw input and distinguish
+local author, context and processing results. They certify no keyboard shortcut
+assignment, implicit/current render blocking or linked-resource availability.
+These standalone operations use ordinary allocation and the original-value
+UTF-16 cap described below.
+
 `HtmlValueInterpreter` admits each raw value against a caller-selected finite
 UTF-16 input capacity. Its immutable `HtmlValueReport<A, R>` reports distinguish
 missing values, whole-value author conformance, representation failure and

@@ -98,7 +98,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e051"></a>E051 | label; HTML | [the-label-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-label-element) | [Labels and form ownership](#labels-and-form-ownership): labeled control, associated form, control labels; activation/event forwarding external. |
 | <a id="e052"></a>E052 | legend; HTML | [the-legend-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-legend-element) | Fieldset first-legend disabledness exception consumed by [Control facts](#control-facts); generic fieldset caption getter not exposed. |
 | <a id="e053"></a>E053 | li; HTML | [the-li-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-li-element) | [Lists](#lists) owner/value/ordinal consumes actual list participation; not CSS box geometry. |
-| <a id="e054"></a>E054 | link; HTML | [the-link-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element) | Own fetch/referrer/loading/stylesheet-disabled plus srcset; [Link destinations](#link-destinations), [Link relationships](#link-relationships), [Icon sizes](#icon-sizes) local gaps; fetching/CSSOM execution separate. |
+| <a id="e054"></a>E054 | link; HTML | [the-link-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element) | Own fetch/referrer/loading/stylesheet-disabled plus srcset; [Link destinations](#link-destinations) and [Link relationships](#link-relationships) retain local gaps; [Icon sizes](#icon-sizes) supplies local grammar/rel reports; fetching/CSSOM execution separate. |
 | <a id="e055"></a>E055 | main; HTML | [the-main-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-main-element) | Exact container for the dominant contents of the document role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e056"></a>E056 | map; HTML | [the-map-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-map-element) | [Map names](#map-names), MapAreas ordinary membership; usemap processing not full map-name conformance or hit testing. |
 | <a id="e057"></a>E057 | mark; HTML | [the-mark-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-mark-element) | Exact highlight role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
@@ -133,7 +133,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e086"></a>E086 | source; HTML | [the-source-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-source-element) | [Responsive images](#responsive-images) source srcset/context; media/image source resource choice and media-query environment external. |
 | <a id="e087"></a>E087 | span; HTML | [the-span-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-span-element) | Exact generic phrasing container role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e088"></a>E088 | strong; HTML | [the-strong-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-strong-element) | Exact importance role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e089"></a>E089 | style; HTML | [the-style-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-style-element) | Exact stylesheet text/type/media/title/blocking; CSS grammar/document CSSOM association separate; [Blocking tokens](#blocking-tokens) HTML local gap. |
+| <a id="e089"></a>E089 | style; HTML | [the-style-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-style-element) | Exact stylesheet text/type/media/title/blocking; [Blocking tokens](#blocking-tokens) supplies local authored/explicit processing; CSS grammar/document CSSOM association and render-blocking lifecycle separate. |
 | <a id="e090"></a>E090 | sub; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact subscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e091"></a>E091 | summary; HTML | [the-summary-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-summary-element) | [Details](#details) first direct summary predicate and captured TabIndex default; disclosure toggle external. |
 | <a id="e092"></a>E092 | sup; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact superscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
@@ -172,7 +172,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a001"></a>A001 | abbr; th | [attr-th-abbr](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-abbr); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Text abbreviation for header cell; exact text retained, no missing/invalid default. TableModel binds semantic headers; abbreviation prose is not inferred. |
 | <a id="a002"></a>A002 | accept; input | [attr-input-accept](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-accept); [file-upload-state-(type=file)](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#file-upload-state-(type=file)); [set-of-comma-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#set-of-comma-separated-tokens); [valid-mime-type-with-no-parameters](https://mimesniff.spec.whatwg.org/#valid-mime-type-with-no-parameters) | [File accept](#file-accept): input File author/context and token processing; no MIME certification or picker execution. |
 | <a id="a003"></a>A003 | accept-charset; form | [attr-form-accept-charset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-form-accept-charset); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [ascii-case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) | [Encoding labels](#encoding-labels): form_accept_charset checks exact UTF-8 spelling and retains accepted casing; submission encoding selection remains separate. |
-| <a id="a004"></a>A004 | accesskey; HTML elements | [the-accesskey-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-accesskey-attribute); [ordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#ordered-set-of-unique-space-separated-tokens); [string-is](https://infra.spec.whatwg.org/#string-is) | [Access keys](#access-keys): unique ordered single-code-point tokens; attribute-specific check absent, host shortcut assignment separate. |
+| <a id="a004"></a>A004 | accesskey; HTML elements | [the-accesskey-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-accesskey-attribute); [ordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#ordered-set-of-unique-space-separated-tokens); [string-is](https://infra.spec.whatwg.org/#string-is) | [Access keys](#access-keys): checked unique single-code-point author set and ordered processing candidates; keyboard assignment/focus/activation separate. |
 | <a id="a005"></a>A005 | action; form | [attr-fs-action](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fs-action); [concept-url](https://url.spec.whatwg.org/#concept-url); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [valid-non-empty-url-potentially-surrounded-by-spaces](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-empty-url-potentially-surrounded-by-spaces) | [URLs and references](#urls-and-references): form action nonempty URL author condition; actual document/submitter fallback and submission are contextual, no guessed base. |
 | <a id="a006"></a>A006 | allow; iframe | [attr-iframe-allow](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-allow); [permissions-policy](https://w3c.github.io/webappsec-feature-policy/#permissions-policy); [the-iframe-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-iframe-element); [serialized-permissions-policy](https://w3c.github.io/webappsec-feature-policy/#serialized-permissions-policy) | Permissions Policy delegation; iframe allow string retained. HTML iframe declaration integration and host policy/fetch are distinct; no policy validator advertised. |
 | <a id="a007"></a>A007 | allowfullscreen; iframe | [attr-iframe-allowfullscreen](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-allowfullscreen); [the-iframe-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-iframe-element); [dom-element-requestfullscreen](https://fullscreen.spec.whatwg.org/#dom-element-requestfullscreen); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): AllowFullscreen. Permissions/fullscreen transition remains host-owned. |
@@ -186,7 +186,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a015"></a>A015 | autocorrect; HTML elements | [attr-autocorrect](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocorrect); [attr-autocorrect-on](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocorrect-on); [attr-autocorrect-off](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocorrect-off) | [Enumerations](#enumerations) and [Captured global states](#captured-global-states): On default vs inherited used state. |
 | <a id="a016"></a>A016 | autofocus; HTML elements | [attr-fe-autofocus](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autofocus); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Autofocus. Actual focus candidate collection, focusability and focus transition require host/DOM owner. |
 | <a id="a017"></a>A017 | autoplay; audio; video | [attr-media-autoplay](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-media-autoplay); [media-resource](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#media-resource); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Autoplay. Media playback eligibility/transition remains host media owner. |
-| <a id="a018"></a>A018 | blocking; link; script; style | [attr-link-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-blocking); [attr-script-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-blocking); [attr-style-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-style-blocking); [potentially-render-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#potentially-render-blocking); [unordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#unordered-set-of-unique-space-separated-tokens) | [Blocking tokens](#blocking-tokens): case-folded render membership and per-element rel/kind author constraints absent; render blocking execution separate. |
+| <a id="a018"></a>A018 | blocking; link; script; style | [attr-link-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-blocking); [attr-script-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-blocking); [attr-style-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-style-blocking); [potentially-render-blocking](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#potentially-render-blocking); [unordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#unordered-set-of-unique-space-separated-tokens) | [Blocking tokens](#blocking-tokens): exact authored set, case-folded explicit Render/Empty processing and actual link/script context; render-blocking lifecycle separate. |
 | <a id="a019"></a>A019 | charset; meta | [attr-meta-charset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-charset); [character-encoding-declaration](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#character-encoding-declaration) | [Encoding labels](#encoding-labels): meta_charset checks exact UTF-8 spelling; applicable present declaration context remains independently Unchecked, including invalid spelling. |
 | <a id="a020"></a>A020 | checked; input | [attr-input-checked](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-checked); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Checked, restricted input states. CurrentCheckedness/DirtyCheckednessFlag and CheckableInputValueMissing use actual checkedness, not authored checked as current state. |
 | <a id="a021"></a>A021 | cite; blockquote; del; ins; q | [attr-blockquote-cite](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-blockquote-cite); [attr-mod-cite](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-mod-cite); [attr-q-cite](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-q-cite); [valid-url-potentially-surrounded-by-spaces](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-url-potentially-surrounded-by-spaces) | [URLs and references](#urls-and-references): citation references on blockquote/q/ins/del; absent remains absent, no base is invented. |
@@ -312,7 +312,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a141"></a>A141 | shadowrootslotassignment; template | [attr-template-shadowrootslotassignment](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-template-shadowrootslotassignment); [shadowroot-slot-assignment](https://dom.spec.whatwg.org/#shadowroot-slot-assignment) | [Enumerations](#enumerations): shadowrootslotassignment Named default; actual slot assignment external DOM owner. |
 | <a id="a142"></a>A142 | shape; area | [attr-area-shape](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-area-shape); [image-map](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#image-map); [attr-area-shape-keyword-circle](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-area-shape-keyword-circle); [attr-area-shape-keyword-default](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-area-shape-keyword-default); [attr-area-shape-keyword-poly](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-area-shape-keyword-poly); [attr-area-shape-keyword-rect](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-area-shape-keyword-rect) | [Area geometry](#area-geometry): shape default Rect, aliases recovered nonconforming, own grammar+coords coupled. |
 | <a id="a143"></a>A143 | size; input; select | [attr-input-size](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-size); [attr-select-size](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-select-size); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Control lengths](#control-lengths) input size positive author/getter20 vs [Numeric content](#numeric-content) select size display fallback1/4; recovered select0 retained, reflected0 differs display. |
-| <a id="a144"></a>A144 | sizes; link | [attr-link-sizes](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-sizes); [attr-link-rel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-rel); [rel-icon](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#rel-icon); [unordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#unordered-set-of-unique-space-separated-tokens); [ascii-case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) | [Icon sizes](#icon-sizes): any or exact WxH token list/rel constraint absent; not responsive source sizes. |
+| <a id="a144"></a>A144 | sizes; link | [attr-link-sizes](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-sizes); [attr-link-rel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-rel); [rel-icon](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#rel-icon); [unordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#unordered-set-of-unique-space-separated-tokens); [ascii-case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) | [Icon sizes](#icon-sizes): native exact positive bitmap/scalable set, per-keyword processing and actual rel eligibility; linked-resource availability separate. |
 | <a id="a145"></a>A145 | sizes; img; source | [attr-img-sizes](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-img-sizes); [attr-source-sizes](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-source-sizes); [valid-source-size-list](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-source-size-list) | [Responsive images](#responsive-images): img/source sizes-list+auto applicability/parser absent; CSS expressions/environment external, HTML list selection still needs owner. |
 | <a id="a146"></a>A146 | slot; HTML elements | Discovery: [the-id-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-id-attribute); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text); defining: [attr-slot](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-slot); [DOM slottable names](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md#light-tree-slotables) | Slot attribute exact string, with absent/empty slottable name empty. HTML permits it on all HTML elements and delegates user-agent requirements for any namespace to DOM. Actual assigned slot comes from DOM-owned shadow/slot capture; HTML queries do not construct the flat tree. |
 | <a id="a147"></a>A147 | span; col; colgroup | [attr-col-span](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-col-span); [attr-colgroup-span](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-colgroup-span); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Numeric content](#numeric-content): col/colgroup positive span clamp1000, default 1; TableModel respects explicit column semantics independent geometry. |
@@ -1122,6 +1122,52 @@ existing session controller. Same-tree author-reference conformance, live
 command dispatch, popover show/hide and dialog transitions remain required
 distinct operations; captured results execute none of them.
 
+## Access keys
+
+[token_declarations.rs](src/attributes/token_declarations.rs) supplies
+`HtmlAccessKeys` and the `accesskey` report for A004. Local author checking uses
+an ordered case-sensitive unique set with exactly one code point per token.
+UTF-16 pairs count once; isolated surrogates, NULL and non-ASCII whitespace retain
+their exact local spelling. Processing filters only tokens with the wrong
+cardinality, retaining eligible repetitions and order. These are candidate
+tokens; keyboard correspondence, host fallback, shortcut assignment, focus and
+activation remain required host operations.
+
+## Blocking tokens
+
+For A018, the same owner checks an exact unique authored `render` set and
+separately supplies Empty/Render after ASCII-insensitive processing. An uppercase
+or duplicated declaration can fail local author checking while retaining Render.
+Content-only link/script reports leave context unchecked when present; style
+needs no extra presence condition. `blocking_for_link` observes the complete
+actual attribute set and stylesheet/expect rel membership. `blocking_for_script`
+retains the actual supplied script kind, permitting authored presence only for
+external classic/module scripts. No kind is inferred from type/src. These
+results concern explicit tokens, not potential, implicit or current render
+blocking; resource lifecycle remains a separate consumer.
+
+## Icon sizes
+
+For A144, `HtmlIconSizes` checks an ASCII-insensitive unique set of Scalable or
+exact positive bitmap dimensions in raw/device pixels. Author spelling allows
+`any` or one x/X between ASCII decimal dimensions without leading zeroes.
+`icon_sizes` retains each keyword's result in source order, including repetitions
+and invalid neighbors; valid dimensions remain exact beyond u128.
+`icon_sizes_for_link` separately checks actual icon/apple-touch-icon rel
+membership. Linked-resource size availability remains Unchecked for a specified
+applicable declaration; these are neither responsive source-size/CSS lengths
+nor an icon-selection operation.
+
+All three reports reuse common token/string/integer owners and preserve exact
+raw attributes, absence versus specified empty, duplicate evidence, applicability
+and independent author/context results. Wrong contexts have no applied token
+projection. The complete original raw value is admitted before checking;
+link companions admit both actual declaration and rel slots independently.
+[Twenty public tests](tests/attributes_token_declarations.rs) cover all these
+boundaries, UTF-16, native emission, companion roles, huge integers and exact
+capacity precedence. Ordinary allocation and the per-original UTF-16 cap do
+not establish aggregate physical-memory, work/cancellation or RSS guarantees.
+
 ## HTML-local operations with no corresponding complete producer
 
 The following entries specify remaining rule/consumer boundaries. They are not
@@ -1158,25 +1204,11 @@ DOM capture supplies actual parent/state, and the image/resource consumer
 supplies qualified natural dimensions. No natural dimensions or ratio are
 inferred from raw width/height or canvas defaults.
 
-### Access keys
-
-A004's source author rule is unique ordered ASCII-space-separated tokens with
-exactly one code point per token. Shared token sets exist; no accesskey-specific
-validator supplies the single-code-point condition. Assignment to platform
-shortcuts/focus/activation needs a host keyboard consumer.
-
 ### Link destinations
 
 A010 as must classify source preload/modulepreload destinations, none-state
 missing/invalid and actual rel context; modulepreload missing later treats script.
 No local as report exists. Fetch processing is not the local author/state check.
-
-### Blocking tokens
-
-A018: HTML blocking tokens set lowercases and splits ASCII whitespace, keeps
-recognized render tokens, with actual link rel/script/style context. No selected
-local public report exists. Host render-blocking resource lifecycle is a separate
-consumer, not an excuse for absent HTML token/placement processing.
 
 ### Metadata
 
@@ -1233,13 +1265,6 @@ interpretation is not exposed. HTML link-type semantics and actual supported-tok
 capability differ; network/navigation/CSS association belongs the consuming
 execution owner. Form rel is a supplemental defining clause outside these two
 printed rows, not evidence to silently change their identities.
-
-### Icon sizes
-
-A144: ASCII-insensitive unique tokens any or exact WxH nonnegative integers
-without leading zero, icon/apple-touch-icon rel constraint. Shared tokens/integers
-are available, but the icon-specific grammar/relation producer is absent. Do not
-reuse source sizes/media grammar or a geometry box as its validator.
 
 ### Document base
 

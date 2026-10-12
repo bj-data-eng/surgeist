@@ -108,8 +108,10 @@ pub surgeist_html::HtmlAttributeContextAuthorState::Unapplied
 pub surgeist_html::HtmlAttributeContextAuthorState::Unavailable
 pub surgeist_html::HtmlAttributeContextAuthorState::Unchecked
 pub enum surgeist_html::HtmlAttributeContextConformanceError
+pub surgeist_html::HtmlAttributeContextConformanceError::BlockingRequiresStylesheetOrExpectRel
 pub surgeist_html::HtmlAttributeContextConformanceError::FormOverrideRequiresSubmitButton
 pub surgeist_html::HtmlAttributeContextConformanceError::FormnovalidateRequiresSubmitButton
+pub surgeist_html::HtmlAttributeContextConformanceError::IconSizesRequireIconRel
 pub surgeist_html::HtmlAttributeContextConformanceError::ImageControlsRequireNonemptyAlt
 pub surgeist_html::HtmlAttributeContextConformanceError::ImageMapRequiresAncestorAnchorWithHref
 pub surgeist_html::HtmlAttributeContextConformanceError::InputStateForbidsAttribute
@@ -314,6 +316,11 @@ pub enum surgeist_html::HtmlAutofillFieldIdentity
 pub surgeist_html::HtmlAutofillFieldIdentity::Credential(surgeist_html::HtmlAutocompleteCredential)
 pub surgeist_html::HtmlAutofillFieldIdentity::Detail(surgeist_html::HtmlAutofillField)
 pub surgeist_html::HtmlAutofillFieldIdentity::Setting(surgeist_html::HtmlFormAutocomplete)
+pub enum surgeist_html::HtmlBlockingTokens
+pub surgeist_html::HtmlBlockingTokens::Empty
+pub surgeist_html::HtmlBlockingTokens::Render
+impl surgeist_html::HtmlBlockingTokens
+pub fn surgeist_html::HtmlBlockingTokens::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlBooleanAttribute
 pub surgeist_html::HtmlBooleanAttribute::AllowFullscreen
 pub surgeist_html::HtmlBooleanAttribute::Alpha
@@ -842,6 +849,17 @@ pub surgeist_html::HtmlHiddenState::NotHidden
 pub enum surgeist_html::HtmlHyperlinkAttributeContext
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithHref
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithoutHref
+pub enum surgeist_html::HtmlIconSize
+pub surgeist_html::HtmlIconSize::Bitmap(surgeist_html::HtmlBitmapIconSize)
+pub surgeist_html::HtmlIconSize::Scalable
+pub enum surgeist_html::HtmlIconSizeError
+pub surgeist_html::HtmlIconSizeError::DimensionDigits
+pub surgeist_html::HtmlIconSizeError::LeadingZero
+pub surgeist_html::HtmlIconSizeError::Separator
+pub surgeist_html::HtmlIconSizeError::ZeroDimension
+impl core::error::Error for surgeist_html::HtmlIconSizeError
+impl core::fmt::Display for surgeist_html::HtmlIconSizeError
+pub fn surgeist_html::HtmlIconSizeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlImageControlsAttributeContext
 pub surgeist_html::HtmlImageControlsAttributeContext::AltEmpty
 pub surgeist_html::HtmlImageControlsAttributeContext::AltMissing
@@ -1878,6 +1896,23 @@ pub surgeist_html::HtmlTimeElementValueOrigin::DatetimeAttribute
 pub enum surgeist_html::HtmlTokenComparison
 pub surgeist_html::HtmlTokenComparison::AsciiCaseInsensitive
 pub surgeist_html::HtmlTokenComparison::CaseSensitive
+pub enum surgeist_html::HtmlTokenDeclarationAuthorState
+pub surgeist_html::HtmlTokenDeclarationAuthorState::Conforming
+pub surgeist_html::HtmlTokenDeclarationAuthorState::Missing
+pub surgeist_html::HtmlTokenDeclarationAuthorState::Nonconforming(surgeist_html::HtmlTokenDeclarationError)
+pub surgeist_html::HtmlTokenDeclarationAuthorState::Unapplied
+pub enum surgeist_html::HtmlTokenDeclarationError
+pub surgeist_html::HtmlTokenDeclarationError::AccessKeyLength
+pub surgeist_html::HtmlTokenDeclarationError::AccessKeyLength::token_index: usize
+pub surgeist_html::HtmlTokenDeclarationError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
+pub surgeist_html::HtmlTokenDeclarationError::InvalidBlockingToken
+pub surgeist_html::HtmlTokenDeclarationError::InvalidBlockingToken::token_index: usize
+pub surgeist_html::HtmlTokenDeclarationError::InvalidIconSize
+pub surgeist_html::HtmlTokenDeclarationError::InvalidIconSize::reason: surgeist_html::HtmlIconSizeError
+pub surgeist_html::HtmlTokenDeclarationError::InvalidIconSize::token_index: usize
+impl core::error::Error for surgeist_html::HtmlTokenDeclarationError
+impl core::fmt::Display for surgeist_html::HtmlTokenDeclarationError
+pub fn surgeist_html::HtmlTokenDeclarationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlTokenError
 pub surgeist_html::HtmlTokenError::CommaTokenBoundaryWhitespace
 pub surgeist_html::HtmlTokenError::CommaTokenBoundaryWhitespace::code_unit_offset: usize
@@ -2362,6 +2397,16 @@ pub fn surgeist_html::HtmlAcceptValue::as_document_string(&self) -> surgeist_htm
 pub fn surgeist_html::HtmlAcceptValue::mime_conformance(&self) -> surgeist_html::HtmlAcceptMimeConformance
 pub fn surgeist_html::HtmlAcceptValue::new(specifiers: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlAcceptSpecifier>) -> core::result::Result<Self, surgeist_html::HtmlAcceptDuplicate>
 pub fn surgeist_html::HtmlAcceptValue::specifiers(&self) -> &[surgeist_html::HtmlAcceptSpecifier]
+pub struct surgeist_html::HtmlAccessKeyReport
+impl surgeist_html::HtmlAccessKeyReport
+pub fn surgeist_html::HtmlAccessKeyReport::candidate_tokens(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_html::HtmlSpaceToken>
+pub fn surgeist_html::HtmlAccessKeyReport::input(&self) -> &surgeist_html::HtmlTokenDeclarationInput
+pub fn surgeist_html::HtmlAccessKeyReport::processing_source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlAccessKeys
+impl surgeist_html::HtmlAccessKeys
+pub fn surgeist_html::HtmlAccessKeys::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlAccessKeys::new(tokens: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSpaceToken>) -> core::result::Result<Self, surgeist_html::HtmlTokenDeclarationError>
+pub fn surgeist_html::HtmlAccessKeys::tokens(&self) -> &[surgeist_html::HtmlSpaceToken]
 pub struct surgeist_html::HtmlAdvisoryInformation
 impl surgeist_html::HtmlAdvisoryInformation
 pub fn surgeist_html::HtmlAdvisoryInformation::source(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
@@ -2522,6 +2567,16 @@ pub struct surgeist_html::HtmlAutocompleteSection
 impl surgeist_html::HtmlAutocompleteSection
 pub fn surgeist_html::HtmlAutocompleteSection::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAutocompleteSectionError>
 pub fn surgeist_html::HtmlAutocompleteSection::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlBitmapIconSize
+impl surgeist_html::HtmlBitmapIconSize
+pub fn surgeist_html::HtmlBitmapIconSize::height(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlBitmapIconSize::new(width: surgeist_html::HtmlNonNegativeInteger, height: surgeist_html::HtmlNonNegativeInteger) -> core::result::Result<Self, surgeist_html::HtmlIconSizeError>
+pub fn surgeist_html::HtmlBitmapIconSize::width(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub struct surgeist_html::HtmlBlockingReport
+impl surgeist_html::HtmlBlockingReport
+pub fn surgeist_html::HtmlBlockingReport::explicit_tokens(&self) -> core::option::Option<surgeist_html::HtmlBlockingTokens>
+pub fn surgeist_html::HtmlBlockingReport::input(&self) -> &surgeist_html::HtmlTokenDeclarationInput
+pub fn surgeist_html::HtmlBlockingReport::processing_source_clause(&self) -> &'static str
 pub struct surgeist_html::HtmlBooleanAuthorContextReadback
 impl surgeist_html::HtmlBooleanAuthorContextReadback
 pub fn surgeist_html::HtmlBooleanAuthorContextReadback::attribute_report(&self) -> &surgeist_html::HtmlAttributeReport<bool>
@@ -3071,6 +3126,21 @@ pub struct surgeist_html::HtmlHyperlinkReferrerPolicyReadback
 impl surgeist_html::HtmlHyperlinkReferrerPolicyReadback
 pub fn surgeist_html::HtmlHyperlinkReferrerPolicyReadback::attribute_report(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>
 pub fn surgeist_html::HtmlHyperlinkReferrerPolicyReadback::href_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub struct surgeist_html::HtmlIconSizeKeyword
+impl surgeist_html::HtmlIconSizeKeyword
+pub fn surgeist_html::HtmlIconSizeKeyword::result(&self) -> core::result::Result<&surgeist_html::HtmlIconSize, surgeist_html::HtmlIconSizeError>
+pub fn surgeist_html::HtmlIconSizeKeyword::token_index(&self) -> usize
+pub struct surgeist_html::HtmlIconSizes
+impl surgeist_html::HtmlIconSizes
+pub fn surgeist_html::HtmlIconSizes::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlIconSizes::new(sizes: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlIconSize>) -> core::result::Result<Self, surgeist_html::HtmlDuplicateTokenError>
+pub fn surgeist_html::HtmlIconSizes::tokens(&self) -> &[surgeist_html::HtmlSpaceToken]
+pub struct surgeist_html::HtmlIconSizesReport
+impl surgeist_html::HtmlIconSizesReport
+pub fn surgeist_html::HtmlIconSizesReport::input(&self) -> &surgeist_html::HtmlTokenDeclarationInput
+pub fn surgeist_html::HtmlIconSizesReport::keywords(&self) -> core::option::Option<&[surgeist_html::HtmlIconSizeKeyword]>
+pub fn surgeist_html::HtmlIconSizesReport::processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlIconSizesReport::resource_conformance(&self) -> surgeist_html::HtmlAttributeContextAuthorState
 pub struct surgeist_html::HtmlInertFactLimits
 impl surgeist_html::HtmlInertFactLimits
 pub fn surgeist_html::HtmlInertFactLimits::new(record_capacity: usize, validation_work: usize) -> Self
@@ -4046,6 +4116,25 @@ impl surgeist_html::HtmlTimeZoneOffset
 pub fn surgeist_html::HtmlTimeZoneOffset::minutes(self) -> i16
 pub fn surgeist_html::HtmlTimeZoneOffset::new(minutes: i16) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
 pub fn surgeist_html::HtmlTimeZoneOffset::to_document_string(self) -> surgeist_html::DocumentString
+pub struct surgeist_html::HtmlTokenDeclarationInput
+impl surgeist_html::HtmlTokenDeclarationInput
+pub fn surgeist_html::HtmlTokenDeclarationInput::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlTokenDeclarationInput::attribute(&self) -> surgeist_html::KnownHtmlAttribute
+pub fn surgeist_html::HtmlTokenDeclarationInput::author(&self) -> &surgeist_html::HtmlTokenDeclarationAuthorState
+pub fn surgeist_html::HtmlTokenDeclarationInput::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlSpaceSeparatedTokens, surgeist_html::HtmlSpaceSeparatedTokens>>
+pub fn surgeist_html::HtmlTokenDeclarationInput::context_author(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub fn surgeist_html::HtmlTokenDeclarationInput::context_source_clause(&self) -> core::option::Option<&'static str>
+pub fn surgeist_html::HtmlTokenDeclarationInput::duplicate(&self) -> core::option::Option<&surgeist_html::HtmlDuplicateTokenError>
+pub fn surgeist_html::HtmlTokenDeclarationInput::element(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlTokenDeclarationInput::input_code_units(&self) -> usize
+pub fn surgeist_html::HtmlTokenDeclarationInput::inventory_rows(&self) -> &'static [u16]
+pub fn surgeist_html::HtmlTokenDeclarationInput::observation(&self) -> surgeist_html::HtmlAttributeObservation
+pub fn surgeist_html::HtmlTokenDeclarationInput::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlTokenDeclarationInput::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlTokenDeclarationInput::rel_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlTokenDeclarationInput::rel_observed(&self) -> bool
+pub fn surgeist_html::HtmlTokenDeclarationInput::script_context(&self) -> core::option::Option<surgeist_html::HtmlScriptAttributeContext>
+pub fn surgeist_html::HtmlTokenDeclarationInput::source_clause(&self) -> &'static str
 pub struct surgeist_html::HtmlUnorderedTokenSet
 impl surgeist_html::HtmlUnorderedTokenSet
 pub fn surgeist_html::HtmlUnorderedTokenSet::as_document_string(&self) -> surgeist_html::DocumentString
@@ -4110,6 +4199,13 @@ impl core::error::Error for surgeist_html::HtmlValueAdmissionError
 impl core::fmt::Display for surgeist_html::HtmlValueAdmissionError
 pub fn surgeist_html::HtmlValueAdmissionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlValueInterpreter
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::accesskey(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAccessKeyReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::blocking(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlBlockingReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::blocking_for_link(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlBlockingReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::blocking_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlBlockingReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::icon_sizes(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlIconSizesReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::icon_sizes_for_link(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlIconSizesReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::area_coordinates(&self, element: &surgeist_html::QualifiedName, shape: core::option::Option<&surgeist_html::Attribute>, coords: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAreaCoordinatesReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

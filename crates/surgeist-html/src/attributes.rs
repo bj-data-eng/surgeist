@@ -151,6 +151,10 @@ pub enum HtmlAttributeContextConformanceError {
     FormOverrideRequiresSubmitButton,
     /// Hard textarea wrap requires a specified cols attribute, independently of its value.
     TextareaHardWrapRequiresCols,
+    /// A specified link blocking declaration requires stylesheet or expect rel.
+    BlockingRequiresStylesheetOrExpectRel,
+    /// Specified link icon sizes require icon or apple-touch-icon rel.
+    IconSizesRequireIconRel,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2137,6 +2141,9 @@ pub use autocomplete::*;
 
 mod accept;
 pub use accept::*;
+
+mod token_declarations;
+pub use token_declarations::*;
 
 mod control_length;
 pub use control_length::*;
