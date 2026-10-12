@@ -1539,6 +1539,39 @@ allocation retains the existing provider limitation. This query computes
 advisory information; link titles, stylesheet-set names and tooltip or
 accessibility exposure remain separate operations.
 
+<a id="captured-figure-caption"></a>
+
+Captured `HtmlSemanticQuery::FigureCaption` selects the first direct HTML
+`figcaption` element child of an HTML `figure`, wherever it occurs in the
+child sequence. A middle caption or multiple captions still selects that first
+child; first/last placement and permitted content are separate author rules.
+The result retains the actual capture-qualified caption subject, without
+extracting its text or certifying caption adequacy.
+
+A complete direct-child sequence with no match returns `Known(None)`;
+unavailable direct order remains `Missing(OrderedChildren(subject))`.
+Descendant children, ancestry and connectedness are not consulted. Nested,
+template-hosted and shadow-associated captions are excluded. Exact HTML
+namespace/local-name recognition ignores prefixes and skips foreign or
+case-mismatched child names. Wrong-role/non-element subjects are Inapplicable;
+foreign subjects retain typed Unsupported.
+
+The [shared direct-child owner](src/semantics.rs) also serves the unchanged
+Details/summary selection. It charges real visits and name recognition, returns
+at the first witness and borrows the captured child iterator without traversal
+scratch or nested output. Attribute/text contents and later child names after
+selection are unconsulted. Actual outer result capacity and bytes remain
+admitted by the same qualified semantic session, with cumulative usage, sticky
+terminal failures and atomic requested batches. Ordinary fixed immutable
+handle/provider limits remain.
+
+The [figure clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-figure-element),
+[query implementation](src/semantics/figure.rs) and
+[literal tests](tests/semantics_figure_caption.rs) define this static relation.
+It supplies no figcaption-subject getter, live mutation, rendering or exposure
+operation, and no full figure content-conformance certificate. Closed
+Query/Fact additions are intentionally breaking for exhaustive matches.
+
 <a id="captured-defining-term"></a>
 
 Captured `HtmlSemanticQuery::DfnDefiningTerm` selects the exact term of an HTML

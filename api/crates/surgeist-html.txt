@@ -1884,6 +1884,7 @@ pub surgeist_html::HtmlSemanticFact::Editable(surgeist_html::HtmlSemanticValue<b
 pub surgeist_html::HtmlSemanticFact::EditingHost(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::EmbeddedDimensionAuthorConformance(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlEmbeddedDimensionAuthorReadback>)
 pub surgeist_html::HtmlSemanticFact::FieldsetControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
+pub surgeist_html::HtmlSemanticFact::FigureCaption(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::FormControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDefaultButton>>)
 pub surgeist_html::HtmlSemanticFact::FormImplicitSubmissionCondition(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImplicitSubmissionCondition>)
@@ -2016,6 +2017,7 @@ pub surgeist_html::HtmlSemanticQuery::Editable
 pub surgeist_html::HtmlSemanticQuery::EditingHost
 pub surgeist_html::HtmlSemanticQuery::EmbeddedDimensionAuthorConformance
 pub surgeist_html::HtmlSemanticQuery::FieldsetControls
+pub surgeist_html::HtmlSemanticQuery::FigureCaption
 pub surgeist_html::HtmlSemanticQuery::FormControls
 pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
 pub surgeist_html::HtmlSemanticQuery::FormImplicitSubmissionCondition

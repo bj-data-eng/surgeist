@@ -80,7 +80,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e033"></a>E033 | embed; HTML | [the-embed-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-embed-element) | Exact src/type/dimensions; plugin/resource representation external; common numbers do not define element sizing policy. |
 | <a id="e034"></a>E034 | fieldset; HTML | [the-fieldset-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-fieldset-element) | [Control facts](#control-facts) disabled/first-legend and fieldset/form collections; current form pointer vs reset remains distinct. |
 | <a id="e035"></a>E035 | figcaption; HTML | [the-figcaption-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figcaption-element) | Exact caption for figure role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e036"></a>E036 | figure; HTML | [the-figure-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figure-element) | Ordinary figcaption relationship retained; dedicated first/last figcaption caption interpretation not exposed. |
+| <a id="e036"></a>E036 | figure; HTML | [the-figure-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figure-element) | [Figure caption](#figure-caption): captured FigureCaption selects the first direct HTML figcaption child at any position, or established no caption, preserving qualification and influencing Missing. First/last author placement, content conformance and exposure remain separate. |
 | <a id="e037"></a>E037 | footer; HTML | [the-footer-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-footer-element) | Exact footer content retained; nearest sectioning-content/root scope comes from the defining clause. No dedicated footer-owner query or full content-conformance certificate is advertised. |
 | <a id="e038"></a>E038 | form; HTML | [the-form-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element) | [Labels and form ownership](#labels-and-form-ownership), qualified listed controls/length/default button/implicit condition, own method/enctype/autocomplete. Entry-list construction/submission execution outside query. |
 | <a id="e039"></a>E039 | h1, h2, h3, h4, h5, h6; HTML | [the-h1,-h2,-h3,-h4,-h5,-and-h6-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-h1,-h2,-h3,-h4,-h5,-and-h6-elements) | [Captured global states](#captured-global-states) ComputedHeadingLevel; no rendering/outline inference from font size. |
@@ -1105,6 +1105,30 @@ selection, boundaries, exact UTF-16, work/storage/cancellation and retained repo
 A163 title-of-link and stylesheet-set names still require their distinct
 document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
 contextual author meaning; this query is no semantic-adequacy or exposure proof.
+
+## Figure caption
+
+E036 uses [figure.rs](src/semantics/figure.rs) and the captured
+`FigureCaption` query. The
+[defining clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-figure-element)
+selects the first direct HTML figcaption element child at any position.
+First/last placement belongs to the separate author content model; neither a
+middle nor repeated caption defeats source selection. Complete absence is
+`Known(None)`, distinct from unavailable ordered children. Exact namespace/local
+identity ignores prefix; nested and template/shadow-associated content is not
+searched. Selected-child descendants and later branches are irrelevant.
+
+The same [borrowed direct-child scan](src/semantics.rs) serves the existing
+Details/summary algorithms without changing their resource sequence. Reads/name
+recognition and actual outer result capacity use the existing qualified ledger;
+there is no scratch, nested output, content-string materialization or raw-content
+scan. First stops are sticky and requested batches atomic. Fixed immutable
+handle/provider limits remain. [Literal tests](tests/semantics_figure_caption.rs)
+cover membership, qualification and resource boundaries; see the
+[capability explanation](README.md#captured-figure-caption). E035's figcaption
+role/raw content remains retained without a new figcaption-subject query.
+Caption adequacy, author content conformance, mutation, rendering and exposure
+remain separate requirements.
 
 ## Defining term
 

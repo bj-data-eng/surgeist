@@ -4,7 +4,7 @@
 //! table model and immutable table collections, language and directionality,
 //! meter and progress state, inertness,
 //! form owners, form/fieldset listed collections and form length, label targets, label form owners and control labels, current control flags, global inheritance, select
-//! readbacks, placeholder-label-option classification and static select and checkable-input missingness, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
+//! readbacks, placeholder-label-option classification and static select and checkable-input missingness, datalist association and option/suggestion membership, map area membership, figure captions, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
@@ -68,6 +68,7 @@ pub use map_name::*;
 mod tabindex;
 pub use tabindex::*;
 mod details;
+mod figure;
 pub use details::*;
 mod option_text;
 pub use option_text::*;
@@ -883,6 +884,8 @@ pub enum HtmlSemanticQuery {
     UsemapReference,
     ConstraintValidationCandidate,
     TabIndex,
+    /// First direct HTML figcaption child; author placement is separate.
+    FigureCaption,
     DetailsSummary,
     SummaryForParentDetails,
     DetailsNameGroup,
@@ -984,6 +987,9 @@ impl HtmlSemanticQuery {
             }
             Self::TabIndex => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tabindex"
+            }
+            Self::FigureCaption => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figure-element"
             }
             Self::DetailsSummary => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element"
@@ -1358,6 +1364,7 @@ pub enum HtmlSemanticFact {
     UsemapReference(HtmlSemanticValue<HtmlUsemapReferenceResult>),
     ConstraintValidationCandidate(HtmlSemanticValue<bool>),
     TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
+    FigureCaption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DetailsSummary(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     SummaryForParentDetails(HtmlSemanticValue<bool>),
     DetailsNameGroup(HtmlSemanticValue<HtmlDetailsNameGroup>),
@@ -1658,6 +1665,34 @@ impl<'a> HtmlSemanticSession<'a> {
             })
             .clone()
     }
+    fn first_html_element_child(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        expected: KnownHtmlElement,
+    ) -> Result<Result<Option<HtmlCaptureSubjectId>, HtmlSemanticMissing>, HtmlSemanticFailure>
+    {
+        let node = self.node(subject)?;
+        self.charge(1)?;
+        let mut children = match node.children() {
+            HtmlCapturedChildren::Complete(children) => children,
+            HtmlCapturedChildren::Unavailable => {
+                return Ok(Err(HtmlSemanticMissing::OrderedChildren(subject.clone())));
+            }
+        };
+        loop {
+            self.charge(1)?;
+            let Some(child) = children.next() else {
+                return Ok(Ok(None));
+            };
+            let node = self.node(&child)?;
+            if let HtmlCapturedNodeKind::Element(element) = node.kind()
+                && self.known(element)? == Some(expected)
+            {
+                return Ok(Ok(Some(child)));
+            }
+        }
+    }
+
     fn ordinary_tree_root(
         &mut self,
         subject: &HtmlCaptureSubjectId,
@@ -2879,6 +2914,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::TabIndex => {
                             HtmlSemanticFact::TabIndex(self.tab_index(&request.subject)?)
                         }
+                        HtmlSemanticQuery::FigureCaption => {
+                            HtmlSemanticFact::FigureCaption(self.figure_caption(&request.subject)?)
+                        }
                         HtmlSemanticQuery::DetailsSummary => HtmlSemanticFact::DetailsSummary(
                             self.details_summary(&request.subject)?,
                         ),
@@ -3250,6 +3288,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::TabIndex => {
                         HtmlSemanticFact::TabIndex(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FigureCaption => {
+                        HtmlSemanticFact::FigureCaption(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::DetailsSummary => {
                         HtmlSemanticFact::DetailsSummary(HtmlSemanticValue::Inapplicable)

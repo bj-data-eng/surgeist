@@ -46,32 +46,6 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticValue::Inapplicable
         })
     }
-    fn details_first_summary(
-        &mut self,
-        subject: &HtmlCaptureSubjectId,
-    ) -> Result<Result<Option<HtmlCaptureSubjectId>, HtmlSemanticMissing>, HtmlSemanticFailure>
-    {
-        let node = self.node(subject)?;
-        self.charge(1)?;
-        let mut children = match node.children() {
-            HtmlCapturedChildren::Complete(children) => children,
-            HtmlCapturedChildren::Unavailable => {
-                return Ok(Err(HtmlSemanticMissing::OrderedChildren(subject.clone())));
-            }
-        };
-        loop {
-            self.charge(1)?;
-            let Some(child) = children.next() else {
-                return Ok(Ok(None));
-            };
-            let node = self.node(&child)?;
-            if let HtmlCapturedNodeKind::Element(element) = node.kind()
-                && self.known(element)? == Some(KnownHtmlElement::Summary)
-            {
-                return Ok(Ok(Some(child)));
-            }
-        }
-    }
     pub(super) fn details_summary(
         &mut self,
         subject: &HtmlCaptureSubjectId,
@@ -80,10 +54,12 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticValue::Known(()) => {}
             value => return Ok(value.map(|()| None)),
         }
-        Ok(match self.details_first_summary(subject)? {
-            Ok(value) => HtmlSemanticValue::Known(value),
-            Err(missing) => HtmlSemanticValue::Missing(missing),
-        })
+        Ok(
+            match self.first_html_element_child(subject, KnownHtmlElement::Summary)? {
+                Ok(value) => HtmlSemanticValue::Known(value),
+                Err(missing) => HtmlSemanticValue::Missing(missing),
+            },
+        )
     }
     pub(super) fn summary_for_parent_details(
         &mut self,
@@ -103,13 +79,15 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticValue::Known(()) => {}
             _ => return Ok(HtmlSemanticValue::Known(false)),
         }
-        Ok(match self.details_first_summary(&parent)? {
-            Ok(first) => {
-                self.charge(1)?;
-                HtmlSemanticValue::Known(first.as_ref() == Some(subject))
-            }
-            Err(missing) => HtmlSemanticValue::Missing(missing),
-        })
+        Ok(
+            match self.first_html_element_child(&parent, KnownHtmlElement::Summary)? {
+                Ok(first) => {
+                    self.charge(1)?;
+                    HtmlSemanticValue::Known(first.as_ref() == Some(subject))
+                }
+                Err(missing) => HtmlSemanticValue::Missing(missing),
+            },
+        )
     }
     pub(super) fn details_name_group(
         &mut self,
