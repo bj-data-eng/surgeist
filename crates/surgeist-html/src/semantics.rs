@@ -47,6 +47,8 @@ pub use text_assistance::*;
 mod select;
 pub use select::*;
 mod datalist;
+mod description_list;
+pub use description_list::*;
 mod form_name;
 mod id_author;
 mod meta_description;
@@ -853,6 +855,8 @@ pub enum HtmlSemanticQuery {
     SelectedOptions,
     InputSuggestionsSource,
     DatalistOptions,
+    /// Source-ordered dl name/value groups, including groups with an empty side.
+    DescriptionListGroups,
     /// Ordinary HTML area descendants in source tree order.
     MapAreas,
     /// Independent local, own-id and same-tree map-name author observations.
@@ -995,6 +999,9 @@ impl HtmlSemanticQuery {
             }
             Self::DatalistOptions => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-datalist-options"
+            }
+            Self::DescriptionListGroups => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dl-element"
             }
             Self::DatalistSuggestionOptions => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-datalist-element"
@@ -1318,6 +1325,7 @@ pub enum HtmlSemanticFact {
     /// Known(None) establishes that the input has no source of suggestions.
     InputSuggestionsSource(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     DatalistOptions(HtmlSemanticValue<HtmlOptionCollection>),
+    DescriptionListGroups(HtmlSemanticValue<HtmlDescriptionListGroups>),
     MapAreas(HtmlSemanticValue<HtmlAreaCollection>),
     MapNameAuthor(HtmlSemanticValue<HtmlMapNameAuthorReport>),
     FormNameAuthor(HtmlSemanticValue<HtmlFormNameAuthorReport>),
@@ -2872,6 +2880,15 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::DatalistOptions => HtmlSemanticFact::DatalistOptions(
                             self.datalist_options(&request.subject, false)?,
                         ),
+                        HtmlSemanticQuery::DescriptionListGroups => {
+                            HtmlSemanticFact::DescriptionListGroups(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.description_list_groups(node, element)?
+                            })
+                        }
                         HtmlSemanticQuery::DatalistSuggestionOptions => {
                             HtmlSemanticFact::DatalistSuggestionOptions(
                                 self.datalist_options(&request.subject, true)?,
@@ -3217,6 +3234,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::DatalistOptions => {
                         HtmlSemanticFact::DatalistOptions(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DescriptionListGroups => {
+                        HtmlSemanticFact::DescriptionListGroups(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::DatalistSuggestionOptions => {
                         HtmlSemanticFact::DatalistSuggestionOptions(HtmlSemanticValue::Inapplicable)

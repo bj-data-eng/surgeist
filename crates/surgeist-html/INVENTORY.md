@@ -68,14 +68,14 @@ not assert all child/content constraints are machine checked.
 | <a id="e021"></a>E021 | colgroup; HTML | [the-colgroup-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-colgroup-element) | [Numeric content](#numeric-content) span and [Tables](#tables) explicit children/columns; geometry external. |
 | <a id="e022"></a>E022 | data; HTML | [the-data-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-data-element) | Exact machine-readable value string; no universal numeric parser or value default. |
 | <a id="e023"></a>E023 | datalist; HTML | [the-datalist-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-datalist-element) | [Datalist](#datalist) options/suggestions and input same-tree list relation; picker/UI external. |
-| <a id="e024"></a>E024 | dd; HTML | [the-dd-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dd-element) | Exact content for corresponding dt element(s) role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
+| <a id="e024"></a>E024 | dd; HTML | [the-dd-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dd-element) | [Description lists](#description-lists): captured grouping retains ordered dd value identities, including value-only groups; member content and full conformance remain separate. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e025"></a>E025 | del; HTML | [the-del-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-del-element) | [Modification datetime](#modification-datetime) and exact citation reference; no edit operation. |
 | <a id="e026"></a>E026 | details; HTML | [the-details-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element) | [Details](#details) first direct summary/name group, Boolean open; exclusive-opening/toggle mutation external. |
 | <a id="e027"></a>E027 | dfn; HTML | [the-dfn-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dfn-element) | Exact defining instance role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e028"></a>E028 | dialog; HTML | [the-dialog-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dialog-element) | Own closedby/open, qualified blocking-modal facts consumed by [Inertness](#inertness); show/close/top-layer transitions external. |
-| <a id="e029"></a>E029 | div; HTML | [the-div-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-div-element) | Exact generic flow container, or container for name-value groups in dl elements role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e030"></a>E030 | dl; HTML | [the-dl-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dl-element) | Exact association-list children retained; defining dt/dd grouping/content-conformance algorithm has no dedicated captured result. |
-| <a id="e031"></a>E031 | dt; HTML | [the-dt-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dt-element) | Exact legend for corresponding dd element(s) role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
+| <a id="e029"></a>E029 | div; HTML | [the-div-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-div-element) | Generic flow content remains retained; [description-list grouping](#description-lists) processes direct HTML div children one level, without splitting state at div boundaries. No generic div getter or full content-conformance certificate is implied. Applicable global language/editability/heading facts remain independently queryable. |
+| <a id="e030"></a>E030 | dl; HTML | [the-dl-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dl-element) | [Description lists](#description-lists): complete pinned dt/dd grouping returns source-ordered qualified identities, including empty-side groups; content conformance and human-name uniqueness remain separate. |
+| <a id="e031"></a>E031 | dt; HTML | [the-dt-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dt-element) | [Description lists](#description-lists): captured grouping retains ordered dt name identities, including name-only groups; human-name uniqueness, member content and full conformance remain separate. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e032"></a>E032 | em; HTML | [the-em-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-em-element) | Exact stress emphasis role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e033"></a>E033 | embed; HTML | [the-embed-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-embed-element) | Exact src/type/dimensions; plugin/resource representation external; common numbers do not define element sizing policy. |
 | <a id="e034"></a>E034 | fieldset; HTML | [the-fieldset-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-fieldset-element) | [Control facts](#control-facts) disabled/first-legend and fieldset/form collections; current form pointer vs reset remains distinct. |
@@ -925,6 +925,23 @@ immutable datalist option membership and suggestion filter using actual option
 value/label/disabledness; unrelated option details are not mandatory to every
 membership query. [Datalist tests](tests/semantics_datalist.rs) exercise those
 source branches. Host presentation/autocomplete choices remain external.
+
+## Description lists
+
+[DescriptionListGroups](src/semantics/description_list.rs) computes dl's pinned
+[dt/dd grouping](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#process-dt-or-dd):
+ordered qualified identities, one-level direct HTML div processing and one
+seenDd state across div boundaries. Leading value-only/trailing name-only groups
+and Known empty remain distinct. Complete dl/direct-div ordered children
+influence the result; their unavailability yields owner-qualified Missing rather
+than partial membership. Ancestry and member/ignored/nested-wrapper contents do
+not influence grouping, and no attribute value or text is flattened.
+
+The [overview](README.md#captured-description-list-groups) and
+[literal tests](tests/semantics_description_list.rs) distinguish borrowed
+iteration with zero scratch from controlled nested output capacities and atomic
+session failure. E024/E029/E030/E031 gain these associations, not whole dl/div/
+dt/dd content conformance, human-name uniqueness, live DOM or parser behavior.
 
 ## Lists
 

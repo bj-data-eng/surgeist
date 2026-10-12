@@ -1796,6 +1796,7 @@ pub surgeist_html::HtmlSemanticFact::CurrentCheckedness(surgeist_html::HtmlSeman
 pub surgeist_html::HtmlSemanticFact::CurrentSelectedness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::DatalistOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::DatalistSuggestionOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
+pub surgeist_html::HtmlSemanticFact::DescriptionListGroups(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDescriptionListGroups>)
 pub surgeist_html::HtmlSemanticFact::DetailsNameGroup(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDetailsNameGroup>)
 pub surgeist_html::HtmlSemanticFact::DetailsSummary(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::Directionality(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDirectionality>)
@@ -1924,6 +1925,7 @@ pub surgeist_html::HtmlSemanticQuery::CurrentCheckedness
 pub surgeist_html::HtmlSemanticQuery::CurrentSelectedness
 pub surgeist_html::HtmlSemanticQuery::DatalistOptions
 pub surgeist_html::HtmlSemanticQuery::DatalistSuggestionOptions
+pub surgeist_html::HtmlSemanticQuery::DescriptionListGroups
 pub surgeist_html::HtmlSemanticQuery::DetailsNameGroup
 pub surgeist_html::HtmlSemanticQuery::DetailsSummary
 pub surgeist_html::HtmlSemanticQuery::Directionality
@@ -3222,6 +3224,13 @@ pub struct surgeist_html::HtmlDefaultButton
 impl surgeist_html::HtmlDefaultButton
 pub fn surgeist_html::HtmlDefaultButton::form_owner(&self) -> &surgeist_html::HtmlFormOwner
 pub fn surgeist_html::HtmlDefaultButton::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlDescriptionListGroup
+impl surgeist_html::HtmlDescriptionListGroup
+pub fn surgeist_html::HtmlDescriptionListGroup::names(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub fn surgeist_html::HtmlDescriptionListGroup::values(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub struct surgeist_html::HtmlDescriptionListGroups
+impl surgeist_html::HtmlDescriptionListGroups
+pub fn surgeist_html::HtmlDescriptionListGroups::groups(&self) -> &[surgeist_html::HtmlDescriptionListGroup]
 pub struct surgeist_html::HtmlDetailsName
 impl surgeist_html::HtmlDetailsName
 pub fn surgeist_html::HtmlDetailsName::into_attribute(self) -> surgeist_html::Attribute

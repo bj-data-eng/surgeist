@@ -1102,6 +1102,38 @@ checks, relevance filtering or control-value changes. The
 [pinned datalist clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-datalist-element)
 own the distinction between all options and suggestion membership.
 
+<a id="captured-description-list-groups"></a>
+
+Captured `HtmlSemanticQuery::DescriptionListGroups` computes the pinned
+[name-value grouping algorithm](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-dl-element)
+for an actual HTML dl. [Groups](src/semantics/description_list.rs) retain ordered,
+capture-qualified dt name identities and dd value identities, without flattening
+their contents. Direct HTML div children contribute their direct children once;
+other direct children are processed directly. One current group and seenDd state
+span div boundaries, including empty divs. A dt after a dd starts a new group.
+Leading value-only and trailing name-only groups remain results; an empty or
+ignored-only stream yields Known empty.
+
+Complete ordered children of dl and each direct HTML div influence grouping.
+Unavailable children yield `Missing::OrderedChildren` for their actual owner,
+without publishing partial groups. Unknown ancestry and unavailable member,
+ignored-node or nested-div contents are irrelevant. Nested wrappers, foreign or
+differently cased names, template/shadow contents and host/slot edges do not
+supply members. No Document membership, attribute value or member text is
+consulted; unrelated raw values remain untouched even under a zero value cap.
+Non-elements and other HTML subjects are Inapplicable; foreign subjects retain
+typed ForeignNamespace unsupported behavior.
+
+Borrowed child iteration needs no scratch vector. Group/name/value buffers use
+the semantic session's existing nested-output admission and actual capacity/byte
+accounting; transferring a current group moves its buffers. Work, cancellation,
+capture qualification and sticky atomic batch failure share the existing owner,
+including the compiled outer result layout. Ordinary capture and fixed-wrapper
+allocation limits remain. [Literal tests](tests/semantics_description_list.rs)
+cover these distinctions. Grouping is not a content-conformance or human-name
+uniqueness certificate, live collection, DOM mutation, rendering or parser
+capability. Closed Query/Fact additions are intentionally breaking.
+
 The control-labels query returns the complete associated label list in ordinary
 tree order. Hidden inputs produce known null; a complete applicable empty list
 differs from unavailable evidence. Exact first-ID and implicit-descendant rules
