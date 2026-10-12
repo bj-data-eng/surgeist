@@ -1,6 +1,6 @@
 # Exact source catalog
 
-356 retained source identities: 257 full documents/source witnesses, 90 partial witnesses, and 9 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
+357 retained source identities: 257 full documents/source witnesses, 90 partial witnesses, and 10 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -525,3 +525,11 @@ No original browser source body or excerpt is added.
 | Source | Exact snapshot | Complete original source SHA-256 | Representation |
 | --- | --- | --- | --- |
 | [WebKit: Document.h](webkit-document-title--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/dom/Document.h) | d834dcea6916301c50febc380c74c28f0162c72c75b510b34d4b3feb409fa542 | metadata-only corroborating witness; inspected original line 1203; no browser source excerpt |
+
+## Foreign popover target interface witness — 2026-10-12
+
+Only the selected interface guard is corroborated; no browser source text is redistributed.
+
+| Representation | Original source | SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [WebKit: HTMLFormControlElement.cpp](webkit-popover-target--73aa6c89e2cb-metadata.md) | [upstream](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/HTMLFormControlElement.cpp) | 84bb969f25feec272fb4b764e80c13cdaf9bbbe0a4ee811ef5872a55cc498740 | metadata-only corroborating witness; inspected original lines 335–362, interface guard at 348; no browser source excerpt |

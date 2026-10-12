@@ -299,6 +299,26 @@ WebKit descendant-text extraction, canonicalization, mutation, scheduling or
 notification behavior. It fills this source omission without claiming an
 upstream erratum, complete SVG behavior or a different HTML edition.
 
+### Foreign popover target interface guard
+
+For [#1134](https://github.com/bj-data-eng/surgeist/issues/1134), HTML
+`877d6146487f15b15bc8dd0e3c625063a37b456a` governs generic reflected Element
+association, pointer scope and ordinary-tree first-ID selection. Its guarded
+popover-target operation reaches an interface-specific step after selecting
+an Element. The
+[selected determination](https://github.com/bj-data-eng/surgeist/issues/1134#issuecomment-6117820267)
+uses [bounded WebKit metadata](webkit-popover-target--73aa6c89e2cb-metadata.md)
+at `73aa6c89e2cb77c46184a81aec944e4ab99d114d`: a selected non-HTML Element
+returns null before popover-state inspection. The generic association retains
+that Element; no later matching HTML ID is searched.
+
+The witness identifies HTMLFormControlElement.cpp's complete original hash
+and original lines 335–362, with the interface downcast at 348. Its private
+original carries GNU Library GPL notices; this public record contains only
+source identity and independent behavioral summary, with no code excerpt.
+The selection adopts no other browser target, activation, form or popover
+behavior and does not claim an upstream erratum or whole-engine parity.
+
 ### Bounded referrer-policy vocabulary
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the [Referrer Policy vocabulary](referrer-policy-vocabulary--cc435b05ca4a.md) selects the finite enumeration from W3C editor-source revision `cc435b05ca4a94f7f1a139be5074b168d20014db` (20 March 2026). The complete original source SHA-256 is `a277e78e06418ec60afc6f499aee79d4f3a3a067e0fd97e9886a2d9e3de95eb1`. Eight nonempty keywords and the empty state are retained. Pinned HTML §2.5.5 supplies ASCII-insensitive whole-value matching without trimming and missing/invalid empty-state defaults. Empty remains unresolved; the implementation does not substitute the external draft's default policy. This selection adopts no network, Fetch, referrer-generation, policy-container, URL or header-list algorithm. The older 2017 CR's surrounding processing model is not mixed into this selection.

@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **356 source identities: 257 full documents/source witnesses, 90 partial witnesses and 9 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **357 source identities: 257 full documents/source witnesses, 90 partial witnesses and 10 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -457,3 +457,22 @@ only the absent direct SVG title case; it does not certify WebKit parity or
 adopt its other title processing. The catalog now contains **356 identities:
 257 full, 90 partial and nine metadata-only**. Current overview counts match;
 dated historical records and **81 passive SVG assets** remain unchanged.
+
+## Foreign popover target metadata — 2026-10-12
+
+The [bounded metadata witness](webkit-popover-target--73aa6c89e2cb-metadata.md)
+identifies HTMLFormControlElement.cpp at WebKit
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`, complete original SHA-256
+`84bb969f25feec272fb4b764e80c13cdaf9bbbe0a4ee811ef5872a55cc498740`.
+Inspected original lines 335–362 include the interface guard at 348. The
+retained private original matches that identity. This addition redistributes
+no original body, source excerpt or converted browser code; GNU Library GPL
+notices remain with the private original. The
+[edition determination](SOURCE-EDITIONS.md#foreign-popover-target-interface-guard)
+adopts only foreign-target rejection after actual generic association.
+
+Exactly one previously absent URL/hash identity adds a metadata-only record.
+The current catalog contains **357 identities: 257 full, 90 partial and ten
+metadata-only**. Historical dated counts and **81 passive SVG assets** remain
+unchanged. Local source/heading links, UTF-8/LF and whitespace are checked;
+these provenance checks do not establish browser parity or live effects.

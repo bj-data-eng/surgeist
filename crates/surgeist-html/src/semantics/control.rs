@@ -545,7 +545,7 @@ impl HtmlControlFacts {
     }
 }
 
-enum ControlStop {
+pub(super) enum ControlStop {
     Failure(HtmlSemanticFailure),
     Missing(HtmlSemanticMissing),
 }
@@ -554,7 +554,7 @@ impl From<HtmlSemanticFailure> for ControlStop {
         Self::Failure(value)
     }
 }
-type ControlResult<T> = Result<T, ControlStop>;
+pub(super) type ControlResult<T> = Result<T, ControlStop>;
 impl<'a> HtmlSemanticSession<'a> {
     /// Source candidacy only; this does not execute constraint validation.
     pub(super) fn constraint_validation_candidate(
@@ -1043,7 +1043,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         Ok(true)
     }
-    fn control_find(
+    pub(super) fn control_find(
         &mut self,
         root: &HtmlCaptureSubjectId,
         id: Option<&crate::DocumentString>,

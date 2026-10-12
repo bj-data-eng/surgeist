@@ -601,6 +601,29 @@ These operations observe facts and execute no form reset, activation or control
 state transition. Actual control strings remain owned by the language/direction
 supplement.
 
+`HtmlElementReferenceFacts` supplies actual CommandFor and PopoverTarget pointer
+slots, qualified to the capture and host revision. Unavailable, known null and
+an actual Element pointer remain distinct. The checked supplement bounds moved
+record capacity and validation work; caller allocation is outside those limits.
+`CommandForElement` and `PopoverTargetAssociatedElement` retain raw
+content and the selecting branch. An explicit pointer must satisfy the source
+scope relation; an out-of-scope pointer returns null without an ID fallback.
+Only a known null pointer enters exact ID lookup in the ordinary tree, selecting
+the first matching element, including foreign elements. Unknown influencing
+relationships remain missing information.
+
+`CommandValidity` retains that association and the existing command report.
+Unknown commands have false validity, Custom commands support any Element, popover
+commands support HTML elements and dialog commands require an HTML dialog.
+An established null association has no validity value. `PopoverTargetElement`
+separately checks actual input state, disabledness, form ownership and submitter
+role before resolving the target. A selected foreign target returns null before
+popover-state inspection, as specified by the
+[bounded source determination](../../references/SOURCE-EDITIONS.md#foreign-popover-target-interface-guard).
+These queries use the session's cumulative work, retained-output, scratch and
+cancellation owner. They perform no activation, events or dialog/popover
+transitions; author reference conformance remains a distinct requirement.
+
 `LabelFormOwner` returns the actual form owner of the labeled control. No labeled
 control, a control that is not form-associated, or an established null form owner
 returns known null. Unavailable target or association evidence remains missing.

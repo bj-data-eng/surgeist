@@ -8,7 +8,9 @@
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
-//! advisory information, title-element text and document titles, and own/used capitalization, used autocorrection and computed writing suggestions.
+//! advisory information, title-element text and document titles, own/used capitalization,
+//! used autocorrection, computed writing suggestions, reflected command/popover
+//! Element associations, static command support and guarded popover targets.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
@@ -28,6 +30,8 @@ mod inert;
 pub use inert::*;
 mod control;
 pub use control::*;
+mod command_targets;
+pub use command_targets::*;
 mod checkable;
 mod control_text;
 pub use control_text::*;
@@ -277,6 +281,7 @@ pub struct HtmlSemanticContextInput {
     inert_revision: Option<HtmlFlatTreeRevision>,
     inert: Option<HtmlInertFacts>,
     controls: Option<HtmlControlFacts>,
+    element_references: Option<HtmlElementReferenceFacts>,
     output_defaults: Option<HtmlOutputDefaultFacts>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
@@ -291,6 +296,7 @@ impl HtmlSemanticContextInput {
             inert_revision: None,
             inert: None,
             controls: None,
+            element_references: None,
             output_defaults: None,
             global_inheritance_revision: None,
             global_inheritance: None,
@@ -327,6 +333,10 @@ impl HtmlSemanticContextInput {
         self.controls = Some(facts);
         self
     }
+    pub fn with_element_references(mut self, facts: HtmlElementReferenceFacts) -> Self {
+        self.element_references = Some(facts);
+        self
+    }
     pub fn with_output_defaults(mut self, facts: HtmlOutputDefaultFacts) -> Self {
         self.output_defaults = Some(facts);
         self
@@ -350,6 +360,7 @@ pub struct HtmlSemanticContext {
     inert_revision: Option<HtmlFlatTreeRevision>,
     inert: Option<HtmlInertFacts>,
     controls: Option<HtmlControlFacts>,
+    element_references: Option<HtmlElementReferenceFacts>,
     output_defaults: Option<HtmlOutputDefaultFacts>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
@@ -379,6 +390,8 @@ pub enum HtmlSemanticContextError {
     InertRevisionMismatch,
     ControlsCaptureMismatch,
     ControlsHostRevisionMismatch,
+    ElementReferencesCaptureMismatch,
+    ElementReferencesHostRevisionMismatch,
     OutputDefaultsCaptureMismatch,
     OutputDefaultsHostRevisionMismatch,
     GlobalInheritanceCaptureMismatch,
@@ -415,6 +428,7 @@ impl HtmlSemanticContext {
             inert_revision,
             inert,
             controls,
+            element_references,
             output_defaults,
             global_inheritance_revision,
             global_inheritance,
@@ -447,6 +461,14 @@ impl HtmlSemanticContext {
             }
             if facts.host_revision() != &host_revision {
                 return Err(HtmlSemanticContextError::OutputDefaultsHostRevisionMismatch);
+            }
+        }
+        if let Some(facts) = &element_references {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::ElementReferencesCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::ElementReferencesHostRevisionMismatch);
             }
         }
         if let Some(facts) = &controls {
@@ -512,6 +534,7 @@ impl HtmlSemanticContext {
             inert_revision,
             inert,
             controls,
+            element_references,
             output_defaults,
             global_inheritance_revision,
             global_inheritance,
@@ -547,6 +570,9 @@ impl HtmlSemanticContext {
     }
     pub fn output_defaults(&self) -> Option<&HtmlOutputDefaultFacts> {
         self.output_defaults.as_ref()
+    }
+    pub fn element_references(&self) -> Option<&HtmlElementReferenceFacts> {
+        self.element_references.as_ref()
     }
     pub fn controls(&self) -> Option<&HtmlControlFacts> {
         self.controls.as_ref()
@@ -690,6 +716,10 @@ pub enum HtmlSemanticQuery {
     Progress,
     Inertness,
     FormOwner,
+    CommandForElement,
+    PopoverTargetAssociatedElement,
+    CommandValidity,
+    PopoverTargetElement,
     LabeledControl,
     /// Form owner of the labeled control; this does not associate the label.
     LabelFormOwner,
@@ -768,6 +798,15 @@ impl HtmlSemanticQuery {
             }
             Self::DocumentTitle => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document.title"
+            }
+            Self::CommandForElement | Self::PopoverTargetAssociatedElement => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-associated-element"
+            }
+            Self::CommandValidity => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#determine-if-command-is-valid"
+            }
+            Self::PopoverTargetElement => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#popover-target-element"
             }
             Self::AdvisoryInformation => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#advisory-information"
@@ -1040,6 +1079,10 @@ pub enum HtmlSemanticMissing {
     DocumentDesignMode(HtmlCaptureSubjectId),
     SpellcheckDefault(HtmlCaptureSubjectId),
     FormAssociation(HtmlCaptureSubjectId),
+    ElementReference {
+        subject: HtmlCaptureSubjectId,
+        key: HtmlElementReferenceKey,
+    },
     ControlState {
         subject: HtmlCaptureSubjectId,
         flag: HtmlControlFlag,
@@ -1104,6 +1147,10 @@ pub enum HtmlSemanticFact {
     Progress(HtmlSemanticValue<HtmlProgressState>),
     Inertness(HtmlSemanticValue<bool>),
     FormOwner(HtmlSemanticValue<HtmlFormOwner>),
+    CommandForElement(HtmlSemanticValue<HtmlAssociatedElement>),
+    PopoverTargetAssociatedElement(HtmlSemanticValue<HtmlAssociatedElement>),
+    CommandValidity(HtmlSemanticValue<HtmlCommandValidity>),
+    PopoverTargetElement(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     LabeledControl(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     /// Known(None) is established null; unavailable association remains Missing.
     LabelFormOwner(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
@@ -2427,6 +2474,28 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::DocumentTitle => {
                             HtmlSemanticFact::DocumentTitle(HtmlSemanticValue::Inapplicable)
                         }
+                        HtmlSemanticQuery::CommandForElement => {
+                            HtmlSemanticFact::CommandForElement(self.associated_element(
+                                &request.subject,
+                                HtmlElementReferenceKey::CommandFor,
+                            )?)
+                        }
+                        HtmlSemanticQuery::PopoverTargetAssociatedElement => {
+                            HtmlSemanticFact::PopoverTargetAssociatedElement(
+                                self.associated_element(
+                                    &request.subject,
+                                    HtmlElementReferenceKey::PopoverTarget,
+                                )?,
+                            )
+                        }
+                        HtmlSemanticQuery::CommandValidity => HtmlSemanticFact::CommandValidity(
+                            self.command_validity(&request.subject)?,
+                        ),
+                        HtmlSemanticQuery::PopoverTargetElement => {
+                            HtmlSemanticFact::PopoverTargetElement(
+                                self.popover_target_element(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::AdvisoryInformation => {
                             HtmlSemanticFact::AdvisoryInformation(if foreign {
                                 HtmlSemanticValue::Unsupported(
@@ -2790,6 +2859,20 @@ impl<'a> HtmlSemanticSession<'a> {
                             HtmlSemanticValue::Inapplicable
                         },
                     ),
+                    HtmlSemanticQuery::CommandForElement => {
+                        HtmlSemanticFact::CommandForElement(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::PopoverTargetAssociatedElement => {
+                        HtmlSemanticFact::PopoverTargetAssociatedElement(
+                            HtmlSemanticValue::Inapplicable,
+                        )
+                    }
+                    HtmlSemanticQuery::CommandValidity => {
+                        HtmlSemanticFact::CommandValidity(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::PopoverTargetElement => {
+                        HtmlSemanticFact::PopoverTargetElement(HtmlSemanticValue::Known(None))
+                    }
                     HtmlSemanticQuery::AdvisoryInformation => {
                         HtmlSemanticFact::AdvisoryInformation(HtmlSemanticValue::Inapplicable)
                     }
