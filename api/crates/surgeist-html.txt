@@ -94,6 +94,7 @@ pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
 pub surgeist_html::HtmlAttributeConformanceError::DetailsNameMustNotBeEmpty
 pub surgeist_html::HtmlAttributeConformanceError::InvalidIdToken(surgeist_html::HtmlTokenError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidNavigableTarget(surgeist_html::HtmlNavigableTargetError)
+pub surgeist_html::HtmlAttributeConformanceError::InvalidUtf8EncodingLabel(surgeist_html::HtmlUtf8EncodingLabelError)
 pub surgeist_html::HtmlAttributeConformanceError::NonconformingKeyword
 pub surgeist_html::HtmlAttributeConformanceError::UnrecognizedKeyword
 pub enum surgeist_html::HtmlAttributeContextAuthorState
@@ -3928,6 +3929,16 @@ impl surgeist_html::HtmlUtcInstant
 pub fn surgeist_html::HtmlUtcInstant::day(&self) -> &surgeist_html::HtmlInteger
 pub fn surgeist_html::HtmlUtcInstant::from_local_and_offset(local: &surgeist_html::HtmlParsedLocalDateTime, offset: surgeist_html::HtmlTimeZoneOffset) -> Self
 pub fn surgeist_html::HtmlUtcInstant::time(&self) -> &surgeist_html::HtmlParsedTime
+pub struct surgeist_html::HtmlUtf8EncodingLabel
+impl surgeist_html::HtmlUtf8EncodingLabel
+pub fn surgeist_html::HtmlUtf8EncodingLabel::into_accept_charset_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlUtf8EncodingLabel::into_charset_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlUtf8EncodingLabel::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlUtf8EncodingLabelError>
+pub fn surgeist_html::HtmlUtf8EncodingLabel::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlUtf8EncodingLabelError
+impl core::error::Error for surgeist_html::HtmlUtf8EncodingLabelError
+impl core::fmt::Display for surgeist_html::HtmlUtf8EncodingLabelError
+pub fn surgeist_html::HtmlUtf8EncodingLabelError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlValueAdmissionError
 impl surgeist_html::HtmlValueAdmissionError
 pub fn surgeist_html::HtmlValueAdmissionError::capacity(self) -> usize
@@ -4024,6 +4035,9 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::fetchpriority(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFetchPriority>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::fetchpriority_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFetchPriority>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::form_accept_charset(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlUtf8EncodingLabel>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::meta_charset(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlUtf8EncodingLabel>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::form_autocomplete(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlFormAutocomplete>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

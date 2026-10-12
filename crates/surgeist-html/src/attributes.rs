@@ -198,6 +198,8 @@ pub enum HtmlAttributeConformanceError {
     InvalidIdToken(HtmlTokenError),
     /// A target/name violates HTML's local navigable-target grammar.
     InvalidNavigableTarget(HtmlNavigableTargetError),
+    /// The specified encoding label does not match HTML's required UTF-8 spelling.
+    InvalidUtf8EncodingLabel(HtmlUtf8EncodingLabelError),
 }
 
 /// Intrinsic value author conformance is independent of state/applicability.
@@ -337,6 +339,11 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the defining clause for additional element-context facts.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if self.rule.attribute == KnownHtmlAttribute::Charset
+            && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Meta)
+        {
+            return Some(META_SOURCE);
+        }
         if self.rule.attribute == KnownHtmlAttribute::Wrap
             && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Textarea)
         {
@@ -564,6 +571,7 @@ macro_rules! source {
 }
 
 const BDO_SOURCE: &str = source!("the-bdo-element");
+const META_SOURCE: &str = source!("the-meta-element");
 const SCRIPT_SOURCE: &str = source!("the-script-element");
 const HYPERLINK_A_SOURCE: &str = source!("the-a-element");
 const HYPERLINK_AREA_SOURCE: &str = source!("the-area-element");
@@ -2100,6 +2108,9 @@ pub use textarea_wrap::*;
 
 mod hash_name;
 pub use hash_name::*;
+
+mod encoding_label;
+pub use encoding_label::*;
 
 #[cfg(test)]
 mod stylesheet_context_tests {

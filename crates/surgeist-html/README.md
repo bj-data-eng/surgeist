@@ -207,6 +207,19 @@ remains with `textarea_cols`. Missing cols reports a separate context violation
 without changing Hard. These ordinary reports do not perform wrapping or
 submission and use the per-selected-value UTF-16 cap.
 
+`HtmlUtf8EncodingLabel` checks the exact ASCII-case-insensitive UTF-8 spelling
+required by form accept-charset and meta charset, preserving accepted casing.
+Its consuming attribute constructors emit the canonical no-namespace names.
+`form_accept_charset` and `meta_charset` admit the entire selected raw value
+before applicability and retain missing, empty, invalid and unapplied evidence.
+Missing or invalid content selects no label or default.
+
+An applicable present meta charset keeps declaration-context conformance
+Unchecked even when the local spelling fails. Document encoding, serialized
+declaration constraints and submission encoding selection require separate
+operations and facts. Checked values and reports use ordinary allocation;
+interpreter reports retain the per-value UTF-16 admission cap.
+
 `hash_name_reference` retains exact raw UTF-16 and borrowed suffixes, separating
 leading-`#` author form from first-`#` processing. A lone `#` has an empty author
 name and a null processing result. The local report does not prove a same-tree
