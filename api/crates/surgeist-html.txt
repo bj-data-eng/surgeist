@@ -840,6 +840,11 @@ pub surgeist_html::HtmlFetchPriority::Low
 impl surgeist_html::HtmlFetchPriority
 pub fn surgeist_html::HtmlFetchPriority::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlFetchPriority::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFooterScope
+pub surgeist_html::HtmlFooterScope::DocumentBody
+pub surgeist_html::HtmlFooterScope::DocumentBody::body: core::option::Option<surgeist_html::HtmlCaptureSubjectId>
+pub surgeist_html::HtmlFooterScope::DocumentBody::document: surgeist_html::HtmlCaptureDocumentId
+pub surgeist_html::HtmlFooterScope::Section(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlFormAssociationState
 pub surgeist_html::HtmlFormAssociationState::EstablishedCurrent(core::option::Option<surgeist_html::HtmlCaptureSubjectId>)
 pub surgeist_html::HtmlFormAssociationState::ResetAgainstCapture
@@ -1908,6 +1913,7 @@ pub surgeist_html::HtmlSemanticFact::EditingHost(surgeist_html::HtmlSemanticValu
 pub surgeist_html::HtmlSemanticFact::EmbeddedDimensionAuthorConformance(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlEmbeddedDimensionAuthorReadback>)
 pub surgeist_html::HtmlSemanticFact::FieldsetControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FigureCaption(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlSemanticFact::FooterScope(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFooterScope>)
 pub surgeist_html::HtmlSemanticFact::FormControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDefaultButton>>)
 pub surgeist_html::HtmlSemanticFact::FormImplicitSubmissionCondition(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlImplicitSubmissionCondition>)
@@ -2041,6 +2047,7 @@ pub surgeist_html::HtmlSemanticQuery::EditingHost
 pub surgeist_html::HtmlSemanticQuery::EmbeddedDimensionAuthorConformance
 pub surgeist_html::HtmlSemanticQuery::FieldsetControls
 pub surgeist_html::HtmlSemanticQuery::FigureCaption
+pub surgeist_html::HtmlSemanticQuery::FooterScope
 pub surgeist_html::HtmlSemanticQuery::FormControls
 pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
 pub surgeist_html::HtmlSemanticQuery::FormImplicitSubmissionCondition

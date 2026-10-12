@@ -1572,6 +1572,39 @@ It supplies no figcaption-subject getter, live mutation, rendering or exposure
 operation, and no full figure content-conformance certificate. Closed
 Query/Fact additions are intentionally breaking for exhaustive matches.
 
+<a id="captured-footer-scope"></a>
+
+Captured `HtmlSemanticQuery::FooterScope` selects an HTML footer's nearest
+ordinary ancestor that is an HTML `article`, `aside`, `nav` or `section`.
+`HtmlFooterScope::Section` retains that capture-qualified subject. A section
+witness needs neither its parent nor the document's children. Template/shadow
+hosts do not substitute for ordinary parents.
+
+When complete ordinary ancestry has no such element,
+`HtmlFooterScope::DocumentBody` retains the footer's actual associated document
+and its body identity, or `None` for an established null body. Complete document child order must establish a unique document element.
+No document element, or a unique element other than exact HTML `html`, establishes
+null. Multiple document elements return typed Unsupported(AmbiguousDocumentElement).
+Only a unique HTML root's direct children are searched, selecting the first
+exact HTML `body` or obsolete `frameset` in joint order. This is the document body, not a nearest ancestor body. Prefixes do not
+affect expanded-name identity; namespace and case remain exact.
+
+Unavailable influencing ancestry or child order remains typed Missing; complete
+absence is not Missing. Wrong HTML roles and non-elements are Inapplicable,
+and foreign subjects retain Unsupported. The [query owner](src/semantics/footer.rs)
+uses the existing qualified semantic session, charged parent/child reads and
+name recognition, sticky terminal failures and atomic requested batches.
+It borrows child order without scratch or nested output, does not inspect raw
+attributes/text, and admits actual outer result capacity through the shared
+ledger. Fixed immutable capture/handle allocation limits remain.
+
+The [footer clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-footer-element),
+[document body definition](../../references/html-language-foundations--877d6146487f--b55e73c31978.md#the-body-element-2)
+and [literal tests](tests/semantics_footer.rs) define this captured relation.
+Closed Query/Fact additions are intentionally breaking for exhaustive matches.
+Author content conformance, accessibility/exposure, live mutation and header
+ownership remain separate; no HeaderScope API is supplied.
+
 <a id="captured-defining-term"></a>
 
 Captured `HtmlSemanticQuery::DfnDefiningTerm` selects the exact term of an HTML

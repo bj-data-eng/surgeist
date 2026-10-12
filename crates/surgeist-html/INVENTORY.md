@@ -81,11 +81,11 @@ not assert all child/content constraints are machine checked.
 | <a id="e034"></a>E034 | fieldset; HTML | [the-fieldset-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-fieldset-element) | [Control facts](#control-facts) disabled/first-legend and fieldset/form collections; current form pointer vs reset remains distinct. |
 | <a id="e035"></a>E035 | figcaption; HTML | [the-figcaption-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figcaption-element) | Exact caption for figure role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e036"></a>E036 | figure; HTML | [the-figure-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figure-element) | [Figure caption](#figure-caption): captured FigureCaption selects the first direct HTML figcaption child at any position, or established no caption, preserving qualification and influencing Missing. First/last author placement, content conformance and exposure remain separate. |
-| <a id="e037"></a>E037 | footer; HTML | [the-footer-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-footer-element) | Exact footer content retained; nearest sectioning-content/root scope comes from the defining clause. No dedicated footer-owner query or full content-conformance certificate is advertised. |
+| <a id="e037"></a>E037 | footer; HTML | [the-footer-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-footer-element) | [Footer scope](#footer-scope): captured FooterScope selects the nearest ordinary sectioning-content ancestor or the actual document body, including null, preserving qualification and influencing Missing. Author content conformance and accessibility/exposure remain separate. |
 | <a id="e038"></a>E038 | form; HTML | [the-form-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element) | [Labels and form ownership](#labels-and-form-ownership), qualified listed controls/length/default button/implicit condition, own method/enctype/autocomplete. Entry-list construction/submission execution outside query. |
 | <a id="e039"></a>E039 | h1, h2, h3, h4, h5, h6; HTML | [the-h1,-h2,-h3,-h4,-h5,-and-h6-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-h1,-h2,-h3,-h4,-h5,-and-h6-elements) | [Captured global states](#captured-global-states) ComputedHeadingLevel; no rendering/outline inference from font size. |
 | <a id="e040"></a>E040 | head; HTML | [the-head-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-head-element) | Exact container for document metadata role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e041"></a>E041 | header; HTML | [the-header-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-header-element) | Exact header content retained; nearest sectioning-content/root scope comes from the defining clause. No dedicated header-owner query or full content-conformance certificate is advertised. |
+| <a id="e041"></a>E041 | header; HTML | [the-header-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-header-element) | Exact introductory or navigational-aids role/content retained; no HeaderScope query or full content-conformance certificate is advertised. |
 | <a id="e042"></a>E042 | hgroup; HTML | [the-hgroup-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-hgroup-element) | Exact heading container role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e043"></a>E043 | hr; HTML | [the-hr-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-hr-element) | Exact thematic break role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e044"></a>E044 | html; HTML | [the-html-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-html-element) | Exact root element role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
@@ -1129,6 +1129,18 @@ cover membership, qualification and resource boundaries; see the
 role/raw content remains retained without a new figcaption-subject query.
 Caption adequacy, author content conformance, mutation, rendering and exposure
 remain separate requirements.
+
+## Footer scope
+
+E037 uses [footer.rs](src/semantics/footer.rs) and the captured `FooterScope`
+query. It selects the nearest ordinary HTML sectioning-content ancestor, or the
+actual associated document's body, including established null. Influencing
+unavailable parent/child order remains Missing; template/shadow hosts supply no
+ordinary ancestry. See the [capability explanation](README.md#captured-footer-scope)
+for exact document-element/body selection, resource limits and qualification.
+E041 retains the header's introductory/navigation role without a HeaderScope
+query. Author content conformance, accessibility/exposure and live consequences
+remain separate.
 
 ## Defining term
 

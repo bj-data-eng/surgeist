@@ -4,7 +4,7 @@
 //! table model and immutable table collections, language and directionality,
 //! meter and progress state, inertness,
 //! form owners, form/fieldset listed collections and form length, label targets, label form owners and control labels, current control flags, global inheritance, select
-//! readbacks, placeholder-label-option classification and static select and checkable-input missingness, datalist association and option/suggestion membership, map area membership, figure captions, details/summary relationships, option form/text/label/value and select value getters, autocomplete
+//! readbacks, placeholder-label-option classification and static select and checkable-input missingness, datalist association and option/suggestion membership, map area membership, figure captions, footer scope, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
@@ -69,7 +69,9 @@ mod tabindex;
 pub use tabindex::*;
 mod details;
 mod figure;
+mod footer;
 pub use details::*;
+pub use footer::*;
 mod option_text;
 pub use option_text::*;
 mod autocomplete;
@@ -886,6 +888,8 @@ pub enum HtmlSemanticQuery {
     TabIndex,
     /// First direct HTML figcaption child; author placement is separate.
     FigureCaption,
+    /// Nearest sectioning-content ancestor, otherwise the actual document body.
+    FooterScope,
     DetailsSummary,
     SummaryForParentDetails,
     DetailsNameGroup,
@@ -990,6 +994,9 @@ impl HtmlSemanticQuery {
             }
             Self::FigureCaption => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figure-element"
+            }
+            Self::FooterScope => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-footer-element"
             }
             Self::DetailsSummary => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element"
@@ -1365,6 +1372,7 @@ pub enum HtmlSemanticFact {
     ConstraintValidationCandidate(HtmlSemanticValue<bool>),
     TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
     FigureCaption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    FooterScope(HtmlSemanticValue<HtmlFooterScope>),
     DetailsSummary(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     SummaryForParentDetails(HtmlSemanticValue<bool>),
     DetailsNameGroup(HtmlSemanticValue<HtmlDetailsNameGroup>),
@@ -2917,6 +2925,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::FigureCaption => {
                             HtmlSemanticFact::FigureCaption(self.figure_caption(&request.subject)?)
                         }
+                        HtmlSemanticQuery::FooterScope => {
+                            HtmlSemanticFact::FooterScope(self.footer_scope(&request.subject)?)
+                        }
                         HtmlSemanticQuery::DetailsSummary => HtmlSemanticFact::DetailsSummary(
                             self.details_summary(&request.subject)?,
                         ),
@@ -3291,6 +3302,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::FigureCaption => {
                         HtmlSemanticFact::FigureCaption(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::FooterScope => {
+                        HtmlSemanticFact::FooterScope(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::DetailsSummary => {
                         HtmlSemanticFact::DetailsSummary(HtmlSemanticValue::Inapplicable)
