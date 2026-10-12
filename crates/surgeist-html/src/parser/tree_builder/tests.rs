@@ -9881,3 +9881,174 @@ fn ordinary_svg_adjusted_names_and_foreign_integration_preserve_native_namespace
     assert_ne!(elements[6].0, elements[7].0);
     assert_ne!(texts[0].0, texts[1].0);
 }
+
+#[test]
+fn ordinary_selectedcontent_clones_foreign_children_with_distinct_qualified_native_records() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><select name=s><button><selectedcontent></selectedcontent></button><option selected><svg viewbox='0 0 1 1'><lineargradient id=g xlink:href='#x'/></svg><math definitionurl=u><mtext xml:lang=en>M</mtext></math></option></select>Z",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let actual_outline = outline(document);
+    let mut stack: Vec<_> = document.root().children().collect();
+    stack.reverse();
+    let mut elements = Vec::new();
+    let mut texts = Vec::new();
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        let children: Vec<_> = node.children().collect();
+        stack.extend(children.iter().rev().cloned());
+        match node.kind() {
+            HtmlNodeKind::Element(element) => elements.push((
+                id,
+                children,
+                element
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|s| s.code_units().to_vec()),
+                element.name().prefix().map(|s| s.code_units().to_vec()),
+                element.name().local_name().code_units().to_vec(),
+                element
+                    .attributes()
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            attribute
+                                .name()
+                                .namespace()
+                                .uri()
+                                .map(|s| s.code_units().to_vec()),
+                            attribute.name().prefix().map(|s| s.code_units().to_vec()),
+                            attribute.name().local_name().code_units().to_vec(),
+                            attribute.value().code_units().to_vec(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )),
+            HtmlNodeKind::Text(text) => texts.push((id, text.code_units().to_vec())),
+            _ => {}
+        }
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "select"),
+            (3, "button"),
+            (4, "selectedcontent"),
+            (5, "svg"),
+            (6, "linearGradient"),
+            (5, "math"),
+            (6, "mtext"),
+            (7, "#M"),
+            (3, "option"),
+            (4, "svg"),
+            (5, "linearGradient"),
+            (4, "math"),
+            (5, "mtext"),
+            (6, "#M"),
+            (2, "#Z"),
+        ])
+    );
+    let units = |s: &str| s.encode_utf16().collect::<Vec<_>>();
+    let html = "http://www.w3.org/1999/xhtml";
+    let svg = "http://www.w3.org/2000/svg";
+    let math = "http://www.w3.org/1998/Math/MathML";
+    let xlink = "http://www.w3.org/1999/xlink";
+    let xml = "http://www.w3.org/XML/1998/namespace";
+    let rows = [
+        (html, "html", vec![]),
+        (html, "head", vec![]),
+        (html, "body", vec![]),
+        (html, "select", vec![(None, None, "name", "s")]),
+        (html, "button", vec![]),
+        (html, "selectedcontent", vec![]),
+        (svg, "svg", vec![(None, None, "viewBox", "0 0 1 1")]),
+        (
+            svg,
+            "linearGradient",
+            vec![
+                (None, None, "id", "g"),
+                (Some(xlink), Some("xlink"), "href", "#x"),
+            ],
+        ),
+        (math, "math", vec![(None, None, "definitionURL", "u")]),
+        (math, "mtext", vec![(Some(xml), Some("xml"), "lang", "en")]),
+        (html, "option", vec![(None, None, "selected", "")]),
+        (svg, "svg", vec![(None, None, "viewBox", "0 0 1 1")]),
+        (
+            svg,
+            "linearGradient",
+            vec![
+                (None, None, "id", "g"),
+                (Some(xlink), Some("xlink"), "href", "#x"),
+            ],
+        ),
+        (math, "math", vec![(None, None, "definitionURL", "u")]),
+        (math, "mtext", vec![(Some(xml), Some("xml"), "lang", "en")]),
+    ];
+    let expected: Vec<_> = rows
+        .into_iter()
+        .map(|(namespace, name, attrs)| {
+            (
+                Some(units(namespace)),
+                None::<Vec<u16>>,
+                units(name),
+                attrs
+                    .into_iter()
+                    .map(|(ns, prefix, name, value)| {
+                        (ns.map(units), prefix.map(units), units(name), units(value))
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    let actual: Vec<_> = elements
+        .iter()
+        .map(|(_, _, ns, prefix, name, attrs)| {
+            (ns.clone(), prefix.clone(), name.clone(), attrs.clone())
+        })
+        .collect();
+    assert_eq!(actual, expected);
+    assert_eq!(
+        texts
+            .iter()
+            .map(|(_, text)| text.clone())
+            .collect::<Vec<_>>(),
+        vec![units("M"), units("M"), units("Z")]
+    );
+    assert_eq!(
+        elements[5].1,
+        vec![elements[6].0.clone(), elements[8].0.clone()]
+    );
+    assert_eq!(
+        elements[10].1,
+        vec![elements[11].0.clone(), elements[13].0.clone()]
+    );
+    for (cloned, original) in [(6, 11), (7, 12), (8, 13), (9, 14)] {
+        assert_ne!(elements[cloned].0, elements[original].0);
+    }
+    assert!(elements[7].1.is_empty());
+    assert!(elements[12].1.is_empty());
+    assert_eq!(elements[9].1, vec![texts[0].0.clone()]);
+    assert_eq!(elements[14].1, vec![texts[1].0.clone()]);
+    assert_ne!(texts[0].0, texts[1].0);
+}
