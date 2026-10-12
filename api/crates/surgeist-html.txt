@@ -1374,6 +1374,7 @@ pub fn surgeist_html::HtmlSemanticContextError::fmt(&self, f: &mut core::fmt::Fo
 pub enum surgeist_html::HtmlSemanticDependencies
 pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
+pub surgeist_html::HtmlSemanticFact::AdvisoryInformation(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlAdvisoryInformation>)
 pub surgeist_html::HtmlSemanticFact::CheckableInputValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::ComputedHeadingLevel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedHeadingLevel>)
 pub surgeist_html::HtmlSemanticFact::ComputedWritingSuggestions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlComputedWritingSuggestions>)
@@ -1485,6 +1486,7 @@ pub surgeist_html::HtmlSemanticMissing::ShadowHost(surgeist_html::HtmlCaptureSub
 pub surgeist_html::HtmlSemanticMissing::SlotAssignment(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::SpellcheckDefault(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlSemanticQuery
+pub surgeist_html::HtmlSemanticQuery::AdvisoryInformation
 pub surgeist_html::HtmlSemanticQuery::CheckableInputValueMissing
 pub surgeist_html::HtmlSemanticQuery::ComputedHeadingLevel
 pub surgeist_html::HtmlSemanticQuery::ComputedWritingSuggestions
@@ -2270,6 +2272,10 @@ pub fn surgeist_html::HtmlAcceptValue::as_document_string(&self) -> surgeist_htm
 pub fn surgeist_html::HtmlAcceptValue::mime_conformance(&self) -> surgeist_html::HtmlAcceptMimeConformance
 pub fn surgeist_html::HtmlAcceptValue::new(specifiers: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlAcceptSpecifier>) -> core::result::Result<Self, surgeist_html::HtmlAcceptDuplicate>
 pub fn surgeist_html::HtmlAcceptValue::specifiers(&self) -> &[surgeist_html::HtmlAcceptSpecifier]
+pub struct surgeist_html::HtmlAdvisoryInformation
+impl surgeist_html::HtmlAdvisoryInformation
+pub fn surgeist_html::HtmlAdvisoryInformation::source(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlAdvisoryInformation::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlAreaCircle
 impl surgeist_html::HtmlAreaCircle
 pub fn surgeist_html::HtmlAreaCircle::center(&self) -> &surgeist_html::HtmlAreaIntegerPoint

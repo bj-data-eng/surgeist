@@ -901,6 +901,25 @@ point domain without supplying a full bidirectional layout algorithm. See the
 [source selection](../../references/SOURCE-EDITIONS.md#html-language-and-directionality-sources)
 and [data notice](../../licenses/unicode/18.0.0/NOTICE.md).
 
+`AdvisoryInformation` selects an own no-namespace `title`, including empty,
+or inherits through ordinary parent Elements. `HtmlAdvisoryInformation` retains
+the normalized UTF-16 value and the actual selecting subject; a selected empty
+title differs from reaching a known boundary without selecting an attribute.
+Normalization replaces CRLF and remaining CR with LF, preserving other units.
+The [selected reconciliation](https://github.com/bj-data-eng/surgeist/issues/1134#issuecomment-6116993954)
+of generic inheritance and the specific link/style clauses treats title-less
+HTML link/style as known empty boundaries. Own titles win first. Foreign
+ancestors can bridge ordinary ancestry but supply neither HTML title nor that
+exception; Document, Fragment and ShadowRoot parents stop inheritance.
+
+Missing influencing parent evidence remains missing. The entire selected raw
+value is admitted before normalization; each read, reservation and write uses
+the shared semantic ledger, with cumulative output capacity, sticky failures
+and atomic batches. No traversal scratch is added. Fixed shared wrapper
+allocation retains the existing provider limitation. This query computes
+advisory information; link titles, stylesheet-set names and tooltip or
+accessibility exposure remain separate operations.
+
 `HtmlMeterState` retains the recovered and clamped minimum, maximum, value,
 low, high and optimum values. `HtmlProgressState` distinguishes indeterminate
 progress from a determinate maximum, value and position. These operations apply

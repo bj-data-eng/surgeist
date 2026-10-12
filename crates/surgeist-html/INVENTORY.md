@@ -328,10 +328,10 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a157"></a>A157 | target; a; area | [attr-hyperlink-target](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-target); [navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigable); [hyperlink](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#hyperlink); [navigate](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigate); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target): a/area target lexical restriction incl special keywords; actual selected navigable context external. |
 | <a id="a158"></a>A158 | target; base | [attr-base-target](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-base-target); [navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigable); [hyperlink](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#hyperlink); [navigate](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigate); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target) and [Document base](#document-base): base target lexical report, document default target resolution absent. |
 | <a id="a159"></a>A159 | target; form | [attr-fs-target](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fs-target); [navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigable); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target): form target exact/default name processing; host submission navigable creation external. |
-| <a id="a160"></a>A160 | title; HTML elements | [attr-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Advisory title](#advisory-title): own empty suppresses ancestor title; absent inherited relevance not exposed by a dedicated query. |
+| <a id="a160"></a>A160 | title; HTML elements | [attr-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Advisory title](#advisory-title): AdvisoryInformation selects own/ordinary-parent title, with exact newline normalization and qualified empty/missing outcomes. |
 | <a id="a161"></a>A161 | title; abbr; dfn | [attr-abbr-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-abbr-title); [attr-dfn-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dfn-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Exact expansion/definition text for abbr/dfn; raw preserves it. Source semantic adequacy/context is not a lexical parser or numeric/default fallback. |
 | <a id="a162"></a>A162 | title; input | [attr-input-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-title); [attr-input-pattern](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-pattern); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Input title describes pattern when provided; exact text retained, compiled pattern mismatch/feedback external; no inferred Valid from text. |
-| <a id="a163"></a>A163 | title; link | [attr-link-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Link title is noninheriting advisory text; stylesheet set title needs document/CSSOM association, not global-title inheritance. |
+| <a id="a163"></a>A163 | title; link | [attr-link-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Advisory title](#advisory-title) records the selected link/style noninheritance boundary; title-of-link and stylesheet set names remain separate document/CSSOM operations. |
 | <a id="a164"></a>A164 | title; link; style | [attr-link-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-title); [attr-style-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-style-title); [css-style-sheet-set-name](https://drafts.csswg.org/cssom/#css-style-sheet-set-name); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Link/style CSS stylesheet set title association belongs document/CSSOM, exact text retained. Style empty title author restriction/context is separate from CSS text grammar. |
 | <a id="a165"></a>A165 | translate; HTML elements | [attr-translate](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-translate) | [Enumerations](#enumerations) and [Captured global states](#captured-global-states): own Inherit vs captured TranslationMode; translation execution external. |
 | <a id="a166"></a>A166 | type; a; link | [attr-hyperlink-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-type); [attr-link-type](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-type); [valid-mime-type](https://mimesniff.spec.whatwg.org/#valid-mime-type) | MIME type advisory a/link string retained unchecked; HTML rel/processing context separate from MIME lexical conformance. |
@@ -929,6 +929,37 @@ nine, remain with the captured global owner. A063's Boolean
 stops traversal beyond that element. Defining clauses remain distinct from the
 retained labeled printed-index discovery links.
 
+## Advisory title
+
+A160 uses [advisory_title.rs](src/semantics/advisory_title.rs) and the captured
+`AdvisoryInformation` query. `HtmlAdvisoryInformation` retains normalized
+UTF-16 and the actual selecting subject: an own title, including empty, wins;
+otherwise ordinary parent-Element recursion selects the nearest HTML title.
+CRLF and remaining CR become LF; other code units and original captured raw
+remain exact. Selected empty has a source; known empty without an attribute
+selection does not. Influencing unavailable ancestry remains Missing.
+
+The [generic advisory-information algorithm](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#advisory-information)
+and specific [link](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-title)/
+[style](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-style-title)
+clauses are reconciled by the [selected interpretation](https://github.com/bj-data-eng/surgeist/issues/1134#issuecomment-6116993954):
+title-less exact HTML link/style stops with known empty; own title wins first,
+independently of rel or connectedness. This is a selected reconciliation, not
+an upstream clarification. Foreign ancestors bridge ordinary Element parents
+without supplying HTML title/exception; Document, Fragment and ShadowRoot stop
+recursion without host/slot substitution. Missing evidence beyond a proven
+selection or boundary is irrelevant.
+
+Whole selected raw admission precedes normalization. Reads, actual variable
+capacity reservations and writes use the shared semantic ledger; admission is
+cumulative, failures sticky and batches atomic. No traversal scratch is added.
+The existing fixed Arc wrapper/provider limitation remains explicit.
+[Twenty-two public tests](tests/semantics_advisory_title.rs) cover qualification,
+selection, boundaries, exact UTF-16, work/storage/cancellation and retained reports.
+A163 title-of-link and stylesheet-set names still require their distinct
+document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
+contextual author meaning; this query is no semantic-adequacy or exposure proof.
+
 ## HTML-local operations with no corresponding complete producer
 
 The following entries specify remaining rule/consumer boundaries. They are not
@@ -1074,14 +1105,6 @@ A144: ASCII-insensitive unique tokens any or exact WxH nonnegative integers
 without leading zero, icon/apple-touch-icon rel constraint. Shared tokens/integers
 are available, but the icon-specific grammar/relation producer is absent. Do not
 reuse source sizes/media grammar or a geometry box as its validator.
-
-### Advisory title
-
-A160: absent title inherits nearest ancestor relevance; present-empty overrides
-with no advisory information. No captured title-inheritance query exists. A163
-link title does not inherit; stylesheet title sets require document/CSSOM
-association. Abbr/dfn expansion/pattern descriptions are source contextual author
-meaning, not a generic machine-checked semantic adequacy predicate.
 
 ### Document base
 
