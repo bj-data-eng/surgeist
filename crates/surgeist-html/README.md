@@ -63,6 +63,9 @@ and foreign names. Element metadata preserves grouped heading names and foreign
 or open-family rows; attribute metadata preserves context-specific rows and
 links to defining clauses. The printed index summaries are discovery material,
 not complete value grammars, semantic defaults or execution-owner decisions.
+The [HTML language inventory associations](INVENTORY.md) connect each indexed
+identity and common microsyntax to its defining clauses, current owners and
+remaining source-specific requirements.
 
 The source inventories contain 111 element rows (113 named HTML elements after
 expanding the heading group) and 180 contextual attribute rows (144 distinct
