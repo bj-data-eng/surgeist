@@ -12096,3 +12096,123 @@ fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_termina
         }
     }
 }
+
+#[test]
+fn ordinary_eof_pops_open_option_and_clones_selected_content_before_completion() {
+    // HTML §13.2.7 pops every open element. The option pop hook updates
+    // descendant selectedcontent elements using distinct clones of its children.
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected>A",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let mut reached_endpoint = false;
+    for _ in 0..1_000 {
+        match driver.step() {
+            Ok(super::head::HeadStep::Consumed) => {}
+            Ok(_) => {
+                reached_endpoint = true;
+                break;
+            }
+            Err(error) => {
+                driver.release().unwrap();
+                assert_released(&driver.control);
+                panic!("ordinary source processing failed: {error:?}");
+            }
+        }
+    }
+    if !reached_endpoint {
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        panic!("finite ordinary source did not reach its actual endpoint");
+    }
+
+    // This existing fixture observer only transfers/finalizes native storage;
+    // the actual driver steps above must perform the source-defined pop effect.
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let actual_outline = outline(document);
+    let mut stack: Vec<_> = document.root().children().collect();
+    stack.reverse();
+    let mut elements = Vec::new();
+    let mut texts = Vec::new();
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        let children: Vec<_> = node.children().collect();
+        stack.extend(children.iter().rev().cloned());
+        match node.kind() {
+            HtmlNodeKind::Element(element) => elements.push((
+                id,
+                element
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                element.name().local_name().code_units().to_vec(),
+                children,
+            )),
+            HtmlNodeKind::Text(text) => texts.push((id, text.code_units().to_vec())),
+            _ => {}
+        }
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+
+    // Release every actual parser/native owner before the behavior assertions.
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    let units = |value: &str| value.encode_utf16().collect::<Vec<_>>();
+    assert_eq!(
+        elements
+            .iter()
+            .map(|(_, namespace, name, _)| (namespace.clone(), name.clone()))
+            .collect::<Vec<_>>(),
+        [
+            "html",
+            "head",
+            "body",
+            "select",
+            "button",
+            "selectedcontent",
+            "option"
+        ]
+        .map(|name| (Some(units("http://www.w3.org/1999/xhtml")), units(name)))
+    );
+    let original_children = &elements[6].3;
+    assert_eq!(original_children.len(), 1);
+    let original_text = texts
+        .iter()
+        .find(|(id, _)| id == &original_children[0])
+        .expect("actual original option text");
+    assert_eq!(original_text.1, units("A"));
+
+    let cloned_children = &elements[5].3;
+    assert_eq!(
+        cloned_children.len(),
+        1,
+        "EOF must pop the open selected option and clone its text into selectedcontent"
+    );
+    let cloned_text = texts
+        .iter()
+        .find(|(id, _)| id == &cloned_children[0])
+        .expect("actual cloned selectedcontent text");
+    assert_eq!(cloned_text.1, units("A"));
+    assert_ne!(cloned_text.0, original_text.0);
+    assert_eq!(texts.len(), 2);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "select"),
+            (3, "button"),
+            (4, "selectedcontent"),
+            (5, "#A"),
+            (3, "option"),
+            (4, "#A"),
+        ])
+    );
+}
