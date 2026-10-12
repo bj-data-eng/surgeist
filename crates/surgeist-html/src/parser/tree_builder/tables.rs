@@ -18,7 +18,7 @@ use super::prologue::Payload;
 use super::{KernelError, Scope, copy_node, write};
 use crate::{
     HtmlParseResource, HtmlSource, HtmlSourceRange,
-    construction::parser_session::{BodyTextKind, ParserNode, partition_body_text},
+    construction::parser_session::{BodyTextKind, partition_body_text},
     parser::{
         control::{OwnedVec, ParseControl, WorkCategory},
         tokenizer::token::{TagKind, Text},
@@ -122,7 +122,31 @@ impl HeadState<'_> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         for index in (0..self.before.kernel.stack()?.len()).rev() {
             let node = self.before.kernel.at(index, c)?;
-            if self.before.kernel.named(&node, "template", c)? {
+            let context = if index == 0 {
+                self.before.kernel.session.fragment_context(c)?
+            } else {
+                None
+            };
+            let name = if let Some(context) = context {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                let node = context
+                    .capture()
+                    .node(context.context_element().subject())
+                    .map_err(|_| {
+                        crate::construction::parser_session::SessionError::ContextUnavailable
+                    })?;
+                let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
+                    return Err(KernelError::NotElement.into());
+                };
+                element.name()
+            } else {
+                self.before
+                    .kernel
+                    .session
+                    .element_name(c, &node)?
+                    .ok_or(KernelError::NotElement)?
+            };
+            if super::tag_sets::html_named(name, "template", c)? {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let mode = *self
                     .template_modes
@@ -132,12 +156,12 @@ impl HeadState<'_> {
                 return self.set_mode(mode, c);
             }
             if index != 0
-                && (self.before.kernel.named(&node, "td", c)?
-                    || self.before.kernel.named(&node, "th", c)?)
+                && (super::tag_sets::html_named(name, "td", c)?
+                    || super::tag_sets::html_named(name, "th", c)?)
             {
                 return self.set_mode(InsertionMode::InCell, c);
             }
-            for (name, mode) in [
+            for (local, mode) in [
                 ("tr", InsertionMode::InRow),
                 ("tbody", InsertionMode::InTableBody),
                 ("thead", InsertionMode::InTableBody),
@@ -146,15 +170,16 @@ impl HeadState<'_> {
                 ("colgroup", InsertionMode::InColumnGroup),
                 ("table", InsertionMode::InTable),
                 ("body", InsertionMode::InBody),
+                ("frameset", InsertionMode::InFrameset),
             ] {
-                if self.before.kernel.named(&node, name, c)? {
+                if super::tag_sets::html_named(name, local, c)? {
                     return self.set_mode(mode, c);
                 }
             }
-            if self.before.kernel.named(&node, "head", c)? && index != 0 {
+            if index != 0 && super::tag_sets::html_named(name, "head", c)? {
                 return self.set_mode(InsertionMode::InHead, c);
             }
-            if self.before.kernel.named(&node, "html", c)? {
+            if super::tag_sets::html_named(name, "html", c)? {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 return self.set_mode(
                     if self.head.is_some() {
@@ -165,6 +190,9 @@ impl HeadState<'_> {
                     c,
                 );
             }
+            if index == 0 {
+                return self.set_mode(InsertionMode::InBody, c);
+            }
         }
         self.set_mode(InsertionMode::InBody, c)
     }
@@ -173,25 +201,26 @@ impl HeadState<'_> {
         name: &'static str,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
-        let location = self.before.kernel.adjusted_location(None, c)?;
+        let place = self.before.kernel.appropriate_place(None, c)?;
         let node = match name {
             "colgroup" => self
                 .before
                 .kernel
                 .session
-                .allocate_implicit_colgroup(c, Some(&location.parent))?,
+                .allocate_implicit_colgroup(c, Some(&place.parent))?,
             "tbody" => self
                 .before
                 .kernel
                 .session
-                .allocate_implicit_tbody(c, Some(&location.parent))?,
+                .allocate_implicit_tbody(c, Some(&place.parent))?,
             "tr" => self
                 .before
                 .kernel
                 .session
-                .allocate_implicit_tr(c, Some(&location.parent))?,
+                .allocate_implicit_tr(c, Some(&place.parent))?,
             _ => return Err(HeadError::InvalidTextToken),
         };
+        let location = self.before.kernel.adjusted_location(None, c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,
@@ -1124,8 +1153,8 @@ impl HeadState<'_> {
                 }
                 let node = self.insert_tag(c)?;
                 let node = copy_node(&node, c)?;
-                write(size_of::<Option<ParserNode>>(), 1, c)?;
-                self.current_form = Some(node);
+                write(size_of::<Option<super::head::FormPointer>>(), 1, c)?;
+                self.current_form = Some(super::head::FormPointer::Owned(node));
                 self.before
                     .kernel
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?;

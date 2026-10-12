@@ -129,8 +129,8 @@ impl SessionStorage {
         }
         // Known internal ordinary/inert documents only. The actual ordinary root
         // determines connectivity; a template's host relation is never followed.
-        let document = self.node_document_index(c, node)?;
-        self.document_slot(c, document)?;
+        let document = self.node_document_ref(c, node)?;
+        self.validate_document_ref(c, document)?;
         // Closed fresh construction has no loader, executor, host event target,
         // listener/observer or retained SVG notification producer. No Tiny load
         // event or failed-load claim is fabricated, and no intrinsic FIFO is drained.
@@ -150,7 +150,7 @@ impl SessionStorage {
                 if !self.svg_script_local(c, node)? {
                     return Err(SessionError::SvgScriptMetadataUnavailable);
                 }
-                self.node_document_index(c, node)?;
+                self.node_document_ref(c, node)?;
             }
         }
         Ok(())
@@ -170,7 +170,7 @@ impl ParserArenaSession {
         &mut self,
         c: &mut ParseControl,
         node: &ParserNode,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<(), SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;
@@ -184,7 +184,7 @@ impl ParserArenaSession {
         &mut self,
         c: &mut ParseControl,
         node: &ParserNode,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<SvgScriptProcessing, SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;
@@ -217,7 +217,7 @@ impl ParserArenaSession {
         &mut self,
         c: &mut ParseControl,
         node: &ParserNode,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<SvgScriptProcessing, SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;
@@ -254,7 +254,7 @@ mod tests {
     use super::super::tests::{fresh_script_owner, limits, storage_zero};
     use super::*;
     use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
-    use crate::parser::tree_builder::StandaloneCapability;
+    use crate::parser::tree_builder::ConstructionCapability;
 
     fn tag(
         lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
@@ -279,7 +279,7 @@ mod tests {
         c: &mut ParseControl,
         lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         parent: &ParserNode,
-        proof: &StandaloneCapability<'_>,
+        proof: &ConstructionCapability<'_>,
     ) -> ParserNode {
         let (tag, source) = tag(lexer, c);
         session
@@ -439,7 +439,7 @@ mod tests {
             let index = session
                 .active_mut()
                 .unwrap()
-                .clone_node(&mut c, source.index, 0)
+                .clone_node(&mut c, source.index, DocumentRef::Owned(0))
                 .unwrap();
             let copy = session.active().unwrap().node(&mut c, index).unwrap();
             assert_ne!(copy.index, source.index);
@@ -815,7 +815,7 @@ mod tests {
     ) -> (
         ParseControl,
         ParserArenaSession,
-        StandaloneCapability<'a>,
+        ConstructionCapability<'a>,
         ParserNode,
         ParserNode,
         ParserNode,

@@ -24,13 +24,18 @@
 //! effects, clones and intrinsic FIFO work. Ordinary non-script MathML/SVG foreign
 //! dispatch and qualified cloning are admitted. Fresh ordinary templates retain
 //! real inert document bindings, contents, insertion modes and PI-based patching.
-//! SVG script, other resettable controls, shadow roots and contextual fragments
-//! retain owning continuations. Pending intrinsic work refuses freezing;
-//! construction EOF is not full parse/report success.
+//! The sealed ordinary execution owner also handles qualified SVG scripts.
+//! Context fragments retain actual captured documents, registries, form pointers,
+//! distinct parser/output roots and qualified declarative-shadow construction
+//! effects. Inert fragment scripts remain distinct from Disabled preparation.
+//! Other resettable controls and unavailable execution/capture domains retain
+//! typed refusals. Pending intrinsic work refuses freezing; immutable native
+//! completion is not a public parse/report assembly claim.
 
 mod body;
 #[cfg(test)]
 mod conformance;
+mod context;
 mod doctype;
 mod end;
 pub(crate) mod entry;
@@ -87,6 +92,12 @@ impl From<SessionError> for KernelError {
 /// Identities remain qualified to the one session. A reference child is an
 /// ordinary child of the selected parent, never a template association.
 pub(crate) struct InsertionLocation {
+    parent: ParserNode,
+    before: Option<ParserNode>,
+}
+/// The element creation location precedes fragment root redirection. Its
+/// identity cannot be passed as an adjusted insertion location accidentally.
+pub(crate) struct AppropriatePlace {
     parent: ParserNode,
     before: Option<ParserNode>,
 }
@@ -150,7 +161,7 @@ impl LocationKernel {
         index: usize,
         target: &ParserNode,
         c: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<(), KernelError> {
         self.require(c)?;
         self.session.validate_node(c, target)?;
@@ -244,7 +255,7 @@ impl LocationKernel {
         &mut self,
         except: Option<&'static str>,
         c: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<(), KernelError> {
         loop {
             let node = self.current(c)?;
@@ -263,7 +274,7 @@ impl LocationKernel {
         &mut self,
         target: &ParserNode,
         c: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<(), KernelError> {
         loop {
             let node = self.pop(c, capability)?.ok_or(KernelError::EmptyStack)?;
@@ -276,7 +287,7 @@ impl LocationKernel {
         &mut self,
         target: &ParserNode,
         c: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<(), KernelError> {
         self.require(c)?;
         self.session.validate_node(c, target)?;
@@ -393,7 +404,7 @@ impl LocationKernel {
     pub(crate) fn pop(
         &mut self,
         control: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<Option<ParserNode>, KernelError> {
         self.require(control)?;
         if self.stack()?.len() != 0 {
@@ -481,14 +492,13 @@ impl LocationKernel {
         Ok(None)
     }
 
-    /// Implements the appropriate-place algorithm followed by root-target
-    /// substitution. An existing insertion location contributes only its parent
-    /// as overrideTarget; its old reference child is not carried forward.
-    pub(crate) fn adjusted_location(
+    /// §13.2.6.1 appropriate place, including foster/template routing. Fragment
+    /// root substitution belongs to the subsequent insertion operation.
+    pub(crate) fn appropriate_place(
         &self,
         override_target: Option<&ParserNode>,
         control: &mut ParseControl,
-    ) -> Result<InsertionLocation, KernelError> {
+    ) -> Result<AppropriatePlace, KernelError> {
         self.require(control)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
         let last = self
@@ -564,6 +574,22 @@ impl LocationKernel {
                 before = None;
             }
         }
+        write(size_of::<AppropriatePlace>(), 2, control)?;
+        Ok(AppropriatePlace { parent, before })
+    }
+
+    /// An existing source location contributes its parent as overrideTarget;
+    /// its old reference child is not carried forward. Root redirection occurs
+    /// here, after creation, and canonical insertion performs actual adoption.
+    pub(crate) fn adjusted_location(
+        &self,
+        override_target: Option<&ParserNode>,
+        control: &mut ParseControl,
+    ) -> Result<InsertionLocation, KernelError> {
+        let AppropriatePlace {
+            mut parent,
+            mut before,
+        } = self.appropriate_place(override_target, control)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
         if let Some(root_target) = &self.root_target {
             let first = self.at(0, control)?;
@@ -584,7 +610,7 @@ impl LocationKernel {
         element: &ParserNode,
         override_target: Option<&ParserNode>,
         control: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<ElementInsertionOutcome, KernelError> {
         self.require(control)?;
         if self.session.element_name(control, element)?.is_none() {
@@ -599,7 +625,7 @@ impl LocationKernel {
         element: &ParserNode,
         location: &InsertionLocation,
         control: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<ElementInsertionOutcome, KernelError> {
         let outcome =
             match self
@@ -642,7 +668,7 @@ impl LocationKernel {
         push: StackPush,
         override_target: Option<&ParserNode>,
         control: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<CreatedElement, KernelError> {
         let location = self.adjusted_location(override_target, control)?;
         let node = self.session.allocate_html_tag(control, input)?;
@@ -659,7 +685,7 @@ impl LocationKernel {
         input: &mut Option<Text>,
         override_target: Option<&ParserNode>,
         control: &mut ParseControl,
-        capability: Option<&StandaloneCapability<'_>>,
+        capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<Option<TextInsertion>, KernelError> {
         let location = self.adjusted_location(override_target, control)?;
         Ok(self.session.insert_text(
@@ -710,8 +736,9 @@ impl LocationKernel {
     }
 }
 
-/// Sealed execution eligibility issued only by StandaloneDocumentDriver's fresh
-/// offline request path. Source/control and actual arena identity travel together.
+/// Sealed execution eligibility issued by the real ordinary-document or
+/// context-fragment request/bootstrap owner. Source/control and actual arena
+/// identity travel together; captured facts remain in the same session.
 /// There are no host/realm/settings objects, executable registry/callbacks,
 /// observers/listeners, external mutation/feed hooks, loader/speculative parser,
 /// live nodes, JS stack, promise recipients, IDB transactions or kept JS objects.
@@ -721,16 +748,27 @@ impl LocationKernel {
 /// execution domain is admitted. Managed template contents have distinct inert
 /// node documents; supported SVG scripts retain their own processed state under
 /// explicit no-loader, Disabled execution and no-notification-recipient closure.
-/// Imported elements/hosted fragments and shadow attachment producers are
-/// unreachable from that constructor. Structural records and metadata remain retained.
+/// Imported elements remain outside these producers. The ordinary-document
+/// constructor cannot attach shadow roots; the qualified fragment profile can
+/// construct local roots and retain captured-host attachment effects. Immutable
+/// capture facts do not create a live DOM or notification-recipient domain.
+/// Structural records and metadata remain retained.
 /// No running-script/frame-timing domain exists: checkpoint specialization does
 /// not implement an external timing algorithm or assume a normative null return.
-pub(crate) struct StandaloneCapability<'source> {
+pub(crate) struct ConstructionCapability<'source> {
     source: &'source crate::HtmlSource,
     owner: ControlIdentity,
     document: ParserNode,
+    profile: ExecutionProfile,
 }
-impl StandaloneCapability<'_> {
+/// Issued only after the corresponding real request/bootstrap is admitted.
+/// The fragment's scripting/attachment facts remain in the sole session owner.
+#[derive(Clone, Copy)]
+enum ExecutionProfile {
+    Ordinary,
+    Fragment,
+}
+impl ConstructionCapability<'_> {
     pub(crate) fn validate_session(
         &self,
         c: &mut ParseControl,
@@ -739,7 +777,23 @@ impl StandaloneCapability<'_> {
         c.require_identity(&self.owner)?;
         c.charge(WorkCategory::RecordVisit, 3)?;
         c.require_source(self.source)?;
-        session.validate_standalone_proof(c, &self.document)?;
+        match self.profile {
+            ExecutionProfile::Ordinary => session.validate_standalone_proof(c, &self.document)?,
+            ExecutionProfile::Fragment => session.validate_fragment_proof(c, &self.document)?,
+        }
+        Ok(())
+    }
+    pub(crate) fn validate_fragment_session(
+        &self,
+        c: &mut ParseControl,
+        session: &ParserArenaSession,
+    ) -> Result<(), SessionError> {
+        self.validate_session(c, session)?;
+        if !matches!(self.profile, ExecutionProfile::Fragment) {
+            return Err(c
+                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .into());
+        }
         Ok(())
     }
     fn checkpoint(
@@ -824,7 +878,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 StandaloneError::Head(head::HeadError::UnsupportedPendingScript) => {
                     StandaloneUnsupported::PendingScript
                 }
-                StandaloneError::Head(head::HeadError::StandaloneCapabilityUnavailable) => {
+                StandaloneError::Head(head::HeadError::ConstructionCapabilityUnavailable) => {
                     StandaloneUnsupported::Provenance
                 }
                 StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
@@ -966,7 +1020,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         )?);
         c.charge(WorkCategory::RecordVisit, 2)?;
         let head = self.head.as_mut().expect("actual fresh head transfer");
-        write(size_of::<StandaloneCapability>(), 3, c)?;
+        write(size_of::<ConstructionCapability>(), 4, c)?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         let document = head
             .state
@@ -977,10 +1031,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
             .session
             .root(c)
             .map_err(|error| StandaloneError::Head(error.into()))?;
-        let capability = StandaloneCapability {
+        let capability = ConstructionCapability {
             source: self.source,
             owner: c.identity(),
             document,
+            profile: ExecutionProfile::Ordinary,
         };
         head.install_standalone(capability, c)?;
         // Swap retained real lexical evidence into the same head owner; leave
@@ -999,7 +1054,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
     ) -> Option<(
         &mut ParseControl,
         &mut ParserArenaSession,
-        &StandaloneCapability<'source>,
+        &ConstructionCapability<'source>,
     )> {
         let (session, capability) = self.head.as_mut()?.standalone_parts()?;
         Some((&mut self.control, session, capability))
@@ -1017,7 +1072,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         (
             ParseControl,
             ParserArenaSession,
-            StandaloneCapability<'source>,
+            ConstructionCapability<'source>,
         ),
         StandaloneError,
     > {
@@ -1052,7 +1107,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 + size_of::<Option<Self>>()
                 + size_of::<ParseControl>()
                 + size_of::<ParserArenaSession>()
-                + size_of::<StandaloneCapability>(),
+                + size_of::<ConstructionCapability>(),
             5,
             c,
         )?;

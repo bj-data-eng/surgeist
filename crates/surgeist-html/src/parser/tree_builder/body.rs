@@ -122,7 +122,7 @@ impl HeadState<'_> {
     }
     pub(super) fn admit_hidden_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         match self.validate_standalone_capability(c) {
-            Err(HeadError::StandaloneCapabilityUnavailable) => Err(c
+            Err(HeadError::ConstructionCapabilityUnavailable) => Err(c
                 .stop_unsupported_standalone(
                     crate::parser::control::StandaloneUnsupported::Provenance,
                 )
@@ -331,8 +331,13 @@ impl HeadState<'_> {
         Ok(())
     }
     fn implicit_body(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+        let place = self.before.kernel.appropriate_place(None, c)?;
+        let node = self
+            .before
+            .kernel
+            .session
+            .allocate_implicit_body(c, Some(&place.parent))?;
         let location = self.before.kernel.adjusted_location(None, c)?;
-        let node = self.before.kernel.session.allocate_implicit_body(c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,
@@ -765,7 +770,7 @@ impl HeadState<'_> {
             }
             if self.token_in(&["textarea"], c)?.is_some() {
                 match self.validate_standalone_capability(c) {
-                    Err(HeadError::StandaloneCapabilityUnavailable) => {
+                    Err(HeadError::ConstructionCapabilityUnavailable) => {
                         return Err(c
                             .stop_unsupported_standalone(
                                 crate::parser::control::StandaloneUnsupported::Provenance,
@@ -856,8 +861,8 @@ impl HeadState<'_> {
         let node = self.insert_tag(c)?;
         if !template {
             let node = copy_node(&node, c)?;
-            write(size_of::<Option<ParserNode>>(), 1, c)?;
-            self.current_form = Some(node);
+            write(size_of::<Option<super::head::FormPointer>>(), 1, c)?;
+            self.current_form = Some(super::head::FormPointer::Owned(node));
         }
         if close {
             self.emit(
@@ -915,7 +920,7 @@ impl HeadState<'_> {
             return self.discard(c);
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
-        write(size_of::<Option<ParserNode>>(), 1, c)?;
+        write(size_of::<Option<super::head::FormPointer>>(), 1, c)?;
         let node = self.current_form.take();
         let Some(node) = node else {
             self.emit(
@@ -927,6 +932,34 @@ impl HeadState<'_> {
                 c,
             )?;
             return self.discard(c);
+        };
+        let node = match node {
+            super::head::FormPointer::Owned(node) => node,
+            super::head::FormPointer::Captured(form) => {
+                // The qualified captured form is not on the real open-elements
+                // stack. Clear the pointer, diagnose, and ignore as the source
+                // scope rule requires; never create a proxy native form.
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                let context = self
+                    .before
+                    .kernel
+                    .session
+                    .fragment_context(c)?
+                    .ok_or(super::SessionError::ContextUnavailable)?;
+                context
+                    .capture()
+                    .node(form.subject())
+                    .map_err(|_| super::SessionError::ContextUnavailable)?;
+                self.emit(
+                    HeadCondition::UnexpectedEndTag,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "form-end/pointed-form-not-in-scope",
+                    },
+                    c,
+                )?;
+                return self.discard(c);
+            }
         };
         if !self.before.kernel.in_scope(&node, Scope::Default, c)? {
             self.emit(
@@ -976,7 +1009,7 @@ impl HeadState<'_> {
             // The real constructor proof is required before diagnostics, stack
             // mutation, reconstruction, or lexical ownership transfer.
             match self.validate_standalone_capability(c) {
-                Err(HeadError::StandaloneCapabilityUnavailable) => {
+                Err(HeadError::ConstructionCapabilityUnavailable) => {
                     return Err(c
                         .stop_unsupported_standalone(
                             crate::parser::control::StandaloneUnsupported::Provenance,

@@ -77,7 +77,7 @@ pub(super) enum EffectFrame {
     AdoptSubtree {
         root: usize,
         next: Option<usize>,
-        document: usize,
+        document: DocumentRef,
     },
     PatchRemoval {
         list: usize,
@@ -99,7 +99,7 @@ pub(super) enum EffectFrame {
         source: usize,
         copy: usize,
         cursor: usize,
-        document: usize,
+        document: DocumentRef,
     },
     CloneOptionChildren {
         option: usize,
@@ -330,6 +330,15 @@ impl SessionStorage {
         })();
         match result {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
+            Err(
+                error @ (SessionError::ContextFactUnavailable(_)
+                | SessionError::ContextReactionUnavailable),
+            ) => {
+                c.stop_unsupported_standalone(
+                    crate::parser::control::StandaloneUnsupported::Provenance,
+                );
+                Err(error)
+            }
             Err(_) => Err(c
                 .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
                 .into()),
@@ -363,6 +372,7 @@ impl SessionStorage {
                     return self.write_current_effect(c, None);
                 };
                 self.set_node_document(c, node, document)?;
+                self.adopt_registry(c, node, document, root)?;
                 let next = self.next_view_node(c, root, node, None)?;
                 self.write_current_effect(
                     c,
@@ -373,10 +383,23 @@ impl SessionStorage {
                     }),
                 )?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
+                if let Some(shadow) = &self.records[node].shadow {
+                    let contents = shadow.contents.index;
+                    self.shadow_state(c, contents)?;
+                    self.start_effect(
+                        c,
+                        EffectFrame::AdoptSubtree {
+                            root: contents,
+                            next: Some(contents),
+                            document,
+                        },
+                    )?;
+                }
+                c.charge(WorkCategory::RecordVisit, 1)?;
                 if self.records[node].template_contents.is_some() {
                     let (_, template) = self.template_slot(c, node)?;
                     let target = self.appropriate_contents_document(c, document)?;
-                    if self.node_document_index(c, template.contents)? != target {
+                    if self.node_document_ref(c, template.contents)? != target {
                         self.start_effect(
                             c,
                             EffectFrame::AdoptSubtree {
@@ -454,7 +477,7 @@ impl SessionStorage {
                     self.qualify_clone_subtree(c, option)?;
                 }
                 let document = option
-                    .map(|option| self.node_document_index(c, option))
+                    .map(|option| self.node_document_ref(c, option))
                     .transpose()?;
                 let fragment = if option.is_some() {
                     Some(
@@ -549,7 +572,7 @@ impl SessionStorage {
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let child = self.records[option].children[cursor];
-                let document = self.node_document_index(c, child)?;
+                let document = self.node_document_ref(c, child)?;
                 let copy = self.clone_node(c, child, document)?;
                 self.write_current_effect(
                     c,
@@ -589,7 +612,19 @@ impl SessionStorage {
             } => {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if cursor == self.records[source].children.len() {
-                    return self.write_current_effect(c, None);
+                    self.write_current_effect(c, None)?;
+                    if let Some((source, copy)) = self.clone_shadow(c, source, copy, document)? {
+                        self.start_effect(
+                            c,
+                            EffectFrame::CloneChildren {
+                                source,
+                                copy,
+                                cursor: 0,
+                                document,
+                            },
+                        )?;
+                    }
+                    return Ok(());
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let child = self.records[source].children[cursor];
@@ -1318,7 +1353,7 @@ impl ParserArenaSession {
     pub(crate) fn perform_intrinsic_checkpoint(
         &mut self,
         c: &mut ParseControl,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<(), SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;

@@ -12,6 +12,7 @@ struct CloneBindings {
     output: Option<usize>,
     script: Option<usize>,
     svg: Option<usize>,
+    registry: Option<usize>,
 }
 
 impl SessionStorage {
@@ -23,22 +24,38 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let mut pending = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = (|| {
-            self.node_document_index(c, root)?;
+            self.node_document_ref(c, root)?;
             for child in &self.records[root].children {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 pending.try_push(c, *child)?;
             }
             while let Some(node) = pending.try_pop(c)? {
-                self.node_document_index(c, node)?;
+                self.node_document_ref(c, node)?;
                 c.charge(WorkCategory::RecordVisit, 4)?;
                 let record = &self.records[node];
-                if record.shadow.is_some() {
-                    return Err(SessionError::AssociationMove);
+                if let Some(shadow) = &record.shadow {
+                    if self.fragment.is_none() {
+                        return Err(SessionError::AssociationMove);
+                    }
+                    self.shadow_state(c, shadow.contents.index)?;
+                    c.charge(
+                        WorkCategory::InspectByte,
+                        mem::size_of::<HtmlShadowRootProperties>() as u64,
+                    )?;
+                    if shadow.properties.clonable() {
+                        self.node_document_ref(c, shadow.contents.index)?;
+                        self.lookup_registry_ref(c, shadow.contents.index)?;
+                        for child in &self.records[shadow.contents.index].children {
+                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            pending.try_push(c, *child)?;
+                        }
+                    }
                 }
                 match &record.kind {
                     HtmlNodeKind::Element(element) => {
                         let namespace = element.name().namespace().uri();
-                        let supported = exact_ascii(c, namespace, "http://www.w3.org/1999/xhtml")?
+                        let supported = self.fragment.is_some()
+                            || exact_ascii(c, namespace, "http://www.w3.org/1999/xhtml")?
                             || exact_ascii(c, namespace, "http://www.w3.org/2000/svg")?
                             || exact_ascii(c, namespace, "http://www.w3.org/1998/Math/MathML")?;
                         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -47,8 +64,10 @@ impl SessionStorage {
                         }
                         let name = self.field_slot(c, StringLocation::ElementName(node))?;
                         control_field_owner(&self.payloads, c, name)?;
-                        let namespace = self.field_slot(c, StringLocation::Namespace(node))?;
-                        control_field_owner(&self.payloads, c, namespace)?;
+                        if namespace.is_some() {
+                            let namespace = self.field_slot(c, StringLocation::Namespace(node))?;
+                            control_field_owner(&self.payloads, c, namespace)?;
+                        }
                         let container = self.element_attribute_container(c, node)?;
                         for position in 0..element.attributes().len() {
                             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -118,7 +137,7 @@ impl SessionStorage {
 
                 if let Some(contents) = self.records[node].template_contents {
                     self.template_slot(c, node)?;
-                    self.node_document_index(c, contents)?;
+                    self.node_document_ref(c, contents)?;
                     for child in &self.records[contents].children {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         pending.try_push(c, *child)?;
@@ -146,7 +165,7 @@ impl SessionStorage {
         if self.records[source].template_contents.is_some() {
             let (_, source) = self.template_slot(c, source)?;
             let (_, copy) = self.template_slot(c, copy)?;
-            let document = self.node_document_index(c, copy.contents)?;
+            let document = self.node_document_ref(c, copy.contents)?;
             self.start_effect(
                 c,
                 select::EffectFrame::CloneChildren {
@@ -165,7 +184,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         source: usize,
-        document: usize,
+        document: DocumentRef,
     ) -> Result<usize, SessionError> {
         let previous = self.begin_node_copy(c, source)?;
         let result = self.clone_node_inner(c, source, document);
@@ -178,7 +197,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         source: usize,
-        document: usize,
+        document: DocumentRef,
     ) -> Result<usize, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         match &self.records[source].kind {
@@ -263,7 +282,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         source: usize,
-        document: usize,
+        document: DocumentRef,
     ) -> Result<usize, SessionError> {
         let template = self.html_local(c, source, "template")?;
         if template {
@@ -273,9 +292,20 @@ impl SessionStorage {
         let bindings = self.prepare_clone_metadata(c, source)?;
         let slot = self.field_slot(c, StringLocation::ElementName(source))?;
         let (name, name_slot) = self.copy_registered_field(c, slot)?;
-        let slot = self.field_slot(c, StringLocation::Namespace(source))?;
-        let (namespace, namespace_slot) = self.copy_registered_field(c, slot)?;
-        let units = name.len() + namespace.len();
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let HtmlNodeKind::Element(original) = &self.records[source].kind else {
+            unreachable!()
+        };
+        let namespace_present = original.name().namespace().uri().is_some();
+        let (namespace, namespace_slot, namespace_units) = if namespace_present {
+            let slot = self.field_slot(c, StringLocation::Namespace(source))?;
+            let (namespace, slot) = self.copy_registered_field(c, slot)?;
+            let units = namespace.len();
+            (Namespace::from_uri(namespace), Some(slot), units)
+        } else {
+            (Namespace::none(), None, 0)
+        };
+        let units = name.len() + namespace_units;
         let (values, allocation) = c.new_vector()?;
         if let Err(error) = self.prepare_payload_slot_owned(c) {
             release_vector(c, values, allocation)?;
@@ -347,12 +377,12 @@ impl SessionStorage {
         // Native installation and all payload alias locations are one fixed
         // commit. A terminal stop may precede allocation, never strand an
         // installed native backing with a detached/unbound registry location.
-        payload_write::<[StringLocation; 2]>(c, 2)?;
+        payload_write::<StringLocation>(c, 1 + u64::from(namespace_slot.is_some()))?;
         payload_write::<Option<usize>>(c, 1)?;
         let node = self.allocate_prepared_owned(
             c,
             HtmlNodeKind::Element(HtmlElement {
-                name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
+                name: QualifiedName::new(namespace, None, name),
                 attributes,
             }),
             template,
@@ -361,7 +391,9 @@ impl SessionStorage {
             prepared,
         )?;
         self.bind_string(name_slot, StringLocation::ElementName(node.index));
-        self.bind_string(namespace_slot, StringLocation::Namespace(node.index));
+        if let Some(slot) = namespace_slot {
+            self.bind_string(slot, StringLocation::Namespace(node.index));
+        }
         let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =
             &mut self.payloads.values[container]
         else {
@@ -515,6 +547,48 @@ impl SessionStorage {
     ) -> Result<CloneBindings, SessionError> {
         payload_write::<CloneBindings>(c, 1)?;
         let mut result = CloneBindings::default();
+        if self.fragment.is_some() {
+            let registry = self.lookup_registry_ref(c, source)?;
+            let original = self.element_creation_state(c, source)?;
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let HtmlNodeKind::Element(element) = &self.records[source].kind else {
+                return Err(SessionError::WrongToken);
+            };
+            let html = exact_ascii(
+                c,
+                element.name().namespace().uri(),
+                "http://www.w3.org/1999/xhtml",
+            )?;
+            let saved = if let Some(slot) = original.saved_is {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                let RetainedPayload::String { value, .. } = &self.payloads.values[slot] else {
+                    return Err(SessionError::ContextUnavailable);
+                };
+                Some(value)
+            } else {
+                None
+            };
+            self.require_no_definition(c, registry, element.name().local_name(), saved, html)?;
+            let saved_is = if let Some(slot) = original.saved_is {
+                let (value, copied) = self.copy_registered_field(c, slot)?;
+                drop(value);
+                Some(copied)
+            } else {
+                None
+            };
+            payload_write::<Option<usize>>(c, 1)?;
+            result.registry = Some(self.retain_clone_metadata(
+                c,
+                RetainedPayload::LookupRegistry {
+                    node: None,
+                    registry,
+                    creation: Some(context::ElementCreationState {
+                        state: original.state,
+                        saved_is,
+                    }),
+                },
+            )?);
+        }
         if let Some((_, state)) = find_form_association_state(&self.payloads, c, source)? {
             payload_write::<Option<usize>>(c, 1)?;
             result.association = Some(self.retain_clone_metadata(
@@ -660,6 +734,7 @@ impl SessionStorage {
             bindings.output,
             bindings.script,
             bindings.svg,
+            bindings.registry,
         ]
         .into_iter()
         .flatten()
@@ -667,7 +742,8 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 1)?;
             payload_write::<Option<usize>>(c, 1)?;
             match &mut self.payloads.values[slot] {
-                RetainedPayload::FormAssociation { node: bound, .. }
+                RetainedPayload::LookupRegistry { node: bound, .. }
+                | RetainedPayload::FormAssociation { node: bound, .. }
                 | RetainedPayload::SelectFamily { node: bound, .. }
                 | RetainedPayload::Textarea { node: bound, .. }
                 | RetainedPayload::HiddenInput { node: bound, .. }

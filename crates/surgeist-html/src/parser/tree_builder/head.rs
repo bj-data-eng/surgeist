@@ -134,7 +134,7 @@ pub(crate) enum HeadError {
     TokenizerExhausted,
     InvalidTextToken,
     MissingReturnMode,
-    StandaloneCapabilityUnavailable,
+    ConstructionCapabilityUnavailable,
     UnsupportedScriptPause,
     UnsupportedPendingScript,
     InvalidScriptNesting,
@@ -155,7 +155,9 @@ impl std::fmt::Debug for HeadError {
             Self::TokenizerExhausted => f.write_str("TokenizerExhausted"),
             Self::InvalidTextToken => f.write_str("InvalidTextToken"),
             Self::MissingReturnMode => f.write_str("MissingReturnMode"),
-            Self::StandaloneCapabilityUnavailable => f.write_str("StandaloneCapabilityUnavailable"),
+            Self::ConstructionCapabilityUnavailable => {
+                f.write_str("ConstructionCapabilityUnavailable")
+            }
             Self::UnsupportedScriptPause => f.write_str("UnsupportedScriptPause"),
             Self::UnsupportedPendingScript => f.write_str("UnsupportedPendingScript"),
             Self::InvalidScriptNesting => f.write_str("InvalidScriptNesting"),
@@ -223,7 +225,7 @@ enum Class {
 /// Actual source-initial state of the sealed ordinary Disabled execution owner.
 /// No pending script producer is reached by the Disabled preparation prefix.
 pub(super) struct StandaloneScriptState<'source> {
-    pub(super) capability: super::StandaloneCapability<'source>,
+    pub(super) capability: super::ConstructionCapability<'source>,
     nesting: u32,
     pause: bool,
     insertion_point: Option<HtmlSourceRange>,
@@ -234,6 +236,21 @@ pub(super) struct StandaloneScriptState<'source> {
 /// All state belongs to this one driver and the existing flat arena. A proofless
 /// script or template start suspends without insertion effects. The sealed fresh
 /// driver retains actual script parser state and metadata in the same arena.
+/// One source-defined form pointer; captured forms are qualified evidence,
+/// never native nodes in the construction arena.
+pub(super) enum FormPointer {
+    Owned(ParserNode),
+    Captured(crate::HtmlCaptureElementId),
+}
+impl FormPointer {
+    pub(super) fn owned(&self) -> Option<&ParserNode> {
+        match self {
+            Self::Owned(node) => Some(node),
+            Self::Captured(_) => None,
+        }
+    }
+}
+
 pub(super) struct HeadState<'source> {
     pub(super) before: BeforeHead,
     pub(super) tokenizer: Option<Tokenizer<'source>>,
@@ -241,7 +258,7 @@ pub(super) struct HeadState<'source> {
     pub(super) mode: InsertionMode,
     pub(super) head: Option<ParserNode>,
     // Initial ordinary document pointer; no captured/fragment form is guessed.
-    pub(super) current_form: Option<ParserNode>,
+    pub(super) current_form: Option<FormPointer>,
     pub(super) return_mode: Option<InsertionMode>,
     pub(super) boundary: Option<HeadBoundary>,
     pub(super) lexical: OwnedVec<Event>,
@@ -355,7 +372,7 @@ impl<'source> HeadStage<'source> {
     }
     pub(super) fn install_standalone(
         &mut self,
-        capability: super::StandaloneCapability<'source>,
+        capability: super::ConstructionCapability<'source>,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
         self.require(c)?;
@@ -363,7 +380,7 @@ impl<'source> HeadStage<'source> {
         capability.validate_session(c, &state.before.kernel.session)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         if state.mode != InsertionMode::BeforeHead || state.script.is_some() {
-            return Err(HeadError::StandaloneCapabilityUnavailable);
+            return Err(HeadError::ConstructionCapabilityUnavailable);
         }
         write(size_of::<Option<StandaloneScriptState>>(), 7, c)?;
         state.script = Some(StandaloneScriptState {
@@ -381,7 +398,7 @@ impl<'source> HeadStage<'source> {
         &mut self,
     ) -> Option<(
         &mut crate::construction::parser_session::ParserArenaSession,
-        &super::StandaloneCapability<'source>,
+        &super::ConstructionCapability<'source>,
     )> {
         let state = self.state.as_mut()?;
         Some((
@@ -401,7 +418,7 @@ impl<'source> HeadStage<'source> {
             .ok_or(HeadError::Consumed)?
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         c.charge(WorkCategory::RecordVisit, 5)?;
         c.charge(
             WorkCategory::InspectByte,
@@ -431,7 +448,7 @@ impl<'source> HeadStage<'source> {
         state
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .capability
             .validate_session(c, &state.before.kernel.session)?;
         if state.svg_pending.is_some() {
@@ -514,7 +531,7 @@ impl<'source> HeadStage<'source> {
         self,
     ) -> (
         crate::construction::parser_session::ParserArenaSession,
-        super::StandaloneCapability<'source>,
+        super::ConstructionCapability<'source>,
     ) {
         let state = self.state.expect("prepared real standalone fixture");
         (
@@ -953,7 +970,7 @@ impl HeadState<'_> {
         self.finish(c)
     }
     pub(super) fn insert_tag(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
-        let location = self.before.kernel.adjusted_location(None, c)?;
+        let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let Payload::Tag(input) = &mut self
@@ -967,13 +984,14 @@ impl HeadState<'_> {
         let node = self.before.kernel.session.allocate_html_tag_for_creation(
             c,
             input,
-            &location.parent,
-            self.current_form.as_ref(),
+            &place.parent,
+            self.current_form.as_ref().and_then(FormPointer::owned),
             template.as_ref().map_or(
                 crate::construction::parser_session::CreationContext::Ordinary,
                 crate::construction::parser_session::CreationContext::Template,
             ),
         )?;
+        let location = self.before.kernel.adjusted_location(None, c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,
@@ -987,13 +1005,13 @@ impl HeadState<'_> {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<ParserNode, HeadError> {
-        let location = self.before.kernel.adjusted_location(None, c)?;
+        let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         let capability = &self
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .capability;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let Payload::Tag(input) = &mut pending.payload else {
@@ -1007,8 +1025,8 @@ impl HeadState<'_> {
                 c,
                 input,
                 crate::construction::parser_session::CreationLocation {
-                    intended_parent: &location.parent,
-                    current_form: self.current_form.as_ref(),
+                    intended_parent: &place.parent,
+                    current_form: self.current_form.as_ref().and_then(FormPointer::owned),
                     context: template.as_ref().map_or(
                         crate::construction::parser_session::CreationContext::Ordinary,
                         crate::construction::parser_session::CreationContext::Template,
@@ -1017,6 +1035,7 @@ impl HeadState<'_> {
                 &pending.source,
                 capability,
             )?;
+        let location = self.before.kernel.adjusted_location(None, c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,
@@ -1030,7 +1049,7 @@ impl HeadState<'_> {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<ParserNode, HeadError> {
-        let location = self.before.kernel.adjusted_location(None, c)?;
+        let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         let capability = &self
@@ -1054,8 +1073,8 @@ impl HeadState<'_> {
                 c,
                 input,
                 crate::construction::parser_session::CreationLocation {
-                    intended_parent: &location.parent,
-                    current_form: self.current_form.as_ref(),
+                    intended_parent: &place.parent,
+                    current_form: self.current_form.as_ref().and_then(FormPointer::owned),
                     context: template.as_ref().map_or(
                         crate::construction::parser_session::CreationContext::Ordinary,
                         crate::construction::parser_session::CreationContext::Template,
@@ -1064,6 +1083,7 @@ impl HeadState<'_> {
                 &pending.source,
                 capability,
             )?;
+        let location = self.before.kernel.adjusted_location(None, c)?;
         self.before
             .kernel
             .insert_element_at(&node, &location, c, Some(capability))?;
@@ -1077,8 +1097,12 @@ impl HeadState<'_> {
         self.set_mode(InsertionMode::InHead, c)
     }
     fn implied_head(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+        let place = self.kernel().appropriate_place(None, c)?;
+        let node = self
+            .kernel()
+            .session
+            .allocate_implicit_head(c, Some(&place.parent))?;
         let location = self.kernel().adjusted_location(None, c)?;
-        let node = self.kernel().session.allocate_implicit_head(c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,
@@ -1120,19 +1144,36 @@ impl HeadState<'_> {
         let script = self
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         c.charge(WorkCategory::RecordVisit, 7)?;
         c.charge(
             WorkCategory::InspectByte,
             size_of::<StandaloneScriptState>() as u64,
         )?;
+        // §13.4 seeds a template mode for a template context without pushing
+        // the captured template. That original seed is legitimate at EOF.
+        let context_template_seed = if self.template_modes.len() == 1
+            && let Some(context) = self.before.kernel.session.fragment_context(c)?
+        {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let node = context
+                .capture()
+                .node(context.context_element().subject())
+                .map_err(|_| SessionError::ContextUnavailable)?;
+            let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
+                return Err(KernelError::NotElement.into());
+            };
+            super::tag_sets::html_named(element.name(), "template", c)?
+        } else {
+            false
+        };
         if script.nesting != 0
             || script.pause
             || script.pending_blocking.is_some()
             || script.saved_insertion_point.is_some()
             || self.svg_pending.is_some()
             || self.return_mode.is_some()
-            || self.template_modes.len() != 0
+            || (self.template_modes.len() != 0 && !context_template_seed)
         {
             return Err(HeadError::IncompleteCompletion);
         }
@@ -1154,7 +1195,7 @@ impl HeadState<'_> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         self.script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .capability
             .validate_session(c, &self.before.kernel.session)?;
         Ok(())
@@ -1168,11 +1209,11 @@ impl HeadState<'_> {
         let script = self
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         script
             .capability
             .validate_session(c, &self.before.kernel.session)?;
-        let location = self.before.kernel.adjusted_location(None, c)?;
+        let place = self.before.kernel.appropriate_place(None, c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let Payload::Tag(input) = &mut self
             .pending
@@ -1190,10 +1231,11 @@ impl HeadState<'_> {
         let node = self.before.kernel.session.allocate_disabled_parser_script(
             c,
             input,
-            Some(&location.parent),
+            Some(&place.parent),
             context,
             &script.capability,
         )?;
+        let location = self.before.kernel.adjusted_location(None, c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,
@@ -1235,7 +1277,7 @@ impl HeadState<'_> {
         let capability = &self
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .capability;
         capability.validate_session(c, &self.before.kernel.session)?;
         // Retain before the fallible canonical pop and its intrinsic consequences.
@@ -1253,7 +1295,7 @@ impl HeadState<'_> {
         let script = self
             .script
             .as_mut()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         self.before
             .kernel
             .session
@@ -1317,7 +1359,7 @@ impl HeadState<'_> {
         let script = self
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
         // This closed owner cannot reenter. Nesting is not the standard's
@@ -1346,7 +1388,7 @@ impl HeadState<'_> {
         let script = self
             .script
             .as_mut()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         let next = self
             .tokenizer
@@ -1563,7 +1605,7 @@ impl HeadState<'_> {
                                 let script = self
                                     .script
                                     .as_ref()
-                                    .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+                                    .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
                                 self.before.kernel.session.mark_script_eof(
                                     c,
                                     &top,

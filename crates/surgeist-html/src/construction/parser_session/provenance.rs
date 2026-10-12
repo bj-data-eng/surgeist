@@ -291,6 +291,27 @@ impl ParseEvidence {
             control: c.identity(),
         })
     }
+    /// Copies an already-issued cause handle within this exact issuer. No new
+    /// cause, event or association is created by this checked fixed-size copy.
+    pub(crate) fn copy_cause_ref(
+        &self,
+        c: &mut ParseControl,
+        reference: &ConstructionCauseRef,
+    ) -> Result<ConstructionCauseRef, SessionError> {
+        c.require_identity(&reference.control)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(
+            WorkCategory::InspectByte,
+            mem::size_of::<Weak<evidence::EvidenceIdentity>>() as u64,
+        )?;
+        if reference.issuer.as_ptr() != Arc::as_ptr(&self.identity)
+            || self.native.causes.as_slice().get(reference.index).is_none()
+        {
+            return Err(SessionError::WrongToken);
+        }
+        self.cause_ref(reference.index, c)
+    }
+
     fn cause_ref(
         &self,
         index: usize,

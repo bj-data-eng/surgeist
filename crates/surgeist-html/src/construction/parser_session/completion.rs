@@ -186,7 +186,7 @@ impl ParserArenaSession {
     pub(crate) fn qualify_standalone_completion(
         &self,
         c: &mut ParseControl,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
         finished: bool,
     ) -> Result<(), SessionError> {
         capability.validate_session(c, self)?;

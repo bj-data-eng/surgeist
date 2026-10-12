@@ -1,4 +1,4 @@
-//! HTML 877d §13.2.7, reduced by the closed fresh ordinary operation.
+//! HTML 877d §13.2.7, reduced by the closed fresh parser Document operation.
 //! Readiness, canonical pops and both unconditional spin checkpoints are real.
 //! External work is eliminated from the admitted producer inventory, not from
 //! a Disabled label or an empty task queue. No public parse report is produced.
@@ -45,7 +45,7 @@ impl HeadState<'_> {
         let script = self
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         self.before
             .kernel
             .session
@@ -180,16 +180,19 @@ impl HeadState<'_> {
     }
     fn closed_end_producers(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         self.qualify_end_script(c)?;
-        // This proof is issued only from the actual constructor that rejects
-        // captured documents, Enabled, declarative shadow and imported backing.
-        // New loader/host/realm/task producers must revise this closed boundary.
+        // Both admitted constructors own a fresh parser Document without a
+        // browsing context. Fragment target/context documents remain qualified
+        // immutable dependencies; they do not supply a host or execution domain
+        // for that parser Document. Actual intrinsic tasks still run through
+        // the same checkpoint owner. New loader/host/realm/task producers must
+        // revise this closed boundary.
         let script = self.script.as_ref().expect("qualified script state");
         script
             .capability
             .validate_session(c, &self.before.kernel.session)?;
         Ok(())
     }
-    fn qualify_completed(&self, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn qualify_completed(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         self.qualify_end_script(c)?;
         c.charge(WorkCategory::RecordVisit, 3)?;
         if self.end != Some(EndPhase::Done)

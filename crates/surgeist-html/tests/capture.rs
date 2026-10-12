@@ -1,5 +1,143 @@
 use surgeist_html::*;
 
+#[test]
+fn template_owner_facts_retain_explicit_class_and_one_qualified_cache_relationship() {
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let ordinary = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let inert = document(&mut builder, HtmlScriptingStatus::Disabled);
+    builder
+        .establish_document_template_facts(
+            &inert,
+            HtmlDocumentClass::NonHtml,
+            HtmlTemplateDocumentRole::InertTemplate,
+            HtmlCaptureTemplateCacheInput::Unavailable,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &ordinary,
+            HtmlDocumentClass::NonHtml,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(inert.clone()),
+        )
+        .unwrap();
+    assert_eq!(
+        builder.establish_document_template_facts(
+            &ordinary,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Absent
+        ),
+        Err(HtmlCaptureError::DocumentFactsAlreadyEstablished)
+    );
+    let capture = builder.finish().unwrap();
+    let ordinary = capture.subject_id(&ordinary).unwrap();
+    let inert = capture
+        .document_id(&capture.subject_id(&inert).unwrap())
+        .unwrap();
+    let node = capture.node(&ordinary).unwrap();
+    let HtmlCapturedNodeKind::Document(facts) = node.kind() else {
+        panic!("actual document")
+    };
+    assert_eq!(facts.document_class(), HtmlDocumentClass::NonHtml);
+    assert_eq!(facts.template_role(), HtmlTemplateDocumentRole::Ordinary);
+    assert_eq!(
+        node.template_document_cache(),
+        Some(HtmlCapturedTemplateCache::Document(inert))
+    );
+    assert_eq!(capture.usage().relationships(), 1);
+}
+
+#[test]
+fn template_cache_rejects_foreign_ordinary_and_one_short_relationship_before_commit() {
+    let mut foreign = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let foreign_document = document(&mut foreign, HtmlScriptingStatus::Disabled);
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(3, 0, 0, 0, 0, 0, 0),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let ordinary = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let inert = document(&mut builder, HtmlScriptingStatus::Disabled);
+    assert_eq!(
+        builder.establish_document_template_facts(
+            &ordinary,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(foreign_document)
+        ),
+        Err(HtmlCaptureError::ForeignBuilder)
+    );
+    assert_eq!(
+        builder.establish_document_template_facts(
+            &ordinary,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(inert.clone())
+        ),
+        Err(HtmlCaptureError::InvalidTemplateDocumentCache)
+    );
+    builder
+        .establish_document_template_facts(
+            &inert,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::InertTemplate,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    assert_eq!(
+        builder.establish_document_template_facts(
+            &ordinary,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(inert)
+        ),
+        Err(HtmlCaptureError::LimitExceeded {
+            resource: HtmlCaptureResource::Relationships,
+            limit: 0,
+            required: 1
+        })
+    );
+    let capture = builder.finish().unwrap();
+    let node = capture
+        .node(&capture.subject_id(&ordinary).unwrap())
+        .unwrap();
+    let HtmlCapturedNodeKind::Document(facts) = node.kind() else {
+        panic!("actual document")
+    };
+    assert_eq!(facts.template_role(), HtmlTemplateDocumentRole::Unavailable);
+    assert_eq!(
+        node.template_document_cache(),
+        Some(HtmlCapturedTemplateCache::Unavailable)
+    );
+    assert_eq!(capture.usage().relationships(), 0);
+}
+
+#[test]
+fn registry_scope_is_independent_of_definition_completeness_and_capture_identity() {
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let registry = builder.add_registry(None).unwrap();
+    builder
+        .establish_registry_scope(&registry, HtmlRegistryScope::Scoped)
+        .unwrap();
+    assert_eq!(
+        builder.establish_registry_scope(&registry, HtmlRegistryScope::Global),
+        Err(HtmlCaptureError::RegistryScopeAlreadyEstablished)
+    );
+    let capture = builder.finish().unwrap();
+    let registry = capture.registry_id(&registry).unwrap();
+    assert_eq!(
+        capture.registry_scope(&registry),
+        Ok(HtmlRegistryScope::Scoped)
+    );
+    let foreign = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh())
+        .finish()
+        .unwrap();
+    assert_eq!(
+        foreign.registry_scope(&registry),
+        Err(HtmlCaptureError::ForeignCapture)
+    );
+}
+
 fn limits() -> HtmlCaptureLimits {
     HtmlCaptureLimits::new(10_000, 100_000, 1_000, 1_000_000, 10_000, 100, 1_000)
 }
@@ -1205,4 +1343,52 @@ fn deep_capture_validation_and_cleanup_use_no_recursive_tree_drop() {
         .unwrap()
         .join()
         .unwrap();
+}
+
+#[test]
+fn template_cache_rejects_known_class_conflict_but_preserves_unused_unavailable_class() {
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let ordinary = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let inert = document(&mut builder, HtmlScriptingStatus::Disabled);
+    builder
+        .establish_document_template_facts(
+            &inert,
+            HtmlDocumentClass::NonHtml,
+            HtmlTemplateDocumentRole::InertTemplate,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    let before = builder.usage();
+    assert_eq!(
+        builder.establish_document_template_facts(
+            &ordinary,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(inert.clone())
+        ),
+        Err(HtmlCaptureError::InvalidTemplateDocumentCache)
+    );
+    assert_eq!(builder.usage(), before);
+    builder
+        .establish_document_template_facts(
+            &ordinary,
+            HtmlDocumentClass::Unavailable,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(inert.clone()),
+        )
+        .unwrap();
+    let capture = builder.finish().unwrap();
+    let ordinary = capture.subject_id(&ordinary).unwrap();
+    let inert = capture
+        .document_id(&capture.subject_id(&inert).unwrap())
+        .unwrap();
+    let node = capture.node(&ordinary).unwrap();
+    assert_eq!(
+        node.template_document_cache(),
+        Some(HtmlCapturedTemplateCache::Document(inert))
+    );
+    let HtmlCapturedNodeKind::Document(facts) = node.kind() else {
+        panic!("actual document")
+    };
+    assert_eq!(facts.document_class(), HtmlDocumentClass::Unavailable);
 }

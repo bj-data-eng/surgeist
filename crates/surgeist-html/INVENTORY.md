@@ -141,7 +141,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e094"></a>E094 | table; HTML | [the-table-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) | [Tables](#tables): static bodies/rows/cells plus separate slot/column/header model; no live collections/mutation/layout. |
 | <a id="e095"></a>E095 | tbody; HTML | [the-tbody-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tbody-element) | [Tables](#tables) direct row membership; geometric layout and live DOM collection external. |
 | <a id="e096"></a>E096 | td; HTML | [the-td-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-td-element) | [Tables](#tables) cell/span/header model; geometry and live cellIndex/mutation not covered by immutable collection. |
-| <a id="e097"></a>E097 | template; HTML | [the-template-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element) | Native separate template contents and explicit declarative shadow effects; [private fresh ordinary templates](README.md#private-ordinary-templates) implement contents/patching. [Template marker reference](#template-marker-reference) has no public captured query. Public complete parser/shadow attachment unfinished. |
+| <a id="e097"></a>E097 | template; HTML | [the-template-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element) | Native separate template contents and explicit declarative shadow effects; [private fresh ordinary templates](README.md#private-ordinary-templates) implement contents/patching. [Private context fragments](README.md#private-context-fragments) retain qualified template caches and shadow construction effects. [Template marker reference](#template-marker-reference) has no public captured query. Public complete parsing/live DOM shadow attachment unfinished. |
 | <a id="e098"></a>E098 | textarea; HTML | [the-textarea-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-textarea-element) | [Control lengths](#control-lengths), cols/rows/wrap, captured defaultValue/autocomplete/text assistance/current flags and TextareaValueMissing in [Control facts](#control-facts); editing/reset/validation execution separate. |
 | <a id="e099"></a>E099 | tfoot; HTML | [the-tfoot-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tfoot-element) | [Tables](#tables) direct row membership/footer-last tableRows; no live mutation. |
 | <a id="e100"></a>E100 | th; HTML | [the-th-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-th-element) | [Tables](#tables) cell/span/header model and [Table header scope](#table-header-scope); no layout. |
@@ -1679,8 +1679,9 @@ also have [restricted private processing](README.md#private-svg-script): actual
 processed state, parser-end wrapper, nonparser connection and qualified clone
 bit preservation. Separate no-loader and Disabled capabilities suppress
 acquisition and execution; this is not literal SVG Tiny Disabled behavior or
-whole SVG/MathML language support. Contextual fragments and completed public
-reports remain unfinished. [Parser origins](PARSER-ORIGINS.md) records the selected upstream
+whole SVG/MathML language support. [Private contextual fragments](README.md#private-context-fragments)
+retain qualified context/effect facts; completed public reports and live DOM import
+remain unfinished. [Parser origins](PARSER-ORIGINS.md) records the selected upstream
 adaptation and HTML differences; [the crate overview](README.md) records actual
 admission, cleanup and capability limits.
 
@@ -1689,9 +1690,9 @@ source-initial Complete readiness is distinct from parsing completion; Interacti
 precedes canonical pops, two source checkpoints run, and the post-load milestone
 precedes execution of the retained Complete-readiness continuation. The whole
 completed owner
-retains construction evidence. Public diagnostic/source-map/report transfer and
-contextual fragment execution remain unfinished; no browser events or queue are
-synthesized.
+retains construction evidence. [Contextual fragment execution](README.md#private-context-fragments)
+has a separately qualified private EOF return. Public diagnostic/source-map/report
+transfer remains unfinished; no browser events or queue are synthesized.
 
 Immutable constructed template/shadow/PI content and explicit metadata/effects
 are not a second live DOM. Private parser machinery is test-compiled and remains

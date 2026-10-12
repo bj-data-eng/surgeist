@@ -37,9 +37,9 @@ impl HeadState<'_> {
         self.frameset(false, c)?;
         self.set_mode(InsertionMode::InTemplate, c)?;
         self.template_modes.try_push(c, InsertionMode::InTemplate)?;
-        let location = self.before.kernel.adjusted_location(None, c)?;
-        // Permission is source-established false for this sealed ordinary
-        // operation. A valid non-None mode must return before considering for.
+        let place = self.before.kernel.appropriate_place(None, c)?;
+        // Determine the token states without replacing them with final tree
+        // spelling. A non-None shadow mode selects its row before for-patching.
         let (patch, shadow) = {
             let Payload::Tag(Some(tag)) = &self
                 .pending
@@ -77,13 +77,72 @@ impl HeadState<'_> {
         let node = self.before.kernel.session.allocate_html_tag_for_creation(
             c,
             input,
-            &location.parent,
-            self.current_form.as_ref(),
+            &place.parent,
+            self.current_form
+                .as_ref()
+                .and_then(super::head::FormPointer::owned),
             old_template
                 .as_ref()
                 .map_or(CreationContext::Ordinary, CreationContext::Template),
         )?;
+        if shadow && self.before.kernel.session.allows_declarative_shadow(c)? {
+            enum Host {
+                Owned(super::ParserNode),
+                Captured(crate::HtmlCaptureElementId),
+            }
+            // The adjusted current is captured only at the one real root
+            // stack entry. The actual owned root is never used as a fake host.
+            let host = if self.before.kernel.stack()?.len() == 1 {
+                let context =
+                    self.before.kernel.session.fragment_context(c)?.ok_or(
+                        crate::construction::parser_session::SessionError::ContextUnavailable,
+                    )?;
+                c.charge(WorkCategory::ProviderCall, 1)?;
+                write(size_of::<Host>(), 1, c)?;
+                Host::Captured(context.context_element().clone())
+            } else {
+                let current = self.before.kernel.current(c)?;
+                Host::Owned(current)
+            };
+            self.before.kernel.push(&node, c)?;
+            let capability = &self
+                .script
+                .as_ref()
+                .expect("validated construction")
+                .capability;
+            let host = match &host {
+                Host::Owned(host) => {
+                    crate::construction::parser_session::context::DeclarativeShadowHost::Owned(host)
+                }
+                Host::Captured(host) => {
+                    crate::construction::parser_session::context::DeclarativeShadowHost::Captured(
+                        host,
+                    )
+                }
+            };
+            let attached = self.before.kernel.session.attach_declarative_shadow(
+                c,
+                &node,
+                host,
+                &self.pending.as_ref().ok_or(HeadError::MissingInput)?.source,
+                capability,
+            )?;
+            if !attached {
+                let location = self
+                    .before
+                    .kernel
+                    .adjusted_location(Some(&place.parent), c)?;
+                self.before
+                    .kernel
+                    .insert_element_at(&node, &location, c, Some(capability))?;
+            }
+            return self.finish(c);
+        }
         if shadow || !patch {
+            let location = self
+                .before
+                .kernel
+                .adjusted_location(Some(&place.parent), c)?;
             self.before.kernel.insert_element_at(
                 &node,
                 &location,
@@ -93,7 +152,11 @@ impl HeadState<'_> {
             self.before.kernel.push(&node, c)?;
             return self.finish(c);
         }
-        let mut scope = super::copy_node(&location.parent, c)?;
+        let adjusted = self
+            .before
+            .kernel
+            .adjusted_location(Some(&place.parent), c)?;
+        let mut scope = super::copy_node(&adjusted.parent, c)?;
         if self.before.kernel.named(&scope, "template", c)? {
             scope = self
                 .before
@@ -121,6 +184,10 @@ impl HeadState<'_> {
                 .capability,
         )?;
         if !success {
+            let location = self
+                .before
+                .kernel
+                .adjusted_location(Some(&place.parent), c)?;
             self.before
                 .kernel
                 .pop(c, self.script.as_ref().map(|s| &s.capability))?
@@ -233,7 +300,7 @@ impl HeadState<'_> {
                 let source = self
                     .script
                     .as_ref()
-                    .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+                    .ok_or(HeadError::ConstructionCapabilityUnavailable)?
                     .capability
                     .source;
                 return self.body_rules(InsertionMode::InBody, source, c);

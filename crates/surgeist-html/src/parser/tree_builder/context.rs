@@ -1,0 +1,3223 @@
+//! The actual §13.4 bootstrap and return owner. The capture is immutable
+//! evidence; the internal root, parser Document and output are real records.
+
+use super::*;
+use crate::construction::parser_session::RootKind;
+use crate::parser::tokenizer::{
+    Tokenizer,
+    states::{Raw, State},
+};
+use crate::{HtmlCapturedNodeKind, HtmlFragmentParseRequest, HtmlParserScriptingMode};
+use head::{HeadStage, HeadStep, InsertionMode};
+use prologue::BeforeHead;
+
+pub(crate) enum FragmentExecutionError {
+    Stop(ParseStop),
+    Kernel(KernelError),
+    Head(head::HeadError),
+    Consumed,
+}
+impl std::fmt::Debug for FragmentExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stop(error) => f.debug_tuple("Stop").field(error).finish(),
+            Self::Kernel(error) => f.debug_tuple("Kernel").field(error).finish(),
+            Self::Head(error) => f.debug_tuple("Head").field(error).finish(),
+            Self::Consumed => f.write_str("Consumed"),
+        }
+    }
+}
+impl From<ParseStop> for FragmentExecutionError {
+    fn from(value: ParseStop) -> Self {
+        Self::Stop(value)
+    }
+}
+impl From<SessionError> for FragmentExecutionError {
+    fn from(value: SessionError) -> Self {
+        Self::Kernel(value.into())
+    }
+}
+impl From<KernelError> for FragmentExecutionError {
+    fn from(value: KernelError) -> Self {
+        Self::Kernel(value)
+    }
+}
+impl From<head::HeadError> for FragmentExecutionError {
+    fn from(value: head::HeadError) -> Self {
+        Self::Head(value)
+    }
+}
+
+pub(crate) struct ContextFragmentDriver<'source> {
+    request: &'source HtmlFragmentParseRequest,
+    control: ParseControl,
+    head: Option<HeadStage<'source>>,
+    failed_evidence:
+        Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
+    failure_usage: Option<super::super::control::ParseUsage>,
+}
+
+/// Completion keeps the actual fragment execution owner intact. It neither
+/// publishes a Document report nor drains tasks during immutable observation.
+pub(crate) struct CompletedContextFragment<'source> {
+    driver: Option<ContextFragmentDriver<'source>>,
+    frozen: Option<crate::construction::parser_session::FrozenArena>,
+}
+/// This adapter borrows qualified captured strings and uses the same charged
+/// comparisons as actual stack dispatch. It does not precharge an unpolled scan
+/// or derive namespace from a local-name vocabulary.
+fn initial_modes(
+    request: &HtmlFragmentParseRequest,
+    c: &mut ParseControl,
+) -> Result<(State, InsertionMode, bool), FragmentExecutionError> {
+    c.require_source(request.source())?;
+    c.charge(WorkCategory::RecordVisit, 2)?;
+    let context = request.context();
+    let node = context
+        .capture()
+        .node(context.context_element().subject())
+        .map_err(|_| SessionError::ContextUnavailable)?;
+    let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+        return Err(SessionError::ContextUnavailable.into());
+    };
+    let name = element.name();
+    if !tag_sets::namespace(name, "http://www.w3.org/1999/xhtml", c)? {
+        return Ok((State::Data, InsertionMode::InBody, false));
+    }
+    let lexical = if tag_sets::local_in(name, &["title", "textarea"], c)? {
+        State::Raw(Raw::Rcdata)
+    } else if tag_sets::local_in(name, &["style", "xmp", "iframe", "noembed", "noframes"], c)?
+        || (tag_sets::local_in(name, &["noscript"], c)?
+            && request.effective_scripting_mode() != HtmlParserScriptingMode::Disabled)
+    {
+        State::Raw(Raw::Rawtext)
+    } else if tag_sets::local_in(name, &["script"], c)? {
+        State::Raw(Raw::Script)
+    } else if tag_sets::local_in(name, &["plaintext"], c)? {
+        State::Plaintext
+    } else {
+        State::Data
+    };
+    for (local, mode) in [
+        ("tr", InsertionMode::InRow),
+        ("tbody", InsertionMode::InTableBody),
+        ("thead", InsertionMode::InTableBody),
+        ("tfoot", InsertionMode::InTableBody),
+        ("caption", InsertionMode::InCaption),
+        ("colgroup", InsertionMode::InColumnGroup),
+        ("table", InsertionMode::InTable),
+        ("template", InsertionMode::InTemplate),
+        ("frameset", InsertionMode::InFrameset),
+        ("html", InsertionMode::BeforeHead),
+    ] {
+        if tag_sets::local_in(name, &[local], c)? {
+            return Ok((lexical, mode, local == "template"));
+        }
+    }
+    Ok((lexical, InsertionMode::InBody, false))
+}
+
+impl<'source> ContextFragmentDriver<'source> {
+    pub(crate) fn new(
+        request: &'source HtmlFragmentParseRequest,
+    ) -> Result<Self, FragmentExecutionError> {
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source())?;
+        // Fixed success/failure moves and usage snapshots are admitted before any
+        // tokenizer pull; stopped extraction allocates and copies nothing variable.
+        write(
+            size_of::<Self>()
+                + size_of::<FailedContextFragment>()
+                + 2 * size_of::<super::super::control::ParseUsage>(),
+            8,
+            &mut c,
+        )?;
+        let (lexical, mode, template) = initial_modes(request, &mut c)?;
+        let mut session = Some(ParserArenaSession::new(
+            &mut c,
+            RootKind::Document(request.context().document_mode()),
+        )?);
+        let mut tokenizer = None;
+        let mut before: Option<BeforeHead> = None;
+        let mut head: Option<HeadStage<'source>> = None;
+        let result = (|| {
+            let session_owner = session.as_mut().expect("real fresh parser Document");
+            session_owner.initialize_standalone_document(&mut c)?;
+            session_owner.initialize_parse_evidence(&mut c, request.source())?;
+            let bootstrap = session_owner.initialize_fragment(&mut c, request)?;
+            let mut whitespace = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+            whitespace.require_owner(&mut c)?;
+            let kernel = match LocationKernel::new(&mut session, &mut c) {
+                Ok(kernel) => kernel,
+                Err(error) => {
+                    whitespace.release(&mut c)?;
+                    return Err(error.into());
+                }
+            };
+            // Retain the canonical owner before the next fallible root/stack
+            // admission. A stop leaves all native and lexical ownership here.
+            before = Some(BeforeHead {
+                kernel,
+                input: None,
+                whitespace,
+            });
+            let kernel = &mut before.as_mut().expect("retained fragment kernel").kernel;
+            write(size_of::<Option<ParserNode>>(), 1, &mut c)?;
+            kernel.root_target = Some(bootstrap.output);
+            kernel.push(&bootstrap.root, &mut c)?;
+            tokenizer = Some(Tokenizer::new(request.source(), State::Data, None, &mut c)?);
+            head = Some(HeadStage::new(
+                request.source(),
+                &mut before,
+                &mut tokenizer,
+                &mut c,
+            )?);
+            let state = head.as_mut().expect("retained actual head");
+            let document = state
+                .state
+                .as_ref()
+                .expect("active head")
+                .before
+                .kernel
+                .session
+                .root(&mut c)?;
+            write(size_of::<ConstructionCapability>(), 4, &mut c)?;
+            c.charge(WorkCategory::ProviderCall, 1)?;
+            state.install_standalone(
+                ConstructionCapability {
+                    source: request.source(),
+                    owner: c.identity(),
+                    document,
+                    profile: ExecutionProfile::Fragment,
+                },
+                &mut c,
+            )?;
+            let state = state.state.as_mut().expect("active head");
+            state.before.kernel.session.retain_fragment_bootstrap(
+                &mut c,
+                &state
+                    .script
+                    .as_ref()
+                    .expect("issued actual fragment capability")
+                    .capability,
+            )?;
+            if let Some(form) = request.context().nearest_form() {
+                c.charge(WorkCategory::ProviderCall, 1)?;
+                write(size_of::<Option<head::FormPointer>>(), 1, &mut c)?;
+                state.current_form = Some(head::FormPointer::Captured(form.clone()));
+            }
+            if template {
+                state
+                    .template_modes
+                    .try_push(&mut c, InsertionMode::InTemplate)?;
+            }
+            state.set_mode(mode, &mut c)?;
+            state
+                .tokenizer
+                .as_mut()
+                .expect("actual tokenizer")
+                .set_state(lexical, &mut c)?;
+            Ok::<(), FragmentExecutionError>(())
+        })();
+        if let Err(error) = result {
+            // A constructor cannot publish its partial owner. Disposal follows
+            // the sole first stop; missing capture facts are a typed rejection.
+            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            if let Some(head) = &mut head {
+                head.release(&mut c)?;
+            }
+            if let Some(before) = &mut before {
+                before.kernel.release(&mut c)?;
+                // No lexical input was pulled; the actual empty owner is still
+                // admitted and must be released with its issuing controller.
+                let whitespace = std::mem::replace(
+                    &mut before.whitespace,
+                    OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
+                );
+                whitespace.release(&mut c)?;
+            }
+            if let Some(mut session) = session {
+                session.release(&mut c)?;
+            }
+            if let Some(tokenizer) = tokenizer {
+                tokenizer.release(&mut c)?;
+            }
+            return Err(error);
+        }
+        Ok(Self {
+            request,
+            control: c,
+            head,
+            failed_evidence: None,
+            failure_usage: None,
+        })
+    }
+    pub(crate) fn take_completed(
+        input: &mut Option<Self>,
+    ) -> Result<CompletedContextFragment<'source>, FragmentExecutionError> {
+        let driver = input.as_mut().ok_or(FragmentExecutionError::Consumed)?;
+        driver.control.require_source(driver.request.source())?;
+        let state = driver
+            .head
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        state.qualify_completed(&mut driver.control)?;
+        write(
+            size_of::<CompletedContextFragment>() + size_of::<Self>() + size_of::<Option<Self>>(),
+            2,
+            &mut driver.control,
+        )?;
+        Ok(CompletedContextFragment {
+            driver: input.take(),
+            frozen: None,
+        })
+    }
+    pub(crate) fn step(&mut self) -> Result<HeadStep, FragmentExecutionError> {
+        self.control.require_source(self.request.source())?;
+        let result = self
+            .head
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .step(&mut self.control);
+        match result {
+            Ok(HeadStep::Boundary(head::HeadBoundary::AfterHead)) => {
+                let state = self
+                    .head
+                    .as_mut()
+                    .expect("active driver")
+                    .state
+                    .as_mut()
+                    .ok_or(FragmentExecutionError::Consumed)?;
+                write(
+                    size_of::<Option<head::HeadBoundary>>(),
+                    1,
+                    &mut self.control,
+                )?;
+                state.boundary = None;
+                Ok(HeadStep::Consumed)
+            }
+            Err(error) => {
+                self.control
+                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+                Err(error.into())
+            }
+            Ok(step) => Ok(step),
+        }
+    }
+    pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
+        self.head
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .release(&mut self.control)?;
+        self.head = None;
+        Ok(())
+    }
+    /// A qualified fragment root and borrowed canonical view, only after the
+    /// real EOF owner has completed. The native view's Document root is P;
+    /// this explicit root is F, and never impersonates the captured target.
+    pub(crate) fn completed_native_view(
+        &mut self,
+    ) -> Result<
+        (
+            ParserNode,
+            crate::construction::parser_session::NativeView<'_>,
+        ),
+        FragmentExecutionError,
+    > {
+        self.control.require_source(self.request.source())?;
+        let state = self
+            .head
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        state.qualify_completed(&mut self.control)?;
+        let root = state
+            .before
+            .kernel
+            .session
+            .fragment_output(&mut self.control)?;
+        write(
+            size_of::<(ParserNode, crate::construction::parser_session::NativeView)>(),
+            2,
+            &mut self.control,
+        )?;
+        let view = state.before.kernel.session.native_view(&mut self.control)?;
+        Ok((root, view))
+    }
+}
+
+impl<'source> ContextFragmentDriver<'source> {
+    pub(crate) fn take_failed(
+        input: &mut Option<Self>,
+    ) -> Result<FailedContextFragment<'source>, FragmentExecutionError> {
+        let driver = input.as_mut().ok_or(FragmentExecutionError::Consumed)?;
+        let stop = driver
+            .control
+            .stop()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        if driver.failure_usage.is_none() {
+            driver.failure_usage = Some(
+                driver
+                    .control
+                    .first_stop_usage()
+                    .expect("sole first stop")
+                    .clone(),
+            );
+            driver.failed_evidence = driver
+                .head
+                .as_mut()
+                .ok_or(FragmentExecutionError::Consumed)?
+                .state
+                .as_mut()
+                .ok_or(FragmentExecutionError::Consumed)?
+                .before
+                .kernel
+                .session
+                .take_failed_evidence(&mut driver.control)?;
+        }
+        driver.release()?;
+        let driver = input.take().expect("reclaimed actual fragment execution");
+        Ok(FailedContextFragment {
+            request: driver.request,
+            stop,
+            at_stop: driver.failure_usage.expect("retained first stop snapshot"),
+            after_cleanup: driver.control.usage().clone(),
+            control: driver.control,
+            evidence: driver.failed_evidence,
+        })
+    }
+}
+
+pub(crate) struct FailedContextFragment<'source> {
+    request: &'source HtmlFragmentParseRequest,
+    control: ParseControl,
+    stop: ParseStop,
+    at_stop: super::super::control::ParseUsage,
+    after_cleanup: super::super::control::ParseUsage,
+    evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
+}
+impl FailedContextFragment<'_> {
+    pub(crate) fn source(&self) -> &crate::HtmlSource {
+        self.request.source()
+    }
+    pub(crate) fn context(&self) -> &crate::HtmlFragmentContext {
+        self.request.context()
+    }
+    pub(crate) fn stop(&self) -> ParseStop {
+        self.stop
+    }
+    pub(crate) fn at_stop(&self) -> &super::super::control::ParseUsage {
+        &self.at_stop
+    }
+    pub(crate) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
+        &self.after_cleanup
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
+        self.evidence
+            .as_ref()
+            .map(|evidence| evidence.diagnostics())
+    }
+    pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
+        if let Some(evidence) = self.evidence.take() {
+            evidence.release(&mut self.control)?;
+        }
+        Ok(())
+    }
+}
+
+/// Lifetime-free F construction. Captured dependencies and completed attachment
+/// effects remain in the same frozen session; no live DOM operation is executed.
+pub(crate) struct FrozenContextFragmentParts {
+    control: ParseControl,
+    arena: Option<crate::construction::parser_session::FrozenArena>,
+    source: (crate::HtmlSourceId, crate::HtmlSourceCoordinates, usize),
+    final_usage: super::super::control::ParseUsage,
+    failed_evidence:
+        Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
+    after_cleanup: Option<super::super::control::ParseUsage>,
+}
+impl FrozenContextFragmentParts {
+    pub(crate) fn fragment(&mut self) -> Result<&crate::HtmlFragment, FragmentExecutionError> {
+        self.control.checkpoint()?;
+        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.arena
+            .as_ref()
+            .and_then(|arena| arena.fragment())
+            .ok_or(FragmentExecutionError::Consumed)
+    }
+    pub(crate) fn context(&self) -> Result<&crate::HtmlFragmentContext, FragmentExecutionError> {
+        Ok(self
+            .arena
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .frozen_fragment_context()?)
+    }
+    pub(crate) fn source_binding(
+        &self,
+    ) -> (&crate::HtmlSourceId, crate::HtmlSourceCoordinates, usize) {
+        (&self.source.0, self.source.1, self.source.2)
+    }
+    pub(crate) fn final_usage(&self) -> &super::super::control::ParseUsage {
+        &self.final_usage
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Result<
+        crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>,
+        FragmentExecutionError,
+    > {
+        if let Some(evidence) = &self.failed_evidence {
+            return Ok(evidence.diagnostics());
+        }
+        Ok(self
+            .arena
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .retained_evidence()?
+            .diagnostics())
+    }
+    pub(crate) fn cleanup_failure(&mut self) -> Result<(), FragmentExecutionError> {
+        if self.control.stop().is_none() {
+            return Err(FragmentExecutionError::Consumed);
+        }
+        if self.after_cleanup.is_some() {
+            return Ok(());
+        }
+        if let Some(arena) = &mut self.arena {
+            if self.failed_evidence.is_none() {
+                self.failed_evidence = arena.take_stopped_evidence(&mut self.control)?;
+            }
+            arena.release(&mut self.control)?;
+            self.arena = None;
+        }
+        self.after_cleanup = Some(self.control.usage().clone());
+        Ok(())
+    }
+    pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
+        if self.control.stop().is_some() {
+            self.cleanup_failure()?;
+        } else if let Some(arena) = &mut self.arena {
+            arena.release(&mut self.control)?;
+            self.arena = None;
+            self.after_cleanup = Some(self.control.usage().clone());
+        }
+        if let Some(evidence) = self.failed_evidence.take() {
+            evidence.release(&mut self.control)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'source> CompletedContextFragment<'source> {
+    pub(crate) fn take_failed(
+        &mut self,
+    ) -> Result<FailedContextFragment<'source>, FragmentExecutionError> {
+        if self.frozen.is_none() {
+            return ContextFragmentDriver::take_failed(&mut self.driver);
+        }
+        let driver = self
+            .driver
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        let stop = driver
+            .control
+            .stop()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        if driver.failure_usage.is_none() {
+            driver.failure_usage = Some(
+                driver
+                    .control
+                    .first_stop_usage()
+                    .expect("sole first stop")
+                    .clone(),
+            );
+            driver.failed_evidence = self
+                .frozen
+                .as_mut()
+                .expect("retained frozen arena")
+                .take_stopped_evidence(&mut driver.control)?;
+        }
+        if let Some(head) = &mut driver.head {
+            head.release_frozen_execution(&mut driver.control)?;
+            driver.head = None;
+        }
+        self.frozen
+            .as_mut()
+            .expect("retained frozen arena")
+            .release(&mut driver.control)?;
+        self.frozen = None;
+        let driver = self
+            .driver
+            .take()
+            .expect("all construction owners reclaimed");
+        Ok(FailedContextFragment {
+            request: driver.request,
+            stop,
+            at_stop: driver.failure_usage.expect("retained first stop"),
+            after_cleanup: driver.control.usage().clone(),
+            control: driver.control,
+            evidence: driver.failed_evidence,
+        })
+    }
+    pub(crate) fn prepare_native_associations(&mut self) -> Result<(), FragmentExecutionError> {
+        let driver = self
+            .driver
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        driver.control.require_source(driver.request.source())?;
+        let state = driver
+            .head
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .state
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        state.qualify_completed(&mut driver.control)?;
+        state
+            .before
+            .kernel
+            .session
+            .prepare_native_associations(&mut driver.control, driver.request.source())?;
+        Ok(())
+    }
+    pub(crate) fn freeze_parts(
+        &mut self,
+    ) -> Result<FrozenContextFragmentParts, FragmentExecutionError> {
+        if self.frozen.is_some() {
+            return Err(self
+                .driver
+                .as_ref()
+                .and_then(|driver| driver.control.stop())
+                .map_or(
+                    FragmentExecutionError::Consumed,
+                    FragmentExecutionError::Stop,
+                ));
+        }
+        let driver = self
+            .driver
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        driver.control.require_source(driver.request.source())?;
+        let state = driver
+            .head
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        state.qualify_completed(&mut driver.control)?;
+        state
+            .before
+            .kernel
+            .session
+            .preflight_completed_freeze(&mut driver.control)?;
+        write(
+            size_of::<FrozenContextFragmentParts>()
+                + size_of::<Option<crate::construction::parser_session::FrozenArena>>()
+                + size_of::<Option<ContextFragmentDriver>>()
+                + size_of::<ParseControl>(),
+            10,
+            &mut driver.control,
+        )?;
+        driver.control.charge(WorkCategory::RecordVisit, 3)?;
+        driver.control.charge(WorkCategory::ProviderCall, 1)?;
+        let source = (
+            driver.request.source().identity().clone(),
+            driver.request.source().coordinates(),
+            driver.request.source().len(),
+        );
+        let arena = driver
+            .head
+            .as_mut()
+            .expect("qualified head")
+            .state
+            .as_mut()
+            .expect("qualified state")
+            .before
+            .kernel
+            .session
+            .freeze(&mut driver.control)?;
+        self.frozen = Some(arena);
+        driver
+            .head
+            .as_mut()
+            .expect("retained execution")
+            .release_frozen_execution(&mut driver.control)?;
+        driver.head = None;
+        driver.control.checkpoint()?;
+        let driver = self
+            .driver
+            .take()
+            .expect("reclaimed execution retains controller");
+        Ok(FrozenContextFragmentParts {
+            final_usage: driver.control.usage().clone(),
+            control: driver.control,
+            arena: self.frozen.take(),
+            source,
+            failed_evidence: None,
+            after_cleanup: None,
+        })
+    }
+
+    pub(crate) fn native_view(
+        &mut self,
+    ) -> Result<
+        (
+            ParserNode,
+            crate::construction::parser_session::NativeView<'_>,
+        ),
+        FragmentExecutionError,
+    > {
+        self.driver
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .completed_native_view()
+    }
+    pub(crate) fn context(&self) -> Result<&crate::HtmlFragmentContext, FragmentExecutionError> {
+        Ok(self
+            .driver
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .request
+            .context())
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, FragmentExecutionError>
+    {
+        let driver = self
+            .driver
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        let state = driver
+            .head
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        Ok(state.before.kernel.session.retained_evidence()?)
+    }
+    pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
+        let driver = self
+            .driver
+            .as_mut()
+            .ok_or(FragmentExecutionError::Consumed)?;
+        if driver.control.stop().is_none() {
+            write(
+                size_of::<Option<ContextFragmentDriver>>(),
+                1,
+                &mut driver.control,
+            )?;
+        }
+        if let Some(arena) = &mut self.frozen {
+            if let Some(head) = &mut driver.head {
+                head.release_frozen_execution(&mut driver.control)?;
+                driver.head = None;
+            }
+            arena.release(&mut driver.control)?;
+            self.frozen = None;
+        } else {
+            driver.release()?;
+        }
+        self.driver = None;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::construction::parser_session::native_view::NativeKind;
+    use crate::*;
+
+    fn request(
+        source: &str,
+        context_name: &str,
+        scripting: HtmlScriptingStatus,
+    ) -> HtmlFragmentParseRequest {
+        let mut capture = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = capture
+            .add_document(
+                HtmlDocumentMode::LimitedQuirks,
+                scripting,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let context = capture
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, context_name),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        capture.establish_root(&context).unwrap();
+        let capture = capture.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        HtmlFragmentParseRequest::new(
+            HtmlSource::utf8(source),
+            context,
+            super::super::tests::limits(100),
+        )
+        .unwrap()
+    }
+    fn complete(driver: &mut ContextFragmentDriver<'_>) {
+        for _ in 0..1000 {
+            match driver.step().unwrap() {
+                HeadStep::Consumed => {}
+                HeadStep::Complete => return,
+                HeadStep::Boundary(boundary) => panic!("unexpected real boundary {boundary:?}"),
+            }
+        }
+        panic!("finite literal did not complete");
+    }
+    #[test]
+    fn captured_bootstrap_cause_binds_actual_internal_root_and_f_without_lexical_range() {
+        use crate::construction::parser_session::provenance::{
+            CapturedCauseRole, ConstructionOperation,
+        };
+        let request = request("<p>A</p>", "div", HtmlScriptingStatus::Disabled);
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        let root = driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .at(0, &mut driver.control)
+            .unwrap();
+        complete(&mut driver);
+        let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+        let output = state
+            .before
+            .kernel
+            .session
+            .fragment_output(&mut driver.control)
+            .unwrap();
+        state
+            .before
+            .kernel
+            .session
+            .prepare_native_associations(&mut driver.control, request.source())
+            .unwrap();
+        {
+            let mut rows = state
+                .before
+                .kernel
+                .session
+                .native_associations(&mut driver.control)
+                .unwrap();
+            let mut found_root = false;
+            let mut found_output = false;
+            let mut cursor = 0;
+            loop {
+                let is_root = rows.node_for(cursor, &root).unwrap();
+                let is_output = rows.node_for(cursor, &output).unwrap();
+                let Some((row, cause)) = rows.row(cursor).unwrap() else {
+                    break;
+                };
+                if is_root || is_output {
+                    assert!(row.source.is_none());
+                    assert_eq!(cause.operation, ConstructionOperation::Captured);
+                    assert!(cause.source.is_none());
+                    let captured = cause.captured.as_ref().unwrap();
+                    assert_eq!(captured.role, CapturedCauseRole::FragmentBootstrap);
+                    assert_eq!(&captured.capture, request.context().capture().identity());
+                    assert_eq!(
+                        &captured.target_document,
+                        request.context().target_document()
+                    );
+                    assert_eq!(&captured.context, request.context().context_element());
+                    if is_root {
+                        found_root = true;
+                    } else {
+                        found_output = true;
+                    }
+                }
+                cursor += 1;
+            }
+            assert!(found_root && found_output);
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
+    fn copied_captured_namespace_does_not_replace_actual_lexical_node_trigger() {
+        use crate::construction::parser_session::StringLocation;
+        use crate::construction::parser_session::provenance::{
+            CapturedCauseRole, ConstructionOperation, NativeDestination,
+        };
+        let request = namespace_request("<x></x>", Namespace::from_uri("urn:actual:context"));
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let x = {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            view.child_at(&root, 0).unwrap().unwrap()
+        };
+        let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+        state
+            .before
+            .kernel
+            .session
+            .prepare_native_associations(&mut driver.control, request.source())
+            .unwrap();
+        let mut node_trigger = None;
+        let mut captured_namespace = false;
+        {
+            let mut rows = state
+                .before
+                .kernel
+                .session
+                .native_associations(&mut driver.control)
+                .unwrap();
+            for cursor in 0..rows.len() {
+                let is_x = rows.node_for(cursor, &x).unwrap();
+                let (row, cause) = rows.row(cursor).unwrap().unwrap();
+                if is_x {
+                    node_trigger = Some((
+                        cause.operation,
+                        cause.source.as_ref().map(|range| {
+                            (
+                                range.source() == request.source().identity(),
+                                range.start(),
+                                range.end(),
+                            )
+                        }),
+                    ));
+                }
+                if matches!(
+                    row.destination,
+                    NativeDestination::Field(StringLocation::Namespace(_))
+                ) && cause
+                    .captured
+                    .as_ref()
+                    .is_some_and(|captured| captured.role == CapturedCauseRole::ContextNamespace)
+                {
+                    captured_namespace = row.source.is_none()
+                        && cause.source.is_none()
+                        && cause.captured.as_ref().unwrap().capture
+                            == *request.context().capture().identity()
+                        && row.start == 0
+                        && row.end == "urn:actual:context".len();
+                }
+            }
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert!(captured_namespace);
+        assert_eq!(
+            node_trigger,
+            Some((ConstructionOperation::Token, Some((true, 0, 3))))
+        );
+    }
+
+    #[test]
+    fn frozen_fragment_parts_keep_actual_f_capture_and_source_after_execution_reclamation() {
+        let request = request("<p>A&amp;B</p>", "div", HtmlScriptingStatus::Disabled);
+        let mut input = Some(ContextFragmentDriver::new(&request).unwrap());
+        complete(input.as_mut().unwrap());
+        let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+        assert!(input.is_none());
+        completed.prepare_native_associations().unwrap();
+        let mut parts = completed.freeze_parts().unwrap();
+        assert!(completed.driver.is_none());
+        assert!(completed.frozen.is_none());
+        assert_eq!(parts.source_binding().0, request.source().identity());
+        assert_eq!(parts.source_binding().1, request.source().coordinates());
+        assert_eq!(parts.source_binding().2, request.source().len());
+        assert_eq!(
+            parts.context().unwrap().context_element(),
+            request.context().context_element()
+        );
+        assert!(parts.final_usage().work(WorkCategory::RecordVisit) > 0);
+        assert_eq!(parts.diagnostics().unwrap().len(), 0);
+        {
+            let fragment = parts.fragment().unwrap();
+            let p = fragment.root().children().next().unwrap();
+            let crate::HtmlNodeKind::Element(element) = fragment.node(&p).unwrap().kind() else {
+                panic!()
+            };
+            assert_eq!(element.name().local_name().code_units(), &[112]);
+            let text = fragment.node(&p).unwrap().children().next().unwrap();
+            let crate::HtmlNodeKind::Text(value) = fragment.node(&text).unwrap().kind() else {
+                panic!()
+            };
+            assert_eq!(value.code_units(), &[65, 38, 66]);
+        }
+        let alias = parts.fragment().unwrap().clone();
+        assert!(parts.release().is_err());
+        assert!(parts.arena.is_some());
+        drop(alias);
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+
+    #[test]
+    fn frozen_fragment_retains_completed_captured_shadow_effect_and_second_template_fallback() {
+        let request = shadow_request(
+            "<template shadowrootmode=closed><p>A</p></template><template id=second>B</template>Z",
+            true,
+        );
+        let mut input = Some(ContextFragmentDriver::new(&request).unwrap());
+        complete(input.as_mut().unwrap());
+        let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+        let mut parts = completed.freeze_parts().unwrap();
+        {
+            let arena = parts.arena.as_ref().unwrap();
+            let effect = arena
+                .declarative_shadow(&mut parts.control, 0)
+                .unwrap()
+                .unwrap();
+            let crate::construction::parser_session::context::QualifiedFragmentHost::Captured(host) =
+                &effect.host
+            else {
+                panic!()
+            };
+            assert_eq!(host, request.context().context_element());
+            assert_eq!(effect.source.source(), request.source().identity());
+            assert_eq!(
+                (effect.source.start(), effect.source.end()),
+                (0, "<template shadowrootmode=closed>".len())
+            );
+            assert_eq!(effect.properties.mode(), HtmlShadowRootMode::Closed);
+            assert!(effect.declarative && effect.available_to_internals);
+            assert!(
+                arena
+                    .declarative_shadow(&mut parts.control, 1)
+                    .unwrap()
+                    .is_none()
+            );
+            let fragment = arena.fragment().unwrap();
+            assert_ne!(effect.contents, fragment.root().id());
+            let p = fragment
+                .node(&effect.contents)
+                .unwrap()
+                .children()
+                .next()
+                .unwrap();
+            let text = fragment.node(&p).unwrap().children().next().unwrap();
+            let crate::HtmlNodeKind::Text(value) = fragment.node(&text).unwrap().kind() else {
+                panic!()
+            };
+            assert_eq!(value.code_units(), &[65]);
+            let ordinary: Vec<_> = fragment.root().children().collect();
+            assert_eq!(ordinary.len(), 2);
+            assert_ne!(ordinary[0], effect.template);
+            let crate::HtmlNodeKind::Element(element) = fragment.node(&ordinary[0]).unwrap().kind()
+            else {
+                panic!()
+            };
+            assert_eq!(
+                element.name().local_name().code_units(),
+                &"template".encode_utf16().collect::<Vec<_>>()
+            );
+            let crate::HtmlNodeKind::Text(value) = fragment.node(&ordinary[1]).unwrap().kind()
+            else {
+                panic!()
+            };
+            assert_eq!(value.code_units(), &[90]);
+        }
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+
+    #[test]
+    fn fragment_freeze_work_cuts_keep_active_or_frozen_owner_until_same_issuer_failure_cleanup() {
+        let request = request(
+            "<!doctype html><p>A</p>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut extent = None;
+        let mut credit = None;
+        let mut stopped_after_arena_transfer = false;
+        loop {
+            let mut input = Some(ContextFragmentDriver::new(&request).unwrap());
+            complete(input.as_mut().unwrap());
+            let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+            let driver = completed.driver.as_mut().unwrap();
+            let before = driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
+            if let Some(credit) = credit {
+                let remaining = request.limits().work_credits() - before;
+                driver
+                    .control
+                    .charge(WorkCategory::StateStep, remaining - credit)
+                    .unwrap();
+            }
+            match completed.freeze_parts() {
+                Ok(mut parts) => {
+                    if extent.is_none() {
+                        let work = parts
+                            .control
+                            .usage()
+                            .resource(HtmlParseResource::WorkCredits)
+                            .current
+                            - before;
+                        assert!(work < 100_000, "finite coverage extent");
+                        extent = Some(work);
+                    }
+                    assert_eq!(
+                        parts
+                            .arena
+                            .as_ref()
+                            .unwrap()
+                            .fragment()
+                            .unwrap()
+                            .root()
+                            .children()
+                            .count(),
+                        1
+                    );
+                    if parts.control.stop().is_none() {
+                        // Successful cuts can leave zero active cleanup credits.
+                        if parts.release().is_err() {
+                            parts.release().unwrap();
+                        }
+                    } else {
+                        parts.release().unwrap();
+                    }
+                    super::super::tests::assert_released(&parts.control);
+                }
+                Err(_) => {
+                    let first = completed.driver.as_ref().unwrap().control.stop().unwrap();
+                    assert!(matches!(
+                        first,
+                        ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }
+                    ));
+                    stopped_after_arena_transfer |= completed.frozen.is_some();
+                    assert!(completed.driver.is_some());
+                    assert!(completed.freeze_parts().is_err());
+                    assert_eq!(
+                        completed.driver.as_ref().unwrap().control.stop(),
+                        Some(first)
+                    );
+                    let mut failed = completed.take_failed().unwrap();
+                    assert_eq!(failed.stop(), first);
+                    assert_eq!(failed.diagnostics().unwrap().len(), 1);
+                    failed.release().unwrap();
+                    super::super::tests::assert_released(&failed.control);
+                }
+            }
+            credit = Some(match credit {
+                None => 0,
+                Some(value) => value + 32,
+            });
+            if credit.unwrap() > extent.unwrap() {
+                break;
+            }
+        }
+        assert!(
+            stopped_after_arena_transfer,
+            "real reclaimed-execution tail was interrupted"
+        );
+    }
+
+    #[test]
+    fn cancelled_frozen_fragment_partition_drops_native_effects_but_retains_committed_diagnostics()
+    {
+        let request = request(
+            "<!doctype html><p>A</p>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut input = Some(ContextFragmentDriver::new(&request).unwrap());
+        complete(input.as_mut().unwrap());
+        let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+        let mut parts = completed.freeze_parts().unwrap();
+        request.cancellation().cancel();
+        assert!(parts.fragment().is_err());
+        let first = parts.control.stop().unwrap();
+        parts.cleanup_failure().unwrap();
+        assert!(parts.arena.is_none());
+        assert_eq!(parts.diagnostics().unwrap().len(), 1);
+        assert_eq!(parts.control.stop(), Some(first));
+        assert!(parts.after_cleanup.is_some());
+        assert!(parts.fragment().is_err());
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+
+    #[test]
+    fn completed_fragment_failure_extraction_preserves_cancelled_freeze_owner_and_diagnostics() {
+        let request = request(
+            "<!doctype html><p>A</p>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut input = Some(ContextFragmentDriver::new(&request).unwrap());
+        complete(input.as_mut().unwrap());
+        let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+        request.cancellation().cancel();
+        assert!(completed.freeze_parts().is_err());
+        assert!(completed.driver.is_some());
+        let first = completed.driver.as_ref().unwrap().control.stop().unwrap();
+        let mut failure = completed.take_failed().unwrap();
+        assert!(completed.driver.is_none());
+        assert!(completed.frozen.is_none());
+        assert_eq!(failure.stop(), first);
+        assert_eq!(failure.diagnostics().unwrap().len(), 1);
+        failure.release().unwrap();
+        super::super::tests::assert_released(&failure.control);
+    }
+
+    #[test]
+    fn failed_fragment_partition_keeps_original_stop_and_only_committed_diagnostics() {
+        let request = request(
+            "<!doctype html><p>A</p>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut input = Some(ContextFragmentDriver::new(&request).unwrap());
+        loop {
+            let driver = input.as_mut().unwrap();
+            driver.step().unwrap();
+            let evidence = driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .before
+                .kernel
+                .session
+                .retained_evidence()
+                .unwrap();
+            if evidence.diagnostics().len() != 0 {
+                break;
+            }
+        }
+        request.cancellation().cancel();
+        assert!(input.as_mut().unwrap().step().is_err());
+        let first = input.as_ref().unwrap().control.stop().unwrap();
+        let mut failure = ContextFragmentDriver::take_failed(&mut input).unwrap();
+        assert!(input.is_none());
+        assert_eq!(failure.stop(), first);
+        assert_eq!(failure.source().identity(), request.source().identity());
+        assert_eq!(
+            failure.context().context_element(),
+            request.context().context_element()
+        );
+        assert!(failure.at_stop().work(WorkCategory::RecordVisit) > 0);
+        assert!(
+            failure.after_cleanup().work(WorkCategory::RecordVisit)
+                >= failure.at_stop().work(WorkCategory::RecordVisit)
+        );
+        assert_eq!(failure.diagnostics().unwrap().len(), 1);
+        failure.release().unwrap();
+        assert_eq!(failure.control.stop(), Some(first));
+        super::super::tests::assert_released(&failure.control);
+    }
+
+    #[test]
+    fn completed_fragment_moves_only_after_true_return_and_borrows_actual_fragment_evidence() {
+        let request = request("<p>A</p>", "div", HtmlScriptingStatus::Disabled);
+        let mut input = Some(ContextFragmentDriver::new(&request).unwrap());
+        assert!(matches!(
+            ContextFragmentDriver::take_completed(&mut input),
+            Err(FragmentExecutionError::Head(
+                head::HeadError::IncompleteCompletion
+            ))
+        ));
+        assert!(input.is_some());
+        assert!(input.as_ref().unwrap().control.stop().is_none());
+        complete(input.as_mut().unwrap());
+        let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+        assert!(input.is_none());
+        assert_eq!(
+            completed.context().unwrap().context_element(),
+            request.context().context_element()
+        );
+        let evidence = completed.diagnostics().unwrap();
+        assert_eq!(evidence.len(), 0);
+        {
+            let (fragment, mut view) = completed.native_view().unwrap();
+            assert!(matches!(
+                view.kind(&fragment).unwrap(),
+                NativeKind::Fragment
+            ));
+            assert_eq!(view.child_count(&fragment).unwrap(), 1);
+            let parser = view.root().unwrap();
+            assert!(!view.same_node(&parser, &fragment).unwrap());
+        }
+        completed.release().unwrap();
+        assert!(completed.driver.is_none());
+        assert!(matches!(
+            completed.native_view(),
+            Err(FragmentExecutionError::Consumed)
+        ));
+    }
+
+    #[test]
+    fn real_div_fragment_returns_only_parsed_children_and_inherits_parser_document_mode() {
+        let request = request(
+            "<p>A&amp;B</p><p>Z</p>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            assert!(matches!(view.kind(&root).unwrap(), NativeKind::Fragment));
+            assert_eq!(view.child_count(&root).unwrap(), 2);
+            let first = view.child_at(&root, 0).unwrap().unwrap();
+            let second = view.child_at(&root, 1).unwrap().unwrap();
+            assert!(!view.same_node(&first, &second).unwrap());
+            let NativeKind::Element(name) = view.kind(&first).unwrap() else {
+                panic!("actual p")
+            };
+            assert_eq!(name.local.len(), 1);
+            assert_eq!(view.unit(&name.local, 0).unwrap(), Some(u16::from(b'p')));
+            let text = view.child_at(&first, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+                panic!("actual text")
+            };
+            let units: Vec<_> = (0..value.len())
+                .map(|i| view.unit(&value, i).unwrap().unwrap())
+                .collect();
+            assert_eq!(units, [65, 38, 66]);
+            let document = view.root().unwrap();
+            assert!(matches!(
+                view.kind(&document).unwrap(),
+                NativeKind::Document(HtmlDocumentMode::LimitedQuirks)
+            ));
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn real_table_context_selects_table_mode_without_context_wrapper_or_implied_table() {
+        let request = request(
+            "<tr><td>A</td><td>B</td></tr><p>Z</p>",
+            "table",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            assert_eq!(view.child_count(&root).unwrap(), 2);
+            let tbody = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&tbody).unwrap() else {
+                panic!("actual tbody")
+            };
+            let name: Vec<_> = (0..name.local.len())
+                .map(|i| view.unit(&name.local, i).unwrap().unwrap())
+                .collect();
+            assert_eq!(name, "tbody".encode_utf16().collect::<Vec<_>>());
+            let tr = view.child_at(&tbody, 0).unwrap().unwrap();
+            assert_eq!(view.child_count(&tr).unwrap(), 2);
+            let a = view.child_at(&tr, 0).unwrap().unwrap();
+            let b = view.child_at(&tr, 1).unwrap().unwrap();
+            assert!(!view.same_node(&a, &b).unwrap());
+            assert_eq!(view.child_count(&a).unwrap(), 1);
+            assert_eq!(view.child_count(&b).unwrap(), 1);
+            let p = view.child_at(&root, 1).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&p).unwrap() else {
+                panic!("actual p")
+            };
+            assert_eq!(name.local.len(), 1);
+            assert_eq!(view.unit(&name.local, 0).unwrap(), Some(112));
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn textarea_context_rcdata_has_no_fabricated_appropriate_end_tag_or_first_lf_rule() {
+        let request = request(
+            "\nA&amp;B</textarea>Z",
+            "textarea",
+            HtmlScriptingStatus::Enabled,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            assert_eq!(view.child_count(&root).unwrap(), 1);
+            let text = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+                panic!("real text")
+            };
+            let units: Vec<_> = (0..value.len())
+                .map(|i| view.unit(&value, i).unwrap().unwrap())
+                .collect();
+            assert_eq!(
+                units,
+                "\nA&B</textarea>Z".encode_utf16().collect::<Vec<_>>()
+            );
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn context_tokenizer_initialization_uses_actual_mode_without_invented_end_tag() {
+        for (context, scripting, source, expected) in [
+            (
+                "title",
+                HtmlScriptingStatus::Enabled,
+                "A&amp;B</title>Z",
+                "A&B</title>Z",
+            ),
+            (
+                "style",
+                HtmlScriptingStatus::Enabled,
+                "A&amp;B</style>Z",
+                "A&amp;B</style>Z",
+            ),
+            (
+                "script",
+                HtmlScriptingStatus::Enabled,
+                "A&amp;B</script>Z",
+                "A&amp;B</script>Z",
+            ),
+            (
+                "plaintext",
+                HtmlScriptingStatus::Disabled,
+                "A&amp;B<b>Z",
+                "A&amp;B<b>Z",
+            ),
+            (
+                "noscript",
+                HtmlScriptingStatus::Enabled,
+                "<b>A&amp;B</b>",
+                "<b>A&amp;B</b>",
+            ),
+        ] {
+            let request = request(source, context, scripting);
+            let mut driver = ContextFragmentDriver::new(&request).unwrap();
+            complete(&mut driver);
+            {
+                let (root, mut view) = driver.completed_native_view().unwrap();
+                assert_eq!(view.child_count(&root).unwrap(), 1);
+                let child = view.child_at(&root, 0).unwrap().unwrap();
+                let NativeKind::Text(value) = view.kind(&child).unwrap() else {
+                    panic!("context produces literal text, without a context wrapper")
+                };
+                let units: Vec<_> = (0..value.len())
+                    .map(|i| view.unit(&value, i).unwrap().unwrap())
+                    .collect();
+                assert_eq!(
+                    units,
+                    expected.encode_utf16().collect::<Vec<_>>(),
+                    "{context}"
+                );
+            }
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+        let request = request("<b>A&amp;B</b>", "noscript", HtmlScriptingStatus::Disabled);
+        assert_eq!(
+            request.requested_scripting_mode(),
+            HtmlParserScriptingMode::Inert
+        );
+        assert_eq!(
+            request.effective_scripting_mode(),
+            HtmlParserScriptingMode::Disabled
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            assert_eq!(view.child_count(&root).unwrap(), 1);
+            let child = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&child).unwrap() else {
+                panic!("disabled noscript uses actual Data, not Inert rawtext")
+            };
+            assert_eq!(name.local.len(), 1);
+            assert_eq!(view.unit(&name.local, 0).unwrap(), Some(98));
+            let text = view.child_at(&child, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+                panic!("literal A&B")
+            };
+            assert_eq!(
+                (0..value.len())
+                    .map(|i| view.unit(&value, i).unwrap().unwrap())
+                    .collect::<Vec<_>>(),
+                [65, 38, 66]
+            );
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn real_utf16_rcdata_context_preserves_isolates_entity_cr_and_literal_end_like_units() {
+        let seed = request("", "textarea", HtmlScriptingStatus::Enabled);
+        let mut source = vec![65, 0xd83d, 0xde00, 0xd800, 13, 10];
+        source.extend("&#13;\0</textarea>Z".encode_utf16());
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf16(DocumentString::from_utf16(source)),
+            seed.context().clone(),
+            super::super::tests::limits(100),
+        )
+        .unwrap();
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            assert_eq!(view.child_count(&root).unwrap(), 1);
+            let child = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&child).unwrap() else {
+                panic!("actual RCDATA")
+            };
+            let mut expected = vec![65, 0xd83d, 0xde00, 0xd800, 10, 13, 0xfffd];
+            expected.extend("</textarea>Z".encode_utf16());
+            assert_eq!(units(&mut view, &value), expected);
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn inert_fragment_scripts_retain_parser_document_and_started_state_without_disabled_preparation()
+     {
+        let request = request("<script>A</script>", "div", HtmlScriptingStatus::Enabled);
+        assert_eq!(
+            request.effective_scripting_mode(),
+            HtmlParserScriptingMode::Inert
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        let root = state
+            .before
+            .kernel
+            .session
+            .fragment_output(&mut driver.control)
+            .unwrap();
+        let script = {
+            let mut view = state
+                .before
+                .kernel
+                .session
+                .native_view(&mut driver.control)
+                .unwrap();
+            view.child_at(&root, 0).unwrap().unwrap()
+        };
+        let metadata = state
+            .before
+            .kernel
+            .session
+            .script_metadata(&mut driver.control, &script)
+            .unwrap();
+        assert!(metadata.already_started);
+        assert!(!metadata.force_async);
+        assert_eq!(metadata.script_type, None);
+        assert!(
+            state
+                .before
+                .kernel
+                .session
+                .script_preparation_document(&mut driver.control, &script)
+                .unwrap()
+                .is_none()
+        );
+        let document = state
+            .before
+            .kernel
+            .session
+            .script_parser_document(&mut driver.control, &script)
+            .unwrap()
+            .unwrap();
+        let parser = state
+            .before
+            .kernel
+            .session
+            .root(&mut driver.control)
+            .unwrap();
+        assert!(
+            state
+                .before
+                .kernel
+                .session
+                .same_node(&mut driver.control, &document, &parser)
+                .unwrap()
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    fn template_request(source: &str, known: bool) -> HtmlFragmentParseRequest {
+        let mut capture = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = capture
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Enabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        if known {
+            capture
+                .establish_document_template_facts(
+                    &document,
+                    HtmlDocumentClass::Html,
+                    HtmlTemplateDocumentRole::Ordinary,
+                    HtmlCaptureTemplateCacheInput::Absent,
+                )
+                .unwrap();
+        }
+        let context = capture
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        capture.establish_root(&context).unwrap();
+        let capture = capture.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        HtmlFragmentParseRequest::new(
+            HtmlSource::utf8(source),
+            context,
+            super::super::tests::limits(100),
+        )
+        .unwrap()
+    }
+    #[test]
+    fn real_template_fragment_keeps_hosted_contents_and_captured_target_document_distinct() {
+        let request = template_request(
+            "<template id=t><tr><td>A</td><td>B</td></tr></template><p>Z</p>",
+            true,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let c = &mut driver.control;
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        let session = &state.before.kernel.session;
+        let output = session.fragment_output(c).unwrap();
+        let mut view = session.native_view(c).unwrap();
+        assert_eq!(view.child_count(&output).unwrap(), 2);
+        let element = view.child_at(&output, 0).unwrap().unwrap();
+        assert_eq!(view.child_count(&element).unwrap(), 0);
+
+        let contents = session
+            .unpatched_template_contents(c, &element)
+            .unwrap()
+            .unwrap();
+        let target = session.qualified_node_document(c, &element).unwrap();
+        let crate::construction::parser_session::ParserDocumentReference::Captured(target) = target
+        else {
+            panic!("actual captured target")
+        };
+        assert_eq!(&target, request.context().target_document());
+        let crate::construction::parser_session::ParserDocumentReference::Owned(inert) =
+            session.qualified_node_document(c, &contents).unwrap()
+        else {
+            panic!("actual local inert owner")
+        };
+        let mut view = session.native_view(c).unwrap();
+        assert!(matches!(
+            view.kind(&inert).unwrap(),
+            NativeKind::Document(HtmlDocumentMode::NoQuirks)
+        ));
+        assert!(matches!(
+            view.kind(&contents).unwrap(),
+            NativeKind::Fragment
+        ));
+        let row = view.child_at(&contents, 0).unwrap().unwrap();
+        assert_eq!(view.child_count(&row).unwrap(), 2);
+        let a = view.child_at(&row, 0).unwrap().unwrap();
+        let b = view.child_at(&row, 1).unwrap().unwrap();
+        assert!(!view.same_node(&a, &b).unwrap());
+
+        drop(target);
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn unavailable_template_document_facts_are_conditional_and_latch_first_stop() {
+        let request = template_request("<template>A</template>", false);
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        let error = loop {
+            match driver.step() {
+                Ok(HeadStep::Consumed) => {}
+                Err(error) => break error,
+                Ok(other) => panic!("unexpected completion {other:?}"),
+            }
+        };
+        assert!(
+            matches!(
+                error,
+                FragmentExecutionError::Head(head::HeadError::Kernel(KernelError::Session(
+                    SessionError::ContextFactUnavailable(HtmlCaptureFact::TemplateDocumentRole)
+                )))
+            ),
+            "{error:?}"
+        );
+        let first = driver.control.stop().unwrap();
+        assert!(driver.step().is_err());
+        assert_eq!(driver.control.stop(), Some(first));
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    fn shadow_request(source: &str, allow: bool) -> HtmlFragmentParseRequest {
+        shadow_request_with_presence(source, allow, true)
+    }
+    fn shadow_request_with_presence(
+        source: &str,
+        allow: bool,
+        known_absent: bool,
+    ) -> HtmlFragmentParseRequest {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        if known_absent {
+            builder.establish_no_shadow_root(&context).unwrap();
+        }
+        let capture = builder.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(source),
+            context,
+            super::super::tests::limits(100),
+            HtmlParserScriptingMode::Inert,
+            allow,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn captured_shadow_attachment_retains_actual_root_and_second_template_uses_planned_presence() {
+        let request = shadow_request(
+            "<template shadowrootmode=closed shadowrootdelegatesfocus shadowrootserializable shadowrootclonable shadowrootslotassignment=manual shadowrootcustomelementregistry><p>A</p></template><template shadowrootmode=open><p>B</p></template><p>Z</p>",
+            true,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let session = &driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        let output = session.fragment_output(&mut driver.control).unwrap();
+        let effect = session
+            .declarative_shadow(&mut driver.control, 0)
+            .unwrap()
+            .unwrap();
+        let crate::construction::parser_session::context::QualifiedFragmentHost::Captured(host) =
+            &effect.host
+        else {
+            panic!("actual retained captured host")
+        };
+        assert_eq!(host, request.context().context_element());
+        assert_eq!(effect.properties.mode(), HtmlShadowRootMode::Closed);
+        assert_eq!(
+            effect.properties.slot_assignment(),
+            HtmlSlotAssignment::Manual
+        );
+        assert!(
+            effect.properties.delegates_focus()
+                && effect.properties.serializable()
+                && effect.properties.clonable()
+        );
+        assert!(effect.keep_registry_null && effect.declarative && effect.available_to_internals);
+        assert_eq!(effect.registry, HtmlCapturedRegistry::Null);
+        assert_eq!(effect.source.start(), 0);
+        assert!(
+            session
+                .declarative_shadow(&mut driver.control, 1)
+                .unwrap()
+                .is_none()
+        );
+        let shadow = session
+            .template_state(&mut driver.control, &effect.template)
+            .unwrap()
+            .contents;
+        let mut view = session.native_view(&mut driver.control).unwrap();
+        assert!(view.same_node(&shadow, &effect.contents).unwrap());
+        let Some(crate::construction::parser_session::native_view::NativeFragmentOwner::CapturedShadowHost(actual))=
+            view.fragment_owner(&effect.contents).unwrap() else {panic!("actual retained capture host")};
+        assert_eq!(&actual, request.context().context_element());
+        drop(actual);
+        assert_eq!(view.child_count(&output).unwrap(), 2);
+        let fallback = view.child_at(&output, 0).unwrap().unwrap();
+        assert!(!view.same_node(&fallback, &effect.template).unwrap());
+        assert_eq!(view.child_count(&fallback).unwrap(), 0);
+        let p = view.child_at(&effect.contents, 0).unwrap().unwrap();
+        let text = view.child_at(&p, 0).unwrap().unwrap();
+        let NativeKind::Text(text) = view.kind(&text).unwrap() else {
+            panic!("literal A")
+        };
+        assert_eq!(view.unit(&text, 0).unwrap(), Some(65));
+        drop(effect);
+        let fallback_contents = session
+            .template_state(&mut driver.control, &fallback)
+            .unwrap()
+            .contents;
+        let mut view = session.native_view(&mut driver.control).unwrap();
+        let p = view.child_at(&fallback_contents, 0).unwrap().unwrap();
+        let text = view.child_at(&p, 0).unwrap().unwrap();
+        let NativeKind::Text(text) = view.kind(&text).unwrap() else {
+            panic!("literal B")
+        };
+        assert_eq!(view.unit(&text, 0).unwrap(), Some(66));
+
+        let node = request
+            .context()
+            .capture()
+            .node(request.context().context_element().subject())
+            .unwrap();
+        assert_eq!(node.shadow_root(), Some(HtmlCapturedShadowRoot::Absent));
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn shadow_presence_is_required_only_after_permission_mode_and_host_eligibility() {
+        for (source, allow) in [
+            ("<template shadowrootmode=open><p>A</p></template>", false),
+            ("<template shadowrootmode=bogus><p>A</p></template>", true),
+        ] {
+            let request = shadow_request_with_presence(source, allow, false);
+            let mut driver = ContextFragmentDriver::new(&request).unwrap();
+            complete(&mut driver);
+            let session = &driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .before
+                .kernel
+                .session;
+            assert!(
+                session
+                    .declarative_shadow(&mut driver.control, 0)
+                    .unwrap()
+                    .is_none()
+            );
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            let template = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&template).unwrap() else {
+                panic!("fallback actual E")
+            };
+            assert_eq!(name.local.len(), 8);
+            assert_eq!(view.child_count(&template).unwrap(), 0);
+
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+        let request = shadow_request_with_presence(
+            "<template shadowrootmode=open><p>A</p></template>",
+            true,
+            false,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        let error = loop {
+            if let Err(error) = driver.step() {
+                break error;
+            }
+        };
+        assert!(matches!(
+            error,
+            FragmentExecutionError::Head(head::HeadError::Kernel(KernelError::Session(
+                SessionError::ContextFactUnavailable(HtmlCaptureFact::ShadowRoot)
+            )))
+        ));
+        let first = driver.control.stop().unwrap();
+        assert_eq!(
+            first,
+            ParseStop::UnsupportedStandaloneState(
+                crate::parser::control::StandaloneUnsupported::Provenance
+            )
+        );
+        assert!(driver.completed_native_view().is_err());
+        assert_eq!(driver.control.stop(), Some(first));
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
+    fn shadow_context_effect_exact_and_one_short_preserve_cleanup() {
+        // E is created for pre-redirect P, whose inert cache is actual owned
+        // Document metadata. Only the captured-host attachment is a retained
+        // ContextEffects slot; no captured target cache is consulted here.
+        for cap in [0, 1] {
+            let base = shadow_request("<template shadowrootmode=open><p>A</p></template>", true);
+            let limits = base
+                .limits()
+                .into_builder()
+                .context_effects(cap)
+                .finish()
+                .unwrap();
+            let request = HtmlFragmentParseRequest::with_options(
+                base.source().clone(),
+                base.context().clone(),
+                limits,
+                HtmlParserScriptingMode::Inert,
+                true,
+            )
+            .unwrap();
+            let mut driver = ContextFragmentDriver::new(&request).unwrap();
+            let result = loop {
+                match driver.step() {
+                    Ok(HeadStep::Complete) => break Ok(()),
+                    Ok(_) => {}
+                    Err(error) => break Err(error),
+                }
+            };
+            if cap == 1 {
+                result.unwrap();
+                assert_eq!(
+                    driver
+                        .control
+                        .usage()
+                        .resource(HtmlParseResource::ContextEffects)
+                        .current,
+                    1
+                );
+                let session = &driver
+                    .head
+                    .as_ref()
+                    .unwrap()
+                    .state
+                    .as_ref()
+                    .unwrap()
+                    .before
+                    .kernel
+                    .session;
+                assert!(
+                    session
+                        .declarative_shadow(&mut driver.control, 0)
+                        .unwrap()
+                        .is_some()
+                );
+            } else {
+                assert!(result.is_err());
+                let first = driver.control.stop().unwrap();
+                assert!(matches!(
+                    first,
+                    ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::ContextEffects,
+                        ..
+                    }
+                ));
+                assert_eq!(
+                    driver
+                        .control
+                        .usage()
+                        .resource(HtmlParseResource::ContextEffects)
+                        .current,
+                    0
+                );
+                assert!(driver.completed_native_view().is_err());
+                assert_eq!(driver.control.stop(), Some(first));
+            }
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+    }
+
+    #[test]
+    fn selectedcontent_clones_local_clonable_shadow_after_light_children() {
+        let request = shadow_request(
+            "<select><button><selectedcontent></selectedcontent></button><option selected><div><template shadowrootmode=closed shadowrootclonable shadowrootcustomelementregistry><i>S</i></template><b>L</b></div></option></select>",
+            true,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let (root, mut view) = driver.completed_native_view().unwrap();
+        let select = view.child_at(&root, 0).unwrap().unwrap();
+        let button = view.child_at(&select, 0).unwrap().unwrap();
+        let selected = view.child_at(&button, 0).unwrap().unwrap();
+        let option = view.child_at(&select, 1).unwrap().unwrap();
+        let original = view.child_at(&option, 0).unwrap().unwrap();
+        let copy = view.child_at(&selected, 0).unwrap().unwrap();
+        assert!(!view.same_node(&original, &copy).unwrap());
+        assert_eq!(view.child_count(&original).unwrap(), 1);
+        assert_eq!(view.child_count(&copy).unwrap(), 1);
+        let original_light = view.child_at(&original, 0).unwrap().unwrap();
+        let copied_light = view.child_at(&copy, 0).unwrap().unwrap();
+        assert!(!view.same_node(&original_light, &copied_light).unwrap());
+        let shadow = view.shadow(&original).unwrap().unwrap();
+        let cloned = view.shadow(&copy).unwrap().unwrap();
+        assert!(!view.same_node(&shadow.contents, &cloned.contents).unwrap());
+        assert_eq!(cloned.properties.mode(), HtmlShadowRootMode::Closed);
+        assert!(cloned.properties.clonable());
+        assert_eq!(cloned.declarative, Some(true));
+        assert_eq!(cloned.keep_registry_null, Some(true));
+        assert_eq!(shadow.available_to_internals, Some(true));
+        assert_eq!(cloned.available_to_internals, Some(false));
+        let original_i = view.child_at(&shadow.contents, 0).unwrap().unwrap();
+        let copied_i = view.child_at(&cloned.contents, 0).unwrap().unwrap();
+        assert!(!view.same_node(&original_i, &copied_i).unwrap());
+        for (node, name, text) in [(&copied_light, "b", 76), (&copied_i, "i", 83)] {
+            let NativeKind::Element(actual) = view.kind(node).unwrap() else {
+                panic!("literal cloned element")
+            };
+            assert_eq!(actual.local.len(), 1);
+            assert_eq!(
+                view.unit(&actual.local, 0).unwrap(),
+                Some(u16::from(name.as_bytes()[0]))
+            );
+            let child = view.child_at(node, 0).unwrap().unwrap();
+            let NativeKind::Text(actual) = view.kind(&child).unwrap() else {
+                panic!("literal cloned text")
+            };
+            assert_eq!(actual.len(), 1);
+            assert_eq!(view.unit(&actual, 0).unwrap(), Some(text));
+        }
+        drop(shadow);
+        drop(cloned);
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
+    fn local_shadow_host_keeps_light_children_and_qualified_root_separate() {
+        let request = shadow_request(
+            "<div id=h><template shadowrootmode=open shadowrootclonable><span>S</span></template><b>L</b><template shadowrootmode=closed><i>F</i></template></div>",
+            true,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let session = &driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        let output = session.fragment_output(&mut driver.control).unwrap();
+        let effect = session
+            .declarative_shadow(&mut driver.control, 0)
+            .unwrap()
+            .unwrap();
+        let crate::construction::parser_session::context::QualifiedFragmentHost::Owned(host) =
+            &effect.host
+        else {
+            panic!("actual newly constructed host")
+        };
+        let mut view = session.native_view(&mut driver.control).unwrap();
+        assert_eq!(view.child_count(&output).unwrap(), 1);
+        let div = view.child_at(&output, 0).unwrap().unwrap();
+        assert!(view.same_node(&div, host).unwrap());
+        let shadow = view.shadow(&div).unwrap().unwrap();
+        assert!(view.same_node(&shadow.host, &div).unwrap());
+        assert!(view.same_node(&shadow.contents, &effect.contents).unwrap());
+        assert_eq!(shadow.properties.mode(), HtmlShadowRootMode::Open);
+        assert!(shadow.properties.clonable());
+        let Some(
+            crate::construction::parser_session::native_view::NativeFragmentOwner::ShadowHost(
+                owner,
+            ),
+        ) = view.fragment_owner(&effect.contents).unwrap()
+        else {
+            panic!("actual shadow backlink")
+        };
+        assert!(view.same_node(&owner, &div).unwrap());
+        assert_eq!(view.child_count(&div).unwrap(), 2);
+        let light = view.child_at(&div, 0).unwrap().unwrap();
+        let fallback = view.child_at(&div, 1).unwrap().unwrap();
+        for (node, name) in [(&light, "b"), (&fallback, "template")] {
+            let NativeKind::Element(actual) = view.kind(node).unwrap() else {
+                panic!("literal light child")
+            };
+            assert_eq!(actual.local.len(), name.len());
+            for (i, expected) in name.bytes().enumerate() {
+                assert_eq!(
+                    view.unit(&actual.local, i).unwrap(),
+                    Some(u16::from(expected))
+                );
+            }
+        }
+        assert_eq!(view.child_count(&fallback).unwrap(), 0);
+        let span = view.child_at(&effect.contents, 0).unwrap().unwrap();
+        let text = view.child_at(&span, 0).unwrap().unwrap();
+        let NativeKind::Text(text) = view.kind(&text).unwrap() else {
+            panic!("shadow text")
+        };
+        assert_eq!(view.unit(&text, 0).unwrap(), Some(83));
+        drop(effect);
+        drop(shadow);
+        let fallback_contents = session
+            .template_state(&mut driver.control, &fallback)
+            .unwrap()
+            .contents;
+        let mut view = session.native_view(&mut driver.control).unwrap();
+        let i = view.child_at(&fallback_contents, 0).unwrap().unwrap();
+        let text = view.child_at(&i, 0).unwrap().unwrap();
+        let NativeKind::Text(text) = view.kind(&text).unwrap() else {
+            panic!("fallback text")
+        };
+        assert_eq!(view.unit(&text, 0).unwrap(), Some(70));
+
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
+    fn fragment_for_patching_uses_real_output_scope_after_root_redirect() {
+        let request = template_request(
+            "<?start name='x'?><p>old</p><?end?><span>K</span><template for=x><p>N</p></template><p>Z</p>",
+            true,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let (root, mut view) = driver.completed_native_view().unwrap();
+        assert_eq!(view.child_count(&root).unwrap(), 3);
+        for (ordinal, name, unit) in [(0, "p", 78), (1, "span", 75), (2, "p", 90)] {
+            let node = view.child_at(&root, ordinal).unwrap().unwrap();
+            let NativeKind::Element(actual) = view.kind(&node).unwrap() else {
+                panic!("literal element")
+            };
+            assert_eq!(actual.local.len(), name.len());
+            for (offset, expected) in name.bytes().enumerate() {
+                assert_eq!(
+                    view.unit(&actual.local, offset).unwrap(),
+                    Some(u16::from(expected))
+                );
+            }
+            let text = view.child_at(&node, 0).unwrap().unwrap();
+            let NativeKind::Text(text) = view.kind(&text).unwrap() else {
+                panic!("literal text")
+            };
+            assert_eq!(view.unit(&text, 0).unwrap(), Some(unit));
+        }
+
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    fn namespace_request(source: &str, namespace: Namespace) -> HtmlFragmentParseRequest {
+        let mut capture = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = capture
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let context = capture
+            .add_element(
+                &document,
+                QualifiedName::new(namespace, None, "context"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        capture.establish_root(&context).unwrap();
+        let capture = capture.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        HtmlFragmentParseRequest::new(
+            HtmlSource::utf8(source),
+            context,
+            super::super::tests::limits(100),
+        )
+        .unwrap()
+    }
+    fn units(
+        view: &mut crate::construction::parser_session::NativeView<'_>,
+        value: &crate::construction::parser_session::native_view::NativeString<'_>,
+    ) -> Vec<u16> {
+        (0..value.len())
+            .map(|i| view.unit(value, i).unwrap().unwrap())
+            .collect()
+    }
+    #[test]
+    fn captured_integration_points_use_actual_qualified_encoding_and_math_text_exceptions() {
+        for (namespace, local, attrs, source, expected) in [
+            (
+                Namespace::mathml(),
+                "mi",
+                OrderedAttributes::default(),
+                "<mglyph/><malignmark/><x>A</x>",
+                vec![
+                    ("mglyph", "http://www.w3.org/1998/Math/MathML"),
+                    ("malignmark", "http://www.w3.org/1998/Math/MathML"),
+                    ("x", "http://www.w3.org/1999/xhtml"),
+                ],
+            ),
+            (
+                Namespace::mathml(),
+                "annotation-xml",
+                OrderedAttributes::new([crate::Attribute::new(
+                    QualifiedName::new(Namespace::none(), None, "encoding"),
+                    "TeXt/HtMl",
+                )])
+                .unwrap(),
+                "<x>A</x>",
+                vec![("x", "http://www.w3.org/1999/xhtml")],
+            ),
+            (
+                Namespace::mathml(),
+                "annotation-xml",
+                OrderedAttributes::new([crate::Attribute::new(
+                    QualifiedName::new(Namespace::from_uri("urn:encoding"), None, "encoding"),
+                    "text/html",
+                )])
+                .unwrap(),
+                "<x>A</x>",
+                vec![("x", "http://www.w3.org/1998/Math/MathML")],
+            ),
+            (
+                Namespace::mathml(),
+                "annotation-xml",
+                OrderedAttributes::new([crate::Attribute::new(
+                    QualifiedName::new(Namespace::none(), None, "Encoding"),
+                    "text/html",
+                )])
+                .unwrap(),
+                "<x>A</x>",
+                vec![("x", "http://www.w3.org/1998/Math/MathML")],
+            ),
+            (
+                Namespace::svg(),
+                "foreignObject",
+                OrderedAttributes::default(),
+                "<x>A</x>",
+                vec![("x", "http://www.w3.org/1999/xhtml")],
+            ),
+            (
+                Namespace::svg(),
+                "desc",
+                OrderedAttributes::default(),
+                "<x>A</x>",
+                vec![("x", "http://www.w3.org/1999/xhtml")],
+            ),
+            (
+                Namespace::svg(),
+                "title",
+                OrderedAttributes::default(),
+                "<x>A</x>",
+                vec![("x", "http://www.w3.org/1999/xhtml")],
+            ),
+        ] {
+            let mut builder = HtmlCaptureBuilder::new(
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                HtmlHostFactsRevision::fresh(),
+            );
+            let document = builder
+                .add_document(
+                    HtmlDocumentMode::NoQuirks,
+                    HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            let context = builder
+                .add_element(
+                    &document,
+                    QualifiedName::new(namespace, None, local),
+                    attrs,
+                    HtmlCapturedIsValue::Absent,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder.establish_root(&context).unwrap();
+            let capture = builder.finish().unwrap();
+            let context =
+                HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap())
+                    .unwrap();
+            let request = HtmlFragmentParseRequest::new(
+                HtmlSource::utf8(source),
+                context,
+                super::super::tests::limits(100),
+            )
+            .unwrap();
+            let mut driver = ContextFragmentDriver::new(&request).unwrap();
+            complete(&mut driver);
+            {
+                let (root, mut view) = driver.completed_native_view().unwrap();
+                assert_eq!(view.child_count(&root).unwrap(), expected.len());
+                for (ordinal, (local, namespace)) in expected.iter().enumerate() {
+                    let child = view.child_at(&root, ordinal).unwrap().unwrap();
+                    let NativeKind::Element(name) = view.kind(&child).unwrap() else {
+                        panic!("actual source element")
+                    };
+                    assert_eq!(
+                        units(&mut view, &name.local),
+                        local.encode_utf16().collect::<Vec<_>>()
+                    );
+                    assert_eq!(
+                        units(&mut view, &name.namespace.unwrap()),
+                        namespace.encode_utf16().collect::<Vec<_>>()
+                    );
+                }
+            }
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+    }
+    #[test]
+    fn arbitrary_captured_namespace_is_copied_exactly_and_cdata_uses_adjusted_context() {
+        let request = namespace_request(
+            "<![CDATA[A<B]]><x xlink:href=u></x><p>Z</p>",
+            Namespace::from_uri("urn:actual:context"),
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            assert_eq!(view.child_count(&root).unwrap(), 3);
+            let text = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+                panic!("real CDATA")
+            };
+            assert_eq!(units(&mut view, &value), [65, 60, 66]);
+            let x = view.child_at(&root, 1).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&x).unwrap() else {
+                panic!("real foreign x")
+            };
+            assert_eq!(
+                units(&mut view, &name.namespace.unwrap()),
+                "urn:actual:context".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(units(&mut view, &name.local), [120]);
+            let attr = view.attribute_at(&x, 0).unwrap().unwrap();
+            assert_eq!(
+                units(&mut view, &attr.name.namespace.unwrap()),
+                "http://www.w3.org/1999/xlink"
+                    .encode_utf16()
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                units(&mut view, &attr.name.prefix.unwrap()),
+                "xlink".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                units(&mut view, &attr.name.local),
+                "href".encode_utf16().collect::<Vec<_>>()
+            );
+            let p = view.child_at(&root, 2).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&p).unwrap() else {
+                panic!("HTML breakout p")
+            };
+            assert_eq!(
+                units(&mut view, &name.namespace.unwrap()),
+                "http://www.w3.org/1999/xhtml"
+                    .encode_utf16()
+                    .collect::<Vec<_>>()
+            );
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn actual_absent_context_namespace_stays_absent_on_created_foreign_elements() {
+        let request = namespace_request("<X>A</X>", Namespace::none());
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            let x = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&x).unwrap() else {
+                panic!("real foreign x")
+            };
+            assert!(name.namespace.is_none());
+            assert_eq!(units(&mut view, &name.local), [120]);
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
+    fn captured_nearest_form_controls_parser_rows_without_fabricated_parser_association() {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let form = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "form"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&form).unwrap();
+        builder.establish_parent(&context, &form).unwrap();
+        let capture = builder.finish().unwrap();
+        let form = capture
+            .element_id(&capture.subject_id(&form).unwrap())
+            .unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        assert_eq!(context.nearest_form(), Some(&form));
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<form id=x><img id=a></form><form id=y><img id=b></form>"),
+            context,
+            super::super::tests::limits(100),
+        )
+        .unwrap();
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert!(state.current_form.is_none());
+        let session = &state.before.kernel.session;
+        let root = session.fragment_output(&mut driver.control).unwrap();
+        let mut view = session.native_view(&mut driver.control).unwrap();
+        assert_eq!(view.child_count(&root).unwrap(), 2);
+        let first = view.child_at(&root, 0).unwrap().unwrap();
+        let actual_form = view.child_at(&root, 1).unwrap().unwrap();
+        let second = view.child_at(&actual_form, 0).unwrap().unwrap();
+        for (node, name) in [(&first, "img"), (&actual_form, "form"), (&second, "img")] {
+            let NativeKind::Element(actual) = view.kind(node).unwrap() else {
+                panic!("literal element")
+            };
+            assert_eq!(
+                units(&mut view, &actual.local),
+                name.encode_utf16().collect::<Vec<_>>()
+            );
+        }
+
+        for (node, expected) in [(&first, None), (&second, Some(&actual_form))] {
+            let facts = session.image_form_state(&mut driver.control, node).unwrap();
+            assert!(!facts.parser_inserted);
+            assert_ne!(
+                facts.evidence,
+                crate::construction::parser_session::FormAssociationEvidence::ParserAssociated
+            );
+            let owner = session.image_form_owner(&mut driver.control, node).unwrap();
+            match (owner, expected) {
+                (None, None) => {}
+                (Some(owner), Some(expected)) => assert!(
+                    session
+                        .same_node(&mut driver.control, &owner, expected)
+                        .unwrap()
+                ),
+                _ => panic!("actual ordinary insertion association differs"),
+            }
+        }
+        let evidence = session.retained_evidence().unwrap();
+        assert_eq!(evidence.len(), 2);
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
+    fn svg_context_script_wrapper_preserves_disconnected_fragment_processing_and_namespace() {
+        let request = namespace_request("<script>A</script><g/>", Namespace::svg());
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let session = &driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        let root = session.fragment_output(&mut driver.control).unwrap();
+        let mut view = session.native_view(&mut driver.control).unwrap();
+        assert_eq!(view.child_count(&root).unwrap(), 2);
+        let script = view.child_at(&root, 0).unwrap().unwrap();
+        let g = view.child_at(&root, 1).unwrap().unwrap();
+        for (node, name) in [(&script, "script"), (&g, "g")] {
+            let NativeKind::Element(actual) = view.kind(node).unwrap() else {
+                panic!("literal SVG element")
+            };
+            assert_eq!(
+                units(&mut view, &actual.local),
+                name.encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                units(&mut view, actual.namespace.as_ref().unwrap()),
+                "http://www.w3.org/2000/svg"
+                    .encode_utf16()
+                    .collect::<Vec<_>>()
+            );
+        }
+        let text = view.child_at(&script, 0).unwrap().unwrap();
+        let NativeKind::Text(text) = view.kind(&text).unwrap() else {
+            panic!("script Text")
+        };
+        assert_eq!(units(&mut view, &text), [65]);
+
+        let facts = session
+            .svg_script_state(&mut driver.control, &script)
+            .unwrap();
+        assert!(!facts.processed);
+        assert_eq!(
+            facts.origin,
+            crate::construction::parser_session::SvgScriptOrigin::Parser
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
+    fn local_shadow_root_exact_node_cap_and_postattachment_cancellation_keep_real_owners() {
+        // P, internal root, F, div, target inert Document, E and its original
+        // contents consume seven nodes. The separately attached shadow root is
+        // the eighth; closing tokens create no further native record.
+        for cap in [7, 8] {
+            let base = shadow_request("<div><template shadowrootmode=open></template></div>", true);
+            let limits = base
+                .limits()
+                .into_builder()
+                .managed_nodes(cap)
+                .finish()
+                .unwrap();
+            let request = HtmlFragmentParseRequest::with_options(
+                base.source().clone(),
+                base.context().clone(),
+                limits,
+                HtmlParserScriptingMode::Inert,
+                true,
+            )
+            .unwrap();
+            let mut driver = ContextFragmentDriver::new(&request).unwrap();
+            let result = loop {
+                match driver.step() {
+                    Ok(HeadStep::Complete) => break Ok(()),
+                    Ok(_) => {}
+                    Err(error) => break Err(error),
+                }
+            };
+            assert_eq!(
+                driver
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::ManagedNodes)
+                    .current,
+                cap
+            );
+            if cap == 8 {
+                result.unwrap();
+                let session = &driver
+                    .head
+                    .as_ref()
+                    .unwrap()
+                    .state
+                    .as_ref()
+                    .unwrap()
+                    .before
+                    .kernel
+                    .session;
+                let effect = session
+                    .declarative_shadow(&mut driver.control, 0)
+                    .unwrap()
+                    .unwrap();
+                let crate::construction::parser_session::context::QualifiedFragmentHost::Owned(
+                    host,
+                ) = &effect.host
+                else {
+                    panic!("local native host")
+                };
+                let mut view = session.native_view(&mut driver.control).unwrap();
+                let shadow = view.shadow(host).unwrap().unwrap();
+                assert!(view.same_node(&effect.contents, &shadow.contents).unwrap());
+                assert_eq!(view.child_count(&effect.contents).unwrap(), 0);
+            } else {
+                assert!(result.is_err());
+                let first = driver.control.stop().unwrap();
+                assert!(matches!(
+                    first,
+                    ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::ManagedNodes,
+                        ..
+                    }
+                ));
+                assert!(driver.completed_native_view().is_err());
+                assert_eq!(driver.control.stop(), Some(first));
+            }
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+        let request = shadow_request("<div><template shadowrootmode=open></template></div>", true);
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        assert!(matches!(driver.step().unwrap(), HeadStep::Consumed));
+        assert!(matches!(driver.step().unwrap(), HeadStep::Consumed));
+        {
+            let session = &driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .before
+                .kernel
+                .session;
+            let effect = session
+                .declarative_shadow(&mut driver.control, 0)
+                .unwrap()
+                .unwrap();
+            let crate::construction::parser_session::context::QualifiedFragmentHost::Owned(host) =
+                &effect.host
+            else {
+                panic!("actual attachment before cancellation")
+            };
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            assert!(view.shadow(host).unwrap().is_some());
+        }
+        request.cancellation().cancel();
+        assert!(driver.step().is_err());
+        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        assert!(driver.completed_native_view().is_err());
+        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+    }
+
+    #[test]
+    fn ready_attachment_registry_follows_actual_shadow_host_adoption_from_inert_contents() {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let global = builder.add_registry(Some(Vec::new())).unwrap();
+        builder
+            .establish_registry_scope(&global, HtmlRegistryScope::Global)
+            .unwrap();
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Registry(global.clone()),
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Registry(global.clone()),
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let global = capture.registry_id(&global).unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let request = HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(
+                "<template><div><template shadowrootmode=open></template></div></template>",
+            ),
+            context,
+            super::super::tests::limits(100),
+            HtmlParserScriptingMode::Inert,
+            true,
+        )
+        .unwrap();
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+        let session = &mut state.before.kernel.session;
+        let output = session.fragment_output(&mut driver.control).unwrap();
+        let effect = session
+            .declarative_shadow(&mut driver.control, 0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(effect.registry, HtmlCapturedRegistry::Null);
+        assert!(!effect.keep_registry_null);
+        let crate::construction::parser_session::context::QualifiedFragmentHost::Owned(host) =
+            effect.host
+        else {
+            panic!("local host created in actual inert contents")
+        };
+        let shadow = effect.contents;
+        session
+            .insert(
+                &mut driver.control,
+                &output,
+                &host,
+                None,
+                Some(&state.script.as_ref().unwrap().capability),
+            )
+            .unwrap();
+        assert_eq!(
+            session
+                .lookup_registry(&mut driver.control, &shadow)
+                .unwrap(),
+            HtmlCapturedRegistry::Registry(global.clone())
+        );
+        let actual = session
+            .declarative_shadow(&mut driver.control, 0)
+            .unwrap()
+            .unwrap()
+            .registry;
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert_eq!(actual, HtmlCapturedRegistry::Registry(global));
+    }
+
+    #[test]
+    fn no_definition_creation_retains_saved_is_and_clones_independent_backing() {
+        let request = request(
+            "<html is='late'><x-a></x-a><div is=''></div><annotation-xml></annotation-xml><svg is='foreign'/><select><button><selectedcontent></selectedcontent></button><option selected><x-b is='saved'>T</x-b></option></select>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        complete(&mut driver);
+        let session = &driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        let root = session.fragment_output(&mut driver.control).unwrap();
+        let document = session.root(&mut driver.control).unwrap();
+        let mut view = session.native_view(&mut driver.control).unwrap();
+        assert_eq!(view.child_count(&root).unwrap(), 5);
+        let html = view.child_at(&document, 0).unwrap().unwrap();
+        assert_eq!(view.attribute_count(&html).unwrap(), 1);
+        let late = view.attribute_at(&html, 0).unwrap().unwrap();
+        assert_eq!(late.value.len(), 4);
+        let custom = view.child_at(&root, 0).unwrap().unwrap();
+        let empty_is = view.child_at(&root, 1).unwrap().unwrap();
+        let reserved = view.child_at(&root, 2).unwrap().unwrap();
+        let foreign = view.child_at(&root, 3).unwrap().unwrap();
+        let select = view.child_at(&root, 4).unwrap().unwrap();
+        let button = view.child_at(&select, 0).unwrap().unwrap();
+        let selected = view.child_at(&button, 0).unwrap().unwrap();
+        let option = view.child_at(&select, 1).unwrap().unwrap();
+        let original = view.child_at(&option, 0).unwrap().unwrap();
+        let copy = view.child_at(&selected, 0).unwrap().unwrap();
+        assert!(!view.same_node(&original, &copy).unwrap());
+        let (root_state, root_is) = session
+            .element_creation(&mut driver.control, &html)
+            .unwrap();
+        assert_eq!(root_state, HtmlCustomElementState::Uncustomized);
+        assert!(root_is.is_none());
+        let (state, saved) = session
+            .element_creation(&mut driver.control, &custom)
+            .unwrap();
+        assert_eq!(state, HtmlCustomElementState::Undefined);
+        assert!(saved.is_none());
+        let (state, saved) = session
+            .element_creation(&mut driver.control, &empty_is)
+            .unwrap();
+        assert_eq!(state, HtmlCustomElementState::Undefined);
+        assert!(saved.unwrap().is_empty());
+        let (state, saved) = session
+            .element_creation(&mut driver.control, &reserved)
+            .unwrap();
+        assert_eq!(state, HtmlCustomElementState::Uncustomized);
+        assert!(saved.is_none());
+        let (state, saved) = session
+            .element_creation(&mut driver.control, &foreign)
+            .unwrap();
+        assert_eq!(state, HtmlCustomElementState::Uncustomized);
+        assert_eq!(
+            saved.unwrap().code_units(),
+            &[102, 111, 114, 101, 105, 103, 110]
+        );
+        let (state, first) = session
+            .element_creation(&mut driver.control, &original)
+            .unwrap();
+        let (copied, second) = session
+            .element_creation(&mut driver.control, &copy)
+            .unwrap();
+        assert_eq!(state, HtmlCustomElementState::Undefined);
+        assert_eq!(copied, state);
+        assert_eq!(first.unwrap().code_units(), &[115, 97, 118, 101, 100]);
+        assert_eq!(second.unwrap().code_units(), first.unwrap().code_units());
+        assert_ne!(
+            first.unwrap().code_units().as_ptr(),
+            second.unwrap().code_units().as_ptr()
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn creation_asks_unavailable_definitions_only_when_a_definition_can_match() {
+        for (source, definitions, expected) in [
+            ("<div>X</div>", None, None),
+            (
+                "<x-a>X</x-a>",
+                None,
+                Some(SessionError::ContextFactUnavailable(
+                    HtmlCaptureFact::Definitions,
+                )),
+            ),
+            (
+                "<div is=''>X</div>",
+                None,
+                Some(SessionError::ContextFactUnavailable(
+                    HtmlCaptureFact::Definitions,
+                )),
+            ),
+            (
+                "<x-a>X</x-a>",
+                Some(vec![HtmlCustomElementDefinition::new(
+                    "x-a".into(),
+                    "x-a".into(),
+                    false,
+                    false,
+                )]),
+                Some(SessionError::ContextReactionUnavailable),
+            ),
+            (
+                "<div is='x-a'>X</div>",
+                Some(vec![HtmlCustomElementDefinition::new(
+                    "x-a".into(),
+                    "div".into(),
+                    false,
+                    false,
+                )]),
+                Some(SessionError::ContextReactionUnavailable),
+            ),
+        ] {
+            let mut builder = HtmlCaptureBuilder::new(
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                HtmlHostFactsRevision::fresh(),
+            );
+            let registry = builder.add_registry(definitions).unwrap();
+            builder
+                .establish_registry_scope(&registry, HtmlRegistryScope::Global)
+                .unwrap();
+            let document = builder
+                .add_document(
+                    HtmlDocumentMode::NoQuirks,
+                    HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Registry(registry.clone()),
+                )
+                .unwrap();
+            let context = builder
+                .add_element(
+                    &document,
+                    QualifiedName::new(Namespace::html(), None, "div"),
+                    OrderedAttributes::default(),
+                    HtmlCapturedIsValue::Absent,
+                    HtmlCaptureRegistryInput::Registry(registry),
+                )
+                .unwrap();
+            builder.establish_root(&context).unwrap();
+            let capture = builder.finish().unwrap();
+            let context =
+                HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap())
+                    .unwrap();
+            let request = HtmlFragmentParseRequest::new(
+                HtmlSource::utf8(source),
+                context,
+                super::super::tests::limits(100),
+            )
+            .unwrap();
+            let mut driver = ContextFragmentDriver::new(&request).unwrap();
+            let actual = if expected.is_some() {
+                let error = driver
+                    .step()
+                    .expect_err("actual definition qualification before creation");
+                assert!(driver.completed_native_view().is_err());
+                let first = driver.control.stop().unwrap();
+                assert_eq!(
+                    first,
+                    ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+                );
+                let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+                assert!(matches!(
+                    &state.pending.as_ref().unwrap().payload,
+                    prologue::Payload::Tag(Some(_))
+                ));
+                let session = &state.before.kernel.session;
+                let root = session.fragment_output(&mut driver.control);
+                assert!(root.is_err());
+                assert_eq!(
+                    driver
+                        .control
+                        .usage()
+                        .resource(HtmlParseResource::ManagedNodes)
+                        .current,
+                    3
+                );
+                Some(error)
+            } else {
+                complete(&mut driver);
+                let (root, mut view) = driver.completed_native_view().unwrap();
+                assert_eq!(view.child_count(&root).unwrap(), 1);
+                None
+            };
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+            match (actual, expected) {
+                (
+                    Some(FragmentExecutionError::Head(head::HeadError::Kernel(
+                        KernelError::Session(actual),
+                    ))),
+                    Some(expected),
+                ) => assert_eq!(actual, expected),
+                (None, None) => {}
+                (actual, _) => panic!("wrong qualified error {actual:?}"),
+            }
+        }
+    }
+    #[test]
+    fn adopted_local_host_uses_current_registry_disable_shadow_before_attachment() {
+        use crate::parser::tokenizer::token::{Event, TokenKind};
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let registry = builder
+            .add_registry(Some(vec![HtmlCustomElementDefinition::new(
+                "x-host".into(),
+                "x-host".into(),
+                false,
+                true,
+            )]))
+            .unwrap();
+        builder
+            .establish_registry_scope(&registry, HtmlRegistryScope::Global)
+            .unwrap();
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Registry(registry.clone()),
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Registry(registry),
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let request = HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(
+                "<template><x-host></x-host></template><template shadowrootmode=open>",
+            ),
+            context,
+            super::super::tests::limits(100),
+            HtmlParserScriptingMode::Inert,
+            true,
+        )
+        .unwrap();
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        // Four literal tokens end the real outer template before the later
+        // template is pulled. x-host was created in the real Null-registry IT.
+        for _ in 0..4 {
+            assert!(matches!(driver.step().unwrap(), HeadStep::Consumed));
+        }
+        let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+        assert_eq!(state.before.kernel.open.as_ref().unwrap().len(), 1);
+        let output = state
+            .before
+            .kernel
+            .session
+            .fragment_output(&mut driver.control)
+            .unwrap();
+        let mut view = state
+            .before
+            .kernel
+            .session
+            .native_view(&mut driver.control)
+            .unwrap();
+        let outer = view.child_at(&output, 0).unwrap().unwrap();
+        let contents = view.template_contents(&outer).unwrap().unwrap();
+        let host = view.child_at(&contents, 0).unwrap().unwrap();
+        assert_eq!(
+            state
+                .before
+                .kernel
+                .session
+                .lookup_registry(&mut driver.control, &host)
+                .unwrap(),
+            HtmlCapturedRegistry::Null
+        );
+        let capability = &state.script.as_ref().unwrap().capability;
+        state
+            .before
+            .kernel
+            .session
+            .insert(&mut driver.control, &output, &host, None, Some(capability))
+            .unwrap();
+        // Consume the actual next source-qualified start tag with the same
+        // tokenizer/evidence owner; no authored tag, fake source or new issuer.
+        let token = loop {
+            let evidence = state
+                .before
+                .kernel
+                .session
+                .evidence(&mut driver.control)
+                .unwrap();
+            let event = state
+                .tokenizer
+                .as_mut()
+                .unwrap()
+                .next(&mut driver.control, false, evidence)
+                .unwrap()
+                .unwrap();
+            match event {
+                Event::Token(token) => break token.into_token(&mut driver.control).unwrap(),
+                event => state.lexical.try_push(&mut driver.control, event).unwrap(),
+            }
+        };
+        let source = token.source;
+        let TokenKind::Tag(tag) = token.kind else {
+            panic!("literal second template")
+        };
+        let mut input = Some(tag);
+        let template = state
+            .before
+            .kernel
+            .session
+            .allocate_html_tag_for_creation(
+                &mut driver.control,
+                &mut input,
+                &host,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
+            .unwrap();
+        let attached = state
+            .before
+            .kernel
+            .session
+            .attach_declarative_shadow(
+                &mut driver.control,
+                &template,
+                crate::construction::parser_session::context::DeclarativeShadowHost::Owned(&host),
+                &source,
+                capability,
+            )
+            .unwrap();
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert!(
+            !attached,
+            "current captured definition disables shadow after actual adoption"
+        );
+    }
+
+    #[test]
+    fn cloning_adopted_custom_host_refuses_actual_new_upgrade_reaction_domain() {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let registry = builder
+            .add_registry(Some(vec![HtmlCustomElementDefinition::new(
+                "x-host".into(),
+                "x-host".into(),
+                false,
+                false,
+            )]))
+            .unwrap();
+        builder
+            .establish_registry_scope(&registry, HtmlRegistryScope::Global)
+            .unwrap();
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Registry(registry.clone()),
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Registry(registry),
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let request=HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<template><x-host></x-host></template><select><button><selectedcontent></selectedcontent></button><option selected></option></select>"),
+            context,super::super::tests::limits(100)).unwrap();
+        let mut driver = ContextFragmentDriver::new(&request).unwrap();
+        // Stop with the literal option still on the real stack; its actual
+        // next end token performs the required parser-pop selectedcontent update.
+        for _ in 0..10 {
+            assert!(matches!(driver.step().unwrap(), HeadStep::Consumed));
+        }
+        let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+        let output = state
+            .before
+            .kernel
+            .session
+            .fragment_output(&mut driver.control)
+            .unwrap();
+        let mut view = state
+            .before
+            .kernel
+            .session
+            .native_view(&mut driver.control)
+            .unwrap();
+        let outer = view.child_at(&output, 0).unwrap().unwrap();
+        let contents = view.template_contents(&outer).unwrap().unwrap();
+        let host = view.child_at(&contents, 0).unwrap().unwrap();
+        let select = view.child_at(&output, 1).unwrap().unwrap();
+        let option = view.child_at(&select, 1).unwrap().unwrap();
+        let button = view.child_at(&select, 0).unwrap().unwrap();
+        let selected = view.child_at(&button, 0).unwrap().unwrap();
+        assert_eq!(
+            state
+                .before
+                .kernel
+                .session
+                .lookup_registry(&mut driver.control, &host)
+                .unwrap(),
+            HtmlCapturedRegistry::Null
+        );
+        state
+            .before
+            .kernel
+            .session
+            .insert(
+                &mut driver.control,
+                &option,
+                &host,
+                None,
+                Some(&state.script.as_ref().unwrap().capability),
+            )
+            .unwrap();
+        let result = driver.step();
+        let first = driver.control.stop();
+        if result.is_ok() {
+            let session = &driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .before
+                .kernel
+                .session;
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            let copy = view
+                .child_at(&selected, 0)
+                .unwrap()
+                .expect("actual option pop cloned the newly inserted host");
+            assert!(!view.same_node(&host, &copy).unwrap());
+        }
+        if result.is_err() {
+            assert!(driver.completed_native_view().is_err());
+        }
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        match result.err() {
+            Some(FragmentExecutionError::Head(head::HeadError::Kernel(KernelError::Session(
+                actual,
+            )))) => assert_eq!(actual, SessionError::ContextReactionUnavailable),
+            actual => panic!("actual new clone must refuse the reaction domain: {actual:?}"),
+        }
+        assert_eq!(
+            first,
+            Some(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Provenance
+            ))
+        );
+    }
+}

@@ -174,6 +174,48 @@ pub enum HtmlCapturedRegistry {
     Registry(HtmlCaptureRegistryId),
     Unavailable,
 }
+/// Registry scope influences DOM adoption; unavailable is not global scope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlRegistryScope {
+    Global,
+    Scoped,
+    Unavailable,
+}
+/// Source-qualified document type, independent of namespace and quirks mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlDocumentClass {
+    Html,
+    NonHtml,
+    Unavailable,
+}
+/// Whether the document was created by the template contents owner algorithm.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlTemplateDocumentRole {
+    Ordinary,
+    InertTemplate,
+    Unavailable,
+}
+/// Builder-qualified associated inert template document cache.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HtmlCaptureTemplateCacheInput {
+    Absent,
+    Document(HtmlCaptureBuilderSubject),
+    Unavailable,
+}
+/// Captured cache identity; absence and unavailable evidence differ.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HtmlCapturedTemplateCache {
+    Absent,
+    Document(HtmlCaptureDocumentId),
+    Unavailable,
+}
+#[cfg(test)]
+#[derive(Clone, Copy)]
+pub(crate) enum CapturedTemplateCacheKey {
+    Absent,
+    Document(usize),
+    Unavailable,
+}
 /// Ordinary parent, separate from template and shadow host associations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCapturedParent {
@@ -384,6 +426,10 @@ pub enum HtmlCaptureFact {
     Definitions,
     IsValue,
     ShadowRoot,
+    DocumentClass,
+    TemplateDocumentRole,
+    TemplateDocumentCache,
+    RegistryScope,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureSubjectKind {
@@ -424,6 +470,9 @@ pub enum HtmlCaptureError {
     InvalidDefinitionName,
     UnknownDefinition,
     CompleteRegistry,
+    DocumentFactsAlreadyEstablished,
+    RegistryScopeAlreadyEstablished,
+    InvalidTemplateDocumentCache,
     CustomElementContextAlreadyEstablished,
     CustomElementDefinitionRequired,
     CustomElementDefinitionNameMismatch,
@@ -471,6 +520,10 @@ pub struct HtmlCapturedDocument {
     mode: HtmlDocumentMode,
     scripting: HtmlScriptingStatus,
     registry: Registry,
+    class: HtmlDocumentClass,
+    template_role: HtmlTemplateDocumentRole,
+    template_cache: Association,
+    template_facts_established: bool,
 }
 impl HtmlCapturedDocument {
     pub fn mode(&self) -> HtmlDocumentMode {
@@ -478,6 +531,12 @@ impl HtmlCapturedDocument {
     }
     pub fn scripting(&self) -> HtmlScriptingStatus {
         self.scripting
+    }
+    pub fn document_class(&self) -> HtmlDocumentClass {
+        self.class
+    }
+    pub fn template_role(&self) -> HtmlTemplateDocumentRole {
+        self.template_role
     }
 }
 /// Exact captured element values and internal `is` slot.
@@ -640,6 +699,8 @@ impl Record {
 struct RegistryRecord {
     definitions: Vec<HtmlCustomElementDefinition>,
     complete: bool,
+    scope: HtmlRegistryScope,
+    scope_established: bool,
 }
 #[derive(Debug)]
 struct CaptureData {
@@ -853,11 +914,72 @@ impl HtmlCaptureBuilder {
                 mode,
                 scripting,
                 registry,
+                class: HtmlDocumentClass::Unavailable,
+                template_role: HtmlTemplateDocumentRole::Unavailable,
+                template_cache: Association::Unavailable,
+                template_facts_established: false,
             }),
             self.data.records.len(),
             Parent::Root,
             usage,
         )
+    }
+    /// Establishes conditional template-owner facts without deriving them from
+    /// mode, scripting or element namespace. A cache must name an actual inert
+    /// document already qualified by this builder.
+    pub fn establish_document_template_facts(
+        &mut self,
+        document: &HtmlCaptureBuilderSubject,
+        class: HtmlDocumentClass,
+        role: HtmlTemplateDocumentRole,
+        cache: HtmlCaptureTemplateCacheInput,
+    ) -> Result<(), HtmlCaptureError> {
+        let index = self.index(document)?;
+        self.require(index, HtmlCaptureSubjectKind::Document)?;
+        let HtmlCapturedNodeKind::Document(current) = &self.data.records[index].kind else {
+            unreachable!("qualified document")
+        };
+        if current.template_facts_established {
+            return Err(HtmlCaptureError::DocumentFactsAlreadyEstablished);
+        }
+        let cache = match cache {
+            HtmlCaptureTemplateCacheInput::Absent => Association::Absent,
+            HtmlCaptureTemplateCacheInput::Unavailable => Association::Unavailable,
+            HtmlCaptureTemplateCacheInput::Document(owner) => {
+                let owner = self.index(&owner)?;
+                self.require(owner, HtmlCaptureSubjectKind::Document)?;
+                let HtmlCapturedNodeKind::Document(facts) = &self.data.records[owner].kind else {
+                    unreachable!("qualified cache document")
+                };
+                if role != HtmlTemplateDocumentRole::Ordinary
+                    || facts.template_role != HtmlTemplateDocumentRole::InertTemplate
+                    || owner == index
+                    || (class != HtmlDocumentClass::Unavailable
+                        && facts.class != HtmlDocumentClass::Unavailable
+                        && class != facts.class)
+                {
+                    return Err(HtmlCaptureError::InvalidTemplateDocumentCache);
+                }
+                Association::Index(owner)
+            }
+        };
+        let usage = self.admit(
+            0,
+            usize::from(matches!(cache, Association::Index(_))),
+            0,
+            0,
+            0,
+            0,
+        )?;
+        let HtmlCapturedNodeKind::Document(current) = &mut self.data.records[index].kind else {
+            unreachable!("qualified document")
+        };
+        current.class = class;
+        current.template_role = role;
+        current.template_cache = cache;
+        current.template_facts_established = true;
+        self.data.usage = usage;
+        Ok(())
     }
     /// Adds exact element values; unspecified topology and associations stay unavailable.
     pub fn add_element(
@@ -1018,12 +1140,31 @@ impl HtmlCaptureBuilder {
         self.data.registries.push(RegistryRecord {
             complete: definitions.is_some(),
             definitions: definitions.unwrap_or_default(),
+            scope: HtmlRegistryScope::Unavailable,
+            scope_established: false,
         });
         self.data.usage = usage;
         Ok(HtmlCaptureBuilderRegistry {
             capture: self.data.identity.clone(),
             index,
         })
+    }
+    /// Supplies actual registry scope without changing definition availability.
+    pub fn establish_registry_scope(
+        &mut self,
+        registry: &HtmlCaptureBuilderRegistry,
+        scope: HtmlRegistryScope,
+    ) -> Result<(), HtmlCaptureError> {
+        if registry.capture != self.data.identity {
+            return Err(HtmlCaptureError::ForeignBuilder);
+        }
+        let record = &mut self.data.registries[registry.index];
+        if record.scope_established {
+            return Err(HtmlCaptureError::RegistryScopeAlreadyEstablished);
+        }
+        record.scope = scope;
+        record.scope_established = true;
+        Ok(())
     }
     /// Obtains a handle to an actual retained definition, even in a partial set.
     pub fn definition_handle(
@@ -1530,6 +1671,19 @@ impl<'a> HtmlCapturedNode<'a> {
             self.data.records[self.index].document,
         ))
     }
+    /// Conditional template-owner cache for an actual captured Document.
+    pub fn template_document_cache(self) -> Option<HtmlCapturedTemplateCache> {
+        let HtmlCapturedNodeKind::Document(document) = self.kind() else {
+            return None;
+        };
+        Some(match document.template_cache {
+            Association::Absent => HtmlCapturedTemplateCache::Absent,
+            Association::Unavailable => HtmlCapturedTemplateCache::Unavailable,
+            Association::Index(index) => HtmlCapturedTemplateCache::Document(
+                HtmlCaptureDocumentId(subject_id(self.data, index)),
+            ),
+        })
+    }
     pub fn parent(self) -> HtmlCapturedParent {
         match self.data.records[self.index].parent {
             Parent::Root => HtmlCapturedParent::Root,
@@ -1547,6 +1701,24 @@ impl<'a> HtmlCapturedNode<'a> {
         }
     }
     /// Source-defined registry lookup: plain fragments and other nodes return null.
+    #[cfg(test)]
+    pub(crate) fn lookup_registry_index(self) -> Option<Option<usize>> {
+        let registry = match self.kind() {
+            HtmlCapturedNodeKind::Document(document) => document.registry,
+            HtmlCapturedNodeKind::Element(element) => element.registry,
+            HtmlCapturedNodeKind::Fragment(fragment)
+                if matches!(fragment.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) =>
+            {
+                fragment.registry
+            }
+            _ => Registry::Null,
+        };
+        match registry {
+            Registry::Null => Some(None),
+            Registry::Index(index) => Some(Some(index)),
+            Registry::Unavailable => None,
+        }
+    }
     pub fn lookup_registry(self) -> HtmlCapturedRegistry {
         let registry = match self.kind() {
             HtmlCapturedNodeKind::Document(d) => d.registry,
@@ -1626,6 +1798,86 @@ impl HtmlCapture {
     }
     pub fn host_facts_revision(&self) -> &HtmlHostFactsRevision {
         &self.0.host_revision
+    }
+    /// Actual registry scope, independent of complete definition metadata.
+    pub fn registry_scope(
+        &self,
+        registry: &HtmlCaptureRegistryId,
+    ) -> Result<HtmlRegistryScope, HtmlCaptureError> {
+        if registry.capture != self.0.identity {
+            return Err(HtmlCaptureError::ForeignCapture);
+        }
+        Ok(self.0.registries[registry.index].scope)
+    }
+    // Compact internal keys are issued only after actual capture qualification.
+    // The consuming session retains this exact capture for their entire lifetime;
+    // these indices never stand in for native node or externally visible IDs.
+    #[cfg(test)]
+    pub(crate) fn registry_index(
+        &self,
+        id: &HtmlCaptureRegistryId,
+    ) -> Result<usize, HtmlCaptureError> {
+        if id.capture != self.0.identity {
+            return Err(HtmlCaptureError::ForeignCapture);
+        }
+        Ok(id.index)
+    }
+    #[cfg(test)]
+    pub(crate) fn registry_at(
+        &self,
+        index: usize,
+    ) -> Result<HtmlCaptureRegistryId, HtmlCaptureError> {
+        if index >= self.0.registries.len() {
+            return Err(HtmlCaptureError::ForeignCapture);
+        }
+        Ok(HtmlCaptureRegistryId {
+            capture: self.0.identity.clone(),
+            index,
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn document_index(
+        &self,
+        document: &HtmlCaptureDocumentId,
+    ) -> Result<usize, HtmlCaptureError> {
+        self.require(document.subject(), HtmlCaptureSubjectKind::Document)?;
+        Ok(document.0.index)
+    }
+    #[cfg(test)]
+    pub(crate) fn document_at(
+        &self,
+        index: usize,
+    ) -> Result<HtmlCapturedNode<'_>, HtmlCaptureError> {
+        let actual = self
+            .0
+            .records
+            .get(index)
+            .ok_or(HtmlCaptureError::ForeignCapture)?;
+        if actual.kind.subject_kind() != HtmlCaptureSubjectKind::Document {
+            return Err(HtmlCaptureError::WrongKind {
+                expected: HtmlCaptureSubjectKind::Document,
+                actual: actual.kind.subject_kind(),
+            });
+        }
+        Ok(HtmlCapturedNode {
+            data: &self.0,
+            index,
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn template_cache_index(
+        &self,
+        index: usize,
+    ) -> Result<CapturedTemplateCacheKey, HtmlCaptureError> {
+        let node = self.document_at(index)?;
+        let HtmlCapturedNodeKind::Document(document) = node.kind() else {
+            unreachable!("qualified document")
+        };
+        Ok(match document.template_cache {
+            Association::Absent => CapturedTemplateCacheKey::Absent,
+            Association::Index(index) => CapturedTemplateCacheKey::Document(index),
+            Association::Unavailable => CapturedTemplateCacheKey::Unavailable,
+        })
     }
     pub fn usage(&self) -> HtmlCaptureUsage {
         self.0.usage
@@ -1827,6 +2079,22 @@ impl HtmlCapture {
                 }
             }
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shadow_presence(
+        &self,
+        element: &HtmlCaptureElementId,
+    ) -> Result<Option<bool>, HtmlCaptureError> {
+        let node = self.node(element.subject())?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            unreachable!()
+        };
+        Ok(match element.shadow {
+            Association::Absent => Some(false),
+            Association::Index(_) => Some(true),
+            Association::Unavailable => None,
+        })
     }
 
     /// Determines source shadow-attachment eligibility from captured facts only.
@@ -2222,6 +2490,12 @@ pub(crate) enum DefinitionLookupStep {
     Ready(Option<HtmlCaptureDefinitionId>),
 }
 impl DefinitionLookupCursor<'_> {
+    /// Describes the actual next ready transfer without advancing the cursor.
+    /// Only a found definition clones a retained registry handle.
+    #[cfg(test)]
+    pub(crate) fn next_clones_registry(&self) -> bool {
+        matches!(self.ready, Some(Some(_)))
+    }
     pub(crate) fn next_cost(&self) -> usize {
         if self.offset.is_some() { 2 } else { 1 }
     }

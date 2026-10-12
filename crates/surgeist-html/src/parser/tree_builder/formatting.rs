@@ -228,8 +228,9 @@ impl HeadState<'_> {
             }
         }
         loop {
+            let place = self.before.kernel.appropriate_place(None, c)?;
+            let node = self.replay_format(index, &place.parent, c)?;
             let location = self.before.kernel.adjusted_location(None, c)?;
-            let node = self.replay_format(index, &location.parent, c)?;
             self.before.kernel.insert_element_at(
                 &node,
                 &location,
@@ -346,7 +347,7 @@ impl HeadState<'_> {
                     .retain_formatting_creation(c, input, source)?,
             }),
         });
-        let location = self.before.kernel.adjusted_location(None, c)?;
+        let place = self.before.kernel.appropriate_place(None, c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let Some(FormattingElement {
             creation,
@@ -362,11 +363,12 @@ impl HeadState<'_> {
         let node = self.before.kernel.session.create_formatting_from_creation(
             c,
             creation,
-            &location.parent,
+            &place.parent,
         )?;
         let retained = copy_node(&node, c)?;
         write(size_of::<Option<ParserNode>>(), 1, c)?;
         *stored = Some(retained);
+        let location = self.before.kernel.adjusted_location(None, c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,

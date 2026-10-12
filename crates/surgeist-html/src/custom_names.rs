@@ -83,27 +83,54 @@ impl Error for HtmlCustomElementNameError {}
 pub(crate) fn validate_custom_element_name(
     name: &DocumentString,
 ) -> Result<(), HtmlCustomElementNameError> {
+    match validate_custom_element_name_with(name, |_| Ok::<(), std::convert::Infallible>(())) {
+        Ok(result) => result,
+        Err(never) => match never {},
+    }
+}
+
+/// Actual borrowed scanner actions. A consuming controlled operation admits
+/// each action before the indicated dereference; native validation remains
+/// explicitly unbudgeted and uses the same grammar.
+pub(crate) enum CustomNameScanAction {
+    Header,
+    Unit,
+    ReservedHeader,
+    ReservedPair,
+}
+pub(crate) fn validate_custom_element_name_with<E>(
+    name: &DocumentString,
+    mut admit: impl FnMut(CustomNameScanAction) -> Result<(), E>,
+) -> Result<Result<(), HtmlCustomElementNameError>, E> {
     let units = name.code_units();
-    let Some(first) = units.first() else {
-        return Err(HtmlCustomElementNameError::Empty);
-    };
-    if !matches!(first, 0x61..=0x7a) {
-        return Err(HtmlCustomElementNameError::FirstCodePointNotLowercaseAscii);
+    admit(CustomNameScanAction::Header)?;
+    if units.is_empty() {
+        return Ok(Err(HtmlCustomElementNameError::Empty));
+    }
+    admit(CustomNameScanAction::Unit)?;
+    if !matches!(units[0], 0x61..=0x7a) {
+        return Ok(Err(
+            HtmlCustomElementNameError::FirstCodePointNotLowercaseAscii,
+        ));
     }
     let mut hyphen = false;
-    for (code_unit_offset, &code_unit) in units.iter().enumerate() {
+    let mut code_unit_offset = 0;
+    while code_unit_offset < units.len() {
+        admit(CustomNameScanAction::Unit)?;
+        let code_unit = units[code_unit_offset];
         if matches!(code_unit, 0 | 9 | 10 | 12 | 13 | 32 | 47 | 62 | 0x41..=0x5a) {
-            return Err(HtmlCustomElementNameError::ForbiddenCodeUnit {
+            return Ok(Err(HtmlCustomElementNameError::ForbiddenCodeUnit {
                 code_unit_offset,
                 code_unit,
-            });
+            }));
         }
         hyphen |= code_unit == 0x2d;
+        code_unit_offset += 1;
     }
     if !hyphen {
-        return Err(HtmlCustomElementNameError::MissingHyphen);
+        return Ok(Err(HtmlCustomElementNameError::MissingHyphen));
     }
-    if [
+    for reserved in [
         "annotation-xml",
         "color-profile",
         "font-face",
@@ -112,11 +139,105 @@ pub(crate) fn validate_custom_element_name(
         "font-face-format",
         "font-face-name",
         "missing-glyph",
-    ]
-    .iter()
-    .any(|reserved| units.iter().copied().eq(reserved.encode_utf16()))
-    {
-        return Err(HtmlCustomElementNameError::ReservedName);
+    ] {
+        admit(CustomNameScanAction::ReservedHeader)?;
+        if units.len() != reserved.len() {
+            continue;
+        }
+        let mut equal = true;
+        for (offset, right) in reserved.bytes().enumerate() {
+            admit(CustomNameScanAction::ReservedPair)?;
+            if units[offset] != u16::from(right) {
+                equal = false;
+                break;
+            }
+        }
+        if equal {
+            return Ok(Err(HtmlCustomElementNameError::ReservedName));
+        }
     }
-    Ok(())
+    Ok(Ok(()))
+}
+
+#[cfg(test)]
+mod scanner_tests {
+    use super::*;
+    #[test]
+    fn controlled_scanner_propagates_actual_cancellation_before_next_unit() {
+        use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
+        let cancellation = crate::HtmlParseCancellation::new();
+        let mut control = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            cancellation.clone(),
+        );
+        let name = DocumentString::from("a-b");
+        let mut units = 0;
+        let result = validate_custom_element_name_with(&name, |action| {
+            match action {
+                CustomNameScanAction::Header | CustomNameScanAction::ReservedHeader => {
+                    control.charge(WorkCategory::RecordVisit, 1)?
+                }
+                CustomNameScanAction::Unit => {
+                    if units == 2 {
+                        cancellation.cancel();
+                    }
+                    control.charge(WorkCategory::InspectByte, 2)?;
+                    units += 1;
+                }
+                CustomNameScanAction::ReservedPair => {
+                    control.charge(WorkCategory::InspectByte, 4)?
+                }
+            }
+            Ok::<(), ParseStop>(())
+        });
+        assert_eq!(result, Err(ParseStop::Cancelled));
+        assert_eq!(units, 2);
+        assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(
+            control.charge(WorkCategory::RecordVisit, 1),
+            Err(ParseStop::Cancelled)
+        );
+    }
+
+    #[test]
+    fn shared_scanner_preserves_literal_native_errors_and_stops_before_rejected_read() {
+        for (units, expected) in [
+            (vec![], Err(HtmlCustomElementNameError::Empty)),
+            (
+                vec![65, 45, 98],
+                Err(HtmlCustomElementNameError::FirstCodePointNotLowercaseAscii),
+            ),
+            (
+                vec![97, 45, 47],
+                Err(HtmlCustomElementNameError::ForbiddenCodeUnit {
+                    code_unit_offset: 2,
+                    code_unit: 47,
+                }),
+            ),
+            (
+                "font-face".encode_utf16().collect(),
+                Err(HtmlCustomElementNameError::ReservedName),
+            ),
+            (vec![97, 98], Err(HtmlCustomElementNameError::MissingHyphen)),
+            (vec![97, 45, 0xd800], Ok(())),
+        ] {
+            let name = DocumentString::from_utf16(units);
+            assert_eq!(validate_custom_element_name(&name), expected);
+            let scanned = validate_custom_element_name_with(&name, |_| Ok::<(), ()>(())).unwrap();
+            assert_eq!(scanned, expected);
+        }
+        let name = DocumentString::from("a-b");
+        let mut accepted = 0;
+        let result = validate_custom_element_name_with(&name, |action| {
+            if matches!(action, CustomNameScanAction::Unit) {
+                if accepted == 2 {
+                    return Err("cancelled before next actual read");
+                }
+                accepted += 1;
+            }
+            Ok(())
+        });
+        assert_eq!(result, Err("cancelled before next actual read"));
+        assert_eq!(accepted, 2);
+    }
 }

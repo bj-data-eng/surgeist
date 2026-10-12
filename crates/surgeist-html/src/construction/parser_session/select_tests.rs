@@ -6,7 +6,7 @@ use crate::parser::tokenizer::{
     tests::LexerFixture,
     token::{Event, Token},
 };
-use crate::parser::tree_builder::StandaloneCapability;
+use crate::parser::tree_builder::ConstructionCapability;
 
 fn next(
     lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
@@ -27,7 +27,7 @@ fn graph<'a>(
 ) -> (
     ParseControl,
     ParserArenaSession,
-    StandaloneCapability<'a>,
+    ConstructionCapability<'a>,
     Vec<(String, ParserNode)>,
 ) {
     let (mut c, mut session, proof) = fresh_script_owner(request);
@@ -913,7 +913,10 @@ fn select_text_clone_every_interruption_keeps_ticket_binding_coherent_for_dispos
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(WorkCategory::StateStep, remaining - extra)
             .unwrap();
-        let _result = session.active_mut().unwrap().clone_node(&mut c, text, 0);
+        let _result = session
+            .active_mut()
+            .unwrap()
+            .clone_node(&mut c, text, DocumentRef::Owned(0));
         if c.stop().is_some() {
             assert!(session.freeze(&mut c).is_err());
         }
@@ -1021,11 +1024,12 @@ fn non_element_clone_binding_boundary(kind: usize) {
     let binding_bytes = fields * mem::size_of::<StringLocation>() as u64;
     let binding = binding_bytes + fields;
     let usage = mem::size_of::<usize>() as u64 + 1;
-    // Actual ordinary document qualification visits root kind + first cache
-    // slot (2), state (1), and three no-growth reserves (6). Its binding-slot
-    // reserve/record costs R+3; binding copy/write costs O+1: R+O+13.
+    // validate_document_ref visits the root and its first Document slot (2).
+    // The allocation then visits the same root/slot (2), state (1), and three
+    // no-growth reserves (6). Binding-slot reserve/record costs R+3;
+    // binding copy/write costs O+1: R+O+15, with both qualifications retained.
     let documents =
-        mem::size_of::<RetainedPayload>() as u64 + mem::size_of::<Option<usize>>() as u64 + 13;
+        mem::size_of::<RetainedPayload>() as u64 + mem::size_of::<Option<usize>>() as u64 + 15;
     // A PI additionally reserves its empty map (R+3) and its future node
     // binding (O+1), before copying either original field.
     let map = if kind == 2 {
@@ -1090,7 +1094,11 @@ fn non_element_clone_binding_boundary(kind: usize) {
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(WorkCategory::StateStep, remaining - extra)
             .unwrap();
-        let result = session.active_mut().unwrap().clone_node(&mut c, source, 0);
+        let result =
+            session
+                .active_mut()
+                .unwrap()
+                .clone_node(&mut c, source, DocumentRef::Owned(0));
         let installed = session.active().unwrap().records.len() - nodes;
         if result.is_ok() {
             assert_eq!(extra, complete);

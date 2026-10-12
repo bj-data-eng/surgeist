@@ -94,7 +94,7 @@ impl ParserArenaSession {
         intended_parent: &ParserNode,
         namespace: ForeignNamespace,
         token_source: &crate::HtmlSourceRange,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active()?;
@@ -107,10 +107,35 @@ impl ParserArenaSession {
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
         SessionStorage::check_html_tag(c, tag)?;
         check_formatting_tag(c, tag, token_source)?;
-        let document = storage.node_document_index(c, parent)?;
-        let prepared = self
-            .active_mut()?
-            .prepare_document_allocation(c, Some(document), false)?;
+        if namespace == ForeignNamespace::Context {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            storage
+                .fragment
+                .as_ref()
+                .ok_or(SessionError::ContextUnavailable)?;
+        }
+        let document = storage.node_document_ref(c, parent)?;
+        let mut prepared =
+            self.active_mut()?
+                .prepare_document_allocation(c, Some(document), false)?;
+        let mut is_value = None;
+        if self.active()?.fragment.is_some() {
+            for attribute in tag.attributes.as_slice() {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if exact_ascii(c, Some(attribute.name.value.text()), "is")? {
+                    is_value = Some(&attribute.value);
+                    break;
+                }
+            }
+        }
+        self.active_mut()?.prepare_creation_registry(
+            c,
+            parent,
+            tag.name.value.text(),
+            is_value,
+            false,
+            &mut prepared,
+        )?;
         let svg = if namespace == ForeignNamespace::Svg
             && exact_ascii(c, Some(tag.name.value.text()), "script")?
         {
@@ -261,6 +286,7 @@ impl SessionStorage {
         let classified = (|| {
             let adjustment = match foreign {
                 ForeignNamespace::Svg => lookup(c, original.value.text(), SVG_ATTRIBUTES)?,
+                ForeignNamespace::Context => None,
                 ForeignNamespace::MathMl => {
                     if exact_ascii(c, Some(original.value.text()), "definitionurl")? {
                         Some(("definitionURL", 0))
@@ -721,10 +747,11 @@ mod tests {
                 request.limits().work_credits() - used - allowance,
             )
             .unwrap();
-            let result = session
-                .active_mut()
-                .unwrap()
-                .clone_node(&mut c, original.index, 0);
+            let result = session.active_mut().unwrap().clone_node(
+                &mut c,
+                original.index,
+                DocumentRef::Owned(0),
+            );
             match result {
                 Ok(index) => {
                     completed = true;
@@ -791,12 +818,14 @@ mod tests {
 pub(crate) enum ForeignNamespace {
     MathMl,
     Svg,
+    Context,
 }
 impl ForeignNamespace {
-    pub(crate) fn uri(self) -> &'static str {
+    pub(crate) fn uri(self) -> Option<&'static str> {
         match self {
-            Self::MathMl => "http://www.w3.org/1998/Math/MathML",
-            Self::Svg => "http://www.w3.org/2000/svg",
+            Self::MathMl => Some("http://www.w3.org/1998/Math/MathML"),
+            Self::Svg => Some("http://www.w3.org/2000/svg"),
+            Self::Context => None,
         }
     }
     fn element_adjustment(
@@ -932,14 +961,22 @@ impl SessionStorage {
             let (name, name_ticket) = self.register_foreign_text(control, name, replacement)?;
             // The selected HTML namespace is a defining literal, copied through
             // the same admitted exact buffer as token-created units.
-            let namespace = literal_string(control, foreign.uri().as_bytes())?;
-            let (namespace, namespace_ticket) = self.register_string(control, namespace, None)?;
+            let (namespace, namespace_ticket) = if let Some(uri) = foreign.uri() {
+                let namespace = literal_string(control, uri.as_bytes())?;
+                let (value, ticket) = self.register_string(control, namespace, None)?;
+                (Namespace::from_uri(value), Some(ticket))
+            } else {
+                self.copy_context_namespace(control)?
+            };
             control.charge(WorkCategory::RecordVisit, 2)?;
-            let mut units = name.len().checked_add(namespace.len()).ok_or_else(|| {
-                control
-                    .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                    .unwrap_err()
-            })?;
+            let mut units = name
+                .len()
+                .checked_add(namespace.uri().map_or(0, DocumentString::len))
+                .ok_or_else(|| {
+                    control
+                        .representation::<()>(HtmlParseResource::ManagedUtf16Units)
+                        .unwrap_err()
+                })?;
             let (values, allocation) = control.new_vector()?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
@@ -1086,7 +1123,7 @@ impl SessionStorage {
             let template = false;
             // Preadmit the actual native-alias bindings and both usage writes.
             // Successful allocation and binding have no fallible alias gap.
-            payload_write::<[StringLocation; 2]>(control, 2)?;
+            payload_write::<StringLocation>(control, 1 + u64::from(namespace_ticket.is_some()))?;
             payload_write::<Option<usize>>(control, 1)?;
             payload_write::<[usize; 2]>(control, 2)?;
             if svg.is_some() {
@@ -1095,7 +1132,7 @@ impl SessionStorage {
             let node = self.allocate_prepared_owned(
                 control,
                 HtmlNodeKind::Element(HtmlElement {
-                    name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
+                    name: QualifiedName::new(namespace, None, name),
                     attributes,
                 }),
                 template,
@@ -1107,7 +1144,9 @@ impl SessionStorage {
                 self.bind_svg_slot(slot, node.index);
             }
             self.bind_string(name_ticket, StringLocation::ElementName(node.index));
-            self.bind_string(namespace_ticket, StringLocation::Namespace(node.index));
+            if let Some(ticket) = namespace_ticket {
+                self.bind_string(ticket, StringLocation::Namespace(node.index));
+            }
             let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =
                 &mut self.payloads.values[container]
             else {

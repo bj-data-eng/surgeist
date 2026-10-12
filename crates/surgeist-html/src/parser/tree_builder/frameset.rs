@@ -33,7 +33,7 @@ impl HeadState<'_> {
         // Generic Document or Disabled alone cannot prove absent browsing context.
         // No frame-family effects occur through a proofless/imported head owner.
         match self.validate_standalone_capability(c) {
-            Err(HeadError::StandaloneCapabilityUnavailable) => Err(c
+            Err(HeadError::ConstructionCapabilityUnavailable) => Err(c
                 .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
                 .into()),
             result => result,

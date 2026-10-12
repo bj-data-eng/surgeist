@@ -1672,6 +1672,20 @@ selection perform no parsing, live mutation, script execution or effect
 publication. The parser still owns recovered metadata, contextual construction
 effects, diagnostics, provenance and its separate execution controls.
 
+The [capture producer](src/capture.rs) also supplies conditional document and
+registry facts. `establish_document_template_facts` records explicit
+`HtmlDocumentClass`, `HtmlTemplateDocumentRole` and an absent, unavailable or
+builder-qualified inert-document cache. A known cache must name another document
+with an established inert-template role; conflicting known classes are rejected.
+`establish_registry_scope` records Global, Scoped or Unavailable independently of
+definition completeness. Each supplement is established once; document class is
+not inferred from namespace or quirks mode. Frozen readbacks retain capture
+qualification. These public capture additions include intentional closed-enum
+changes; they provide facts, not construction, upgrade or lifecycle execution.
+Capture building uses ordinary allocation and logical limits. The private
+fragment consumer consults unavailable facts only when they influence its
+source branch; unused template facts are not global prerequisites.
+
 `HtmlParseLimits::builder` requires all nineteen finite caps explicitly; zero
 is valid, and no default or unlimited sentinel is supplied. `finish` checks
 representation before a request can retain the configuration.
@@ -1683,6 +1697,53 @@ issues a fresh `HtmlParseCancellation`; cloned handles share sticky cancellation
 Constructing a request admits no source and produces no parse result. The caps
 describe logical storage, known allocation layouts and work credits, rather than
 wall-clock time, process memory or allocator headers.
+
+<a id="private-context-fragments"></a>
+
+The private [ContextFragmentDriver](src/parser/tree_builder/context.rs) executes
+the [pinned fragment algorithm](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md#parsing-html-fragments)
+from an actual checked `HtmlFragmentParseRequest`. It creates a real parser
+Document, internal HTML root and separate output Fragment, retaining their
+distinction from the captured context and target documents. Actual context
+namespace, integration attributes, tokenizer/insertion state, template modes and
+nearest-form pointer drive the existing tokenizer, tree builder and EOF owner.
+It substitutes no div wrapper or fabricated appropriate end tag. Inert HTML
+scripts retain their parser document and already-started state without executing
+Disabled preparation; a disabled context retains its distinct effective mode.
+
+The [context construction owner](src/construction/parser_session/context.rs)
+keeps creation parent/document/registry separate from adjusted insertion and
+adoption targets. Independently backed saved `is` and canonical no-definition
+creation state survive replay and cloning. A definition that requires custom
+reactions is a typed refusal; missing influencing registry, document, template
+cache or shadow facts are unavailable evidence, never guessed defaults.
+The captured form pointer affects parser rules without fabricating a
+parser-associated form owner for fragment controls.
+
+Qualified template caches retain the actual inert document or a completed cache
+effect. Permitted declarative shadows retain local or capture-qualified host,
+properties, contents and source; a second template observes the first planned
+root and takes the existing-root fallback. Local clonable-shadow contents follow
+light children during cloning. These are immutable construction facts and
+effects, not live attachment, slot distribution or host notifications.
+
+CompletedContextFragment is issued only after the actual EOF return. Freeze
+refuses pending intrinsic work or unbound effects and installs the real frozen
+arena in its guard before reclaiming execution. FrozenContextFragmentParts
+retains the actual output fragment, original source binding, capture and
+committed diagnostics with the same controller. A failed transfer keeps its
+active or frozen owner through alias refusal and cleanup retry. Terminal
+partition retains committed diagnostics and first-stop identity while reclaiming
+native/effect storage; disposal resumes no useful work and refunds no cumulative
+work or high-water observations.
+
+These operations remain cfg(test) checkpoints. Public source-owning
+document/fragment parsing and report transfer, complete lexical/D1 all-overlap
+evidence, canonical DOM import and live consequences remain separate work.
+Capture constructors do not inherit the parser's physical-allocation or work
+contract. Actual consumer scans, copies, moves and provider layouts use its sole
+finite ledger and cancellation; they may be quadratic and establish no RSS or
+linear-work guarantee.
 
 Private parser mechanics currently compile for tests while engine integration
 continues. Source decoding, UTF-16 buffering, reference lookup, the adapted
@@ -1716,8 +1777,10 @@ reclaimed live storage does not refund work, cumulative fees or high-water
 values. Initialization pulls no tokens: evidence is honestly absent before its
 owner exists, or the actual initialized empty prefix after failure while taking
 a ready driver, rather than fabricated diagnostics. This remains a private
-cfg(test) producer checkpoint. Public source-owning success/failure reports, FrozenParts transfer,
-D1 all-overlap source lookup and contextual fragment assembly remain separate.
+cfg(test) producer checkpoint. Public source-owning success/failure reports and
+D1 all-overlap source lookup remain separate. Contextual construction uses the
+[private fragment owner](#private-context-fragments), with its own completed and
+frozen transfer.
 
 The owning head-stage driver consumes that continuation and the same paused
 tokenizer. It implements BeforeHead, ordinary non-script/non-template InHead,
@@ -1766,7 +1829,8 @@ Frame insertion returns at the actual node-document's null browsing-context
 guard. Noframes uses RAWTEXT and restores its saved caller mode. Mixed character
 runs preserve exact origins while diagnosing and omitting nonwhitespace and NULL.
 Generic or imported owners cannot establish the required constructor proof.
-This adds no hosted navigation or fragment execution. Ordinary EOF completion
+This ordinary specialization adds no hosted navigation. Contextual fragments use
+the [separate private owner](#private-context-fragments). Ordinary EOF completion
 uses the same [private end owner](#private-ordinary-eof).
 
 The fresh ordinary Disabled driver also retains the actual current-form pointer
@@ -1786,8 +1850,9 @@ pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Other resettable
-controls, unfinished table rows, contextual fragment execution, hosted parsing
-and public diagnostic/source-map/report transfer remain unfinished.
+controls, unfinished table rows, hosted parsing and public diagnostic/source-map/
+report transfer remain unfinished. [Contextual fragments](#private-context-fragments)
+have their separately qualified private execution owner.
 Ordinary EOF uses the [private completion owner](#private-ordinary-eof).
 
 The same association registry now admits parser-created button, fieldset and
@@ -1885,8 +1950,9 @@ continued construction or publication.
 
 This is a structural checkpoint. Other unavailable control creation preserves
 its original token before unsupported effects.
-It does not establish complete InTable behavior,
-contextual fragment parsing or public report publication. The fresh ordinary
+It does not establish complete InTable behavior or public report publication.
+Contextual parsing uses the [private fragment owner](#private-context-fragments).
+The fresh ordinary
 driver has its separately qualified [EOF completion](#private-ordinary-eof).
 
 Ordinary select, option, optgroup and selectedcontent construction now uses the
@@ -1918,10 +1984,11 @@ and reclamation even at an interrupted clone boundary. Work and storage remain
 finite and charged; repeated scans and child moves may be quadratic.
 
 These are private construction operations, not a live DOM mutation API. The
-separate DOM moveBefore primitive, captured fragment initialization,
-imported templates with unavailable facts, shadow trees, external script execution
-and other
-unimplemented control state remain outside this capability. Ordinary EOF now
+separate DOM moveBefore primitive, imported templates with unavailable facts,
+external script execution and other unimplemented control state remain outside
+this ordinary capability. The [contextual fragment owner](#private-context-fragments)
+separately supplies captured initialization and qualified shadow construction.
+Ordinary EOF now
 runs two source-positioned intrinsic checkpoints after canonical end pops,
 through the [private completion owner](#private-ordinary-eof). Public report
 publication remains separate.
@@ -1977,9 +2044,11 @@ without running useful effects.
 The [template state owner](src/construction/parser_session/template.rs),
 [template dispatcher](src/parser/tree_builder/template.rs) and
 [origin record](PARSER-ORIGINS.md#ordinary-template-extension) identify this private,
-test-compiled boundary. Imported templates with unavailable patch facts, captured
-context-sensitive fragments, shadow attachment and complete public
-stop-parsing/report publication remain unfinished. No public captured
+test-compiled boundary. The [private fragment owner](#private-context-fragments)
+separately supplies captured template initialization and qualified declarative
+shadow construction. Imported templates with unavailable patch facts, live DOM
+shadow attachment and public stop-parsing/report publication remain unfinished.
+No public captured
 template-for reference query or live DOM follows. Repeated registry/topology
 scans, comparisons, copies and moves can be quadratic; finite charged/polled work
 establishes no linear-time or allocator/RSS guarantee.
@@ -2011,8 +2080,8 @@ or allocator/RSS guarantee follows. The separately qualified
 [restricted SVG script operation](#private-svg-script) uses the same foreign
 creator and dispatcher. Ordinary EOF uses the separately qualified
 [private completion owner](#private-ordinary-eof); public report publication,
-contextual fragments and imported templates still require their own
-construction facts and effects.
+[contextual fragments](#private-context-fragments) use their qualified construction
+facts and effects, while imported templates with unavailable facts remain refused.
 
 <a id="private-svg-script"></a>
 
@@ -2071,8 +2140,9 @@ maps, registry capacities, handles and tickets without rescue processing.
 Repeated scans, subtree walks, copies and moves can be quadratic; finite charged
 and polled work is not linearity, allocator cancellation or an RSS guarantee.
 These operations remain private and test-compiled. Imported/hosted execution,
-captured context fragments, shadow attachment and public diagnostic/source-map/
-report transfer remain separate work. Ordinary EOF completion is described below.
+live DOM shadow attachment and public diagnostic/source-map/report transfer remain
+separate work. [Captured fragments](#private-context-fragments) have a distinct
+qualified execution profile. Ordinary EOF completion is described below.
 The [origin record](PARSER-ORIGINS.md#restricted-svg-script-extension)
 and [source attribution](NOTICE.md#restricted-svg-script-processing) record the
 distinct HTML, Tiny and implementation-provenance terms.
@@ -2134,10 +2204,11 @@ diagnostics retain their original backing and tickets, while native association
 storage is reclaimed without post-stop allocation or useful work. Public report
 assembly remains contribution work.
 
-Public parsed document/fragment results, atomic diagnostic/source-map/report transfer
-and contextual fragment execution remain unimplemented. Private completion does
-not certify unsupported input families, captured/hosted execution, shadow
-attachment, full parser accounting or whole HTML contribution completion.
+Public parsed document/fragment results and atomic diagnostic/source-map/report
+transfer remain unimplemented. [Contextual fragments](#private-context-fragments)
+have their separately qualified private EOF return. Ordinary completion does not
+certify unsupported input families, hosted execution, live DOM shadow attachment,
+full parser accounting or whole HTML contribution completion.
 The [end owner](src/parser/tree_builder/end.rs),
 [qualified completion facts](src/construction/parser_session/completion.rs) and
 [origin record](PARSER-ORIGINS.md#ordinary-eof-completion) record this boundary.
@@ -2185,8 +2256,9 @@ text merging, replacement, cloning, retirement and replay retain original groups
 and later construction triggers. Its controlled projection reads actual canonical
 bindings and borrows only a complete admitted result. Completed, frozen and failed
 owners lend committed diagnostics through one fixed borrowed record/location view.
-Public all-overlap reverse queries, feeding/chunk invariance, contextual fragment
-integration and public successful/failed report transfer remain unfinished. All
+Public all-overlap reverse queries, feeding/chunk invariance and public successful/
+failed report transfer remain unfinished. The [private fragment owner](#private-context-fragments)
+retains this committed diagnostic store through its own completion/failure paths. All
 these diagnostic operations are private
 and test-compiled; no public API or complete HTML parser follows.
 The [origin record](PARSER-ORIGINS.md#ordered-private-parse-evidence) distinguishes
@@ -2252,8 +2324,9 @@ preemption, RSS, full-corpus conformance, public parse-report or whole-parser
 accounting guarantee. The [fixture attribution](NOTICE.md#html5lib-tests-fixtures)
 links the exact bundled MIT license and contributor credits.
 
-Remaining insertion modes, required contextual fragments, context effects and
-parse-report publication remain unfinished.
+Remaining insertion modes and public parse-report publication remain unfinished.
+[Private contextual fragments](#private-context-fragments) retain source-qualified
+construction effects without establishing complete public fragment parsing.
 The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,
 modifications and attribution separately from the normative HTML edition.
 The offline `tools/generate_character_references.py --check`

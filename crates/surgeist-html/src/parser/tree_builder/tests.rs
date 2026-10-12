@@ -8319,7 +8319,7 @@ fn frameset_body_removal_preserves_form_facts_and_reconstructs_surviving_formatt
             .session
             .same_node(
                 &mut driver.control,
-                state.current_form.as_ref().unwrap(),
+                state.current_form.as_ref().unwrap().owned().unwrap(),
                 &old_form
             )
             .unwrap()
@@ -13160,5 +13160,146 @@ fn ordinary_eof_pops_open_option_and_clones_selected_content_before_completion()
             (3, "option"),
             (4, "#A"),
         ])
+    );
+}
+
+#[test]
+fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
+    use super::head::{FormPointer, HeadCondition, HeadStep, InsertionMode};
+    use crate::construction::parser_session::{evidence::DiagnosticRule, provenance::ParserRule};
+
+    fn ready<'a>(request: &'a crate::HtmlDocumentParseRequest) -> StandaloneDocumentDriver<'a> {
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(request);
+        for _ in 0..100 {
+            driver.step().unwrap();
+            if driver
+                .head
+                .as_ref()
+                .is_some_and(|head| head.state.as_ref().unwrap().mode == InsertionMode::InTable)
+            {
+                break;
+            }
+        }
+        let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+        assert_eq!(state.mode, InsertionMode::InTable);
+        assert!(state.current_form.is_none());
+        assert!(state.pending.is_none());
+        let evidence = state
+            .before
+            .kernel
+            .session
+            .evidence(&mut driver.control)
+            .unwrap();
+        let event = state
+            .tokenizer
+            .as_mut()
+            .unwrap()
+            .next(&mut driver.control, false, evidence)
+            .unwrap()
+            .unwrap();
+        let Event::Token(event) = event else {
+            panic!("actual form token");
+        };
+        let token = event.into_token(&mut driver.control).unwrap();
+        assert!(matches!(token.kind, TokenKind::Tag(_)));
+        write(
+            size_of::<Option<super::prologue::PendingToken>>(),
+            1,
+            &mut driver.control,
+        )
+        .unwrap();
+        state.pending = Some(super::prologue::PendingToken::from_token(token));
+        assert_eq!(
+            state.token_in(&["form"], &mut driver.control).unwrap(),
+            Some("form")
+        );
+        driver
+    }
+
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><table><form>"),
+        limits(100),
+    );
+    let mut actual = ready(&request);
+    let before = actual.control.usage().clone();
+    let state = actual.head.as_mut().unwrap().state.as_mut().unwrap();
+    let outcome = state
+        .table_rules(
+            InsertionMode::InTable,
+            request.source(),
+            &mut actual.control,
+        )
+        .unwrap();
+    let actual_copy =
+        actual.control.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte);
+    let actual_writes = actual.control.usage().work(WorkCategory::RecordWrite)
+        - before.work(WorkCategory::RecordWrite);
+    let pointer_installed = matches!(state.current_form, Some(FormPointer::Owned(_)));
+    let actual_stack = state.before.kernel.stack().unwrap().len();
+
+    // The independent common envelope is real trigger retention, one diagnostic,
+    // native form creation/insertion, stack removal and pending-token disposal.
+    // Tag comparisons add no CopyByte/RecordWrite. The no-template predicate
+    // additionally clones each actual html/body/table stack handle once.
+    // This envelope does not
+    // call table_rules or install a form pointer; the two extra source actions
+    // are one ParserNode clone and one actual Option<FormPointer> receiver write.
+    let mut common = ready(&request);
+    let before = common.control.usage().clone();
+    let state = common.head.as_mut().unwrap().state.as_mut().unwrap();
+    let template_scan_nodes = state.before.kernel.stack().unwrap().len();
+    state
+        .record_trigger(
+            ParserRule::Tree(InsertionMode::InTable),
+            &mut common.control,
+        )
+        .unwrap();
+    state
+        .emit(
+            HeadCondition::UnexpectedTableToken,
+            DiagnosticRule {
+                anchor: "parsing-main-intable",
+                branch: "form-start",
+            },
+            &mut common.control,
+        )
+        .unwrap();
+    let node = state.insert_tag(&mut common.control).unwrap();
+    state
+        .before
+        .kernel
+        .pop(
+            &mut common.control,
+            state.script.as_ref().map(|script| &script.capability),
+        )
+        .unwrap();
+    let common_outcome = state.finish(&mut common.control).unwrap();
+    let common_copy =
+        common.control.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte);
+    let common_writes = common.control.usage().work(WorkCategory::RecordWrite)
+        - before.work(WorkCategory::RecordWrite);
+    let common_stack = state.before.kernel.stack().unwrap().len();
+    drop(node);
+
+    // Release both actual lexical/native/controller owners before the fee
+    // assertion. An underadmitted write must not hide a cleanup failure.
+    actual.release().unwrap();
+    common.release().unwrap();
+    assert_released(&actual.control);
+    assert_released(&common.control);
+    assert_eq!(outcome, Some(HeadStep::Consumed));
+    assert_eq!(common_outcome, HeadStep::Consumed);
+    assert!(pointer_installed);
+    assert_eq!(actual_stack, common_stack);
+    assert_eq!(template_scan_nodes, 3);
+    assert_eq!(actual_writes, common_writes + 1);
+    assert_eq!(
+        actual_copy,
+        common_copy
+            + (size_of::<ParserNode>() * (template_scan_nodes + 1)
+                + size_of::<Option<FormPointer>>()) as u64,
+        "the installed receiver needs its actual compiled byte fee: Option<FormPointer>={}, Option<ParserNode>={} bytes",
+        size_of::<Option<FormPointer>>(),
+        size_of::<Option<ParserNode>>()
     );
 }

@@ -58,6 +58,60 @@ pub(super) fn insensitive(
 }
 
 impl HeadState<'_> {
+    pub(super) fn adjusted_current_name<'a>(
+        &'a self,
+        c: &mut ParseControl,
+    ) -> Result<&'a crate::QualifiedName, HeadError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.before.kernel.stack()?.len() == 1
+            && let Some(context) = self.before.kernel.session.fragment_context(c)?
+        {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let node = context
+                .capture()
+                .node(context.context_element().subject())
+                .map_err(|_| {
+                    crate::construction::parser_session::SessionError::ContextUnavailable
+                })?;
+            let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
+                return Err(KernelError::NotElement.into());
+            };
+            return Ok(element.name());
+        }
+        let current = self.before.kernel.current(c)?;
+        self.before
+            .kernel
+            .session
+            .element_name(c, &current)?
+            .ok_or_else(|| KernelError::NotElement.into())
+    }
+    fn adjusted_current_attributes<'a>(
+        &'a self,
+        c: &mut ParseControl,
+    ) -> Result<&'a crate::OrderedAttributes, HeadError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.before.kernel.stack()?.len() == 1
+            && let Some(context) = self.before.kernel.session.fragment_context(c)?
+        {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let node = context
+                .capture()
+                .node(context.context_element().subject())
+                .map_err(|_| {
+                    crate::construction::parser_session::SessionError::ContextUnavailable
+                })?;
+            let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
+                return Err(KernelError::NotElement.into());
+            };
+            return Ok(element.attributes());
+        }
+        let current = self.before.kernel.current(c)?;
+        self.before
+            .kernel
+            .session
+            .element_attributes(c, &current)?
+            .ok_or_else(|| KernelError::NotElement.into())
+    }
     pub(super) fn foreign_namespace(
         &self,
         c: &mut ParseControl,
@@ -66,13 +120,7 @@ impl HeadState<'_> {
         if self.before.kernel.stack()?.len() == 0 {
             return Ok(None);
         }
-        let current = self.before.kernel.current(c)?;
-        let name = self
-            .before
-            .kernel
-            .session
-            .element_name(c, &current)?
-            .ok_or(KernelError::EmptyStack)?;
+        let name = self.adjusted_current_name(c)?;
         if tag_sets::namespace(name, HTML, c)? {
             return Ok(None);
         }
@@ -82,9 +130,31 @@ impl HeadState<'_> {
         if tag_sets::namespace(name, SVG, c)? {
             return Ok(Some(ForeignNamespace::Svg));
         }
-        Err(c
-            .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
-            .into())
+        let context = self
+            .before
+            .kernel
+            .session
+            .fragment_context(c)?
+            .ok_or_else(|| c.stop_unsupported_standalone(StandaloneUnsupported::Provenance))?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let node = context
+            .capture()
+            .node(context.context_element().subject())
+            .map_err(|_| super::SessionError::ContextUnavailable)?;
+        let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Err(KernelError::NotElement.into());
+        };
+        let equal = match (name.namespace().uri(), element.name().namespace().uri()) {
+            (None, None) => true,
+            (Some(left), Some(right)) => tag_sets::equal_units(left, right, c)?,
+            _ => false,
+        };
+        if !equal {
+            return Err(c
+                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .into());
+        }
+        Ok(Some(ForeignNamespace::Context))
     }
     fn math_text_point(&self, node: &ParserNode, c: &mut ParseControl) -> Result<bool, HeadError> {
         let name = self
@@ -146,22 +216,17 @@ impl HeadState<'_> {
         if matches!(payload, Payload::Eof) || self.foreign_namespace(c)?.is_none() {
             return Ok(false);
         }
-        let current = self.before.kernel.current(c)?;
         let kind = self.kind(c)?;
         let text = matches!(payload, Payload::Text(_));
-        if self.math_text_point(&current, c)?
+        let name = self.adjusted_current_name(c)?;
+        if tag_sets::namespace(name, MATHML, c)?
+            && tag_sets::local_in(name, &["mi", "mo", "mn", "ms", "mtext"], c)?
             && (text
                 || (matches!(kind, Some((TagKind::Start, _)))
                     && self.token_in(&["mglyph", "malignmark"], c)?.is_none()))
         {
             return Ok(false);
         }
-        let name = self
-            .before
-            .kernel
-            .session
-            .element_name(c, &current)?
-            .ok_or(KernelError::EmptyStack)?;
         if tag_sets::namespace(name, MATHML, c)?
             && tag_sets::local_in(name, &["annotation-xml"], c)?
             && matches!(kind, Some((TagKind::Start, _)))
@@ -169,12 +234,37 @@ impl HeadState<'_> {
         {
             return Ok(false);
         }
-        if self.integration_point(&current, c)?
+        if self.adjusted_integration_point(c)?
             && (text || matches!(kind, Some((TagKind::Start, _))))
         {
             return Ok(false);
         }
         Ok(true)
+    }
+    fn adjusted_integration_point(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
+        let name = self.adjusted_current_name(c)?;
+        if tag_sets::namespace(name, SVG, c)? {
+            return Ok(tag_sets::local_in(
+                name,
+                &["foreignObject", "desc", "title"],
+                c,
+            )?);
+        }
+        if !tag_sets::namespace(name, MATHML, c)?
+            || !tag_sets::local_in(name, &["annotation-xml"], c)?
+        {
+            return Ok(false);
+        }
+        for attribute in self.adjusted_current_attributes(c)?.as_slice() {
+            c.charge(WorkCategory::RecordVisit, 3)?;
+            if attribute.name().namespace().uri().is_none()
+                && tag_sets::ascii_eq(attribute.name().local_name(), "encoding", c)?
+            {
+                return Ok(insensitive(attribute.value(), "text/html", c)?
+                    || insensitive(attribute.value(), "application/xhtml+xml", c)?);
+            }
+        }
+        Ok(false)
     }
     pub(super) fn insert_foreign(
         &mut self,
@@ -185,7 +275,7 @@ impl HeadState<'_> {
         self.admit_hidden_capability(c)?;
         let svg_script =
             namespace == ForeignNamespace::Svg && self.token_in(&["script"], c)?.is_some();
-        let location = self.before.kernel.adjusted_location(None, c)?;
+        let place = self.before.kernel.appropriate_place(None, c)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let Payload::Tag(input) = &mut pending.payload else {
@@ -194,7 +284,7 @@ impl HeadState<'_> {
         let capability = &self
             .script
             .as_ref()
-            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .capability;
         let node = self
             .before
@@ -203,12 +293,13 @@ impl HeadState<'_> {
             .allocate_foreign_tag_for_creation(
                 c,
                 input,
-                &location.parent,
+                &place.parent,
                 namespace,
                 &pending.source,
                 capability,
             )?;
         self.foreign_xmlns_errors(&node, namespace, c)?;
+        let location = self.before.kernel.adjusted_location(None, c)?;
         self.before.kernel.insert_element_at(
             &node,
             &location,
@@ -237,7 +328,7 @@ impl HeadState<'_> {
         // Scan separately so each diagnostic precedes the next actual read.
         for (local, expected) in [
             ("xmlns", namespace.uri()),
-            ("xlink", "http://www.w3.org/1999/xlink"),
+            ("xlink", Some("http://www.w3.org/1999/xlink")),
         ] {
             let mut mismatch = false;
             let attrs = self
@@ -250,7 +341,20 @@ impl HeadState<'_> {
                 c.charge(WorkCategory::RecordVisit, 2)?;
                 if tag_sets::namespace(attribute.name(), "http://www.w3.org/2000/xmlns/", c)?
                     && tag_sets::ascii_eq(attribute.name().local_name(), local, c)?
-                    && !tag_sets::ascii_eq(attribute.value(), expected, c)?
+                    && !(if let Some(expected) = expected {
+                        tag_sets::ascii_eq(attribute.value(), expected, c)?
+                    } else {
+                        let name = self
+                            .before
+                            .kernel
+                            .session
+                            .element_name(c, node)?
+                            .ok_or(KernelError::NotElement)?;
+                        match name.namespace().uri() {
+                            Some(uri) => tag_sets::equal_units(attribute.value(), uri, c)?,
+                            None => false,
+                        }
+                    })
                 {
                     mismatch = true;
                     break;
@@ -453,7 +557,15 @@ impl HeadState<'_> {
             loop {
                 c.charge(WorkCategory::StateStep, 1)?;
                 let current = self.before.kernel.current(c)?;
-                if self.foreign_namespace(c)?.is_none()
+                let current_name = self
+                    .before
+                    .kernel
+                    .session
+                    .element_name(c, &current)?
+                    .ok_or(KernelError::NotElement)?;
+                // The breakout loop tests the actual current node, not the
+                // adjusted context substituted by overarching dispatch.
+                if tag_sets::namespace(current_name, HTML, c)?
                     || self.math_text_point(&current, c)?
                     || self.integration_point(&current, c)?
                 {

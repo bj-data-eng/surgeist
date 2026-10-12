@@ -13,8 +13,9 @@
 //! and independent adjusted backing/maps; qualified clones use the same registry.
 //! Actual node-document bindings, lazy inert template documents, template patch
 //! facts and whole-grammar PI maps share this registry. Other resettable form
-//! metadata, hosted context, source reports and public parsing remain later
-//! producers; this is not a complete parser claim.
+//! metadata, source reports and public parsing remain later producers. Qualified
+//! hosted context, local shadow records and captured attachment effects stay in
+//! this owner; they do not implement a live DOM or public parse entry.
 //! Hidden initialization installs source-order attributes, retaining original
 //! token/value-attribute ranges and lexical maps for actual conditional writeback.
 //! Script facts are retained for a sealed fresh ordinary Disabled execution;
@@ -35,6 +36,9 @@ use std::{mem, sync::Weak};
 
 mod clone;
 mod completion;
+pub(crate) mod context;
+pub(crate) use context::ParserDocumentReference;
+use context::{DocumentRef, FragmentContextStorage};
 pub(crate) mod evidence;
 use evidence::ParseEvidence;
 mod foreign;
@@ -92,6 +96,10 @@ pub(crate) enum SessionError {
     PendingIntrinsicWork,
     CompletionMetadataUnavailable,
     CompletionIncomplete,
+    ContextUnavailable,
+    ContextReactionUnavailable,
+    ContextFactUnavailable(crate::HtmlCaptureFact),
+    CapturedDocument,
 }
 /// Pinned element-placement guards; generic storage moves remain independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -128,11 +136,11 @@ enum AttributeMergeName {
 enum CreationProfile<'a, 'source> {
     Ordinary,
     Hidden(
-        &'a crate::parser::tree_builder::StandaloneCapability<'source>,
+        &'a crate::parser::tree_builder::ConstructionCapability<'source>,
         &'a crate::HtmlSourceRange,
     ),
     Select(
-        &'a crate::parser::tree_builder::StandaloneCapability<'source>,
+        &'a crate::parser::tree_builder::ConstructionCapability<'source>,
         &'a crate::HtmlSourceRange,
     ),
 }
@@ -191,6 +199,7 @@ struct SessionStorage {
     control: ControlIdentity,
     effects: ConstructionEffects,
     evidence: Option<ParseEvidence>,
+    fragment: Option<FragmentContextStorage>,
     #[cfg(test)]
     cancel_after_removal: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
@@ -229,6 +238,7 @@ struct FrozenStorage {
     payloads: PayloadStorage,
     effects: ConstructionEffects,
     evidence: Option<ParseEvidence>,
+    fragment: Option<FragmentContextStorage>,
 }
 /// Actual backing and exact record-qualified ownership, not allocation proxies.
 struct PayloadStorage {
@@ -238,6 +248,10 @@ struct PayloadStorage {
     preexisting_attributes: usize,
 }
 enum RetainedPayload {
+    Shadow {
+        root: Option<usize>,
+        state: context::ShadowState,
+    },
     ConstructionCause {
         node: Option<usize>,
         cause: provenance::ConstructionCauseRef,
@@ -251,13 +265,19 @@ enum RetainedPayload {
         values: OwnedVec<pi::PseudoAttribute>,
         ready: bool,
     },
+    LookupRegistry {
+        node: Option<usize>,
+        registry: context::RegistryRef,
+        creation: Option<context::ElementCreationState>,
+    },
     NodeDocument {
         node: Option<usize>,
-        document: usize,
+        document: DocumentRef,
     },
     Document {
         node: Option<usize>,
         state: template::DocumentState,
+        class: crate::HtmlDocumentClass,
     },
     Template {
         node: Option<usize>,
@@ -410,8 +430,8 @@ enum InsertionCause {
 /// Document indices are private and resolved only through qualified handles.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ScriptMetadata {
-    parser_document: Option<usize>,
-    preparation_document: Option<usize>,
+    parser_document: Option<DocumentRef>,
+    preparation_document: Option<DocumentRef>,
     pub(crate) force_async: bool,
     pub(crate) already_started: bool,
     pub(crate) script_type: Option<ScriptType>,
@@ -566,6 +586,8 @@ impl PayloadStorage {
                 | RetainedPayload::ConstructionCause { .. }
                 | RetainedPayload::Script { .. }
                 | RetainedPayload::NodeDocument { .. }
+                | RetainedPayload::LookupRegistry { .. }
+                | RetainedPayload::Shadow { .. }
                 | RetainedPayload::StandaloneDocumentCompletion { .. }
                 | RetainedPayload::Document { .. }
                 | RetainedPayload::Template { .. }
@@ -873,6 +895,7 @@ impl SessionStorage {
             control: control.identity(),
             effects,
             evidence: None,
+            fragment: None,
             #[cfg(test)]
             cancel_after_removal: None,
             #[cfg(test)]
@@ -912,11 +935,12 @@ impl SessionStorage {
                 session.payloads.values.push(RetainedPayload::Document {
                     node: Some(0),
                     state: template::DocumentState::Ordinary { inert: None },
+                    class: crate::HtmlDocumentClass::Html,
                 });
                 session.prepare_payload_slot_owned(control)?;
                 session.payloads.values.push(RetainedPayload::NodeDocument {
                     node: Some(0),
-                    document: 0,
+                    document: DocumentRef::Owned(0),
                 });
                 Ok::<_, SessionError>(())
             })();
@@ -937,6 +961,7 @@ impl SessionStorage {
                 .into());
         }
         self.effects.require_idle(control)?;
+        self.require_context_ready(control)?;
         Ok(())
     }
     fn node(&self, control: &mut ParseControl, index: usize) -> Result<ParserNode, SessionError> {
@@ -1035,7 +1060,8 @@ impl SessionStorage {
         units: usize,
     ) -> Result<ParserNode, SessionError> {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        let document = matches!(self.records[0].kind, HtmlNodeKind::Document(_)).then_some(0);
+        let document = matches!(self.records[0].kind, HtmlNodeKind::Document(_))
+            .then_some(DocumentRef::Owned(0));
         self.allocate_in_document_owned(control, kind, template, attributes, units, document)
     }
     fn allocate_native(
@@ -2017,7 +2043,8 @@ impl SessionStorage {
         let preparation = (|| {
             let template = exact_ascii(control, Some(name.text()), "template")?;
             control.charge(WorkCategory::RecordVisit, 1)?;
-            let document = matches!(self.records[0].kind, HtmlNodeKind::Document(_)).then_some(0);
+            let document = matches!(self.records[0].kind, HtmlNodeKind::Document(_))
+                .then_some(DocumentRef::Owned(0));
             self.prepare_document_allocation(control, document, template)
         })();
         let prepared = match preparation {
@@ -2262,7 +2289,7 @@ impl SessionStorage {
             None
         };
         let prepared = if preceding.is_none() {
-            let document = match self.node_document_index(control, parent_index) {
+            let document = match self.node_document_ref(control, parent_index) {
                 Ok(document) => Some(document),
                 Err(SessionError::NodeDocumentUnavailable)
                     if matches!(self.records[0].kind, HtmlNodeKind::Fragment) =>
@@ -3009,7 +3036,7 @@ impl SessionStorage {
             let record = self.records.get(index).ok_or(SessionError::ForeignNode)?;
             if let Some(owner) = &record.owner {
                 match owner {
-                    HtmlFragmentOwner::ShadowHost(_) => return Ok(true),
+                    HtmlFragmentOwner::ShadowHost(_) => return Ok(self.fragment.is_none()),
                     HtmlFragmentOwner::Template(template) => {
                         let (_, state) = self.template_slot(control, template.index)?;
                         if state.contents != index {
@@ -3132,8 +3159,8 @@ impl SessionStorage {
         }
         let adoption = if let Some(parent) = new_parent {
             match (
-                self.node_document_index(control, root),
-                self.node_document_index(control, parent),
+                self.node_document_ref(control, root),
+                self.node_document_ref(control, parent),
             ) {
                 (Ok(old), Ok(new)) => old != new,
                 (Err(SessionError::NodeDocumentUnavailable), _)
@@ -3358,12 +3385,12 @@ impl SessionStorage {
             };
             if effects.stage == FormEffectStage::Adoption {
                 let parent = effects.new_parent.ok_or(SessionError::NotContainer)?;
-                let document = match self.node_document_index(control, parent) {
+                let document = match self.node_document_ref(control, parent) {
                     Ok(document) => Some(document),
                     Err(SessionError::NodeDocumentUnavailable) => None,
                     Err(error) => return Err(error),
                 };
-                let old = match self.node_document_index(control, effects.root) {
+                let old = match self.node_document_ref(control, effects.root) {
                     Ok(document) => Some(document),
                     Err(SessionError::NodeDocumentUnavailable) => None,
                     Err(error) => return Err(error),
@@ -3571,8 +3598,8 @@ impl SessionStorage {
                             // fresh ordinary Document creation owner. A
                             // Document ID event also affects its detached
                             // controls; connectivity is tested by reset.
-                            if self.node_document_index(control, candidate)?
-                                == self.node_document_index(control, node)?
+                            if self.node_document_ref(control, candidate)?
+                                == self.node_document_ref(control, node)?
                                 && state.kind.listed()
                                 && self.form_attribute(control, candidate, "form")?.is_some()
                                 && match tree {
@@ -3972,7 +3999,7 @@ impl SessionStorage {
         }
         metadata.already_started = true;
         set_script_metadata(self, control, slot, metadata)?;
-        metadata.preparation_document = Some(self.node_document_index(control, index)?);
+        metadata.preparation_document = Some(self.node_document_ref(control, index)?);
         set_script_metadata(self, control, slot, metadata)?;
         if metadata.parser_document.is_some()
             && metadata.parser_document != metadata.preparation_document
@@ -3982,7 +4009,10 @@ impl SessionStorage {
         Ok(DisabledScriptPreparation::Disabled(kind))
     }
 
-    fn prepare_freeze(&mut self, control: &mut ParseControl) -> Result<bool, SessionError> {
+    fn prepare_freeze(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<Option<usize>, SessionError> {
         control.require_identity(&self.control)?;
         self.effects.require_freezable(control)?;
         self.require(control)?;
@@ -4008,7 +4038,21 @@ impl SessionStorage {
         control.charge(WorkCategory::RecordVisit, 1)?;
         let document = matches!(self.records[0].kind, HtmlNodeKind::Document(_));
         control.charge(WorkCategory::CopyByte, mem::size_of::<Arena>() as u64)?;
-        Ok(document)
+        if let Some(fragment) = &self.fragment {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let output = fragment.output.ok_or(SessionError::ContextUnavailable)?;
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if !matches!(self.records[output].kind, HtmlNodeKind::Fragment) {
+                return Err(SessionError::WrongToken);
+            }
+            control.charge(
+                WorkCategory::CopyByte,
+                mem::size_of::<Option<usize>>() as u64,
+            )?;
+            Ok(Some(output))
+        } else {
+            Ok(if document { None } else { Some(0) })
+        }
     }
 
     /// Called only after the owning transition verifies cleanup identity. This
@@ -4018,6 +4062,7 @@ impl SessionStorage {
             control: owner,
             effects,
             evidence,
+            fragment,
             #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
@@ -4036,6 +4081,11 @@ impl SessionStorage {
             usage,
             payloads,
         } = self;
+        if let Some(fragment) = fragment {
+            fragment
+                .release(control, &owner)
+                .expect("actual context effects owner");
+        }
         if let Some(evidence) = evidence {
             evidence.release(control).expect("actual diagnostic owner");
         }
@@ -4148,10 +4198,28 @@ impl ParserArenaSession {
                 .into());
         }
         let tag = self.require_formatting_creation(control, creation)?;
-        let document = storage.node_document_index(control, parent)?;
-        let prepared =
+        let document = storage.node_document_ref(control, parent)?;
+        let mut prepared =
             self.active_mut()?
                 .prepare_document_allocation(control, Some(document), false)?;
+        let mut is_value = None;
+        if self.active()?.fragment.is_some() {
+            for attr in tag.attributes.as_slice() {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if exact_ascii(control, Some(attr.name.value.text()), "is")? {
+                    is_value = Some(&attr.value);
+                    break;
+                }
+            }
+        }
+        self.active_mut()?.prepare_creation_registry(
+            control,
+            parent,
+            tag.name.value.text(),
+            is_value,
+            true,
+            &mut prepared,
+        )?;
         let mut copy = Some(copy_formatting_tag(control, tag)?);
         let copied = match take_payload(&mut copy, control) {
             Ok(copied) => copied,
@@ -4248,7 +4316,7 @@ impl ParserArenaSession {
         control: &mut ParseControl,
         from: &ParserNode,
         to: &ParserNode,
-        capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
+        capability: Option<&crate::parser::tree_builder::ConstructionCapability<'_>>,
     ) -> Result<(), SessionError> {
         let storage = self.active()?;
         let source = storage.index(control, from)?;
@@ -4324,7 +4392,7 @@ impl ParserArenaSession {
         input: &mut Option<Tag>,
         intended_parent: Option<&ParserNode>,
         context: CreationContext<'_>,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(control, self)?;
         let tag = input.as_ref().ok_or(SessionError::Consumed)?;
@@ -4351,19 +4419,24 @@ impl ParserArenaSession {
             }
             None => self.root(control)?,
         };
-        self.active()?.node_document_index(control, parent.index)?;
+        self.active()?.node_document_ref(control, parent.index)?;
         let storage = self.active_mut()?;
         storage.document_slot(control, 0)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let inert = storage
+            .fragment
+            .as_ref()
+            .is_some_and(|fragment| fragment.mode == crate::HtmlParserScriptingMode::Inert);
         storage.prepare_payload_slot(control)?;
         let script = storage.payloads.values.len();
         payload_write::<Option<usize>>(control, 1)?;
         storage.payloads.values.push(RetainedPayload::Script {
             node: None,
             metadata: ScriptMetadata {
-                parser_document: Some(0),
+                parser_document: Some(DocumentRef::Owned(0)),
                 preparation_document: None,
                 force_async: false,
-                already_started: false,
+                already_started: inert,
                 script_type: None,
                 external_file: false,
                 ready_to_be_parser_executed: false,
@@ -4404,7 +4477,7 @@ impl ParserArenaSession {
     ) -> Result<Option<ParserNode>, SessionError> {
         self.script_metadata(control, node)?
             .parser_document
-            .map(|index| self.active()?.node(control, index))
+            .map(|index| self.active()?.node(control, index.owned()?))
             .transpose()
     }
     pub(crate) fn script_preparation_document(
@@ -4414,7 +4487,7 @@ impl ParserArenaSession {
     ) -> Result<Option<ParserNode>, SessionError> {
         self.script_metadata(control, node)?
             .preparation_document
-            .map(|index| self.active()?.node(control, index))
+            .map(|index| self.active()?.node(control, index.owned()?))
             .transpose()
     }
     /// Text-mode EOF marks the current script started; it does not prepare it.
@@ -4422,7 +4495,7 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
         node: &ParserNode,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<(), SessionError> {
         capability.validate_session(control, self)?;
         let storage = self.active_mut()?;
@@ -4437,7 +4510,7 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
         node: &ParserNode,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<DisabledScriptPreparation, SessionError> {
         capability.validate_session(control, self)?;
         let storage = self.active_mut()?;
@@ -4499,7 +4572,7 @@ impl ParserArenaSession {
         input: &mut Option<Tag>,
         location: CreationLocation<'_>,
         token_source: &crate::HtmlSourceRange,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(control, self)?;
         self.allocate_for_creation(
@@ -4517,7 +4590,7 @@ impl ParserArenaSession {
         input: &mut Option<Tag>,
         location: CreationLocation<'_>,
         token_source: &crate::HtmlSourceRange,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(control, self)?;
         self.allocate_for_creation(
@@ -4548,7 +4621,7 @@ impl ParserArenaSession {
                 .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
                 .into());
         }
-        let document = storage.node_document_index(control, parent)?;
+        let document = storage.node_document_ref(control, parent)?;
         let form = current_form
             .map(|form| storage.index(control, form))
             .transpose()?;
@@ -4640,7 +4713,13 @@ impl ParserArenaSession {
                 }
             }
         }
-        let owner = if kind.is_some() && !explicit_form && !parsing_template {
+        // §13.2.6.1's fragment-context-null guard is independent of a retained
+        // nearest-form pointer used by insertion-mode recovery.
+        let owner = if kind.is_some()
+            && !explicit_form
+            && !parsing_template
+            && storage.fragment.is_none()
+        {
             match form {
                 Some(form)
                     if storage.ordinary_root(control, parent, None)?
@@ -4680,7 +4759,24 @@ impl ParserArenaSession {
         };
         let template = exact_ascii(control, Some(tag.name.value.text()), "template")?;
         let storage = self.active_mut()?;
-        let prepared = storage.prepare_document_allocation(control, Some(document), template)?;
+        let mut prepared =
+            storage.prepare_document_allocation(control, Some(document), template)?;
+        let mut is_value = None;
+        for attr in tag.attributes.as_slice() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if exact_ascii(control, Some(attr.name.value.text()), "is")? {
+                is_value = Some(&attr.value);
+                break;
+            }
+        }
+        storage.prepare_creation_registry(
+            control,
+            parent,
+            tag.name.value.text(),
+            is_value,
+            true,
+            &mut prepared,
+        )?;
         let select_slot = if let Some(state) = select_metadata {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
@@ -5044,7 +5140,7 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
         node: &ParserNode,
-        capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
+        capability: Option<&crate::parser::tree_builder::ConstructionCapability<'_>>,
     ) -> Result<(), SessionError> {
         self.qualify_stack_removal(control, node, capability)?;
         let storage = self.active_mut()?;
@@ -5073,7 +5169,7 @@ impl ParserArenaSession {
         &self,
         c: &mut ParseControl,
         node: &ParserNode,
-        capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
+        capability: Option<&crate::parser::tree_builder::ConstructionCapability<'_>>,
     ) -> Result<(), SessionError> {
         let storage = self.active()?;
         let index = storage.index(c, node)?;
@@ -5135,14 +5231,16 @@ impl ParserArenaSession {
     pub(crate) fn allocate_implicit_head(
         &mut self,
         control: &mut ParseControl,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, None, ImpliedHtmlName::Head)
+        self.allocate_implied_html(control, intended_parent, ImpliedHtmlName::Head)
     }
     pub(crate) fn allocate_implicit_body(
         &mut self,
         control: &mut ParseControl,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, None, ImpliedHtmlName::Body)
+        self.allocate_implied_html(control, intended_parent, ImpliedHtmlName::Body)
     }
     pub(crate) fn allocate_implicit_p(
         &mut self,
@@ -5329,7 +5427,7 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(control)?;
         let document = storage.creation_document(control, intended_parent)?;
-        let prepared = storage.prepare_document_allocation(control, document, false)?;
+        let mut prepared = storage.prepare_document_allocation(control, document, false)?;
         let attributes = OwnedVec::new(HtmlParseResource::TokenAttributes)?;
         let name = literal_string(
             control,
@@ -5343,6 +5441,20 @@ impl ParserArenaSession {
                 ImpliedHtmlName::Tr => b"tr",
             },
         )?;
+        if let Some(parent) = intended_parent
+            && let Err(error) = storage.prepare_creation_registry(
+                control,
+                parent.index,
+                name.text(),
+                None,
+                true,
+                &mut prepared,
+            )
+        {
+            name.release(control)?;
+            attributes.release(control)?;
+            return Err(error);
+        }
         storage.allocate_html_payload_prepared(control, name, None, attributes, prepared)
     }
     pub(crate) fn allocate_comment(
@@ -5555,7 +5667,7 @@ impl ParserArenaSession {
         parent: &ParserNode,
         before: Option<&ParserNode>,
         input: &mut Option<Text>,
-        capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
+        capability: Option<&crate::parser::tree_builder::ConstructionCapability<'_>>,
     ) -> Result<Option<TextInsertion>, SessionError> {
         let storage = self.active()?;
         let index = storage.index(control, parent)?;
@@ -5732,7 +5844,7 @@ impl ParserArenaSession {
         parent: &ParserNode,
         node: &ParserNode,
         before: Option<&ParserNode>,
-        capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
+        capability: Option<&crate::parser::tree_builder::ConstructionCapability<'_>>,
     ) -> Result<(), SessionError> {
         self.qualify_intrinsic_mutation(control, node, capability)?;
         self.active_mut()?
@@ -5745,7 +5857,7 @@ impl ParserArenaSession {
         parent: &ParserNode,
         node: &ParserNode,
         before: Option<&ParserNode>,
-        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<(), SessionError> {
         capability.validate_session(control, self)?;
         self.qualify_intrinsic_mutation(control, node, Some(capability))?;
@@ -5756,7 +5868,7 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
         node: &ParserNode,
-        capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
+        capability: Option<&crate::parser::tree_builder::ConstructionCapability<'_>>,
     ) -> Result<(), SessionError> {
         self.qualify_intrinsic_mutation(control, node, capability)?;
         self.active_mut()?.remove(control, node)
@@ -5765,7 +5877,7 @@ impl ParserArenaSession {
         &self,
         c: &mut ParseControl,
         node: &ParserNode,
-        capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
+        capability: Option<&crate::parser::tree_builder::ConstructionCapability<'_>>,
     ) -> Result<(), SessionError> {
         let storage = self.active()?;
         let root = storage.index(c, node)?;
@@ -5807,7 +5919,7 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<FrozenArena, SessionError> {
-        let document = self.active_mut()?.prepare_freeze(control)?;
+        let fragment_root = self.active_mut()?.prepare_freeze(control)?;
         // Only a parser-initialized session carries this actual variable owner.
         // Prepay its active-to-frozen move before storage is taken; a stopped
         // share restores that same owner without useful recovery work.
@@ -5818,6 +5930,7 @@ impl ParserArenaSession {
             control: owner,
             effects,
             evidence,
+            fragment,
             #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
@@ -5851,6 +5964,7 @@ impl ParserArenaSession {
                     control: owner,
                     effects,
                     evidence,
+                    fragment,
                     #[cfg(test)]
                     cancel_after_removal: None,
                     #[cfg(test)]
@@ -5872,10 +5986,9 @@ impl ParserArenaSession {
                 return Err(stop.into());
             }
         };
-        let view = if document {
-            FrozenView::Document(HtmlDocument { arena })
-        } else {
-            FrozenView::Fragment(HtmlFragment { arena, root: 0 })
+        let view = match fragment_root {
+            None => FrozenView::Document(HtmlDocument { arena }),
+            Some(root) => FrozenView::Fragment(HtmlFragment { arena, root }),
         };
         Ok(FrozenArena {
             storage: Some(FrozenStorage {
@@ -5889,6 +6002,7 @@ impl ParserArenaSession {
                 payloads,
                 effects,
                 evidence,
+                fragment,
             }),
         })
     }
@@ -6209,11 +6323,15 @@ impl FrozenArena {
             payloads,
             effects,
             evidence,
+            fragment,
         } = self
             .storage
             .take()
             .expect("verified frozen owner retains storage");
-        let document = matches!(view, FrozenView::Document(_));
+        let fragment_root = match &view {
+            FrozenView::Document(_) => None,
+            FrozenView::Fragment(view) => Some(view.root),
+        };
         let arena = match view {
             FrozenView::Document(view) => view.arena,
             FrozenView::Fragment(view) => view.arena,
@@ -6222,10 +6340,9 @@ impl FrozenArena {
             Ok(arena) => arena,
             Err(error) => {
                 let (stop, arena, arena_allocation) = error.into_parts();
-                let view = if document {
-                    FrozenView::Document(HtmlDocument { arena })
-                } else {
-                    FrozenView::Fragment(HtmlFragment { arena, root: 0 })
+                let view = match fragment_root {
+                    None => FrozenView::Document(HtmlDocument { arena }),
+                    Some(root) => FrozenView::Fragment(HtmlFragment { arena, root }),
                 };
                 self.storage = Some(FrozenStorage {
                     view,
@@ -6238,10 +6355,16 @@ impl FrozenArena {
                     payloads,
                     effects,
                     evidence,
+                    fragment,
                 });
                 return Err(stop.into());
             }
         };
+        if let Some(fragment) = fragment {
+            fragment
+                .release(control, &owner)
+                .expect("actual context effects owner");
+        }
         if let Some(evidence) = evidence {
             evidence.release(control)?;
         }
@@ -8070,7 +8193,7 @@ mod tests {
                 &mut c,
                 &[111, 117, 116, 112, 117, 116],
             ));
-            session.allocate_implicit_body(&mut c).unwrap();
+            session.allocate_implicit_body(&mut c, None).unwrap();
             // Actual root/html/body registry + record/ticket entries are9;
             // After its document binding, Output and canonical association require2 more initialized slots.
             assert_eq!(
@@ -8687,7 +8810,7 @@ mod tests {
             );
             let backing = Arc::as_ptr(tag.name.value.text().backing());
             let mut input = Some(tag);
-            session.allocate_implicit_body(&mut c).unwrap();
+            session.allocate_implicit_body(&mut c, None).unwrap();
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
@@ -8921,7 +9044,7 @@ mod tests {
         let root = session.root(c).unwrap();
         let html = session.allocate_implicit_html(c).unwrap();
         session.insert(c, &root, &html, None, None).unwrap();
-        let body = session.allocate_implicit_body(c).unwrap();
+        let body = session.allocate_implicit_body(c, None).unwrap();
         session.insert(c, &html, &body, None, None).unwrap();
         body
     }
@@ -9040,7 +9163,7 @@ mod tests {
         storage.container(c, parent).unwrap();
         assert!(!storage.associated_document_parent(c, parent).unwrap());
         session.require_formatting_creation(c, creation).unwrap();
-        let document = storage.node_document_index(c, parent).unwrap();
+        let document = storage.node_document_ref(c, parent).unwrap();
         session
             .active_mut()
             .unwrap()
@@ -10193,7 +10316,7 @@ mod tests {
         let original = input.as_ref().unwrap().name.value.text().backing().as_ptr();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let html = session.allocate_implicit_html(&mut c).unwrap();
-        let body = session.allocate_implicit_body(&mut c).unwrap();
+        let body = session.allocate_implicit_body(&mut c, None).unwrap();
         assert_eq!(
             session.add_body_attributes_if_missing(&mut c, &html, &mut input),
             Err(SessionError::WrongToken)
@@ -10362,7 +10485,7 @@ mod tests {
             let mut input = Some(body_lexical_value(&source, &mut c));
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let html = session.allocate_implicit_html(&mut c).unwrap();
-            let body = session.allocate_implicit_body(&mut c).unwrap();
+            let body = session.allocate_implicit_body(&mut c, None).unwrap();
             let p = session.allocate_implicit_p(&mut c, None).unwrap();
             let root = session.root(&mut c).unwrap();
             session.insert(&mut c, &root, &html, None, None).unwrap();
@@ -11083,7 +11206,7 @@ mod tests {
                 panic!("tag")
             };
             let body = if implied {
-                let body = session.allocate_implicit_body(&mut c).unwrap();
+                let body = session.allocate_implicit_body(&mut c, None).unwrap();
                 session
                     .add_body_attributes_if_missing(&mut c, &body, &mut Some(first))
                     .unwrap();
@@ -11143,7 +11266,7 @@ mod tests {
     ) -> (
         ParseControl,
         ParserArenaSession,
-        crate::parser::tree_builder::StandaloneCapability<'a>,
+        crate::parser::tree_builder::ConstructionCapability<'a>,
         crate::parser::tokenizer::tests::LexerFixture<'a>,
         ParserNode,
         Option<Tag>,
@@ -11827,7 +11950,7 @@ mod tests {
     ) -> (
         ParseControl,
         ParserArenaSession,
-        crate::parser::tree_builder::StandaloneCapability<'a>,
+        crate::parser::tree_builder::ConstructionCapability<'a>,
     ) {
         use crate::parser::tree_builder::StandaloneDocumentDriver;
         let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
@@ -11852,7 +11975,7 @@ mod tests {
     ) -> (
         ParseControl,
         ParserArenaSession,
-        crate::parser::tree_builder::StandaloneCapability<'a>,
+        crate::parser::tree_builder::ConstructionCapability<'a>,
         ParserNode,
     ) {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
@@ -12334,7 +12457,7 @@ mod tests {
         let storage = session.active().unwrap();
         let index = storage.index(&mut baseline, &node).unwrap();
         let (_, initial) = script_metadata(&storage.payloads, &mut baseline, index).unwrap();
-        assert_eq!(initial.parser_document, Some(0));
+        assert_eq!(initial.parser_document, Some(DocumentRef::Owned(0)));
         let qualification_work = baseline
             .usage()
             .resource(HtmlParseResource::WorkCredits)
@@ -12759,13 +12882,13 @@ mod tests {
                 .unwrap();
             assert!(retained.already_started && !retained.force_async);
             assert_eq!(retained.script_type, Some(ScriptType::Classic));
-            assert_eq!(retained.parser_document, Some(0));
+            assert_eq!(retained.parser_document, Some(DocumentRef::Owned(0)));
             if cap == exact {
                 assert_eq!(
                     result,
                     Ok(DisabledScriptPreparation::Disabled(ScriptType::Classic))
                 );
-                assert_eq!(retained.preparation_document, Some(0));
+                assert_eq!(retained.preparation_document, Some(DocumentRef::Owned(0)));
                 assert_eq!(c.stop(), None);
             } else {
                 assert!(matches!(
@@ -13282,7 +13405,7 @@ mod tests {
         let root = session.root(c).unwrap();
         let html = session.allocate_implicit_html(c).unwrap();
         session.insert(c, &root, &html, None, None).unwrap();
-        let body = session.allocate_implicit_body(c).unwrap();
+        let body = session.allocate_implicit_body(c, None).unwrap();
         session.insert(c, &html, &body, None, None).unwrap();
         (session, body)
     }
@@ -13685,7 +13808,7 @@ mod tests {
             };
             // Lexical pending events precede the final retained allocation.
             // Body stays detached: no unneeded child-order scratch is admitted.
-            let _body = session.allocate_implicit_body(&mut c).unwrap();
+            let _body = session.allocate_implicit_body(&mut c, None).unwrap();
             let mut input = Some(tag);
             let original = input
                 .as_ref()
@@ -14826,7 +14949,7 @@ mod tests {
         // This actual detached allocation fills the last five retained slots.
         // Attaching it would require an unrelated temporary child-order entry;
         // the image's actual intended parent is the attached HTML container.
-        let _body = session.allocate_implicit_body(&mut c).unwrap();
+        let _body = session.allocate_implicit_body(&mut c, None).unwrap();
         // Root/html/body own three actual record tickets, six payload slots and four document facts.
         // No auxiliary entry remains for the image's required metadata slot.
         assert_eq!(
@@ -15792,7 +15915,7 @@ mod tests {
             };
             let doc = session.root(&mut c).unwrap();
             session.insert(&mut c, &doc, &root, None, None).unwrap();
-            let head = session.allocate_implicit_head(&mut c).unwrap();
+            let head = session.allocate_implicit_head(&mut c, None).unwrap();
             session.insert(&mut c, &root, &head, None, None).unwrap();
             let TokenKind::Tag(second) = lexical_kind(&mut t, &mut c) else {
                 panic!("second tag")
@@ -19603,7 +19726,7 @@ mod tests {
             })
         ));
         for node in [div.index, script.index] {
-            assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::NodeDocument{node:Some(bound),document} if *bound==node && *document==old.index)));
+            assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::NodeDocument{node:Some(bound),document} if *bound==node && *document==DocumentRef::Owned(old.index))));
         }
         assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::Script{node:Some(node),metadata:retained} if *node==script.index && *retained==metadata)));
         assert_eq!(

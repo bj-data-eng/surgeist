@@ -45,11 +45,15 @@ pub(crate) enum NativeKind<'a> {
 pub(crate) enum NativeFragmentOwner {
     Template(ParserNode),
     ShadowHost(ParserNode),
+    CapturedShadowHost(crate::HtmlCaptureElementId),
 }
 pub(crate) struct NativeShadow {
     pub(crate) host: ParserNode,
     pub(crate) contents: ParserNode,
     pub(crate) properties: HtmlShadowRootProperties,
+    pub(crate) declarative: Option<bool>,
+    pub(crate) keep_registry_null: Option<bool>,
+    pub(crate) available_to_internals: Option<bool>,
 }
 
 /// A checked read-only record borrow plus the sole mutable resource controller.
@@ -245,7 +249,25 @@ impl<'a> NativeView<'a> {
             Some(HtmlFragmentOwner::ShadowHost(owner)) => self
                 .association_node(owner)
                 .map(|node| Some(NativeFragmentOwner::ShadowHost(node))),
-            None => Ok(None),
+            None => {
+                if let Some(fragment) = &self.storage.fragment {
+                    for effect in fragment.effects.as_slice() {
+                        self.control.charge(WorkCategory::RecordVisit, 1)?;
+                        if let context::ContextEffect::AttachShadow {
+                            host: context::ShadowHostKey::Captured(host),
+                            contents: Some(root),
+                            ..
+                        } = effect
+                            && *root == index
+                        {
+                            self.control.charge(WorkCategory::ProviderCall, 1)?;
+                            payload_write::<NativeFragmentOwner>(self.control, 1)?;
+                            return Ok(Some(NativeFragmentOwner::CapturedShadowHost(host.clone())));
+                        }
+                    }
+                }
+                Ok(None)
+            }
         }
     }
     pub(crate) fn shadow(
@@ -265,7 +287,18 @@ impl<'a> NativeView<'a> {
             WorkCategory::CopyByte,
             mem::size_of::<NativeShadow>() as u64,
         )?;
+        let state = if self.storage.fragment.is_some() {
+            Some(
+                self.storage
+                    .shadow_state(self.control, shadow.contents().index)?,
+            )
+        } else {
+            None
+        };
         Ok(Some(NativeShadow {
+            declarative: state.map(|s| s.declarative),
+            keep_registry_null: state.map(|s| s.keep_registry_null),
+            available_to_internals: state.map(|s| s.available_to_internals),
             host: self.association_node(shadow.host())?,
             contents: self.association_node(shadow.contents())?,
             properties: shadow.properties(),
