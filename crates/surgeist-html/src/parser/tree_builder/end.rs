@@ -382,7 +382,13 @@ impl<'source> StandaloneDocumentDriver<'source> {
         // Fixed snapshots and moves use the envelope admitted before first pull.
         // No checkpoint, allocation, variable copy or error append follows stop.
         if driver.failure_usage.is_none() {
-            driver.failure_usage = Some(driver.control.usage().clone());
+            driver.failure_usage = Some(
+                driver
+                    .control
+                    .first_stop_usage()
+                    .expect("canonical first-stop snapshot")
+                    .clone(),
+            );
             let session = if let Some(head) = &mut driver.head {
                 &mut head
                     .state
