@@ -2032,7 +2032,10 @@ mod tests {
             token::{Event, TokenKind},
         };
         use crate::parser::tree_builder::StandaloneDocumentDriver;
-        for additional in [3, 4] {
+        // One node-document binding precedes the unchanged four Hidden
+        // metadata slots. Four extra slots stop before lexical take; five
+        // reach the first lexical String-slot admission after take.
+        for additional in [4, 5] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head></head><input type=hidden>"),
                 limits()
@@ -2090,8 +2093,11 @@ mod tests {
                 session.allocate_hidden_input_for_creation(
                     &mut c,
                     &mut input,
-                    &parent,
-                    None,
+                    crate::construction::parser_session::CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: crate::construction::parser_session::CreationContext::Ordinary
+                    },
                     &token_source,
                     &capability
                 ),
@@ -2100,7 +2106,7 @@ mod tests {
                     ..
                 }))
             ));
-            if additional == 3 {
+            if additional == 4 {
                 assert_eq!(
                     input
                         .as_ref()

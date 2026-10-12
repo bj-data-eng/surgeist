@@ -41,8 +41,15 @@ HTML-qualified PI, annotation-xml and exact UTF-16 differences, plus controlled
 backing/registry/qualified-clone ownership, are identified in the origin record.
 Current end-select/selectedcontent dispatch and controlled intrinsic
 selection/cloning/checkpoint machinery are Surgeist-authored adaptations of the
-selected HTML/DOM clauses, distinguished from the upstream excerpts. The
-[origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
+selected HTML/DOM clauses, distinguished from the upstream excerpts. Ordinary
+template start/end and InTemplate handling additionally adapt
+tree_builder/rules.rs lines 257–307 and 1403–1462 into the new private
+src/parser/tree_builder/template.rs, with routing/reset and shadow-permission
+factoring from tree_builder/mod.rs lines 417–450, 1265–1313 and 1463–1505.
+The new template module preserves the complete original eight-line notice.
+The session template/PI modules and actual document/patch/adopt/clone providers
+are Surgeist-owned implementations, not additional copied html5ever files.
+The [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;
 adaptation notes identify the changed source and selected HTML authority.

@@ -362,7 +362,7 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
         if self.token_in(&["template"], c)?.is_some() {
-            return self.stop_at(HeadBoundary::Template, c);
+            return self.template_start(c);
         }
         if late && self.token_in(&["script"], c)?.is_some() {
             // The sealed owner must still qualify before even the temporary
@@ -409,7 +409,8 @@ impl HeadState<'_> {
     }
     pub(super) fn end_template(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         if self.before.kernel.contains_html_template(c)? {
-            return self.stop_at(HeadBoundary::Template, c);
+            self.close_template(c, true)?;
+            return self.discard(c);
         }
         self.emit(HeadCondition::UnexpectedEndTag, c)?;
         self.discard(c)
@@ -421,12 +422,17 @@ impl HeadState<'_> {
     ) -> Result<HeadStep, HeadError> {
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let node = match &mut pending.payload {
-            Payload::Comment(input) => self.before.kernel.session.allocate_comment(c, input)?,
-            Payload::Pi(input) => self
-                .before
-                .kernel
-                .session
-                .allocate_processing_instruction(c, input)?,
+            Payload::Comment(input) => {
+                self.before
+                    .kernel
+                    .session
+                    .allocate_comment(c, input, Some(parent))?
+            }
+            Payload::Pi(input) => self.before.kernel.session.allocate_processing_instruction(
+                c,
+                input,
+                Some(parent),
+            )?,
             _ => return Err(HeadError::MissingInput),
         };
         self.before.kernel.session.insert(
@@ -446,10 +452,7 @@ impl HeadState<'_> {
         if kind == TagKind::End {
             return Ok(None);
         }
-        for (names, boundary) in [
-            (&["template"][..], HeadBoundary::Template),
-            (&["input"][..], HeadBoundary::Form),
-        ] {
+        for (names, boundary) in [(&["input"][..], HeadBoundary::Form)] {
             if self.token_in(names, c)?.is_some() {
                 if boundary == HeadBoundary::Form && self.hidden_input(c)? {
                     continue;
@@ -476,6 +479,9 @@ impl HeadState<'_> {
             .ok_or(HeadError::MissingInput)?
             .payload;
         if matches!(payload, Payload::Eof) {
+            if self.before.kernel.contains_html_template(c)? {
+                return self.template_eof(c);
+            }
             if mode == InsertionMode::AfterHead {
                 self.implicit_body(c)?;
                 return Ok(None);
@@ -720,12 +726,10 @@ impl HeadState<'_> {
         self.body_end(c)
     }
     fn form_start(&mut self, close: bool, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
-        if self.before.kernel.contains_html_template(c)? {
-            return self.stop_at(HeadBoundary::Template, c);
-        }
+        let template = self.before.kernel.contains_html_template(c)?;
         // HTML877d4394: reject the nested opener before close-p or creation.
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.current_form.is_some() {
+        if self.current_form.is_some() && !template {
             self.emit(HeadCondition::UnexpectedBodyToken, c)?;
             if close {
                 self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
@@ -734,9 +738,11 @@ impl HeadState<'_> {
         }
         self.close_p_in_scope(c)?;
         let node = self.insert_tag(c)?;
-        let node = copy_node(&node, c)?;
-        write(size_of::<Option<ParserNode>>(), 1, c)?;
-        self.current_form = Some(node);
+        if !template {
+            let node = copy_node(&node, c)?;
+            write(size_of::<Option<ParserNode>>(), 1, c)?;
+            self.current_form = Some(node);
+        }
         if close {
             self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
         }
@@ -746,7 +752,30 @@ impl HeadState<'_> {
         // Template form dispatch is a different source algorithm and remains
         // an actual continuation before effects in this ordinary unit.
         if self.before.kernel.contains_html_template(c)? {
-            return self.stop_at(HeadBoundary::Template, c);
+            if !self.before.kernel.scoped_name("form", Scope::Default, c)? {
+                self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                return self.discard(c);
+            }
+            self.before.kernel.implied_ends(
+                None,
+                c,
+                self.script.as_ref().map(|s| &s.capability),
+            )?;
+            let current = self.before.kernel.current(c)?;
+            if !self.before.kernel.named(&current, "form", c)? {
+                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+            }
+            loop {
+                let node = self
+                    .before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|s| &s.capability))?
+                    .ok_or(KernelError::EmptyStack)?;
+                if self.before.kernel.named(&node, "form", c)? {
+                    break;
+                }
+            }
+            return self.discard(c);
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
         write(size_of::<Option<ParserNode>>(), 1, c)?;
@@ -1177,7 +1206,11 @@ impl HeadState<'_> {
             if !self.before.kernel.scoped_name("p", Scope::Button, c)? {
                 self.emit(HeadCondition::UnexpectedEndTag, c)?;
                 let location = self.before.kernel.adjusted_location(None, c)?;
-                let node = self.before.kernel.session.allocate_implicit_p(c)?;
+                let node = self
+                    .before
+                    .kernel
+                    .session
+                    .allocate_implicit_p(c, Some(&location.parent))?;
                 self.before.kernel.insert_element_at(
                     &node,
                     &location,

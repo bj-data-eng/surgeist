@@ -47,30 +47,50 @@ fn graph<'a>(
                         .allocate_select_family_for_creation(
                             &mut c,
                             &mut input,
-                            parent,
-                            None,
+                            crate::construction::parser_session::CreationLocation {
+                                intended_parent: parent,
+                                current_form: None,
+                                context:
+                                    crate::construction::parser_session::CreationContext::Ordinary,
+                            },
                             &token.source,
                             &proof,
                         )
                         .unwrap()
                 } else if name == "script" {
                     session
-                        .allocate_disabled_parser_script(&mut c, &mut input, &proof)
+                        .allocate_disabled_parser_script(
+                            &mut c,
+                            &mut input,
+                            None,
+                            crate::construction::parser_session::CreationContext::Ordinary,
+                            &proof,
+                        )
                         .unwrap()
                 } else if name == "input" {
                     session
                         .allocate_hidden_input_for_creation(
                             &mut c,
                             &mut input,
-                            parent,
-                            None,
+                            crate::construction::parser_session::CreationLocation {
+                                intended_parent: parent,
+                                current_form: None,
+                                context:
+                                    crate::construction::parser_session::CreationContext::Ordinary,
+                            },
                             &token.source,
                             &proof,
                         )
                         .unwrap()
                 } else {
                     session
-                        .allocate_html_tag_for_creation(&mut c, &mut input, parent, None)
+                        .allocate_html_tag_for_creation(
+                            &mut c,
+                            &mut input,
+                            parent,
+                            None,
+                            crate::construction::parser_session::CreationContext::Ordinary,
+                        )
                         .unwrap()
                 };
                 session
@@ -113,14 +133,16 @@ fn graph<'a>(
                     .unwrap();
             }
             TokenKind::Comment(text) => {
-                let node = session.allocate_comment(&mut c, &mut Some(text)).unwrap();
+                let node = session
+                    .allocate_comment(&mut c, &mut Some(text), None)
+                    .unwrap();
                 session
                     .insert(&mut c, stack.last().unwrap(), &node, None, Some(&proof))
                     .unwrap();
             }
             TokenKind::ProcessingInstruction { target, data } => {
                 let node = session
-                    .allocate_processing_instruction(&mut c, &mut Some((target, data)))
+                    .allocate_processing_instruction(&mut c, &mut Some((target, data)), None)
                     .unwrap();
                 session
                     .insert(&mut c, stack.last().unwrap(), &node, None, Some(&proof))
@@ -738,10 +760,10 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
 #[test]
 fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slot_caps() {
     // Fresh fixture: Document/html two node slots plus html name/URI/attrs
-    // three registry slots =5. Prologue stack coexistence needs6. Select adds
+    // three registry slots plus actual root facts2/html binding1 =8. Prologue stack coexistence needs6. Select adds
     // Select/form metadata2, name/URI/attrs3, node1, ordered-attribute staging1, reset option snapshot1:
     // completed empty Select exactly13; twelve stops after take at snapshot.
-    for cap in [6, 12, 13] {
+    for cap in [9, 16, 17] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -760,12 +782,15 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
         let result = session.allocate_select_family_for_creation(
             &mut c,
             &mut input,
-            &parent,
-            None,
+            crate::construction::parser_session::CreationLocation {
+                intended_parent: &parent,
+                current_form: None,
+                context: crate::construction::parser_session::CreationContext::Ordinary,
+            },
             &token.source,
             &proof,
         );
-        if cap == 13 {
+        if cap == 17 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(!session.select_state(&mut c, &node).unwrap().user_validity);
@@ -773,7 +798,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                13
+                17
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -786,7 +811,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             assert!(
                 matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 6);
+            assert_eq!(input.is_some(), cap == 9);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
@@ -820,8 +845,11 @@ fn select_creation_rejects_real_alias_and_foreign_parent_before_retaining_metada
             .allocate_select_family_for_creation(
                 &mut c,
                 &mut input,
-                &parent,
-                None,
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::parser_session::CreationContext::Ordinary
+                },
                 &token.source,
                 &proof
             )
@@ -841,8 +869,11 @@ fn select_creation_rejects_real_alias_and_foreign_parent_before_retaining_metada
             .allocate_select_family_for_creation(
                 &mut c,
                 &mut input,
-                &foreign,
-                None,
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &foreign,
+                    current_form: None,
+                    context: crate::construction::parser_session::CreationContext::Ordinary
+                },
                 &token.source,
                 &proof
             )
@@ -873,7 +904,7 @@ fn select_text_clone_every_interruption_keeps_ticket_binding_coherent_for_dispos
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(WorkCategory::StateStep, remaining - extra)
             .unwrap();
-        let _result = session.active_mut().unwrap().clone_node(&mut c, text);
+        let _result = session.active_mut().unwrap().clone_node(&mut c, text, 0);
         if c.stop().is_some() {
             assert!(session.freeze(&mut c).is_err());
         }
@@ -913,6 +944,14 @@ fn non_element_clone_fixture(
         &mut storage.children_allocations,
         &mut storage.tickets_allocation,
         1,
+    )
+    .unwrap();
+    // PI owns its map plus two copied fields and one node-document binding;
+    // Text/comment need fewer. All later registry reserves are no-growth.
+    c.reserve_vector(
+        &mut storage.payloads.values,
+        &mut storage.payloads.allocation,
+        4,
     )
     .unwrap();
     (c, session, source, request.cancellation().clone())
@@ -964,7 +1003,29 @@ fn non_element_clone_binding_boundary(kind: usize) {
     let binding_bytes = fields * mem::size_of::<StringLocation>() as u64;
     let binding = binding_bytes + fields;
     let usage = mem::size_of::<usize>() as u64 + 1;
-    let allocated_prefix = copy_prefix + allocation;
+    // Actual ordinary document qualification visits root kind + first cache
+    // slot (2), state (1), and three no-growth reserves (6). Its binding-slot
+    // reserve/record costs R+3; binding copy/write costs O+1: R+O+13.
+    let documents =
+        mem::size_of::<RetainedPayload>() as u64 + mem::size_of::<Option<usize>>() as u64 + 13;
+    // A PI additionally reserves its empty map (R+3) and its future node
+    // binding (O+1), before copying either original field.
+    let map = if kind == 2 {
+        mem::size_of::<RetainedPayload>() as u64 + mem::size_of::<Option<usize>>() as u64 + 4
+    } else {
+        0
+    };
+    // The preserved PI data is literal D: three nonempty scalar reads12,
+    // name-buffer constructor1/push6, offset U+1, three EOF reads6,
+    // empty-map clear2, ready copy/write2 = U+30. Invalid whole grammar
+    // remains a successfully established empty map, rather than an error.
+    let grammar = if kind == 2 {
+        mem::size_of::<usize>() as u64 + 30
+    } else {
+        0
+    };
+    let allocated_prefix = copy_prefix + allocation + documents + map;
+    let complete = allocated_prefix + binding + usage + grammar;
     // Preserve the exact old native-installed/binding-not-admitted window and
     // both binding sub-boundaries, plus a successful clone and cancellation at
     // the first checkpoint after its fully bound native record.
@@ -973,7 +1034,8 @@ fn non_element_clone_binding_boundary(kind: usize) {
         (allocated_prefix + binding_bytes, false),
         (allocated_prefix + binding, false),
         (allocated_prefix + binding + usage, false),
-        (allocated_prefix + binding + usage, true),
+        (complete, false),
+        (complete, true),
     ] {
         let (mut c, mut session, source, cancellation) = non_element_clone_fixture(kind);
         let nodes = session.active().unwrap().records.len();
@@ -982,10 +1044,10 @@ fn non_element_clone_binding_boundary(kind: usize) {
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(WorkCategory::StateStep, remaining - extra)
             .unwrap();
-        let result = session.active_mut().unwrap().clone_node(&mut c, source);
+        let result = session.active_mut().unwrap().clone_node(&mut c, source, 0);
         let installed = session.active().unwrap().records.len() - nodes;
         if result.is_ok() {
-            assert_eq!(extra, allocated_prefix + binding + usage);
+            assert_eq!(extra, complete);
             assert_eq!(installed, 1);
         } else {
             assert!(matches!(result, Err(SessionError::Stop(_))));
@@ -1024,7 +1086,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
         );
         storage_zero(&c);
         assert_eq!(c.stop(), first);
-        assert_eq!(result.is_ok(), extra == allocated_prefix + binding + usage);
+        assert_eq!(result.is_ok(), extra == complete);
         assert_eq!(installed, usize::from(extra >= allocated_prefix + binding));
         assert!(
             matches!(
@@ -1071,8 +1133,11 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
     let result = session.allocate_select_family_for_creation(
         &mut c,
         &mut input,
-        &parent,
-        None,
+        crate::construction::parser_session::CreationLocation {
+            intended_parent: &parent,
+            current_form: None,
+            context: crate::construction::parser_session::CreationContext::Ordinary,
+        },
         &token.source,
         &proof,
     );

@@ -100,6 +100,13 @@ original notice and records its source ranges in the origin record.
 Ordinary textarea entry also adapts the same rules file, lines 874–878, with
 its original notice retained; controlled raw/reset providers follow the selected
 HTML and DOM clauses identified in the origin record.
+Ordinary template start/end and InTemplate rules additionally adapt
+tree_builder/rules.rs lines 257–307 and 1403–1462, with insertion routing/reset
+and shadow-permission factoring from tree_builder/mod.rs lines 417–450,
+1265–1313 and 1463–1505. The new src/parser/tree_builder/template.rs retains
+the complete original eight-line notice under the same MIT OR Apache-2.0 terms.
+Session template/PI state, adoption/cloning and controlled patching are
+Surgeist-owned implementations, not additional copied html5ever modules.
 Surgeist-owned
 controlled providers retain actual text and recovered-tag ownership.
 Their original notices are
@@ -212,3 +219,21 @@ distributed by David Tolnay, with Unicode data from Unicode, Inc.:
 
 * License: ([MIT](../surgeist-css/licenses/unicode-ident/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/unicode-ident/LICENSE-APACHE)) AND [Unicode-3.0](../surgeist-css/licenses/unicode-ident/LICENSE-UNICODE)
 * Homepage: [unicode-ident](https://github.com/dtolnay/unicode-ident)
+
+## Ordinary-template and PI grammar incorporation
+
+The private fresh ordinary-template algorithms use the existing pinned
+HTML and DOM clauses under the
+[WHATWG source-incorporation notice](../../licenses/whatwg/NOTICE.md#ordinary-template-and-pi-map-incorporation--2026-10-12).
+The separate PI pseudo-attribute grammar comes from the dated W3C
+[XML-stylesheet §3](../../references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md)
+and [XML grammar closure](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md),
+with original ©2010/©2008 notices and the separately required ©2015
+implementation-support derivative notices. The
+[W3C attribution](../../licenses/w3c/NOTICE.md#dom-delegated-xml-pseudo-attribute-grammar)
+and complete local [2002](../../licenses/w3c/document-license-2002.txt) and
+[2015](../../licenses/w3c/document-license-2015.txt) document terms apply to those
+distinct origins; no WHATWG or generic software-license substitution is made.
+This is a bounded software/support implementation, not a replacement technical
+specification, complete XML parser or stylesheet loader. No upstream W3C
+marked code component or executable example is imported.

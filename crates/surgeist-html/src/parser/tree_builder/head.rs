@@ -55,6 +55,7 @@ pub(super) enum InsertionMode {
     InFrameset,
     AfterFrameset,
     AfterAfterFrameset,
+    InTemplate,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HeadCondition {
@@ -230,6 +231,7 @@ pub(super) struct HeadState<'source> {
     pub(super) formatting_pending: Option<FormattingEntry>,
     pub(super) formatting_removed: Option<FormattingEntry>,
     pub(super) table: super::tables::TableCharacters,
+    pub(super) template_modes: OwnedVec<InsertionMode>,
     pub(super) script: Option<StandaloneScriptState<'source>>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
@@ -274,15 +276,18 @@ impl<'source> HeadStage<'source> {
         lexical.require_owner(c)?;
         formatting.require_owner(c)?;
         let table = super::tables::TableCharacters::new(c)?;
+        let mut template_modes = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        template_modes.require_owner(c)?;
         // Three driver fields + twenty-two state fields + caller BeforeHead and
         // Tokenizer slots + the retained BeforeHead input slot are written.
         // The table constructor separately admits its four actual field writes.
         // Admit all twenty-eight enclosing field writes before the first owning take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 28, c) {
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 29, c) {
             diagnostics.release(c)?;
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
+            template_modes.release(c)?;
             return Err(stop.into());
         }
         if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
@@ -290,6 +295,7 @@ impl<'source> HeadStage<'source> {
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
+            template_modes.release(c)?;
             return Err(stop.into());
         }
         let mut before = before.take().expect("verified prologue continuation");
@@ -320,6 +326,7 @@ impl<'source> HeadStage<'source> {
                 formatting_pending: None,
                 formatting_removed: None,
                 table,
+                template_modes,
             }),
         })
     }
@@ -459,6 +466,11 @@ impl<'source> HeadStage<'source> {
         )?;
         release_fixture_vector(
             &mut state.formatting,
+            HtmlParseResource::AuxiliaryEntries,
+            c,
+        )?;
+        release_fixture_vector(
+            &mut state.template_modes,
             HtmlParseResource::AuxiliaryEntries,
             c,
         )?;
@@ -648,6 +660,7 @@ impl<'source> HeadStage<'source> {
         state.lexical.release(c)?;
         state.formatting.release(c)?;
         state.table.entries.release(c)?;
+        state.template_modes.release(c)?;
         Ok(())
     }
 }
@@ -840,12 +853,17 @@ impl HeadState<'_> {
         let location = self.before.kernel.adjusted_location(None, c)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let node = match &mut pending.payload {
-            Payload::Comment(input) => self.before.kernel.session.allocate_comment(c, input)?,
-            Payload::Pi(input) => self
-                .before
-                .kernel
-                .session
-                .allocate_processing_instruction(c, input)?,
+            Payload::Comment(input) => {
+                self.before
+                    .kernel
+                    .session
+                    .allocate_comment(c, input, Some(&location.parent))?
+            }
+            Payload::Pi(input) => self.before.kernel.session.allocate_processing_instruction(
+                c,
+                input,
+                Some(&location.parent),
+            )?,
             _ => return Err(HeadError::MissingInput),
         };
         self.before.kernel.session.insert(
@@ -859,6 +877,7 @@ impl HeadState<'_> {
     }
     pub(super) fn insert_tag(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
         let location = self.before.kernel.adjusted_location(None, c)?;
+        let template = self.before.kernel.last_template(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let Payload::Tag(input) = &mut self
             .pending
@@ -873,6 +892,10 @@ impl HeadState<'_> {
             input,
             &location.parent,
             self.current_form.as_ref(),
+            template.as_ref().map_or(
+                crate::construction::parser_session::CreationContext::Ordinary,
+                crate::construction::parser_session::CreationContext::Template,
+            ),
         )?;
         self.before.kernel.insert_element_at(
             &node,
@@ -888,6 +911,7 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<ParserNode, HeadError> {
         let location = self.before.kernel.adjusted_location(None, c)?;
+        let template = self.before.kernel.last_template(c)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         let capability = &self
             .script
@@ -905,8 +929,14 @@ impl HeadState<'_> {
             .allocate_hidden_input_for_creation(
                 c,
                 input,
-                &location.parent,
-                self.current_form.as_ref(),
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &location.parent,
+                    current_form: self.current_form.as_ref(),
+                    context: template.as_ref().map_or(
+                        crate::construction::parser_session::CreationContext::Ordinary,
+                        crate::construction::parser_session::CreationContext::Template,
+                    ),
+                },
                 &pending.source,
                 capability,
             )?;
@@ -924,6 +954,7 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<ParserNode, HeadError> {
         let location = self.before.kernel.adjusted_location(None, c)?;
+        let template = self.before.kernel.last_template(c)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         let capability = &self
             .script
@@ -945,8 +976,14 @@ impl HeadState<'_> {
             .allocate_select_family_for_creation(
                 c,
                 input,
-                &location.parent,
-                self.current_form.as_ref(),
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &location.parent,
+                    current_form: self.current_form.as_ref(),
+                    context: template.as_ref().map_or(
+                        crate::construction::parser_session::CreationContext::Ordinary,
+                        crate::construction::parser_session::CreationContext::Template,
+                    ),
+                },
                 &pending.source,
                 capability,
             )?;
@@ -1029,9 +1066,16 @@ impl HeadState<'_> {
         else {
             unreachable!("classified actual script tag")
         };
+        let template = self.before.kernel.last_template(c)?;
+        let context = template.as_ref().map_or(
+            crate::construction::parser_session::CreationContext::Ordinary,
+            crate::construction::parser_session::CreationContext::Template,
+        );
         let node = self.before.kernel.session.allocate_disabled_parser_script(
             c,
             input,
+            Some(&location.parent),
+            context,
             &script.capability,
         )?;
         self.before.kernel.insert_element_at(
@@ -1186,6 +1230,12 @@ impl HeadState<'_> {
                 && let Some(step) = self.foreign_rules(c)?
             {
                 return Ok(step);
+            }
+            if mode == InsertionMode::InTemplate {
+                if let Some(step) = self.template_rules(c)? {
+                    return Ok(step);
+                }
+                continue;
             }
             if matches!(
                 mode,
@@ -1404,7 +1454,7 @@ impl HeadState<'_> {
                     }
                     return self.stop_at(HeadBoundary::Script, c);
                 }
-                Class::Start(Name::Template, _) => return self.stop_at(HeadBoundary::Template, c),
+                Class::Start(Name::Template, _) => return self.template_start(c),
                 Class::End(Name::Head) => {
                     self.before
                         .kernel
@@ -1419,13 +1469,7 @@ impl HeadState<'_> {
                     return self.discard(c);
                 }
                 Class::End(Name::Template) => {
-                    // No template start is consumed by this stage; the actual
-                    // stack scan still establishes the absent-template branch.
-                    if self.before.kernel.contains_html_template(c)? {
-                        return self.stop_at(HeadBoundary::Template, c);
-                    }
-                    self.emit(HeadCondition::UnexpectedEndTag, c)?;
-                    return self.discard(c);
+                    return self.end_template(c);
                 }
                 Class::End(Name::Body | Name::Html | Name::Br) => {}
                 Class::End(_) => {

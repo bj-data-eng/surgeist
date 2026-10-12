@@ -169,3 +169,29 @@ selection commentary. No normative destination is added or removed; the warning
 retains `xslt` outside the finite definition. Original text remains authoritative
 and no endorsement is implied. This is source reference retention; it does not
 claim a Fetch implementation or completed HTML link-destination operation.
+
+## Ordinary-template and PI-map incorporation — 2026-10-12
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The private fresh ordinary-template construction implements the selected
+[HTML syntax clauses](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)
+and [template document/state/adoption/cloning/patching clauses](../../references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md#the-template-element)
+of revision 877d6146487f15b15bc8dd0e3c625063a37b456a, complete original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+The retained [DOM foundation capture](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md)
+supplies node-document, cloning/adoption and PI initialization/map behavior;
+complete original SHA-256
+`034b308db8482bddb37070849e9d4ab40bcb2d10e6494cffad14678a252a58b1`.
+The existing legal-pin/capture distinction for that DOM witness remains unchanged.
+
+The source algorithms are adapted into Surgeist-owned controlled registry,
+creation, effect/clone and map operations. The existing complete [LICENSE](LICENSE)
+retains BSD 3-Clause conditions for portions incorporated into source code;
+the original specification prose and converted references remain CC BY 4.0.
+No new edition, full DOM, public complete parser or execution runtime is claimed.
+
+The delegated XML-stylesheet/XML grammar is a separate W3C origin.
+Its [source-specific attribution](../w3c/NOTICE.md#dom-delegated-xml-pseudo-attribute-grammar)
+and complete historical/2015 document terms, original notices and prescribed
+derivative notices apply independently. WHATWG terms do not replace them.

@@ -360,7 +360,7 @@ impl<'a> DocumentPrologue<'a> {
             match payload {
                 Payload::Comment(input) => {
                     let kernel = self.kernel.as_mut().ok_or(PrologueError::Consumed)?;
-                    let node = kernel.session.allocate_comment(c, input)?;
+                    let node = kernel.session.allocate_comment(c, input, None)?;
                     let root = kernel.session.root(c)?;
                     kernel.session.insert(c, &root, &node, None, None)?;
                     self.finish_pending(c)?;
@@ -368,7 +368,9 @@ impl<'a> DocumentPrologue<'a> {
                 }
                 Payload::Pi(input) => {
                     let kernel = self.kernel.as_mut().ok_or(PrologueError::Consumed)?;
-                    let node = kernel.session.allocate_processing_instruction(c, input)?;
+                    let node = kernel
+                        .session
+                        .allocate_processing_instruction(c, input, None)?;
                     let root = kernel.session.root(c)?;
                     kernel.session.insert(c, &root, &node, None, None)?;
                     self.finish_pending(c)?;

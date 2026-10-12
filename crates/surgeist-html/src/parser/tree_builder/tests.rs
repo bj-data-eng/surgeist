@@ -3164,30 +3164,63 @@ fn standalone_script_cancellation_is_sticky_before_next_input_and_cleanup_has_no
 }
 
 #[test]
-fn standalone_template_continuation_preserves_unconsumed_token_and_has_no_script_metadata_effect() {
+fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<script>x</script><template data-x=q>"),
         limits(100),
     );
     let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
-    let node = script_text_node(&mut driver);
+    let script = script_text_node(&mut driver);
     assert_eq!(
         standalone_boundary(&mut driver),
-        super::head::HeadBoundary::Template
+        super::head::HeadBoundary::ConstructionEof
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-        panic!("actual retained template token")
+    assert!(matches!(
+        state.pending.as_ref().unwrap().payload,
+        Payload::Eof
+    ));
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(session.script_metadata(c, &script).unwrap().already_started);
+    drop(script);
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let html = document.root().children().next().unwrap();
+    let head = document.node(&html).unwrap().children().next().unwrap();
+    let template = document.node(&head).unwrap().children().nth(1).unwrap();
+    let node = document.node(&template).unwrap();
+    let HtmlNodeKind::Element(element) = node.kind() else {
+        panic!("template")
     };
     assert_eq!(
-        tag.name.value.text().code_units(),
+        element.name().local_name().code_units(),
         [116, 101, 109, 112, 108, 97, 116, 101]
     );
-    assert_eq!(tag.attributes.as_slice().len(), 1);
-    let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(session.script_metadata(c, &node).unwrap().already_started);
-    driver.release().unwrap();
-    assert_released(&driver.control);
+    assert_eq!(element.attributes().len(), 1);
+    assert_eq!(
+        element.attributes().as_slice()[0]
+            .name()
+            .local_name()
+            .code_units(),
+        [100, 97, 116, 97, 45, 120]
+    );
+    assert_eq!(
+        element.attributes().as_slice()[0].value().code_units(),
+        [113]
+    );
+    assert!(node.children().next().is_none());
+    let contents = node.template_contents().unwrap();
+    assert!(
+        document
+            .node(&contents)
+            .unwrap()
+            .children()
+            .next()
+            .is_none()
+    );
+    drop((html, head, template, contents));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
 }
 
 #[test]
@@ -4043,10 +4076,8 @@ fn body_after_modes_place_comments_and_pi_under_html_then_document() {
 #[test]
 fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     use super::head::HeadBoundary;
-    for (name, boundary) in [
-        ("input", HeadBoundary::Form),
-        ("template", HeadBoundary::Template),
-    ] {
+    {
+        let (name, boundary) = ("input", HeadBoundary::Form);
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept>tail")),
             limits(100),
@@ -5920,10 +5951,8 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
 
 #[test]
 fn ordinary_form_control_and_template_continuations_preserve_pointer_and_original_token() {
-    for (name, expected) in [
-        ("input", super::head::HeadBoundary::Form),
-        ("template", super::head::HeadBoundary::Template),
-    ] {
+    {
+        let (name, expected) = ("input", super::head::HeadBoundary::Form);
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html><form id=f><{name} id=kept>")),
             limits(100),
@@ -6344,10 +6373,8 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
 
 #[test]
 fn structural_table_unsupported_creation_retains_original_before_table_effects() {
-    for (tag, boundary) in [
-        ("<input>", super::head::HeadBoundary::Form),
-        ("<template>", super::head::HeadBoundary::Template),
-    ] {
+    {
+        let (tag, boundary) = ("<input>", super::head::HeadBoundary::Form);
         let source = format!("<!doctype html><table>{tag}");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
@@ -7791,10 +7818,20 @@ fn frameset_afterafter_whitespace_reconstruction_stop_retains_exact_original_ran
     ));
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.mode, super::head::InsertionMode::AfterAfterFrameset);
-    // Existing insertion consumes Text into its actual managed registry before
-    // node admission. It retains the original CRLF origin; replay adds precisely
-    // one origin for the original single-code-unit formatting name b.
-    assert!(state.whitespace_pending.is_none());
+    // The actual ninth-node/document-binding preflight now precedes lexical
+    // transfer. Reconstruction still installed b; the exact CRLF owner stays
+    // in the pending slot, and replay added precisely its one b-name origin.
+    let retained = state.whitespace_pending.as_ref().unwrap();
+    assert_eq!(retained.value.text().code_units(), [10]);
+    assert_eq!(retained.origins.as_slice().len(), 1);
+    assert_eq!(
+        retained.origins.as_slice()[0].source.start(),
+        literal.len() - 3
+    );
+    assert_eq!(
+        retained.origins.as_slice()[0].source.end(),
+        literal.len() - 1
+    );
     assert_eq!(
         driver
             .control
@@ -10882,6 +10919,580 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
             assert_ne!(id, other);
         }
     }
+}
+
+#[test]
+fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_documents() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<template id=a><div>A<template id=b><p>B</p></template>C</div></template><p>Z</p>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    // Obtain the qualified active subjects from the actual open stack.
+    let outer = loop {
+        driver.step().unwrap();
+        if let Some(head) = &driver.head {
+            let kernel = &head.state.as_ref().unwrap().before.kernel;
+            let node = kernel
+                .at(kernel.stack().unwrap().len() - 1, &mut driver.control)
+                .unwrap();
+            if kernel
+                .named(&node, "template", &mut driver.control)
+                .unwrap()
+            {
+                break node;
+            }
+        }
+    };
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    let state: crate::construction::parser_session::TemplateState =
+        session.template_state(c, &outer).unwrap();
+    assert!(state.target.is_none() && state.start.is_none() && state.end.is_none());
+    let ordinary: crate::construction::parser_session::ParserDocument =
+        session.node_document(c, &outer).unwrap();
+    let ordinary = ordinary.node(c, session).unwrap();
+    let inert = session
+        .node_document(c, &state.contents)
+        .unwrap()
+        .node(c, session)
+        .unwrap();
+    assert!(!session.same_node(c, &ordinary, &inert).unwrap());
+    let root = session.root(c).unwrap();
+    assert!(session.same_node(c, &ordinary, &root).unwrap());
+    drop(root);
+    drop((outer, state, ordinary, inert));
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    assert_eq!(
+        outline(document),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (2, "template"),
+            (1, "body"),
+            (2, "p"),
+            (3, "#Z")
+        ])
+    );
+    let root = document.root().id();
+    let mut pending: Vec<_> = document.root().children().collect();
+    let mut templates = Vec::new();
+    let mut texts = Vec::new();
+    while let Some(id) = pending.pop() {
+        let node = document.node(&id).unwrap();
+        pending.extend(node.children());
+        if let Some(contents) = node.template_contents() {
+            assert!(node.children().next().is_none());
+            templates.push((
+                id.clone(),
+                contents.clone(),
+                frozen.node_document(&mut c, &id).unwrap(),
+                frozen.node_document(&mut c, &contents).unwrap(),
+            ));
+            pending.extend(document.node(&contents).unwrap().children());
+        }
+        if let crate::HtmlNodeKind::Text(text) = node.kind() {
+            texts.push(text.code_units().to_vec());
+        }
+    }
+    assert_eq!(templates.len(), 2);
+    assert_eq!(templates[0].2, root);
+    assert_eq!(templates[1].2, templates[0].3);
+    assert_eq!(templates[1].3, templates[0].3);
+    assert_ne!(templates[0].0, templates[1].0);
+    assert_ne!(templates[0].1, templates[1].1);
+    assert_eq!(
+        document.node(&templates[0].3).unwrap().kind(),
+        &crate::HtmlNodeKind::Document(crate::HtmlDocumentMode::NoQuirks)
+    );
+    texts.sort();
+    assert_eq!(texts, vec![vec![65], vec![66], vec![67], vec![90]]);
+    drop((pending, templates, texts, root));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn template_pi_lookup_uses_whole_xml_grammar_without_html_character_reference_recovery() {
+    for (data, expected) in [
+        ("name='A&amp;&#x80;&#13;'", Some(vec![65, 38, 128, 13])),
+        ("name='ok' x='bad&unknown;'", None),
+        ("name='a' name='b'", None),
+        ("name='a'\u{c}x='b'", None),
+        ("Name='a'", None),
+        ("name='&#x0;'", None),
+        ("name='&lt;&gt;&quot;&apos;'", Some(vec![60, 62, 34, 39])),
+    ] {
+        let source = format!("<body><?marker {data}?><p>Z</p>");
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let pi = document.node(&body).unwrap().children().next().unwrap();
+        let actual = frozen
+            .processing_instruction_attribute(&mut c, &pi, &DocumentString::from("name"))
+            .unwrap()
+            .map(|s| s.code_units().to_vec());
+        drop((pi, body, html));
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected, "{data}");
+    }
+}
+
+#[test]
+fn template_patch_removes_original_range_and_inserts_before_attached_end_marker() {
+    for (source, expected) in [
+        (
+            "<body><div><?start name='x'?><p>old</p><?end?><span>K</span></div><template for=x><p>N</p></template><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "div"),
+                (3, "p"),
+                (4, "#N"),
+                (3, "span"),
+                (4, "#K"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+        (
+            "<body><div><?marker name='x'?><span>K</span></div><template for=x><p>N</p></template><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "div"),
+                (3, "p"),
+                (4, "#N"),
+                (3, "span"),
+                (4, "#K"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+        (
+            "<body><div><?start name='x'?><p>old</p></div><template for=x><p>N</p></template><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "div"),
+                (3, "p"),
+                (4, "#N"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+        (
+            "<body><div><?start name='x'?><?start name='other'?><p>A</p><?end?><p>B</p><?end?><span>K</span></div><template for=x><p>N</p></template><p>Z</p>",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "div"),
+                (3, "p"),
+                (4, "#N"),
+                (3, "span"),
+                (4, "#K"),
+                (2, "p"),
+                (3, "#Z"),
+            ],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let actual = outline(frozen.document().unwrap());
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected_outline(&expected), "{source}");
+    }
+}
+
+#[test]
+fn template_form_pointer_survives_nested_form_recovery_and_template_parser_association_is_suppressed()
+ {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<form id=f><template><form id=g><img></form></template><img></form>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    assert_eq!(
+        outline(document),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "template"),
+            (3, "img")
+        ])
+    );
+    let html = document.root().children().next().unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let template = document.node(&form).unwrap().children().next().unwrap();
+    let img = document.node(&form).unwrap().children().nth(1).unwrap();
+    let contents = document
+        .node(&template)
+        .unwrap()
+        .template_contents()
+        .unwrap();
+    let inner = document.node(&contents).unwrap().children().next().unwrap();
+    let inner_img = document.node(&inner).unwrap().children().next().unwrap();
+    assert_eq!(
+        frozen.form_association_owner(&mut c, &img).unwrap(),
+        Some(form.clone())
+    );
+    assert!(
+        frozen
+            .form_association_state(&mut c, &img)
+            .unwrap()
+            .parser_inserted
+    );
+    assert_eq!(
+        frozen.form_association_owner(&mut c, &inner_img).unwrap(),
+        Some(inner.clone())
+    );
+    assert!(
+        !frozen
+            .form_association_state(&mut c, &inner_img)
+            .unwrap()
+            .parser_inserted
+    );
+    drop((html, body, form, template, img, contents, inner, inner_img));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn template_selectedcontent_deep_clone_keeps_distinct_contents_and_adopts_real_documents() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<select><button><selectedcontent></selectedcontent></button><option><template id=t><i>A</i><template id=n><svg><desc>B</desc></svg></template><?marker name='x'?></template></option></select>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    assert_eq!(
+        outline(document),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "select"),
+            (3, "button"),
+            (4, "selectedcontent"),
+            (5, "template"),
+            (3, "option"),
+            (4, "template")
+        ])
+    );
+    let mut pending: Vec<_> = document.root().children().collect();
+    pending.reverse();
+    let mut templates = Vec::new();
+    let mut text = Vec::new();
+    let mut italic = Vec::new();
+    let mut pi = Vec::new();
+    while let Some(id) = pending.pop() {
+        let node = document.node(&id).unwrap();
+        if let HtmlNodeKind::Element(element) = node.kind()
+            && element.name().local_name() == &DocumentString::from("i")
+        {
+            italic.push(id.clone());
+        }
+        if let HtmlNodeKind::Text(value) = node.kind() {
+            text.push((id.clone(), value.code_units().to_vec()));
+        }
+        if matches!(node.kind(), HtmlNodeKind::ProcessingInstruction(_)) {
+            pi.push(id.clone());
+        }
+        let mut children: Vec<_> = node.children().collect();
+        if let Some(contents) = node.template_contents() {
+            assert!(children.is_empty());
+            templates.push((
+                id.clone(),
+                contents.clone(),
+                frozen.node_document(&mut c, &id).unwrap(),
+                frozen.node_document(&mut c, &contents).unwrap(),
+            ));
+            children.extend(document.node(&contents).unwrap().children());
+        }
+        pending.extend(children.into_iter().rev());
+    }
+    assert_eq!(templates.len(), 4);
+    assert_eq!(italic.len(), 2);
+    assert_eq!(text.len(), 4);
+    assert_eq!(pi.len(), 2);
+    assert_eq!(
+        text.iter().map(|entry| entry.1.clone()).collect::<Vec<_>>(),
+        vec![vec![65], vec![66], vec![65], vec![66]]
+    );
+    for (left, right) in [(0, 2), (1, 3)] {
+        assert_ne!(templates[left].0, templates[right].0);
+        assert_ne!(templates[left].1, templates[right].1);
+        assert_eq!(templates[left].2, templates[right].2);
+        assert_eq!(templates[left].3, templates[right].3);
+    }
+    assert_ne!(italic[0], italic[1]);
+    assert_ne!(text[0].0, text[2].0);
+    assert_ne!(text[1].0, text[3].0);
+    assert_ne!(pi[0], pi[1]);
+    for id in &pi {
+        assert_eq!(
+            frozen
+                .processing_instruction_attribute(&mut c, id, &DocumentString::from("name"))
+                .unwrap()
+                .unwrap()
+                .code_units(),
+            [120]
+        );
+    }
+    drop((pending, templates, text, italic, pi));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn template_pi_xml_unicode_names_values_and_invalid_whole_maps_preserve_native_utf16() {
+    for (data, key, expected) in [
+        ("名='&#x1F600;'", "名", Some(vec![0xd83d, 0xde00])),
+        ("\u{10000}='A'", "\u{10000}", Some(vec![65])),
+        ("name='&#X41;'", "name", None),
+        ("name='&#xD800;'", "name", None),
+        ("name='A' x='<'", "name", None),
+        ("name='A' x='\u{ffff}'", "name", None),
+        ("name='A' x='&AMP;'", "name", None),
+        ("name='A'\r\nx='B'", "name", Some(vec![65])),
+    ] {
+        let source = format!("<body><?marker {data}?><p>Z</p>");
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf16(DocumentString::from_utf16(
+                source.encode_utf16().collect::<Vec<_>>(),
+            )),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let pi = document.node(&body).unwrap().children().next().unwrap();
+        let actual = frozen
+            .processing_instruction_attribute(&mut c, &pi, &DocumentString::from(key))
+            .unwrap()
+            .map(|s| s.code_units().to_vec());
+        assert!(matches!(
+            document.node(&pi).unwrap().kind(),
+            HtmlNodeKind::ProcessingInstruction(_)
+        ));
+        drop((pi, body, html));
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected, "{data}");
+    }
+}
+
+#[test]
+fn template_valid_shadow_mode_returns_to_plain_contents_before_for_patching() {
+    for mode in ["open", "ClOsEd"] {
+        let source = format!(
+            "<body><div><?marker name='x'?></div><template for=x shadowrootmode={mode}><p>N</p></template><p>Z</p>"
+        );
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document.root().children().next().unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let children: Vec<_> = document.node(&body).unwrap().children().collect();
+        assert_eq!(children.len(), 3);
+        assert!(matches!(
+            document
+                .node(&children[0])
+                .unwrap()
+                .children()
+                .next()
+                .map(|id| document.node(&id).unwrap().kind().clone()),
+            Some(HtmlNodeKind::ProcessingInstruction(_))
+        ));
+        let template = document.node(&children[1]).unwrap();
+        assert!(template.children().next().is_none());
+        assert!(template.declarative_shadow_root().is_none());
+        let contents = template.template_contents().unwrap();
+        let p = document.node(&contents).unwrap().children().next().unwrap();
+        let text = document.node(&p).unwrap().children().next().unwrap();
+        assert_eq!(
+            document.node(&text).unwrap().kind(),
+            &HtmlNodeKind::Text(DocumentString::from("N"))
+        );
+        drop((html, body, children, contents, p, text));
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn template_modes_reprocess_table_families_and_head_text_into_real_contents() {
+    for (source, expected, markers) in [
+        ("<template><col></template>", vec![(0, "col")], 0),
+        (
+            "<template><td>A<th>B</template>",
+            vec![(0, "td"), (1, "#A"), (0, "th"), (1, "#B")],
+            1,
+        ),
+        (
+            "<template><tbody><tr><td>A<th>B</template>",
+            vec![
+                (0, "tbody"),
+                (1, "tr"),
+                (2, "td"),
+                (3, "#A"),
+                (2, "th"),
+                (3, "#B"),
+            ],
+            1,
+        ),
+        (
+            "<template><caption>A</caption></template>",
+            vec![(0, "caption"), (1, "#A")],
+            0,
+        ),
+        (
+            "<template><style>x</style><!--C--><?marker name='x'?><p>A</p></template>",
+            vec![
+                (0, "style"),
+                (1, "#x"),
+                (0, "!C"),
+                (0, "?marker"),
+                (0, "p"),
+                (1, "#A"),
+            ],
+            0,
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.template_modes.len(), 0);
+        // Thorough implied pops do not execute cell-end-marker cleanup;
+        // end-template clears only through the last actual marker.
+        assert_eq!(state.formatting.len(), markers);
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document.root().children().next().unwrap();
+        let head = document.node(&html).unwrap().children().next().unwrap();
+        let template = document.node(&head).unwrap().children().next().unwrap();
+        let contents = document
+            .node(&template)
+            .unwrap()
+            .template_contents()
+            .unwrap();
+        let mut pending: Vec<_> = document
+            .node(&contents)
+            .unwrap()
+            .children()
+            .map(|id| (0, id))
+            .collect();
+        pending.reverse();
+        let mut actual = Vec::new();
+        while let Some((depth, id)) = pending.pop() {
+            let node = document.node(&id).unwrap();
+            let value = match node.kind() {
+                HtmlNodeKind::Element(e) => e.name().local_name().code_units().to_vec(),
+                HtmlNodeKind::Text(t) => [vec![35], t.code_units().to_vec()].concat(),
+                HtmlNodeKind::Comment(t) => [vec![33], t.code_units().to_vec()].concat(),
+                HtmlNodeKind::ProcessingInstruction(p) => {
+                    [vec![63], p.target().code_units().to_vec()].concat()
+                }
+                _ => panic!("literal child kinds"),
+            };
+            actual.push((depth, value));
+            let children: Vec<_> = node.children().map(|id| (depth + 1, id)).collect();
+            pending.extend(children.into_iter().rev());
+        }
+        drop((html, head, template, contents, pending));
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(actual, expected_outline(&expected), "{source}");
+    }
+}
+
+#[test]
+fn template_eof_unwinds_both_mode_markers_but_does_not_remove_patch_markers() {
+    let source = "<body><div><?marker name='x'?></div><template for=x><p>N";
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.template_modes.len(), 0);
+    assert_eq!(state.formatting.len(), 0);
+    let (mut c, mut frozen) = body_document(driver);
+    let actual = outline(frozen.document().unwrap());
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+    assert_eq!(
+        actual,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "div"),
+            (3, "p"),
+            (4, "#N"),
+            (3, "?marker")
+        ])
+    );
 }
 
 #[test]

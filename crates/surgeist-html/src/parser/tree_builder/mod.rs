@@ -22,9 +22,11 @@
 //! textarea RCDATA, raw child-text hooks and parser-pop reset, output creation,
 //! ordered Hidden-input creation, and ordinary select/option/selectedcontent
 //! effects, clones and intrinsic FIFO work. Ordinary non-script MathML/SVG foreign
-//! dispatch and qualified cloning are admitted; SVG script, other resettable
-//! controls and templates retain owning continuations. Pending intrinsic work refuses
-//! freezing; construction EOF is not full parse/report success.
+//! dispatch and qualified cloning are admitted. Fresh ordinary templates retain
+//! real inert document bindings, contents, insertion modes and PI-based patching.
+//! SVG script, other resettable controls, shadow roots and contextual fragments
+//! retain owning continuations. Pending intrinsic work refuses freezing;
+//! construction EOF is not full parse/report success.
 
 mod body;
 mod doctype;
@@ -35,6 +37,7 @@ mod head;
 mod prologue;
 mod tables;
 mod tag_sets;
+mod template;
 #[cfg(test)]
 mod tests;
 
@@ -460,6 +463,16 @@ impl LocationKernel {
         }
         Ok(false)
     }
+    fn last_template(&self, control: &mut ParseControl) -> Result<Option<ParserNode>, KernelError> {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        for index in (0..self.stack()?.len()).rev() {
+            let node = self.at(index, control)?;
+            if self.named(&node, "template", control)? {
+                return Ok(Some(node));
+            }
+        }
+        Ok(None)
+    }
 
     /// Implements the appropriate-place algorithm followed by root-target
     /// substitution. An existing insertion location contributes only its parent
@@ -525,13 +538,24 @@ impl LocationKernel {
             }
         }
         if self.named(&parent, "template", control)? {
-            // Only actual parser creation establishes the initially-null patch
-            // target/markers. Imported template facts remain unavailable.
-            parent = self
-                .session
-                .unpatched_template_contents(control, &parent)?
-                .ok_or(KernelError::NotElement)?;
-            before = None;
+            let state = self.session.template_state(control, &parent)?;
+            if let Some(target) = state.target {
+                before = if let Some(end) = state.end {
+                    if let Some(actual) = self.session.parent(control, &end)?
+                        && self.session.same_node(control, &actual, &target)?
+                    {
+                        Some(end)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                parent = target;
+            } else {
+                parent = state.contents;
+                before = None;
+            }
         }
         control.charge(WorkCategory::RecordVisit, 1)?;
         if let Some(root_target) = &self.root_target {

@@ -115,10 +115,19 @@ impl HeadState<'_> {
             }
         }
     }
-    fn reset_table_mode(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn reset_table_mode(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         for index in (0..self.before.kernel.stack()?.len()).rev() {
             let node = self.before.kernel.at(index, c)?;
+            if self.before.kernel.named(&node, "template", c)? {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                let mode = *self
+                    .template_modes
+                    .as_slice()
+                    .last()
+                    .ok_or(HeadError::MissingInput)?;
+                return self.set_mode(mode, c);
+            }
             if index != 0
                 && (self.before.kernel.named(&node, "td", c)?
                     || self.before.kernel.named(&node, "th", c)?)
@@ -163,9 +172,21 @@ impl HeadState<'_> {
     ) -> Result<(), HeadError> {
         let location = self.before.kernel.adjusted_location(None, c)?;
         let node = match name {
-            "colgroup" => self.before.kernel.session.allocate_implicit_colgroup(c)?,
-            "tbody" => self.before.kernel.session.allocate_implicit_tbody(c)?,
-            "tr" => self.before.kernel.session.allocate_implicit_tr(c)?,
+            "colgroup" => self
+                .before
+                .kernel
+                .session
+                .allocate_implicit_colgroup(c, Some(&location.parent))?,
+            "tbody" => self
+                .before
+                .kernel
+                .session
+                .allocate_implicit_tbody(c, Some(&location.parent))?,
+            "tr" => self
+                .before
+                .kernel
+                .session
+                .allocate_implicit_tr(c, Some(&location.parent))?,
             _ => return Err(HeadError::InvalidTextToken),
         };
         self.before.kernel.insert_element_at(
@@ -197,10 +218,7 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
         if let Some((TagKind::Start, _)) = self.kind(c)? {
-            for (names, boundary) in [
-                (&["input"][..], HeadBoundary::Form),
-                (&["template"][..], HeadBoundary::Template),
-            ] {
+            for (names, boundary) in [(&["input"][..], HeadBoundary::Form)] {
                 if self.token_in(names, c)?.is_some() {
                     if boundary == HeadBoundary::Form && self.hidden_input(c)? {
                         continue;
@@ -650,7 +668,7 @@ impl HeadState<'_> {
                 }
                 if self.token_in(&["template"], c)?.is_some() {
                     return if start {
-                        Ok(Some(self.stop_at(HeadBoundary::Template, c)?))
+                        Ok(Some(self.template_start(c)?))
                     } else {
                         Ok(Some(self.end_template(c)?))
                     };
@@ -922,7 +940,7 @@ impl HeadState<'_> {
             if self.token_in(&["form"], c)?.is_some() {
                 self.table_error(c)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if self.current_form.is_some() {
+                if self.current_form.is_some() || self.before.kernel.contains_html_template(c)? {
                     return Ok(Some(self.discard(c)?));
                 }
                 let node = self.insert_tag(c)?;

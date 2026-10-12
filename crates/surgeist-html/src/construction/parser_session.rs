@@ -11,8 +11,10 @@
 //! Preexisting immutable element inputs retain their earlier physical exclusion.
 //! Managed MathML/SVG names and qualified attributes retain lexical originals
 //! and independent adjusted backing/maps; qualified clones use the same registry.
-//! Full patching/template metadata, other resettable form metadata, source reports
-//! and public parsing remain later producers; this is not a complete parser claim.
+//! Actual node-document bindings, lazy inert template documents, template patch
+//! facts and whole-grammar PI maps share this registry. Other resettable form
+//! metadata, hosted context, source reports and public parsing remain later
+//! producers; this is not a complete parser claim.
 //! Hidden initialization installs source-order attributes, retaining original
 //! token/value-attribute ranges and lexical maps for actual conditional writeback.
 //! Script facts are retained for a sealed fresh ordinary Disabled execution;
@@ -33,9 +35,12 @@ use std::{mem, sync::Weak};
 
 mod clone;
 mod foreign;
+mod pi;
 mod select;
+mod template;
 pub(crate) use foreign::ForeignNamespace;
 use select::{ConstructionEffects, SelectMetadata};
+pub(crate) use template::{CreationContext, CreationLocation, ParserDocument, TemplateState};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ParserNode {
@@ -68,6 +73,9 @@ pub(crate) enum SessionError {
     OutputMetadataUnavailable,
     HiddenInputMetadataUnavailable,
     SelectMetadataUnavailable,
+    NodeDocumentUnavailable,
+    TemplateMetadataUnavailable,
+    ProcessingInstructionMapUnavailable,
     PendingIntrinsicWork,
 }
 /// Pinned element-placement guards; generic storage moves remain independent.
@@ -212,6 +220,23 @@ struct PayloadStorage {
     preexisting_attributes: usize,
 }
 enum RetainedPayload {
+    PiAttributes {
+        node: Option<usize>,
+        values: OwnedVec<pi::PseudoAttribute>,
+        ready: bool,
+    },
+    NodeDocument {
+        node: Option<usize>,
+        document: usize,
+    },
+    Document {
+        node: Option<usize>,
+        state: template::DocumentState,
+    },
+    Template {
+        node: Option<usize>,
+        state: template::TemplateMetadata,
+    },
     String {
         value: DocumentString,
         allocation: DocumentStringAllocation,
@@ -319,6 +344,7 @@ pub(crate) enum FormAssociationEvidence {
 enum FormEffectStage {
     Removal,
     RemovalChildren,
+    Adoption,
     Insertion,
     InsertionChildren,
     IdChange,
@@ -380,6 +406,7 @@ pub(crate) enum DisabledScriptPreparation {
     Disconnected,
     UnrecognizedType,
     Disabled(ScriptType),
+    ParserDocumentMismatch,
 }
 enum AttributeStorage {
     Building {
@@ -422,6 +449,8 @@ enum StringLocation {
     AttributeValue(usize, usize),
     AttributeNamespace(usize, usize),
     AttributePrefix(usize, usize),
+    PiName(usize, usize),
+    PiValue(usize, usize),
 }
 pub(crate) struct TextInsertion {
     pub(crate) node: ParserNode,
@@ -498,6 +527,9 @@ impl PayloadStorage {
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
                 RetainedPayload::Script { .. }
+                | RetainedPayload::NodeDocument { .. }
+                | RetainedPayload::Document { .. }
+                | RetainedPayload::Template { .. }
                 | RetainedPayload::FormAssociation { .. }
                 | RetainedPayload::Textarea { .. }
                 | RetainedPayload::Output { .. }
@@ -505,6 +537,9 @@ impl PayloadStorage {
                 | RetainedPayload::HiddenInput { .. }
                 | RetainedPayload::SelectFamily { .. }
                 | RetainedPayload::Retired => {}
+                RetainedPayload::PiAttributes { values, .. } => {
+                    values.require_disposal_owner(control)?
+                }
                 RetainedPayload::WorkList(Some(list)) => list.require_disposal_owner(control)?,
                 RetainedPayload::WorkList(None) => return Err(SessionError::Consumed),
             }
@@ -523,6 +558,22 @@ impl PayloadStorage {
         // Dispose containers first; reverse-pop then retains the real Vec until
         // its capacity ticket is consumed.
         for payload in &mut values {
+            if let RetainedPayload::PiAttributes { values, .. } = payload {
+                // PI maps own the second references to registered backings.
+                // Remove those references before string-ticket disposal.
+                while let Some(pair) = if control.stop().is_some() {
+                    values.cleanup_pop(control)
+                } else {
+                    values.try_pop(control)
+                }
+                .unwrap_or_else(|_| {
+                    values
+                        .cleanup_pop(control)
+                        .expect("terminal PI pair disposal")
+                }) {
+                    drop(pair);
+                }
+            }
             if let RetainedPayload::Attributes(storage) = payload {
                 let storage = storage.take().expect("retained attribute phase");
                 let count = match &storage {
@@ -563,6 +614,12 @@ impl PayloadStorage {
             }
         }
         while let Some(payload) = values.pop() {
+            if let RetainedPayload::PiAttributes { values, .. } = payload {
+                values
+                    .release(control)
+                    .expect("actual PI map vector ownership");
+                continue;
+            }
             if let RetainedPayload::WorkList(Some(list)) = payload {
                 list.release(control)
                     .expect("actual retained work-list ticket");
@@ -609,6 +666,21 @@ impl StringLocation {
         control: &mut ParseControl,
     ) -> Result<Option<&'a DocumentString>, SessionError> {
         let value = match *self {
+            Self::PiName(map, index) | Self::PiValue(map, index) => {
+                cleanup_charge(control, WorkCategory::RecordVisit, 2)?;
+                match payloads.get(map) {
+                    Some(RetainedPayload::PiAttributes { values, .. }) => {
+                        values.as_slice().get(index).map(|pair| {
+                            if matches!(self, Self::PiName(..)) {
+                                &pair.name
+                            } else {
+                                &pair.value
+                            }
+                        })
+                    }
+                    _ => None,
+                }
+            }
             Self::Detached => None,
             Self::Text(index) => {
                 cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
@@ -793,10 +865,29 @@ impl SessionStorage {
             RootKind::Fragment => HtmlNodeKind::Fragment,
         };
         let allocated = payload_write::<Option<FormEffects>>(control, 1)
-            .and_then(|()| session.allocate(control, kind, false, 0, 0));
+            .and_then(|()| session.allocate_native(control, kind, false, 0, 0));
         if let Err(error) = allocated {
             session.release(control);
             return Err(error);
+        }
+        if matches!(session.records[0].kind, HtmlNodeKind::Document(_)) {
+            let facts = (|| {
+                session.prepare_payload_slot_owned(control)?;
+                session.payloads.values.push(RetainedPayload::Document {
+                    node: Some(0),
+                    state: template::DocumentState::Ordinary { inert: None },
+                });
+                session.prepare_payload_slot_owned(control)?;
+                session.payloads.values.push(RetainedPayload::NodeDocument {
+                    node: Some(0),
+                    document: 0,
+                });
+                Ok::<_, SessionError>(())
+            })();
+            if let Err(error) = facts {
+                session.release(control);
+                return Err(error);
+            }
         }
         Ok(session)
     }
@@ -876,7 +967,7 @@ impl SessionStorage {
             };
             units = next;
         }
-        let node = self.allocate(
+        let node = self.allocate_native(
             control,
             HtmlNodeKind::Element(element),
             template,
@@ -900,6 +991,18 @@ impl SessionStorage {
         self.allocate_owned(control, kind, template, attributes, units)
     }
     fn allocate_owned(
+        &mut self,
+        control: &mut ParseControl,
+        kind: HtmlNodeKind,
+        template: bool,
+        attributes: usize,
+        units: usize,
+    ) -> Result<ParserNode, SessionError> {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let document = matches!(self.records[0].kind, HtmlNodeKind::Document(_)).then_some(0);
+        self.allocate_in_document_owned(control, kind, template, attributes, units, document)
+    }
+    fn allocate_native(
         &mut self,
         control: &mut ParseControl,
         kind: HtmlNodeKind,
@@ -1034,6 +1137,7 @@ impl SessionStorage {
         control: &mut ParseControl,
         name: Text,
         mut attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
+        prepared: Option<template::PreparedDocuments>,
         creation: OrderedCreation,
     ) -> Result<ParserNode, SessionError> {
         let result = (|| {
@@ -1050,8 +1154,13 @@ impl SessionStorage {
                     return Err(stop.into());
                 }
             };
-            let node =
-                self.allocate_html_payload(control, name.value, Some(name.origins), empty)?;
+            let node = self.allocate_html_payload_prepared(
+                control,
+                name.value,
+                Some(name.origins),
+                empty,
+                prepared,
+            )?;
             match creation {
                 OrderedCreation::Hidden {
                     input,
@@ -1745,7 +1854,34 @@ impl SessionStorage {
         control: &mut ParseControl,
         name: FrozenUtf16,
         origins: Option<OwnedVec<TextOrigin>>,
+        attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
+    ) -> Result<ParserNode, SessionError> {
+        let preparation = (|| {
+            let template = exact_ascii(control, Some(name.text()), "template")?;
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            let document = matches!(self.records[0].kind, HtmlNodeKind::Document(_)).then_some(0);
+            self.prepare_document_allocation(control, document, template)
+        })();
+        let prepared = match preparation {
+            Ok(p) => p,
+            Err(error) => {
+                name.release(control)?;
+                if let Some(origins) = origins {
+                    origins.release(control)?;
+                }
+                release_token_attributes(attributes, control)?;
+                return Err(error);
+            }
+        };
+        self.allocate_html_payload_prepared(control, name, origins, attributes, prepared)
+    }
+    fn allocate_html_payload_prepared(
+        &mut self,
+        control: &mut ParseControl,
+        name: FrozenUtf16,
+        origins: Option<OwnedVec<TextOrigin>>,
         mut attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
+        prepared: Option<template::PreparedDocuments>,
     ) -> Result<ParserNode, SessionError> {
         let result = (|| {
             let (name, name_ticket) = self.register_string(control, name, origins)?;
@@ -1885,7 +2021,7 @@ impl SessionStorage {
             let count = attributes.len();
             let template = exact_ascii(control, Some(&name), "template")?;
             control.charge(WorkCategory::RecordWrite, 6)?;
-            let node = self.allocate(
+            let node = self.allocate_prepared_owned(
                 control,
                 HtmlNodeKind::Element(HtmlElement {
                     name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
@@ -1894,6 +2030,7 @@ impl SessionStorage {
                 template,
                 0,
                 0,
+                prepared,
             )?;
             self.bind_string(name_ticket, StringLocation::ElementName(node.index));
             self.bind_string(namespace_ticket, StringLocation::Namespace(node.index));
@@ -1966,6 +2103,20 @@ impl SessionStorage {
         } else {
             None
         };
+        let prepared = if preceding.is_none() {
+            let document = match self.node_document_index(control, parent_index) {
+                Ok(document) => Some(document),
+                Err(SessionError::NodeDocumentUnavailable)
+                    if matches!(self.records[0].kind, HtmlNodeKind::Fragment) =>
+                {
+                    None
+                }
+                Err(error) => return Err(error),
+            };
+            self.prepare_document_allocation(control, document, false)?
+        } else {
+            None
+        };
         let text = input.take().expect("verified text");
         let (value, ticket) = self.register_text(control, text)?;
         if let Some(index) = preceding {
@@ -2022,7 +2173,14 @@ impl SessionStorage {
         } else {
             let units = value.len();
             control.charge(WorkCategory::RecordWrite, 2)?;
-            let node = self.allocate(control, HtmlNodeKind::Text(value), false, 0, 0)?;
+            let node = self.allocate_prepared_owned(
+                control,
+                HtmlNodeKind::Text(value),
+                false,
+                0,
+                0,
+                prepared,
+            )?;
             self.bind_string(ticket, StringLocation::Text(node.index));
             self.usage.utf16_units += units;
             self.insert(control, parent, &node, before)?;
@@ -2674,8 +2832,17 @@ impl SessionStorage {
         for _ in 0..self.records.len() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             let record = self.records.get(index).ok_or(SessionError::ForeignNode)?;
-            if record.owner.is_some() {
-                return Ok(true);
+            if let Some(owner) = &record.owner {
+                match owner {
+                    HtmlFragmentOwner::ShadowHost(_) => return Ok(true),
+                    HtmlFragmentOwner::Template(template) => {
+                        let (_, state) = self.template_slot(control, template.index)?;
+                        if state.contents != index {
+                            return Err(SessionError::TemplateMetadataUnavailable);
+                        }
+                        return Ok(false);
+                    }
+                }
             }
             let Some(parent) = record.parent else {
                 return Ok(false);
@@ -2788,7 +2955,20 @@ impl SessionStorage {
                 children_changed = true;
             }
         }
-        let mut local = false;
+        let adoption = if let Some(parent) = new_parent {
+            match (
+                self.node_document_index(control, root),
+                self.node_document_index(control, parent),
+            ) {
+                (Ok(old), Ok(new)) => old != new,
+                (Err(SessionError::NodeDocumentUnavailable), _)
+                | (_, Err(SessionError::NodeDocumentUnavailable)) => false,
+                (Err(error), _) | (_, Err(error)) => return Err(error),
+            }
+        } else {
+            false
+        };
+        let mut local = adoption;
         let mut listed_explicit = false;
         for slot in 0..self.payloads.values.len() {
             control.charge(WorkCategory::RecordVisit, 1)?;
@@ -2841,6 +3021,8 @@ impl SessionStorage {
             new_parent,
             stage: if remove {
                 FormEffectStage::Removal
+            } else if adoption {
+                FormEffectStage::Adoption
             } else {
                 FormEffectStage::Insertion
             },
@@ -2994,6 +3176,37 @@ impl SessionStorage {
             let Some(mut effects) = self.effects.form else {
                 return Ok(());
             };
+            if effects.stage == FormEffectStage::Adoption {
+                let parent = effects.new_parent.ok_or(SessionError::NotContainer)?;
+                let document = match self.node_document_index(control, parent) {
+                    Ok(document) => Some(document),
+                    Err(SessionError::NodeDocumentUnavailable) => None,
+                    Err(error) => return Err(error),
+                };
+                let old = match self.node_document_index(control, effects.root) {
+                    Ok(document) => Some(document),
+                    Err(SessionError::NodeDocumentUnavailable) => None,
+                    Err(error) => return Err(error),
+                };
+                effects.stage = FormEffectStage::Insertion;
+                effects.next = Some(effects.root);
+                effects.pass = FormEffectPass::Local;
+                payload_write::<Option<FormEffects>>(control, 1)?;
+                self.effects.form = Some(effects);
+                if let (Some(old), Some(document)) = (old, document)
+                    && old != document
+                {
+                    self.start_effect(
+                        control,
+                        select::EffectFrame::AdoptSubtree {
+                            root: effects.root,
+                            next: Some(effects.root),
+                            document,
+                        },
+                    )?;
+                }
+                return Ok(());
+            }
             if matches!(
                 effects.stage,
                 FormEffectStage::RemovalChildren | FormEffectStage::InsertionChildren
@@ -3015,7 +3228,7 @@ impl SessionStorage {
                     self.refresh_textarea(control, parent, removal.then_some(effects.root), false)?;
                 }
                 if removal && effects.insert {
-                    effects.stage = FormEffectStage::Insertion;
+                    effects.stage = FormEffectStage::Adoption;
                     effects.next = Some(effects.root);
                     effects.pass = FormEffectPass::Local;
                     payload_write::<Option<FormEffects>>(control, 1)?;
@@ -3102,7 +3315,8 @@ impl SessionStorage {
                                 self.reset_form_association(control, slot, node, state, None)?;
                             }
                             FormEffectStage::Insertion | FormEffectStage::IdChange => {}
-                            FormEffectStage::RemovalChildren
+                            FormEffectStage::Adoption
+                            | FormEffectStage::RemovalChildren
                             | FormEffectStage::InsertionChildren => {
                                 unreachable!("children stage handled above")
                             }
@@ -3122,7 +3336,8 @@ impl SessionStorage {
                             FormEffectStage::Removal => !self.connected(control, node, detached)?,
                             FormEffectStage::Insertion => self.connected(control, node, None)?,
                             FormEffectStage::IdChange => true,
-                            FormEffectStage::RemovalChildren
+                            FormEffectStage::Adoption
+                            | FormEffectStage::RemovalChildren
                             | FormEffectStage::InsertionChildren => {
                                 unreachable!("children stage handled above")
                             }
@@ -3175,7 +3390,9 @@ impl SessionStorage {
                             // fresh ordinary Document creation owner. A
                             // Document ID event also affects its detached
                             // controls; connectivity is tested by reset.
-                            if state.kind.listed()
+                            if self.node_document_index(control, candidate)?
+                                == self.node_document_index(control, node)?
+                                && state.kind.listed()
                                 && self.form_attribute(control, candidate, "form")?.is_some()
                                 && match tree {
                                     Some(tree) => {
@@ -3298,7 +3515,7 @@ impl SessionStorage {
         control.require_identity(&self.control)?;
         self.container(control, parent)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if node == 0 {
+        if node == 0 || matches!(self.records[node].kind, HtmlNodeKind::Document(_)) {
             return Err(SessionError::RootMove);
         }
         if self.records[node].owner.is_some() {
@@ -3429,7 +3646,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if node == 0 {
+        if node == 0 || matches!(self.records[node].kind, HtmlNodeKind::Document(_)) {
             return Err(SessionError::RootMove);
         }
         if self.records[node].owner.is_some() {
@@ -3524,7 +3741,7 @@ impl SessionStorage {
             let Some(current) = ancestor else { break };
             control.charge(WorkCategory::RecordVisit, 1)?;
             let record = self.records.get(current).ok_or(SessionError::ForeignNode)?;
-            if current == 0 && matches!(record.kind, HtmlNodeKind::Document(_)) {
+            if matches!(record.kind, HtmlNodeKind::Document(_)) {
                 connected = true;
                 ancestor = None;
                 break;
@@ -3557,8 +3774,13 @@ impl SessionStorage {
         }
         metadata.already_started = true;
         set_script_metadata(self, control, slot, metadata)?;
-        metadata.preparation_document = Some(0);
+        metadata.preparation_document = Some(self.node_document_index(control, index)?);
         set_script_metadata(self, control, slot, metadata)?;
+        if metadata.parser_document.is_some()
+            && metadata.parser_document != metadata.preparation_document
+        {
+            return Ok(DisabledScriptPreparation::ParserDocumentMismatch);
+        }
         Ok(DisabledScriptPreparation::Disabled(kind))
     }
 
@@ -3566,6 +3788,7 @@ impl SessionStorage {
         control.require_identity(&self.control)?;
         self.effects.require_freezable(control)?;
         self.require(control)?;
+        self.validate_template_facts(control)?;
         let depth = self.maximum_depth(control, None)?;
         control.observe_tree_depth(depth as u64)?;
         for index in 0..self.records.len() {
@@ -3713,8 +3936,25 @@ impl ParserArenaSession {
                 .into());
         }
         let tag = self.require_formatting_creation(control, creation)?;
+        let document = storage.node_document_index(control, parent)?;
+        let prepared =
+            self.active_mut()?
+                .prepare_document_allocation(control, Some(document), false)?;
         let mut copy = Some(copy_formatting_tag(control, tag)?);
-        match self.allocate_html_tag(control, &mut copy) {
+        let copied = match take_payload(&mut copy, control) {
+            Ok(copied) => copied,
+            Err(error) => {
+                discard_formatting_tag(&mut copy, control)?;
+                return Err(error);
+            }
+        };
+        match self.active_mut()?.allocate_html_payload_prepared(
+            control,
+            copied.name.value,
+            Some(copied.name.origins),
+            copied.attributes,
+            prepared,
+        ) {
             Ok(node) => Ok(node),
             Err(error) => {
                 // Preconsumption failure still owns the actual independent
@@ -3853,6 +4093,8 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
         input: &mut Option<Tag>,
+        intended_parent: Option<&ParserNode>,
+        context: CreationContext<'_>,
         capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(control, self)?;
@@ -3872,11 +4114,22 @@ impl ParserArenaSession {
         if !exact_ascii(control, Some(tag.name.value.text()), "script")? {
             return Err(SessionError::WrongToken);
         }
-        let node = self.allocate_html_tag(control, input)?;
+        self.qualify_creation_context(control, &context)?;
+        let parent = match intended_parent {
+            Some(parent) => {
+                let index = self.active()?.index(control, parent)?;
+                self.active()?.node(control, index)?
+            }
+            None => self.root(control)?,
+        };
+        self.active()?.node_document_index(control, parent.index)?;
         let storage = self.active_mut()?;
+        storage.document_slot(control, 0)?;
         storage.prepare_payload_slot(control)?;
+        let script = storage.payloads.values.len();
+        payload_write::<Option<usize>>(control, 1)?;
         storage.payloads.values.push(RetainedPayload::Script {
-            node: Some(node.index),
+            node: None,
             metadata: ScriptMetadata {
                 parser_document: Some(0),
                 preparation_document: None,
@@ -3890,6 +4143,20 @@ impl ParserArenaSession {
                 steps_when_result_ready: None,
             },
         });
+        let node = self.allocate_for_creation(
+            control,
+            input,
+            &parent,
+            None,
+            CreationProfile::Ordinary,
+            context,
+        )?;
+        let RetainedPayload::Script { node: bound, .. } =
+            &mut self.active_mut()?.payloads.values[script]
+        else {
+            unreachable!()
+        };
+        *bound = Some(node.index);
         Ok(node)
     }
     pub(crate) fn script_metadata(
@@ -3986,6 +4253,7 @@ impl ParserArenaSession {
         input: &mut Option<Tag>,
         intended_parent: &ParserNode,
         current_form: Option<&ParserNode>,
+        context: CreationContext<'_>,
     ) -> Result<ParserNode, SessionError> {
         self.allocate_for_creation(
             control,
@@ -3993,14 +4261,14 @@ impl ParserArenaSession {
             intended_parent,
             current_form,
             CreationProfile::Ordinary,
+            context,
         )
     }
     pub(crate) fn allocate_hidden_input_for_creation(
         &mut self,
         control: &mut ParseControl,
         input: &mut Option<Tag>,
-        intended_parent: &ParserNode,
-        current_form: Option<&ParserNode>,
+        location: CreationLocation<'_>,
         token_source: &crate::HtmlSourceRange,
         capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
@@ -4008,17 +4276,17 @@ impl ParserArenaSession {
         self.allocate_for_creation(
             control,
             input,
-            intended_parent,
-            current_form,
+            location.intended_parent,
+            location.current_form,
             CreationProfile::Hidden(capability, token_source),
+            location.context,
         )
     }
     pub(crate) fn allocate_select_family_for_creation(
         &mut self,
         control: &mut ParseControl,
         input: &mut Option<Tag>,
-        intended_parent: &ParserNode,
-        current_form: Option<&ParserNode>,
+        location: CreationLocation<'_>,
         token_source: &crate::HtmlSourceRange,
         capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
@@ -4026,9 +4294,10 @@ impl ParserArenaSession {
         self.allocate_for_creation(
             control,
             input,
-            intended_parent,
-            current_form,
+            location.intended_parent,
+            location.current_form,
             CreationProfile::Select(capability, token_source),
+            location.context,
         )
     }
     fn allocate_for_creation(
@@ -4038,8 +4307,10 @@ impl ParserArenaSession {
         intended_parent: &ParserNode,
         current_form: Option<&ParserNode>,
         profile: CreationProfile<'_, '_>,
+        context: CreationContext<'_>,
     ) -> Result<ParserNode, SessionError> {
         self.validate_standalone_document(control)?;
+        let parsing_template = self.qualify_creation_context(control, &context)?;
         let storage = self.active()?;
         let parent = storage.index(control, intended_parent)?;
         storage.container(control, parent)?;
@@ -4048,6 +4319,7 @@ impl ParserArenaSession {
                 .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
                 .into());
         }
+        let document = storage.node_document_index(control, parent)?;
         let form = current_form
             .map(|form| storage.index(control, form))
             .transpose()?;
@@ -4139,7 +4411,7 @@ impl ParserArenaSession {
                 }
             }
         }
-        let owner = if kind.is_some() && !explicit_form {
+        let owner = if kind.is_some() && !explicit_form && !parsing_template {
             match form {
                 Some(form)
                     if storage.ordinary_root(control, parent, None)?
@@ -4177,7 +4449,9 @@ impl ParserArenaSession {
         } else {
             None
         };
+        let template = exact_ascii(control, Some(tag.name.value.text()), "template")?;
         let storage = self.active_mut()?;
+        let prepared = storage.prepare_document_allocation(control, Some(document), template)?;
         let select_slot = if let Some(state) = select_metadata {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
@@ -4310,6 +4584,7 @@ impl ParserArenaSession {
                     control,
                     name,
                     attributes,
+                    prepared,
                     OrderedCreation::Hidden {
                         input: hidden_slot,
                         association: slot.expect("canonical hidden association"),
@@ -4321,16 +4596,18 @@ impl ParserArenaSession {
                     control,
                     name,
                     attributes,
+                    prepared,
                     OrderedCreation::Select {
                         metadata: select_slot,
                     },
                 )?
             } else {
-                storage.allocate_html_payload(
+                storage.allocate_html_payload_prepared(
                     control,
                     name.value,
                     Some(name.origins),
                     attributes,
+                    prepared,
                 )?
             };
             if let Some(textarea) = textarea_slot {
@@ -4624,43 +4901,47 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, ImpliedHtmlName::Html)
+        self.allocate_implied_html(control, None, ImpliedHtmlName::Html)
     }
     pub(crate) fn allocate_implicit_head(
         &mut self,
         control: &mut ParseControl,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, ImpliedHtmlName::Head)
+        self.allocate_implied_html(control, None, ImpliedHtmlName::Head)
     }
     pub(crate) fn allocate_implicit_body(
         &mut self,
         control: &mut ParseControl,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, ImpliedHtmlName::Body)
+        self.allocate_implied_html(control, None, ImpliedHtmlName::Body)
     }
     pub(crate) fn allocate_implicit_p(
         &mut self,
         control: &mut ParseControl,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, ImpliedHtmlName::P)
+        self.allocate_implied_html(control, intended_parent, ImpliedHtmlName::P)
     }
     pub(crate) fn allocate_implicit_colgroup(
         &mut self,
         control: &mut ParseControl,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, ImpliedHtmlName::Colgroup)
+        self.allocate_implied_html(control, intended_parent, ImpliedHtmlName::Colgroup)
     }
     pub(crate) fn allocate_implicit_tbody(
         &mut self,
         control: &mut ParseControl,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, ImpliedHtmlName::Tbody)
+        self.allocate_implied_html(control, intended_parent, ImpliedHtmlName::Tbody)
     }
     pub(crate) fn allocate_implicit_tr(
         &mut self,
         control: &mut ParseControl,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_implied_html(control, ImpliedHtmlName::Tr)
+        self.allocate_implied_html(control, intended_parent, ImpliedHtmlName::Tr)
     }
     pub(crate) fn add_body_attributes_if_missing(
         &mut self,
@@ -4813,10 +5094,13 @@ impl ParserArenaSession {
     fn allocate_implied_html(
         &mut self,
         control: &mut ParseControl,
+        intended_parent: Option<&ParserNode>,
         local: ImpliedHtmlName,
     ) -> Result<ParserNode, SessionError> {
         let storage = self.active_mut()?;
         storage.require(control)?;
+        let document = storage.creation_document(control, intended_parent)?;
+        let prepared = storage.prepare_document_allocation(control, document, false)?;
         let attributes = OwnedVec::new(HtmlParseResource::TokenAttributes)?;
         let name = literal_string(
             control,
@@ -4830,22 +5114,32 @@ impl ParserArenaSession {
                 ImpliedHtmlName::Tr => b"tr",
             },
         )?;
-        storage.allocate_html_payload(control, name, None, attributes)
+        storage.allocate_html_payload_prepared(control, name, None, attributes, prepared)
     }
     pub(crate) fn allocate_comment(
         &mut self,
         control: &mut ParseControl,
         input: &mut Option<Text>,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
         let storage = self.active_mut()?;
         storage.require(control)?;
         SessionStorage::check_text(control, input.as_mut().ok_or(SessionError::Consumed)?)?;
+        let document = storage.creation_document(control, intended_parent)?;
+        let prepared = storage.prepare_document_allocation(control, document, false)?;
         let text = take_payload(input, control)?;
         let (value, ticket) = storage.register_text(control, text)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
         let units = value.len();
         control.charge(WorkCategory::RecordWrite, 2)?;
-        let node = storage.allocate(control, HtmlNodeKind::Comment(value), false, 0, 0)?;
+        let node = storage.allocate_prepared_owned(
+            control,
+            HtmlNodeKind::Comment(value),
+            false,
+            0,
+            0,
+            prepared,
+        )?;
         storage.bind_string(ticket, StringLocation::Comment(node.index));
         storage.usage.utf16_units += units;
         Ok(node)
@@ -4854,12 +5148,17 @@ impl ParserArenaSession {
         &mut self,
         control: &mut ParseControl,
         input: &mut Option<(Text, Text)>,
+        intended_parent: Option<&ParserNode>,
     ) -> Result<ParserNode, SessionError> {
         let storage = self.active_mut()?;
         storage.require(control)?;
         let (target, data) = input.as_mut().ok_or(SessionError::Consumed)?;
         SessionStorage::check_text(control, target)?;
         SessionStorage::check_text(control, data)?;
+        let document = storage.creation_document(control, intended_parent)?;
+        let prepared = storage.prepare_document_allocation(control, document, false)?;
+        let map = storage.prepare_pi_map(control)?;
+        payload_write::<Option<usize>>(control, 1)?;
         let (target, data) = take_payload(input, control)?;
         let (target, target_ticket) = match storage.register_text(control, target) {
             Ok(value) => value,
@@ -4877,12 +5176,13 @@ impl ParserArenaSession {
         })?;
         control.charge(WorkCategory::RecordWrite, 3)?;
         // Recovered PI data is exact storage, not checked native authoring input.
-        let node = storage.allocate(
+        let node = storage.allocate_prepared_owned(
             control,
             HtmlNodeKind::ProcessingInstruction(HtmlProcessingInstruction { target, data }),
             false,
             0,
             0,
+            prepared,
         )?;
         storage.bind_string(
             target_ticket,
@@ -4893,6 +5193,8 @@ impl ParserArenaSession {
             StringLocation::ProcessingInstructionData(node.index),
         );
         storage.usage.utf16_units += units;
+        storage.bind_pi_map(map, node.index);
+        storage.parse_pi_map(control, node.index, map)?;
         Ok(node)
     }
     pub(crate) fn allocate_doctype(
@@ -7219,7 +7521,13 @@ mod tests {
             &[111, 117, 116, 112, 117, 116],
         ));
         let output = session
-            .allocate_html_tag_for_creation(&mut c, &mut tag, &root, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut tag,
+                &root,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         assert!(tag.is_none());
         session.insert(&mut c, &root, &output, None, None).unwrap();
@@ -7238,7 +7546,13 @@ mod tests {
             .unwrap();
         let mut tag = Some(next_fixture_tag(&mut lexer, &mut c, &[115, 112, 97, 110]));
         let span = session
-            .allocate_html_tag_for_creation(&mut c, &mut tag, &output, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut tag,
+                &output,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         session.insert(&mut c, &output, &span, None, None).unwrap();
         // Data emits one code point per Text token, including the reference.
@@ -7257,7 +7571,7 @@ mod tests {
             panic!("real comment")
         };
         let comment = session
-            .allocate_comment(&mut c, &mut Some(comment))
+            .allocate_comment(&mut c, &mut Some(comment), None)
             .unwrap();
         session
             .insert(&mut c, &output, &comment, None, None)
@@ -7267,12 +7581,18 @@ mod tests {
             panic!("real PI")
         };
         let pi = session
-            .allocate_processing_instruction(&mut c, &mut Some((target, data)))
+            .allocate_processing_instruction(&mut c, &mut Some((target, data)), None)
             .unwrap();
         session.insert(&mut c, &output, &pi, None, None).unwrap();
         let mut tag = Some(next_fixture_tag(&mut lexer, &mut c, &[115, 112, 97, 110]));
         let last = session
-            .allocate_html_tag_for_creation(&mut c, &mut tag, &output, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut tag,
+                &output,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         session.insert(&mut c, &output, &last, None, None).unwrap();
         let mut e = next_text(&mut lexer, &mut c);
@@ -7358,7 +7678,13 @@ mod tests {
             for _ in 0..2 {
                 let mut tag = Some(next_fixture_tag(&mut lexer, &mut c, &[115, 112, 97, 110]));
                 let span = session
-                    .allocate_html_tag_for_creation(&mut c, &mut tag, &output, None)
+                    .allocate_html_tag_for_creation(
+                        &mut c,
+                        &mut tag,
+                        &output,
+                        None,
+                        crate::construction::parser_session::CreationContext::Ordinary,
+                    )
                     .unwrap();
                 session.insert(&mut c, &output, &span, None, None).unwrap();
                 for _ in 0..20 {
@@ -7464,7 +7790,7 @@ mod tests {
     #[test]
     fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundary() {
         use crate::parser::tokenizer::{Tokenizer, states::State};
-        for cap in [9, 10] {
+        for cap in [13, 14] {
             let source = crate::HtmlSource::utf8("<output>");
             let mut c = ParseControl::new(
                 limits()
@@ -7489,16 +7815,22 @@ mod tests {
             ));
             session.allocate_implicit_body(&mut c).unwrap();
             // Actual root/html/body registry + record/ticket entries are9;
-            // Output and canonical association require2 more initialized slots.
+            // After its document binding, Output and canonical association require2 more initialized slots.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                9
+                13
             );
             let backing = Arc::as_ptr(tag.as_ref().unwrap().name.value.text().backing());
             assert!(matches!(
-                session.allocate_html_tag_for_creation(&mut c, &mut tag, &html, None),
+                session.allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut tag,
+                    &html,
+                    None,
+                    crate::construction::parser_session::CreationContext::Ordinary
+                ),
                 Err(SessionError::Stop(ParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     ..
@@ -7568,7 +7900,13 @@ mod tests {
         let root = session.root(&mut c).unwrap();
         let mut form = Some(next_fixture_tag(&mut lexer, &mut c, &[102, 111, 114, 109]));
         let form = session
-            .allocate_html_tag_for_creation(&mut c, &mut form, &root, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut form,
+                &root,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         session.insert(&mut c, &root, &form, None, None).unwrap();
         let mut tag = Some(next_fixture_tag(
@@ -7578,7 +7916,13 @@ mod tests {
         ));
         session.active_mut().unwrap().cancel_after_output_reset = Some(cancellation);
         assert!(matches!(
-            session.allocate_html_tag_for_creation(&mut c, &mut tag, &form, Some(&form)),
+            session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut tag,
+                &form,
+                Some(&form),
+                crate::construction::parser_session::CreationContext::Ordinary
+            ),
             Err(SessionError::Stop(ParseStop::Cancelled))
         ));
         assert!(tag.is_none());
@@ -7622,7 +7966,7 @@ mod tests {
 
     #[test]
     fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanup() {
-        for remaining in [16, 17] {
+        for remaining in [19, 20] {
             let source = crate::HtmlSource::utf8("<output>A");
             let (mut c, mut session, output, mut lexer) = output_owner(&source, limits());
             let mut text = next_text(&mut lexer, &mut c);
@@ -7633,8 +7977,8 @@ mod tests {
             let mut destination = Utf16Buffer::new(&mut c).unwrap();
             destination.push_unit(81, &mut c).unwrap();
             destination.clear(&mut c).unwrap(); // capacity for1 exists before measured copying.
-            // Getter visits: active readiness+index6, first Output slot1,
-            // root+child2, Text1, leaf/parent/child-list/sibling4 =14.
+            // Getter visits: active readiness+index6, root Document/self-binding2 + Output node-binding1 + Output slot1,
+            // root+child2, Text1, leaf/parent/child-list/sibling4 =17.
             // Copies are one finite state byte plus one UTF16 unit =3.
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = limits().work_credits();
@@ -7643,12 +7987,12 @@ mod tests {
             let before = c.usage().clone();
             let result = session.append_output_value(&mut c, &output, &mut destination);
             assert_eq!(destination.units(), [65]);
-            if remaining == 17 {
+            if remaining == 20 {
                 result.unwrap();
                 assert_eq!(
                     c.usage().work(WorkCategory::RecordVisit)
                         - before.work(WorkCategory::RecordVisit),
-                    14
+                    17
                 );
                 assert_eq!(
                     c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
@@ -7718,7 +8062,13 @@ mod tests {
         );
         let mut input = Some(tag);
         let textarea = session
-            .allocate_html_tag_for_creation(&mut c, &mut input, &root, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &root,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         assert!(input.is_none());
         session
@@ -7807,7 +8157,13 @@ mod tests {
         // A descendant Text is excluded: only immediate Text children contribute.
         let span = next_fixture_tag(&mut tokenizer, &mut c, &[115, 112, 97, 110]);
         let child = session
-            .allocate_html_tag_for_creation(&mut c, &mut Some(span), &node, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut Some(span),
+                &node,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         session.insert(&mut c, &node, &child, None, None).unwrap();
         let mut text_c = next_text(&mut tokenizer, &mut c);
@@ -7972,14 +8328,14 @@ mod tests {
     #[test]
     fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded() {
         // Registry slots: initial raw/textarea/form3, name/namespace/attrs3,
-        // actual native A1 and first children-change raw1 plus two retired static postconnection list slots =10. Three actual nodes
+        // actual native A1 and first children-change raw1 plus two retired static postconnection list slots plus four real document facts =14. Three actual nodes
         // add three auxiliary slots, so baseline13. The finite cap18
         // admits initial lexical/topology staging, then five reset slots;
         // the next reset retains the current raw and latches the slot cap.
         let source = crate::HtmlSource::utf8("<textarea>A");
         let caps = limits()
             .into_builder()
-            .auxiliary_entries(18)
+            .auxiliary_entries(22)
             .finish()
             .unwrap();
         let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, caps);
@@ -7988,12 +8344,12 @@ mod tests {
             .insert_text(&mut c, &node, None, &mut text, None)
             .unwrap();
         tokenizer.release(&mut c).unwrap();
-        assert_eq!(session.active().unwrap().payloads.values.len(), 10);
+        assert_eq!(session.active().unwrap().payloads.values.len(), 14);
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            13
+            17
         );
         let old = Arc::downgrade(session.textarea_raw_value(&mut c, &node).unwrap().backing());
         for _ in 0..5 {
@@ -8007,7 +8363,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            18
+            22
         );
         assert_eq!(
             c.usage()
@@ -8028,7 +8384,7 @@ mod tests {
             }
         ));
         let storage = session.active().unwrap();
-        assert_eq!(storage.payloads.values.len(), 15);
+        assert_eq!(storage.payloads.values.len(), 19);
         let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
             panic!("original current raw retained")
         };
@@ -8049,7 +8405,7 @@ mod tests {
     #[test]
     fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
         use crate::parser::tokenizer::{Tokenizer, states::State};
-        for cap in [10, 11, 12] {
+        for cap in [15, 16, 17] {
             let source = crate::HtmlSource::utf8("<textarea>");
             let mut c = ParseControl::new(
                 limits()
@@ -8079,11 +8435,17 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                9
+                13
             );
-            let result = session.allocate_html_tag_for_creation(&mut c, &mut input, &html, None);
+            let result = session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &html,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            );
             assert!(matches!(result, Err(SessionError::Stop(_))));
-            if cap < 12 {
+            if cap < 17 {
                 assert_eq!(
                     Arc::as_ptr(input.as_ref().unwrap().name.value.text().backing()),
                     backing
@@ -8114,7 +8476,13 @@ mod tests {
         let root = session.root(&mut c).unwrap();
         let form_tag = next_fixture_tag(&mut tokenizer, &mut c, &[102, 111, 114, 109]);
         let form = session
-            .allocate_html_tag_for_creation(&mut c, &mut Some(form_tag), &root, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut Some(form_tag),
+                &root,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         session.insert(&mut c, &root, &form, None, None).unwrap();
         let tag = next_fixture_tag(
@@ -8125,7 +8493,13 @@ mod tests {
         session.active_mut().unwrap().cancel_after_textarea_reset = Some(cancellation);
         let mut input = Some(tag);
         assert!(matches!(
-            session.allocate_html_tag_for_creation(&mut c, &mut input, &form, Some(&form)),
+            session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &form,
+                Some(&form),
+                crate::construction::parser_session::CreationContext::Ordinary
+            ),
             Err(SessionError::Stop(_))
         ));
         assert!(input.is_none());
@@ -8180,7 +8554,13 @@ mod tests {
         );
         let root = session.root(&mut c).unwrap();
         let right = session
-            .allocate_html_tag_for_creation(&mut c, &mut Some(tag), &root, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut Some(tag),
+                &root,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         session.insert(&mut c, &root, &right, None, None).unwrap();
         let mut b = next_text(&mut tokenizer, &mut c);
@@ -8287,6 +8667,269 @@ mod tests {
         let body = session.allocate_implicit_body(c).unwrap();
         session.insert(c, &html, &body, None, None).unwrap();
         body
+    }
+    #[test]
+    fn template_owned_html_wrapper_pre_registration_stops_reclaim_lexical_fields() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // require: 5 visits; kind: 1; name owner+alias: 2; lowercase
+        // template: 16; indexed attribute: 1; its two owner+alias checks: 4;
+        // lowercase a: 2. This is the actual borrowed preflight, before take.
+        const PREFLIGHT: u64 = 31;
+        // The newly owned wrapper reads length (1), eight units (3 each),
+        // then root kind (1). Cut each credit before document preparation.
+        for wrapper_credit in 0..26 {
+            let source = crate::HtmlSource::utf8("<template a='V&#65;'>");
+            let mut c = control();
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let (mut input, _) = formatting_lexical_tag(&mut lexer, &mut c);
+            lexer.release(&mut c).unwrap();
+            let tag = input.as_ref().unwrap();
+            assert_eq!(
+                tag.name.value.text().code_units(),
+                [116, 101, 109, 112, 108, 97, 116, 101]
+            );
+            assert_eq!(
+                tag.attributes.as_slice()[0].value.value.text().code_units(),
+                [86, 65]
+            );
+            assert!(!tag.name.origins.as_slice().is_empty());
+            assert_eq!(tag.attributes.as_slice()[0].value.origins.len(), 2);
+            let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(
+                WorkCategory::StateStep,
+                limits().work_credits() - used - PREFLIGHT - wrapper_credit,
+            )
+            .unwrap();
+            let result = session.allocate_html_tag(&mut c, &mut input);
+            let first = c.stop().expect("wrapper work stop");
+            assert!(matches!(
+                first,
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    ..
+                }
+            ));
+            assert_eq!(result.err(), Some(SessionError::Stop(first)));
+            assert!(
+                input.is_none(),
+                "lexical transfer precedes wrapper, credit={wrapper_credit}"
+            );
+            assert_eq!(session.active().unwrap().records.len(), 1);
+            assert_eq!(
+                session.freeze(&mut c).err(),
+                Some(SessionError::Stop(first))
+            );
+            let work = c.usage().resource(HtmlParseResource::WorkCredits);
+            session.release(&mut c).unwrap();
+            assert_eq!(c.stop(), Some(first));
+            assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn template_owned_html_wrapper_cancellation_reclaims_transferred_lexical_fields() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        let source = crate::HtmlSource::utf8("<template a='V&#65;'>");
+        let cancellation = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), cancellation.clone());
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut input, _) = formatting_lexical_tag(&mut lexer, &mut c);
+        lexer.release(&mut c).unwrap();
+        // Exercise the real owned wrapper with fields from a validated actual
+        // lexical tag. Cancellation is observable at its first admission.
+        SessionStorage::check_html_tag(&mut c, input.as_mut().unwrap()).unwrap();
+        let Tag {
+            name, attributes, ..
+        } = input.take().unwrap();
+        cancellation.cancel();
+        assert_eq!(
+            session
+                .active_mut()
+                .unwrap()
+                .allocate_html_payload(&mut c, name.value, Some(name.origins), attributes,)
+                .err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    }
+
+    fn formatting_complete_copy_prefix(
+        session: &mut ParserArenaSession,
+        c: &mut ParseControl,
+        creation: &FormattingCreation,
+        parent: &ParserNode,
+    ) -> u64 {
+        // A separate real prefix locates the admission window; it is not the
+        // cleanup oracle. Independently check all copied fields/storage below.
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        session.validate_standalone_document(c).unwrap();
+        let storage = session.active().unwrap();
+        let parent = storage.index(c, parent).unwrap();
+        storage.container(c, parent).unwrap();
+        assert!(!storage.associated_document_parent(c, parent).unwrap());
+        session.require_formatting_creation(c, creation).unwrap();
+        let document = storage.node_document_index(c, parent).unwrap();
+        session
+            .active_mut()
+            .unwrap()
+            .prepare_document_allocation(c, Some(document), false)
+            .unwrap();
+        let original = creation.token.as_ref().unwrap();
+        let mut copy = Some(copy_formatting_tag(c, original).unwrap());
+        let complete = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+        let copied = copy.as_ref().unwrap();
+        assert_eq!(copied.name.value.text().code_units(), [98]);
+        assert_eq!(
+            copied.attributes.as_slice()[0]
+                .name
+                .value
+                .text()
+                .code_units(),
+            [97]
+        );
+        assert_eq!(
+            copied.attributes.as_slice()[0]
+                .value
+                .value
+                .text()
+                .code_units(),
+            [86, 65]
+        );
+        assert_ne!(
+            copied.name.value.text().code_units().as_ptr(),
+            original.name.value.text().code_units().as_ptr()
+        );
+        let origins = |text: &Text| {
+            text.origins
+                .as_slice()
+                .iter()
+                .map(|o| (o.start, o.end, o.source.clone(), o.kind))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            origins(&copied.attributes.as_slice()[0].value),
+            origins(&original.attributes.as_slice()[0].value)
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::TokenAttributes)
+                .current,
+            2
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            8
+        );
+        discard_formatting_tag(&mut copy, c).unwrap();
+        complete
+    }
+
+    #[test]
+    fn formatting_completed_copy_take_stops_keep_recipe_and_reclaim_independent_fields() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        fn fixture(
+            source: &crate::HtmlSource,
+            c: &mut ParseControl,
+        ) -> (ParserArenaSession, ParserNode, FormattingCreation) {
+            c.admit_source(source).unwrap();
+            let mut session =
+                ParserArenaSession::new(c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
+            let parent = formatting_parent(c, &mut session);
+            let mut lexer = Tokenizer::new(source, State::Data, None, c).unwrap();
+            let (mut input, range) = formatting_lexical_tag(&mut lexer, c);
+            lexer.release(c).unwrap();
+            let creation = session
+                .retain_formatting_creation(c, &mut input, range)
+                .unwrap();
+            assert!(input.is_none());
+            (session, parent, creation)
+        }
+        let source = crate::HtmlSource::utf8("<b a='V&#65;'>");
+        let mut measured = control();
+        let (mut session, parent, mut creation) = fixture(&source, &mut measured);
+        let prefix =
+            formatting_complete_copy_prefix(&mut session, &mut measured, &creation, &parent);
+        creation.release(&mut measured).unwrap();
+        session.release(&mut measured).unwrap();
+        storage_zero(&measured);
+        // take_payload: one actual Option visit, then the fixed Option<Tag>
+        // copy, then two writes. Cut each admitted action after complete copy.
+        for take_credit in [
+            0,
+            1,
+            1 + mem::size_of::<Option<Tag>>() as u64,
+            2 + mem::size_of::<Option<Tag>>() as u64,
+        ] {
+            let mut c = control();
+            let (mut session, parent, mut creation) = fixture(&source, &mut c);
+            let pointer = creation
+                .token
+                .as_ref()
+                .unwrap()
+                .name
+                .value
+                .text()
+                .code_units()
+                .as_ptr();
+            let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(
+                WorkCategory::StateStep,
+                limits().work_credits() - used - prefix - take_credit,
+            )
+            .unwrap();
+            let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
+            let first = c.stop().expect("copied token take work stop");
+            assert!(matches!(
+                first,
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    ..
+                }
+            ));
+            assert_eq!(result.err(), Some(SessionError::Stop(first)));
+            assert_eq!(session.active().unwrap().records.len(), 3);
+            assert_eq!(
+                creation
+                    .token
+                    .as_ref()
+                    .unwrap()
+                    .name
+                    .value
+                    .text()
+                    .code_units()
+                    .as_ptr(),
+                pointer
+            );
+            assert_eq!(creation.token.as_ref().unwrap().attributes.len(), 1);
+            assert_eq!(
+                session.freeze(&mut c).err(),
+                Some(SessionError::Stop(first))
+            );
+            let work = c.usage().resource(HtmlParseResource::WorkCredits);
+            creation.release(&mut c).unwrap();
+            assert!(creation.token.is_none());
+            session.release(&mut c).unwrap();
+            assert_eq!(c.stop(), Some(first));
+            assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
+            storage_zero(&c);
+        }
     }
     #[test]
     fn formatting_replay_copies_exact_utf16_attributes_and_original_origins_into_distinct_nodes() {
@@ -8687,14 +9330,14 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let parent = formatting_parent(&mut c, &mut session);
-        let from = session.allocate_implicit_p(&mut c).unwrap();
-        let to = session.allocate_implicit_p(&mut c).unwrap();
+        let from = session.allocate_implicit_p(&mut c, None).unwrap();
+        let to = session.allocate_implicit_p(&mut c, None).unwrap();
         session.insert(&mut c, &parent, &from, None, None).unwrap();
         session.insert(&mut c, &parent, &to, None, None).unwrap();
-        let existing = session.allocate_implicit_p(&mut c).unwrap();
+        let existing = session.allocate_implicit_p(&mut c, None).unwrap();
         session.insert(&mut c, &to, &existing, None, None).unwrap();
-        let one = session.allocate_implicit_p(&mut c).unwrap();
-        let two = session.allocate_implicit_p(&mut c).unwrap();
+        let one = session.allocate_implicit_p(&mut c, None).unwrap();
+        let two = session.allocate_implicit_p(&mut c, None).unwrap();
         session.insert(&mut c, &from, &one, None, None).unwrap();
         session.insert(&mut c, &from, &two, None, None).unwrap();
         let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
@@ -8992,12 +9635,12 @@ mod tests {
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
             let parent = formatting_parent(&mut c, &mut session);
-            let from = session.allocate_implicit_p(&mut c).unwrap();
-            let to = session.allocate_implicit_p(&mut c).unwrap();
+            let from = session.allocate_implicit_p(&mut c, None).unwrap();
+            let to = session.allocate_implicit_p(&mut c, None).unwrap();
             session.insert(&mut c, &parent, &from, None, None).unwrap();
             session.insert(&mut c, &parent, &to, None, None).unwrap();
-            let one = session.allocate_implicit_p(&mut c).unwrap();
-            let two = session.allocate_implicit_p(&mut c).unwrap();
+            let one = session.allocate_implicit_p(&mut c, None).unwrap();
+            let two = session.allocate_implicit_p(&mut c, None).unwrap();
             session.insert(&mut c, &from, &one, None, None).unwrap();
             session.insert(&mut c, &from, &two, None, None).unwrap();
             let before_nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
@@ -9319,7 +9962,7 @@ mod tests {
             input.as_ref().unwrap().name.value.text().backing().as_ptr(),
             original
         );
-        session.allocate_implicit_p(&mut c).unwrap();
+        session.allocate_implicit_p(&mut c, None).unwrap();
         session
             .add_body_attributes_if_missing(&mut c, &body, &mut input)
             .unwrap();
@@ -9461,7 +10104,7 @@ mod tests {
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let html = session.allocate_implicit_html(&mut c).unwrap();
             let body = session.allocate_implicit_body(&mut c).unwrap();
-            let p = session.allocate_implicit_p(&mut c).unwrap();
+            let p = session.allocate_implicit_p(&mut c, None).unwrap();
             let root = session.root(&mut c).unwrap();
             session.insert(&mut c, &root, &html, None, None).unwrap();
             session.insert(&mut c, &html, &body, None, None).unwrap();
@@ -10191,7 +10834,7 @@ mod tests {
             };
             let root = session.root(&mut c).unwrap();
             session.insert(&mut c, &root, &body, None, None).unwrap();
-            let p = session.allocate_implicit_p(&mut c).unwrap();
+            let p = session.allocate_implicit_p(&mut c, None).unwrap();
             session.insert(&mut c, &body, &p, None, None).unwrap();
             let TokenKind::Tag(second) = lexical_kind(&mut t, &mut c) else {
                 panic!("tag")
@@ -10312,8 +10955,11 @@ mod tests {
                 .allocate_hidden_input_for_creation(
                     &mut c,
                     &mut input,
-                    &parent,
-                    None,
+                    crate::construction::parser_session::CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: crate::construction::parser_session::CreationContext::Ordinary,
+                    },
                     &token_source,
                     &capability,
                 )
@@ -10434,8 +11080,11 @@ mod tests {
             .allocate_hidden_input_for_creation(
                 &mut c,
                 &mut input,
-                &parent,
-                None,
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::parser_session::CreationContext::Ordinary,
+                },
                 &token_source,
                 &capability,
             )
@@ -10522,8 +11171,12 @@ mod tests {
                         .allocate_hidden_input_for_creation(
                             &mut c,
                             &mut input,
-                            &parent,
-                            None,
+                            crate::construction::parser_session::CreationLocation {
+                                intended_parent: &parent,
+                                current_form: None,
+                                context:
+                                    crate::construction::parser_session::CreationContext::Ordinary
+                            },
                             &token_source,
                             &capability
                         )
@@ -10541,8 +11194,11 @@ mod tests {
                     other.allocate_hidden_input_for_creation(
                         &mut c,
                         &mut input,
-                        &root,
-                        None,
+                        crate::construction::parser_session::CreationLocation {
+                            intended_parent: &root,
+                            current_form: None,
+                            context: crate::construction::parser_session::CreationContext::Ordinary
+                        },
                         &token_source,
                         &capability
                     ),
@@ -10554,7 +11210,13 @@ mod tests {
                 other.release(&mut c).unwrap();
             } else {
                 let generic = session
-                    .allocate_html_tag_for_creation(&mut c, &mut input, &parent, None)
+                    .allocate_html_tag_for_creation(
+                        &mut c,
+                        &mut input,
+                        &parent,
+                        None,
+                        crate::construction::parser_session::CreationContext::Ordinary,
+                    )
                     .unwrap();
                 assert_eq!(
                     session.hidden_input_state(&mut c, &generic),
@@ -10581,8 +11243,11 @@ mod tests {
                 .allocate_hidden_input_for_creation(
                     &mut c,
                     &mut input,
-                    &parent,
-                    None,
+                    crate::construction::parser_session::CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: crate::construction::parser_session::CreationContext::Ordinary
+                    },
                     &token_source,
                     &capability
                 )
@@ -10606,8 +11271,11 @@ mod tests {
             .allocate_hidden_input_for_creation(
                 &mut c,
                 &mut input,
-                &parent,
-                None,
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::parser_session::CreationContext::Ordinary,
+                },
                 &token_source,
                 &capability,
             )
@@ -10632,8 +11300,11 @@ mod tests {
                 session.allocate_hidden_input_for_creation(
                     &mut c,
                     &mut input,
-                    &parent,
-                    None,
+                    crate::construction::parser_session::CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: crate::construction::parser_session::CreationContext::Ordinary
+                    },
                     &token_source,
                     &capability
                 ),
@@ -10685,8 +11356,11 @@ mod tests {
             let result = session.allocate_hidden_input_for_creation(
                 &mut c,
                 &mut input,
-                &parent,
-                None,
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::parser_session::CreationContext::Ordinary,
+                },
                 &token_source,
                 &capability,
             );
@@ -10758,7 +11432,13 @@ mod tests {
             &[102, 111, 114, 109],
         ));
         let form = session
-            .allocate_html_tag_for_creation(&mut c, &mut form, &parent, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut form,
+                &parent,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         session.insert(&mut c, &parent, &form, None, None).unwrap();
         form_lexer.release(&mut c).unwrap();
@@ -10768,8 +11448,11 @@ mod tests {
             session.allocate_hidden_input_for_creation(
                 &mut c,
                 &mut input,
-                &form,
-                Some(&form),
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &form,
+                    current_form: Some(&form),
+                    context: crate::construction::parser_session::CreationContext::Ordinary
+                },
                 &token_source,
                 &capability
             ),
@@ -10838,8 +11521,11 @@ mod tests {
             .allocate_hidden_input_for_creation(
                 &mut c,
                 &mut input,
-                &parent,
-                None,
+                crate::construction::parser_session::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::parser_session::CreationContext::Ordinary,
+                },
                 &token_source,
                 &capability,
             )
@@ -10914,7 +11600,13 @@ mod tests {
             release_token_kind(&mut Some(kind), &mut c).unwrap();
         };
         let node = session
-            .allocate_disabled_parser_script(&mut c, &mut incoming, &capability)
+            .allocate_disabled_parser_script(
+                &mut c,
+                &mut incoming,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+                &capability,
+            )
             .unwrap();
         assert!(incoming.is_none());
         if connected {
@@ -10972,8 +11664,11 @@ mod tests {
                 .allocate_hidden_input_for_creation(
                     &mut c,
                     &mut input,
-                    &parent,
-                    None,
+                    crate::construction::parser_session::CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: crate::construction::parser_session::CreationContext::Ordinary,
+                    },
                     &wrong,
                     &capability,
                 )
@@ -11049,8 +11744,11 @@ mod tests {
                 .allocate_hidden_input_for_creation(
                     &mut c,
                     &mut input,
-                    &parent,
-                    None,
+                    crate::construction::parser_session::CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: crate::construction::parser_session::CreationContext::Ordinary,
+                    },
                     &token_source,
                     &capability,
                 )
@@ -11483,7 +12181,7 @@ mod tests {
     }
 
     #[test]
-    fn actual_associated_domain_entry_revokes_only_on_commit_and_never_resets() {
+    fn actual_template_domain_adoption_qualifies_document_and_only_import_revokes_inventory() {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><script src=x><template><div>"),
             limits(),
@@ -11517,10 +12215,24 @@ mod tests {
         // The ordinary div carries the actual script descendant into the real
         // template-owned fragment. No script-name guess or callback flag is used.
         session.insert(&mut c, &contents, &div, None, None).unwrap();
-        assert_eq!(
-            session.active().unwrap().standalone_ineligibility,
-            Some(StandaloneUnsupported::ScriptDocument)
+        assert_eq!(session.active().unwrap().standalone_ineligibility, None);
+        let document = session
+            .node_document(&mut c, &script)
+            .unwrap()
+            .node(&mut c, &session)
+            .unwrap();
+        let contents_document = session
+            .node_document(&mut c, &contents)
+            .unwrap()
+            .node(&mut c, &session)
+            .unwrap();
+        assert!(
+            session
+                .same_node(&mut c, &document, &contents_document)
+                .unwrap()
         );
+        let root = session.root(&mut c).unwrap();
+        assert!(!session.same_node(&mut c, &root, &document).unwrap());
         assert_eq!(
             session.active().unwrap().records[script.index].parent,
             Some(div.index)
@@ -11531,9 +12243,9 @@ mod tests {
         session.allocate_element(&mut c, html("span")).unwrap();
         assert_eq!(
             session.active().unwrap().standalone_ineligibility,
-            Some(StandaloneUnsupported::ScriptDocument)
+            Some(StandaloneUnsupported::Provenance)
         );
-        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::ScriptDocument);
+        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
         assert_eq!(
             session.prepare_disabled_script(&mut c, &script, &capability),
             Err(SessionError::Stop(stop))
@@ -11594,7 +12306,7 @@ mod tests {
         );
         assert_eq!(
             c.usage().resource(HtmlParseResource::ManagedNodes).current,
-            6
+            7
         );
     }
 
@@ -11645,10 +12357,7 @@ mod tests {
                 assert_eq!(result, Ok(()));
                 assert_eq!(storage.records[div.index].parent, Some(contents.index));
                 assert_eq!(storage.records[contents.index].children, [div.index]);
-                assert_eq!(
-                    storage.standalone_ineligibility,
-                    Some(StandaloneUnsupported::ScriptDocument)
-                );
+                assert_eq!(storage.standalone_ineligibility, None);
                 assert_eq!(c.stop(), None);
             } else {
                 assert!(matches!(
@@ -11672,7 +12381,7 @@ mod tests {
             storage_zero(&c);
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
-                6
+                7
             );
         }
     }
@@ -11725,10 +12434,7 @@ mod tests {
         assert_eq!(storage.records[div.index].parent, Some(contents.index));
         assert_eq!(storage.records[contents.index].children, [div.index]);
         assert_eq!(storage.records[script.index].parent, Some(div.index));
-        assert_eq!(
-            storage.standalone_ineligibility,
-            Some(StandaloneUnsupported::ScriptDocument)
-        );
+        assert_eq!(storage.standalone_ineligibility, None);
         assert_eq!(
             session.freeze(&mut c).err(),
             Some(SessionError::Stop(first))
@@ -11820,10 +12526,12 @@ mod tests {
     fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable()
     {
         use crate::parser::tokenizer::{Tokenizer, states::State};
-        // Three node child-storage tickets, two actual attribute containers,
-        // and four name/namespace registry entries consume nine slots. Script
-        // metadata is the tenth. No attribute-name trie competes with this cap.
-        for cap in [9, 10] {
+        // Root/html use8 retained slots, with prologue stack coexistence9.
+        // Script metadata is reserved BEFORE transfer, followed by its actual
+        // document binding, name/URI/attrs and native ticket: completed14.
+        // Nine stops after metadata but before document/native preflight;
+        // thirteen stops at native-ticket admission after lexical transfer.
+        for cap in [9, 13, 14] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head><script>"),
                 limits()
@@ -11846,10 +12554,18 @@ mod tests {
                 }
                 release_token_kind(&mut Some(kind), &mut c).unwrap();
             };
-            let result =
-                session.allocate_disabled_parser_script(&mut c, &mut incoming, &capability);
-            assert!(incoming.is_none());
-            assert_eq!(session.active().unwrap().records.len(), 3);
+            let result = session.allocate_disabled_parser_script(
+                &mut c,
+                &mut incoming,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+                &capability,
+            );
+            assert_eq!(incoming.is_some(), cap == 9);
+            assert_eq!(
+                session.active().unwrap().records.len(),
+                if cap == 14 { 3 } else { 2 }
+            );
             let count = session
                 .active()
                 .unwrap()
@@ -11858,39 +12574,40 @@ mod tests {
                 .iter()
                 .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
                 .count();
-            if cap == 10 {
+            if cap == 14 {
                 result.unwrap();
                 assert_eq!(count, 1);
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    10
+                    14
                 );
             } else {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        current: 9,
-                        requested_delta: 1,
                         ..
                     }))
                 ));
-                assert_eq!(count, 0);
+                assert_eq!(count, 1);
                 let stop = c.stop().unwrap();
                 assert!(
                     matches!(session.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
                 );
             }
             let first = c.stop();
+            if let Some(tag) = incoming {
+                release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
+            }
             tokenizer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
             storage_zero(&c);
             assert_eq!(c.stop(), first);
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
-                3
+                if cap == 14 { 3 } else { 2 }
             );
         }
     }
@@ -11919,7 +12636,13 @@ mod tests {
         let before = session.active().unwrap().records.len();
         let mut input = Some(tag);
         assert!(matches!(
-            session.allocate_disabled_parser_script(&mut c, &mut input, &capability),
+            session.allocate_disabled_parser_script(
+                &mut c,
+                &mut input,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+                &capability
+            ),
             Err(SessionError::AliasedPayload)
         ));
         assert!(input.is_some());
@@ -12104,7 +12827,8 @@ mod tests {
     }
 
     #[test]
-    fn an_actual_template_association_cannot_be_guessed_as_the_ordinary_script_document() {
+    fn actual_template_contents_adoption_qualifies_inert_document_and_preserves_disconnected_script_prefix()
+     {
         use crate::parser::tokenizer::{Tokenizer, states::State};
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><template><script src=''>"),
@@ -12135,11 +12859,31 @@ mod tests {
             .insert(&mut c, &contents, &node, None, None)
             .unwrap();
         tokenizer.release(&mut c).unwrap();
-        let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::ScriptDocument);
+        let parser = session
+            .script_parser_document(&mut c, &node)
+            .unwrap()
+            .unwrap();
+        let document = session
+            .node_document(&mut c, &node)
+            .unwrap()
+            .node(&mut c, &session)
+            .unwrap();
+        let contents_document = session
+            .node_document(&mut c, &contents)
+            .unwrap()
+            .node(&mut c, &session)
+            .unwrap();
+        assert!(!session.same_node(&mut c, &parser, &document).unwrap());
+        assert!(
+            session
+                .same_node(&mut c, &document, &contents_document)
+                .unwrap()
+        );
         assert_eq!(
             session.prepare_disabled_script(&mut c, &node, &capability),
-            Err(SessionError::Stop(stop))
+            Ok(DisabledScriptPreparation::Disconnected)
         );
+        drop((parser, document, contents_document));
         let retained = session
             .active()
             .unwrap()
@@ -12154,13 +12898,15 @@ mod tests {
                 }
             })
             .unwrap();
-        assert_eq!(retained, initial);
-        assert!(
-            matches!(session.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
-        );
+        let mut expected = initial;
+        expected.parser_document = None;
+        expected.force_async = true;
+        assert_eq!(retained, expected);
+        assert!(retained.preparation_document.is_none());
+        drop((node, contents, template));
         session.release(&mut c).unwrap();
         storage_zero(&c);
-        assert_eq!(c.stop(), Some(stop));
+        assert!(c.stop().is_none());
     }
 
     fn form_session(c: &mut ParseControl) -> (ParserArenaSession, ParserNode) {
@@ -12185,7 +12931,13 @@ mod tests {
         };
         let mut input = Some(tag);
         let node = session
-            .allocate_html_tag_for_creation(c, &mut input, parent, form)
+            .allocate_html_tag_for_creation(
+                c,
+                &mut input,
+                parent,
+                form,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         assert!(input.is_none());
         node
@@ -12548,7 +13300,7 @@ mod tests {
             let mut c = ParseControl::new(
                 limits()
                     .into_builder()
-                    .auxiliary_entries(9)
+                    .auxiliary_entries(13)
                     .finish()
                     .unwrap(),
                 HtmlParseCancellation::new(),
@@ -12576,15 +13328,21 @@ mod tests {
                 .text()
                 .code_units()
                 .to_vec();
-            let result = session.allocate_html_tag_for_creation(&mut c, &mut input, &html, None);
+            let result = session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &html,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            );
             let stop = c.stop().unwrap();
             assert_eq!(result.err(), Some(SessionError::Stop(stop)));
             assert!(matches!(
                 stop,
                 ParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
-                    current: 9,
-                    requested_delta: 1,
+                    current: 13,
+                    requested_delta: 2,
                     ..
                 }
             ));
@@ -12593,7 +13351,7 @@ mod tests {
                 original
             );
             assert_eq!(session.active().unwrap().records.len(), 3);
-            assert_eq!(session.active().unwrap().payloads.values.len(), 6);
+            assert_eq!(session.active().unwrap().payloads.values.len(), 10);
             assert!(session.active().unwrap().effects.form.is_none());
             assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
             release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();
@@ -12885,7 +13643,7 @@ mod tests {
         let storage = session.active().unwrap();
         assert_eq!(storage.records[group.index].parent, Some(target.index));
         let phase = storage.effects.form.unwrap();
-        assert_eq!(phase.stage, FormEffectStage::Insertion);
+        assert_eq!(phase.stage, FormEffectStage::Adoption);
         assert_eq!(phase.next, Some(group.index));
         let state = storage
             .payloads
@@ -13182,7 +13940,7 @@ mod tests {
         assert_eq!(state.owner, None);
         assert_eq!(
             storage.effects.form.unwrap().stage,
-            FormEffectStage::Insertion
+            FormEffectStage::Adoption
         );
         session.release(&mut c).unwrap();
         storage_zero(&c);
@@ -13477,7 +14235,13 @@ mod tests {
         let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
         assert_eq!(
             session
-                .allocate_html_tag_for_creation(&mut c, &mut input, &foreign, None)
+                .allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut input,
+                    &foreign,
+                    None,
+                    crate::construction::parser_session::CreationContext::Ordinary
+                )
                 .unwrap_err(),
             SessionError::ForeignNode
         );
@@ -13489,7 +14253,13 @@ mod tests {
         let alias = input.as_ref().unwrap().name.value.text().clone();
         assert_eq!(
             session
-                .allocate_html_tag_for_creation(&mut c, &mut input, &body, None)
+                .allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut input,
+                    &body,
+                    None,
+                    crate::construction::parser_session::CreationContext::Ordinary
+                )
                 .unwrap_err(),
             SessionError::AliasedPayload
         );
@@ -13505,7 +14275,13 @@ mod tests {
         };
         let mut input = Some(tag);
         assert!(matches!(
-            session.allocate_html_tag_for_creation(&mut c, &mut input, &body, None),
+            session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &body,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary
+            ),
             Err(SessionError::Stop(ParseStop::InternalInvariant(
                 crate::parser::control::Invariant::ForeignControl
             )))
@@ -13662,7 +14438,7 @@ mod tests {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
-                .auxiliary_entries(9)
+                .auxiliary_entries(13)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),
@@ -13680,17 +14456,17 @@ mod tests {
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("real img token")
         };
-        // This actual detached allocation fills the last four retained slots.
+        // This actual detached allocation fills the last five retained slots.
         // Attaching it would require an unrelated temporary child-order entry;
         // the image's actual intended parent is the attached HTML container.
         let _body = session.allocate_implicit_body(&mut c).unwrap();
-        // Root/html/body own three actual record tickets and six payload slots.
+        // Root/html/body own three actual record tickets, six payload slots and four document facts.
         // No auxiliary entry remains for the image's required metadata slot.
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            9
+            13
         );
         let name_backing = Arc::as_ptr(tag.name.value.text().backing());
         let original_origins: Vec<_> = tag
@@ -13717,7 +14493,13 @@ mod tests {
         let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
         let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
         let mut input = Some(tag);
-        let result = session.allocate_html_tag_for_creation(&mut c, &mut input, &html, None);
+        let result = session.allocate_html_tag_for_creation(
+            &mut c,
+            &mut input,
+            &html,
+            None,
+            crate::construction::parser_session::CreationContext::Ordinary,
+        );
         let stop = c.stop().unwrap();
         let retained = input.as_ref().map(|tag| {
             (
@@ -13751,9 +14533,9 @@ mod tests {
             result.err(),
             Some(SessionError::Stop(ParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
-                limit: 9,
-                current: 9,
-                requested_delta: 1,
+                limit: 13,
+                current: 13,
+                requested_delta: 2,
             }))
         );
         assert_eq!(topology, original_topology);
@@ -13804,7 +14586,13 @@ mod tests {
         let mut end = Some(tag);
         assert_eq!(
             session
-                .allocate_html_tag_for_creation(&mut c, &mut end, &body, None)
+                .allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut end,
+                    &body,
+                    None,
+                    crate::construction::parser_session::CreationContext::Ordinary
+                )
                 .unwrap_err(),
             SessionError::WrongToken
         );
@@ -13838,7 +14626,13 @@ mod tests {
         let alias = input.as_ref().unwrap().name.value.text().clone();
         assert_eq!(
             session
-                .allocate_html_tag_for_creation(&mut c, &mut input, &body, None)
+                .allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut input,
+                    &body,
+                    None,
+                    crate::construction::parser_session::CreationContext::Ordinary
+                )
                 .unwrap_err(),
             SessionError::AliasedPayload
         );
@@ -13846,7 +14640,13 @@ mod tests {
         drop(alias);
         assert_eq!(
             session
-                .allocate_html_tag_for_creation(&mut c, &mut input, &body, None)
+                .allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut input,
+                    &body,
+                    None,
+                    crate::construction::parser_session::CreationContext::Ordinary
+                )
                 .unwrap_err(),
             SessionError::DuplicateAttribute
         );
@@ -13886,7 +14686,13 @@ mod tests {
             .resource(HtmlParseResource::WorkCredits)
             .current;
         session
-            .allocate_html_tag_for_creation(&mut measured, &mut Some(tag), &body, None)
+            .allocate_html_tag_for_creation(
+                &mut measured,
+                &mut Some(tag),
+                &body,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap();
         let complete = measured
             .usage()
@@ -13911,7 +14717,13 @@ mod tests {
         c.charge(WorkCategory::StateStep, unused - (complete - 1))
             .unwrap();
         let error = session
-            .allocate_html_tag_for_creation(&mut c, &mut input, &body, None)
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &body,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            )
             .unwrap_err();
         let stop = c.stop().unwrap();
         assert_eq!(error, SessionError::Stop(stop));
@@ -13938,13 +14750,19 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            14
+            19
         );
         assert_eq!(session.root(&mut c).unwrap_err(), SessionError::Stop(stop));
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         assert_eq!(
             session
-                .allocate_html_tag_for_creation(&mut c, &mut input, &body, None)
+                .allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut input,
+                    &body,
+                    None,
+                    crate::construction::parser_session::CreationContext::Ordinary
+                )
                 .unwrap_err(),
             SessionError::Stop(stop)
         );
@@ -13975,7 +14793,7 @@ mod tests {
     #[test]
     fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_terminal_cleanup() {
         use crate::parser::tokenizer::{Tokenizer, states::State};
-        for cap in [14, 13] {
+        for cap in [19, 18] {
             let source = crate::HtmlSource::utf8("<img>");
             let mut c = ParseControl::new(
                 limits()
@@ -13988,20 +14806,26 @@ mod tests {
             c.admit_source(&source).unwrap();
             let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
             let (mut session, body) = form_session(&mut c);
-            // Root plus html/body: 3 actual records/tickets and 6 payload slots.
+            // Root plus html/body: 3 actual records/tickets, 6 payload slots and 4 document facts.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                9
+                13
             );
             let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("img")
             };
             let mut input = Some(tag);
-            let result = session.allocate_html_tag_for_creation(&mut c, &mut input, &body, None);
+            let result = session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &body,
+                None,
+                crate::construction::parser_session::CreationContext::Ordinary,
+            );
             assert!(input.is_none());
-            if cap == 14 {
+            if cap == 19 {
                 let image = result.unwrap();
                 assert_form_owner(&session, &mut c, &image, None, false);
                 // Actual name/namespace/attributes + record ticket + metadata.
@@ -14009,21 +14833,21 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    14
+                    19
                 );
             } else {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        limit: 13,
+                        limit: 18,
                         ..
                     }))
                 ));
                 // Metadata, name, namespace and attributes are initialized;
                 // the next actual record-ticket entry is the rejected slot.
                 assert_eq!(session.active().unwrap().records.len(), 3);
-                assert_eq!(session.active().unwrap().payloads.values.len(), 10);
+                assert_eq!(session.active().unwrap().payloads.values.len(), 15);
                 assert!(
                     session
                         .active()
@@ -14104,7 +14928,7 @@ mod tests {
         assert_eq!(storage.records[target.index].children, [image.index]);
         assert_eq!(
             storage.effects.form.unwrap().stage,
-            FormEffectStage::Insertion
+            FormEffectStage::Adoption
         );
         let state = retained_image_state(&session, &image);
         assert_eq!(state.owner, None);
@@ -14264,9 +15088,9 @@ mod tests {
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let root = session.root(&mut c).unwrap();
         let nodes = [
-            session.allocate_implicit_colgroup(&mut c).unwrap(),
-            session.allocate_implicit_tbody(&mut c).unwrap(),
-            session.allocate_implicit_tr(&mut c).unwrap(),
+            session.allocate_implicit_colgroup(&mut c, None).unwrap(),
+            session.allocate_implicit_tbody(&mut c, None).unwrap(),
+            session.allocate_implicit_tr(&mut c, None).unwrap(),
         ];
         for node in &nodes {
             session.insert(&mut c, &root, node, None, None).unwrap();
@@ -14356,9 +15180,9 @@ mod tests {
                 );
                 let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
                 let result = match kind {
-                    0 => session.allocate_implicit_colgroup(&mut c),
-                    1 => session.allocate_implicit_tbody(&mut c),
-                    _ => session.allocate_implicit_tr(&mut c),
+                    0 => session.allocate_implicit_colgroup(&mut c, None),
+                    1 => session.allocate_implicit_tbody(&mut c, None),
+                    _ => session.allocate_implicit_tr(&mut c, None),
                 };
                 if cap == units {
                     assert!(result.is_ok());
@@ -14461,7 +15285,7 @@ mod tests {
         ));
         assert_eq!(
             session
-                .allocate_implicit_colgroup(&mut foreign)
+                .allocate_implicit_colgroup(&mut foreign, None)
                 .unwrap_err(),
             wrong
         );
@@ -14473,7 +15297,7 @@ mod tests {
         );
         cancellation.cancel();
         assert_eq!(
-            session.allocate_implicit_tr(&mut c).unwrap_err(),
+            session.allocate_implicit_tr(&mut c, None).unwrap_err(),
             SessionError::Stop(ParseStop::Cancelled)
         );
         assert_eq!(
@@ -15496,7 +16320,9 @@ mod tests {
         let TokenKind::Comment(text) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("comment");
         };
-        let comment = session.allocate_comment(&mut c, &mut Some(text)).unwrap();
+        let comment = session
+            .allocate_comment(&mut c, &mut Some(text), None)
+            .unwrap();
         session.insert(&mut c, &root, &comment, None, None).unwrap();
         assert!(session.document_accepts_doctype(&mut c).unwrap());
         let TokenKind::ProcessingInstruction { target, data } =
@@ -15505,7 +16331,7 @@ mod tests {
             panic!("PI");
         };
         let pi = session
-            .allocate_processing_instruction(&mut c, &mut Some((target, data)))
+            .allocate_processing_instruction(&mut c, &mut Some((target, data)), None)
             .unwrap();
         session.insert(&mut c, &root, &pi, None, None).unwrap();
         assert!(session.document_accepts_doctype(&mut c).unwrap());
@@ -15992,7 +16818,7 @@ mod tests {
         ));
         assert!(
             session
-                .allocate_processing_instruction(&mut c, &mut input)
+                .allocate_processing_instruction(&mut c, &mut input, None)
                 .is_err()
         );
         let (target, data) = input.take().expect("both original fields retained");
@@ -17984,5 +18810,414 @@ mod tests {
             4
         );
         assert_eq!(control.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes_all_owners() {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // The ordinary root already exists. Creation needs one actual inert
+        // Document, the template Element and its hosted Fragment: three more.
+        for cap in [3, 4] {
+            let source = crate::HtmlSource::utf8("<template>");
+            let mut c = ParseControl::new(
+                limits().into_builder().managed_nodes(cap).finish().unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
+                panic!("actual template")
+            };
+            let mut input = Some(tag);
+            let result = session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &root,
+                None,
+                CreationContext::Ordinary,
+            );
+            if cap == 4 {
+                let template = result.unwrap();
+                assert!(input.is_none());
+                let state = session.template_state(&mut c, &template).unwrap();
+                let inert = session
+                    .node_document(&mut c, &state.contents)
+                    .unwrap()
+                    .node(&mut c, &session)
+                    .unwrap();
+                assert_ne!(inert.index, root.index);
+                assert_eq!(session.active().unwrap().records.len(), 4);
+                assert!(state.target.is_none() && state.start.is_none() && state.end.is_none());
+            } else {
+                let Err(SessionError::Stop(first)) = result else {
+                    panic!("real node cap")
+                };
+                assert!(matches!(
+                    first,
+                    ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::ManagedNodes,
+                        limit: 3,
+                        requested_delta: 3,
+                        ..
+                    }
+                ));
+                assert!(input.is_some());
+                assert_eq!(session.active().unwrap().records.len(), 1);
+                assert!(
+                    !session
+                        .active()
+                        .unwrap()
+                        .payloads
+                        .values
+                        .iter()
+                        .any(|entry| matches!(entry, RetainedPayload::Template { .. }))
+                );
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+            }
+            if let Some(tag) = input {
+                release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_cap_boundaries()
+    {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // Root record/self-document/cache facts =3 slots. Fresh template
+        // adds three native records, five document/template facts, and the
+        // three name/namespace/attribute owners: completed total14. The
+        // metadata/native preflight alone needs3+8=11 before lexical take.
+        for cap in [10, 13, 14] {
+            let source = crate::HtmlSource::utf8("<template>");
+            let mut c = ParseControl::new(
+                limits()
+                    .into_builder()
+                    .auxiliary_entries(cap)
+                    .finish()
+                    .unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
+                panic!("actual template")
+            };
+            let mut input = Some(tag);
+            let result = session.allocate_html_tag_for_creation(
+                &mut c,
+                &mut input,
+                &root,
+                None,
+                CreationContext::Ordinary,
+            );
+            if cap == 14 {
+                let node = result.unwrap();
+                assert!(input.is_none());
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::AuxiliaryEntries)
+                        .current,
+                    14
+                );
+                assert_eq!(session.active().unwrap().records.len(), 4);
+                assert!(
+                    session
+                        .template_state(&mut c, &node)
+                        .unwrap()
+                        .target
+                        .is_none()
+                );
+            } else {
+                let Err(SessionError::Stop(first)) = result else {
+                    panic!("actual initialized slot cap")
+                };
+                assert!(
+                    matches!(first, ParseStop::LimitExceeded{resource: HtmlParseResource::AuxiliaryEntries,limit,..} if limit==cap)
+                );
+                assert_eq!(input.is_some(), cap == 10);
+                assert_eq!(
+                    session.active().unwrap().records.len(),
+                    if cap == 10 { 1 } else { 2 }
+                );
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+                assert_eq!(c.stop(), Some(first));
+            }
+            if let Some(tag) = input {
+                release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn template_pi_map_coexists_with_original_fields_at_exact_managed_units_and_reclaims_stopped_pair()
+     {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // Original marker target6 and data name='A'8 remain native-owned;
+        // the independently decoded name4/value1 add5 managed units.
+        for cap in [18, 19] {
+            let source = crate::HtmlSource::utf8("<?marker name='A'?>");
+            let mut c = ParseControl::new(
+                limits()
+                    .into_builder()
+                    .managed_utf16_units(cap)
+                    .finish()
+                    .unwrap(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let TokenKind::ProcessingInstruction { target, data } =
+                lexical_kind(&mut lexer, &mut c)
+            else {
+                panic!("real PI")
+            };
+            let mut input = Some((target, data));
+            let result = session.allocate_processing_instruction(&mut c, &mut input, None);
+            assert!(input.is_none());
+            assert_eq!(session.active().unwrap().records.len(), 2);
+            if cap == 19 {
+                let node = result.unwrap();
+                assert_eq!(
+                    session
+                        .active()
+                        .unwrap()
+                        .pi_attribute(&mut c, node.index, "name")
+                        .unwrap()
+                        .unwrap()
+                        .code_units(),
+                    [65]
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .current,
+                    19
+                );
+            } else {
+                let Err(SessionError::Stop(first)) = result else {
+                    panic!("decoded value coexistence")
+                };
+                assert!(matches!(
+                    first,
+                    ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::ManagedUtf16Units,
+                        current: 18,
+                        requested_delta: 1,
+                        ..
+                    }
+                ));
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+                let HtmlNodeKind::ProcessingInstruction(pi) =
+                    &session.active().unwrap().records[1].kind
+                else {
+                    panic!("original PI survives")
+                };
+                assert_eq!(pi.target().code_units(), [109, 97, 114, 107, 101, 114]);
+                assert_eq!(pi.data().code_units(), [110, 97, 109, 101, 61, 39, 65, 39]);
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn template_cross_document_cancel_retains_completed_removal_before_any_adoption_binding() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><script src=x><template><div>"),
+            limits(),
+        );
+        let (mut c, mut session, _proof, script) = fresh_script(&request, false, false);
+        let (contents, div) = actual_template_and_div(request.source(), &mut c, &mut session);
+        let html = session.active().unwrap().node(&mut c, 1).unwrap();
+        session.insert(&mut c, &div, &script, None, None).unwrap();
+        session.insert(&mut c, &html, &div, None, None).unwrap();
+        let old = session
+            .node_document(&mut c, &div)
+            .unwrap()
+            .node(&mut c, &session)
+            .unwrap();
+        let new = session
+            .node_document(&mut c, &contents)
+            .unwrap()
+            .node(&mut c, &session)
+            .unwrap();
+        assert_ne!(old.index, new.index);
+        let metadata = session.script_metadata(&mut c, &script).unwrap();
+        session.active_mut().unwrap().cancel_after_removal = Some(request.cancellation().clone());
+        assert_eq!(
+            session.insert(&mut c, &contents, &div, None, None),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let storage = session.active().unwrap();
+        assert_eq!(storage.records[div.index].parent, Some(contents.index));
+        assert!(!storage.records[html.index].children.contains(&div.index));
+        assert_eq!(storage.records[script.index].parent, Some(div.index));
+        assert!(matches!(
+            storage.effects.form,
+            Some(FormEffects {
+                stage: FormEffectStage::Adoption,
+                ..
+            })
+        ));
+        for node in [div.index, script.index] {
+            assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::NodeDocument{node:Some(bound),document} if *bound==node && *document==old.index)));
+        }
+        assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::Script{node:Some(node),metadata:retained} if *node==script.index && *retained==metadata)));
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+    }
+    #[test]
+    fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map_tickets_owned()
+    {
+        use crate::parser::tokenizer::{Tokenizer, states::State};
+        // Sweep each credit in this finite operation, rather than deriving a
+        // success total from it. Independent witnesses require an installed
+        // original PI, a partially decoded map, and the complete literal map.
+        let mut installed = false;
+        let mut partial = false;
+        let mut completed = false;
+        for remaining in 0..=16_384 {
+            let source = crate::HtmlSource::utf8("<?marker name='A' x='B'?>");
+            let mut c = control();
+            c.admit_source(&source).unwrap();
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let TokenKind::ProcessingInstruction { target, data } =
+                lexical_kind(&mut lexer, &mut c)
+            else {
+                panic!("real lexical PI")
+            };
+            let mut input = Some((target, data));
+            let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(
+                WorkCategory::StateStep,
+                limits().work_credits() - used - remaining,
+            )
+            .unwrap();
+            let result = session.allocate_processing_instruction(&mut c, &mut input, None);
+            let storage = session.active().unwrap();
+            if storage.records.len() == 2 {
+                installed = true;
+                let HtmlNodeKind::ProcessingInstruction(pi) = &storage.records[1].kind else {
+                    panic!("installed PI")
+                };
+                assert_eq!(
+                    pi.target().code_units(),
+                    DocumentString::from("marker").code_units()
+                );
+                assert_eq!(
+                    pi.data().code_units(),
+                    DocumentString::from("name='A' x='B'").code_units()
+                );
+                partial |= storage.payloads.values.iter().any(|p| matches!(p, RetainedPayload::PiAttributes { values, ready: false, .. } if values.len() != 0));
+            }
+            match result {
+                Ok(node) => {
+                    completed = true;
+                    let values = storage
+                        .payloads
+                        .values
+                        .iter()
+                        .find_map(|p| match p {
+                            RetainedPayload::PiAttributes {
+                                node: Some(bound),
+                                values,
+                                ready: true,
+                            } if *bound == node.index => Some(values.as_slice()),
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert_eq!(values.len(), 2);
+                    assert_eq!(values[0].name.code_units(), [110, 97, 109, 101]);
+                    assert_eq!(values[0].value.code_units(), [65]);
+                    assert_eq!(values[1].name.code_units(), [120]);
+                    assert_eq!(values[1].value.code_units(), [66]);
+                }
+                Err(SessionError::Stop(first)) => {
+                    assert!(matches!(
+                        first,
+                        ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }
+                    ));
+                    assert_eq!(
+                        session.freeze(&mut c).err(),
+                        Some(SessionError::Stop(first))
+                    );
+                    assert_eq!(c.stop(), Some(first));
+                }
+                other => panic!("unexpected prefix result {other:?}"),
+            }
+            let first = c.stop();
+            if let Some((target, data)) = input {
+                target.release(&mut c).unwrap();
+                data.release(&mut c).unwrap();
+            }
+            lexer.release(&mut c).unwrap();
+            match session.release(&mut c) {
+                Ok(()) => {}
+                Err(SessionError::Stop(stop)) => {
+                    assert_eq!(c.stop(), Some(stop));
+                    session.release(&mut c).unwrap();
+                }
+                other => panic!("cleanup failed: {other:?}"),
+            }
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::BufferedUtf16Units)
+                    .current,
+                0,
+                "remaining={remaining}"
+            );
+            storage_zero(&c);
+            if let Some(first) = first {
+                assert_eq!(c.stop(), Some(first));
+            }
+        }
+        assert!(
+            installed && partial && completed,
+            "installed={installed}, partial={partial}, completed={completed}"
+        );
     }
 }

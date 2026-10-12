@@ -107,9 +107,18 @@ impl ParserArenaSession {
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
         SessionStorage::check_html_tag(c, tag)?;
         check_formatting_tag(c, tag, token_source)?;
+        let document = storage.node_document_index(c, parent)?;
+        let prepared = self
+            .active_mut()?
+            .prepare_document_allocation(c, Some(document), false)?;
         let tag = take_payload(input, c)?;
-        self.active_mut()?
-            .allocate_foreign_payload(c, tag.name, namespace, tag.attributes)
+        self.active_mut()?.allocate_foreign_payload(
+            c,
+            tag.name,
+            namespace,
+            tag.attributes,
+            prepared,
+        )
     }
     pub(crate) fn element_attributes<'a>(
         &'a self,
@@ -671,7 +680,7 @@ mod tests {
             let result = session
                 .active_mut()
                 .unwrap()
-                .clone_node(&mut c, original.index);
+                .clone_node(&mut c, original.index, 0);
             match result {
                 Ok(index) => {
                     completed = true;
@@ -865,6 +874,7 @@ impl SessionStorage {
         name: Text,
         foreign: ForeignNamespace,
         mut attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
+        prepared: Option<template::PreparedDocuments>,
     ) -> Result<ParserNode, SessionError> {
         let result = (|| {
             let replacement = match foreign.element_adjustment(control, name.value.text()) {
@@ -1034,7 +1044,7 @@ impl SessionStorage {
             payload_write::<[StringLocation; 2]>(control, 2)?;
             payload_write::<Option<usize>>(control, 1)?;
             payload_write::<[usize; 2]>(control, 2)?;
-            let node = self.allocate(
+            let node = self.allocate_prepared_owned(
                 control,
                 HtmlNodeKind::Element(HtmlElement {
                     name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
@@ -1043,6 +1053,7 @@ impl SessionStorage {
                 template,
                 0,
                 0,
+                prepared,
             )?;
             self.bind_string(name_ticket, StringLocation::ElementName(node.index));
             self.bind_string(namespace_ticket, StringLocation::Namespace(node.index));

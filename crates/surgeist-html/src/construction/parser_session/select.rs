@@ -74,6 +74,15 @@ pub(super) enum IntrinsicTask {
 /// No frame aliases native backing or owns an independent tree/controller.
 #[derive(Clone, Copy)]
 pub(super) enum EffectFrame {
+    AdoptSubtree {
+        root: usize,
+        next: Option<usize>,
+        document: usize,
+    },
+    PatchRemoval {
+        list: usize,
+        cursor: usize,
+    },
     Topology(FormEffects),
     UpdateSelect {
         select: usize,
@@ -90,6 +99,7 @@ pub(super) enum EffectFrame {
         source: usize,
         copy: usize,
         cursor: usize,
+        document: usize,
     },
     CloneOptionChildren {
         option: usize,
@@ -329,6 +339,59 @@ impl SessionStorage {
         frame: EffectFrame,
     ) -> Result<(), SessionError> {
         match frame {
+            EffectFrame::AdoptSubtree {
+                root,
+                next,
+                document,
+            } => {
+                let Some(node) = next else {
+                    return self.write_current_effect(c, None);
+                };
+                self.set_node_document(c, node, document)?;
+                let next = self.next_view_node(c, root, node, None)?;
+                self.write_current_effect(
+                    c,
+                    Some(EffectFrame::AdoptSubtree {
+                        root,
+                        next,
+                        document,
+                    }),
+                )?;
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if self.records[node].template_contents.is_some() {
+                    let (_, template) = self.template_slot(c, node)?;
+                    let target = self.appropriate_contents_document(c, document)?;
+                    if self.node_document_index(c, template.contents)? != target {
+                        self.start_effect(
+                            c,
+                            EffectFrame::AdoptSubtree {
+                                root: template.contents,
+                                next: Some(template.contents),
+                                document: target,
+                            },
+                        )?;
+                    }
+                }
+                Ok(())
+            }
+            EffectFrame::PatchRemoval { list, cursor } => {
+                let Some(node) = self.work_list_node(c, list, cursor)? else {
+                    self.release_work_list(c, list)?;
+                    return self.write_current_effect(c, None);
+                };
+                self.write_current_effect(
+                    c,
+                    Some(EffectFrame::PatchRemoval {
+                        list,
+                        cursor: cursor + 1,
+                    }),
+                )?;
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if self.records[node].parent.is_some() {
+                    self.remove_index(c, node)?;
+                }
+                Ok(())
+            }
             EffectFrame::Topology(_) => Err(SessionError::WrongToken),
             EffectFrame::UpdateSelect {
                 select,
@@ -375,10 +438,20 @@ impl SessionStorage {
                 if let Some(option) = option {
                     self.qualify_clone_subtree(c, option)?;
                 }
+                let document = option
+                    .map(|option| self.node_document_index(c, option))
+                    .transpose()?;
                 let fragment = if option.is_some() {
                     Some(
-                        self.allocate_owned(c, HtmlNodeKind::Fragment, false, 0, 0)?
-                            .index,
+                        self.allocate_in_document_owned(
+                            c,
+                            HtmlNodeKind::Fragment,
+                            false,
+                            0,
+                            0,
+                            document,
+                        )?
+                        .index,
                     )
                 } else {
                     None
@@ -461,7 +534,8 @@ impl SessionStorage {
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let child = self.records[option].children[cursor];
-                let copy = self.clone_node(c, child)?;
+                let document = self.node_document_index(c, child)?;
+                let copy = self.clone_node(c, child, document)?;
                 self.write_current_effect(
                     c,
                     Some(EffectFrame::CloneOptionChildren {
@@ -483,8 +557,10 @@ impl SessionStorage {
                         source: child,
                         copy,
                         cursor: 0,
+                        document,
                     },
-                )
+                )?;
+                self.start_template_clone(c, child, copy)
             }
             EffectFrame::AppendClone { parent, copy } => {
                 self.write_current_effect(c, None)?;
@@ -494,6 +570,7 @@ impl SessionStorage {
                 source,
                 copy,
                 cursor,
+                document,
             } => {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if cursor == self.records[source].children.len() {
@@ -501,13 +578,14 @@ impl SessionStorage {
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let child = self.records[source].children[cursor];
-                let copied = self.clone_node(c, child)?;
+                let copied = self.clone_node(c, child, document)?;
                 self.write_current_effect(
                     c,
                     Some(EffectFrame::CloneChildren {
                         source,
                         copy,
                         cursor: cursor + 1,
+                        document,
                     }),
                 )?;
                 // The source shallow clone is appended before its subtree,
@@ -519,9 +597,21 @@ impl SessionStorage {
                         source: child,
                         copy: copied,
                         cursor: 0,
+                        document,
                     },
                 )?;
-                self.insert_indices(c, copy, copied, None)
+                if self.records[child].template_contents.is_some() {
+                    self.start_effect(
+                        c,
+                        EffectFrame::AppendClone {
+                            parent: copy,
+                            copy: copied,
+                        },
+                    )?;
+                    self.start_template_clone(c, child, copied)
+                } else {
+                    self.insert_indices(c, copy, copied, None)
+                }
             }
             EffectFrame::PostConnection { list, cursor } => {
                 let Some(node) = self.work_list_node(c, list, cursor)? else {

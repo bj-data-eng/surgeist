@@ -20,90 +20,138 @@ impl SessionStorage {
         c: &mut ParseControl,
         root: usize,
     ) -> Result<(), SessionError> {
-        let mut next = self.next_view_node(c, root, root, None)?;
-        while let Some(node) = next {
-            c.charge(WorkCategory::RecordVisit, 4)?;
-            let record = &self.records[node];
-            if record.owner.is_some()
-                || record.shadow.is_some()
-                || record.template_contents.is_some()
-            {
-                return Err(SessionError::AssociationMove);
+        let mut pending = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let result = (|| {
+            self.node_document_index(c, root)?;
+            for child in &self.records[root].children {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                pending.try_push(c, *child)?;
             }
-            match &record.kind {
-                HtmlNodeKind::Element(element) => {
-                    let namespace = element.name().namespace().uri();
-                    let supported = exact_ascii(c, namespace, "http://www.w3.org/1999/xhtml")?
-                        || exact_ascii(c, namespace, "http://www.w3.org/2000/svg")?
-                        || exact_ascii(c, namespace, "http://www.w3.org/1998/Math/MathML")?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    if !supported || element.name().prefix().is_some() {
-                        return Err(SessionError::WrongToken);
-                    }
-                    let name = self.field_slot(c, StringLocation::ElementName(node))?;
-                    control_field_owner(&self.payloads, c, name)?;
-                    let namespace = self.field_slot(c, StringLocation::Namespace(node))?;
-                    control_field_owner(&self.payloads, c, namespace)?;
-                    let container = self.element_attribute_container(c, node)?;
-                    for position in 0..element.attributes().len() {
+            while let Some(node) = pending.try_pop(c)? {
+                self.node_document_index(c, node)?;
+                c.charge(WorkCategory::RecordVisit, 4)?;
+                let record = &self.records[node];
+                if record.shadow.is_some() {
+                    return Err(SessionError::AssociationMove);
+                }
+                match &record.kind {
+                    HtmlNodeKind::Element(element) => {
+                        let namespace = element.name().namespace().uri();
+                        let supported = exact_ascii(c, namespace, "http://www.w3.org/1999/xhtml")?
+                            || exact_ascii(c, namespace, "http://www.w3.org/2000/svg")?
+                            || exact_ascii(c, namespace, "http://www.w3.org/1998/Math/MathML")?;
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        let attr = &element.attributes().as_slice()[position];
-                        c.charge(WorkCategory::RecordVisit, 2)?;
-                        for location in [
-                            attr.name()
-                                .namespace()
-                                .uri()
-                                .map(|_| StringLocation::AttributeNamespace(container, position)),
-                            attr.name()
-                                .prefix()
-                                .map(|_| StringLocation::AttributePrefix(container, position)),
-                        ]
-                        .into_iter()
-                        .flatten()
-                        {
-                            let slot = self.field_slot(c, location)?;
-                            control_field_owner(&self.payloads, c, slot)?;
+                        if !supported || element.name().prefix().is_some() {
+                            return Err(SessionError::WrongToken);
                         }
-                        let name =
-                            self.field_slot(c, StringLocation::AttributeName(container, position))?;
+                        let name = self.field_slot(c, StringLocation::ElementName(node))?;
                         control_field_owner(&self.payloads, c, name)?;
-                        let value = self
-                            .field_slot(c, StringLocation::AttributeValue(container, position))?;
-                        control_field_owner(&self.payloads, c, value)?;
-                    }
-                    for name in ["select", "option", "selectedcontent"] {
-                        if self.html_local(c, node, name)? {
-                            self.select_metadata(c, node)?;
+                        let namespace = self.field_slot(c, StringLocation::Namespace(node))?;
+                        control_field_owner(&self.payloads, c, namespace)?;
+                        let container = self.element_attribute_container(c, node)?;
+                        for position in 0..element.attributes().len() {
+                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            let attr = &element.attributes().as_slice()[position];
+                            c.charge(WorkCategory::RecordVisit, 2)?;
+                            for location in [
+                                attr.name().namespace().uri().map(|_| {
+                                    StringLocation::AttributeNamespace(container, position)
+                                }),
+                                attr.name()
+                                    .prefix()
+                                    .map(|_| StringLocation::AttributePrefix(container, position)),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            {
+                                let slot = self.field_slot(c, location)?;
+                                control_field_owner(&self.payloads, c, slot)?;
+                            }
+                            let name = self.field_slot(
+                                c,
+                                StringLocation::AttributeName(container, position),
+                            )?;
+                            control_field_owner(&self.payloads, c, name)?;
+                            let value = self.field_slot(
+                                c,
+                                StringLocation::AttributeValue(container, position),
+                            )?;
+                            control_field_owner(&self.payloads, c, value)?;
+                        }
+                        for name in ["select", "option", "selectedcontent"] {
+                            if self.html_local(c, node, name)? {
+                                self.select_metadata(c, node)?;
+                            }
+                        }
+                        if self.html_local(c, node, "textarea")?
+                            && self.textarea_slot(c, node)?.is_none()
+                        {
+                            return Err(SessionError::TextareaMetadataUnavailable);
+                        }
+                        if self.html_local(c, node, "script")? {
+                            script_metadata(&self.payloads, c, node)?;
+                        }
+                        if self.html_local(c, node, "input")? {
+                            self.hidden_clone_slot(c, node)?;
+                        }
+                        if self.html_local(c, node, "output")? {
+                            self.output_clone_slot(c, node)?;
                         }
                     }
-                    if self.html_local(c, node, "textarea")?
-                        && self.textarea_slot(c, node)?.is_none()
-                    {
-                        return Err(SessionError::TextareaMetadataUnavailable);
+                    HtmlNodeKind::Text(_) => {
+                        self.field_slot(c, StringLocation::Text(node))?;
                     }
-                    if self.html_local(c, node, "script")? {
-                        script_metadata(&self.payloads, c, node)?;
+                    HtmlNodeKind::Comment(_) => {
+                        self.field_slot(c, StringLocation::Comment(node))?;
                     }
-                    if self.html_local(c, node, "input")? {
-                        self.hidden_clone_slot(c, node)?;
+                    HtmlNodeKind::ProcessingInstruction(_) => {
+                        self.field_slot(c, StringLocation::ProcessingInstructionTarget(node))?;
+                        self.field_slot(c, StringLocation::ProcessingInstructionData(node))?;
+                        self.pi_attribute(c, node, "name")?;
                     }
-                    if self.html_local(c, node, "output")? {
-                        self.output_clone_slot(c, node)?;
+                    _ => return Err(SessionError::WrongToken),
+                }
+
+                if let Some(contents) = self.records[node].template_contents {
+                    self.template_slot(c, node)?;
+                    self.node_document_index(c, contents)?;
+                    for child in &self.records[contents].children {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        pending.try_push(c, *child)?;
                     }
                 }
-                HtmlNodeKind::Text(_) => {
-                    self.field_slot(c, StringLocation::Text(node))?;
+                for child in &self.records[node].children {
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    pending.try_push(c, *child)?;
                 }
-                HtmlNodeKind::Comment(_) => {
-                    self.field_slot(c, StringLocation::Comment(node))?;
-                }
-                HtmlNodeKind::ProcessingInstruction(_) => {
-                    self.field_slot(c, StringLocation::ProcessingInstructionTarget(node))?;
-                    self.field_slot(c, StringLocation::ProcessingInstructionData(node))?;
-                }
-                _ => return Err(SessionError::WrongToken),
             }
-            next = self.next_view_node(c, root, node, None)?;
+            Ok(())
+        })();
+        let cleanup = pending.release(c);
+        result.and_then(|()| cleanup.map_err(SessionError::from))?;
+        Ok(())
+    }
+
+    pub(super) fn start_template_clone(
+        &mut self,
+        c: &mut ParseControl,
+        source: usize,
+        copy: usize,
+    ) -> Result<(), SessionError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.records[source].template_contents.is_some() {
+            let (_, source) = self.template_slot(c, source)?;
+            let (_, copy) = self.template_slot(c, copy)?;
+            let document = self.node_document_index(c, copy.contents)?;
+            self.start_effect(
+                c,
+                select::EffectFrame::CloneChildren {
+                    source: source.contents,
+                    copy: copy.contents,
+                    cursor: 0,
+                    document,
+                },
+            )?;
         }
         Ok(())
     }
@@ -113,10 +161,11 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         source: usize,
+        document: usize,
     ) -> Result<usize, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         match &self.records[source].kind {
-            HtmlNodeKind::Element(_) => self.clone_element(c, source),
+            HtmlNodeKind::Element(_) => self.clone_element(c, source, document),
             HtmlNodeKind::Text(_) | HtmlNodeKind::Comment(_) => {
                 let text = matches!(self.records[source].kind, HtmlNodeKind::Text(_));
                 let location = if text {
@@ -131,7 +180,7 @@ impl SessionStorage {
                 // alias. Allocation success and binding must have no fallible
                 // gap, including a stop at the first binding-copy admission.
                 payload_write::<StringLocation>(c, 1)?;
-                let node = self.allocate_owned(
+                let node = self.allocate_in_document_owned(
                     c,
                     if text {
                         HtmlNodeKind::Text(value)
@@ -141,6 +190,7 @@ impl SessionStorage {
                     false,
                     0,
                     0,
+                    Some(document),
                 )?;
                 self.bind_string(
                     slot,
@@ -155,6 +205,8 @@ impl SessionStorage {
                 Ok(node.index)
             }
             HtmlNodeKind::ProcessingInstruction(_) => {
+                let map = self.prepare_pi_map(c)?;
+                payload_write::<Option<usize>>(c, 1)?;
                 let slot =
                     self.field_slot(c, StringLocation::ProcessingInstructionTarget(source))?;
                 let (target, target_slot) = self.copy_registered_field(c, slot)?;
@@ -164,12 +216,13 @@ impl SessionStorage {
                     c.fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
                 })?;
                 payload_write::<[StringLocation; 2]>(c, 2)?;
-                let node = self.allocate_owned(
+                let node = self.allocate_in_document_owned(
                     c,
                     HtmlNodeKind::ProcessingInstruction(HtmlProcessingInstruction { target, data }),
                     false,
                     0,
                     0,
+                    Some(document),
                 )?;
                 self.bind_string(
                     target_slot,
@@ -181,6 +234,8 @@ impl SessionStorage {
                 );
                 payload_write::<usize>(c, 1)?;
                 self.usage.utf16_units += len;
+                self.bind_pi_map(map, node.index);
+                self.parse_pi_map(c, node.index, map)?;
                 Ok(node.index)
             }
             _ => Err(SessionError::WrongToken),
@@ -191,7 +246,13 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         source: usize,
+        document: usize,
     ) -> Result<usize, SessionError> {
+        let template = self.html_local(c, source, "template")?;
+        if template {
+            self.template_slot(c, source)?;
+        }
+        let prepared = self.prepare_document_allocation(c, Some(document), template)?;
         let bindings = self.prepare_clone_metadata(c, source)?;
         let slot = self.field_slot(c, StringLocation::ElementName(source))?;
         let (name, name_slot) = self.copy_registered_field(c, slot)?;
@@ -271,15 +332,16 @@ impl SessionStorage {
         // installed native backing with a detached/unbound registry location.
         payload_write::<[StringLocation; 2]>(c, 2)?;
         payload_write::<Option<usize>>(c, 1)?;
-        let node = self.allocate_owned(
+        let node = self.allocate_prepared_owned(
             c,
             HtmlNodeKind::Element(HtmlElement {
                 name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
                 attributes,
             }),
-            false,
+            template,
             0,
             0,
+            prepared,
         )?;
         self.bind_string(name_slot, StringLocation::ElementName(node.index));
         self.bind_string(namespace_slot, StringLocation::Namespace(node.index));

@@ -33,7 +33,7 @@ const HTML: &str = "http://www.w3.org/1999/xhtml";
 const MATHML: &str = "http://www.w3.org/1998/Math/MathML";
 const SVG: &str = "http://www.w3.org/2000/svg";
 
-fn insensitive(
+pub(super) fn insensitive(
     value: &DocumentString,
     literal: &'static str,
     c: &mut ParseControl,

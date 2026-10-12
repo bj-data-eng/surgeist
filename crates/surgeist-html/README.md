@@ -1166,7 +1166,7 @@ pop and preparation, using the constructor's closed producer inventory and
 absent runtime domains. Captured or hosted requests, declarative shadow roots,
 and imported arena state cannot acquire or retain that proof. This specialization
 does not execute scripts, load resources or implement a browser event loop.
-The generic proofless head continuation still suspends at script starts.
+The generic proofless head continuation still suspends at script and template starts.
 The [selected source boundary](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
 records MIME essence matching and the complete checkpoint clauses; source-local
 work/storage admission and sticky terminal failures remain with the sole parser
@@ -1178,7 +1178,7 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Other resettable control creation, templates and SVG script dispatch retain
+Other resettable control creation and SVG script dispatch retain
 untouched-token continuations when their required machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
 unfinished lifecycle state; these private operations produce no public parse report.
@@ -1209,8 +1209,8 @@ this association. Synchronous tree mutations complete the whole source removal
 pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
-Association scans are metered and can require quadratic work. Template forms,
-other resettable controls, unfinished table rows, SVG script dispatch, contextual
+Association scans are metered and can require quadratic work. Other resettable
+controls, unfinished table rows, SVG script dispatch, contextual
 fragment execution, hosted parsing and full EOF/report completion remain unfinished.
 
 The same association registry now admits parser-created button, fieldset and
@@ -1306,7 +1306,7 @@ owners use the sole controller. A terminal stop can retain a coherent flush
 prefix, remaining characters and the triggering token for cleanup, while refusing
 continued construction or publication.
 
-This is a structural checkpoint. Other unavailable control creation, templates
+This is a structural checkpoint. Other unavailable control creation
 and SVG script branches preserve their original token before unsupported effects.
 It does not establish complete InTable behavior,
 contextual fragment parsing or completed EOF/report publication.
@@ -1341,13 +1341,67 @@ finite and charged; repeated scans and child moves may be quadratic.
 
 These are private construction operations, not a live DOM mutation API. The
 separate DOM moveBefore primitive, captured fragment initialization,
-templates/shadow trees, external script execution and other
+imported templates with unavailable facts, shadow trees, external script execution
+and other
 unimplemented control state remain outside this capability. Construction EOF
 does not drain the FIFO or complete stop-parsing/report publication.
 The [select construction owner](src/construction/parser_session/select.rs),
 [managed clone owner](src/construction/parser_session/clone.rs) and
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
 record the consumed boundary.
+
+<a id="private-ordinary-templates"></a>
+
+The fresh standalone Disabled driver also constructs ordinary templates in the
+same controlled arena. A lazily created inert Document owns their separately
+hosted contents fragments; nested templates reuse that actual document and
+ordinary template children remain empty. Actual node-document bindings,
+[template contents and insertion targets](../../references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md#template-contents)
+and the real template insertion-mode stack govern creation, table routing,
+end-tag recovery and EOF unwinding. Borrowed CreationContext carries the actual
+open-template identity, not a caller-supplied parsing flag. Template adopting
+steps and iterative contents cloning share the existing arena, source-ordered
+construction effects and intrinsic FIFO. Removal effects complete before
+node-document adoption, which completes before insertion effects.
+
+Reachable template for patching uses actual named marker/start ProcessingInstructions
+and complete pseudo-attribute maps. Search follows ordinary descendants and
+exact names; start/end nesting counts following siblings independently of their
+names. An admitted static sibling list is completed before source-ordered
+removal. Insertion uses the actual target and a still-parented end marker.
+Explicit template end removes currently parented markers and clears patch state;
+EOF unwinds stacks/modes without those explicit-end effects or an invented task
+drain. The fresh operation's established shadow permission is false, so a
+recognized declarative shadow mode takes the source-required ordinary-template
+branch before considering for; it attaches no shadow root.
+
+The [PI-map owner](src/construction/parser_session/pi.rs) retains original native
+target/data and exact lexical maps alongside independently admitted decoded
+backing. The [whole XML-stylesheet grammar](../../references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md#pseudo-attributes)
+and [XML grammar closure](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md)
+require exact Unicode XML names, XML scalar validity, five predefined entities
+and numeric references. Duplicate names or malformed syntax invalidate the whole
+map; resource/cancellation failures remain terminal. This is not HTML entity
+recovery, XML document preprocessing or a generic XML parser.
+
+Template-content script preparation preserves the real prefix: parser-document
+clearing and force-async changes precede the empty-source/connectivity guards.
+An eligible disconnected script returns Disconnected before type classification
+and the scripting-disabled return; inertness is not an omitted callback or
+external execution. Active/frozen private observations preserve arena/controller
+qualification. Pending effects/FIFO work and incomplete template/document/PI
+facts prevent immutable publication; terminal cleanup disposes retained owners
+without running useful effects.
+
+The [template state owner](src/construction/parser_session/template.rs),
+[template dispatcher](src/parser/tree_builder/template.rs) and
+[origin record](PARSER-ORIGINS.md#ordinary-template-extension) identify this private,
+test-compiled boundary. Imported templates with unavailable patch facts, captured
+context-sensitive fragments, shadow attachment, SVG script and complete public
+stop-parsing/report publication remain unfinished. No public captured
+template-for reference query or live DOM follows. Repeated registry/topology
+scans, comparisons, copies and moves can be quadratic; finite charged/polled work
+establishes no linear-time or allocator/RSS guarantee.
 
 Ordinary non-script MathML and SVG now use the same controlled creation and
 tree driver. The actual current namespace selects CDATA admission, including
@@ -1375,8 +1429,8 @@ refuse freeze. Repeated registry/topology scans may be quadratic; no linear-time
 or allocator/RSS guarantee follows. SVG script starts retain the untouched token
 before creation, including self-closing starts. The HTML Disabled-script proof
 does not implement SVG script processing. Construction EOF remains unfinished
-stop-parsing/report publication, and contextual fragments and templates still
-require their own construction facts and effects.
+stop-parsing/report publication; contextual fragments and imported templates
+still require their own construction facts and effects.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.
