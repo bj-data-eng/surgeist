@@ -597,6 +597,88 @@ impl ParseControl {
         // physical ownership must remain releasable even when logical work ends.
         Self::record_vector_capacity(vector, allocation, result)
     }
+    /// Local append-owner growth. Other callers retain their exact policy.
+    /// Spare capacity is submitted and charged, never counted as live entries.
+    pub(crate) fn reserve_vector_geometric<T>(
+        &mut self,
+        vector: &mut Vec<T>,
+        allocation: &mut VectorCapacity<T>,
+        additional: usize,
+    ) -> Result<(), ParseStop> {
+        self.checkpoint()?;
+        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        self.charge(WorkCategory::RecordVisit, 2)?;
+        if allocation.capacity != vector.capacity() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let plan = match self.geometric_plan(vector, additional) {
+            Ok(Some(plan)) => plan,
+            Ok(None) => return Ok(()),
+            Err(stop) => return self.fail(stop),
+        };
+        let Some(bytes) = plan.old_bytes.checked_add(plan.new_bytes) else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        self.charge_many(&[
+            (WorkCategory::ReserveByte, bytes),
+            (WorkCategory::ProviderCall, 1),
+            (WorkCategory::RecordWrite, 1),
+            (WorkCategory::CopyByte, size_of::<usize>() as u64),
+        ])?;
+        let result = self.reserve(vector, plan);
+        Self::record_vector_capacity(vector, allocation, result)
+    }
+    fn geometric_plan<T>(
+        &self,
+        vector: &Vec<T>,
+        additional: usize,
+    ) -> Result<Option<ReservationPlan>, ParseStop> {
+        let Some(exact) = ReservationPlan::for_vec(vector, additional)? else {
+            return Ok(None);
+        };
+        let current = self
+            .usage
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current;
+        let without_old = current
+            .checked_sub(exact.old_bytes)
+            .ok_or(ParseStop::InternalInvariant(Invariant::CapacityMismatch))?;
+        let ceiling = (isize::MAX as u64)
+            .min(
+                self.limits[HtmlParseResource::ManagedCapacityBytes as usize]
+                    .saturating_sub(without_old),
+            )
+            .min(
+                self.limits[HtmlParseResource::PeakTransientBytes as usize].saturating_sub(current),
+            )
+            .min(self.limits[HtmlParseResource::AtomicLayoutBytes as usize]);
+        // A required layout that cannot fit is submitted to the existing
+        // reserve gate, preserving its concrete limit precedence and stop.
+        if exact.new_bytes > ceiling {
+            return Ok(Some(exact));
+        }
+        let slots = (ceiling / size_of::<T>() as u64) as usize;
+        let representation = || ParseStop::RepresentationExhausted {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+        };
+        let required = vector
+            .len()
+            .checked_add(additional)
+            .ok_or_else(representation)?;
+        let target = required.max(vector.capacity().saturating_mul(2)).min(slots);
+        Ok(Some(ReservationPlan {
+            additional: target
+                .checked_sub(vector.len())
+                .ok_or_else(representation)?,
+            old_bytes: exact.old_bytes,
+            new_bytes: target
+                .checked_mul(size_of::<T>())
+                .and_then(|bytes| u64::try_from(bytes).ok())
+                .ok_or_else(representation)?,
+        }))
+    }
     fn record_vector_capacity<T>(
         vector: &Vec<T>,
         allocation: &mut VectorCapacity<T>,
@@ -1215,6 +1297,38 @@ impl ParseControl {
         self.charge(WorkCategory::RecordVisit, 1)?;
         self.validate_document_string(allocation, value)
     }
+    /// Qualifies the new historical-materialization output slot before cleanup
+    /// takes it. This fixed disposal proof admits no parsing work or storage.
+    pub(crate) fn require_materialized_string_disposal(
+        &mut self,
+        allocation: &DocumentStringAllocation,
+        value: &crate::DocumentString,
+    ) -> Result<(), ParseStop> {
+        self.validate_document_string(allocation, value)?;
+        if allocation.resource != HtmlParseResource::BufferedUtf16Units
+            || allocation.wrapper_bytes != size_of::<Vec<u16>>() as u64
+        {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let Some(bytes) = allocation
+            .vector_capacity
+            .checked_mul(size_of::<u16>())
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .and_then(|bytes| bytes.checked_add(allocation.wrapper_bytes))
+        else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        if allocation.units > self.usage.resource(allocation.resource).current
+            || bytes
+                > self
+                    .usage
+                    .resource(HtmlParseResource::ManagedCapacityBytes)
+                    .current
+        {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        }
+        Ok(())
+    }
     /// Disposal-only inspection of already-admitted backing. Terminal cleanup
     /// may validate ownership before taking a caller's retained payload; it
     /// cannot resume parsing, acquire storage, or refund execution observations.
@@ -1613,6 +1727,29 @@ impl<T> OwnedVec<T> {
             control.reserve(&mut self.vector, plan)?;
         }
         Ok(())
+    }
+    /// Reserves only real physical append storage; initialized entries and
+    /// their payload copies/writes remain the actual push caller's duty.
+    pub(crate) fn reserve_geometric(
+        &mut self,
+        control: &mut ParseControl,
+        additional: usize,
+    ) -> Result<(), ParseStop> {
+        self.require_owner(control)?;
+        control.charge(WorkCategory::RecordVisit, 2)?;
+        let plan = match control.geometric_plan(&self.vector, additional) {
+            Ok(Some(plan)) => plan,
+            Ok(None) => return Ok(()),
+            Err(stop) => return control.fail(stop),
+        };
+        let Some(bytes) = plan.old_bytes.checked_add(plan.new_bytes) else {
+            return control.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        control.charge_many(&[
+            (WorkCategory::ReserveByte, bytes),
+            (WorkCategory::ProviderCall, 1),
+        ])?;
+        control.reserve(&mut self.vector, plan)
     }
     pub(crate) fn try_push(
         &mut self,
@@ -2090,6 +2227,114 @@ mod tests {
     }
     fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+
+    #[test]
+    fn local_geometric_growth_charges_spare_capacity_and_clamps_to_finite_limits() {
+        let caps = limits()
+            .into_builder()
+            .managed_capacity_bytes(6)
+            .peak_transient_bytes(10)
+            .atomic_layout_bytes(6)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let (mut values, mut ticket) = c.new_vector::<u16>().unwrap();
+        for capacity in [1, 2, 3] {
+            c.reserve_vector_geometric(&mut values, &mut ticket, 1)
+                .unwrap();
+            assert_eq!(values.capacity(), capacity);
+            values.push(7);
+        }
+        assert_eq!(c.usage().work(WorkCategory::ReserveByte), 18); // 2 +(2+4) +(4+6)
+        assert_eq!(c.usage().actual_capacity_bytes, 6);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::PeakTransientBytes)
+                .high_water,
+            10
+        );
+        let reserve = c.usage().work(WorkCategory::ReserveByte);
+        // Existing exact caller still submits its required layout, without a
+        // geometric fallback or a change to the other callers' policy.
+        assert!(matches!(
+            c.reserve_vector(&mut values, &mut ticket, 1),
+            Err(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+                limit: 6,
+                current: 6,
+                requested_delta: 2
+            })
+        ));
+        assert_eq!(values, [7, 7, 7]);
+        assert_eq!(c.usage().work(WorkCategory::ReserveByte), reserve + 14);
+        let at_stop = c.first_stop_usage().unwrap().clone();
+        c.release_vector(values, ticket).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.first_stop_usage(), Some(&at_stop));
+        assert_eq!(c.usage().work, at_stop.work);
+    }
+
+    #[test]
+    fn geometric_reservation_admits_only_capacity_until_real_record_pushes() {
+        let mut c = control();
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        values.reserve_geometric(&mut c, 3).unwrap();
+        assert_eq!(values.len(), 0);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+        for value in [10u32, 20, 30] {
+            values.try_push(&mut c, value).unwrap();
+        }
+        let reserved = c.usage().work(WorkCategory::ReserveByte);
+        values.reserve_geometric(&mut c, 1).unwrap();
+        assert_eq!(values.capacity(), 6);
+        assert_eq!(values.as_slice(), [10, 20, 30]);
+        assert_eq!(
+            c.usage().work(WorkCategory::ReserveByte),
+            reserved + 12 + 24
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            3
+        );
+        let work = c.usage().work;
+        values.release(&mut c).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.usage().work, work);
+    }
+
+    #[test]
+    fn geometric_growth_rejects_foreign_owner_and_cancellation_before_allocation() {
+        for foreign in [false, true] {
+            let cancel = HtmlParseCancellation::new();
+            let mut c = ParseControl::new(limits(), cancel.clone());
+            let (mut values, mut ticket) = c.new_vector::<u32>().unwrap();
+            let mut other = control();
+            if !foreign {
+                cancel.cancel();
+            }
+            let active = if foreign { &mut other } else { &mut c };
+            let result = active.reserve_vector_geometric(&mut values, &mut ticket, 1);
+            assert_eq!(
+                result,
+                Err(if foreign {
+                    ParseStop::InternalInvariant(Invariant::ForeignControl)
+                } else {
+                    ParseStop::Cancelled
+                })
+            );
+            assert_eq!(values.capacity(), 0);
+            assert_eq!(active.usage().work(WorkCategory::ReserveByte), 0);
+            c.release_vector(values, ticket).unwrap();
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+        }
     }
 
     fn attribute(local: &str) -> crate::Attribute {

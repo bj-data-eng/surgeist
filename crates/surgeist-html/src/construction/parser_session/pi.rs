@@ -40,21 +40,7 @@ impl SessionStorage {
         Ok(value.clone())
     }
     fn retire_raw(&mut self, c: &mut ParseControl, slot: usize) -> Result<(), SessionError> {
-        payload_write::<RetainedPayload>(c, 1)?;
-        self.retire_field_group(c, slot)?;
-        let RetainedPayload::String {
-            value,
-            allocation,
-            origins,
-            ..
-        } = mem::replace(&mut self.payloads.values[slot], RetainedPayload::Retired)
-        else {
-            return Err(SessionError::WrongToken);
-        };
-        drop(value);
-        c.release_document_string(allocation)?;
-        drop(origins);
-        Ok(())
+        self.retire_registered_string(c, slot)
     }
     fn pi_scalar(
         &self,

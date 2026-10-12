@@ -2729,13 +2729,13 @@ mod tests {
         assert_ne!(value.code_units().as_ptr(), original_backing);
         assert_eq!(
             storage
-                .group_origins(origins.as_ref().unwrap())
+                .observed_origins(origins.as_ref().unwrap(), &mut c)
                 .unwrap()
                 .len(),
             original_ranges.len()
         );
         for (actual, expected) in storage
-            .group_origins(origins.as_ref().unwrap())
+            .observed_origins(origins.as_ref().unwrap(), &mut c)
             .unwrap()
             .iter()
             .zip(&original_ranges)

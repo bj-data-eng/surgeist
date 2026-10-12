@@ -907,21 +907,7 @@ impl SessionStorage {
         Ok(slot)
     }
     fn retire_raw_field(&mut self, c: &mut ParseControl, slot: usize) -> Result<(), SessionError> {
-        payload_write::<RetainedPayload>(c, 2)?;
-        self.retire_field_group(c, slot)?;
-        let RetainedPayload::String {
-            value,
-            allocation,
-            origins,
-            ..
-        } = mem::replace(&mut self.payloads.values[slot], RetainedPayload::Retired)
-        else {
-            return Err(SessionError::WrongToken);
-        };
-        drop(value);
-        c.release_document_string(allocation)?;
-        drop(origins);
-        Ok(())
+        self.retire_registered_string(c, slot)
     }
     /// Copy a registered field without aliasing its native backing or ticket.
     pub(super) fn copy_registered_field(

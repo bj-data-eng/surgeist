@@ -1042,19 +1042,51 @@ fn non_element_clone_binding_boundary(kind: usize) {
     // empty-map clear2, ready copy/write2 = U+30. Invalid whole grammar
     // remains a successfully established empty map, rather than an error.
     let grammar = if kind == 2 {
-        let (mut fee_control, mut fee_session, _, cancellation) = non_element_clone_fixture(kind);
+        let (mut fee_control, mut fee_session, source, cancellation) =
+            non_element_clone_fixture(kind);
         drop(cancellation);
         // The new copied PI data field follows the map and target slots. Its
         // literal D contributes one source-origin visit, fixed origin copy,
         // handle clone and one first-capacity OwnedVec push (one planned slot).
         let field_visits = fee_session.active().unwrap().payloads.values.len() as u64 + 3;
+        let storage = fee_session.active_mut().unwrap();
+        let slot = storage
+            .field_slot(
+                &mut fee_control,
+                StringLocation::ProcessingInstructionData(source),
+            )
+            .unwrap();
+        // The real copied data has one Alias header over the literal D leaf.
+        // Measure only that concrete cursor primitive, independently of clone
+        // allocation/binding/PI parsing; all grammar/native expectations remain
+        // literal below. The PI mapper still visits the yielded origin once.
+        let group = storage
+            .copied_slot_group(&mut fee_control, slot)
+            .unwrap()
+            .unwrap();
+        let evidence = storage.evidence.as_ref().unwrap();
+        let before = fee_control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let mut cursor =
+            provenance::GroupOriginCursor::new(evidence, &group, &mut fee_control).unwrap();
+        assert!(cursor.next(evidence, &mut fee_control).unwrap().is_some());
+        assert!(cursor.next(evidence, &mut fee_control).unwrap().is_none());
+        cursor.release(&mut fee_control).unwrap();
+        let cursor_credits = fee_control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - before;
         fee_session.release(&mut fee_control).unwrap();
         storage_zero(&fee_control);
         let origin = mem::size_of::<TextOrigin>() as u64;
         mem::size_of::<usize>() as u64
             + 30
             + field_visits
-            + 1
+            + cursor_credits
+            + 1 // actual PI mapper visit, separate from cursor traversal
             + origin
             + 1
             + 1
@@ -1140,7 +1172,11 @@ fn non_element_clone_binding_boundary(kind: usize) {
         );
         storage_zero(&c);
         assert_eq!(c.stop(), first);
-        assert_eq!(result.is_ok(), extra == complete);
+        assert_eq!(
+            result.is_ok(),
+            extra == complete,
+            "kind {kind}, extra {extra}, complete {complete}, first {first:?}"
+        );
         assert_eq!(installed, usize::from(extra >= allocated_prefix + binding));
         assert!(
             matches!(
@@ -1291,8 +1327,78 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
     let request = request(
         "<body><select><selectedcontent></selectedcontent><option><div><option selected>A</option></div><div><option selected>B</option></div></option></select></body>",
     );
+    // Calibrate the two concrete pre-insertion boundaries through the actual
+    // step producers and the exact canonical drain admissions. This derives
+    // credits from the changed group/cursor layout; expected topology is still
+    // the literal original two-root sibling list, never parser output.
+    let (mut measured, mut owner, _, nodes) = graph(&request);
+    let outer = named(&nodes, "option", 0);
+    let start = measured
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
+    let storage = owner.active_mut().unwrap();
+    storage
+        .update_for_option(&mut measured, outer.index)
+        .unwrap();
+    let mut boundaries = Vec::new();
+    loop {
+        if storage.effects.form.is_none()
+            && let Some(EffectFrame::FragmentInsertion {
+                parent,
+                cursor,
+                stage: FragmentStage::Insert,
+                ..
+            }) = storage.effects.current
+            && cursor <= 1
+            && storage.records[parent].children.len() == cursor
+        {
+            boundaries.push(
+                measured
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current
+                    - start,
+            );
+            if cursor == 1 {
+                break;
+            }
+        }
+        measured.require_identity(&storage.control).unwrap();
+        measured.charge(WorkCategory::RecordVisit, 2).unwrap();
+        if storage.effects.form.is_some() {
+            storage.step_form_effects(&mut measured).unwrap();
+        } else if let Some(frame) = storage.effects.current {
+            measured
+                .admit_atomic_layout(mem::size_of::<EffectFrame>())
+                .unwrap();
+            measured
+                .charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)
+                .unwrap();
+            storage.step_effect(&mut measured, frame).unwrap();
+        } else {
+            payload_write::<Option<EffectFrame>>(&mut measured, 1).unwrap();
+            match storage.effects.frames.try_pop(&mut measured).unwrap() {
+                Some(EffectFrame::Topology(form)) => {
+                    payload_write::<Option<FormEffects>>(&mut measured, 1).unwrap();
+                    storage.effects.form = Some(form);
+                }
+                Some(frame) => storage
+                    .write_current_effect(&mut measured, Some(frame))
+                    .unwrap(),
+                None => panic!("literal target requires a two-root fragment insertion"),
+            }
+        }
+    }
+    owner.release(&mut measured).unwrap();
+    storage_zero(&measured);
+    assert_eq!(boundaries.len(), 2);
     let mut saw_insert = false;
-    for credit in (172_080..172_220).chain((0..2_000_000).step_by(1999)) {
+    for credit in boundaries
+        .into_iter()
+        .flat_map(|base| [base, base + 1, base + 2])
+        .chain((0..2_000_000).step_by(1999))
+    {
         let (mut c, mut session, _, nodes) = graph(&request);
         let outer = named(&nodes, "option", 0);
         let target = named(&nodes, "selectedcontent", 0);

@@ -1593,9 +1593,21 @@ mod tests {
                 assert!(cause.family.is_none());
                 let original = cause.original.unwrap();
                 let trigger = cause.trigger.unwrap();
-                let (group, origins) = rows.group(original).unwrap().unwrap();
-                assert!(!origins.is_empty());
-                let retirement = group.retirement.expect("actual replaced field retained");
+                let retirement = rows
+                    .group(original)
+                    .unwrap()
+                    .unwrap()
+                    .retirement
+                    .expect("actual replaced field retained");
+                let mut origins = rows.group_origin_cursor(original).unwrap();
+                assert!(rows.next_group_origin(&mut origins).unwrap().is_some());
+                while rows.next_group_origin(&mut origins).unwrap().is_some() {}
+                rows.release_group_origin_cursor(&mut Some(origins))
+                    .unwrap();
+                let historical = rows.materialize_group(original).unwrap();
+                assert!(!historical.text().is_empty());
+                rows.release_materialized_group(&mut Some(historical))
+                    .unwrap();
                 let retired = rows.cause_at(retirement).unwrap().unwrap();
                 assert_eq!(retired.operation, ConstructionOperation::Retirement);
                 assert_eq!(retired.original, Some(original));
@@ -2298,7 +2310,7 @@ mod tests {
             let groups = [cause.original.unwrap(), cause.incoming.unwrap()];
             observed.push((row.start, row.end, row.source.clone(), row.kind));
             for (group, expected) in groups.into_iter().zip([(7, 8), (8, 9)]) {
-                let (group, _) = rows.group(group).unwrap().unwrap();
+                let group = rows.group(group).unwrap().unwrap();
                 let replay = group.cause;
                 let replay = rows.cause_at(replay).unwrap().unwrap();
                 assert_eq!(replay.operation, ConstructionOperation::Replay);

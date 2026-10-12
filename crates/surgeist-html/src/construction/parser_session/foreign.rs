@@ -580,23 +580,29 @@ mod tests {
                 if value == &DocumentString::from("viewbox") {
                     original = Some((
                         value.backing().as_ptr(),
-                        storage.group_origins(maps).unwrap()[0].source.clone(),
-                        storage.group_origins(maps).unwrap()[0].kind,
+                        storage.observed_origins(maps, &mut c).unwrap()[0]
+                            .source
+                            .clone(),
+                        storage.observed_origins(maps, &mut c).unwrap()[0].kind,
                     ));
                 }
                 if matches!(location, StringLocation::AttributeName(_, 0)) {
                     adjusted = Some((
                         value.backing().as_ptr(),
-                        storage.group_origins(maps).unwrap()[0].source.clone(),
-                        storage.group_origins(maps).unwrap()[0].kind,
+                        storage.observed_origins(maps, &mut c).unwrap()[0]
+                            .source
+                            .clone(),
+                        storage.observed_origins(maps, &mut c).unwrap()[0].kind,
                     ));
                 }
                 if matches!(location, StringLocation::AttributeName(_, 1)) {
                     href = Some((
-                        storage.group_origins(maps).unwrap().len(),
-                        storage.group_origins(maps).unwrap()[0].start,
-                        storage.group_origins(maps).unwrap()[0].end,
-                        storage.group_origins(maps).unwrap()[0].source.clone(),
+                        storage.observed_origins(maps, &mut c).unwrap().len(),
+                        storage.observed_origins(maps, &mut c).unwrap()[0].start,
+                        storage.observed_origins(maps, &mut c).unwrap()[0].end,
+                        storage.observed_origins(maps, &mut c).unwrap()[0]
+                            .source
+                            .clone(),
                     ));
                 }
             }
