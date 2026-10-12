@@ -1971,6 +1971,7 @@ pub surgeist_html::HtmlSemanticFact::SubmitterNoValidate(surgeist_html::HtmlSema
 pub surgeist_html::HtmlSemanticFact::SummaryForParentDetails(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::TabIndex(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTabIndexReadback>)
 pub surgeist_html::HtmlSemanticFact::TableBodies(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableBodyCollection>)
+pub surgeist_html::HtmlSemanticFact::TableCaption(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::TableModel(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableModel>)
 pub surgeist_html::HtmlSemanticFact::TableRowCells(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableCellCollection>)
 pub surgeist_html::HtmlSemanticFact::TableRows(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableRowCollection>)
@@ -2106,6 +2107,7 @@ pub surgeist_html::HtmlSemanticQuery::SubmitterNoValidate
 pub surgeist_html::HtmlSemanticQuery::SummaryForParentDetails
 pub surgeist_html::HtmlSemanticQuery::TabIndex
 pub surgeist_html::HtmlSemanticQuery::TableBodies
+pub surgeist_html::HtmlSemanticQuery::TableCaption
 pub surgeist_html::HtmlSemanticQuery::TableModel
 pub surgeist_html::HtmlSemanticQuery::TableRowCells
 pub surgeist_html::HtmlSemanticQuery::TableRows

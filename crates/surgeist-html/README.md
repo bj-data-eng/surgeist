@@ -1710,6 +1710,33 @@ an implicit reversed-list start counts owned HTML `li` elements specifically.
 Start/value recovery and ordinal steps preserve arbitrary admitted integer
 magnitudes. Missing participation cannot become a guessed box or partial ordinal.
 
+<a id="captured-table-caption"></a>
+
+`HtmlSemanticQuery::TableCaption` returns the first direct HTML `caption`
+element child of an HTML `table` as an optional capture-qualified subject.
+It is available independently of `TableModel`: an unavailable row's children
+can prevent model formation while leaving the caption getter known. Multiple
+captions or placement after a row still selects the first direct caption.
+
+Complete direct-child order establishes `Known(Some(caption))` or
+`Known(None)`; unavailable influencing order remains typed `Missing`.
+Nested, template-associated and shadow-associated captions are excluded.
+Exact HTML namespace/local-name recognition ignores prefixes. Wrong HTML
+roles and non-elements are Inapplicable; foreign subjects retain Unsupported.
+Caption descendants, attributes, ancestry and names after the first witness
+are not consulted.
+
+The [table getter](src/semantics/table.rs) reuses the existing
+[borrowed direct-child owner](src/semantics.rs). Actual visits/name comparisons
+and outer result capacity use the same qualified session ledger, cumulative
+usage, sticky terminal failure and atomic batches. The query creates no
+traversal scratch, nested output or content-string buffer; fixed immutable
+handle/backing limits remain. The [pinned getter](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-table-caption)
+and [literal/resource tests](tests/semantics_table_caption.rs) define its scope.
+Closed Query/Fact additions intentionally break exhaustive matches. Setter,
+create/deleteCaption, live mutation, author content conformance and layout
+remain separate.
+
 `HtmlTableModel` retains semantic cell rectangles, row/column and group records,
 header associations and table-model errors. It handles delayed footers, implied
 rows, zero row spans, overlap recovery, explicit header IDs and automatic header

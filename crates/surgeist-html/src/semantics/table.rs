@@ -207,6 +207,33 @@ enum Scope {
 }
 
 impl<'a> HtmlSemanticSession<'a> {
+    /// HTML 877d §4.9.1, the first caption element child, or null:
+    /// <https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption>.
+    /// This getter does not require table-model formation or caption descendants.
+    pub(super) fn table_caption(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        let node = self.node(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        };
+        if !self.html_namespace(element)? {
+            return Ok(HtmlSemanticValue::Unsupported(
+                HtmlSemanticUnsupported::ForeignNamespace,
+            ));
+        }
+        if self.known(element)? != Some(KnownHtmlElement::Table) {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        Ok(
+            match self.first_html_element_child(subject, KnownHtmlElement::Caption)? {
+                Ok(caption) => HtmlSemanticValue::Known(caption),
+                Err(missing) => HtmlSemanticValue::Missing(missing),
+            },
+        )
+    }
+
     pub(super) fn table_model(
         &mut self,
         subject: &HtmlCaptureSubjectId,

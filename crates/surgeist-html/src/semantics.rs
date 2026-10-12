@@ -816,6 +816,8 @@ pub enum HtmlSemanticQuery {
     ListOwner,
     ListStartingValue,
     ListOrdinal,
+    /// First direct HTML caption child, independently of table formation.
+    TableCaption,
     TableModel,
     TableBodies,
     TableRows,
@@ -1121,6 +1123,9 @@ impl HtmlSemanticQuery {
             Self::TableRowCells => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells"
             }
+            Self::TableCaption => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption"
+            }
             Self::TableModel => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#table-processing-model"
             }
@@ -1321,6 +1326,7 @@ pub enum HtmlSemanticFact {
     TableRows(HtmlSemanticValue<HtmlTableRowCollection>),
     TableSectionRows(HtmlSemanticValue<HtmlTableRowCollection>),
     TableRowCells(HtmlSemanticValue<HtmlTableCellCollection>),
+    TableCaption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     TableModel(HtmlSemanticValue<HtmlTableModel>),
     Language(HtmlSemanticValue<HtmlLanguage>),
     Directionality(HtmlSemanticValue<HtmlDirectionality>),
@@ -2830,6 +2836,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::TableRowCells => {
                             HtmlSemanticFact::TableRowCells(self.table_row_cells(&request.subject)?)
                         }
+                        HtmlSemanticQuery::TableCaption => {
+                            HtmlSemanticFact::TableCaption(self.table_caption(&request.subject)?)
+                        }
                         HtmlSemanticQuery::TableModel => {
                             HtmlSemanticFact::TableModel(self.table_model(&request.subject)?)
                         }
@@ -3231,6 +3240,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::TableRowCells => {
                         HtmlSemanticFact::TableRowCells(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TableCaption => {
+                        HtmlSemanticFact::TableCaption(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::TableModel => {
                         HtmlSemanticFact::TableModel(HtmlSemanticValue::Inapplicable)
