@@ -220,6 +220,16 @@ declaration constraints and submission encoding selection require separate
 operations and facts. Checked values and reports use ordinary allocation;
 interpreter reports retain the per-value UTF-16 admission cap.
 
+`HtmlInputColorSpace` supplies canonical colorspace attributes for Limited sRGB
+and Display P3. `input_colorspace` retains keyword recognition and local author
+spelling separately from the Limited sRGB missing/invalid default. Applicable
+present content leaves its Color-state author restriction Unchecked.
+`input_colorspace_for_input` uses an explicitly supplied actual input type to
+observe that restriction without changing lexical evidence or intrinsic state.
+These ordinary reports admit the entire selected raw UTF-16 value before
+applicability. CSS color conversion, color-well updates and live reflection
+remain separate operations.
+
 `hash_name_reference` retains exact raw UTF-16 and borrowed suffixes, separating
 leading-`#` author form from first-`#` processing. A lone `#` has an empty author
 name and a null processing result. The local report does not prove a same-tree

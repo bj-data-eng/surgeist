@@ -339,6 +339,14 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the defining clause for additional element-context facts.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if self.rule.attribute == KnownHtmlAttribute::Colorspace
+            && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Input)
+        {
+            return Some(match &self.supplied_context {
+                SuppliedContext::Input(state) => input_state_source(*state),
+                _ => INPUT_SOURCE,
+            });
+        }
         if self.rule.attribute == KnownHtmlAttribute::Charset
             && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Meta)
         {
@@ -2108,6 +2116,9 @@ pub use textarea_wrap::*;
 
 mod hash_name;
 pub use hash_name::*;
+
+mod input_colorspace;
+pub use input_colorspace::*;
 
 mod encoding_label;
 pub use encoding_label::*;

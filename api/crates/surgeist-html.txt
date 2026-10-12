@@ -843,6 +843,12 @@ pub surgeist_html::HtmlInertFactError::ValidationWork::required: usize
 impl core::error::Error for surgeist_html::HtmlInertFactError
 impl core::fmt::Display for surgeist_html::HtmlInertFactError
 pub fn surgeist_html::HtmlInertFactError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlInputColorSpace
+pub surgeist_html::HtmlInputColorSpace::DisplayP3
+pub surgeist_html::HtmlInputColorSpace::LimitedSrgb
+impl surgeist_html::HtmlInputColorSpace
+pub fn surgeist_html::HtmlInputColorSpace::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlInputColorSpace::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlInputMode
 pub surgeist_html::HtmlInputMode::Decimal
 pub surgeist_html::HtmlInputMode::Email
@@ -4074,6 +4080,9 @@ pub fn surgeist_html::HtmlValueInterpreter::source_srcset_with_context(&self, el
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::input_accept(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAcceptReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::input_accept_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAcceptReport, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::input_colorspace(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputColorSpace>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::input_colorspace_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputColorSpace>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::input_numeric_constraints(&self, element: &surgeist_html::QualifiedName, minimum: core::option::Option<&surgeist_html::Attribute>, maximum: core::option::Option<&surgeist_html::Attribute>, step: core::option::Option<&surgeist_html::Attribute>, value: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlInputNumericConstraintsReport, surgeist_html::HtmlInputNumericConstraintsError>
 impl surgeist_html::HtmlValueInterpreter
