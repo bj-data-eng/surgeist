@@ -1033,6 +1033,44 @@ their supplied classification. The result is an immutable association snapshot;
 it does not attach ElementInternals or provide a live NodeList. Traversal and
 nested output retain the semantic session's admission and atomic batch contract.
 
+<a id="captured-map-name-author"></a>
+
+[Map names](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#attr-map-name)
+must be specified, nonempty and free of ASCII whitespace. The local
+[HtmlValueInterpreter::map_name report](src/attributes/map_name.rs) admits the
+original raw value before expanded-name applicability and preserves Missing,
+Empty, invalid and Unapplied states without a default. The existing
+`HtmlSpaceToken` validator owns the syntax; `into_map_name_attribute` emits
+the exact checked UTF-16 as canonical no-namespace lowercase `name`. No trimming,
+case folding or normalization occurs. Applicable present reports leave context
+Unchecked because own-id equality and same-tree name uniqueness are separate.
+
+The captured [MapNameAuthor query](src/semantics/map_name.rs) returns local syntax,
+the specified own-id relation and same-ordinary-tree uniqueness independently.
+A specified empty or invalid name still participates in exact contextual
+comparisons; an equal own id is not a global id-conformance certificate.
+Absent name skips unrelated id and tree inspection and returns NoName for both
+contextual observations. A duplicate carries an actual other-map witness, even
+across earlier nonterminal unknown coverage, and stops before that witness's
+children or later values. Unique requires a complete influencing traversal;
+otherwise the first unresolved dependency remains inner Missing. Shadow and
+template host associations do not join ordinary trees. Known(report) delivers
+these observations, not an overall author-conformance verdict.
+
+Native emission and standalone interpretation use ordinary allocation; the
+standalone report has only its per-original-value UTF-16 cap. The captured query
+uses the [semantic session](src/semantics.rs) ledger, precharged borrowed local
+assembly, full consulted name/id admission before equality, one fallibly retained
+data record and actual scratch-frame capacities. Shared input backing and fixed
+wrappers are not charged as new backing allocation. Current scratch is released;
+cumulative allocation, retained-output and peak usage remain charged after
+discarded results. Terminal raw, work, allocation, representation or cancellation
+failures stay sticky and discard the whole batch; a later duplicate cannot mask
+them. [Local](tests/attributes_map_name.rs) and
+[captured tests](tests/semantics_map_name.rs) cover these boundaries.
+Map processing/selection, URLs, geometry, activation and live collections remain
+separate operations.
+
 `MapAreas` returns HTML area descendants of a map in ordinary tree order,
 including areas beneath wrappers and nested maps. Attribute values and visibility
 do not filter membership. Separate shadow and template trees are excluded;

@@ -274,7 +274,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a103"></a>A103 | name; details | [attr-details-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-details-name); [the-details-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Details](#details): nonempty native name and exact same-ordinary-tree group, absent/empty singleton; no exclusive-open mutation. |
 | <a id="a104"></a>A104 | name; form | [attr-form-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-form-name); [dom-document-forms](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-forms); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Form name nonempty and unique in actual forms collection; no checked contextual form-name conformance producer. Native raw and form controls membership do not establish this uniqueness. |
 | <a id="a105"></a>A105 | name; iframe; object | [attr-iframe-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-name); [attr-object-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-object-name); [content-navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#content-navigable); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target) names identify browsing contexts; actual iframe/object navigable name registration/current state belongs host. |
-| <a id="a106"></a>A106 | name; map | [attr-map-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name); [image-map](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#image-map); [referenced](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#referenced); [attr-hyperlink-usemap](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-usemap); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Map names](#map-names): required nonempty whitespace-free name, tree uniqueness and id equality not certified by usemap or MapAreas. |
+| <a id="a106"></a>A106 | name; map | [attr-map-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name); [image-map](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#image-map); [referenced](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#referenced); [attr-hyperlink-usemap](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-hyperlink-usemap); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Map names](#map-names): checked local emission/report and captured `MapNameAuthor` independently supply local syntax, own-id relation and same-tree uniqueness or Missing; no overall conformance or map-processing certificate. |
 | <a id="a107"></a>A107 | name; meta | [attr-meta-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-name); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Metadata](#metadata): actual meta name selects value meaning and context constraints; names compared ASCII-insensitively, no metadata algorithm report. |
 | <a id="a108"></a>A108 | name; slot | [attr-slot-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-slot-name); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Slot name exact string, missing means empty slot name under shadow slotting source; named/manual slot assignment is DOM capture/slot owner, not inferred flattening. |
 | <a id="a109"></a>A109 | nomodule; script | [attr-script-nomodule](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-nomodule); [module-script](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#module-script); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Nomodule with actual script kind; execution guard separate. |
@@ -1298,10 +1298,34 @@ URL/vocabulary validation is separate from HTML token/context/crawl rules.
 
 ### Map names
 
-A106: HtmlSpaceToken can prove local nonempty/no-ASCII-whitespace name, and the
-hash native constructor consumes it. It does not prove map name presence,
-same-tree uniqueness or id equality. No compound map-name/context author report
-currently supplies those latter checks; UsemapReference and MapAreas are separate.
+A106: [HtmlValueInterpreter::map_name](src/attributes/map_name.rs) reports required
+presence and the sole `HtmlSpaceToken` nonempty/no-ASCII-whitespace grammar.
+Original raw admission precedes expanded-name applicability. Missing, Empty,
+invalid and Unapplied remain distinct without a default; present local reports
+leave author context Unchecked. `HtmlSpaceToken::into_map_name_attribute` emits
+canonical no-namespace `name` with exact UTF-16, without trimming or normalization.
+
+The captured [MapNameAuthor](src/semantics/map_name.rs) report separately observes
+local syntax, specified own-id equality and other-map specified-name uniqueness
+in the same ordinary tree. Empty or invalid names still participate; own-id
+equality does not certify global id syntax or uniqueness. Absent name skips
+unrelated id/tree facts. A known duplicate witness can resolve earlier
+nonterminal unknown coverage; Unique requires complete influencing traversal,
+otherwise uniqueness retains inner Missing. Actual shadow/template host
+associations do not replace ordinary tree edges. Known(report) is not overall
+conformance, and terminal failures cannot be hidden by a later witness.
+
+Native/standalone operations retain ordinary allocation and the standalone
+per-raw-value cap. The captured query uses the sole session's qualified ledger,
+borrowed precharged local assembly, whole consulted name/id admission, one
+fallibly retained data record and actual scratch capacities. Shared input backing
+and fixed wrappers are excluded from new backing-allocation charges. Current
+scratch is released while cumulative usage remains charged; terminal failures
+are sticky and atomically discard the requested batch. [The overview](README.md#captured-map-name-author),
+[local tests](tests/attributes_map_name.rs) and
+[captured tests](tests/semantics_map_name.rs) describe the boundary.
+UsemapReference and MapAreas remain separate; no map processing, URL, geometry,
+activation or live-collection guarantee is added.
 
 ### Nonce
 

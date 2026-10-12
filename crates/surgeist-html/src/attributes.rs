@@ -211,6 +211,8 @@ pub enum HtmlAttributeConformanceError {
     },
     /// An HTML id violates its local nonempty/no-ASCII-whitespace author rule.
     InvalidIdToken(HtmlTokenError),
+    /// A map name violates its local nonempty/no-ASCII-whitespace author rule.
+    InvalidMapNameToken(HtmlTokenError),
     /// A target/name violates HTML's local navigable-target grammar.
     InvalidNavigableTarget(HtmlNavigableTargetError),
     /// The specified encoding label does not match HTML's required UTF-8 spelling.
@@ -2199,6 +2201,7 @@ pub use details_name::*;
 
 mod custom_name;
 mod id;
+mod map_name;
 
 mod navigable_target;
 pub use navigable_target::*;

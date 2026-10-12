@@ -97,6 +97,7 @@ pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewlin
 pub surgeist_html::HtmlAttributeConformanceError::InputPlaceholderContainsNewline::code_unit_offset: usize
 pub surgeist_html::HtmlAttributeConformanceError::InvalidCustomElementName(surgeist_html::HtmlCustomElementNameError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidIdToken(surgeist_html::HtmlTokenError)
+pub surgeist_html::HtmlAttributeConformanceError::InvalidMapNameToken(surgeist_html::HtmlTokenError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidNavigableTarget(surgeist_html::HtmlNavigableTargetError)
 pub surgeist_html::HtmlAttributeConformanceError::InvalidUtf8EncodingLabel(surgeist_html::HtmlUtf8EncodingLabelError)
 pub surgeist_html::HtmlAttributeConformanceError::NonconformingKeyword
@@ -1295,6 +1296,16 @@ pub surgeist_html::HtmlMachineReadableTime::TimeZoneOffset(surgeist_html::HtmlTi
 pub surgeist_html::HtmlMachineReadableTime::Week(surgeist_html::HtmlWeek)
 pub surgeist_html::HtmlMachineReadableTime::Year(surgeist_html::HtmlYear)
 pub surgeist_html::HtmlMachineReadableTime::YearlessDate(surgeist_html::HtmlYearlessDate)
+pub enum surgeist_html::HtmlMapNameIdRelation
+pub surgeist_html::HtmlMapNameIdRelation::Different
+pub surgeist_html::HtmlMapNameIdRelation::Equal
+pub surgeist_html::HtmlMapNameIdRelation::IdAbsent
+pub surgeist_html::HtmlMapNameIdRelation::NoName
+pub enum surgeist_html::HtmlMapNameUniqueness
+pub surgeist_html::HtmlMapNameUniqueness::Duplicate(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlMapNameUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlMapNameUniqueness::NoName
+pub surgeist_html::HtmlMapNameUniqueness::Unique
 pub enum surgeist_html::HtmlMeterAuthorRelation
 pub surgeist_html::HtmlMeterAuthorRelation::HighMaximum
 pub surgeist_html::HtmlMeterAuthorRelation::LowHigh
@@ -1773,6 +1784,7 @@ pub surgeist_html::HtmlSemanticFact::ListOrdinal(surgeist_html::HtmlSemanticValu
 pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
 pub surgeist_html::HtmlSemanticFact::MapAreas(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlAreaCollection>)
+pub surgeist_html::HtmlSemanticFact::MapNameAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMapNameAuthorReport>)
 pub surgeist_html::HtmlSemanticFact::Meter(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMeterState>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionFormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionFormOwner>)
@@ -1897,6 +1909,7 @@ pub surgeist_html::HtmlSemanticQuery::ListOrdinal
 pub surgeist_html::HtmlSemanticQuery::ListOwner
 pub surgeist_html::HtmlSemanticQuery::ListStartingValue
 pub surgeist_html::HtmlSemanticQuery::MapAreas
+pub surgeist_html::HtmlSemanticQuery::MapNameAuthor
 pub surgeist_html::HtmlSemanticQuery::Meter
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
 pub surgeist_html::HtmlSemanticQuery::OptionFormOwner
@@ -3806,6 +3819,12 @@ pub fn surgeist_html::HtmlParsedLocalDateTime::from(value: surgeist_html::HtmlLo
 impl core::convert::TryFrom<surgeist_html::HtmlParsedLocalDateTime> for surgeist_html::HtmlLocalDateTime
 pub type surgeist_html::HtmlLocalDateTime::Error = surgeist_html::HtmlTemporalPrecisionError
 pub fn surgeist_html::HtmlLocalDateTime::try_from(value: surgeist_html::HtmlParsedLocalDateTime) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlMapNameAuthorReport
+impl surgeist_html::HtmlMapNameAuthorReport
+pub fn surgeist_html::HtmlMapNameAuthorReport::id_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlMapNameAuthorReport::id_relation(&self) -> surgeist_html::HtmlMapNameIdRelation
+pub fn surgeist_html::HtmlMapNameAuthorReport::local(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>
+pub fn surgeist_html::HtmlMapNameAuthorReport::uniqueness(&self) -> &surgeist_html::HtmlMapNameUniqueness
 pub struct surgeist_html::HtmlMeterAttributeInput<'a>
 pub surgeist_html::HtmlMeterAttributeInput::high: core::option::Option<&'a surgeist_html::Attribute>
 pub surgeist_html::HtmlMeterAttributeInput::low: core::option::Option<&'a surgeist_html::Attribute>
@@ -4413,6 +4432,8 @@ pub struct surgeist_html::HtmlSpaceToken
 impl surgeist_html::HtmlSpaceToken
 pub fn surgeist_html::HtmlSpaceToken::into_id_attribute(self) -> surgeist_html::Attribute
 impl surgeist_html::HtmlSpaceToken
+pub fn surgeist_html::HtmlSpaceToken::into_map_name_attribute(self) -> surgeist_html::Attribute
+impl surgeist_html::HtmlSpaceToken
 pub fn surgeist_html::HtmlSpaceToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlTokenError>
 pub fn surgeist_html::HtmlSpaceToken::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlSpellcheckDefaultFact
@@ -4855,6 +4876,8 @@ pub fn surgeist_html::HtmlValueInterpreter::link_as(&self, element: &surgeist_ht
 pub fn surgeist_html::HtmlValueInterpreter::link_as_with_attributes(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlLinkDestinationReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::map_name(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::meter_attributes(&self, element: &surgeist_html::QualifiedName, input: surgeist_html::HtmlMeterAttributeInput<'_>) -> core::result::Result<surgeist_html::HtmlMeterAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
