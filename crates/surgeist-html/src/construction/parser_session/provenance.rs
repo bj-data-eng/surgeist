@@ -1,7 +1,16 @@
 //! Native field facts owned by the source evidence issuer, not another tree.
 
 use super::*;
+#[path = "lexical.rs"]
+mod lexical;
+#[path = "reverse.rs"]
+pub(crate) mod reverse;
 use crate::parser::{control::Invariant, tokenizer::token::OriginKind};
+pub(crate) use lexical::{
+    LexicalDisposition, LexicalKind, LexicalOccurrence, LexicalPart, LexicalRef, LexicalRole,
+    OmissionKind,
+};
+pub(crate) use reverse::{AssociationRelation, AssociationView};
 
 /// Local indices never leave their evidence identity through an unchecked API.
 pub(crate) struct OriginGroupRef {
@@ -38,6 +47,7 @@ pub(crate) enum ConstructionOperation {
     Retirement,
     Replay,
     Captured,
+    Lexical,
 }
 pub(crate) struct ConstructionCause {
     pub(crate) operation: ConstructionOperation,
@@ -352,11 +362,21 @@ impl GroupOriginCursor {
         self.leaves.release(c)
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum NativeDestination {
     Field(StringLocation),
     Node(usize),
-    Raw { node: usize, kind: RawFieldKind },
+    Raw {
+        node: usize,
+        kind: RawFieldKind,
+    },
+    Lexical {
+        occurrence: usize,
+        part: Option<usize>,
+    },
+    Omission(usize),
+    LexicalEnd,
+    Cause(usize),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RawFieldKind {
@@ -364,12 +384,14 @@ pub(crate) enum RawFieldKind {
     Textarea,
 }
 pub(crate) struct NativeAssociation {
+    pub(crate) group: Option<usize>,
+    pub(crate) relation: AssociationRelation,
     pub(crate) destination: NativeDestination,
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) source: Option<crate::HtmlSourceRange>,
     pub(crate) kind: Option<OriginKind>,
-    cause: usize,
+    pub(crate) cause: usize,
 }
 /// Mutable production and immutable groups have one flat owner. Pending suffixes
 /// have no group/projection proof and are reclaimed on the original stop.
@@ -381,6 +403,8 @@ pub(super) struct NativeProvenance {
     current: Option<usize>,
     projection: Option<OwnedVec<NativeAssociation>>,
     projection_complete: bool,
+    native_rows: usize,
+    lexical: lexical::LexicalStorage,
 }
 impl NativeProvenance {
     pub(super) fn new(c: &mut ParseControl) -> Result<Self, ParseStop> {
@@ -398,10 +422,13 @@ impl NativeProvenance {
             current: None,
             projection: None,
             projection_complete: false,
+            native_rows: 0,
+            lexical: lexical::LexicalStorage::new(c)?,
         })
     }
-    /// Fixed-header cleanup proof. All four vectors are flat SourceMapEntries
-    /// owners; neither elements nor source handles own separately charged storage.
+    /// Fixed-header cleanup proof. Origin/group/cause, lexical occurrence/part/
+    /// omission and optional projection vectors are flat SourceMapEntries owners;
+    /// their source handles own no separately charged storage.
     /// No vector is moved until foreign ownership, representation and aggregate
     /// ledger underflow have been ruled out under the actual stopped controller.
     pub(super) fn preflight_failed_disposal(&self, c: &mut ParseControl) -> Result<(), ParseStop> {
@@ -420,10 +447,14 @@ impl NativeProvenance {
             Ok((units, bytes))
         }
         let mut total = (0u64, 0u64);
+        let lexical = self.lexical.extents(c)?;
         for (units, bytes) in [
             extent(&self.origins, c)?,
             extent(&self.groups, c)?,
             extent(&self.causes, c)?,
+            lexical[0],
+            lexical[1],
+            lexical[2],
             match &self.projection {
                 Some(rows) => extent(rows, c)?,
                 None => (0, 0),
@@ -453,6 +484,7 @@ impl NativeProvenance {
         if let Some(projection) = self.projection {
             projection.release(c)?;
         }
+        self.lexical.release(c)?;
         self.origins.release(c)?;
         self.groups.release(c)?;
         self.causes.release(c)
@@ -1857,18 +1889,16 @@ impl NativeAssociations<'_> {
             .projection
             .as_ref()
             .ok_or(SessionError::WrongToken)?;
+        if index >= self.evidence.native.native_rows {
+            return Ok(None);
+        }
         let Some(row) = rows.as_slice().get(index) else {
             return Ok(None);
         };
         Ok(Some(self.evidence.cause_ref(row.cause, self.control)?))
     }
     pub(crate) fn len(&self) -> usize {
-        self.evidence
-            .native
-            .projection
-            .as_ref()
-            .expect("qualified projection")
-            .len()
+        self.evidence.native.native_rows
     }
     pub(crate) fn row(
         &mut self,
@@ -1882,6 +1912,9 @@ impl NativeAssociations<'_> {
             .as_ref()
             .ok_or(SessionError::WrongToken)?;
         rows.require_disposal_owner(self.control)?;
+        if index >= self.evidence.native.native_rows {
+            return Ok(None);
+        }
         let Some(row) = rows.as_slice().get(index) else {
             return Ok(None);
         };
@@ -1919,8 +1952,9 @@ impl ParseEvidence {
         output: std::ops::Range<usize>,
         source: Option<&crate::HtmlSourceRange>,
         kind: Option<OriginKind>,
-        cause: usize,
+        lineage: (usize, usize),
     ) -> Result<(), SessionError> {
+        let (cause, group) = lineage;
         if let Some(source) = source {
             c.require_source_range(source)?;
         }
@@ -1940,6 +1974,8 @@ impl ParseEvidence {
             .try_push(
                 c,
                 NativeAssociation {
+                    group: Some(group),
+                    relation: AssociationRelation::Output,
                     destination,
                     start: output.start,
                     end: output.end,
@@ -1971,7 +2007,14 @@ impl ParseEvidence {
                     return Err(SessionError::WrongToken);
                 }
                 if origin.start > covered {
-                    self.projection_row(c, location, covered..origin.start, None, None, cause)?;
+                    self.projection_row(
+                        c,
+                        location,
+                        covered..origin.start,
+                        None,
+                        None,
+                        (cause, reference.index),
+                    )?;
                 }
                 c.require_source_range(&origin.source)?;
                 self.projection_row(
@@ -1980,12 +2023,19 @@ impl ParseEvidence {
                     origin.start..origin.end,
                     Some(&origin.source),
                     Some(origin.kind),
-                    cause,
+                    (cause, reference.index),
                 )?;
                 covered = origin.end;
             }
             if covered < units || units == 0 {
-                self.projection_row(c, location, covered..units, None, None, cause)?;
+                self.projection_row(
+                    c,
+                    location,
+                    covered..units,
+                    None,
+                    None,
+                    (cause, reference.index),
+                )?;
             }
             Ok(())
         })();
@@ -2128,9 +2178,17 @@ impl ParserArenaSession {
                     .projection
                     .as_mut()
                     .ok_or(SessionError::WrongToken)?
+                    .reserve_geometric(c, 1)?;
+                evidence
+                    .native
+                    .projection
+                    .as_mut()
+                    .ok_or(SessionError::WrongToken)?
                     .try_push(
                         c,
                         NativeAssociation {
+                            group: None,
+                            relation: AssociationRelation::Creation,
                             destination: NativeDestination::Node(*node),
                             start: 0,
                             end: 0,
@@ -2180,6 +2238,16 @@ impl ParserArenaSession {
                 )?;
             }
         }
+        payload_write::<usize>(c, 1)?;
+        evidence.native.native_rows = evidence
+            .native
+            .projection
+            .as_ref()
+            .ok_or(SessionError::WrongToken)?
+            .len();
+        evidence.project_lineage(c)?;
+        evidence.project_causes(c)?;
+        evidence.project_lexical(c)?;
         c.checkpoint()?;
         payload_write::<bool>(c, 1)?;
         evidence.native.projection_complete = true;
@@ -2410,6 +2478,62 @@ mod captured_tests {
         HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
         HtmlDocumentMode, HtmlFragmentContext, HtmlHostFactsRevision, HtmlScriptingStatus,
     };
+    #[test]
+    fn cause_handle_copy_keeps_issuer_index_and_rejects_foreign_cancelled_and_short_work() {
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+        let index = evidence.field_cause(&mut c).unwrap();
+        let original = evidence.cause_ref(index, &mut c).unwrap();
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let copied = evidence.copy_cause_ref(&mut c, &original).unwrap();
+        let cost = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+        assert_eq!(copied.index, index);
+        assert_eq!(copied.issuer.as_ptr(), original.issuer.as_ptr());
+        assert_eq!(evidence.native.causes.len(), 1);
+        let other = ParseEvidence::prepare(&mut c).unwrap();
+        assert!(matches!(
+            other.copy_cause_ref(&mut c, &original),
+            Err(SessionError::WrongToken)
+        ));
+        drop(copied);
+        drop(original);
+        other.release(&mut c).unwrap();
+        evidence.release(&mut c).unwrap();
+        crate::parser::tree_builder::tests::assert_released(&c);
+        for cancelled in [false, true] {
+            let cancel = crate::HtmlParseCancellation::new();
+            let selected = crate::parser::tree_builder::tests::limits(100)
+                .into_builder()
+                .work_credits(before + cost - 1)
+                .finish()
+                .unwrap();
+            let mut c = ParseControl::new(
+                if cancelled {
+                    crate::parser::tree_builder::tests::limits(100)
+                } else {
+                    selected
+                },
+                cancel.clone(),
+            );
+            let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+            let index = evidence.field_cause(&mut c).unwrap();
+            let original = evidence.cause_ref(index, &mut c).unwrap();
+            if cancelled {
+                cancel.cancel();
+            }
+            assert!(matches!(
+                evidence.copy_cause_ref(&mut c, &original),
+                Err(SessionError::Stop(_))
+            ));
+            assert_eq!(evidence.native.causes.len(), 1);
+            drop(original);
+            evidence.release(&mut c).unwrap();
+            crate::parser::tree_builder::tests::assert_released(&c);
+        }
+    }
     #[test]
     fn captured_namespace_and_bootstrap_keep_actual_subject_revision_and_nonlexical_origin() {
         let revision = HtmlHostFactsRevision::fresh();

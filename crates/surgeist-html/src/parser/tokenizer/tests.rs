@@ -35,6 +35,14 @@ impl<'a> LexerFixture<'a> {
     ) -> Result<Option<Event>, ParseStop> {
         self.lexer.next(c, cdata, &mut self.evidence)
     }
+    pub(crate) fn next_in(
+        &mut self,
+        c: &mut ParseControl,
+        cdata: bool,
+        evidence: &mut ParseEvidence,
+    ) -> Result<Option<Event>, ParseStop> {
+        self.lexer.next(c, cdata, evidence)
+    }
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         self.lexer.release(c)?;
         self.evidence.release(c)
@@ -596,6 +604,7 @@ fn spans_cover_original_crlf_utf8_and_reference_spelling() {
         if let Some(Token {
             kind: TokenKind::Text(text),
             source,
+            ..
         }) = event.token()
         {
             records.push((
@@ -1467,10 +1476,12 @@ fn actual_data_to_tag_open_transition_admits_separate_persistent_writes() {
     let before = c.usage().clone();
     t.step(&mut c, false).unwrap();
     assert_eq!(t.state, State::TagOpen);
-    // Cursor commit; input-kind and range; start and less-than range; state.
+    // Original six writes: cursor commit; input-kind/range; start/less-than;
+    // state. Six real lexical writes add cause append, occurrence payload and
+    // append, issued and installed qualified handles, and delimiter part append.
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
-        6
+        12
     );
     assert_eq!(
         c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
@@ -1666,5 +1677,781 @@ fn rejected_self_closing_and_quirks_write_leave_each_flag_false_and_release_its_
         assert!(matches!(t.next(&mut c,false),Err(next) if next==stop));
         t.release(&mut c).unwrap();
         assert_storage_released(&c);
+    }
+}
+
+#[test]
+fn lexical_actual_duplicates_end_attributes_and_abandoned_eof_fields_are_retained() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K, LexicalRole as R,
+    };
+    let source =
+        HtmlSource::utf8("<X A='&NotEqualTilde;' a=discard></X end=ignored><q unfinished='A");
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    while let Some(event) = t.next(&mut c, false).unwrap() {
+        event.release(&mut c).unwrap();
+    }
+    let (occurrences, parts, _) = t.evidence.lexical_observations();
+    let spelling =
+        |range: &HtmlSourceRange| source.as_utf8().unwrap()[range.start()..range.end()].to_owned();
+    let duplicate = occurrences
+        .iter()
+        .position(|record| record.disposition == D::DuplicateAttribute)
+        .unwrap();
+    assert_eq!(spelling(&occurrences[duplicate].source), "a=discard");
+    let start = occurrences[duplicate].parent.unwrap();
+    assert_eq!(occurrences[start].kind, K::StartTag);
+    assert_eq!(
+        spelling(&occurrences[start].source),
+        "<X A='&NotEqualTilde;' a=discard>"
+    );
+    assert!(parts.iter().any(|part| part.occurrence == start
+        && part.role == R::Name
+        && part.kind == Some(OriginKind::AsciiLowercase)
+        && spelling(&part.source) == "X"));
+    assert!(occurrences.iter().any(|record| record.kind == K::Attribute
+        && record.disposition == D::EndTagAttribute
+        && spelling(&record.source) == "end=ignored"));
+    assert!(occurrences.iter().any(|record| record.kind == K::Attribute
+        && record.disposition == D::Abandoned
+        && spelling(&record.source) == "unfinished='A"));
+    assert!(occurrences.iter().any(|record| record.kind == K::StartTag
+        && record.disposition == D::Abandoned
+        && spelling(&record.source) == "<q unfinished='A"));
+    let expansion: Vec<_> = parts
+        .iter()
+        .filter(|part| part.role == R::Value && spelling(&part.source) == "&NotEqualTilde;")
+        .map(|part| (part.start, part.end))
+        .collect();
+    assert_eq!(expansion, [(0, 1), (1, 2)]);
+    t.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+#[test]
+fn lexical_doctype_empty_identifiers_pi_recovery_and_unfinished_target_have_distinct_parts() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K, LexicalRole as R,
+    };
+    let source = HtmlSource::utf8(r#"<!DOCTYPE html PUBLIC '' ""><?xml data><?go"#);
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    while let Some(event) = t.next(&mut c, false).unwrap() {
+        event.release(&mut c).unwrap();
+    }
+    let (occurrences, parts, _) = t.evidence.lexical_observations();
+    let spelling =
+        |range: &HtmlSourceRange| source.as_utf8().unwrap()[range.start()..range.end()].to_owned();
+    let doctype = occurrences
+        .iter()
+        .position(|record| record.kind == K::Doctype)
+        .unwrap();
+    for role in [R::PublicIdentifier, R::SystemIdentifier] {
+        assert!(parts.iter().any(|part| part.occurrence == doctype
+            && part.role == role
+            && part.source.start() == part.source.end()));
+    }
+    let recovery = occurrences
+        .iter()
+        .position(|record| record.kind == K::Comment)
+        .unwrap();
+    assert_eq!(spelling(&occurrences[recovery].source), "<?xml data>");
+    let original: String = parts
+        .iter()
+        .filter(|part| part.occurrence == recovery && part.role == R::Target)
+        .map(|part| spelling(&part.source))
+        .collect();
+    assert_eq!(original, "xml");
+    let unfinished = occurrences
+        .iter()
+        .position(|record| record.disposition == D::Abandoned)
+        .unwrap();
+    assert_eq!(spelling(&occurrences[unfinished].source), "<?go");
+    let target: String = parts
+        .iter()
+        .filter(|part| part.occurrence == unfinished && part.role == R::Target)
+        .map(|part| spelling(&part.source))
+        .collect();
+    assert_eq!(target, "go");
+    assert!(parts.iter().any(|part| part.occurrence == unfinished
+        && part.role == R::EndAnchor
+        && part.source.start() == source.len()
+        && part.source.end() == source.len()));
+    t.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+#[test]
+fn lexical_abandoned_drafts_exact_and_one_short_keep_first_stop_without_rescue_dispositions() {
+    for text in ["<a x='A", "<?go A", "<?xml A>", "<!DOCTYPE h PUBLIC '' ''>"] {
+        let source = HtmlSource::utf8(text);
+        let (stop, work) = run_with_limits(&source, State::Data, None, limits());
+        assert_eq!(stop, None);
+        // Exact completion needs the final charge; one short remains sticky and
+        // the same real fixture runner verifies every nested owner is reclaimed.
+        let short = limits()
+            .into_builder()
+            .work_credits(work - 1)
+            .finish()
+            .unwrap();
+        assert!(matches!(
+            run_with_limits(&source, State::Data, None, short).0,
+            Some(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            })
+        ));
+        let exact = limits().into_builder().work_credits(work).finish().unwrap();
+        assert_eq!(run_with_limits(&source, State::Data, None, exact).0, None);
+    }
+}
+
+#[test]
+fn lexical_utf16_attribute_parts_preserve_surrogate_crlf_null_bom_pair_and_entity_atoms() {
+    use crate::construction::parser_session::provenance::{LexicalKind, LexicalRole};
+    let source = HtmlSource::utf16(DocumentString::from_utf16(vec![
+        60, 97, 32, 120, 61, 39, 0xd800, 13, 10, 0, 0xfeff, 0xd83d, 0xde42, 38, 97, 109, 112, 59,
+        39, 62,
+    ]));
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut value = false;
+    while let Some(event) = lexer.next(&mut c, false).unwrap() {
+        if let Event::Token(token) = &event
+            && let TokenKind::Tag(tag) = &token.token().kind
+        {
+            assert_eq!(tag.attributes.as_slice().len(), 1);
+            assert_eq!(
+                tag.attributes.as_slice()[0].value.value.text().code_units(),
+                [0xd800, 10, 0xfffd, 0xfeff, 0xd83d, 0xde42, 38]
+            );
+            value = true;
+        }
+        event.release(&mut c).unwrap();
+    }
+    assert!(value);
+    let (occurrences, parts, _) = lexer.evidence.lexical_observations();
+    let attribute = occurrences
+        .iter()
+        .position(|occurrence| occurrence.kind == LexicalKind::Attribute)
+        .unwrap();
+    assert_eq!(
+        (
+            occurrences[attribute].source.start(),
+            occurrences[attribute].source.end()
+        ),
+        (3, 19)
+    );
+    let atoms: Vec<_> = parts
+        .iter()
+        .filter(|part| {
+            part.occurrence == attribute && part.role == LexicalRole::Value && part.kind.is_some()
+        })
+        .map(|part| {
+            (
+                part.source.start(),
+                part.source.end(),
+                part.start,
+                part.end,
+                part.kind.unwrap(),
+            )
+        })
+        .collect();
+    assert!(parts.iter().any(|part| part.occurrence == attribute
+        && part.role == LexicalRole::EndAnchor
+        && part.source.start() == 18
+        && part.source.end() == 18
+        && part.start == 7
+        && part.end == 7));
+    assert_eq!(
+        atoms,
+        [
+            (6, 7, 0, 1, OriginKind::Literal),
+            (7, 9, 1, 2, OriginKind::Newline),
+            (9, 10, 2, 3, OriginKind::NullReplacement),
+            (10, 11, 3, 4, OriginKind::Literal),
+            (11, 13, 4, 6, OriginKind::Literal),
+            (13, 18, 6, 7, OriginKind::CharacterReference),
+        ]
+    );
+    lexer.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+#[test]
+fn lexical_comment_doctype_pi_cdata_and_raw_recovery_keep_original_field_atoms() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K, LexicalRole as R,
+    };
+    for (input, state, last, cdata, family, disposition, role, field) in [
+        (
+            "<!--A",
+            State::Data,
+            None,
+            false,
+            K::Comment,
+            D::Emitted,
+            R::Data,
+            "A",
+        ),
+        (
+            "<!DOCTYPE h PUBLIC 'A",
+            State::Data,
+            None,
+            false,
+            K::Doctype,
+            D::Emitted,
+            R::PublicIdentifier,
+            "A",
+        ),
+        (
+            "<?go A",
+            State::Data,
+            None,
+            false,
+            K::ProcessingInstruction,
+            D::Abandoned,
+            R::Target,
+            "go",
+        ),
+        (
+            "<![CDATA[A]]>",
+            State::Data,
+            None,
+            true,
+            K::Cdata,
+            D::Applied,
+            R::Data,
+            "A",
+        ),
+        (
+            "<![CDATA[A",
+            State::Data,
+            None,
+            true,
+            K::Cdata,
+            D::Abandoned,
+            R::Data,
+            "A",
+        ),
+        (
+            "</MiSs>",
+            State::Raw(Raw::Rcdata),
+            Some("title"),
+            false,
+            K::Markup,
+            D::LiteralRecovery,
+            R::Name,
+            "MiSs",
+        ),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let last = last.map(DocumentString::from);
+        let mut lexer = LexerFixture::new(&source, state, last.as_ref(), &mut c).unwrap();
+        while let Some(event) = lexer.next(&mut c, cdata).unwrap() {
+            event.release(&mut c).unwrap();
+        }
+        let (occurrences, parts, _) = lexer.evidence.lexical_observations();
+        let occurrence = occurrences
+            .iter()
+            .position(|occurrence| {
+                occurrence.kind == family && occurrence.disposition == disposition
+            })
+            .unwrap_or_else(|| panic!("literal family and disposition: {input}"));
+        assert_eq!(occurrences[occurrence].source.start(), 0);
+        let original: String = parts
+            .iter()
+            .filter(|part| {
+                part.occurrence == occurrence && part.role == role && part.kind.is_some()
+            })
+            .map(|part| &input[part.source.start()..part.source.end()])
+            .collect();
+        assert_eq!(original, field, "original field atoms: {input}");
+        lexer.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+#[test]
+fn lexical_cdata_chunk_coordinates_accumulate_exact_actual_output_units() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition, LexicalKind, LexicalRole,
+    };
+    let source = HtmlSource::utf8("<![CDATA[A🙂\r\nB]]>");
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut actual = Vec::new();
+    while let Some(event) = lexer.next(&mut c, true).unwrap() {
+        if let Event::Token(token) = &event
+            && let TokenKind::Text(text) = &token.token().kind
+        {
+            actual.extend_from_slice(text.value.text().code_units());
+        }
+        event.release(&mut c).unwrap();
+    }
+    assert_eq!(actual, [65, 0xd83d, 0xde42, 10, 66]);
+    let (occurrences, parts, _) = lexer.evidence.lexical_observations();
+    let occurrence = occurrences
+        .iter()
+        .position(|occurrence| {
+            occurrence.kind == LexicalKind::Cdata
+                && occurrence.disposition == LexicalDisposition::Applied
+        })
+        .unwrap();
+    assert_eq!(
+        (
+            occurrences[occurrence].source.start(),
+            occurrences[occurrence].source.end()
+        ),
+        (0, 20)
+    );
+    let atoms: Vec<_> = parts
+        .iter()
+        .filter(|part| {
+            part.occurrence == occurrence && part.role == LexicalRole::Data && part.kind.is_some()
+        })
+        .map(|part| {
+            (
+                part.source.start(),
+                part.source.end(),
+                part.start,
+                part.end,
+                part.kind.unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        atoms,
+        [
+            (9, 10, 0, 1, OriginKind::Literal),
+            (10, 14, 1, 3, OriginKind::Literal),
+            (14, 16, 3, 4, OriginKind::Newline),
+            (16, 17, 4, 5, OriginKind::Literal),
+        ]
+    );
+    lexer.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+// Actual lexer outputs and original metadata are observed before releasing the
+// real owners. The assertions below run after release, including failing REDs.
+struct LexicalDelimiterObservation {
+    value: Vec<u16>,
+    targets: Vec<Vec<u16>>,
+    syntax: Vec<(usize, usize)>,
+    data: Vec<(usize, usize, usize, usize, OriginKind)>,
+    envelope: (usize, usize),
+    disposition: crate::construction::parser_session::provenance::LexicalDisposition,
+}
+
+fn lexical_delimiter_observation(
+    input: &str,
+    cdata: bool,
+    family: crate::construction::parser_session::provenance::LexicalKind,
+) -> LexicalDelimiterObservation {
+    use crate::construction::parser_session::provenance::LexicalRole;
+    let source = HtmlSource::utf8(input);
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut value = Vec::new();
+    let mut targets = Vec::new();
+    while let Some(event) = lexer.next(&mut c, cdata).unwrap() {
+        if let Event::Token(token) = &event {
+            match &token.token().kind {
+                TokenKind::Text(text) | TokenKind::Comment(text) => {
+                    value.extend_from_slice(text.value.text().code_units());
+                }
+                TokenKind::ProcessingInstruction { target, data } => {
+                    targets.push(target.value.text().code_units().to_vec());
+                    value.extend_from_slice(data.value.text().code_units());
+                }
+                _ => {}
+            }
+        }
+        event.release(&mut c).unwrap();
+    }
+    let (occurrences, parts, _) = lexer.evidence.lexical_observations();
+    let observed = occurrences
+        .iter()
+        .enumerate()
+        .find(|(_, row)| row.kind == family)
+        .map(|(occurrence, row)| LexicalDelimiterObservation {
+            value,
+            targets,
+            syntax: parts
+                .iter()
+                .filter(|part| part.occurrence == occurrence && part.role == LexicalRole::Syntax)
+                .map(|part| (part.source.start(), part.source.end()))
+                .collect(),
+            data: parts
+                .iter()
+                .filter(|part| part.occurrence == occurrence && part.role == LexicalRole::Data)
+                .filter_map(|part| {
+                    part.kind.map(|kind| {
+                        (
+                            part.source.start(),
+                            part.source.end(),
+                            part.start,
+                            part.end,
+                            kind,
+                        )
+                    })
+                })
+                .collect(),
+            envelope: (row.source.start(), row.source.end()),
+            disposition: row.disposition,
+        });
+    lexer.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    observed.expect("the literal must retain its actual occurrence family")
+}
+
+fn lexical_delimiter_syntax_bytes(
+    observed: &LexicalDelimiterObservation,
+    data_start: usize,
+) -> Vec<usize> {
+    // Segmented parts and a single complete descriptor are both valid; the
+    // contract is exact source coverage, independently of storage segmentation.
+    let mut bytes: Vec<_> = observed
+        .syntax
+        .iter()
+        .flat_map(|(start, end)| *start..*end)
+        .filter(|offset| *offset >= data_start)
+        .collect();
+    bytes.sort_unstable();
+    bytes.dedup();
+    bytes
+}
+
+#[test]
+fn lexical_closing_delimiter_cdata_keeps_both_brackets_and_greater_than_separate_from_data() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K,
+    };
+    let observed = lexical_delimiter_observation("<![CDATA[A]]>", true, K::Cdata);
+    assert_eq!(observed.value, units("A"));
+    assert!(observed.targets.is_empty());
+    assert_eq!(observed.envelope, (0, 13));
+    assert_eq!(observed.disposition, D::Applied);
+    assert_eq!(observed.data, [(9, 10, 0, 1, OriginKind::Literal)]);
+    assert_eq!(
+        lexical_delimiter_syntax_bytes(&observed, 9),
+        [10, 11, 12],
+        "closing ]]>, distinct from data A9..10 and the whole envelope0..13"
+    );
+}
+
+#[test]
+fn lexical_closing_delimiter_comment_keeps_both_dashes_and_greater_than_separate_from_data() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K,
+    };
+    let observed = lexical_delimiter_observation("<!--A-->", false, K::Comment);
+    assert_eq!(observed.value, units("A"));
+    assert!(observed.targets.is_empty());
+    assert_eq!(observed.envelope, (0, 8));
+    assert_eq!(observed.disposition, D::Emitted);
+    assert_eq!(observed.data, [(4, 5, 0, 1, OriginKind::Literal)]);
+    assert_eq!(
+        lexical_delimiter_syntax_bytes(&observed, 4),
+        [5, 6, 7],
+        "closing --> must retain its first dash5..6"
+    );
+}
+
+#[test]
+fn lexical_closing_delimiter_pi_keeps_question_mark_and_greater_than_separate_from_data() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K,
+    };
+    let observed = lexical_delimiter_observation("<?go A?>", false, K::ProcessingInstruction);
+    assert_eq!(observed.value, units("A"));
+    assert_eq!(observed.targets, [units("go")]);
+    assert_eq!(observed.envelope, (0, 8));
+    assert_eq!(observed.disposition, D::Emitted);
+    assert_eq!(observed.data, [(5, 6, 0, 1, OriginKind::Literal)]);
+    assert_eq!(
+        lexical_delimiter_syntax_bytes(&observed, 5),
+        [6, 7],
+        "the selected PI close ?> includes the remembered question mark"
+    );
+}
+
+#[test]
+fn lexical_closing_delimiter_pi_bare_greater_than_is_retained_as_actual_selected_close() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K,
+    };
+    let observed = lexical_delimiter_observation("<?go A>", false, K::ProcessingInstruction);
+    assert_eq!(observed.value, units("A"));
+    assert_eq!(observed.targets, [units("go")]);
+    assert_eq!(observed.envelope, (0, 7));
+    assert_eq!(observed.disposition, D::Emitted);
+    assert_eq!(observed.data, [(5, 6, 0, 1, OriginKind::Literal)]);
+    assert_eq!(
+        lexical_delimiter_syntax_bytes(&observed, 5),
+        [6],
+        "the pinned PI data state emits on the actual bare >"
+    );
+}
+
+#[test]
+fn lexical_closing_delimiter_fallback_data_and_extra_brackets_are_not_relabelled_as_close() {
+    use crate::construction::parser_session::provenance::LexicalKind as K;
+    // Expected native values and literal final delimiter positions follow the
+    // selected state algorithms, not the producer's current metadata output.
+    for (input, cdata, family, native, data_start, closing) in [
+        ("<![CDATA[A]B]]>", true, K::Cdata, "A]B", 9, 12..15),
+        ("<![CDATA[A]]B]]>", true, K::Cdata, "A]]B", 9, 13..16),
+        ("<![CDATA[A]]]>", true, K::Cdata, "A]", 9, 11..14),
+        ("<![CDATA[A]]]]>", true, K::Cdata, "A]]", 9, 12..15),
+        ("<!--A-B-->", false, K::Comment, "A-B", 4, 7..10),
+        ("<!--A--B-->", false, K::Comment, "A--B", 4, 8..11),
+        ("<!--A---->", false, K::Comment, "A--", 4, 7..10),
+        ("<!--A--!B-->", false, K::Comment, "A--!B", 4, 9..12),
+        ("<!--A--!>", false, K::Comment, "A", 4, 5..9),
+        (
+            "<?go A?B?>",
+            false,
+            K::ProcessingInstruction,
+            "A?B",
+            5,
+            8..10,
+        ),
+        (
+            "<?go A??B?>",
+            false,
+            K::ProcessingInstruction,
+            "A??B",
+            5,
+            9..11,
+        ),
+    ] {
+        let observed = lexical_delimiter_observation(input, cdata, family);
+        assert_eq!(
+            observed.value,
+            units(native),
+            "actual native payload: {input}"
+        );
+        assert_eq!(observed.envelope, (0, input.len()));
+        assert_eq!(
+            lexical_delimiter_syntax_bytes(&observed, data_start),
+            closing.collect::<Vec<_>>(),
+            "only the actual final delimiter is closing syntax: {input}"
+        );
+    }
+}
+
+#[test]
+fn lexical_closing_delimiter_unterminated_eof_keeps_emitted_brackets_as_data_and_no_fake_close() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition as D, LexicalKind as K,
+    };
+    for (input, native) in [
+        ("<![CDATA[A", "A"),
+        ("<![CDATA[A]", "A]"),
+        ("<![CDATA[A]]", "A]]"),
+        ("<![CDATA[A]]]", "A]]]"),
+    ] {
+        let observed = lexical_delimiter_observation(input, true, K::Cdata);
+        assert_eq!(
+            observed.value,
+            units(native),
+            "EOF emits its pending bracket data"
+        );
+        assert_eq!(observed.envelope, (0, input.len()));
+        assert_eq!(observed.disposition, D::Abandoned);
+        assert!(
+            lexical_delimiter_syntax_bytes(&observed, 9).is_empty(),
+            "EOF bracket output is data, not a fabricated closing delimiter: {input}"
+        );
+    }
+    // An unterminated comment emits its value, while an unterminated PI is
+    // abandoned. Neither has a > nor a synthetic closing Syntax/EOF point.
+    for (input, family, native, disposition) in [
+        ("<!--A--", K::Comment, "A", D::Emitted),
+        ("<?go A?", K::ProcessingInstruction, "", D::Abandoned),
+    ] {
+        let observed = lexical_delimiter_observation(input, false, family);
+        assert_eq!(observed.value, units(native));
+        assert_eq!(observed.envelope, (0, input.len()));
+        assert_eq!(observed.disposition, disposition);
+        assert!(
+            observed
+                .syntax
+                .iter()
+                .all(|(start, end)| *start < *end && *end <= input.len())
+        );
+    }
+}
+
+fn prepare_actual_delimiter_close(t: &mut LexerFixture<'_>, c: &mut ParseControl, state: State) {
+    // Real state transitions establish the remembered punctuation. No state or
+    // source span is supplied by this test; the next real input must be >.
+    let mut steps = 0;
+    while t.state != state {
+        t.step(c, true).unwrap();
+        steps += 1;
+        assert!(steps < 32);
+    }
+    if state == State::PiData {
+        // The target transition reconsumes A into PiData; process that actual
+        // data character before taking the next closing input.
+        t.step(c, true).unwrap();
+    }
+    assert_eq!(t.read(c).unwrap(), Some(0x3e));
+}
+#[test]
+fn lexical_close_admission_exact_each_short_cancel_and_record_cap_keep_actual_pending_owners() {
+    use crate::construction::parser_session::provenance::LexicalRole;
+    for (input, state, start, end) in [
+        ("<![CDATA[A]]>", State::CdataEnd, 10, 13),
+        ("<!--A-->", State::CommentEnd, 5, 8),
+        ("<?go A?>", State::PiQuestionable, 6, 8),
+        ("<?go A>", State::PiData, 6, 7),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
+        baseline.admit_source(&source).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut baseline).unwrap();
+        prepare_actual_delimiter_close(&mut t, &mut baseline, state);
+        // PiData is reached before A, so consume its actual data step and read
+        // the close before observing the specific closing producer.
+        if t.current.start() != end - 1 {
+            unreachable!("the prepared close must be the final greater-than");
+        }
+        let entry = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let entries = baseline
+            .usage()
+            .resource(HtmlParseResource::SourceMapEntries)
+            .current;
+        let before = t.evidence.lexical_observations().1.len();
+        let pending = t.pending_len;
+        let remembered = if state == State::PiData {
+            t.current.start()
+        } else {
+            t.pending_syntax.start()
+        };
+        assert_eq!(remembered, start);
+        t.lexer
+            .retain_lexical_close(remembered, &mut baseline, &mut t.evidence)
+            .unwrap();
+        let exact = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let part = t.evidence.lexical_observations().1.last().unwrap();
+        let actual = (
+            part.role,
+            part.source.start(),
+            part.source.end(),
+            part.start,
+            part.end,
+        );
+        let unchanged = (t.state, t.pending_len);
+        let after = t.evidence.lexical_observations().1.len();
+        t.release(&mut baseline).unwrap();
+        assert_storage_released(&baseline);
+        assert_eq!(actual, (LexicalRole::Syntax, start, end, 0, 0));
+        assert_eq!(after, before + 1);
+        assert_eq!(unchanged, (state, pending));
+
+        // Every real admission boundary in this producer, plus exact success.
+        // This observes actual costs and never changes a production fee.
+        for cap in entry..=exact {
+            let caps = limits().into_builder().work_credits(cap).finish().unwrap();
+            let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+            c.admit_source(&source).unwrap();
+            let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+            prepare_actual_delimiter_close(&mut t, &mut c, state);
+            let before = t.evidence.lexical_observations().1.len();
+            let pending = t.pending_len;
+            let remembered = if state == State::PiData {
+                t.current.start()
+            } else {
+                t.pending_syntax.start()
+            };
+            let result = t
+                .lexer
+                .retain_lexical_close(remembered, &mut c, &mut t.evidence);
+            if cap == exact {
+                assert_eq!(result, Ok(()));
+                assert_eq!(t.evidence.lexical_observations().1.len(), before + 1);
+            } else {
+                let stop = result.unwrap_err();
+                assert!(matches!(
+                    stop,
+                    ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    }
+                ));
+                assert_eq!(t.evidence.lexical_observations().1.len(), before);
+                assert!(matches!(t.next(&mut c, true), Err(next) if next == stop));
+                assert_eq!(c.stop(), Some(stop));
+            }
+            assert_eq!((t.state, t.pending_len), (state, pending));
+            t.release(&mut c).unwrap();
+            assert_storage_released(&c);
+        }
+        // A close requires exactly one new logical lexical part. Refusing it
+        // or cancellation retains the existing fields and pending events.
+        for cancel in [false, true] {
+            let caps = if cancel {
+                limits()
+            } else {
+                limits()
+                    .into_builder()
+                    .source_map_entries(entries)
+                    .finish()
+                    .unwrap()
+            };
+            let cancellation = HtmlParseCancellation::new();
+            let mut c = ParseControl::new(caps, cancellation.clone());
+            c.admit_source(&source).unwrap();
+            let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+            prepare_actual_delimiter_close(&mut t, &mut c, state);
+            let before = t.evidence.lexical_observations().1.len();
+            let pending = t.pending_len;
+            if cancel {
+                cancellation.cancel();
+            }
+            let remembered = if state == State::PiData {
+                t.current.start()
+            } else {
+                t.pending_syntax.start()
+            };
+            let stop = t
+                .lexer
+                .retain_lexical_close(remembered, &mut c, &mut t.evidence)
+                .unwrap_err();
+            if cancel {
+                assert_eq!(stop, ParseStop::Cancelled);
+            } else {
+                assert!(matches!(
+                    stop,
+                    ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::SourceMapEntries,
+                        ..
+                    }
+                ));
+            }
+            assert_eq!(t.evidence.lexical_observations().1.len(), before);
+            assert!(matches!(t.next(&mut c, true), Err(next) if next == stop));
+            assert_eq!((t.state, t.pending_len), (state, pending));
+            t.release(&mut c).unwrap();
+            assert_storage_released(&c);
+        }
     }
 }

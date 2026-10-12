@@ -132,6 +132,7 @@ pub(crate) enum TagKind {
     End,
 }
 pub(crate) struct Attribute {
+    pub(crate) lexical: Option<crate::construction::parser_session::provenance::LexicalRef>,
     pub(crate) name: Text,
     pub(crate) value: Text,
     pub(crate) source: HtmlSourceRange,
@@ -164,6 +165,7 @@ pub(crate) enum TokenKind {
     Eof,
 }
 pub(crate) struct Token {
+    pub(crate) lexical: Option<crate::construction::parser_session::provenance::LexicalRef>,
     pub(crate) kind: TokenKind,
     pub(crate) source: HtmlSourceRange,
 }

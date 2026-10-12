@@ -263,6 +263,36 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
 }
 impl CompletedStandaloneDocument<'_> {
+    /// Borrows only the proved complete immutable projection. Preparing it is
+    /// a separate parse-ledger operation; this lender never resumes that work.
+    pub(crate) fn associations(
+        &self,
+    ) -> Result<crate::construction::parser_session::provenance::AssociationView<'_>, StandaloneError>
+    {
+        if let Some(frozen) = &self.frozen {
+            return frozen
+                .retained_evidence()
+                .and_then(|evidence| evidence.associations())
+                .map_err(frozen_error);
+        }
+        self.driver
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .head
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .before
+            .kernel
+            .session
+            .retained_evidence()
+            .and_then(|evidence| evidence.associations())
+            .map_err(KernelError::from)
+            .map_err(HeadError::from)
+            .map_err(StandaloneError::from)
+    }
     pub(crate) fn prepare_native_associations(&mut self) -> Result<(), StandaloneError> {
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         driver.control.require_source(driver.source)?;
@@ -940,7 +970,214 @@ mod tests {
     use crate::construction::parser_session::native_view::{
         NativeFragmentOwner, NativeKind, NativeString, NativeView,
     };
-    use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
+    use crate::{DocumentString, HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
+
+    #[test]
+    fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields() {
+        use crate::construction::parser_session::provenance::{
+            AssociationRelation, LexicalDisposition, LexicalKind, LexicalRole, NativeDestination,
+            OmissionKind,
+        };
+        let source = HtmlSource::utf8(
+            " \r\n<!doctype html><HTML A='x&NotEqualTilde;' a=discard empty=\"\"><body><textarea>\nX</textarea>\0</bogus></body></html>",
+        );
+        let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(100));
+        let mut completed = frozen_completed(&request);
+        assert!(completed.associations().is_err());
+        completed.prepare_native_associations().unwrap();
+        let view = completed.associations().unwrap();
+        let mut duplicate = false;
+        let mut ignored = false;
+        let mut initial_lf = false;
+        let mut null = false;
+        let mut leading = false;
+        let mut entity = 0;
+        let mut quotes = 0;
+        for index in 0..view.len() {
+            let row = view.row(index).unwrap();
+            view.cause(row.cause).unwrap();
+            match row.destination {
+                NativeDestination::Lexical {
+                    occurrence,
+                    part: None,
+                } => {
+                    assert_eq!(row.relation, AssociationRelation::LexicalEnvelope);
+                    let occurrence = view.lexical_occurrence(occurrence).unwrap();
+                    let raw = request.source().text(&occurrence.source).unwrap();
+                    if raw == DocumentString::from("a=discard") {
+                        assert_eq!(occurrence.kind, LexicalKind::Attribute);
+                        assert_eq!(
+                            occurrence.disposition,
+                            LexicalDisposition::DuplicateAttribute
+                        );
+                        assert_eq!(
+                            view.lexical_occurrence(occurrence.parent.unwrap())
+                                .unwrap()
+                                .kind,
+                            LexicalKind::StartTag
+                        );
+                        duplicate = true;
+                    }
+                    if raw == DocumentString::from("</bogus>") {
+                        assert_eq!(occurrence.disposition, LexicalDisposition::Ignored);
+                        ignored = true;
+                    }
+                }
+                NativeDestination::Lexical {
+                    part: Some(part), ..
+                } => {
+                    let part = view.lexical_part(part).unwrap();
+                    if matches!(
+                        part.role,
+                        LexicalRole::OpeningQuote(_) | LexicalRole::ClosingQuote(_)
+                    ) {
+                        quotes += 1;
+                    }
+                    if part.kind
+                        == Some(crate::parser::tokenizer::token::OriginKind::CharacterReference)
+                    {
+                        assert_eq!(
+                            request.source().text(&part.source).unwrap(),
+                            DocumentString::from("&NotEqualTilde;")
+                        );
+                        assert!(matches!((part.start, part.end), (1, 2) | (2, 3)));
+                        entity += 1;
+                    }
+                }
+                NativeDestination::Cause(index) => {
+                    assert_eq!(row.relation, AssociationRelation::Cause);
+                    assert_eq!(index, row.cause);
+                    view.cause(index).unwrap();
+                }
+                NativeDestination::Omission(index) => {
+                    assert_eq!(row.relation, AssociationRelation::Omission);
+                    let omission = view.omission(index).unwrap();
+                    match omission.kind {
+                        OmissionKind::LeadingWhitespace => {
+                            assert!(matches!(omission.rule, crate::construction::parser_session::provenance::ParserRule::Prologue(_)));
+                            leading = true;
+                        }
+                        OmissionKind::InitialLf => {
+                            assert_eq!(
+                                request.source().text(&omission.source).unwrap(),
+                                DocumentString::from("\n")
+                            );
+                            initial_lf = true;
+                        }
+                        OmissionKind::NullInBody => {
+                            assert_eq!(
+                                request.source().text(&omission.source).unwrap(),
+                                DocumentString::from_utf16(vec![0])
+                            );
+                            null = true;
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(duplicate && ignored && initial_lf && null && leading);
+        assert_eq!(entity, 2);
+        assert_eq!(quotes, 4);
+        assert!(view.group(0).is_some());
+        let query = request.source().range(0, request.source().len()).unwrap();
+        let mut reverse = view.reverse(&query, None).unwrap();
+        let mut rows = 0;
+        loop {
+            match reverse.advance() {
+                crate::construction::parser_session::provenance::reverse::ReverseStep::Match(_)
+                | crate::construction::parser_session::provenance::reverse::ReverseStep::Skipped => {
+                    rows += 1
+                }
+                crate::construction::parser_session::provenance::reverse::ReverseStep::Complete => {
+                    break;
+                }
+                _ => panic!("uncancelled readback"),
+            }
+        }
+        assert_eq!(rows, view.len());
+        let point = request
+            .source()
+            .range(request.source().len(), request.source().len())
+            .unwrap();
+        let mut eof = view.reverse(&point, None).unwrap();
+        let mut anchor = 0;
+        loop {
+            match eof.advance() {
+                crate::construction::parser_session::provenance::reverse::ReverseStep::Match(
+                    row,
+                ) => {
+                    if matches!(row.destination, NativeDestination::LexicalEnd) {
+                        assert_eq!(row.relation, AssociationRelation::LexicalAnchor);
+                        assert_eq!(row.source.as_ref().unwrap().start(), request.source().len());
+                        assert_eq!(row.source.as_ref().unwrap().end(), request.source().len());
+                        anchor += 1;
+                    }
+                }
+                crate::construction::parser_session::provenance::reverse::ReverseStep::Skipped => {}
+                crate::construction::parser_session::provenance::reverse::ReverseStep::Complete => {
+                    break;
+                }
+                _ => panic!("uncancelled EOF observation"),
+            }
+        }
+        assert_eq!(anchor, 1);
+        completed.release().unwrap();
+        // release consumes the actual completed owner; no borrowed view remains.
+        assert!(completed.driver.is_none());
+    }
+
+    #[test]
+    fn completed_lexical_already_present_attributes_and_retired_history_keep_exact_origins() {
+        use crate::construction::parser_session::provenance::{
+            AssociationRelation as R, LexicalDisposition as D, NativeDestination as N,
+        };
+        let source = HtmlSource::utf8(
+            "<!doctype html><html a=first><body>x&amp;y<html A=discard b=kept><p id=p>A<b>B</b>C</p></body></html>",
+        );
+        let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(100));
+        let mut completed = frozen_completed(&request);
+        completed.prepare_native_associations().unwrap();
+        let view = completed.associations().unwrap();
+        let mut ignored = false;
+        let mut retired = false;
+        let mut original = false;
+        let mut trigger = false;
+        for index in 0..view.len() {
+            let row = view.row(index).unwrap();
+            if let N::Lexical {
+                occurrence,
+                part: None,
+            } = row.destination
+            {
+                let occurrence = view.lexical_occurrence(occurrence).unwrap();
+                if request.source().text(&occurrence.source).unwrap()
+                    == DocumentString::from("A=discard")
+                {
+                    assert_eq!(occurrence.disposition, D::AlreadyPresentAttribute);
+                    ignored = true;
+                }
+            }
+            original |= row.relation == R::Original && row.source.is_some();
+            trigger |= row.relation == R::Trigger && row.source.is_some();
+        }
+        for index in 0..view.len() {
+            let row = view.row(index).unwrap();
+            let cause = view.cause(row.cause).unwrap();
+            if let Some(group) = cause.original {
+                let group = view.group(group).unwrap();
+                if let Some(retirement) = group.retirement {
+                    retired = true;
+                    assert!(group.units > 0);
+                    view.cause(group.cause).unwrap();
+                    view.cause(retirement).unwrap();
+                }
+            }
+        }
+        assert!(ignored && retired && original && trigger);
+        completed.release().unwrap();
+    }
 
     fn frozen_completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'_> {
         let mut entry = super::super::entry::OrdinaryDocumentEntry::new(request);

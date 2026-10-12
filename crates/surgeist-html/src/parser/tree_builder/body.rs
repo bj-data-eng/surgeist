@@ -176,11 +176,25 @@ impl HeadState<'_> {
         self.frameset_ok = value;
         Ok(())
     }
-    pub(super) fn ignored_text(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+    pub(super) fn ignored_text(
+        &mut self,
+        kind: crate::construction::parser_session::provenance::OmissionKind,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         if self.whitespace_pending.is_none() {
             return Ok(());
         }
+        let text = self
+            .whitespace_pending
+            .as_ref()
+            .expect("retained omitted input");
+        self.before.kernel.session.evidence(c)?.retain_omission(
+            c,
+            text.origins.as_slice(),
+            kind,
+            crate::construction::parser_session::provenance::ParserRule::Tree(self.mode),
+        )?;
         write(size_of::<Option<Text>>(), 1, c)?;
         let text = self
             .whitespace_pending
@@ -211,7 +225,10 @@ impl HeadState<'_> {
         write(size_of::<Option<Text>>(), 1, c)?;
         self.whitespace_pending = split_first_lf(c, input)?;
         let empty = input.is_none();
-        self.ignored_text(c)?;
+        self.ignored_text(
+            crate::construction::parser_session::provenance::OmissionKind::InitialLf,
+            c,
+        )?;
         Ok(empty)
     }
     fn body_text(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
@@ -259,7 +276,10 @@ impl HeadState<'_> {
                     c,
                 )?;
                 self.whitespace_pending = self.body_run.take().map(|run| run.text);
-                self.ignored_text(c)?;
+                self.ignored_text(
+                    crate::construction::parser_session::provenance::OmissionKind::NullInBody,
+                    c,
+                )?;
             } else {
                 let other = kind == BodyTextKind::Other;
                 write(

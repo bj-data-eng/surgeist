@@ -1724,9 +1724,27 @@ fn prologue_stack_limit_keeps_created_element_payload_owned_until_terminal_clean
         crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
             .unwrap();
     let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
-    let mut first = Some(next_token(&mut tokenizer, &mut c));
+    let mut first = Some({
+        let evidence = engine.kernel().unwrap().session.evidence(&mut c).unwrap();
+        let event = tokenizer.next_in(&mut c, false, evidence).unwrap().unwrap();
+        match event {
+            crate::parser::tokenizer::token::Event::Token(value) => {
+                value.into_token(&mut c).unwrap()
+            }
+            _ => panic!("literal prologue token"),
+        }
+    });
     engine.process(&mut first, &mut c).unwrap();
-    let mut input = Some(next_token(&mut tokenizer, &mut c));
+    let mut input = Some({
+        let evidence = engine.kernel().unwrap().session.evidence(&mut c).unwrap();
+        let event = tokenizer.next_in(&mut c, false, evidence).unwrap().unwrap();
+        match event {
+            crate::parser::tokenizer::token::Event::Token(value) => {
+                value.into_token(&mut c).unwrap()
+            }
+            _ => panic!("literal prologue token"),
+        }
+    });
     assert!(matches!(
         engine.process(&mut input, &mut c),
         Err(PrologueError::Kernel(KernelError::Stop(

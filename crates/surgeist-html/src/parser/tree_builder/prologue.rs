@@ -80,6 +80,7 @@ pub(super) enum Payload {
     Eof,
 }
 pub(super) struct PendingToken {
+    pub(super) lexical: Option<crate::construction::parser_session::provenance::LexicalRef>,
     pub(super) source: HtmlSourceRange,
     pub(super) payload: Payload,
     pub(super) family: crate::construction::parser_session::evidence::DiagnosticToken,
@@ -98,6 +99,7 @@ impl PendingToken {
             source: token.source,
             payload,
             family,
+            lexical: token.lexical,
         }
     }
     pub(super) fn into_token(self) -> Option<Token> {
@@ -114,6 +116,7 @@ impl PendingToken {
         kind.map(|kind| Token {
             kind,
             source: self.source,
+            lexical: self.lexical,
         })
     }
     pub(super) fn release(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
@@ -255,7 +258,7 @@ impl<'a> DocumentPrologue<'a> {
         }
         Ok(())
     }
-    fn kernel(&mut self) -> Result<&mut LocationKernel, PrologueError> {
+    pub(super) fn kernel(&mut self) -> Result<&mut LocationKernel, PrologueError> {
         self.kernel.as_mut().ok_or(PrologueError::Consumed)
     }
     fn set_mode(&mut self, mode: PrologueMode, c: &mut ParseControl) -> Result<(), PrologueError> {
@@ -284,11 +287,38 @@ impl<'a> DocumentPrologue<'a> {
     }
 
     fn finish_pending(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
+        if let Some(pending) = &self.pending {
+            self.kernel
+                .as_mut()
+                .ok_or(PrologueError::Consumed)?
+                .session
+                .evidence(c)?
+                .lexical_disposition(c, pending.lexical.as_ref(), false)?;
+        }
         write(size_of::<Option<PendingToken>>(), 1, c)?;
         self.pending = None;
         Ok(())
     }
     fn discard(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
+        if let Some(pending) = &self.pending {
+            let evidence = self
+                .kernel
+                .as_mut()
+                .ok_or(PrologueError::Consumed)?
+                .session
+                .evidence(c)?;
+            evidence.lexical_disposition(c, pending.lexical.as_ref(), true)?;
+            if let Payload::Text(Some(text)) = &pending.payload {
+                evidence.retain_omission(
+                    c,
+                    text.origins.as_slice(),
+                    crate::construction::parser_session::provenance::OmissionKind::IgnoredText,
+                    crate::construction::parser_session::provenance::ParserRule::Prologue(
+                        self.mode,
+                    ),
+                )?;
+            }
+        }
         self.pending
             .as_mut()
             .ok_or(PrologueError::MissingInput)?
@@ -307,7 +337,8 @@ impl<'a> DocumentPrologue<'a> {
         };
         write(size_of::<Option<Text>>(), 1, c)?;
         self.whitespace_pending = split_leading_ascii_whitespace(c, input)?;
-        if self.whitespace_pending.is_some() {
+        if let Some(prefix) = &self.whitespace_pending {
+            self.kernel.as_mut().ok_or(PrologueError::Consumed)?.session.evidence(c)?.retain_omission(c, prefix.origins.as_slice(), crate::construction::parser_session::provenance::OmissionKind::LeadingWhitespace, crate::construction::parser_session::provenance::ParserRule::Prologue(self.mode))?;
             write(size_of::<Option<Text>>(), 1, c)?;
             let prefix = self.whitespace_pending.take().expect("retained prefix");
             if let Err((stop, prefix)) = self

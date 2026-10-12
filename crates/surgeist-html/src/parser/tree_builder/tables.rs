@@ -365,6 +365,16 @@ impl HeadState<'_> {
                     c,
                 )?;
                 self.whitespace_pending = self.body_run.take().map(|run| run.text);
+                let text = self
+                    .whitespace_pending
+                    .as_ref()
+                    .ok_or(HeadError::MissingInput)?;
+                self.before.kernel.session.evidence(c)?.retain_omission(
+                    c,
+                    text.origins.as_slice(),
+                    crate::construction::parser_session::provenance::OmissionKind::NullInTable,
+                    crate::construction::parser_session::provenance::ParserRule::Tree(mode),
+                )?;
                 write(size_of::<Option<Text>>(), 1, c)?;
                 self.whitespace_pending
                     .take()

@@ -3027,10 +3027,10 @@ mod tests {
     #[test]
     fn saved_is_copy_has_source_derived_map_and_managed_coexistence_caps() {
         for (maps, units, resource, success, taken) in [
-            (12, 1000, HtmlParseResource::SourceMapEntries, false, false),
-            (13, 1000, HtmlParseResource::SourceMapEntries, false, true),
-            (20, 1000, HtmlParseResource::SourceMapEntries, false, true),
-            (21, 1000, HtmlParseResource::SourceMapEntries, true, true),
+            (33, 1000, HtmlParseResource::SourceMapEntries, false, false),
+            (34, 1000, HtmlParseResource::SourceMapEntries, false, true),
+            (41, 1000, HtmlParseResource::SourceMapEntries, false, true),
+            (42, 1000, HtmlParseResource::SourceMapEntries, true, true),
             (1000, 34, HtmlParseResource::ManagedUtf16Units, false, false),
             (1000, 35, HtmlParseResource::ManagedUtf16Units, false, true),
             (1000, 70, HtmlParseResource::ManagedUtf16Units, false, true),
@@ -3083,16 +3083,21 @@ mod tests {
             let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             let mut input = lexical_tag(&mut lexer, &mut c);
             // Name div(3), name is(2), decoded A&B(3) own eight
-            // original map entries. Saved is adds three maps, one cause and
-            // one group header before take: 13 coexist. The final five fields
-            // each retain one cause/header, hence 11 maps + 10 fixed entries=21.
+            // original map entries. Lexical retention adds two occurrence
+            // headers, their two causes and seventeen parts: tag <, space, >
+            // and three name atoms; attribute two name atoms, three value
+            // atoms, equals and two quotes, plus two empty value boundary
+            // anchors and the closing end anchor. Thus 29 coexist before creation.
+            // Saved is adds three maps, one cause and one group header before
+            // take: 34 coexist. Final five fields add ten fixed entries,
+            // giving the old 21 creation entries plus 21 lexical entries=42.
             // Managed strings: root html+URI=32; saved is=3 BEFORE take;
             // div+URI+is+A&B=36 after take, hence final 71.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::SourceMapEntries)
                     .current,
-                8
+                29
             );
             assert_eq!(
                 c.usage()
@@ -3114,7 +3119,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .current,
-                    21
+                    42
                 );
                 assert_eq!(
                     c.usage()

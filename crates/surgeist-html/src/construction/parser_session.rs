@@ -492,7 +492,7 @@ enum AttributeStorage {
         element: Option<usize>,
     },
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum StringLocation {
     Detached,
     Text(usize),
@@ -2642,6 +2642,18 @@ impl SessionStorage {
                     .expect("one real decision per attribute");
                 let attribute = attributes.try_pop(control)?.expect("actual attribute");
                 if !keep {
+                    let retained = (|| {
+                        if let Some(evidence) = self.evidence.as_mut() {
+                            evidence
+                                .lexical_attribute_ignored(control, attribute.lexical.as_ref())?;
+                        }
+                        Ok::<_, SessionError>(())
+                    })();
+                    if let Err(error) = retained {
+                        attribute.name.release(control)?;
+                        attribute.value.release(control)?;
+                        return Err(error);
+                    }
                     attribute.name.release(control)?;
                     attribute.value.release(control)?;
                     continue;
@@ -6762,6 +6774,9 @@ fn copy_formatting_tag(control: &mut ParseControl, tag: &Tag) -> Result<Tag, Ses
                 return Err(error);
             }
             let attribute = crate::parser::tokenizer::token::Attribute {
+                // A copied formatting payload has existing original field
+                // lineage; it is not a second consumed lexical occurrence.
+                lexical: None,
                 name,
                 value,
                 source: original.source.clone(),
@@ -9973,7 +9988,10 @@ mod tests {
         // Independent replay retains them and needs 514 new origin records.
         // Native retention additionally owns four groups and four explicit
         // source-independent field causes (name, URI, attribute name/value).
-        for cap in [1035, 1036] {
+        // Keep the real lexical owner across replay: two occurrence/cause pairs
+        // and 523 actual delimiter/field parts add 527 retained source rows.
+        // The retained lexer last-start b adds one buffered unit (514 -> 515).
+        for cap in [1562, 1563] {
             let source = crate::HtmlSource::utf8(format!("<b v='{}'>", "x".repeat(512)));
             let mut c = ParseControl::new(
                 limits()
@@ -9992,7 +10010,6 @@ mod tests {
             let parent = session.root(&mut c).unwrap();
             let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
-            tokenizer.release(&mut c).unwrap();
             let mut creation = session
                 .retain_formatting_creation(&mut c, &mut input, range)
                 .unwrap();
@@ -10000,16 +10017,16 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::SourceMapEntries)
                     .current,
-                514
+                1041
             );
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
-            if cap == 1035 {
+            if cap == 1562 {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::SourceMapEntries,
-                        limit: 1035,
-                        current: 1035,
+                        limit: 1562,
+                        current: 1562,
                         requested_delta: 1
                     }))
                 ));
@@ -10017,13 +10034,13 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .current,
-                    1035
+                    1562
                 );
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::BufferedUtf16Units)
                         .current,
-                    514
+                    515
                 );
                 assert_eq!(
                     c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -10036,17 +10053,18 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .current,
-                    1036
+                    1563
                 );
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .high_water,
-                    1036
+                    1563
                 );
             }
             let stop = c.stop();
             creation.release(&mut c).unwrap();
+            tokenizer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
             storage_zero(&c);
             assert_eq!(c.stop(), stop);
@@ -10565,7 +10583,10 @@ mod tests {
         // Root child-storage plus four slots each for real html/body/p owners
         // coexist with seven output runs. These caps also admit the actual
         // lexer's seventeen-node attribute trie and its returned token record.
-        for (maps, auxiliary, succeeds) in [(13, 20, false), (14, 19, false), (14, 20, true)] {
+        // Retaining the lexer across the operation adds 22 real lexical rows:
+        // two occurrence/cause pairs and 18 syntax/name/value parts. Seven
+        // input origins coexist with seven partition origins (22+7+7=36).
+        for (maps, auxiliary, succeeds) in [(35, 20, false), (36, 19, false), (36, 20, true)] {
             let mut c = ParseControl::new(
                 limits()
                     .into_builder()
@@ -10575,7 +10596,13 @@ mod tests {
                     .unwrap(),
                 HtmlParseCancellation::new(),
             );
-            let mut input = Some(body_lexical_value(&source, &mut c));
+            use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+            c.admit_source(&source).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+            let (value, tag, attribute) = lexical_attribute_text(&mut tokenizer, &mut c);
+            tag.release(&mut c).unwrap();
+            attribute.release(&mut c).unwrap();
+            let mut input = Some(value);
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let html = session.allocate_implicit_html(&mut c).unwrap();
             let body = session.allocate_implicit_body(&mut c, None).unwrap();
@@ -10598,7 +10625,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .high_water,
-                    14
+                    36
                 );
                 assert_eq!(
                     c.usage()
@@ -10617,7 +10644,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .current,
-                    7
+                    29
                 );
                 assert_eq!(
                     c.usage()
@@ -10627,6 +10654,7 @@ mod tests {
                 );
                 release_token_kind(&mut input.take().map(TokenKind::Text), &mut c).unwrap();
             }
+            tokenizer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
             storage_zero(&c);
         }
@@ -16846,6 +16874,7 @@ mod tests {
                 .try_push(
                     c,
                     crate::parser::tokenizer::token::Attribute {
+                        lexical: None,
                         name,
                         value,
                         source: source.range(0, 7).unwrap(),
@@ -19033,8 +19062,10 @@ mod tests {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // N>0 retains N origin atoms, 2N-1 group headers and 2N-1
         // causes; projection adds two native node rows plus N current atoms.
-        // Exactly 6N initialized SourceMapEntries are therefore needed. Empty
-        // input instead retains one Request cause and projects only its root.
+        // The native prefix therefore retains 6N SourceMapEntries. Complete
+        // D1 adds one fixed Cause row per retained cause (2N-1); all source-less
+        // fixture causes emit no lineage rows, and no markup was consumed.
+        // Empty input retains one Request, its root row and one Cause row.
         // Keep existing sample caps; only N256 uses this independently derived
         // logical allowance, including the meaningful final-row one-short cut.
         for (count, one_short) in [
@@ -19051,7 +19082,12 @@ mod tests {
             let caps = if count == 256 {
                 limits()
                     .into_builder()
-                    .source_map_entries((6 * count - usize::from(one_short)) as u64)
+                    .source_map_entries((8 * count - 1 - usize::from(one_short)) as u64)
+                    // Retained descriptors/tickets (2N+3), indexed cause/group
+                    // slots (4N-2), and at most (2N-1) pending links coexist.
+                    // All fixture causes lack source, so the closure is empty.
+                    // Only N256 changes; smaller caps/work limits stay fixed.
+                    .auxiliary_entries((8 * count) as u64)
                     .finish()
                     .unwrap()
             } else {
@@ -19103,21 +19139,57 @@ mod tests {
             );
             lexer.release(&mut c).unwrap();
             let retained = c.usage().clone();
+            if count == 256 {
+                let storage = session.active().unwrap();
+                assert_eq!(storage.records.len(), 2);
+                assert_eq!(storage.payloads.values.len(), 2 * count + 1);
+                assert_eq!(
+                    storage
+                        .payloads
+                        .values
+                        .iter()
+                        .filter(|payload| matches!(
+                            payload,
+                            RetainedPayload::ConstructionCause { .. }
+                        ))
+                        .count(),
+                    2
+                );
+                assert_eq!(
+                    storage
+                        .payloads
+                        .values
+                        .iter()
+                        .filter(|payload| matches!(
+                            payload,
+                            RetainedPayload::String { .. }
+                                | RetainedPayload::HistoricalString { .. }
+                        ))
+                        .count(),
+                    2 * count - 1
+                );
+                assert_eq!(
+                    retained
+                        .resource(HtmlParseResource::AuxiliaryEntries)
+                        .current,
+                    (2 * count + 3) as u64
+                );
+            }
             let projection = session.prepare_native_associations(&mut c, &source);
             if one_short {
                 assert_eq!(
                     projection,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::SourceMapEntries,
-                        limit: 1535,
-                        current: 1535,
+                        limit: 2046,
+                        current: 2046,
                         requested_delta: 1,
                     }))
                 );
                 let first = c.first_stop_usage().unwrap().clone();
                 assert_eq!(
                     first.resource(HtmlParseResource::SourceMapEntries).current,
-                    1535
+                    2046
                 );
                 assert_eq!(
                     first.resource(HtmlParseResource::ManagedUtf16Units).current,
@@ -19134,11 +19206,23 @@ mod tests {
             }
             projection.unwrap();
             let projected = c.usage().clone();
+            if count == 256 {
+                assert!(
+                    projected
+                        .resource(HtmlParseResource::AuxiliaryEntries)
+                        .high_water
+                        <= (8 * count) as u64
+                );
+            }
             assert_eq!(
                 projected
                     .resource(HtmlParseResource::SourceMapEntries)
                     .current,
-                if count == 0 { 2 } else { 6 * count as u64 }
+                if count == 0 {
+                    3
+                } else {
+                    (6 * count + 2 * count - 1) as u64
+                }
             );
             {
                 let mut rows = session.native_associations(&mut c).unwrap();
@@ -19187,6 +19271,128 @@ mod tests {
             );
             session.release(&mut c).unwrap();
             storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn source_less_append_lineage_visits_scale_with_retained_records_not_intervals_times_history() {
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+        // Independent fixture: Data emits N one-unit x leaves; real sink merges
+        // them into one native Text. The direct sink's Request/Merge causes have
+        // no direct source: complete D1 emits no causal lineage rows here.
+        for count in [8usize, 16, 32] {
+            let source = crate::HtmlSource::utf8("x".repeat(count));
+            let mut c = control();
+            c.admit_source(&source).unwrap();
+            let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+            session.initialize_parse_evidence(&mut c, &source).unwrap();
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+            let mut last = None;
+            for offset in 0..count {
+                let mut text = Some(match lexical_kind(&mut lexer, &mut c) {
+                    TokenKind::Text(text) => text,
+                    _ => panic!("literal x"),
+                });
+                let inserted = session
+                    .insert_text(&mut c, &root, None, &mut text, None)
+                    .unwrap()
+                    .unwrap();
+                assert!(text.is_none());
+                assert_eq!(inserted.offset, offset);
+                last = Some(inserted.node);
+            }
+            assert_eq!(
+                native_text(&session, last.as_ref().unwrap()),
+                vec![120; count]
+            );
+            let evidence = session.active().unwrap().evidence.as_ref().unwrap();
+            assert_eq!(
+                evidence.history_counts(),
+                (count, 2 * count - 1, 2 * count - 1)
+            );
+            // Actual tokenizer exhaustion qualifies the lexical EOF anchor in
+            // the real session, not a manually supplied completion flag.
+            let event = lexer
+                .next_in(
+                    &mut c,
+                    false,
+                    session.active_mut().unwrap().evidence.as_mut().unwrap(),
+                )
+                .unwrap()
+                .unwrap();
+            assert!(
+                matches!(&event, crate::parser::tokenizer::token::Event::Token(token) if matches!(&token.token().kind, TokenKind::Eof))
+            );
+            event.release(&mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            let before = c.usage().work(WorkCategory::RecordVisit);
+            session
+                .prepare_native_associations(&mut c, &source)
+                .unwrap();
+            let visits = c.usage().work(WorkCategory::RecordVisit) - before;
+            assert_eq!(
+                session.native_associations(&mut c).unwrap().len(),
+                count + 2
+            );
+            let evidence = session.active().unwrap().evidence.as_ref().unwrap();
+            let view = evidence.associations().unwrap();
+            assert_eq!(view.len(), count + 2 + 2 * count - 1 + 1);
+            assert!((0..2 * count - 1).all(|index| view.cause(index).unwrap().source.is_none()));
+            let rows: Vec<_> = (0..view.len())
+                .map(|index| view.row(index).unwrap())
+                .collect();
+            assert_eq!(
+                rows.iter()
+                    .filter(|row| row.relation == provenance::AssociationRelation::Output)
+                    .count(),
+                count
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|row| row.relation == provenance::AssociationRelation::Cause)
+                    .count(),
+                2 * count - 1
+            );
+            assert_eq!(
+                rows.iter()
+                    .filter(|row| row.relation == provenance::AssociationRelation::LexicalAnchor)
+                    .count(),
+                1
+            );
+            assert!(rows.iter().all(|row| matches!(
+                row.relation,
+                provenance::AssociationRelation::Output
+                    | provenance::AssociationRelation::Creation
+                    | provenance::AssociationRelation::Cause
+                    | provenance::AssociationRelation::LexicalAnchor
+            )));
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::SourceMapEntries)
+                    .current,
+                (8 * count) as u64
+            );
+            let first_stop = c.first_stop_usage().cloned();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.first_stop_usage(), first_stop.as_ref());
+            // Fixed required record count: N origins, 2N-1 headers, 2N-1
+            // causes, N Output/two node rows, 2N-1 final fixed Cause rows,
+            // and the one actual EOF anchor.
+            // A deliberately generous 256 record visits per required record
+            // admits fixed ownership/preflight/stack/index operations, without
+            // accepting rescanning the same cause closure for every interval.
+            // This literal fixture allowance is not a normative global limit.
+            let required_records = 8 * count;
+            eprintln!(
+                "source-less N={count}, required_records={required_records}, emitted_lineage=0, visits={visits}, allowance={}",
+                256 * required_records
+            );
+            assert!(
+                visits <= (256 * required_records) as u64,
+                "source-less flattening repeats history: N={count}, visits={visits}, required_records={required_records}, no emitted lineage rows"
+            );
         }
     }
 

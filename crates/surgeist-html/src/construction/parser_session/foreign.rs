@@ -421,8 +421,10 @@ mod tests {
                 // The 28 retained original/replacement origin records coexist
                 // with five field groups, three request/prologue causes, one
                 // replacement cause, and
-                // the one canonical diagnostic location.
-                _ => 38,
+                // the one canonical diagnostic location. Actual lexical
+                // retention adds eight head rows in the standalone owner and
+                // 26 head/lineargradient rows in the independent lexer: 38+34.
+                _ => 72,
             };
             for cap in [exact - 1, exact] {
                 let builder = super::super::tests::limits().into_builder();
@@ -716,7 +718,15 @@ mod tests {
     fn foreign_clone_stopped_qualified_attribute_prefixes_keep_each_ticket_owned() {
         let mut stopped_after_element = false;
         let mut completed = false;
-        for allowance in (0..200_000).step_by(997) {
+        // Keep all original sampled stop cuts. The first actual full-request
+        // clone establishes its cost on the compiled retained evidence layout;
+        // append exact and one-short late cuts rather than guess a larger cap.
+        let mut cases = vec![None];
+        cases.extend((0..200_000).step_by(997).map(Some));
+        let mut case = 0;
+        while case < cases.len() {
+            let allowance = cases[case];
+            case += 1;
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<svg xlink:href='#y' xml:lang=en>"),
                 super::super::tests::limits()
@@ -748,11 +758,14 @@ mod tests {
                 .qualify_clone_subtree(&mut c, root.index)
                 .unwrap();
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(
-                WorkCategory::StateStep,
-                request.limits().work_credits() - used - allowance,
-            )
-            .unwrap();
+            if let Some(allowance) = allowance {
+                c.charge(
+                    WorkCategory::StateStep,
+                    request.limits().work_credits() - used - allowance,
+                )
+                .unwrap();
+            }
+            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let result = session.active_mut().unwrap().clone_node(
                 &mut c,
                 original.index,
@@ -760,6 +773,14 @@ mod tests {
             );
             match result {
                 Ok(index) => {
+                    let cost = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+                    if let Some(allowance) = allowance {
+                        assert!(allowance >= cost);
+                    } else {
+                        assert!(cost > 0);
+                        cases.push(Some(cost));
+                        cases.push(Some(cost - 1));
+                    }
                     completed = true;
                     assert_ne!(index, original.index);
                     let storage = session.active().unwrap();
@@ -803,12 +824,27 @@ mod tests {
                 }
                 Err(error) => panic!("qualified clone failure: {error:?}"),
             }
-            session
+            match session
                 .active()
                 .unwrap()
                 .payloads
                 .check_aliases(&session.active().unwrap().records, &mut c)
-                .unwrap();
+            {
+                Ok(()) => {}
+                Err(SessionError::Stop(first)) => {
+                    // The exact clone cut can stop at the following cleanup
+                    // qualification. Terminal cleanup rechecks the actual aliases
+                    // without additional work and preserves that first stop.
+                    assert_eq!(c.stop(), Some(first));
+                    session
+                        .active()
+                        .unwrap()
+                        .payloads
+                        .check_aliases(&session.active().unwrap().records, &mut c)
+                        .unwrap();
+                }
+                Err(error) => panic!("actual clone aliases: {error:?}"),
+            }
             lexer.release(&mut c).unwrap();
             if let Err(SessionError::Stop(_)) = session.release(&mut c) {
                 session.release(&mut c).unwrap();

@@ -16,7 +16,11 @@ use crate::HtmlParseResource;
 use crate::construction::parser_session::evidence::{
     DiagnosticContext, DiagnosticKind, DiagnosticRule, ParseEvidence,
 };
+use crate::construction::parser_session::provenance::{
+    LexicalDisposition, LexicalKind, LexicalRef, LexicalRole,
+};
 mod char_ref;
+mod lexical;
 mod state;
 pub(crate) mod states;
 #[cfg(test)]
@@ -131,6 +135,7 @@ struct DraftAttribute {
     end: usize,
     name_checked: bool,
     duplicate: bool,
+    lexical: LexicalRef,
 }
 struct DraftTag {
     kind: TagKind,
@@ -220,6 +225,7 @@ pub(crate) struct Tokenizer<'source> {
     pending: [Option<Event>; 8],
     pending_len: usize,
     done: bool,
+    lexical: Option<LexicalRef>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TokenizerHandoffError {
@@ -341,6 +347,7 @@ impl<'source> Tokenizer<'source> {
             pending: std::array::from_fn(|_| None),
             pending_len: 0,
             done: false,
+            lexical: None,
         })
     }
     /// The tree owner supplies the actual adjusted-current-node namespace fact
@@ -542,6 +549,7 @@ impl<'source> Tokenizer<'source> {
         start: usize,
         end: usize,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         let source = match self.range(start, end, c) {
             Ok(source) => source,
@@ -550,7 +558,24 @@ impl<'source> Tokenizer<'source> {
                 return Err(stop);
             }
         };
-        self.queue(Event::Token(TokenEvent::new(Token { kind, source }, c)?), c)
+        let lexical = match self.retain_emitted_lexical(&kind, &source, c, evidence) {
+            Ok(reference) => reference,
+            Err(stop) => {
+                kind.release(c)?;
+                return Err(stop);
+            }
+        };
+        self.queue(
+            Event::Token(TokenEvent::new(
+                Token {
+                    kind,
+                    source,
+                    lexical,
+                },
+                c,
+            )?),
+            c,
+        )
     }
     fn emit_point(
         &mut self,
@@ -558,12 +583,24 @@ impl<'source> Tokenizer<'source> {
         source: &HtmlSourceRange,
         kind: OriginKind,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         let text = DraftText::build(c, |text, c| text.push(point, source, kind, c))?;
-        self.emit(TokenKind::Text(text), source.start(), source.end(), c)
+        self.emit(
+            TokenKind::Text(text),
+            source.start(),
+            source.end(),
+            c,
+            evidence,
+        )
     }
-    fn character(&mut self, point: u32, c: &mut ParseControl) -> Result<(), ParseStop> {
-        self.emit_point(point, &self.current.clone(), self.current_kind, c)
+    fn character(
+        &mut self,
+        point: u32,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        self.emit_point(point, &self.current.clone(), self.current_kind, c, evidence)
     }
     fn replacement(
         &mut self,
@@ -576,6 +613,7 @@ impl<'source> Tokenizer<'source> {
             &self.current.clone(),
             OriginKind::NullReplacement,
             c,
+            evidence,
         )
     }
     fn clear_temporary(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
@@ -654,6 +692,12 @@ impl<'source> Tokenizer<'source> {
         evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         self.finish_attribute(c, evidence)?;
+        let lexical = evidence.lexical_begin(
+            c,
+            &self.current,
+            LexicalKind::Attribute,
+            self.lexical.as_ref(),
+        )?;
         admit_record_write(size_of::<Option<DraftAttribute>>(), 1, c)?;
         self.tag
             .as_mut()
@@ -665,6 +709,7 @@ impl<'source> Tokenizer<'source> {
             end: self.current.end(),
             name_checked: false,
             duplicate: false,
+            lexical,
         });
         Ok(())
     }
@@ -756,11 +801,38 @@ impl<'source> Tokenizer<'source> {
         // Range validation may reject work admission. Retain the whole draft
         // in its owner until that checked provider call and removal admission
         // have succeeded, so terminal release can still dispose both buffers.
-        let source = if a.duplicate {
-            None
-        } else {
-            Some(self.range(a.start, a.end, c)?)
-        };
+        let source = Some(self.range(a.start, a.end, c)?);
+        Self::retain_lexical_text(
+            evidence,
+            c,
+            &a.lexical,
+            LexicalRole::Name,
+            a.name.origins.as_slice(),
+        )?;
+        Self::retain_lexical_text(
+            evidence,
+            c,
+            &a.lexical,
+            LexicalRole::Value,
+            a.value.origins.as_slice(),
+        )?;
+        if a.value.value.len() == 0 {
+            let anchor = self.range(a.end, a.end, c)?;
+            evidence.lexical_part(c, &a.lexical, LexicalRole::Value, &anchor, 0..0, None)?;
+        }
+        evidence.lexical_finish(
+            c,
+            &a.lexical,
+            source.as_ref().expect("checked attribute"),
+            LexicalKind::Attribute,
+            if a.duplicate {
+                LexicalDisposition::DuplicateAttribute
+            } else if t.kind == TagKind::End {
+                LexicalDisposition::EndTagAttribute
+            } else {
+                LexicalDisposition::StoredAttribute
+            },
+        )?;
         admit_record_write(size_of::<Option<DraftAttribute>>(), 1, c)?;
         let t = self
             .tag
@@ -776,6 +848,7 @@ impl<'source> Tokenizer<'source> {
                 if let Err((stop, a)) = t.attributes.try_push_recover(
                     c,
                     Attribute {
+                        lexical: Some(a.lexical),
                         name,
                         value,
                         source,
@@ -841,7 +914,13 @@ impl<'source> Tokenizer<'source> {
             attributes: t.attributes,
             had_duplicate_attributes: t.had_duplicates,
         };
-        self.emit(TokenKind::Tag(tag), self.start, self.current.end(), c)
+        self.emit(
+            TokenKind::Tag(tag),
+            self.start,
+            self.current.end(),
+            c,
+            evidence,
+        )
     }
     fn create_comment(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
         admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
@@ -881,7 +960,11 @@ impl<'source> Tokenizer<'source> {
         }
         Ok(())
     }
-    fn emit_comment(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn emit_comment(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         self.set_state(State::Data, c)?;
         admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
         let text = self
@@ -889,7 +972,13 @@ impl<'source> Tokenizer<'source> {
             .take()
             .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
             .freeze(c)?;
-        self.emit(TokenKind::Comment(text), self.start, self.current.end(), c)
+        self.emit(
+            TokenKind::Comment(text),
+            self.start,
+            self.current.end(),
+            c,
+            evidence,
+        )
     }
     fn doctype_name(
         &mut self,
@@ -985,7 +1074,11 @@ impl<'source> Tokenizer<'source> {
             .self_closing = true;
         Ok(())
     }
-    fn emit_doctype(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn emit_doctype(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         self.set_state(State::Data, c)?;
         admit_record_write(size_of::<Option<DraftDoctype>>(), 1, c)?;
         let d = self
@@ -1021,6 +1114,7 @@ impl<'source> Tokenizer<'source> {
             self.start,
             self.current.end(),
             c,
+            evidence,
         )
     }
     fn consume_ascii(
@@ -1044,11 +1138,34 @@ impl<'source> Tokenizer<'source> {
         for _ in bytes {
             c.charge(WorkCategory::StateStep, 1)?;
             self.read(c, evidence)?;
+            if let Some(occurrence) = self.lexical.as_ref() {
+                evidence.lexical_part(
+                    c,
+                    occurrence,
+                    LexicalRole::Syntax,
+                    &self.current,
+                    0..0,
+                    None,
+                )?;
+            }
         }
         Ok(true)
     }
-    fn raw_fallback(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        if self.tag.is_some() {
+    fn raw_fallback(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        if let Some(tag) = self.tag.as_ref() {
+            if let Some(occurrence) = self.lexical.as_ref() {
+                Self::retain_lexical_text(
+                    evidence,
+                    c,
+                    occurrence,
+                    LexicalRole::Name,
+                    tag.name.origins.as_slice(),
+                )?;
+            }
             admit_record_write(size_of::<Option<DraftTag>>(), 1, c)?;
             if let Some(tag) = self.tag.take() {
                 tag.release(c)?;
@@ -1080,9 +1197,28 @@ impl<'source> Tokenizer<'source> {
             text.release(c)?;
             return Err(stop);
         }
-        self.emit(TokenKind::Text(text), self.less_than.start(), end, c)
+        self.emit(
+            TokenKind::Text(text),
+            self.less_than.start(),
+            end,
+            c,
+            evidence,
+        )
     }
-    fn pi_comment(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn pi_comment(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        if let Some(occurrence) = self.lexical.as_ref() {
+            Self::retain_lexical_text(
+                evidence,
+                c,
+                occurrence,
+                LexicalRole::Target,
+                self.temporary.origins.as_slice(),
+            )?;
+        }
         self.create_comment(c)?;
         self.comment
             .as_mut()
@@ -1104,7 +1240,11 @@ impl<'source> Tokenizer<'source> {
         }
         self.clear_temporary(c)
     }
-    fn emit_pi(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn emit_pi(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         self.set_state(State::Data, c)?;
         // Admit both removals before taking either nested owner.
         admit_record_write(2 * size_of::<Option<DraftText>>(), 2, c)?;
@@ -1122,6 +1262,7 @@ impl<'source> Tokenizer<'source> {
             self.start,
             self.current.end(),
             c,
+            evidence,
         )
     }
     fn create_doctype(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {

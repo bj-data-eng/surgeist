@@ -137,7 +137,7 @@ impl HeadState<'_> {
                     c,
                 )?;
                 self.whitespace_pending = self.body_run.take().map(|run| run.text);
-                self.ignored_text(c)?;
+                self.ignored_text(crate::construction::parser_session::provenance::OmissionKind::FramesetCharacter, c)?;
             }
         }
         self.body_runs

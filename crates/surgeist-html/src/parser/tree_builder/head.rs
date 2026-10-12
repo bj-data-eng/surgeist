@@ -821,11 +821,30 @@ impl HeadState<'_> {
     }
 
     pub(super) fn finish(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+        if let Some(pending) = &self.pending {
+            self.before
+                .kernel
+                .session
+                .evidence(c)?
+                .lexical_disposition(c, pending.lexical.as_ref(), false)?;
+        }
         write(size_of::<Option<PendingToken>>(), 1, c)?;
         self.pending = None;
         Ok(HeadStep::Consumed)
     }
     pub(super) fn discard(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+        if let Some(pending) = &self.pending {
+            let evidence = self.before.kernel.session.evidence(c)?;
+            evidence.lexical_disposition(c, pending.lexical.as_ref(), true)?;
+            if let Payload::Text(Some(text)) = &pending.payload {
+                evidence.retain_omission(
+                    c,
+                    text.origins.as_slice(),
+                    crate::construction::parser_session::provenance::OmissionKind::IgnoredText,
+                    crate::construction::parser_session::provenance::ParserRule::Tree(self.mode),
+                )?;
+            }
+        }
         self.pending
             .as_mut()
             .ok_or(HeadError::MissingInput)?

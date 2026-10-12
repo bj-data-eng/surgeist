@@ -40,11 +40,12 @@ impl Tokenizer<'_> {
         source: &HtmlSourceRange,
         kind: OriginKind,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         if attribute {
             self.attribute_value(point, kind, source, c)
         } else {
-            self.emit_point(point, source, kind, c)
+            self.emit_point(point, source, kind, c, evidence)
         }
     }
     fn reference_inner(
@@ -64,7 +65,7 @@ impl Tokenizer<'_> {
         }
         if !matches!(self.cursor.peek(c)?,InputRead::Character(ref ch) if alnum(ch.code_point().value()))
         {
-            return self.reference_point(0x26, attribute, amp, OriginKind::Literal, c);
+            return self.reference_point(0x26, attribute, amp, OriginKind::Literal, c, evidence);
         }
         let mut longest: Option<(ReferenceValue, bool, InputCheckpoint)> = None;
         loop {
@@ -100,7 +101,14 @@ impl Tokenizer<'_> {
                 && (alnum(ch.code_point().value()) || ch.code_point().value() == 0x3D)
             {
                 self.cursor.rewind(mark, c)?;
-                return self.reference_point(0x26, attribute, amp, OriginKind::Literal, c);
+                return self.reference_point(
+                    0x26,
+                    attribute,
+                    amp,
+                    OriginKind::Literal,
+                    c,
+                    evidence,
+                );
             }
             let source = self.range(amp.start(), self.cursor.position(c)?, c)?;
             self.set_current(&source, c)?;
@@ -117,6 +125,7 @@ impl Tokenizer<'_> {
                         &source,
                         OriginKind::CharacterReference,
                         c,
+                        evidence,
                     )?,
                     ReferenceValue::Two(a, b) => {
                         self.reference_point(
@@ -125,6 +134,7 @@ impl Tokenizer<'_> {
                             &source,
                             OriginKind::CharacterReference,
                             c,
+                            evidence,
                         )?;
                         self.reference_point(
                             u32::from(b),
@@ -132,6 +142,7 @@ impl Tokenizer<'_> {
                             &source,
                             OriginKind::CharacterReference,
                             c,
+                            evidence,
                         )?;
                     }
                 }
@@ -148,7 +159,13 @@ impl Tokenizer<'_> {
                     }
                     Ok(())
                 })?;
-                self.emit(TokenKind::Text(text), source.start(), source.end(), c)?;
+                self.emit(
+                    TokenKind::Text(text),
+                    source.start(),
+                    source.end(),
+                    c,
+                    evidence,
+                )?;
             }
             return Ok(());
         }
@@ -196,7 +213,13 @@ impl Tokenizer<'_> {
         if attribute {
             literal.release(c)?;
         } else {
-            self.emit(TokenKind::Text(literal.freeze(c)?), amp.start(), end, c)?;
+            self.emit(
+                TokenKind::Text(literal.freeze(c)?),
+                amp.start(),
+                end,
+                c,
+                evidence,
+            )?;
         }
         Ok(())
     }
@@ -244,7 +267,7 @@ impl Tokenizer<'_> {
             self.set_current(&source, c)?;
             self.error(AbsenceOfDigitsInNumericCharacterReference, c, evidence)?;
             self.cursor.rewind(mark, c)?;
-            return self.reference_point(0x26, attribute, amp, OriginKind::Literal, c);
+            return self.reference_point(0x26, attribute, amp, OriginKind::Literal, c, evidence);
         }
         let semicolon = matches!(self.cursor.peek(c)?,InputRead::Character(ref ch) if ch.code_point().value()==0x3B);
         if semicolon {
@@ -283,6 +306,13 @@ impl Tokenizer<'_> {
                 }
             }
         }
-        self.reference_point(value, attribute, &source, OriginKind::CharacterReference, c)
+        self.reference_point(
+            value,
+            attribute,
+            &source,
+            OriginKind::CharacterReference,
+            c,
+            evidence,
+        )
     }
 }
