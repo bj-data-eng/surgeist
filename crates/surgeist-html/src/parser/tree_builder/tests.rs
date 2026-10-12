@@ -10883,3 +10883,225 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
         }
     }
 }
+
+#[test]
+fn ordinary_svg_script_foreign_text_and_self_closing_preserve_native_siblings() {
+    // HTML877d foreign insertion/character/end rules and the selected ordinary
+    // offline SVG processing specialization; this observes real native results.
+    for (source, script_text) in [
+        (
+            "<!doctype html><svg><script xlink:href='offline.js'><![CDATA[A<&]]></script><g/></svg><p>after</p>",
+            Some("A<&"),
+        ),
+        (
+            "<!doctype html><svg><script xlink:href='offline.js'/><g/></svg><p>after</p>",
+            None,
+        ),
+        (
+            "<!doctype html><svg><script xlink:href='offline.js'>A&amp;B</script><g/></svg><p>after</p>",
+            Some("A&B"),
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let boundary = standalone_boundary(&mut driver);
+        if boundary != super::head::HeadBoundary::ConstructionEof {
+            // Dispose the actual parser/tree/controller owners before asserting
+            // the source-required continuation beyond the unsupported branch.
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(
+                boundary,
+                super::head::HeadBoundary::ConstructionEof,
+                "{source}"
+            );
+            return;
+        }
+
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let actual_mode = document.mode();
+        let actual_outline = outline(document);
+        let root_child_count = document.root().children().count();
+        let mut stack: Vec<_> = document.root().children().collect();
+        stack.reverse();
+        let mut elements = Vec::new();
+        let mut texts = Vec::new();
+        while let Some(id) = stack.pop() {
+            let node = document.node(&id).unwrap();
+            let children: Vec<_> = node.children().collect();
+            stack.extend(children.iter().rev().cloned());
+            match node.kind() {
+                HtmlNodeKind::Element(element) => elements.push((
+                    id,
+                    children,
+                    element
+                        .name()
+                        .namespace()
+                        .uri()
+                        .map(|uri| uri.code_units().to_vec()),
+                    element
+                        .name()
+                        .prefix()
+                        .map(|prefix| prefix.code_units().to_vec()),
+                    element.name().local_name().code_units().to_vec(),
+                    element
+                        .attributes()
+                        .iter()
+                        .map(|attribute| {
+                            (
+                                attribute
+                                    .name()
+                                    .namespace()
+                                    .uri()
+                                    .map(|uri| uri.code_units().to_vec()),
+                                attribute
+                                    .name()
+                                    .prefix()
+                                    .map(|prefix| prefix.code_units().to_vec()),
+                                attribute.name().local_name().code_units().to_vec(),
+                                attribute.value().code_units().to_vec(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )),
+                HtmlNodeKind::Text(text) => texts.push((id, text.code_units().to_vec())),
+                _ => {}
+            }
+        }
+        // Only copied units and result-qualified identities outlive native
+        // backing. Release all actual storage before the remaining assertions.
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+
+        assert_eq!(
+            boundary,
+            super::head::HeadBoundary::ConstructionEof,
+            "{source}"
+        );
+        assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks, "{source}");
+        assert_eq!(root_child_count, 2, "{source}");
+        let mut rows = vec![
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "svg"),
+            (3, "script"),
+        ];
+        if let Some(text) = script_text {
+            rows.push((
+                4,
+                match text {
+                    "A<&" => "#A<&",
+                    "A&B" => "#A&B",
+                    _ => unreachable!("only independent literal inputs above"),
+                },
+            ));
+        }
+        rows.extend([(3, "g"), (2, "p"), (3, "#after")]);
+        assert_eq!(actual_outline, expected_outline(&rows), "{source}");
+
+        let units = |value: &str| value.encode_utf16().collect::<Vec<_>>();
+        let actual_elements: Vec<_> = elements
+            .iter()
+            .map(|(_, _, namespace, prefix, name, attributes)| {
+                (
+                    namespace.clone(),
+                    prefix.clone(),
+                    name.clone(),
+                    attributes.clone(),
+                )
+            })
+            .collect();
+        let html = "http://www.w3.org/1999/xhtml";
+        let svg = "http://www.w3.org/2000/svg";
+        let expected_elements: Vec<_> = [
+            (html, "html", vec![]),
+            (html, "head", vec![]),
+            (html, "body", vec![]),
+            (svg, "svg", vec![]),
+            (
+                svg,
+                "script",
+                vec![(
+                    Some("http://www.w3.org/1999/xlink"),
+                    Some("xlink"),
+                    "href",
+                    "offline.js",
+                )],
+            ),
+            (svg, "g", vec![]),
+            (html, "p", vec![]),
+        ]
+        .into_iter()
+        .map(|(namespace, name, attributes)| {
+            (
+                Some(units(namespace)),
+                None::<Vec<u16>>,
+                units(name),
+                attributes
+                    .into_iter()
+                    .map(|(namespace, prefix, name, value)| {
+                        (
+                            namespace.map(units),
+                            prefix.map(units),
+                            units(name),
+                            units(value),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+        assert_eq!(actual_elements, expected_elements, "{source}");
+
+        let expected_texts: Vec<_> = script_text
+            .into_iter()
+            .chain(std::iter::once("after"))
+            .map(units)
+            .collect();
+        assert_eq!(
+            texts
+                .iter()
+                .map(|(_, text)| text.clone())
+                .collect::<Vec<_>>(),
+            expected_texts,
+            "{source}"
+        );
+        assert_eq!(
+            elements
+                .iter()
+                .map(|(_, children, ..)| children.len())
+                .collect::<Vec<_>>(),
+            vec![2, 0, 2, 2, usize::from(script_text.is_some()), 0, 1],
+            "{source}"
+        );
+        assert_eq!(
+            elements[2].1,
+            vec![elements[3].0.clone(), elements[6].0.clone()],
+            "{source}"
+        );
+        assert_eq!(
+            elements[3].1,
+            vec![elements[4].0.clone(), elements[5].0.clone()],
+            "{source}"
+        );
+        if script_text.is_some() {
+            assert_eq!(elements[4].1, vec![texts[0].0.clone()], "{source}");
+            assert_ne!(texts[0].0, texts[1].0, "{source}");
+        } else {
+            assert!(elements[4].1.is_empty(), "{source}");
+        }
+        assert_eq!(
+            elements[6].1,
+            vec![texts.last().unwrap().0.clone()],
+            "{source}"
+        );
+        for (position, (id, ..)) in elements.iter().enumerate() {
+            for (other, ..) in elements.iter().skip(position + 1) {
+                assert_ne!(id, other, "{source}");
+            }
+        }
+    }
+}
