@@ -1429,6 +1429,23 @@ mod tests {
             ("quirks01.dat", 2, HtmlDocumentMode::Quirks),
             ("quirks01.dat", 3, HtmlDocumentMode::Quirks),
             ("quirks01.dat", 4, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 2, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 3, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 5, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 6, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 7, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 8, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 9, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 10, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 11, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 12, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 13, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 14, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 15, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 16, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 17, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 18, HtmlDocumentMode::Quirks),
+            ("tables01.dat", 19, HtmlDocumentMode::Quirks),
         ];
         for (path, ordinal, mode) in selected {
             let (_, raw) = DATA.iter().find(|(p, _)| p == path).unwrap();
