@@ -17729,6 +17729,141 @@ mod tests {
         frozen.release(&mut c).unwrap();
         storage_zero(&c);
     }
+    fn assert_merged_text_retains_qualified_origins(
+        source: &crate::HtmlSource,
+        expected: Vec<(
+            usize,
+            usize,
+            crate::HtmlSourceRange,
+            crate::parser::tokenizer::token::OriginKind,
+        )>,
+    ) {
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+        let mut c = control();
+        c.admit_source(source).unwrap();
+        let mut lexer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+        let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        let root = session.root(&mut c).unwrap();
+        let mut original: Option<ParserNode> = None;
+        let mut first_origins = None;
+        let mut incoming_origins = Vec::new();
+        let mut output_length = 0;
+        loop {
+            match lexical_kind(&mut lexer, &mut c) {
+                TokenKind::Text(text) => {
+                    let incoming_length = text.value.text().len();
+                    incoming_origins.extend(text.origins.as_slice().iter().map(|origin| {
+                        (
+                            output_length + origin.start,
+                            output_length + origin.end,
+                            origin.source.clone(),
+                            origin.kind,
+                        )
+                    }));
+                    let mut text = Some(text);
+                    let inserted = session
+                        .insert_text(&mut c, &root, None, &mut text, None)
+                        .unwrap()
+                        .unwrap();
+                    assert!(text.is_none());
+                    assert_eq!(inserted.offset, output_length);
+                    output_length += incoming_length;
+                    if let Some(node) = &original {
+                        assert_eq!(inserted.node.index, node.index);
+                    } else {
+                        let storage = session.active_mut().unwrap();
+                        let slot = storage
+                            .field_slot(&mut c, StringLocation::Text(inserted.node.index))
+                            .unwrap();
+                        let RetainedPayload::String { origins, .. } =
+                            &storage.payloads.values[slot]
+                        else {
+                            panic!("registered native Text field");
+                        };
+                        first_origins = origins.as_ref().map(|origins| {
+                            origins
+                                .as_slice()
+                                .iter()
+                                .map(|origin| {
+                                    (origin.start, origin.end, origin.source.clone(), origin.kind)
+                                })
+                                .collect::<Vec<_>>()
+                        });
+                        original = Some(inserted.node);
+                    }
+                }
+                TokenKind::Eof => break,
+                _ => panic!("literal fixture contains only text and EOF"),
+            }
+        }
+        let node = original.unwrap();
+        let units = native_text(&session, &node);
+        let storage = session.active_mut().unwrap();
+        let slot = storage
+            .field_slot(&mut c, StringLocation::Text(node.index))
+            .unwrap();
+        let RetainedPayload::String { origins, .. } = &storage.payloads.values[slot] else {
+            panic!("registered native Text field");
+        };
+        let actual = origins.as_ref().map(|origins| {
+            origins
+                .as_slice()
+                .iter()
+                .map(|origin| (origin.start, origin.end, origin.source.clone(), origin.kind))
+                .collect::<Vec<_>>()
+        });
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::Diagnostics).current,
+            0
+        );
+        assert_eq!(units, [0x41, 0xd83d, 0xde42, 0x0a, 0x2242, 0x0338]);
+        assert_eq!(first_origins, Some(vec![expected[0].clone()]));
+        assert_eq!(
+            incoming_origins, expected,
+            "actual tokenizer origins before native transfer"
+        );
+        assert_eq!(
+            actual,
+            Some(expected),
+            "merged native field must retain rebased source origins"
+        );
+    }
+
+    #[test]
+    fn merged_text_retains_rebased_utf8_scalar_newline_and_entity_origins() {
+        use crate::parser::tokenizer::token::OriginKind::{CharacterReference, Literal, Newline};
+        let source = crate::HtmlSource::utf8("A🙂\r\n&NotEqualTilde;");
+        assert_merged_text_retains_qualified_origins(
+            &source,
+            vec![
+                (0, 1, source.range(0, 1).unwrap(), Literal),
+                (1, 3, source.range(1, 5).unwrap(), Literal),
+                (3, 4, source.range(5, 7).unwrap(), Newline),
+                (4, 5, source.range(7, 22).unwrap(), CharacterReference),
+                (5, 6, source.range(7, 22).unwrap(), CharacterReference),
+            ],
+        );
+    }
+
+    #[test]
+    fn merged_text_retains_rebased_utf16_scalar_newline_and_entity_origins() {
+        use crate::parser::tokenizer::token::OriginKind::{CharacterReference, Literal, Newline};
+        let source = crate::HtmlSource::utf16(DocumentString::from("A🙂\r\n&NotEqualTilde;"));
+        assert_merged_text_retains_qualified_origins(
+            &source,
+            vec![
+                (0, 1, source.range(0, 1).unwrap(), Literal),
+                (1, 3, source.range(1, 3).unwrap(), Literal),
+                (3, 4, source.range(3, 5).unwrap(), Newline),
+                (4, 5, source.range(5, 20).unwrap(), CharacterReference),
+                (5, 6, source.range(5, 20).unwrap(), CharacterReference),
+            ],
+        );
+    }
+
     #[test]
     fn before_sibling_merges_only_preceding_text_and_document_ignores_text() {
         let mut c = control();
