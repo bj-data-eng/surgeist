@@ -1182,9 +1182,40 @@ OOM, linear work or complete allocator/RSS bound is promised.
 
 The [defining clause](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#meta-description)
 and [literal tests](tests/semantics_meta_description.rs) distinguish these
-observations. General meta discriminators, media/charset/pragma/other-name rules,
-live mutation, search/UI use and public parsing remain separate. Closed
+observations. Media grammar, encoding/pragma/other-name rules, live mutation,
+search/UI use and public parsing remain separate. Closed
 Query/Fact additions are intentionally breaking for exhaustive matches.
+
+<a id="captured-meta-attribute-author-structure"></a>
+
+Captured `HtmlSemanticQuery::MetaAttributeAuthorStructure` retains the six exact
+own name/http-equiv/charset/itemprop/content/media attributes of an HTML meta
+and reports independent structural observations. Specified empty values count:
+exactly one discriminator must be present, and content must be present when
+name, http-equiv or itemprop is specified and absent otherwise. Content presence
+is evaluated even when discriminator exclusivity fails. Media placement allows
+only a whole ASCII-insensitive `theme-color` name, without trimming or Unicode
+folding; AllowedForThemeColor does not validate CSS media grammar.
+
+`charset_uniqueness()` is NotRequired without own charset, so that case skips
+topology. Otherwise it distinguishes actual ordinary-Document Unique/Duplicate
+from NoDocumentMetadataScope and influencing Missing. Document ancestry must
+be established before accepting a duplicate; node-document identity is not
+membership. Empty or invalid specified competitor charset still counts, without
+reading its value or other attributes. A later duplicate can resolve an unrelated
+nonterminal child gap after Document membership is proved; unknown ancestry
+and terminal stops cannot be rescued. Body descendants count; separate Documents
+and template/shadow/host/slot relations do not join the population.
+
+The [structure report](src/semantics/meta_author.rs) preserves whole admitted
+own raw UTF-16, including prohibited fields, through shared native handles.
+Existing session work, scratch cleanup, actual nested/outer capacities and
+sticky atomic batch failure remain authoritative, with ordinary capture and
+fixed-wrapper allocation limitations. [Literal tests](tests/semantics_meta_author.rs)
+keep these results independent of local `meta_charset` spelling and its
+Unchecked declaration context. Specified-charset multiplicity is not the broader
+encoding-declaration/serialization proof, actual decoding, pragma processing or
+whole meta conformance. Closed Query/Fact additions are intentionally breaking.
 
 <a id="captured-form-name-author"></a>
 
