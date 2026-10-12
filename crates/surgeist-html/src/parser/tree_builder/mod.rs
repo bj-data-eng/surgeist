@@ -682,6 +682,22 @@ impl LocationKernel {
         // Session checks aliases without taking its storage on failure, so a
         // borrowed kernel retains all owners for a later valid cleanup retry.
         self.session.release(control)?;
+        self.release_stack(control)
+    }
+    /// The completed assembler already transferred the actual session into its
+    /// retained FrozenArena. Only the original stack storage remains here.
+    pub(super) fn release_frozen_stack(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        if control.stop().is_some() {
+            control.cleanup_release(&self.owner, HtmlParseResource::AuxiliaryEntries, 0)?;
+        } else {
+            control.require_identity(&self.owner)?;
+        }
+        self.release_stack(control)
+    }
+    fn release_stack(&mut self, control: &mut ParseControl) -> Result<(), KernelError> {
         self.open
             .take()
             .expect("verified active stack")
@@ -1051,6 +1067,12 @@ impl<'source> StandaloneDocumentDriver<'source> {
         Ok(())
     }
     fn reclaim_parse_owners(&mut self) -> Result<(), StandaloneError> {
+        self.reclaim_owners(true)
+    }
+    fn reclaim_frozen_execution(&mut self) -> Result<(), StandaloneError> {
+        self.reclaim_owners(false)
+    }
+    fn reclaim_owners(&mut self, active_session: bool) -> Result<(), StandaloneError> {
         let c = &mut self.control;
         if c.stop().is_none() {
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -1059,7 +1081,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
             if c.stop().is_none() {
                 write(size_of::<Option<head::HeadStage>>(), 1, c)?;
             }
-            head.release(c)?;
+            if active_session {
+                head.release(c)?;
+            } else {
+                head.release_frozen_execution(c)?;
+            }
             self.head = None;
         }
         if c.stop().is_none() {

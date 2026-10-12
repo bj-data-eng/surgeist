@@ -1976,6 +1976,20 @@ Recurring intrinsic tasks can exhaust the finite work budget; a finite input
 does not guarantee successful completion. No linear-time, allocator/RSS or
 cancellation-preemption guarantee follows.
 
+The completed guard can also freeze its actual session into a private
+`FrozenStandaloneParts` owner. It retains the same immutable arena, diagnostics,
+source identity and compiled usage records while releasing the remaining
+tokenizer, lexical and stack owners. The resulting owner has no source lifetime;
+the eventual public assembler must still move the original source handle.
+
+A refusal before storage transfer retains the completed driver. A stop after
+transfer retains the frozen arena and remaining execution owners for cleanup.
+Actual aliases can refuse release without losing that ownership; cleanup can
+retry after they drop. Both active and frozen failure readbacks use the sole
+controller's snapshot captured at first stop, separately from usage after cleanup.
+The present frozen evidence transfer retains committed diagnostics only; complete
+native provenance partitioning and public report assembly remain contribution work.
+
 Public parsed document/fragment results, atomic diagnostic/source-map/report transfer
 and contextual fragment execution remain unimplemented. Private completion does
 not certify unsupported input families, captured/hosted execution, shadow

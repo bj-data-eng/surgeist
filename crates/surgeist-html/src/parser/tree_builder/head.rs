@@ -642,6 +642,19 @@ impl<'source> HeadStage<'source> {
         })
     }
     pub(super) fn release(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+        self.release_owners(c, true)
+    }
+    pub(super) fn release_frozen_execution(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
+        self.release_owners(c, false)
+    }
+    fn release_owners(
+        &mut self,
+        c: &mut ParseControl,
+        active_session: bool,
+    ) -> Result<(), HeadError> {
         if c.stop().is_some() {
             c.cleanup_release(&self.owner, HtmlParseResource::AuxiliaryEntries, 0)?;
         } else {
@@ -694,7 +707,11 @@ impl<'source> HeadStage<'source> {
             write(size_of::<Option<ParserNode>>(), 1, c)?;
         }
         state.svg_pending = None;
-        state.before.kernel.release(c)?;
+        if active_session {
+            state.before.kernel.release(c)?;
+        } else {
+            state.before.kernel.release_frozen_stack(c)?;
+        }
         if let Some(tokenizer) = state.tokenizer.take() {
             tokenizer.release(c)?;
         }

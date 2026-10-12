@@ -211,6 +211,10 @@ impl HeadState<'_> {
 /// tokenizer and all diagnostic/lexical evidence. It is not a public report.
 pub(crate) struct CompletedStandaloneDocument<'source> {
     driver: Option<StandaloneDocumentDriver<'source>>,
+    frozen: Option<crate::construction::parser_session::FrozenArena>,
+    after_cleanup: Option<super::super::control::ParseUsage>,
+    #[cfg(test)]
+    cancel_after_freeze: Option<crate::HtmlParseCancellation>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(crate) fn take_completed(
@@ -242,12 +246,16 @@ impl<'source> StandaloneDocumentDriver<'source> {
             size_of::<CompletedStandaloneDocument>()
                 + size_of::<Self>()
                 + size_of::<Option<Self>>(),
-            2,
+            4 + usize::from(cfg!(test)),
             &mut driver.control,
         )?;
         driver.control.require_source(driver.source)?;
         Ok(CompletedStandaloneDocument {
             driver: input.take(),
+            frozen: None,
+            after_cleanup: None,
+            #[cfg(test)]
+            cancel_after_freeze: None,
         })
     }
 }
@@ -257,6 +265,9 @@ impl CompletedStandaloneDocument<'_> {
     pub(crate) fn native_view(
         &mut self,
     ) -> Result<crate::construction::parser_session::NativeView<'_>, StandaloneError> {
+        if self.frozen.is_some() {
+            return Err(StandaloneError::Consumed);
+        }
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         driver.control.require_source(driver.source)?;
         let head = driver.head.as_ref().ok_or(StandaloneError::Consumed)?;
@@ -275,6 +286,9 @@ impl CompletedStandaloneDocument<'_> {
     pub(crate) fn take_diagnostics(
         &mut self,
     ) -> Result<crate::construction::parser_session::evidence::ParseEvidence, StandaloneError> {
+        if self.frozen.is_some() {
+            return Err(StandaloneError::Consumed);
+        }
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         driver.control.require_source(driver.source)?;
         let state = driver
@@ -301,6 +315,16 @@ impl CompletedStandaloneDocument<'_> {
         &self,
     ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
     {
+        if let Some(evidence) = self
+            .driver
+            .as_ref()
+            .and_then(|driver| driver.failed_evidence.as_ref())
+        {
+            return Ok(evidence);
+        }
+        if let Some(frozen) = &self.frozen {
+            return frozen.retained_evidence().map_err(frozen_error);
+        }
         self.driver
             .as_ref()
             .ok_or(StandaloneError::Consumed)?
@@ -319,6 +343,9 @@ impl CompletedStandaloneDocument<'_> {
             .map_err(StandaloneError::from)
     }
     pub(crate) fn document_state(&mut self) -> Result<StandaloneDocumentState, StandaloneError> {
+        if self.frozen.is_some() {
+            return Err(StandaloneError::Consumed);
+        }
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         driver.control.require_source(driver.source)?;
         let state = driver
@@ -345,6 +372,47 @@ impl CompletedStandaloneDocument<'_> {
             .control
             .usage())
     }
+    pub(crate) fn at_stop(&self) -> Option<&super::super::control::ParseUsage> {
+        self.driver.as_ref()?.control.first_stop_usage()
+    }
+    pub(crate) fn after_cleanup(&self) -> Option<&super::super::control::ParseUsage> {
+        self.after_cleanup.as_ref()
+    }
+    /// Safe committed diagnostics remain owned separately from reclaimed arena
+    /// storage. This is the current diagnostics-only provider, not native D1.
+    pub(crate) fn cleanup_failure(&mut self) -> Result<(), StandaloneError> {
+        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+        if driver.control.stop().is_none() {
+            return Err(StandaloneError::Consumed);
+        }
+        if self.after_cleanup.is_some() {
+            return Ok(());
+        }
+        if driver.failed_evidence.is_none() {
+            if let Some(frozen) = &mut self.frozen {
+                driver.failed_evidence = frozen
+                    .take_stopped_evidence(&mut driver.control)
+                    .map_err(frozen_error)?;
+            } else if let Some(head) = &mut driver.head {
+                let state = head.state.as_mut().ok_or(StandaloneError::Consumed)?;
+                driver.failed_evidence = state
+                    .before
+                    .kernel
+                    .session
+                    .take_failed_evidence(&mut driver.control)
+                    .map_err(frozen_error)?;
+            }
+        }
+        if let Some(frozen) = &mut self.frozen {
+            driver.reclaim_frozen_execution()?;
+            frozen.release(&mut driver.control).map_err(frozen_error)?;
+            self.frozen = None;
+        } else {
+            driver.reclaim_parse_owners()?;
+        }
+        self.after_cleanup = Some(driver.control.usage().clone());
+        Ok(())
+    }
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         // Borrowed release preserves the actual owner on alias/admission failure.
@@ -356,8 +424,208 @@ impl CompletedStandaloneDocument<'_> {
                 &mut driver.control,
             )?;
         }
-        driver.release()?;
+        if let Some(frozen) = &mut self.frozen {
+            if driver.control.stop().is_some() && driver.failed_evidence.is_none() {
+                driver.failed_evidence = frozen
+                    .take_stopped_evidence(&mut driver.control)
+                    .map_err(frozen_error)?;
+            }
+            driver.reclaim_frozen_execution()?;
+            frozen.release(&mut driver.control).map_err(frozen_error)?;
+            self.frozen = None;
+            if let Some(evidence) = driver.failed_evidence.take() {
+                evidence.release(&mut driver.control)?;
+            }
+        } else {
+            driver.release()?;
+        }
         self.driver = None;
+        Ok(())
+    }
+    /// Moves real completed construction into a lifetime-free private owner.
+    /// A failure after Arena sharing leaves that owner in this borrowed guard.
+    /// No public report, native projection or reverse-map completeness is implied.
+    pub(crate) fn freeze_parts(&mut self) -> Result<FrozenStandaloneParts, StandaloneError> {
+        if self.frozen.is_some() {
+            let driver = self.driver.as_ref().ok_or(StandaloneError::Consumed)?;
+            return Err(driver
+                .control
+                .stop()
+                .map_or(StandaloneError::Consumed, StandaloneError::Stop));
+        }
+        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+        let c = &mut driver.control;
+        c.require_source(driver.source)?;
+        let state = driver
+            .head
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?;
+        state.qualify_completed(c)?;
+        state
+            .before
+            .kernel
+            .session
+            .preflight_completed_freeze(c)
+            .map_err(frozen_error)?;
+        let document_state = state
+            .before
+            .kernel
+            .session
+            .standalone_document_state(c)
+            .map_err(frozen_error)?;
+        // Every fixed output/failure slot is submitted before active storage can
+        // move. The fixed usage snapshots contain arrays, never variable clones.
+        write(
+            size_of::<FrozenStandaloneParts>()
+                + size_of::<Option<crate::construction::parser_session::FrozenArena>>()
+                + size_of::<Option<StandaloneDocumentDriver>>()
+                + size_of::<ParseControl>()
+                + size_of::<FrozenSourceBinding>(),
+            13,
+            c,
+        )?;
+        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        let source = FrozenSourceBinding {
+            identity: driver.source.identity().clone(),
+            coordinates: driver.source.coordinates(),
+            length: driver.source.len(),
+        };
+        let frozen = driver
+            .head
+            .as_mut()
+            .expect("qualified completed head")
+            .state
+            .as_mut()
+            .expect("qualified completed state")
+            .before
+            .kernel
+            .session
+            .freeze(c)
+            .map_err(frozen_error)?;
+        // No fallible gap after the actual Arena move.
+        self.frozen = Some(frozen);
+        #[cfg(test)]
+        if let Some(cancellation) = self.cancel_after_freeze.take() {
+            cancellation.cancel();
+        }
+        driver.reclaim_frozen_execution()?;
+        driver.control.checkpoint()?;
+        let usage = driver.control.usage().clone();
+        let driver = self.driver.take().expect("retained completed control");
+        Ok(FrozenStandaloneParts {
+            source,
+            control: driver.control,
+            arena: self.frozen.take(),
+            document_state,
+            final_usage: usage,
+            failed_evidence: driver.failed_evidence,
+            after_cleanup: None,
+        })
+    }
+}
+
+fn frozen_error(error: crate::construction::parser_session::SessionError) -> StandaloneError {
+    StandaloneError::Head(HeadError::Kernel(KernelError::Session(error)))
+}
+
+/// Original source metadata after all borrowed execution owners are gone. The
+/// actual source backing stays with the outer consuming entry, not a copied text.
+struct FrozenSourceBinding {
+    identity: crate::HtmlSourceId,
+    coordinates: crate::HtmlSourceCoordinates,
+    length: usize,
+}
+pub(crate) struct FrozenStandaloneParts {
+    source: FrozenSourceBinding,
+    control: ParseControl,
+    arena: Option<crate::construction::parser_session::FrozenArena>,
+    document_state: StandaloneDocumentState,
+    final_usage: super::super::control::ParseUsage,
+    failed_evidence: Option<crate::construction::parser_session::evidence::ParseEvidence>,
+    after_cleanup: Option<super::super::control::ParseUsage>,
+}
+impl FrozenStandaloneParts {
+    pub(crate) fn source_binding(
+        &self,
+    ) -> (&crate::HtmlSourceId, crate::HtmlSourceCoordinates, usize) {
+        (
+            &self.source.identity,
+            self.source.coordinates,
+            self.source.length,
+        )
+    }
+    pub(crate) fn document(&mut self) -> Result<&crate::HtmlDocument, StandaloneError> {
+        self.control.checkpoint()?;
+        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.arena
+            .as_ref()
+            .and_then(|arena| arena.document())
+            .ok_or(StandaloneError::Consumed)
+    }
+    pub(crate) fn document_state(&self) -> StandaloneDocumentState {
+        self.document_state
+    }
+    pub(crate) fn final_usage(&self) -> &super::super::control::ParseUsage {
+        &self.final_usage
+    }
+    pub(crate) fn retained_usage(&self) -> &super::super::control::ParseUsage {
+        self.control.usage()
+    }
+    pub(crate) fn at_stop(&self) -> Option<&super::super::control::ParseUsage> {
+        self.control.first_stop_usage()
+    }
+    pub(crate) fn after_cleanup(&self) -> Option<&super::super::control::ParseUsage> {
+        self.after_cleanup.as_ref()
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
+    {
+        if let Some(evidence) = &self.failed_evidence {
+            return Ok(evidence);
+        }
+        self.arena
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .retained_evidence()
+            .map_err(frozen_error)
+    }
+    /// Stops already exist; retain committed diagnostics while actual frozen
+    /// arena/payload storage is reclaimed. A refused alias keeps all real owners.
+    pub(crate) fn cleanup_failure(&mut self) -> Result<(), StandaloneError> {
+        if self.control.stop().is_none() {
+            return Err(StandaloneError::Consumed);
+        }
+        if self.after_cleanup.is_some() {
+            return Ok(());
+        }
+        if let Some(arena) = &mut self.arena {
+            if self.failed_evidence.is_none() {
+                self.failed_evidence = arena
+                    .take_stopped_evidence(&mut self.control)
+                    .map_err(frozen_error)?;
+            }
+            arena.release(&mut self.control).map_err(frozen_error)?;
+            self.arena = None;
+        }
+        self.after_cleanup = Some(self.control.usage().clone());
+        Ok(())
+    }
+    pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
+        if self.control.stop().is_some() {
+            self.cleanup_failure()?;
+        } else if let Some(arena) = &mut self.arena {
+            arena.release(&mut self.control).map_err(frozen_error)?;
+            self.arena = None;
+            self.after_cleanup = Some(self.control.usage().clone());
+        }
+        if let Some(evidence) = self.failed_evidence.take() {
+            evidence.release(&mut self.control)?;
+        }
         Ok(())
     }
 }
@@ -465,6 +733,485 @@ mod tests {
         NativeFragmentOwner, NativeKind, NativeString, NativeView,
     };
     use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
+
+    fn frozen_completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'_> {
+        let mut entry = super::super::entry::OrdinaryDocumentEntry::new(request);
+        let mut driver = Some(entry.take_driver().unwrap());
+        for _ in 0..4096 {
+            if driver.as_mut().unwrap().step().unwrap() == HeadStep::Complete {
+                return StandaloneDocumentDriver::take_completed(&mut driver).unwrap();
+            }
+        }
+        panic!("real EOF was not reached");
+    }
+    fn native_child<'a>(
+        document: &'a crate::HtmlDocument,
+        parent: crate::HtmlNode<'a>,
+        local: &str,
+    ) -> crate::HtmlNode<'a> {
+        for id in parent.children() {
+            let node = document.node(&id).unwrap();
+            if let crate::HtmlNodeKind::Element(element) = node.kind()
+                && element.name().local_name().code_units()
+                    == local.encode_utf16().collect::<Vec<_>>()
+            {
+                return node;
+            }
+        }
+        panic!("missing literal child {local}");
+    }
+    #[test]
+    fn frozen_parts_end_borrow_and_retain_same_source_native_identity_and_completion() {
+        fn produce() -> (FrozenStandaloneParts, crate::HtmlSourceId) {
+            let request = HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8("<!doctype html><p>x"),
+                super::super::tests::limits(100),
+            );
+            let source = request.source().identity().clone();
+            let mut completed = frozen_completed(&request);
+            let parts = completed.freeze_parts().unwrap();
+            assert!(completed.driver.is_none());
+            (parts, source)
+        }
+        let (mut parts, source) = produce();
+        assert_eq!(
+            parts.source_binding(),
+            (&source, crate::HtmlSourceCoordinates::Utf8Bytes, 19)
+        );
+        assert_eq!(
+            parts.document_state().completion,
+            ConstructionCompletion::Complete
+        );
+        assert!(parts.final_usage().actual_capacity_bytes > 0);
+        assert!(
+            parts
+                .retained_usage()
+                .resource(HtmlParseResource::ManagedUtf16Units)
+                .current
+                > 0
+        );
+        let document = parts.document().unwrap();
+        let html = native_child(document, document.root(), "html");
+        let body = native_child(document, html, "body");
+        let p = native_child(document, body, "p");
+        let text = document.node(&p.children().next().unwrap()).unwrap();
+        assert!(
+            matches!(text.kind(), crate::HtmlNodeKind::Text(value) if value.code_units()==[120])
+        );
+        parts.release().unwrap();
+        assert!(parts.after_cleanup().is_some());
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_parts_exact_utf16_recovery_and_committed_diagnostic_owner_survive_move() {
+        let mut source = "<!doctype html><p>".encode_utf16().collect::<Vec<_>>();
+        source.extend([0xd83d, 0xde00, 0xd800, 13, 10, 0, 38, 97, 109, 112, 59]);
+        let length = source.len();
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf16(crate::DocumentString::from_utf16(source)),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let pointer = completed.diagnostics().unwrap().records_pointer();
+        let count = completed.diagnostics().unwrap().len();
+        let mut parts = completed.freeze_parts().unwrap();
+        assert_eq!(
+            parts.source_binding(),
+            (
+                request.source().identity(),
+                crate::HtmlSourceCoordinates::Utf16CodeUnits,
+                length
+            )
+        );
+        assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
+        assert_eq!(parts.diagnostics().unwrap().len(), count);
+        assert!(count > 0);
+        let document = parts.document().unwrap();
+        let html = native_child(document, document.root(), "html");
+        let body = native_child(document, html, "body");
+        let p = native_child(document, body, "p");
+        let text = document.node(&p.children().next().unwrap()).unwrap();
+        // InBody ignores NULL; CRLF preprocesses to LF and &amp; contributes &.
+        assert!(
+            matches!(text.kind(),crate::HtmlNodeKind::Text(value) if value.code_units()==[0xd83d,0xde00,0xd800,10,38])
+        );
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_parts_real_arena_alias_retains_failure_diagnostics_and_retries_cleanup() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>\0"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let mut parts = completed.freeze_parts().unwrap();
+        let pointer = parts.diagnostics().unwrap().records_pointer();
+        let count = parts.diagnostics().unwrap().len();
+        let alias = parts.document().unwrap().clone();
+        assert!(parts.release().is_err());
+        assert!(parts.arena.is_some());
+        let first = parts.at_stop().unwrap().clone();
+        assert!(parts.document().is_err());
+        assert!(parts.cleanup_failure().is_err());
+        assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
+        assert_eq!(parts.diagnostics().unwrap().len(), count);
+        drop(alias);
+        parts.cleanup_failure().unwrap();
+        assert!(parts.arena.is_none());
+        assert_eq!(parts.at_stop(), Some(&first));
+        let after = parts.after_cleanup().unwrap().clone();
+        assert_eq!(
+            after.resource(HtmlParseResource::Diagnostics).current,
+            count as u64
+        );
+        parts.release().unwrap();
+        assert_eq!(parts.after_cleanup(), Some(&after));
+        assert_eq!(parts.at_stop(), Some(&first));
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_parts_active_payload_alias_rejects_before_freeze_and_preserves_completed_owner() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let html = {
+            let mut view = completed.native_view().unwrap();
+            let root = view.root().unwrap();
+            child_named(&mut view, &root, "html")
+        };
+        let driver = completed.driver.as_mut().unwrap();
+        let alias = driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session
+            .element_name(&mut driver.control, &html)
+            .unwrap()
+            .unwrap()
+            .local_name()
+            .clone();
+        assert!(matches!(
+            completed.freeze_parts(),
+            Err(StandaloneError::Head(HeadError::Kernel(
+                KernelError::Session(SessionError::AliasedPayload)
+            )))
+        ));
+        assert!(completed.frozen.is_none());
+        assert!(completed.driver.as_ref().unwrap().control.stop().is_none());
+        assert!(matches!(
+            completed.native_view(),
+            Err(StandaloneError::Head(HeadError::Kernel(
+                KernelError::Session(SessionError::AliasedPayload)
+            )))
+        ));
+        drop(alias);
+        completed.native_view().unwrap();
+        let mut parts = completed.freeze_parts().unwrap();
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_parts_missing_transferred_evidence_cannot_invent_an_empty_store() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>\0"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let evidence = completed.take_diagnostics().unwrap();
+        let pointer = evidence.records_pointer();
+        let count = evidence.len();
+        assert!(count > 0);
+        assert!(matches!(
+            completed.freeze_parts(),
+            Err(StandaloneError::Head(HeadError::Kernel(
+                KernelError::Session(SessionError::WrongToken)
+            )))
+        ));
+        assert!(completed.frozen.is_none());
+        assert!(completed.driver.as_ref().unwrap().control.stop().is_none());
+        completed.native_view().unwrap();
+        let driver = completed.driver.as_mut().unwrap();
+        assert_eq!(evidence.records_pointer(), pointer);
+        assert_eq!(evidence.len(), count);
+        evidence.release(&mut driver.control).unwrap();
+        completed.release().unwrap();
+        assert!(completed.driver.is_none());
+    }
+    #[test]
+    fn frozen_parts_cancellation_after_transfer_keeps_safe_evidence_and_first_snapshot() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>\0"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let mut parts = completed.freeze_parts().unwrap();
+        request.cancellation().cancel();
+        assert!(matches!(
+            parts.document(),
+            Err(StandaloneError::Stop(ParseStop::Cancelled))
+        ));
+        let first = parts.at_stop().unwrap().clone();
+        let pointer = parts.diagnostics().unwrap().records_pointer();
+        let polls = parts.control.owned_span_observation().polls;
+        parts.cleanup_failure().unwrap();
+        assert_eq!(parts.control.owned_span_observation().polls, polls);
+        assert_eq!(parts.at_stop(), Some(&first));
+        assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_parts_actual_after_share_cancellation_keeps_both_owners_for_terminal_release() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>\0"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let pointer = completed.diagnostics().unwrap().records_pointer();
+        completed.cancel_after_freeze = Some(request.cancellation().clone());
+        assert!(matches!(
+            completed.freeze_parts(),
+            Err(StandaloneError::Stop(ParseStop::Cancelled))
+        ));
+        assert!(completed.frozen.is_some());
+        assert!(completed.driver.is_some());
+        assert_eq!(completed.diagnostics().unwrap().records_pointer(), pointer);
+        assert!(completed.native_view().is_err());
+        assert!(completed.freeze_parts().is_err());
+        let first = completed
+            .driver
+            .as_ref()
+            .unwrap()
+            .control
+            .first_stop_usage()
+            .unwrap()
+            .clone();
+        let polls = completed
+            .driver
+            .as_ref()
+            .unwrap()
+            .control
+            .owned_span_observation()
+            .polls;
+        completed.cleanup_failure().unwrap();
+        assert_eq!(completed.at_stop(), Some(&first));
+        assert!(
+            completed.after_cleanup().unwrap().actual_capacity_bytes < first.actual_capacity_bytes
+        );
+        assert_eq!(
+            completed
+                .driver
+                .as_ref()
+                .unwrap()
+                .control
+                .owned_span_observation()
+                .polls,
+            polls
+        );
+        assert_eq!(completed.diagnostics().unwrap().records_pointer(), pointer);
+        assert!(completed.frozen.is_none());
+        completed.release().unwrap();
+        assert!(completed.driver.is_none());
+        assert!(completed.frozen.is_none());
+        assert!(first.actual_capacity_bytes > 0);
+    }
+    #[test]
+    fn frozen_parts_exact_work_and_one_short_plus_bounded_cuts_preserve_actual_owners() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>\0"),
+            super::super::tests::limits(100),
+        );
+        let mut measured = frozen_completed(&request);
+        let before = measured
+            .usage()
+            .unwrap()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let mut result = measured.freeze_parts().unwrap();
+        let cost = result
+            .final_usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - before;
+        result.release().unwrap();
+        assert!(cost > 0);
+        let mut active_stops = 0;
+        let mut frozen_stops = 0;
+        for allowance in (0..cost).step_by(97).chain([cost - 1, cost]) {
+            let request = HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8("<p>\0"),
+                super::super::tests::limits(100),
+            );
+            let mut completed = frozen_completed(&request);
+            let pointer = completed.diagnostics().unwrap().records_pointer();
+            let count = completed.diagnostics().unwrap().len();
+            let driver = completed.driver.as_mut().unwrap();
+            let used = driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
+            driver
+                .control
+                .charge(
+                    WorkCategory::StateStep,
+                    request.limits().work_credits() - used - allowance,
+                )
+                .unwrap();
+            match completed.freeze_parts() {
+                Ok(mut parts) => {
+                    assert_eq!(allowance, cost, "only exact complete allowance succeeds");
+                    assert_eq!(
+                        parts
+                            .final_usage()
+                            .resource(HtmlParseResource::WorkCredits)
+                            .current,
+                        request.limits().work_credits()
+                    );
+                    if parts.release().is_err() {
+                        parts.release().unwrap();
+                    }
+                    super::super::tests::assert_released(&parts.control);
+                }
+                Err(error) => {
+                    assert!(allowance < cost);
+                    let driver = completed.driver.as_ref().unwrap();
+                    assert!(
+                        matches!(
+                            driver.control.stop(),
+                            Some(ParseStop::LimitExceeded {
+                                resource: HtmlParseResource::WorkCredits,
+                                ..
+                            })
+                        ),
+                        "{error:?}"
+                    );
+                    let stop = driver.control.stop();
+                    let first = driver.control.first_stop_usage().unwrap().clone();
+                    let polls = driver.control.owned_span_observation().polls;
+                    if completed.frozen.is_some() {
+                        frozen_stops += 1;
+                    } else {
+                        active_stops += 1;
+                    }
+                    assert!(completed.freeze_parts().is_err());
+                    completed.cleanup_failure().unwrap();
+                    assert_eq!(completed.diagnostics().unwrap().records_pointer(), pointer);
+                    assert_eq!(completed.diagnostics().unwrap().len(), count);
+                    assert_eq!(completed.driver.as_ref().unwrap().control.stop(), stop);
+                    assert_eq!(completed.at_stop(), Some(&first));
+                    assert_eq!(
+                        completed
+                            .driver
+                            .as_ref()
+                            .unwrap()
+                            .control
+                            .owned_span_observation()
+                            .polls,
+                        polls
+                    );
+                    assert!(
+                        completed.after_cleanup().unwrap().actual_capacity_bytes
+                            <= first.actual_capacity_bytes
+                    );
+                    completed.release().unwrap();
+                    assert!(completed.driver.is_none());
+                }
+            }
+        }
+        assert!(active_stops > 0);
+        assert!(frozen_stops > 0);
+    }
+    #[test]
+    fn frozen_parts_retains_template_control_and_script_metadata_in_same_arena() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(
+                "<!doctype html><template><p>T</template><script>x</script><textarea>\nX</textarea><input type=hidden value=y><select><option>A</select>",
+            ),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let script = {
+            let mut view = completed.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let head = child_named(&mut view, &html, "head");
+            child_named(&mut view, &head, "script")
+        };
+        let mut parts = completed.freeze_parts().unwrap();
+        let document = parts.document().unwrap();
+        let html = native_child(document, document.root(), "html");
+        let head = native_child(document, html, "head");
+        let template = native_child(document, head, "template");
+        let contents = document
+            .fragment(&template.template_contents().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(contents.root().children().len(), 1);
+        let body = native_child(document, html, "body");
+        let textarea = native_child(document, body, "textarea").id();
+        let hidden = native_child(document, body, "input").id();
+        drop(contents);
+        let arena = parts.arena.as_ref().unwrap();
+        assert!(
+            arena
+                .script_metadata(&mut parts.control, &script)
+                .unwrap()
+                .already_started
+        );
+        assert_eq!(
+            arena
+                .textarea_raw_value(&mut parts.control, &textarea)
+                .unwrap()
+                .code_units(),
+            [88]
+        );
+        arena
+            .hidden_input_state(&mut parts.control, &hidden)
+            .unwrap();
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_parts_stopped_evidence_foreign_owner_refusal_preserves_actual_store() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>\0"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        let mut parts = completed.freeze_parts().unwrap();
+        let pointer = parts.diagnostics().unwrap().records_pointer();
+        let mut foreign = ParseControl::new(
+            super::super::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        foreign.admit_source(request.source()).unwrap();
+        foreign.stop_unsupported_standalone(
+            super::super::super::control::StandaloneUnsupported::Completion,
+        );
+        let before = foreign.usage().clone();
+        assert!(
+            parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .take_stopped_evidence(&mut foreign)
+                .is_err()
+        );
+        assert_eq!(foreign.usage(), &before);
+        assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
+        assert!(parts.control.stop().is_none());
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
 
     fn units(view: &mut NativeView<'_>, text: NativeString<'_>) -> Vec<u16> {
         (0..text.len())

@@ -5726,6 +5726,21 @@ impl ParserArenaSession {
             }),
         })
     }
+    /// Strict private completed-assembly preflight. Generic native freezing
+    /// remains separate; no backing is cloned to test actual ownership.
+    pub(crate) fn preflight_completed_freeze(
+        &self,
+        control: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        let storage = self.active()?;
+        storage.require(control)?;
+        storage.payloads.check_aliases(&storage.records, control)?;
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        if storage.evidence.is_none() {
+            return Err(SessionError::WrongToken);
+        }
+        Ok(())
+    }
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         cleanup_owner(control, &self.active()?.control)?;
         self.active()?
@@ -5740,6 +5755,25 @@ impl ParserArenaSession {
 }
 
 impl FrozenArena {
+    /// Fixed lender of the real committed store, not a report projection.
+    pub(crate) fn retained_evidence(&self) -> Result<&ParseEvidence, SessionError> {
+        self.storage
+            .as_ref()
+            .ok_or(SessionError::Consumed)?
+            .evidence
+            .as_ref()
+            .ok_or(SessionError::WrongToken)
+    }
+    /// Current published diagnostics-only owner. Future native evidence must
+    /// partition through its issuer rather than disposing native authority here.
+    pub(crate) fn take_stopped_evidence(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<Option<ParseEvidence>, SessionError> {
+        let storage = self.storage.as_mut().ok_or(SessionError::Consumed)?;
+        control.cleanup_release(&storage.control, HtmlParseResource::AuxiliaryEntries, 0)?;
+        Ok(storage.evidence.take())
+    }
     pub(crate) fn hidden_input_state(
         &self,
         control: &mut ParseControl,
