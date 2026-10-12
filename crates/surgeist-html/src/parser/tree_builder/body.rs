@@ -294,22 +294,33 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
         self.reconstruct_formatting(c)?;
-        self.before
-            .kernel
-            .insert_text(&mut self.whitespace_pending, None, c)?;
+        self.before.kernel.insert_text(
+            &mut self.whitespace_pending,
+            None,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         if other {
             self.frameset(false, c)?;
         }
         Ok(())
     }
     fn close_p(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
-        self.before.kernel.implied_ends(Some("p"), c)?;
+        self.before.kernel.implied_ends(
+            Some("p"),
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         let current = self.before.kernel.current(c)?;
         if !self.before.kernel.named(&current, "p", c)? {
             self.emit(HeadCondition::UnexpectedOpenElement, c)?;
         }
         loop {
-            let node = self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            let node = self
+                .before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
             if self.before.kernel.named(&node, "p", c)? {
                 return Ok(());
             }
@@ -324,7 +335,12 @@ impl HeadState<'_> {
     fn implicit_body(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         let location = self.before.kernel.adjusted_location(None, c)?;
         let node = self.before.kernel.session.allocate_implicit_body(c)?;
-        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.insert_element_at(
+            &node,
+            &location,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.before.kernel.push(&node, c)?;
         self.set_mode(InsertionMode::InBody, c)
     }
@@ -372,7 +388,10 @@ impl HeadState<'_> {
             self.raw_text(Raw::Rawtext, close, c)?
         } else {
             self.insert_tag(c)?;
-            self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            self.before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
             self.finish(c)?
         };
         if late {
@@ -381,6 +400,7 @@ impl HeadState<'_> {
                     .as_ref()
                     .ok_or(HeadError::MissingInput)?,
                 c,
+                self.script.as_ref().map(|script| &script.capability),
             )?;
             write(size_of::<Option<ParserNode>>(), 1, c)?;
             self.temporary_head = None;
@@ -409,7 +429,13 @@ impl HeadState<'_> {
                 .allocate_processing_instruction(c, input)?,
             _ => return Err(HeadError::MissingInput),
         };
-        self.before.kernel.session.insert(c, parent, &node, None)?;
+        self.before.kernel.session.insert(
+            c,
+            parent,
+            &node,
+            None,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.finish(c)
     }
     fn excluded(
@@ -423,7 +449,6 @@ impl HeadState<'_> {
         for (names, boundary) in [
             (&["template"][..], HeadBoundary::Template),
             (&["input"][..], HeadBoundary::Form),
-            (&["select", "option", "optgroup"][..], HeadBoundary::Select),
             (&["math", "svg"][..], HeadBoundary::Foreign),
         ] {
             if self.token_in(names, c)?.is_some() {
@@ -570,14 +595,21 @@ impl HeadState<'_> {
             c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
             if self.frameset_ok {
                 if self.before.kernel.session.parent(c, &body)?.is_some() {
-                    self.before.kernel.session.remove(c, &body)?;
+                    self.before.kernel.session.remove(
+                        c,
+                        &body,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
                 }
                 loop {
                     let current = self.before.kernel.current(c)?;
                     if self.before.kernel.named(&current, "html", c)? {
                         break;
                     }
-                    self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                        .ok_or(KernelError::EmptyStack)?;
                 }
                 return Ok(Some(self.frameset_start(close, c)?));
             }
@@ -606,9 +638,19 @@ impl HeadState<'_> {
         if kind == TagKind::Start {
             if self.token_in(&["input"], c)?.is_some() {
                 self.admit_hidden_capability(c)?;
+                if self
+                    .before
+                    .kernel
+                    .scoped_name("select", Scope::Default, c)?
+                {
+                    self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+                    self.pop_select(c)?;
+                }
                 self.reconstruct_formatting(c)?;
                 self.insert_hidden_input(c)?;
-                self.before.kernel.pop(c)?;
+                self.before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                 return Ok(Some(self.finish(c)?));
             }
             if self.token_in(&["textarea"], c)?.is_some() {
@@ -708,14 +750,22 @@ impl HeadState<'_> {
             self.emit(HeadCondition::UnexpectedEndTag, c)?;
             return self.discard(c);
         }
-        self.before.kernel.implied_ends(None, c)?;
+        self.before.kernel.implied_ends(
+            None,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         let current = self.before.kernel.current(c)?;
         if !self.before.kernel.session.same_node(c, &current, &node)? {
             // Governing HTML4516 diagnoses BEFORE4518 removes the identity;
             // the acquired engine's reversed ordering is not carried over.
             self.emit(HeadCondition::UnexpectedOpenElement, c)?;
         }
-        self.before.kernel.remove_stack_identity(&node, c)?;
+        self.before.kernel.remove_stack_identity(
+            &node,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.discard(c)
     }
     fn body_start(
@@ -724,6 +774,69 @@ impl HeadState<'_> {
         close: bool,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
+        if let Some(name) =
+            self.token_in(&["select", "option", "optgroup", "selectedcontent"], c)?
+        {
+            // The real constructor proof is required before diagnostics, stack
+            // mutation, reconstruction, or lexical ownership transfer.
+            match self.validate_standalone_capability(c) {
+                Err(HeadError::StandaloneCapabilityUnavailable) => {
+                    return Err(c
+                        .stop_unsupported_standalone(
+                            crate::parser::control::StandaloneUnsupported::Provenance,
+                        )
+                        .into());
+                }
+                other => other?,
+            }
+            let select = self
+                .before
+                .kernel
+                .scoped_name("select", Scope::Default, c)?;
+            if name == "select" && select {
+                self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+                let step = self.discard(c)?;
+                self.pop_select(c)?;
+                return Ok(Some(step));
+            }
+            if name == "option" || name == "optgroup" {
+                if select {
+                    self.before.kernel.implied_ends(
+                        (name == "option").then_some("optgroup"),
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
+                    if self
+                        .before
+                        .kernel
+                        .scoped_name("option", Scope::Default, c)?
+                        || (name == "optgroup"
+                            && self
+                                .before
+                                .kernel
+                                .scoped_name("optgroup", Scope::Default, c)?)
+                    {
+                        self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                    }
+                } else {
+                    let current = self.before.kernel.current(c)?;
+                    if self.before.kernel.named(&current, "option", c)? {
+                        self.before
+                            .kernel
+                            .pop(c, self.script.as_ref().map(|script| &script.capability))?;
+                    }
+                }
+            }
+            self.reconstruct_formatting(c)?;
+            self.insert_select_family(c)?;
+            if name == "select" {
+                self.frameset(false, c)?;
+            }
+            if close {
+                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            }
+            return Ok(Some(self.finish(c)?));
+        }
         if self.token_in(&["button"], c)?.is_some() {
             if self
                 .before
@@ -734,9 +847,17 @@ impl HeadState<'_> {
                 // ends or stack removal, so rejected diagnostics retain the
                 // old button and the actual unconsumed new token.
                 self.emit(HeadCondition::UnexpectedBodyToken, c)?;
-                self.before.kernel.implied_ends(None, c)?;
+                self.before.kernel.implied_ends(
+                    None,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
                 loop {
-                    let node = self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+                    let node = self
+                        .before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                        .ok_or(KernelError::EmptyStack)?;
                     if self.before.kernel.named(&node, "button", c)? {
                         break;
                     }
@@ -799,7 +920,9 @@ impl HeadState<'_> {
             let current = self.before.kernel.current(c)?;
             if self.before.kernel.node_set(&current, NodeSet::Heading, c)? {
                 self.emit(HeadCondition::UnexpectedOpenElement, c)?;
-                self.before.kernel.pop(c)?;
+                self.before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|script| &script.capability))?;
             }
         } else if self.token_in(&["pre", "listing"], c)?.is_some() {
             self.close_p_in_scope(c)?;
@@ -830,12 +953,20 @@ impl HeadState<'_> {
                     } else {
                         "dt"
                     };
-                    self.before.kernel.implied_ends(Some(except), c)?;
+                    self.before.kernel.implied_ends(
+                        Some(except),
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
                     let current = self.before.kernel.current(c)?;
                     if !self.before.kernel.session.same_node(c, &current, &node)? {
                         self.emit(HeadCondition::UnexpectedOpenElement, c)?;
                     }
-                    self.before.kernel.pop_through(&node, c)?;
+                    self.before.kernel.pop_through(
+                        &node,
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
                     break;
                 }
                 if self.before.kernel.node_set(&node, NodeSet::Special, c)?
@@ -896,6 +1027,28 @@ impl HeadState<'_> {
                 .is_some();
             if self.token_in(&["hr"], c)?.is_some() {
                 self.close_p_in_scope(c)?;
+                if self
+                    .before
+                    .kernel
+                    .scoped_name("select", Scope::Default, c)?
+                {
+                    self.before.kernel.implied_ends(
+                        None,
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
+                    if self
+                        .before
+                        .kernel
+                        .scoped_name("option", Scope::Default, c)?
+                        || self
+                            .before
+                            .kernel
+                            .scoped_name("optgroup", Scope::Default, c)?
+                    {
+                        self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                    }
+                }
             }
             if self
                 .token_in(&["area", "br", "embed", "img", "keygen", "wbr"], c)?
@@ -904,7 +1057,9 @@ impl HeadState<'_> {
                 self.reconstruct_formatting(c)?;
             }
             self.insert_tag(c)?;
-            self.before.kernel.pop(c)?;
+            self.before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?;
             if affects {
                 self.frameset(false, c)?;
             }
@@ -929,6 +1084,7 @@ impl HeadState<'_> {
                     None
                 },
                 c,
+                self.script.as_ref().map(|script| &script.capability),
             )?;
             let current = self.before.kernel.current(c)?;
             if !self.before.kernel.named(&current, "ruby", c)?
@@ -938,6 +1094,18 @@ impl HeadState<'_> {
             }
         }
         Ok(())
+    }
+    fn pop_select(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
+        loop {
+            let node = self
+                .before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
+            if self.before.kernel.named(&node, "select", c)? {
+                return Ok(());
+            }
+        }
     }
     pub(super) fn token_matches_node(
         &self,
@@ -1001,7 +1169,12 @@ impl HeadState<'_> {
                 self.emit(HeadCondition::UnexpectedEndTag, c)?;
                 let location = self.before.kernel.adjusted_location(None, c)?;
                 let node = self.before.kernel.session.allocate_implicit_p(c)?;
-                self.before.kernel.insert_element_at(&node, &location, c)?;
+                self.before.kernel.insert_element_at(
+                    &node,
+                    &location,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
                 self.before.kernel.push(&node, c)?;
             }
             self.close_p(c)?;
@@ -1030,13 +1203,18 @@ impl HeadState<'_> {
                     None
                 },
                 c,
+                self.script.as_ref().map(|script| &script.capability),
             )?;
             let current = self.before.kernel.current(c)?;
             if !self.before.kernel.named(&current, name, c)? {
                 self.emit(HeadCondition::UnexpectedOpenElement, c)?;
             }
             loop {
-                let node = self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+                let node = self
+                    .before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                    .ok_or(KernelError::EmptyStack)?;
                 if self.before.kernel.named(&node, name, c)? {
                     break;
                 }
@@ -1067,12 +1245,20 @@ impl HeadState<'_> {
                 self.emit(HeadCondition::UnexpectedEndTag, c)?;
                 return Ok(Some(self.discard(c)?));
             };
-            self.before.kernel.implied_ends(None, c)?;
+            self.before.kernel.implied_ends(
+                None,
+                c,
+                self.script.as_ref().map(|script| &script.capability),
+            )?;
             let current = self.before.kernel.current(c)?;
             if !self.token_matches_node(&current, c)? {
                 self.emit(HeadCondition::UnexpectedOpenElement, c)?;
             }
-            self.before.kernel.pop_through(&target, c)?;
+            self.before.kernel.pop_through(
+                &target,
+                c,
+                self.script.as_ref().map(|script| &script.capability),
+            )?;
             return Ok(Some(self.discard(c)?));
         }
         self.generic_end(c)?;
@@ -1090,13 +1276,19 @@ impl HeadState<'_> {
                     {
                         break;
                     }
-                    self.before.kernel.pop(c)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                 }
                 let current = self.before.kernel.current(c)?;
                 if !self.before.kernel.session.same_node(c, &node, &current)? {
                     self.emit(HeadCondition::UnexpectedOpenElement, c)?;
                 }
-                self.before.kernel.pop_through(&node, c)?;
+                self.before.kernel.pop_through(
+                    &node,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
                 return Ok(());
             }
             if self.before.kernel.node_set(&node, NodeSet::Special, c)? {

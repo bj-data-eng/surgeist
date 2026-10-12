@@ -362,7 +362,7 @@ impl<'a> DocumentPrologue<'a> {
                     let kernel = self.kernel.as_mut().ok_or(PrologueError::Consumed)?;
                     let node = kernel.session.allocate_comment(c, input)?;
                     let root = kernel.session.root(c)?;
-                    kernel.session.insert(c, &root, &node, None)?;
+                    kernel.session.insert(c, &root, &node, None, None)?;
                     self.finish_pending(c)?;
                     return Ok(PrologueStep::Consumed);
                 }
@@ -370,7 +370,7 @@ impl<'a> DocumentPrologue<'a> {
                     let kernel = self.kernel.as_mut().ok_or(PrologueError::Consumed)?;
                     let node = kernel.session.allocate_processing_instruction(c, input)?;
                     let root = kernel.session.root(c)?;
-                    kernel.session.insert(c, &root, &node, None)?;
+                    kernel.session.insert(c, &root, &node, None, None)?;
                     self.finish_pending(c)?;
                     return Ok(PrologueStep::Consumed);
                 }
@@ -392,7 +392,7 @@ impl<'a> DocumentPrologue<'a> {
                     let node = kernel.session.allocate_doctype(c, input)?;
                     if kernel.session.document_accepts_doctype(c)? {
                         let root = kernel.session.root(c)?;
-                        kernel.session.insert(c, &root, &node, None)?;
+                        kernel.session.insert(c, &root, &node, None, None)?;
                     }
                     if decision.mode != HtmlDocumentMode::NoQuirks {
                         kernel.session.set_document_mode(c, decision.mode)?;
@@ -435,7 +435,7 @@ impl<'a> DocumentPrologue<'a> {
                             before: None,
                         };
                         let node = kernel.session.allocate_html_tag(c, input)?;
-                        kernel.insert_element_at(&node, &location, c)?;
+                        kernel.insert_element_at(&node, &location, c, None)?;
                         kernel.push(&node, c)?;
                         if self_closing {
                             self.emit(PrologueCondition::UnacknowledgedSelfClosing, c)?;
@@ -461,7 +461,7 @@ impl<'a> DocumentPrologue<'a> {
             let kernel = self.kernel()?;
             let node = kernel.session.allocate_implicit_html(c)?;
             let root = kernel.session.root(c)?;
-            kernel.session.insert(c, &root, &node, None)?;
+            kernel.session.insert(c, &root, &node, None, None)?;
             kernel.push(&node, c)?;
             self.set_mode(PrologueMode::BeforeHead, c)?;
             return Ok(PrologueStep::BeforeHead);

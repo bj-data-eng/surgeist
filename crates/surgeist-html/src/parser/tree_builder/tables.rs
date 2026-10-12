@@ -93,7 +93,10 @@ impl HeadState<'_> {
             if self.current_in(names, c)? {
                 return Ok(());
             }
-            self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            self.before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
         }
     }
     fn pop_table_name(
@@ -102,7 +105,11 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
         loop {
-            let node = self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            let node = self
+                .before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
             if self.before.kernel.named(&node, name, c)? {
                 return Ok(());
             }
@@ -161,7 +168,12 @@ impl HeadState<'_> {
             "tr" => self.before.kernel.session.allocate_implicit_tr(c)?,
             _ => return Err(HeadError::InvalidTextToken),
         };
-        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.insert_element_at(
+            &node,
+            &location,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.before.kernel.push(&node, c)?;
         Ok(())
     }
@@ -187,7 +199,6 @@ impl HeadState<'_> {
         if let Some((TagKind::Start, _)) = self.kind(c)? {
             for (names, boundary) in [
                 (&["input"][..], HeadBoundary::Form),
-                (&["select", "option", "optgroup"][..], HeadBoundary::Select),
                 (&["template"][..], HeadBoundary::Template),
                 (&["math", "svg"][..], HeadBoundary::Foreign),
             ] {
@@ -433,9 +444,12 @@ impl HeadState<'_> {
                 self.body_character(other, c)?;
                 self.before.kernel.set_foster_parenting(old, c)?;
             } else {
-                self.before
-                    .kernel
-                    .insert_text(&mut self.whitespace_pending, None, c)?;
+                self.before.kernel.insert_text(
+                    &mut self.whitespace_pending,
+                    None,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
             }
             write(size_of::<Option<TableCharacter>>(), 1, c)?;
             self.table.transfer = None;
@@ -498,12 +512,20 @@ impl HeadState<'_> {
         Ok(())
     }
     fn close_table_cell(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
-        self.before.kernel.implied_ends(None, c)?;
+        self.before.kernel.implied_ends(
+            None,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         if !self.current_in(&["td", "th"], c)? {
             self.table_error(c)?;
         }
         loop {
-            let node = self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            let node = self
+                .before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
             if self.before.kernel.named(&node, "td", c)?
                 || self.before.kernel.named(&node, "th", c)?
             {
@@ -548,7 +570,11 @@ impl HeadState<'_> {
                         self.table_error(c)?;
                         return Ok(Some(self.discard(c)?));
                     }
-                    self.before.kernel.implied_ends(None, c)?;
+                    self.before.kernel.implied_ends(
+                        None,
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
                     if !self.current_in(&["caption"], c)? {
                         self.table_error(c)?;
                     }
@@ -603,7 +629,9 @@ impl HeadState<'_> {
                 }
                 if start && self.token_in(&["col"], c)?.is_some() {
                     self.insert_tag(c)?;
-                    self.before.kernel.pop(c)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                     return Ok(Some(self.finish(c)?));
                 }
                 if end && self.token_in(&["colgroup"], c)?.is_some() {
@@ -611,7 +639,9 @@ impl HeadState<'_> {
                         self.table_error(c)?;
                         return Ok(Some(self.discard(c)?));
                     }
-                    self.before.kernel.pop(c)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                     self.set_mode(InsertionMode::InTable, c)?;
                     return Ok(Some(self.discard(c)?));
                 }
@@ -630,7 +660,9 @@ impl HeadState<'_> {
                     self.table_error(c)?;
                     return Ok(Some(self.discard(c)?));
                 }
-                self.before.kernel.pop(c)?;
+                self.before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                 self.set_mode(InsertionMode::InTable, c)?;
                 return Ok(None);
             }
@@ -652,7 +684,9 @@ impl HeadState<'_> {
                         return Ok(Some(self.discard(c)?));
                     }
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
-                    self.before.kernel.pop(c)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                     self.set_mode(InsertionMode::InTable, c)?;
                     return Ok(Some(self.discard(c)?));
                 }
@@ -670,7 +704,9 @@ impl HeadState<'_> {
                         return Ok(Some(self.discard(c)?));
                     }
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
-                    self.before.kernel.pop(c)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                     self.set_mode(InsertionMode::InTable, c)?;
                     return Ok(None);
                 }
@@ -730,7 +766,9 @@ impl HeadState<'_> {
                         return Ok(Some(self.discard(c)?));
                     }
                     self.clear_table_context(&["tr", "template", "html"], c)?;
-                    self.before.kernel.pop(c)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                     self.set_mode(InsertionMode::InTableBody, c)?;
                     return if end_row {
                         Ok(Some(self.discard(c)?))
@@ -756,7 +794,11 @@ impl HeadState<'_> {
                         self.table_error(c)?;
                         return Ok(Some(self.discard(c)?));
                     }
-                    self.before.kernel.implied_ends(None, c)?;
+                    self.before.kernel.implied_ends(
+                        None,
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
                     if !self.current_in(&[name], c)? {
                         self.table_error(c)?;
                     }
@@ -873,7 +915,9 @@ impl HeadState<'_> {
                 self.admit_hidden_capability(c)?;
                 self.table_error(c)?;
                 self.insert_hidden_input(c)?;
-                self.before.kernel.pop(c)?;
+                self.before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                 return Ok(Some(self.finish(c)?));
             }
             if self.token_in(&["form"], c)?.is_some() {
@@ -886,7 +930,9 @@ impl HeadState<'_> {
                 let node = copy_node(&node, c)?;
                 write(size_of::<Option<ParserNode>>(), 1, c)?;
                 self.current_form = Some(node);
-                self.before.kernel.pop(c)?;
+                self.before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                 if close {
                     self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
                 }

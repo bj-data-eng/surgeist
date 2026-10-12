@@ -1704,23 +1704,103 @@ struct IntegerPrefix<'a> {
     digits: &'a [u16],
 }
 
+/// The shared integer grammar as one-unit progress. Callers own admission;
+/// this scanner never reads an input provider or allocates digit storage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct IntegerPrefixScanner {
+    recover: bool,
+    phase: IntegerPrefixPhase,
+    negative: bool,
+    position: usize,
+    start: usize,
+    end: usize,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IntegerPrefixPhase {
+    Leading,
+    Signed,
+    Digits,
+    Done,
+    Invalid,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ScannedIntegerPrefix {
+    pub(crate) negative: bool,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+impl IntegerPrefixScanner {
+    pub(crate) fn new(recover: bool) -> Self {
+        Self {
+            recover,
+            phase: IntegerPrefixPhase::Leading,
+            negative: false,
+            position: 0,
+            start: 0,
+            end: 0,
+        }
+    }
+    /// False means the recovery prefix is complete or syntax is already invalid.
+    pub(crate) fn feed(&mut self, unit: u16) -> bool {
+        match self.phase {
+            IntegerPrefixPhase::Done | IntegerPrefixPhase::Invalid => return false,
+            IntegerPrefixPhase::Leading if self.recover && is_ascii_whitespace(unit) => {
+                self.position += 1;
+                return true;
+            }
+            IntegerPrefixPhase::Leading => {
+                if unit == b'-' as u16 || (self.recover && unit == b'+' as u16) {
+                    self.negative = unit == b'-' as u16;
+                    self.position += 1;
+                    self.start = self.position;
+                    self.phase = IntegerPrefixPhase::Signed;
+                    return true;
+                }
+                self.start = self.position;
+            }
+            IntegerPrefixPhase::Signed | IntegerPrefixPhase::Digits => {}
+        }
+        if is_digit(unit) {
+            self.position += 1;
+            self.end = self.position;
+            self.phase = IntegerPrefixPhase::Digits;
+            true
+        } else {
+            self.phase = if self.phase == IntegerPrefixPhase::Digits && self.recover {
+                IntegerPrefixPhase::Done
+            } else {
+                IntegerPrefixPhase::Invalid
+            };
+            false
+        }
+    }
+    pub(crate) fn finish(self) -> Result<ScannedIntegerPrefix, NumericParseError> {
+        if matches!(
+            self.phase,
+            IntegerPrefixPhase::Digits | IntegerPrefixPhase::Done
+        ) {
+            Ok(ScannedIntegerPrefix {
+                negative: self.negative,
+                start: self.start,
+                end: self.end,
+            })
+        } else {
+            Err(NumericParseError::InvalidSyntax)
+        }
+    }
+}
+
 fn integer_prefix(units: &[u16], recover: bool) -> Result<IntegerPrefix<'_>, NumericParseError> {
-    let mut position = 0;
-    if recover {
-        skip_whitespace(units, &mut position);
+    let mut scanner = IntegerPrefixScanner::new(recover);
+    for &unit in units {
+        if !scanner.feed(unit) {
+            break;
+        }
     }
-    let negative = units.get(position) == Some(&(b'-' as u16));
-    if negative || (recover && units.get(position) == Some(&(b'+' as u16))) {
-        position += 1;
-    }
-    let start = position;
-    collect_digits(units, &mut position);
-    if start == position || (!recover && position != units.len()) {
-        return Err(NumericParseError::InvalidSyntax);
-    }
+    let prefix = scanner.finish()?;
     Ok(IntegerPrefix {
-        negative,
-        digits: &units[start..position],
+        negative: prefix.negative,
+        digits: &units[prefix.start..prefix.end],
     })
 }
 
@@ -2461,6 +2541,36 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn integer_unit_scanner_keeps_author_and_recovery_prefixes_distinct() {
+        use super::{IntegerPrefixScanner, NumericParseError, ScannedIntegerPrefix};
+        for (raw, recover, expected) in [
+            (" \t+0012suffix", true, Ok((false, 3, 7))),
+            ("-000tail", true, Ok((true, 1, 4))),
+            ("12tail", false, Err(NumericParseError::InvalidSyntax)),
+            ("+12", false, Err(NumericParseError::InvalidSyntax)),
+            ("-12", false, Ok((true, 1, 3))),
+            ("-", true, Err(NumericParseError::InvalidSyntax)),
+            (" \t", true, Err(NumericParseError::InvalidSyntax)),
+        ] {
+            let mut scanner = IntegerPrefixScanner::new(recover);
+            for unit in raw.encode_utf16() {
+                if !scanner.feed(unit) {
+                    break;
+                }
+            }
+            assert_eq!(
+                scanner.finish(),
+                expected.map(|(negative, start, end)| ScannedIntegerPrefix {
+                    negative,
+                    start,
+                    end,
+                }),
+                "{raw:?} recovery={recover}",
+            );
+        }
+    }
+
     #[test]
     fn signed_long_projection_literal_boundaries_and_recovery() {
         for (raw, expected) in [

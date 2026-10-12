@@ -23,9 +23,11 @@ Ordinary frameset entry and its three insertion modes also use that driver.
 Ordinary textarea creation, RCDATA and raw/reset hooks now use it as well.
 Fresh ordinary output creation also completes its empty reset before association;
 null-default and current observations read actual ordinary descendant text.
-Other resettable control creation, unsupported table rows, select
-transitions, templates and foreign dispatch retain explicit unfinished
-continuations. Construction EOF is not completed stop-parsing or a public report.
+Ordinary select/option/optgroup/selectedcontent creation and source-ordered
+selection, cloning and intrinsic checkpoint effects now use that driver. Other
+resettable control creation, unsupported table rows, templates and foreign
+dispatch retain explicit unfinished continuations. Construction EOF is not
+completed stop-parsing or a public report.
 
 ## Original source and incorporated files
 
@@ -368,8 +370,8 @@ body-character handling. Transfer slots retain popped owners before fallible
 disposal, so terminal cleanup can release remaining storage after a stopped
 flush. Actual delegated insertion modes, Text return and foster state survive
 source-ordered reprocessing. Form and image effects reuse their existing owners.
-Unsupported control, select, template and foreign branches retain the original
-token before unavailable effects. This checkpoint does not certify complete
+Unsupported control, template and foreign branches retain the original token
+before unavailable effects. This checkpoint does not certify complete
 InTable behavior, fragment initialization, EOF/report completion or complete
 parser resource accounting.
 
@@ -393,6 +395,41 @@ Noframes uses the existing RAWTEXT handoff and restores its actual caller mode
 at end-tag or EOF. These operations retain one controller, arena and terminal
 cleanup path. They do not supply hosted frame navigation, fragment initialization
 or completed stop-parsing/report publication.
+
+The ordinary select extension adapts the input/hr guards and
+select/option/optgroup rows in upstream `rules.rs` lines 815–862 and 895–945
+into the existing body driver. Its initial adapted body SHA-256 is
+`2616bdf7661339e26da356c082942b453fcaa9b3b3b9e5c6d805e38fa2dc336c`;
+earlier incorporation hashes remain historical. The seven existing tree-builder
+notices remain verbatim. The selected HTML edition supplies end-select and
+selectedcontent dispatch and their current intrinsic algorithms; these are
+Surgeist-authored normative adaptations, rather than additional upstream
+insertion modes.
+
+The existing sealed standalone capability is borrowed through actual parser
+stack removals, formatting recovery, table delegation and native topology
+operations. The same controlled construction owner now retains select-family
+metadata, finite effects, static lists and FIFO tasks. It uses actual DOM
+pre-insert/remove/replace-all and clone clauses from the separately recorded
+[DOM source capture](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md).
+Its iterative managed cloning preserves original source maps and gives every
+clone independent identity/backing. Source-defined connection and
+children-changed hooks use the existing staged Disabled script-preparation
+owner; disabled external execution does not suppress these intrinsic effects.
+Display-size consumes the existing numeric grammar through a shared per-unit
+scanner, retaining the public author's and interpreter's existing semantics.
+
+Tasks drain only at source-defined checkpoints. Pending work prevents freeze
+before storage is taken; terminal cleanup retains and releases all partial
+owners without useful resets or cloning. Fragment insertion completes its
+sibling batch before parent children-changed and static post-connection work.
+Actual string binding writes are admitted before clone allocation and committed
+immediately afterward, retaining strict alias validation on stopped prefixes.
+These adaptations remain private and test-compiled. They add no second
+controller, public DOM API, generic moveBefore primitive, captured fragment
+initialization, template/shadow/foreign cloning, external execution or completed
+EOF/report contract. Finite admission does not establish linear complexity or
+complete allocator/RSS coverage.
 
 Remaining insertion modes, foreign dispatch,
 context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,

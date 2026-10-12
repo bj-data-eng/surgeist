@@ -80,7 +80,7 @@ fn begin(
     let html = session.allocate_html_tag(control, &mut html).unwrap();
     if document {
         let root = session.root(control).unwrap();
-        session.insert(control, &root, &html, None).unwrap();
+        session.insert(control, &root, &html, None, None).unwrap();
     }
     let mut kernel = match LocationKernel::new(&mut Some(session), control) {
         Ok(kernel) => kernel,
@@ -96,7 +96,7 @@ fn add(
     control: &mut ParseControl,
 ) -> ParserNode {
     kernel
-        .insert_html_tag(&mut tag(tokenizer, control), push, None, control)
+        .insert_html_tag(&mut tag(tokenizer, control), push, None, control, None)
         .unwrap()
         .node
 }
@@ -195,7 +195,7 @@ fn ordinary_override_and_stack_pop_preserve_native_tree() {
                 let length = input.value.text().len();
                 let mut input = Some(input);
                 let result = kernel
-                    .insert_text(&mut input, None, &mut c)
+                    .insert_text(&mut input, None, &mut c, None)
                     .unwrap()
                     .unwrap();
                 assert_eq!(result.offset, offset);
@@ -206,7 +206,7 @@ fn ordinary_override_and_stack_pop_preserve_native_tree() {
             _ => panic!("expected remaining text"),
         }
     }
-    let popped = kernel.pop(&mut c).unwrap().unwrap();
+    let popped = kernel.pop(&mut c, None).unwrap().unwrap();
     same(&kernel, &popped, &p, &mut c);
     assert!(kernel.session.parent(&mut c, &p).unwrap().is_some());
     same(
@@ -242,14 +242,20 @@ fn foster_text_uses_actual_table_parent_and_merges_only_preceding_text() {
     );
     let body = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let mut a = text(&mut tokenizer, &mut c);
-    let first = kernel.insert_text(&mut a, None, &mut c).unwrap().unwrap();
+    let first = kernel
+        .insert_text(&mut a, None, &mut c, None)
+        .unwrap()
+        .unwrap();
     let table = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     kernel.set_foster_parenting(true, &mut c).unwrap();
     let location = kernel.adjusted_location(None, &mut c).unwrap();
     same(&kernel, &location.parent, &body, &mut c);
     same(&kernel, location.before.as_ref().unwrap(), &table, &mut c);
     let mut b = text(&mut tokenizer, &mut c);
-    let second = kernel.insert_text(&mut b, None, &mut c).unwrap().unwrap();
+    let second = kernel
+        .insert_text(&mut b, None, &mut c, None)
+        .unwrap()
+        .unwrap();
     same(&kernel, &first.node, &second.node, &mut c);
     assert_eq!(second.offset, 1);
     tokenizer.release(&mut c).unwrap();
@@ -284,7 +290,7 @@ fn detached_table_fosters_into_previous_stack_element() {
     );
     let body = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let table = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
-    kernel.session.remove(&mut c, &table).unwrap();
+    kernel.session.remove(&mut c, &table, None).unwrap();
     kernel.set_foster_parenting(true, &mut c).unwrap();
     let location = kernel.adjusted_location(None, &mut c).unwrap();
     same(&kernel, &location.parent, &body, &mut c);
@@ -316,7 +322,10 @@ fn foster_parent_uses_moved_table_parent_instead_of_stack_predecessor() {
     add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let table = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
-    kernel.session.insert(&mut c, &html, &table, None).unwrap();
+    kernel
+        .session
+        .insert(&mut c, &html, &table, None, None)
+        .unwrap();
     kernel.set_foster_parenting(true, &mut c).unwrap();
     let location = kernel.adjusted_location(None, &mut c).unwrap();
     same(&kernel, &location.parent, &html, &mut c);
@@ -388,7 +397,7 @@ fn fragment_no_table_foster_case_and_ordinary_first_node_use_actual_fragment_roo
     same(&kernel, &x_parent, &root, &mut c);
     assert!(kernel.session.parent(&mut c, &html).unwrap().is_none());
     let mut input = text(&mut tokenizer, &mut c);
-    kernel.insert_text(&mut input, None, &mut c).unwrap();
+    kernel.insert_text(&mut input, None, &mut c, None).unwrap();
     assert!(kernel.in_scope(&tr, Scope::Default, &mut c).unwrap());
     tokenizer.release(&mut c).unwrap();
     let mut frozen = freeze(kernel, &mut c);
@@ -418,7 +427,7 @@ fn template_contents_routing_precedes_fragment_first_node_substitution() {
     let location = kernel.adjusted_location(None, &mut c).unwrap();
     same(&kernel, &location.parent, &contents, &mut c);
     kernel
-        .insert_text(&mut text(&mut tokenizer, &mut c), None, &mut c)
+        .insert_text(&mut text(&mut tokenizer, &mut c), None, &mut c, None)
         .unwrap();
     tokenizer.release(&mut c).unwrap();
     let mut frozen = freeze(kernel, &mut c);
@@ -481,7 +490,7 @@ fn foreign_template_and_table_names_are_ordinary_targets() {
                 .unwrap()
                 .is_none()
         );
-        kernel.pop(&mut c).unwrap();
+        kernel.pop(&mut c, None).unwrap();
     }
     tokenizer.release(&mut c).unwrap();
     kernel.release(&mut c).unwrap();
@@ -578,7 +587,7 @@ fn literal_surrogates_and_supplementary_text_survive_real_transfer_and_merge() {
         match next_kind(&mut tokenizer, &mut c) {
             TokenKind::Text(input) => {
                 let result = kernel
-                    .insert_text(&mut Some(input), None, &mut c)
+                    .insert_text(&mut Some(input), None, &mut c, None)
                     .unwrap()
                     .unwrap();
                 if let Some(first) = &first_node {
@@ -666,7 +675,10 @@ fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     tokenizer.release(&mut c).unwrap();
     second.release(&mut c).unwrap();
     kernel.release(&mut c).unwrap();
-    assert!(matches!(kernel.pop(&mut c), Err(KernelError::Consumed)));
+    assert!(matches!(
+        kernel.pop(&mut c, None),
+        Err(KernelError::Consumed)
+    ));
     assert_released(&c);
 }
 
@@ -869,7 +881,7 @@ fn document_character_target_discards_actual_token_without_allocating_a_text_nod
     let mut input = text(&mut tokenizer, &mut c);
     assert!(
         kernel
-            .insert_text(&mut input, Some(&document), &mut c)
+            .insert_text(&mut input, Some(&document), &mut c, None)
             .unwrap()
             .is_none()
     );
@@ -899,7 +911,7 @@ fn existing_document_element_ignores_new_element_insertion_but_retains_created_n
     let document = kernel.session.root(&mut c).unwrap();
     let mut input = tag(&mut tokenizer, &mut c);
     let created = kernel
-        .insert_html_tag(&mut input, StackPush::NoPush, Some(&document), &mut c)
+        .insert_html_tag(&mut input, StackPush::NoPush, Some(&document), &mut c, None)
         .unwrap();
     assert!(input.is_none());
     assert!(
@@ -950,6 +962,7 @@ fn ignored_document_insertion_still_pushes_created_element_for_following_text() 
             StackPush::Push,
             Some(&document),
             &mut c,
+            None,
         )
         .unwrap();
     assert_eq!(
@@ -968,7 +981,7 @@ fn ignored_document_insertion_still_pushes_created_element_for_following_text() 
         2
     );
     let inserted = kernel
-        .insert_text(&mut text(&mut tokenizer, &mut c), None, &mut c)
+        .insert_text(&mut text(&mut tokenizer, &mut c), None, &mut c, None)
         .unwrap()
         .unwrap();
     let parent = kernel
@@ -995,7 +1008,7 @@ fn document_without_element_child_accepts_actual_created_element() {
         RootKind::Document(HtmlDocumentMode::NoQuirks),
         &mut c,
     );
-    kernel.session.remove(&mut c, &html).unwrap();
+    kernel.session.remove(&mut c, &html, None).unwrap();
     let document = kernel.session.root(&mut c).unwrap();
     let created = kernel
         .insert_html_tag(
@@ -1003,6 +1016,7 @@ fn document_without_element_child_accepts_actual_created_element() {
             StackPush::NoPush,
             Some(&document),
             &mut c,
+            None,
         )
         .unwrap();
     assert_eq!(created.insertion, ElementInsertionOutcome::Inserted);
@@ -1041,7 +1055,9 @@ fn already_parented_element_ignores_placement_without_native_move() {
     let p = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
     assert_eq!(
-        kernel.insert_element(&p, Some(&html), &mut c).unwrap(),
+        kernel
+            .insert_element(&p, Some(&html), &mut c, None)
+            .unwrap(),
         ElementInsertionOutcome::Ignored(ElementInsertionIgnored::ParentAlreadyPresent)
     );
     let parent = kernel.session.parent(&mut c, &p).unwrap().unwrap();
@@ -1074,7 +1090,7 @@ fn detached_element_is_ignored_as_inclusive_ancestor_of_itself() {
         .unwrap();
     kernel.push(&node, &mut c).unwrap();
     assert_eq!(
-        kernel.insert_element(&node, None, &mut c).unwrap(),
+        kernel.insert_element(&node, None, &mut c, None).unwrap(),
         ElementInsertionOutcome::Ignored(ElementInsertionIgnored::HostIncludingInclusiveAncestor)
     );
     assert!(kernel.session.parent(&mut c, &node).unwrap().is_none());
@@ -1111,7 +1127,9 @@ fn detached_template_owns_contents_for_host_including_ancestor_guard() {
     same(&kernel, &location.parent, &contents, &mut c);
     let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
     assert_eq!(
-        kernel.insert_element(&template, None, &mut c).unwrap(),
+        kernel
+            .insert_element(&template, None, &mut c, None)
+            .unwrap(),
         ElementInsertionOutcome::Ignored(ElementInsertionIgnored::HostIncludingInclusiveAncestor)
     );
     assert!(kernel.session.parent(&mut c, &template).unwrap().is_none());
@@ -1140,7 +1158,7 @@ fn ignored_element_push_cap_retains_owned_creation_and_original_terminal_stop() 
     let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
     let mut input = tag(&mut tokenizer, &mut c);
     assert!(matches!(
-        kernel.insert_html_tag(&mut input, StackPush::Push, Some(&document), &mut c),
+        kernel.insert_html_tag(&mut input, StackPush::Push, Some(&document), &mut c, None),
         Err(KernelError::Stop(ParseStop::LimitExceeded {
             resource: HtmlParseResource::OpenElements,
             ..
@@ -1196,7 +1214,7 @@ fn cancelled_element_insertion_keeps_actual_token_before_creation() {
     let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
     cancellation.cancel();
     assert!(matches!(
-        kernel.insert_html_tag(&mut input, StackPush::Push, Some(&document), &mut c),
+        kernel.insert_html_tag(&mut input, StackPush::Push, Some(&document), &mut c, None),
         Err(KernelError::Stop(ParseStop::Cancelled))
     ));
     assert!(input.is_some());
@@ -3522,11 +3540,11 @@ fn tokenizer_next_input_point_uses_actual_reconsume_and_reference_lookahead_posi
 #[test]
 fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short_terminal_admission()
  {
-    // Proof: three retained qualification fields, two actual session facts,
-    // two checked node identities, four real session readiness reads (document
-    // validation, root creation, both identity checks), one root Weak creation,
-    // then StateStep1.
-    let expected_work = 11 + 1 + size_of::<ParserNode>() as u64 + 1;
+    // Two actual proof checks each read seven qualification facts. The queue
+    // owner reads checkpoint1, readiness5 and empty cursor/length2. Its actual
+    // bool set/clear contributes CopyByte2/RecordWrite2, with StateStep1.
+    // One-short fails the final clear write, retaining the flag under first-stop.
+    let expected_work = 22 + 2 + 2 + 1;
     for short in [false, true] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<script>x</script>"),
@@ -3549,23 +3567,23 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let result = proof.checkpoint(c, session);
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            11
+            22
         );
         assert_eq!(
             c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
-            1
+            0
         );
         assert_eq!(
             c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
-            size_of::<ParserNode>() as u64
+            2
         );
         assert_eq!(
             c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
-            u64::from(!short)
+            1
         );
         assert_eq!(
-            c.usage().work(WorkCategory::RecordWrite),
-            before.work(WorkCategory::RecordWrite)
+            c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
+            2 - u64::from(short)
         );
         if short {
             assert!(matches!(
@@ -3576,6 +3594,9 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
                     ..
                 }))
             ));
+            let first = c.stop().unwrap();
+            assert_eq!(proof.checkpoint(c, session), Err(SessionError::Stop(first)));
+            assert_eq!(session.freeze(c).err(), Some(SessionError::Stop(first)));
         } else {
             result.unwrap();
         }
@@ -4024,8 +4045,6 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     use super::head::HeadBoundary;
     for (name, boundary) in [
         ("input", HeadBoundary::Form),
-        ("select", HeadBoundary::Select),
-        ("option", HeadBoundary::Select),
         ("template", HeadBoundary::Template),
         ("svg", HeadBoundary::Foreign),
         ("math", HeadBoundary::Foreign),
@@ -5255,13 +5274,15 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let old = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = c.usage().clone();
-    kernel.replace_stack(1, &replacement, &mut c).unwrap();
-    // Original preflight/get_mut visits4, removed-slot visit1, actual old-node
-    // index2, HTML kind/name visits3, namespace/local length visits2. The old
-    // p differs in length from textarea; only namespace units are inspected.
+    kernel.replace_stack(1, &replacement, &mut c, None).unwrap();
+    // Kernel readiness1, target index6, at1, pre-removal qualification11,
+    // get_mut1, post-removal qualification11, removed index6, option5 and
+    // textarea5. Each index includes five actual effect-readiness fields. Four
+    // HTML namespace comparisons inspect28 units at three credits each; local
+    // p length differs from both option and textarea, so no local units read.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        12
+        47
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -5277,7 +5298,7 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     );
     assert_eq!(
         c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
-        28 * 3
+        4 * 28 * 3
     );
     assert_eq!(
         c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
@@ -6327,7 +6348,6 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
 fn structural_table_unsupported_creation_retains_original_before_table_effects() {
     for (tag, boundary) in [
         ("<input>", super::head::HeadBoundary::Form),
-        ("<select>", super::head::HeadBoundary::Select),
         ("<template>", super::head::HeadBoundary::Template),
         ("<svg>", super::head::HeadBoundary::Foreign),
     ] {
@@ -9421,4 +9441,276 @@ fn ordinary_select_option_pop_clones_selected_content_with_distinct_native_child
     assert_eq!(elements[7].1, vec![texts[0].0.clone()]);
     assert_eq!(elements[11].1, vec![elements[12].0.clone()]);
     assert_eq!(elements[12].1, vec![texts[2].0.clone()]);
+}
+
+#[test]
+fn select_family_native_states_follow_size_multiple_disabled_and_last_selected_rules() {
+    for (attributes, options, expected) in [
+        ("", "<option>A<option>B", vec![true, false]),
+        ("size=0", "<option>A<option>B", vec![false, false]),
+        ("size=-0", "<option>A<option>B", vec![false, false]),
+        ("size=+1junk", "<option>A<option>B", vec![true, false]),
+        ("size=-1", "<option>A<option>B", vec![true, false]),
+        (
+            "size=999999999999999999999999",
+            "<option>A<option>B",
+            vec![false, false],
+        ),
+        ("multiple", "<option>A<option>B", vec![false, false]),
+        (
+            "multiple",
+            "<option selected>A<option selected>B",
+            vec![true, true],
+        ),
+        (
+            "",
+            "<option selected>A<option selected>B",
+            vec![false, true],
+        ),
+        (
+            "",
+            "<optgroup disabled><option>A</optgroup><option>B",
+            vec![false, true],
+        ),
+        ("", "<option disabled>A<option>B", vec![false, true]),
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!(
+                "<!doctype html><select {attributes}>{options}</select>"
+            )),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        assert_eq!(document.mode(), HtmlDocumentMode::NoQuirks);
+        let mut pending = vec![document.root().id()];
+        let mut selected = vec![];
+        let mut select = None;
+        let mut option_ids = vec![];
+        while let Some(id) = pending.pop() {
+            let node = document.node(&id).unwrap();
+            if let HtmlNodeKind::Element(element) = node.kind() {
+                if element.name().local_name() == &DocumentString::from("select") {
+                    assert!(!frozen.select_state(&mut c, &id).unwrap().user_validity);
+                    select = Some(id.clone());
+                } else if element.name().local_name() == &DocumentString::from("option") {
+                    let state = frozen.option_state(&mut c, &id).unwrap();
+                    selected.push(state.selectedness);
+                    assert!(!state.dirtiness);
+                    option_ids.push(id.clone());
+                }
+            }
+            pending.extend(node.children().collect::<Vec<_>>().into_iter().rev());
+        }
+        assert_eq!(selected, expected, "{attributes} {options}");
+        for option in option_ids {
+            assert_eq!(
+                frozen.option_nearest_select(&mut c, &option).unwrap(),
+                select
+            );
+        }
+        drop(select);
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn select_family_modern_body_dispatch_keeps_generic_children_and_hidden_guard() {
+    for (source, expected) in [
+        (
+            "<select><div>x<option>A</option></div></select>Z",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "select"),
+                (3, "div"),
+                (4, "#x"),
+                (4, "option"),
+                (5, "#A"),
+                (2, "#Z"),
+            ],
+        ),
+        (
+            "<select><option>A<select><option>B",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "select"),
+                (3, "option"),
+                (4, "#A"),
+                (2, "option"),
+                (3, "#B"),
+            ],
+        ),
+        (
+            "<select><option>A<input type=hidden value=v>Z",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "select"),
+                (3, "option"),
+                (4, "#A"),
+                (2, "input"),
+                (2, "#Z"),
+            ],
+        ),
+        (
+            "<select><option>A<hr><option>B",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "select"),
+                (3, "option"),
+                (4, "#A"),
+                (3, "hr"),
+                (3, "option"),
+                (4, "#B"),
+            ],
+        ),
+        (
+            "<!doctype html><table><select><option>A</select><tr><td>B",
+            vec![
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "select"),
+                (3, "option"),
+                (4, "#A"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#B"),
+            ],
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof,
+            "{source}"
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        assert_eq!(
+            outline(frozen.document().unwrap()),
+            expected_outline(&expected),
+            "{source}"
+        );
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn select_family_selectedcontent_disabled_and_multiple_are_intrinsic_not_empty_callbacks() {
+    for (attributes, target, has_clone, disabled) in [
+        (
+            "",
+            "<button><selectedcontent></selectedcontent></button>",
+            true,
+            false,
+        ),
+        (
+            "multiple",
+            "<button><selectedcontent></selectedcontent></button>",
+            false,
+            false,
+        ),
+        (
+            "",
+            "<button><selectedcontent><selectedcontent></selectedcontent></selectedcontent></button>",
+            true,
+            false,
+        ),
+        (
+            "",
+            "<option><selectedcontent></selectedcontent></option>",
+            false,
+            true,
+        ),
+    ] {
+        let source = format!(
+            "<!doctype html><select {attributes}>{target}<option selected><i>C</i></option></select>"
+        );
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let doc = frozen.document().unwrap();
+        let mut pending = vec![doc.root().id()];
+        let mut targets = vec![];
+        let mut italic = vec![];
+        while let Some(id) = pending.pop() {
+            let node = doc.node(&id).unwrap();
+            if let HtmlNodeKind::Element(e) = node.kind() {
+                if e.name().local_name() == &DocumentString::from("selectedcontent") {
+                    targets.push(id.clone());
+                }
+                if e.name().local_name() == &DocumentString::from("i") {
+                    italic.push(id.clone());
+                }
+            }
+            pending.extend(node.children().collect::<Vec<_>>().into_iter().rev());
+        }
+        assert_eq!(italic.len(), 1 + usize::from(has_clone));
+        assert_eq!(
+            frozen
+                .selectedcontent_state(&mut c, &targets[0])
+                .unwrap()
+                .disabled,
+            disabled
+        );
+        if has_clone {
+            assert_ne!(italic[0], italic[1]);
+        }
+        drop((italic, targets));
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn select_fragment_siblings_finish_insertion_before_post_connection_cloning() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><select><option><div><option selected>A</option></div><div><option selected>B</option></div></option><selectedcontent></selectedcontent></select>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    // Four implicit structural records + doctype; nine source element/text
+    // records; one outer-clone fragment; six sibling-subtree clones; the final
+    // B update's fragment and text clone.
+    // No intermediate A update is permitted before both insertion hooks finish.
+    let before_checkpoint = driver
+        .control
+        .usage()
+        .resource(HtmlParseResource::ManagedNodes)
+        .current;
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(matches!(
+        session.freeze(c),
+        Err(SessionError::PendingIntrinsicWork)
+    ));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+    assert_eq!(before_checkpoint, 23);
 }

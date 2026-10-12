@@ -230,7 +230,12 @@ impl HeadState<'_> {
         loop {
             let location = self.before.kernel.adjusted_location(None, c)?;
             let node = self.replay_format(index, &location.parent, c)?;
-            self.before.kernel.insert_element_at(&node, &location, c)?;
+            self.before.kernel.insert_element_at(
+                &node,
+                &location,
+                c,
+                self.script.as_ref().map(|script| &script.capability),
+            )?;
             self.before.kernel.push(&node, c)?;
             self.format_replace_node(index, &node, c)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -294,7 +299,11 @@ impl HeadState<'_> {
                 self.erase_format(index, c)?;
             }
             if self.before.kernel.stack_index(&old, c)?.is_some() {
-                self.before.kernel.remove_stack_identity(&old, c)?;
+                self.before.kernel.remove_stack_identity(
+                    &old,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
             }
         }
         self.reconstruct_formatting(c)?;
@@ -344,7 +353,12 @@ impl HeadState<'_> {
         let retained = copy_node(&node, c)?;
         write(size_of::<Option<ParserNode>>(), 1, c)?;
         *stored = Some(retained);
-        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.insert_element_at(
+            &node,
+            &location,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.before.kernel.push(&node, c)?;
         self.noah(c)?;
         self.push_format_pending(c)?;
@@ -396,13 +410,21 @@ impl HeadState<'_> {
             self.emit(HeadCondition::UnexpectedEndTag, c)?;
             return self.discard(c);
         }
-        self.before.kernel.implied_ends(None, c)?;
+        self.before.kernel.implied_ends(
+            None,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         let current = self.before.kernel.current(c)?;
         if !self.before.kernel.named(&current, name, c)? {
             self.emit(HeadCondition::UnexpectedOpenElement, c)?;
         }
         loop {
-            let node = self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            let node = self
+                .before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
             if self.before.kernel.named(&node, name, c)? {
                 break;
             }
@@ -413,7 +435,9 @@ impl HeadState<'_> {
     pub(super) fn adoption(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         let current = self.before.kernel.current(c)?;
         if self.token_matches_node(&current, c)? && self.format_index(&current, c)?.is_none() {
-            self.before.kernel.pop(c)?;
+            self.before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?;
             return Ok(());
         }
         for _ in 0..8 {
@@ -458,7 +482,11 @@ impl HeadState<'_> {
                 }
             }
             let Some((mut cursor, furthest)) = furthest else {
-                self.before.kernel.pop_through(&formatting, c)?;
+                self.before.kernel.pop_through(
+                    &formatting,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
                 self.erase_format(format_index, c)?;
                 return Ok(());
             };
@@ -497,27 +525,43 @@ impl HeadState<'_> {
                     self.erase_format(index, c)?;
                 }
                 let Some(index) = self.format_index(&node, c)? else {
-                    self.before.kernel.remove_stack_identity(&node, c)?;
+                    self.before.kernel.remove_stack_identity(
+                        &node,
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
                     continue;
                 };
                 let replacement = self.replay_format(index, &ancestor, c)?;
                 self.format_replace_node(index, &replacement, c)?;
-                self.before.kernel.replace_stack(cursor, &replacement, c)?;
+                self.before.kernel.replace_stack(
+                    cursor,
+                    &replacement,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
                 if self.before.kernel.session.same_node(c, &last, &furthest)? {
                     let after = copy_node(&replacement, c)?;
                     write(size_of::<Bookmark>(), 1, c)?;
                     bookmark = Bookmark::After(after);
                 }
-                self.before
-                    .kernel
-                    .session
-                    .insert(c, &replacement, &last, None)?;
+                self.before.kernel.session.insert(
+                    c,
+                    &replacement,
+                    &last,
+                    None,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
                 write(size_of::<ParserNode>(), 1, c)?;
                 last = replacement;
             }
             let location = self.before.kernel.adjusted_location(Some(&ancestor), c)?;
             if self.before.kernel.session.parent(c, &last)?.is_some() {
-                self.before.kernel.session.remove(c, &last)?;
+                self.before.kernel.session.remove(
+                    c,
+                    &last,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
             }
             let eligible = self
                 .before
@@ -546,20 +590,26 @@ impl HeadState<'_> {
                     &location.parent,
                     &last,
                     location.before.as_ref(),
+                    self.script.as_ref().map(|script| &script.capability),
                 )?;
             }
             let index = self
                 .format_index(&formatting, c)?
                 .ok_or(HeadError::InvalidFormattingState)?;
             let replacement = self.replay_format(index, &furthest, c)?;
-            self.before
-                .kernel
-                .session
-                .reparent_children(c, &furthest, &replacement)?;
-            self.before
-                .kernel
-                .session
-                .insert(c, &furthest, &replacement, None)?;
+            self.before.kernel.session.reparent_children(
+                c,
+                &furthest,
+                &replacement,
+                self.script.as_ref().map(|script| &script.capability),
+            )?;
+            self.before.kernel.session.insert(
+                c,
+                &furthest,
+                &replacement,
+                None,
+                self.script.as_ref().map(|script| &script.capability),
+            )?;
             self.remove_format(index, c)?;
             let insertion = match bookmark {
                 Bookmark::Replace => index,
@@ -595,7 +645,11 @@ impl HeadState<'_> {
                     return Err(HeadError::InvalidFormattingState);
                 }
             }
-            self.before.kernel.remove_stack_identity(&formatting, c)?;
+            self.before.kernel.remove_stack_identity(
+                &formatting,
+                c,
+                self.script.as_ref().map(|script| &script.capability),
+            )?;
             let position = self
                 .before
                 .kernel

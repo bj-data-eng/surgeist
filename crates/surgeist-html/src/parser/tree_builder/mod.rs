@@ -20,9 +20,10 @@
 //! button/fieldset/object form associations and bounded structural tables are
 //! admitted, together with ordinary standalone frameset entry and trailing modes,
 //! textarea RCDATA, raw child-text hooks and parser-pop reset, output creation,
-//! and ordered Hidden-input creation. Other resettable controls, select,
-//! template and foreign rows retain owning continuations; construction EOF is
-//! not full parse/report success.
+//! ordered Hidden-input creation, and ordinary select/option/selectedcontent
+//! effects, clones and intrinsic FIFO work. Other resettable controls, template
+//! and foreign rows retain owning continuations. Pending intrinsic work refuses
+//! freezing; construction EOF is not full parse/report success.
 
 mod body;
 mod doctype;
@@ -137,10 +138,13 @@ impl LocationKernel {
         index: usize,
         target: &ParserNode,
         c: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<(), KernelError> {
         self.require(c)?;
         self.session.validate_node(c, target)?;
         let removed = self.at(index, c)?;
+        self.session
+            .qualify_stack_removal(c, &removed, capability)?;
         let node = copy_node(target, c)?;
         write(size_of::<ParserNode>(), 1, c)?;
         let slot = self
@@ -150,7 +154,7 @@ impl LocationKernel {
             .get_mut(index, c)?
             .ok_or(KernelError::EmptyStack)?;
         *slot = node;
-        self.session.parser_stack_removed(c, &removed)?;
+        self.session.parser_stack_removed(c, &removed, capability)?;
         Ok(())
     }
     fn insert_stack(
@@ -228,6 +232,7 @@ impl LocationKernel {
         &mut self,
         except: Option<&'static str>,
         c: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<(), KernelError> {
         loop {
             let node = self.current(c)?;
@@ -239,16 +244,17 @@ impl LocationKernel {
             if !self.node_set(&node, tag_sets::NodeSet::Implied, c)? {
                 return Ok(());
             }
-            self.pop(c)?;
+            self.pop(c, capability)?;
         }
     }
     fn pop_through(
         &mut self,
         target: &ParserNode,
         c: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<(), KernelError> {
         loop {
-            let node = self.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            let node = self.pop(c, capability)?.ok_or(KernelError::EmptyStack)?;
             if self.session.same_node(c, &node, target)? {
                 return Ok(());
             }
@@ -258,6 +264,7 @@ impl LocationKernel {
         &mut self,
         target: &ParserNode,
         c: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<(), KernelError> {
         self.require(c)?;
         self.session.validate_node(c, target)?;
@@ -266,6 +273,7 @@ impl LocationKernel {
         for index in 0..len {
             let node = self.at(index, c)?;
             if self.session.same_node(c, &node, target)? {
+                self.session.qualify_stack_removal(c, &node, capability)?;
                 for shift in index..len - 1 {
                     if !self
                         .open
@@ -276,7 +284,7 @@ impl LocationKernel {
                         return Err(KernelError::EmptyStack);
                     }
                 }
-                self.pop(c)?;
+                self.pop(c, capability)?;
                 return Ok(());
             }
         }
@@ -373,15 +381,22 @@ impl LocationKernel {
     pub(crate) fn pop(
         &mut self,
         control: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<Option<ParserNode>, KernelError> {
         self.require(control)?;
+        if self.stack()?.len() != 0 {
+            let current = self.current(control)?;
+            self.session
+                .qualify_stack_removal(control, &current, capability)?;
+        }
         let node = self
             .open
             .as_mut()
             .ok_or(KernelError::Consumed)?
             .try_pop(control)?;
         if let Some(node) = &node {
-            self.session.parser_stack_removed(control, node)?;
+            self.session
+                .parser_stack_removed(control, node, capability)?;
         }
         Ok(node)
     }
@@ -536,13 +551,14 @@ impl LocationKernel {
         element: &ParserNode,
         override_target: Option<&ParserNode>,
         control: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<ElementInsertionOutcome, KernelError> {
         self.require(control)?;
         if self.session.element_name(control, element)?.is_none() {
             return Err(KernelError::NotElement);
         }
         let location = self.adjusted_location(override_target, control)?;
-        self.insert_element_at(element, &location, control)
+        self.insert_element_at(element, &location, control, capability)
     }
 
     fn insert_element_at(
@@ -550,6 +566,7 @@ impl LocationKernel {
         element: &ParserNode,
         location: &InsertionLocation,
         control: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<ElementInsertionOutcome, KernelError> {
         let outcome =
             match self
@@ -563,6 +580,7 @@ impl LocationKernel {
                         &location.parent,
                         element,
                         location.before.as_ref(),
+                        capability,
                     )?;
                     ElementInsertionOutcome::Inserted
                 }
@@ -581,10 +599,11 @@ impl LocationKernel {
         push: StackPush,
         override_target: Option<&ParserNode>,
         control: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<CreatedElement, KernelError> {
         let location = self.adjusted_location(override_target, control)?;
         let node = self.session.allocate_html_tag(control, input)?;
-        let insertion = self.insert_element_at(&node, &location, control)?;
+        let insertion = self.insert_element_at(&node, &location, control, capability)?;
         if matches!(push, StackPush::Push) {
             self.push(&node, control)?;
         }
@@ -597,11 +616,16 @@ impl LocationKernel {
         input: &mut Option<Text>,
         override_target: Option<&ParserNode>,
         control: &mut ParseControl,
+        capability: Option<&StandaloneCapability<'_>>,
     ) -> Result<Option<TextInsertion>, KernelError> {
         let location = self.adjusted_location(override_target, control)?;
-        Ok(self
-            .session
-            .insert_text(control, &location.parent, location.before.as_ref(), input)?)
+        Ok(self.session.insert_text(
+            control,
+            &location.parent,
+            location.before.as_ref(),
+            input,
+            capability,
+        )?)
     }
 
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), KernelError> {
@@ -632,9 +656,10 @@ impl LocationKernel {
 /// There are no host/realm/settings objects, executable registry/callbacks,
 /// observers/listeners, external mutation/feed hooks, loader/speculative parser,
 /// live nodes, JS stack, promise recipients, IDB transactions or kept JS objects.
-/// Admitted producers are the real prologue/head tag/text/comment/PI/doctype,
-/// implicit html/head, root-attribute merge, ordinary placement and exact payload
-/// operations. None schedules work. Imported elements/hosted fragments and shadow
+/// Admitted producers are real lexical and implicit HTML construction, attribute
+/// merging, ordinary placement, and the supported control/clone/effect owners.
+/// Their intrinsic tasks share this arena's controlled FIFO; no external task or
+/// execution domain is admitted. Imported elements/hosted fragments and shadow
 /// attachment producers are unreachable from that constructor; template starts
 /// suspend before effects. Structural records and metadata remain retained.
 /// No running-script/frame-timing domain exists: checkpoint specialization does
@@ -653,30 +678,17 @@ impl StandaloneCapability<'_> {
         c.require_identity(&self.owner)?;
         c.charge(WorkCategory::RecordVisit, 3)?;
         c.require_source(self.source)?;
-        session.validate_standalone_document(c)?;
-        let root = session.root(c)?;
-        match session.same_node(c, &root, &self.document) {
-            Ok(true) => {}
-            Ok(false) | Err(SessionError::ForeignNode) => {
-                return Err(SessionError::Stop(
-                    c.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
-                ));
-            }
-            Err(error) => return Err(error),
-        }
+        session.validate_standalone_proof(c, &self.document)?;
         Ok(())
     }
     fn checkpoint(
         &self,
         c: &mut ParseControl,
-        session: &ParserArenaSession,
+        session: &mut ParserArenaSession,
     ) -> Result<(), SessionError> {
         self.validate_session(c, session)?;
-        // Source checkpoint reduction over the construction-proved closed
-        // environment. All cleanup/notification/timing domains are absent, not
-        // arbitrary empty queues. Admission still polls cancellation here.
         c.charge(WorkCategory::StateStep, 1)?;
-        Ok(())
+        session.perform_intrinsic_checkpoint(c, self)
     }
 }
 

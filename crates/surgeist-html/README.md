@@ -1020,9 +1020,8 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Other resettable control creation, select transitions, templates
-and foreign dispatch retain untouched-token continuations when their required
-machinery is unavailable.
+Other resettable control creation, templates and foreign dispatch retain
+untouched-token continuations when their required machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
 unfinished lifecycle state; these private operations produce no public parse report.
 
@@ -1149,10 +1148,48 @@ owners use the sole controller. A terminal stop can retain a coherent flush
 prefix, remaining characters and the triggering token for cleanup, while refusing
 continued construction or publication.
 
-This is a structural checkpoint. Other unavailable control creation, select,
-templates and foreign branches preserve their original token
-before unsupported effects. It does not establish complete InTable behavior,
+This is a structural checkpoint. Other unavailable control creation, templates
+and foreign branches preserve their original token before unsupported effects.
+It does not establish complete InTable behavior,
 contextual fragment parsing or completed EOF/report publication.
+
+Ordinary select, option, optgroup and selectedcontent construction now uses the
+same fresh standalone driver and controlled arena. Modern InBody dispatch and
+actual stack removals carry its existing borrowed constructor proof through
+implied ends, formatting recovery and table delegation. Ordered attributes,
+initial select reset and canonical form association preserve source order.
+Selectedness, dirtiness, nearest-select caches, disabledness and user validity
+are actual private native state; a shared per-unit integer scanner supplies the
+display-size predicate without materializing a public attribute report.
+
+The existing construction owner retains finite effect frames, static target
+lists and intrinsic FIFO tasks. Actual pre-insert/removal hooks update caches
+and selectedcontent in source order, including reinsertion into the same parent.
+Fragment children are removed and inserted as a complete sibling batch before
+the parent's children-changed and static post-connection processing. Iterative
+same-arena cloning preserves exact UTF-16, attributes and original source maps
+with new identities. Script clones receive fresh metadata, copy only
+already-started, and use the existing staged Disabled preparation owner for
+actual connection and children-changed hooks.
+
+Only source-defined checkpoints drain queued tasks, including tasks appended
+while draining. Freeze refuses pending intrinsic work before taking storage;
+the active owner may reach a later legitimate checkpoint. A terminal stop
+retains partial frames, lists, clone backing and task owners for disposal,
+without resuming useful work. Native string bindings are admitted before
+allocation and installed immediately after it, preserving strict alias checks
+and reclamation even at an interrupted clone boundary. Work and storage remain
+finite and charged; repeated scans and child moves may be quadratic.
+
+These are private construction operations, not a live DOM mutation API. The
+separate DOM moveBefore primitive, captured fragment initialization,
+templates/shadow trees, foreign cloning, external script execution and other
+unimplemented control state remain outside this capability. Construction EOF
+does not drain the FIFO or complete stop-parsing/report publication.
+The [select construction owner](src/construction/parser_session/select.rs),
+[managed clone owner](src/construction/parser_session/clone.rs) and
+[independent private regression cases](src/construction/parser_session/select_tests.rs)
+record the consumed boundary.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.

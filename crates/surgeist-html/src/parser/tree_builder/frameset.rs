@@ -96,9 +96,12 @@ impl HeadState<'_> {
                     // Source delegates whitespace to InBody without changing mode.
                     self.body_character(false, c)?;
                 } else {
-                    self.before
-                        .kernel
-                        .insert_text(&mut self.whitespace_pending, None, c)?;
+                    self.before.kernel.insert_text(
+                        &mut self.whitespace_pending,
+                        None,
+                        c,
+                        self.script.as_ref().map(|script| &script.capability),
+                    )?;
                 }
             } else {
                 let condition = if kind == BodyTextKind::Null {
@@ -191,7 +194,10 @@ impl HeadState<'_> {
                 }
                 if self.token_in(&["frame"], c)?.is_some() {
                     self.insert_tag(c)?;
-                    self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                        .ok_or(KernelError::EmptyStack)?;
                     // Actual fresh node-document has null browsing context, so
                     // frame postconnection returned before navigation machinery.
                     return self.finish(c);
@@ -205,7 +211,10 @@ impl HeadState<'_> {
                     self.emit(HeadCondition::UnexpectedEndTag, c)?;
                     return self.discard(c);
                 }
-                self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+                self.before
+                    .kernel
+                    .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                    .ok_or(KernelError::EmptyStack)?;
                 let current = self.before.kernel.current(c)?;
                 if !self.before.kernel.named(&current, "frameset", c)? {
                     self.set_mode(InsertionMode::AfterFrameset, c)?;

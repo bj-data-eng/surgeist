@@ -30,7 +30,11 @@ implied-end/special-element lists, then active formatting, Noah comparison,
 reconstruction, adoption and applet/marquee/object marker handling, followed by
 the listed non-resettable button/fieldset/object rows and ordinary frameset
 entry, InFrameset and its trailing modes, then ordinary textarea entry from
-`rules.rs` lines 874–878. The
+`rules.rs` lines 874–878, followed by the input/hr select guards and ordinary
+select/option/optgroup rows in `rules.rs` lines 815–862 and 895–945.
+Current end-select/selectedcontent dispatch and controlled intrinsic
+selection/cloning/checkpoint machinery are Surgeist-authored adaptations of the
+selected HTML/DOM clauses, distinguished from the upstream excerpts. The
 [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;

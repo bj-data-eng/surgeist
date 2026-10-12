@@ -86,7 +86,6 @@ pub(crate) enum HeadBoundary {
     Script,
     Template,
     Form,
-    Select,
     Foreign,
     ConstructionEof,
 }
@@ -193,8 +192,8 @@ enum Class {
 
 /// Actual source-initial state of the sealed ordinary Disabled execution owner.
 /// No pending script producer is reached by the Disabled preparation prefix.
-struct StandaloneScriptState<'source> {
-    capability: super::StandaloneCapability<'source>,
+pub(super) struct StandaloneScriptState<'source> {
+    pub(super) capability: super::StandaloneCapability<'source>,
     nesting: u32,
     pause: bool,
     insertion_point: Option<HtmlSourceRange>,
@@ -228,7 +227,7 @@ pub(super) struct HeadState<'source> {
     pub(super) formatting_pending: Option<FormattingEntry>,
     pub(super) formatting_removed: Option<FormattingEntry>,
     pub(super) table: super::tables::TableCharacters,
-    script: Option<StandaloneScriptState<'source>>,
+    pub(super) script: Option<StandaloneScriptState<'source>>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
 /// host, srcdoc, mode-fixed state or execution mode can be supplied here.
@@ -823,9 +822,12 @@ impl HeadState<'_> {
                 ) {
                     self.reconstruct_formatting(c)?;
                 }
-                self.before
-                    .kernel
-                    .insert_text(&mut self.whitespace_pending, None, c)?;
+                self.before.kernel.insert_text(
+                    &mut self.whitespace_pending,
+                    None,
+                    c,
+                    self.script.as_ref().map(|script| &script.capability),
+                )?;
             }
         }
         Ok(empty)
@@ -842,10 +844,13 @@ impl HeadState<'_> {
                 .allocate_processing_instruction(c, input)?,
             _ => return Err(HeadError::MissingInput),
         };
-        self.before
-            .kernel
-            .session
-            .insert(c, &location.parent, &node, location.before.as_ref())?;
+        self.before.kernel.session.insert(
+            c,
+            &location.parent,
+            &node,
+            location.before.as_ref(),
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.finish(c)
     }
     pub(super) fn insert_tag(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
@@ -865,7 +870,12 @@ impl HeadState<'_> {
             &location.parent,
             self.current_form.as_ref(),
         )?;
-        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.insert_element_at(
+            &node,
+            &location,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.before.kernel.push(&node, c)?;
         Ok(node)
     }
@@ -896,7 +906,49 @@ impl HeadState<'_> {
                 &pending.source,
                 capability,
             )?;
-        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.insert_element_at(
+            &node,
+            &location,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
+        self.before.kernel.push(&node, c)?;
+        Ok(node)
+    }
+    pub(super) fn insert_select_family(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<ParserNode, HeadError> {
+        let location = self.before.kernel.adjusted_location(None, c)?;
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let capability = &self
+            .script
+            .as_ref()
+            .ok_or_else(|| {
+                c.stop_unsupported_standalone(
+                    crate::parser::control::StandaloneUnsupported::Provenance,
+                )
+            })?
+            .capability;
+        let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
+        let Payload::Tag(input) = &mut pending.payload else {
+            return Err(HeadError::MissingInput);
+        };
+        let node = self
+            .before
+            .kernel
+            .session
+            .allocate_select_family_for_creation(
+                c,
+                input,
+                &location.parent,
+                self.current_form.as_ref(),
+                &pending.source,
+                capability,
+            )?;
+        self.before
+            .kernel
+            .insert_element_at(&node, &location, c, Some(capability))?;
         self.before.kernel.push(&node, c)?;
         Ok(node)
     }
@@ -909,7 +961,12 @@ impl HeadState<'_> {
     fn implied_head(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         let location = self.kernel().adjusted_location(None, c)?;
         let node = self.kernel().session.allocate_implicit_head(c)?;
-        self.kernel().insert_element_at(&node, &location, c)?;
+        self.before.kernel.insert_element_at(
+            &node,
+            &location,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.kernel().push(&node, c)?;
         self.set_head(&node, c)
     }
@@ -973,7 +1030,12 @@ impl HeadState<'_> {
             input,
             &script.capability,
         )?;
-        self.before.kernel.insert_element_at(&node, &location, c)?;
+        self.before.kernel.insert_element_at(
+            &node,
+            &location,
+            c,
+            self.script.as_ref().map(|script| &script.capability),
+        )?;
         self.before.kernel.push(&node, c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         self.tokenizer
@@ -1009,8 +1071,11 @@ impl HeadState<'_> {
         }
         script
             .capability
-            .checkpoint(c, &self.before.kernel.session)?;
-        self.before.kernel.pop(c)?.ok_or(KernelError::EmptyStack)?;
+            .checkpoint(c, &mut self.before.kernel.session)?;
+        self.before
+            .kernel
+            .pop(c, self.script.as_ref().map(|script| &script.capability))?
+            .ok_or(KernelError::EmptyStack)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(
             WorkCategory::InspectByte,
@@ -1166,7 +1231,12 @@ impl HeadState<'_> {
                         else {
                             unreachable!("classified actual text")
                         };
-                        self.before.kernel.insert_text(input, None, c)?;
+                        self.before.kernel.insert_text(
+                            input,
+                            None,
+                            c,
+                            self.script.as_ref().map(|script| &script.capability),
+                        )?;
                         return self.finish(c);
                     }
                     Class::End(_) | Class::Eof => {
@@ -1202,7 +1272,10 @@ impl HeadState<'_> {
                                 )?;
                             }
                         }
-                        self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
+                        self.before
+                            .kernel
+                            .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                            .ok_or(KernelError::EmptyStack)?;
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         c.charge(
                             WorkCategory::InspectByte,
@@ -1251,7 +1324,10 @@ impl HeadState<'_> {
             if mode == InsertionMode::InHeadNoscript {
                 match class {
                     Class::End(Name::Noscript) => {
-                        self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
+                        self.before
+                            .kernel
+                            .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                            .ok_or(KernelError::EmptyStack)?;
                         self.set_mode(InsertionMode::InHead, c)?;
                         return self.discard(c);
                     }
@@ -1276,7 +1352,10 @@ impl HeadState<'_> {
                     }
                     _ => {
                         self.emit(HeadCondition::UnexpectedInNoscript, c)?;
-                        self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
+                        self.before
+                            .kernel
+                            .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                            .ok_or(KernelError::EmptyStack)?;
                         self.set_mode(InsertionMode::InHead, c)?;
                         continue;
                     }
@@ -1289,7 +1368,10 @@ impl HeadState<'_> {
                     _,
                 ) => {
                     self.insert_tag(c)?;
-                    self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                        .ok_or(KernelError::EmptyStack)?;
                     // Unicode input gives irrelevant encoding confidence (§13.2.3,
                     // syntax line 791); no tentative meta encoding transition.
                     return self.finish(c);
@@ -1315,7 +1397,10 @@ impl HeadState<'_> {
                 }
                 Class::Start(Name::Template, _) => return self.stop_at(HeadBoundary::Template, c),
                 Class::End(Name::Head) => {
-                    self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
+                    self.before
+                        .kernel
+                        .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                        .ok_or(KernelError::EmptyStack)?;
                     self.set_mode(InsertionMode::AfterHead, c)?;
                     self.discard(c)?;
                     return self.stop_at(HeadBoundary::AfterHead, c);
@@ -1340,7 +1425,10 @@ impl HeadState<'_> {
                 }
                 _ => {}
             }
-            self.kernel().pop(c)?.ok_or(KernelError::EmptyStack)?;
+            self.before
+                .kernel
+                .pop(c, self.script.as_ref().map(|script| &script.capability))?
+                .ok_or(KernelError::EmptyStack)?;
             self.set_mode(InsertionMode::AfterHead, c)?;
             return self.stop_at(HeadBoundary::AfterHead, c);
         }
