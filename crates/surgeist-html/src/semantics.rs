@@ -8,7 +8,7 @@
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
-//! advisory information, title-element text and document titles, own/used capitalization,
+//! advisory information, dfn defining terms, title-element text and document titles, own/used capitalization,
 //! used autocorrection, computed writing suggestions, reflected command/popover
 //! Element associations, static command support, guarded popover targets and
 //! img/input dimension getters over qualified completed producer observations.
@@ -21,6 +21,8 @@ pub use table::*;
 mod language;
 pub use language::*;
 mod advisory_title;
+mod dfn;
+pub use dfn::*;
 mod document_title;
 pub use document_title::*;
 mod range;
@@ -819,6 +821,8 @@ pub enum HtmlSemanticQuery {
     Directionality,
     /// Normalized own/inherited advisory information, including empty suppression.
     AdvisoryInformation,
+    /// Exact defining term selected from own title, one abbr child, or descendant text.
+    DfnDefiningTerm,
     /// Exact direct-child Text data of an HTML title element.
     TitleText,
     /// Selected document title with ASCII whitespace stripped and collapsed.
@@ -944,6 +948,9 @@ impl HtmlSemanticQuery {
             }
             Self::AdvisoryInformation => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#advisory-information"
+            }
+            Self::DfnDefiningTerm => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#defining-term"
             }
             Self::ImageMapAttribute => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-img-ismap"
@@ -1299,6 +1306,7 @@ pub enum HtmlSemanticFact {
     Language(HtmlSemanticValue<HtmlLanguage>),
     Directionality(HtmlSemanticValue<HtmlDirectionality>),
     AdvisoryInformation(HtmlSemanticValue<HtmlAdvisoryInformation>),
+    DfnDefiningTerm(HtmlSemanticValue<HtmlDefiningTerm>),
     TitleText(HtmlSemanticValue<DocumentString>),
     DocumentTitle(HtmlSemanticValue<HtmlDocumentTitle>),
     Meter(HtmlSemanticValue<HtmlMeterState>),
@@ -2704,6 +2712,15 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.advisory_information(node, element)?
                             })
                         }
+                        HtmlSemanticQuery::DfnDefiningTerm => {
+                            HtmlSemanticFact::DfnDefiningTerm(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.dfn_defining_term(&request.subject, element)?
+                            })
+                        }
                         HtmlSemanticQuery::Hidden => {
                             let value = if foreign {
                                 HtmlSemanticValue::Unsupported(
@@ -3118,6 +3135,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::AdvisoryInformation => {
                         HtmlSemanticFact::AdvisoryInformation(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::DfnDefiningTerm => {
+                        HtmlSemanticFact::DfnDefiningTerm(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::Hidden => {
                         HtmlSemanticFact::Hidden(HtmlSemanticValue::Inapplicable)

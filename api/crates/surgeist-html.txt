@@ -692,6 +692,10 @@ pub surgeist_html::HtmlDecoding::Sync
 impl surgeist_html::HtmlDecoding
 pub fn surgeist_html::HtmlDecoding::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlDecoding::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlDefiningTermOrigin
+pub surgeist_html::HtmlDefiningTermOrigin::AbbreviationTitle(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlDefiningTermOrigin::DescendantText
+pub surgeist_html::HtmlDefiningTermOrigin::OwnTitle
 pub enum surgeist_html::HtmlDesignMode
 pub surgeist_html::HtmlDesignMode::Disabled
 pub surgeist_html::HtmlDesignMode::Enabled
@@ -1870,6 +1874,7 @@ pub surgeist_html::HtmlSemanticFact::DatalistSuggestionOptions(surgeist_html::Ht
 pub surgeist_html::HtmlSemanticFact::DescriptionListGroups(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDescriptionListGroups>)
 pub surgeist_html::HtmlSemanticFact::DetailsNameGroup(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDetailsNameGroup>)
 pub surgeist_html::HtmlSemanticFact::DetailsSummary(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlSemanticFact::DfnDefiningTerm(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDefiningTerm>)
 pub surgeist_html::HtmlSemanticFact::Directionality(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDirectionality>)
 pub surgeist_html::HtmlSemanticFact::DirtyCheckednessFlag(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::DirtyValueFlag(surgeist_html::HtmlSemanticValue<bool>)
@@ -2001,6 +2006,7 @@ pub surgeist_html::HtmlSemanticQuery::DatalistSuggestionOptions
 pub surgeist_html::HtmlSemanticQuery::DescriptionListGroups
 pub surgeist_html::HtmlSemanticQuery::DetailsNameGroup
 pub surgeist_html::HtmlSemanticQuery::DetailsSummary
+pub surgeist_html::HtmlSemanticQuery::DfnDefiningTerm
 pub surgeist_html::HtmlSemanticQuery::Directionality
 pub surgeist_html::HtmlSemanticQuery::DirtyCheckednessFlag
 pub surgeist_html::HtmlSemanticQuery::DirtyValueFlag
@@ -3299,6 +3305,10 @@ pub struct surgeist_html::HtmlDefaultButton
 impl surgeist_html::HtmlDefaultButton
 pub fn surgeist_html::HtmlDefaultButton::form_owner(&self) -> &surgeist_html::HtmlFormOwner
 pub fn surgeist_html::HtmlDefaultButton::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlDefiningTerm
+impl surgeist_html::HtmlDefiningTerm
+pub fn surgeist_html::HtmlDefiningTerm::origin(&self) -> &surgeist_html::HtmlDefiningTermOrigin
+pub fn surgeist_html::HtmlDefiningTerm::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlDescriptionListGroup
 impl surgeist_html::HtmlDescriptionListGroup
 pub fn surgeist_html::HtmlDescriptionListGroup::names(&self) -> &[surgeist_html::HtmlCaptureSubjectId]

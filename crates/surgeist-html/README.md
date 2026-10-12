@@ -1539,6 +1539,46 @@ allocation retains the existing provider limitation. This query computes
 advisory information; link titles, stylesheet-set names and tooltip or
 accessibility exposure remain separate operations.
 
+<a id="captured-defining-term"></a>
+
+Captured `HtmlSemanticQuery::DfnDefiningTerm` selects the exact term of an HTML
+`dfn`. A specified own no-namespace lowercase `title` wins, including empty.
+Otherwise, exactly one element child and no child Text nodes can select that
+child's title, if that child is an HTML `abbr` with a specified no-namespace
+lowercase title. Comments and processing instructions do not defeat that
+predicate; even an empty Text child does. Prefixes are not part of expanded-name identity. Foreign or
+case-mismatched element/attribute names do not supply those HTML roles.
+
+The fallback is ordinary descendant Text data concatenated in tree order.
+It includes ordinary text beneath script, img and foreign elements, adds no
+separator for br, and crosses neither template-content nor shadow associations.
+Complete empty content is a known empty term. `HtmlDefiningTerm` preserves exact
+UTF-16 and the selecting origin, including the actual abbreviation child.
+Ancestor titles never substitute. Every branch keeps whitespace and newline
+units; the separate advisory-information normalization does not apply.
+
+An own title needs no child or ancestor evidence. A qualifying abbreviation
+title needs the complete direct-child predicate but not that child's descendants.
+Unavailable influencing ordered children remain Missing. Wrong HTML roles and
+non-elements are Inapplicable; foreign subjects retain typed Unsupported.
+Reports use the existing capture/context/host and configuration qualification.
+
+Selected titles admit the entire original attribute value before retaining
+shared backing. Descendant text uses the existing
+[text-content owner](src/semantics/control_text.rs), admitting actual UTF-16
+output and traversal capacity under the same semantic ledger. Scratch is
+released on every exit; cumulative allocation, sticky terminal failures and
+atomic requested batches remain observable. Unselected titles do not acquire a
+raw-value cap, and descendant text does not invent an attribute-input limit.
+Ordinary shared-wrapper allocation limits remain.
+
+The [defining-term clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#defining-term),
+[query owner](src/semantics/dfn.rs) and [literal tests](tests/semantics_dfn.rs)
+define this captured getter. Definition adequacy in the surrounding paragraph,
+description-list group or section, abbreviation expansion adequacy, content-model
+conformance, hyperlink interpretation and exposure remain separate requirements.
+Closed Query/Fact additions are intentionally breaking for exhaustive matches.
+
 `TitleText` returns the exact direct-child Text data of an HTML `title` element.
 `DocumentTitle` selects the first HTML title in ordinary document tree order,
 then strips and collapses only ASCII whitespace. `HtmlDocumentTitle` retains

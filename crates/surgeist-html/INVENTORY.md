@@ -71,7 +71,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e024"></a>E024 | dd; HTML | [the-dd-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dd-element) | [Description lists](#description-lists): captured grouping retains ordered dd value identities, including value-only groups; member content and full conformance remain separate. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e025"></a>E025 | del; HTML | [the-del-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-del-element) | [Modification datetime](#modification-datetime) and exact citation reference; no edit operation. |
 | <a id="e026"></a>E026 | details; HTML | [the-details-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-details-element) | [Details](#details) first direct summary/name group, Boolean open; exclusive-opening/toggle mutation external. |
-| <a id="e027"></a>E027 | dfn; HTML | [the-dfn-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dfn-element) | Exact defining instance role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
+| <a id="e027"></a>E027 | dfn; HTML | [the-dfn-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dfn-element) | [Defining term](#defining-term): captured DfnDefiningTerm selects exact own title, the sole qualifying abbr child title, or ordinary descendant text, retaining branch provenance and influencing Missing. Definition adequacy and content-model conformance remain separate; applicable global facts stay independently queryable. |
 | <a id="e028"></a>E028 | dialog; HTML | [the-dialog-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dialog-element) | Own closedby/open, qualified blocking-modal facts consumed by [Inertness](#inertness); show/close/top-layer transitions external. |
 | <a id="e029"></a>E029 | div; HTML | [the-div-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-div-element) | Generic flow content remains retained; [description-list grouping](#description-lists) processes direct HTML div children one level, without splitting state at div boundaries. No generic div getter or full content-conformance certificate is implied. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e030"></a>E030 | dl; HTML | [the-dl-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-dl-element) | [Description lists](#description-lists): complete pinned dt/dd grouping returns source-ordered qualified identities, including empty-side groups; content conformance and human-name uniqueness remain separate. |
@@ -329,7 +329,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a158"></a>A158 | target; base | [attr-base-target](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-base-target); [navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigable); [hyperlink](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#hyperlink); [navigate](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigate); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target) and [Document base](#document-base): base target lexical report, document default target resolution absent. |
 | <a id="a159"></a>A159 | target; form | [attr-fs-target](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fs-target); [navigable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#navigable); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [valid-navigable-target-name-or-keyword](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-navigable-target-name-or-keyword) | [Navigable target](#navigable-target): form target exact/default name processing; host submission navigable creation external. |
 | <a id="a160"></a>A160 | title; HTML elements | [attr-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Advisory title](#advisory-title): AdvisoryInformation selects own/ordinary-parent title, with exact newline normalization and qualified empty/missing outcomes. |
-| <a id="a161"></a>A161 | title; abbr; dfn | [attr-abbr-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-abbr-title); [attr-dfn-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dfn-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Exact expansion/definition text for abbr/dfn; raw preserves it. Source semantic adequacy/context is not a lexical parser or numeric/default fallback. |
+| <a id="a161"></a>A161 | title; abbr; dfn | [attr-abbr-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-abbr-title); [attr-dfn-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dfn-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Exact abbr expansion/dfn title text remains raw. [Dfn defining-term selection](#defining-term) consumes specified own or qualifying child title including empty, without ancestor inheritance or normalization. Expansion/definition adequacy and contextual author conformance remain separate. |
 | <a id="a162"></a>A162 | title; input | [attr-input-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-title); [attr-input-pattern](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-pattern); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Input title describes pattern when provided; exact text retained, compiled pattern mismatch/feedback external; no inferred Valid from text. |
 | <a id="a163"></a>A163 | title; link | [attr-link-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-title); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Advisory title](#advisory-title) records the selected link/style noninheritance boundary; title-of-link and stylesheet set names remain separate document/CSSOM operations. |
 | <a id="a164"></a>A164 | title; link; style | [attr-link-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-title); [attr-style-title](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-style-title); [css-style-sheet-set-name](https://drafts.csswg.org/cssom/#css-style-sheet-set-name); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Link/style CSS stylesheet set title association belongs document/CSSOM, exact text retained. Style empty title author restriction/context is separate from CSS text grammar. |
@@ -1105,6 +1105,36 @@ selection, boundaries, exact UTF-16, work/storage/cancellation and retained repo
 A163 title-of-link and stylesheet-set names still require their distinct
 document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
 contextual author meaning; this query is no semantic-adequacy or exposure proof.
+
+## Defining term
+
+E027 and A161 use [dfn.rs](src/semantics/dfn.rs) and the captured
+`DfnDefiningTerm` query. The
+[source algorithm](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#defining-term)
+first selects a specified own no-namespace lowercase title, including empty.
+Otherwise a complete direct-child sequence with exactly one element and no Text
+can select an HTML abbr child's specified title. Comments and processing
+instructions are irrelevant to this predicate; even an empty Text node defeats
+it. Exact namespace/local-name identity ignores prefixes.
+
+Otherwise the existing [ordinary descendant-text owner](src/semantics/control_text.rs)
+concatenates Text in tree order, including ordinary script/img/foreign-element
+descendants, without separators or template/shadow association traversal.
+`HtmlDefiningTerm` retains exact UTF-16 and own-title, abbreviation-child or
+descendant-text origin. Ancestor titles do not affect it. No branch normalizes
+newlines or collapses whitespace; advisory-information normalization does not
+apply.
+Influencing incomplete child evidence is Missing; proved selected titles skip
+irrelevant descendants and ancestry.
+
+Whole selected raw title admission precedes retaining shared backing. Actual
+fallback text and traversal capacities use the qualified semantic ledger,
+with scratch released on every exit, cumulative allocation, sticky stops and
+atomic batches. Fixed shared-wrapper limits remain explicit. The
+[literal tests](tests/semantics_dfn.rs) exercise selection, exact units,
+qualification and resource failure; the [capability explanation](README.md#captured-defining-term)
+retains definition/expansion adequacy, content-model, hyperlink and exposure
+limits. This getter does not certify those separate source requirements.
 
 ## Document title
 
