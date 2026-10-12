@@ -1182,8 +1182,9 @@ OOM, linear work or complete allocator/RSS bound is promised.
 
 The [defining clause](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#meta-description)
 and [literal tests](tests/semantics_meta_description.rs) distinguish these
-observations. Media grammar, encoding/pragma/other-name rules, live mutation,
-search/UI use and public parsing remain separate. Closed
+observations. Media grammar, broader encoding requirements, pragma execution,
+other metadata-name rules, live mutation, search/UI use and public parsing remain
+separate. Closed
 Query/Fact additions are intentionally breaking for exhaustive matches.
 
 <a id="captured-meta-attribute-author-structure"></a>
@@ -1216,6 +1217,74 @@ keep these results independent of local `meta_charset` spelling and its
 Unchecked declaration context. Specified-charset multiplicity is not the broader
 encoding-declaration/serialization proof, actual decoding, pragma processing or
 whole meta conformance. Closed Query/Fact additions are intentionally breaking.
+
+<a id="captured-meta-pragma-content"></a>
+
+[HtmlValueInterpreter::meta_http_equiv](src/attributes/meta_pragma.rs) recognizes
+the seven source-defined pragma states with whole ASCII-insensitive keyword
+matching, without trimming or Unicode folding. Missing, empty and unrecognized
+values select no state. The report preserves exact raw UTF-16 and keeps
+recognition independent of author conformance: content-language and set-cookie
+are recognized but nonconforming. `HtmlMetaPragma` emits the five conforming
+author keywords as canonical native attributes. Present applicable context
+remains independently Unchecked.
+
+Captured `HtmlSemanticQuery::MetaPragmaContent` accepts an actual HTML meta and
+retains its local report, optional exact content and independent content-author
+observation. `NoState` supplies no content-author default. A selected state
+without content reports `MissingContent`. Content-language rejects a comma
+anywhere, then selects only the first non-ASCII-whitespace token; it does not
+validate a language tag or set processed language history. Default-style retains
+an exact nonempty name candidate, including whitespace-only values, without
+changing a stylesheet set.
+
+Encoding-declaration content checks the whole ASCII-insensitive HTML framing
+`text/html;`, optional ASCII whitespace, then `charset=utf-8`; this is not generic
+MIME parsing or actual decoding. X-UA-Compatible is ignored independently of its
+whole `IE=edge` author-content check. Set-cookie is ignored while its keyword
+remains nonconforming. CSP reports the actual direct HTML head-parent relation
+and nonempty content separately; its delegated grammar stays Unchecked, without
+policy parsing, prohibited-directive validation, filtering or enforcement.
+
+Refresh has separate [strict author framing and lexical recovery](src/semantics/meta_pragma.rs).
+Author framing accepts digits alone or digits followed by a semicolon, one or
+more ASCII whitespace units and ASCII-insensitive `URL=`, with no leading quote
+on the suffix. That suffix still needs delegated URL validation. Recovery
+retains an exact arbitrary nonnegative delay, discards source-specified later
+digit/period runs and preserves the original URL-prefix fallback and quote
+truncation. `DocumentUrl` means the existing address was selected, not that its
+unsupplied value was resolved. `UrlString` is an exact shared pre-URL-parser
+slice, not a valid or resolved URL. Lexical rejection does not become a zero or
+URL default, and a parsed result does not establish a successful refresh.
+
+`uniqueness()` first proves actual ordinary Document membership, then observes
+same intrinsic-state multiplicity independently of local content validity.
+Missing or invalid competitor content still counts. For EncodingDeclaration,
+`charset_conflict()` independently observes specified no-namespace lowercase
+charset on any ordinary HTML meta, including the subject; empty or invalid
+values count without reading them. Established detached roots report
+`NoDocumentMetadataScope`; unknown ancestry or influencing child coverage
+remains Missing. Qualified positive witnesses can resolve their own
+nonterminal gaps, but cannot rescue terminal admission, work or cancellation
+failure. Separate Documents and template/shadow/host/slot relations do not join
+the population.
+
+Own consulted raw values are admitted before processing. Exact shared content
+slices avoid substring copies; arbitrary delay uses the existing numeric owner.
+The [semantic session](src/semantics.rs) retains one qualified ledger for charged
+reads/traversal, numeric capacity, actual scratch and nested/outer output
+admission, sticky first stop and atomic requested-batch failure. Scratch is
+released on every exit; cumulative allocation remains observable. Ordinary
+capture and fixed shared-wrapper allocation limits remain, with no complete
+allocator/RSS or linear-work promise.
+
+The [pragma clauses](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#pragma-directives)
+and [local](tests/attributes_meta_pragma.rs) and [captured literal tests](tests/semantics_meta_pragma.rs)
+define this static boundary. Insertion history, processing timing, pragma-set
+language, encoding/document-class/serialization requirements, stylesheet
+mutation, refresh history/timers/navigation and CSP execution remain separate.
+This is not full meta or pragma conformance. Closed Query/Fact additions are
+intentionally breaking for exhaustive matches.
 
 <a id="captured-form-name-author"></a>
 

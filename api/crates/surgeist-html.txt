@@ -1340,10 +1340,63 @@ pub enum surgeist_html::HtmlMetaDiscriminatorRequirement
 pub surgeist_html::HtmlMetaDiscriminatorRequirement::MultipleSpecified
 pub surgeist_html::HtmlMetaDiscriminatorRequirement::NoneSpecified
 pub surgeist_html::HtmlMetaDiscriminatorRequirement::Satisfied
+pub enum surgeist_html::HtmlMetaEncodingCharsetConflict
+pub surgeist_html::HtmlMetaEncodingCharsetConflict::Absent
+pub surgeist_html::HtmlMetaEncodingCharsetConflict::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlMetaEncodingCharsetConflict::NoDocumentMetadataScope
+pub surgeist_html::HtmlMetaEncodingCharsetConflict::NotRequired
+pub surgeist_html::HtmlMetaEncodingCharsetConflict::Present(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlMetaMediaPlacement
 pub surgeist_html::HtmlMetaMediaPlacement::AllowedForThemeColor
 pub surgeist_html::HtmlMetaMediaPlacement::Forbidden
 pub surgeist_html::HtmlMetaMediaPlacement::NotSpecified
+pub enum surgeist_html::HtmlMetaPragma
+pub surgeist_html::HtmlMetaPragma::ContentSecurityPolicy
+pub surgeist_html::HtmlMetaPragma::ContentType
+pub surgeist_html::HtmlMetaPragma::DefaultStyle
+pub surgeist_html::HtmlMetaPragma::Refresh
+pub surgeist_html::HtmlMetaPragma::XUaCompatible
+impl surgeist_html::HtmlMetaPragma
+pub fn surgeist_html::HtmlMetaPragma::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlMetaPragma::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlMetaPragmaContent
+pub surgeist_html::HtmlMetaPragmaContent::ContentLanguage
+pub surgeist_html::HtmlMetaPragmaContent::ContentLanguage::candidate: core::option::Option<surgeist_html::HtmlMetaContentSlice>
+pub surgeist_html::HtmlMetaPragmaContent::ContentSecurityPolicy
+pub surgeist_html::HtmlMetaPragmaContent::ContentSecurityPolicy::head_parent: surgeist_html::HtmlSemanticValue<bool>
+pub surgeist_html::HtmlMetaPragmaContent::ContentSecurityPolicy::nonempty_content: bool
+pub surgeist_html::HtmlMetaPragmaContent::DefaultStyle
+pub surgeist_html::HtmlMetaPragmaContent::DefaultStyle::candidate: core::option::Option<surgeist_html::HtmlMetaContentSlice>
+pub surgeist_html::HtmlMetaPragmaContent::EncodingDeclaration
+pub surgeist_html::HtmlMetaPragmaContent::IgnoredSetCookie
+pub surgeist_html::HtmlMetaPragmaContent::IgnoredXUaCompatible
+pub surgeist_html::HtmlMetaPragmaContent::NoState
+pub surgeist_html::HtmlMetaPragmaContent::Refresh(surgeist_html::HtmlMetaRefreshLexical)
+pub enum surgeist_html::HtmlMetaPragmaContentAuthor
+pub surgeist_html::HtmlMetaPragmaContentAuthor::ExternalGrammarUnchecked
+pub surgeist_html::HtmlMetaPragmaContentAuthor::InvalidHtmlSyntax
+pub surgeist_html::HtmlMetaPragmaContentAuthor::MissingContent
+pub surgeist_html::HtmlMetaPragmaContentAuthor::Satisfied
+pub enum surgeist_html::HtmlMetaPragmaState
+pub surgeist_html::HtmlMetaPragmaState::ContentLanguage
+pub surgeist_html::HtmlMetaPragmaState::ContentSecurityPolicy
+pub surgeist_html::HtmlMetaPragmaState::DefaultStyle
+pub surgeist_html::HtmlMetaPragmaState::EncodingDeclaration
+pub surgeist_html::HtmlMetaPragmaState::Refresh
+pub surgeist_html::HtmlMetaPragmaState::SetCookie
+pub surgeist_html::HtmlMetaPragmaState::XUaCompatible
+pub enum surgeist_html::HtmlMetaPragmaUniqueness
+pub surgeist_html::HtmlMetaPragmaUniqueness::Duplicate(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlMetaPragmaUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlMetaPragmaUniqueness::NoDocumentMetadataScope
+pub surgeist_html::HtmlMetaPragmaUniqueness::NotRequired
+pub surgeist_html::HtmlMetaPragmaUniqueness::Unique
+pub enum surgeist_html::HtmlMetaRefreshLexical
+pub surgeist_html::HtmlMetaRefreshLexical::Parsed(surgeist_html::HtmlMetaRefreshValue)
+pub surgeist_html::HtmlMetaRefreshLexical::Rejected
+pub enum surgeist_html::HtmlMetaRefreshTarget
+pub surgeist_html::HtmlMetaRefreshTarget::DocumentUrl
+pub surgeist_html::HtmlMetaRefreshTarget::UrlString(surgeist_html::HtmlMetaContentSlice)
 pub enum surgeist_html::HtmlMeterAuthorRelation
 pub surgeist_html::HtmlMeterAuthorRelation::HighMaximum
 pub surgeist_html::HtmlMeterAuthorRelation::LowHigh
@@ -1854,6 +1907,7 @@ pub surgeist_html::HtmlSemanticFact::MapAreas(surgeist_html::HtmlSemanticValue<s
 pub surgeist_html::HtmlSemanticFact::MapNameAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMapNameAuthorReport>)
 pub surgeist_html::HtmlSemanticFact::MetaAttributeAuthorStructure(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaAttributeAuthorStructureReport>)
 pub surgeist_html::HtmlSemanticFact::MetaDescriptionAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaDescriptionAuthorReport>)
+pub surgeist_html::HtmlSemanticFact::MetaPragmaContent(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaPragmaContentReport>)
 pub surgeist_html::HtmlSemanticFact::Meter(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMeterState>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionFormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionFormOwner>)
@@ -1984,6 +2038,7 @@ pub surgeist_html::HtmlSemanticQuery::MapAreas
 pub surgeist_html::HtmlSemanticQuery::MapNameAuthor
 pub surgeist_html::HtmlSemanticQuery::MetaAttributeAuthorStructure
 pub surgeist_html::HtmlSemanticQuery::MetaDescriptionAuthor
+pub surgeist_html::HtmlSemanticQuery::MetaPragmaContent
 pub surgeist_html::HtmlSemanticQuery::Meter
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
 pub surgeist_html::HtmlSemanticQuery::OptionFormOwner
@@ -3931,6 +3986,11 @@ pub fn surgeist_html::HtmlMetaAttributeAuthorStructureReport::itemprop_attribute
 pub fn surgeist_html::HtmlMetaAttributeAuthorStructureReport::media_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
 pub fn surgeist_html::HtmlMetaAttributeAuthorStructureReport::media_placement(&self) -> surgeist_html::HtmlMetaMediaPlacement
 pub fn surgeist_html::HtmlMetaAttributeAuthorStructureReport::name_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub struct surgeist_html::HtmlMetaContentSlice
+impl surgeist_html::HtmlMetaContentSlice
+pub fn surgeist_html::HtmlMetaContentSlice::code_unit_range(&self) -> core::ops::range::Range<usize>
+pub fn surgeist_html::HtmlMetaContentSlice::code_units(&self) -> &[u16]
+pub fn surgeist_html::HtmlMetaContentSlice::raw_content(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlMetaDescriptionAuthorReport
 impl surgeist_html::HtmlMetaDescriptionAuthorReport
 pub fn surgeist_html::HtmlMetaDescriptionAuthorReport::content_appropriateness(&self) -> surgeist_html::HtmlAttributeContextAuthorState
@@ -3939,6 +3999,18 @@ pub fn surgeist_html::HtmlMetaDescriptionAuthorReport::content_requirement(&self
 pub fn surgeist_html::HtmlMetaDescriptionAuthorReport::effective_content(&self) -> &surgeist_html::DocumentString
 pub fn surgeist_html::HtmlMetaDescriptionAuthorReport::name_attribute(&self) -> &surgeist_html::Attribute
 pub fn surgeist_html::HtmlMetaDescriptionAuthorReport::uniqueness(&self) -> &surgeist_html::HtmlMetaDescriptionUniqueness
+pub struct surgeist_html::HtmlMetaPragmaContentReport
+impl surgeist_html::HtmlMetaPragmaContentReport
+pub fn surgeist_html::HtmlMetaPragmaContentReport::charset_conflict(&self) -> &surgeist_html::HtmlMetaEncodingCharsetConflict
+pub fn surgeist_html::HtmlMetaPragmaContentReport::content_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlMetaPragmaContentReport::content_author(&self) -> core::option::Option<surgeist_html::HtmlMetaPragmaContentAuthor>
+pub fn surgeist_html::HtmlMetaPragmaContentReport::http_equiv(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlMetaPragmaState>
+pub fn surgeist_html::HtmlMetaPragmaContentReport::interpretation(&self) -> &surgeist_html::HtmlMetaPragmaContent
+pub fn surgeist_html::HtmlMetaPragmaContentReport::uniqueness(&self) -> &surgeist_html::HtmlMetaPragmaUniqueness
+pub struct surgeist_html::HtmlMetaRefreshValue
+impl surgeist_html::HtmlMetaRefreshValue
+pub fn surgeist_html::HtmlMetaRefreshValue::delay_seconds(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlMetaRefreshValue::target(&self) -> &surgeist_html::HtmlMetaRefreshTarget
 pub struct surgeist_html::HtmlMeterAttributeInput<'a>
 pub surgeist_html::HtmlMeterAttributeInput::high: core::option::Option<&'a surgeist_html::Attribute>
 pub surgeist_html::HtmlMeterAttributeInput::low: core::option::Option<&'a surgeist_html::Attribute>
@@ -5013,6 +5085,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::map_name(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::meta_http_equiv(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlMetaPragmaState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::meter_attributes(&self, element: &surgeist_html::QualifiedName, input: surgeist_html::HtmlMeterAttributeInput<'_>) -> core::result::Result<surgeist_html::HtmlMeterAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

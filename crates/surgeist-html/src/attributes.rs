@@ -2221,6 +2221,8 @@ pub use input_colorspace::*;
 
 mod encoding_label;
 pub use encoding_label::*;
+mod meta_pragma;
+pub use meta_pragma::*;
 
 mod table_header_scope;
 pub use table_header_scope::*;

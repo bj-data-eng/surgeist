@@ -55,6 +55,8 @@ mod meta_description;
 pub use meta_description::*;
 mod meta_author;
 pub use meta_author::*;
+mod meta_pragma;
+pub use meta_pragma::*;
 mod image_map;
 mod map_name;
 pub use form_name::*;
@@ -871,6 +873,8 @@ pub enum HtmlSemanticQuery {
     MetaDescriptionAuthor,
     /// Independent meta discriminator, content, media and charset-population evidence.
     MetaAttributeAuthorStructure,
+    /// Non-executing pragma classification, content and Document observations.
+    MetaPragmaContent,
     /// Independent img usemap author witness and first processing map.
     UsemapReference,
     ConstraintValidationCandidate,
@@ -991,6 +995,9 @@ impl HtmlSemanticQuery {
             }
             Self::MapNameAuthor => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name"
+            }
+            Self::MetaPragmaContent => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#pragma-directives"
             }
             Self::MetaAttributeAuthorStructure => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-meta-element"
@@ -1339,6 +1346,7 @@ pub enum HtmlSemanticFact {
     IdAuthor(HtmlSemanticValue<HtmlIdAuthorReport>),
     MetaDescriptionAuthor(HtmlSemanticValue<HtmlMetaDescriptionAuthorReport>),
     MetaAttributeAuthorStructure(HtmlSemanticValue<HtmlMetaAttributeAuthorStructureReport>),
+    MetaPragmaContent(HtmlSemanticValue<HtmlMetaPragmaContentReport>),
     UsemapReference(HtmlSemanticValue<HtmlUsemapReferenceResult>),
     ConstraintValidationCandidate(HtmlSemanticValue<bool>),
     TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
@@ -2874,6 +2882,11 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::MapNameAuthor => {
                             HtmlSemanticFact::MapNameAuthor(self.map_name_author(&request.subject)?)
                         }
+                        HtmlSemanticQuery::MetaPragmaContent => {
+                            HtmlSemanticFact::MetaPragmaContent(
+                                self.meta_pragma_content(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::MetaAttributeAuthorStructure => {
                             HtmlSemanticFact::MetaAttributeAuthorStructure(
                                 self.meta_attribute_author_structure(&request.subject)?,
@@ -3235,6 +3248,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::MapNameAuthor => {
                         HtmlSemanticFact::MapNameAuthor(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::MetaPragmaContent => {
+                        HtmlSemanticFact::MetaPragmaContent(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::MetaAttributeAuthorStructure => {
                         HtmlSemanticFact::MetaAttributeAuthorStructure(
