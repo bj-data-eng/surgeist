@@ -159,11 +159,15 @@ pub(super) struct ConstructionEffects {
     frames: OwnedVec<EffectFrame>,
     current: Option<EffectFrame>,
     transfer: Option<EffectFrame>,
-    tasks: OwnedVec<Option<IntrinsicTask>>,
+    tasks: OwnedVec<Option<QueuedTask>>,
     dequeue: usize,
-    task: Option<IntrinsicTask>,
+    task: Option<QueuedTask>,
     checkpoint: bool,
     pub(super) svg_wrapper: Option<usize>,
+}
+struct QueuedTask {
+    task: IntrinsicTask,
+    cause: Option<super::provenance::ConstructionCauseRef>,
 }
 impl ConstructionEffects {
     pub(super) fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
@@ -220,10 +224,15 @@ impl ConstructionEffects {
         self.frames.release(c)?;
         self.tasks.release(c)
     }
-    fn enqueue(&mut self, c: &mut ParseControl, task: IntrinsicTask) -> Result<(), SessionError> {
+    fn enqueue(
+        &mut self,
+        c: &mut ParseControl,
+        task: IntrinsicTask,
+        cause: Option<super::provenance::ConstructionCauseRef>,
+    ) -> Result<(), SessionError> {
         // Tasks carry no nested allocation; failed push returns the finite value.
         self.tasks
-            .try_push_recover(c, Some(task))
+            .try_push_recover(c, Some(QueuedTask { task, cause }))
             .map_err(|(stop, _)| SessionError::Stop(stop))
     }
 }
@@ -985,8 +994,14 @@ impl SessionStorage {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
                     if removal && (changed || state.selectedness) {
+                        let cause = self
+                            .evidence
+                            .as_ref()
+                            .map(|evidence| evidence.current_cause(c))
+                            .transpose()?
+                            .flatten();
                         self.effects
-                            .enqueue(c, IntrinsicTask::UpdateSelect(select))?;
+                            .enqueue(c, IntrinsicTask::UpdateSelect(select), cause)?;
                     }
                 }
             }
@@ -1312,6 +1327,12 @@ impl ParserArenaSession {
             return Ok(());
         }
         storage.require(c)?;
+        let return_cause = storage
+            .evidence
+            .as_ref()
+            .map(|evidence| evidence.current_cause(c))
+            .transpose()?
+            .flatten();
         payload_write::<bool>(c, 1)?;
         storage.effects.checkpoint = true;
         let result = (|| {
@@ -1319,12 +1340,19 @@ impl ParserArenaSession {
                 c.require_identity(&storage.control)?;
                 c.charge(WorkCategory::RecordVisit, 2)?;
                 if storage.effects.dequeue == storage.effects.tasks.len() {
+                    if let Some(cause) = &return_cause {
+                        storage
+                            .evidence
+                            .as_mut()
+                            .ok_or(SessionError::WrongToken)?
+                            .activate_cause(c, cause)?;
+                    }
                     payload_write::<bool>(c, 1)?;
                     storage.effects.checkpoint = false;
                     return Ok(());
                 }
                 let cursor = storage.effects.dequeue;
-                payload_write::<Option<IntrinsicTask>>(c, 2)?;
+                payload_write::<Option<QueuedTask>>(c, 2)?;
                 payload_write::<usize>(c, 1)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let slot = storage
@@ -1333,13 +1361,21 @@ impl ParserArenaSession {
                     .get_mut(cursor, c)?
                     .ok_or(SessionError::WrongToken)?;
                 let task = slot.take().ok_or(SessionError::WrongToken)?;
+                if let Some(cause) = &task.cause {
+                    storage
+                        .evidence
+                        .as_mut()
+                        .ok_or(SessionError::WrongToken)?
+                        .activate_cause(c, cause)?;
+                }
+                let operation = task.task;
                 storage.effects.task = Some(task);
                 storage.effects.dequeue += 1;
-                match task {
+                match operation {
                     IntrinsicTask::UpdateSelect(select) => storage.update_select(c, select)?,
                 }
                 storage.drain_construction_effects(c)?;
-                payload_write::<Option<IntrinsicTask>>(c, 1)?;
+                payload_write::<Option<QueuedTask>>(c, 1)?;
                 storage.effects.task = None;
             }
         })();

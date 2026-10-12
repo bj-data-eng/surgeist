@@ -167,6 +167,19 @@ impl SessionStorage {
         source: usize,
         document: usize,
     ) -> Result<usize, SessionError> {
+        let previous = self.begin_node_copy(c, source)?;
+        let result = self.clone_node_inner(c, source, document);
+        if c.stop().is_none() {
+            self.end_node_copy(c, previous.as_ref())?;
+        }
+        result
+    }
+    fn clone_node_inner(
+        &mut self,
+        c: &mut ParseControl,
+        source: usize,
+        document: usize,
+    ) -> Result<usize, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         match &self.records[source].kind {
             HtmlNodeKind::Element(_) => self.clone_element(c, source, document),
@@ -744,7 +757,13 @@ impl SessionStorage {
         }
         if let Some(slot) = bindings.hidden {
             let (_, original_raw, original) = self.hidden_clone_slot(c, source)?;
-            let text = copy_input_value(&self.payloads, c, original_raw, false)?;
+            let text = copy_input_value(
+                &self.payloads,
+                self.evidence.as_ref(),
+                c,
+                original_raw,
+                false,
+            )?;
             self.replace_input_raw(c, slot, text)?;
             let mut state = self.read_input_state(c, slot)?;
             state.dirty_value = original.dirty_value;
@@ -807,21 +826,13 @@ impl SessionStorage {
         c: &mut ParseControl,
         source: usize,
     ) -> Result<usize, SessionError> {
-        control_field_owner(&self.payloads, c, source)?;
-        let mut buffer = Utf16Buffer::new(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::String { value, .. } = &self.payloads.values[source] else {
-            unreachable!()
-        };
-        if let Err(stop) = buffer.extend_units(value.code_units(), c) {
-            buffer.release(c)?;
-            return Err(stop.into());
-        }
-        let frozen = buffer.freeze(c)?;
-        self.register_raw(c, frozen)
+        let (value, slot) = self.copy_registered_field(c, source)?;
+        drop(value);
+        Ok(slot)
     }
     fn retire_raw_field(&mut self, c: &mut ParseControl, slot: usize) -> Result<(), SessionError> {
         payload_write::<RetainedPayload>(c, 2)?;
+        self.retire_field_group(c, slot)?;
         let RetainedPayload::String {
             value,
             allocation,
@@ -833,9 +844,7 @@ impl SessionStorage {
         };
         drop(value);
         c.release_document_string(allocation)?;
-        if let Some(maps) = origins {
-            maps.release(c)?;
-        }
+        drop(origins);
         Ok(())
     }
     /// Copy a registered field without aliasing its native backing or ticket.
@@ -846,7 +855,6 @@ impl SessionStorage {
     ) -> Result<(DocumentString, usize), SessionError> {
         control_field_owner(&self.payloads, c, source)?;
         let mut buffer = Utf16Buffer::new(c)?;
-        let mut maps = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let result = (|| {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let RetainedPayload::String { value, origins, .. } = &self.payloads.values[source]
@@ -854,63 +862,25 @@ impl SessionStorage {
                 return Err(SessionError::WrongToken);
             };
             buffer.extend_units(value.code_units(), c)?;
-            if let Some(origins) = origins {
-                for origin in origins.as_slice() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    c.require_source_range(&origin.source)?;
-                    c.charge(WorkCategory::ProviderCall, 1)?;
-                    payload_write::<TextOrigin>(c, 1)?;
-                    maps.try_push(
-                        c,
-                        TextOrigin {
-                            start: origin.start,
-                            end: origin.end,
-                            source: origin.source.clone(),
-                            kind: origin.kind,
-                        },
-                    )?;
-                }
-            }
-            Ok(())
+            origins
+                .as_ref()
+                .map(|origins| {
+                    self.evidence
+                        .as_mut()
+                        .ok_or(SessionError::WrongToken)?
+                        .copy_group(c, origins)
+                })
+                .transpose()
         })();
-        if let Err(error) = result {
-            buffer.release(c)?;
-            maps.release(c)?;
-            return Err(error);
-        }
-        let frozen = match buffer.freeze(c) {
-            Ok(value) => value,
-            Err(stop) => {
-                maps.release(c)?;
-                return Err(stop.into());
+        let origins = match result {
+            Ok(origins) => origins,
+            Err(error) => {
+                buffer.release(c)?;
+                return Err(error);
             }
         };
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            frozen.release(c)?;
-            maps.release(c)?;
-            return Err(error);
-        }
-        let (value, allocation) = frozen.into_parts();
-        let slot = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::String {
-            value,
-            allocation,
-            origins: Some(maps),
-            location: StringLocation::Detached,
-        });
-        let RetainedPayload::String {
-            value, allocation, ..
-        } = &mut self.payloads.values[slot]
-        else {
-            unreachable!()
-        };
-        c.move_document_string_to_managed(allocation, value)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        c.charge(
-            WorkCategory::CopyByte,
-            mem::size_of::<DocumentString>() as u64,
-        )?;
-        Ok((value.clone(), slot))
+        let frozen = buffer.freeze(c)?;
+        self.register_group_string_owned(c, frozen, origins)
     }
     pub(super) fn field_slot(
         &self,

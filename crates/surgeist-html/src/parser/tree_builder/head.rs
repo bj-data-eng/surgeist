@@ -751,6 +751,22 @@ fn validate_source(
     Ok(())
 }
 impl HeadState<'_> {
+    pub(super) fn record_trigger(
+        &mut self,
+        rule: crate::construction::parser_session::provenance::ParserRule,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
+        let pending = self.pending.as_ref().ok_or(HeadError::MissingInput)?;
+        self.before.kernel.session.record_parser_trigger(
+            c,
+            crate::construction::parser_session::provenance::ParserTrigger {
+                source: &pending.source,
+                rule,
+                family: pending.family,
+            },
+        )?;
+        Ok(())
+    }
     pub(super) fn kernel(&mut self) -> &mut LocationKernel {
         &mut self.before.kernel
     }
@@ -1388,6 +1404,12 @@ impl HeadState<'_> {
         self_closing: bool,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
+        self.record_trigger(
+            crate::construction::parser_session::provenance::ParserRule::Tree(
+                InsertionMode::InBody,
+            ),
+            c,
+        )?;
         self.emit(
             HeadCondition::UnexpectedHtml,
             crate::construction::parser_session::evidence::DiagnosticRule {
@@ -1433,6 +1455,10 @@ impl HeadState<'_> {
             c.charge(WorkCategory::StateStep, 1)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
             let mode = self.mode(c)?;
+            self.record_trigger(
+                crate::construction::parser_session::provenance::ParserRule::Tree(mode),
+                c,
+            )?;
             if self.foreign_dispatch(c)?
                 && let Some(step) = self.foreign_rules(c)?
             {

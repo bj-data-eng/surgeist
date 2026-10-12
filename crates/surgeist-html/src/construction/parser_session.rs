@@ -40,6 +40,8 @@ use evidence::ParseEvidence;
 mod foreign;
 pub(crate) mod native_view;
 mod pi;
+pub(crate) mod provenance;
+use provenance::{FieldCopy, OriginGroupRef};
 mod select;
 mod svg;
 mod template;
@@ -173,6 +175,7 @@ pub(crate) struct FormattingCreation {
     source: crate::HtmlSourceRange,
     control: ControlIdentity,
     arena: Weak<Identity>,
+    cause: Option<provenance::ConstructionCauseRef>,
 }
 
 impl FormattingCreation {
@@ -235,6 +238,10 @@ struct PayloadStorage {
     preexisting_attributes: usize,
 }
 enum RetainedPayload {
+    ConstructionCause {
+        node: Option<usize>,
+        cause: provenance::ConstructionCauseRef,
+    },
     StandaloneDocumentCompletion {
         node: usize,
         state: StandaloneDocumentState,
@@ -259,7 +266,7 @@ enum RetainedPayload {
     String {
         value: DocumentString,
         allocation: DocumentStringAllocation,
-        origins: Option<OwnedVec<TextOrigin>>,
+        origins: Option<OriginGroupRef>,
         location: StringLocation,
     },
     Attributes(Option<AttributeStorage>),
@@ -463,7 +470,7 @@ enum AttributeStorage {
     },
 }
 #[derive(Clone, Copy)]
-enum StringLocation {
+pub(crate) enum StringLocation {
     Detached,
     Text(usize),
     Comment(usize),
@@ -556,6 +563,7 @@ impl PayloadStorage {
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
                 RetainedPayload::SvgScript { .. }
+                | RetainedPayload::ConstructionCause { .. }
                 | RetainedPayload::Script { .. }
                 | RetainedPayload::NodeDocument { .. }
                 | RetainedPayload::StandaloneDocumentCompletion { .. }
@@ -678,11 +686,7 @@ impl PayloadStorage {
                 control
                     .release_document_string(allocation)
                     .expect("actual managed string ticket");
-                if let Some(origins) = origins {
-                    origins
-                        .release(control)
-                        .expect("actual retained origin storage");
-                }
+                drop(origins);
             }
         }
         release_vector(control, values, allocation).expect("actual payload registry capacity");
@@ -1044,6 +1048,7 @@ impl SessionStorage {
     ) -> Result<ParserNode, SessionError> {
         control.require_identity(&self.control)?;
         let count = 1 + usize::from(template);
+        let cause_slots = self.prepare_node_causes(control, count)?;
         let requests = [
             (HtmlParseResource::ManagedNodes, count as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
@@ -1107,6 +1112,16 @@ impl SessionStorage {
             });
             self.children_allocations.push(allocation);
         }
+        for (offset, slot) in cause_slots.into_iter().enumerate().take(count) {
+            if let Some(slot) = slot {
+                let RetainedPayload::ConstructionCause { node, .. } =
+                    &mut self.payloads.values[slot]
+                else {
+                    unreachable!()
+                };
+                *node = Some(index + offset);
+            }
+        }
         self.usage.nodes += count;
         self.usage.edges += usize::from(template);
         self.usage.attributes += attributes;
@@ -1141,6 +1156,17 @@ impl SessionStorage {
         control: &mut ParseControl,
         raw: FrozenUtf16,
     ) -> Result<usize, SessionError> {
+        let origins = if let Some(evidence) = &mut self.evidence {
+            match evidence.rule_group(control, raw.text().len()) {
+                Ok(group) => Some(group),
+                Err(error) => {
+                    raw.release(control)?;
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
         if let Err(error) = self.prepare_payload_slot_owned(control) {
             raw.release(control)?;
             return Err(error);
@@ -1150,7 +1176,7 @@ impl SessionStorage {
         self.payloads.values.push(RetainedPayload::String {
             value,
             allocation,
-            origins: None,
+            origins,
             location: StringLocation::Detached,
         });
         let RetainedPayload::String {
@@ -1406,7 +1432,7 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
         slot: usize,
-        text: Text,
+        text: FieldCopy,
     ) -> Result<(), SessionError> {
         let previous = match self.input_raw_slot(control, slot) {
             Ok(previous) => previous,
@@ -1418,10 +1444,11 @@ impl SessionStorage {
         // Both fresh initialization and clone initialization already run inside
         // the same qualified owner. A clone's retained construction frame is
         // legitimate useful work, so do not reenter the external idle gate.
-        let (value, next) = self.register_string_owned(control, text.value, Some(text.origins))?;
+        let (value, next) = self.register_field_copy(control, text)?;
         drop(value); // no native alias: actual independent raw owner only
         payload_write::<usize>(control, 1)?;
         payload_write::<RetainedPayload>(control, 2)?;
+        self.retire_field_group(control, previous)?;
         let RetainedPayload::HiddenInput { raw, .. } = &mut self.payloads.values[slot] else {
             unreachable!()
         };
@@ -1440,9 +1467,7 @@ impl SessionStorage {
         };
         drop(value);
         control.release_document_string(allocation)?;
-        if let Some(origins) = origins {
-            origins.release(control)?;
-        }
+        drop(origins);
         Ok(())
     }
     fn attribute_value_slot(
@@ -1499,7 +1524,13 @@ impl SessionStorage {
         let dirty = state.dirty_value;
         if value_attr && !dirty {
             let source = self.attribute_value_slot(control, node, position)?;
-            let text = copy_input_value(&self.payloads, control, source, !hidden)?;
+            let text = copy_input_value(
+                &self.payloads,
+                self.evidence.as_ref(),
+                control,
+                source,
+                !hidden,
+            )?;
             self.replace_input_raw(control, slot, text)?;
         }
         if checked_attr && !state.dirty_checkedness {
@@ -1537,7 +1568,13 @@ impl SessionStorage {
                 // Nested dirty=false value change under current Hidden: copy
                 // the actual replaced native field, with no Text sanitization.
                 let source = self.attribute_value_slot(control, node, position)?;
-                let text = copy_input_value(&self.payloads, control, source, false)?;
+                let text = copy_input_value(
+                    &self.payloads,
+                    self.evidence.as_ref(),
+                    control,
+                    source,
+                    false,
+                )?;
                 self.replace_input_raw(control, slot, text)?;
             }
         }
@@ -1559,9 +1596,8 @@ impl SessionStorage {
         raw: usize,
     ) -> Result<(), SessionError> {
         let old_slot = self.attribute_value_slot(control, node, position)?;
-        let text = copy_input_value(&self.payloads, control, raw, false)?;
-        let (value, new_slot) =
-            self.register_string_owned(control, text.value, Some(text.origins))?;
+        let text = copy_input_value(&self.payloads, self.evidence.as_ref(), control, raw, false)?;
+        let (value, new_slot) = self.register_field_copy(control, text)?;
         (|| {
             control.charge(WorkCategory::RecordVisit, 2)?;
             control.charge(WorkCategory::ProviderCall, 1)?;
@@ -1584,6 +1620,7 @@ impl SessionStorage {
             payload_write::<[Option<AttributeStorage>; 2]>(control, 2)?;
             control.charge(WorkCategory::ProviderCall, 2)?;
             payload_write::<OrderedAttributes>(control, 1)?;
+            self.retire_field_group(control, old_slot)?;
             let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
                 unreachable!()
             };
@@ -1664,11 +1701,18 @@ impl SessionStorage {
         }
         let text = if let Some(position) = value {
             let source = self.attribute_value_slot(control, node, position)?;
-            copy_input_value(&self.payloads, control, source, false)?
+            copy_input_value(
+                &self.payloads,
+                self.evidence.as_ref(),
+                control,
+                source,
+                false,
+            )?
         } else {
-            Text {
+            FieldCopy {
                 value: literal_string(control, b"")?,
                 origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
+                original: None,
             }
         };
         self.replace_input_raw(control, slot, text)?;
@@ -1733,6 +1777,8 @@ impl SessionStorage {
             return Ok(());
         }
         let mut raw = Utf16Buffer::new(control)?;
+        let mut group = None;
+        let mut units = 0usize;
         let copied = (|| {
             control.charge(WorkCategory::RecordVisit, 1)?;
             for position in 0..self.records[node].children.len() {
@@ -1742,6 +1788,41 @@ impl SessionStorage {
                     && let HtmlNodeKind::Text(value) = &self.records[child].kind
                 {
                     raw.extend_units(value.code_units(), control)?;
+                    let added = value.len();
+                    let source = self.field_slot(control, StringLocation::Text(child))?;
+                    let incoming = self.copied_slot_group(control, source)?;
+                    if let Some(incoming) = incoming {
+                        if group.is_none() && units != 0 {
+                            group = Some(
+                                self.evidence
+                                    .as_mut()
+                                    .ok_or(SessionError::WrongToken)?
+                                    .source_independent_group(control, units)?,
+                            );
+                        }
+                        group = Some(if let Some(previous) = group.take() {
+                            self.evidence
+                                .as_mut()
+                                .ok_or(SessionError::WrongToken)?
+                                .merge_groups(control, &previous, &incoming, units, units + added)?
+                        } else {
+                            incoming
+                        });
+                    } else if group.is_some() {
+                        // Every ordinary parsed Text has a group. An explicit
+                        // source-free child remains an honest empty relation.
+                        let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
+                        let incoming = evidence.source_independent_group(control, added)?;
+                        let previous = group.take().expect("existing retained group");
+                        group = Some(evidence.merge_groups(
+                            control,
+                            &previous,
+                            &incoming,
+                            units,
+                            units + added,
+                        )?);
+                    }
+                    units += added;
                 }
             }
             Ok::<_, SessionError>(())
@@ -1750,12 +1831,21 @@ impl SessionStorage {
             raw.release(control)?;
             return Err(error);
         }
+        let group = match self.reset_group(control, state.raw, group, units) {
+            Ok(group) => group,
+            Err(error) => {
+                raw.release(control)?;
+                return Err(error);
+            }
+        };
         let raw = raw.freeze(control)?;
-        let next = self.register_raw(control, raw)?;
+        let (native, next) = self.register_group_string_owned(control, raw, group)?;
+        drop(native);
         // All useful work and both actual record moves precede a fixed commit.
         // The old raw has no native/metadata Arc alias: metadata holds an index.
         payload_write::<TextareaState>(control, 1)?;
         payload_write::<RetainedPayload>(control, 2)?;
+        self.retire_field_group(control, state.raw)?;
         let RetainedPayload::Textarea { state: stored, .. } = &mut self.payloads.values[slot]
         else {
             unreachable!()
@@ -1766,17 +1856,18 @@ impl SessionStorage {
         let RetainedPayload::String {
             value,
             allocation,
-            origins: None,
+            origins,
             ..
         } = mem::replace(
             &mut self.payloads.values[previous],
             RetainedPayload::Retired,
         )
         else {
-            unreachable!("qualified raw owns only its independent backing")
+            unreachable!("qualified raw owns its independent backing")
         };
         drop(value);
         control.release_document_string(allocation)?;
+        drop(origins);
         Ok(())
     }
     fn check_text(control: &mut ParseControl, text: &mut Text) -> Result<(), SessionError> {
@@ -1809,11 +1900,46 @@ impl SessionStorage {
         value: FrozenUtf16,
         origins: Option<OwnedVec<TextOrigin>>,
     ) -> Result<(DocumentString, usize), SessionError> {
+        let origins = if let Some(origins) = origins {
+            let evidence = match self.origin_evidence(control) {
+                Ok(evidence) => evidence,
+                Err(error) => {
+                    origins.release(control)?;
+                    value.release(control)?;
+                    return Err(error);
+                }
+            };
+            match evidence.retain_group(control, origins, value.text().len()) {
+                Ok(group) => Some(group),
+                Err(error) => {
+                    value.release(control)?;
+                    return Err(error);
+                }
+            }
+        } else if let Some(evidence) = &mut self.evidence {
+            match evidence.rule_group(control, value.text().len()) {
+                Ok(group) => Some(group),
+                Err(error) => {
+                    value.release(control)?;
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
+        self.register_group_string_owned(control, value, origins)
+    }
+    /// The group is committed in the sole evidence owner before the actual
+    /// native backing slot is reserved. A refused slot leaves no logical slot
+    /// reservation and the original backing is reclaimed by this owner.
+    fn register_group_string_owned(
+        &mut self,
+        control: &mut ParseControl,
+        value: FrozenUtf16,
+        origins: Option<OriginGroupRef>,
+    ) -> Result<(DocumentString, usize), SessionError> {
         if let Err(error) = self.prepare_payload_slot_owned(control) {
             value.release(control)?;
-            if let Some(origins) = origins {
-                origins.release(control)?;
-            }
             return Err(error);
         }
         let (value, allocation) = value.into_parts();
@@ -2167,7 +2293,21 @@ impl SessionStorage {
                 return Err(stop.into());
             }
             let merged = merged.freeze(control)?;
-            let (merged, merged_ticket) = self.register_string(control, merged, None)?;
+            let group = match self.merge_field_groups(
+                control,
+                old_ticket.expect("registered preceding text"),
+                ticket,
+                offset,
+                offset + added,
+            ) {
+                Ok(group) => group,
+                Err(error) => {
+                    merged.release(control)?;
+                    return Err(error);
+                }
+            };
+            let (merged, merged_ticket) =
+                self.register_group_string_owned(control, merged, group)?;
             let node = self.node(control, index)?;
             let children_changed = self.textarea_slot(control, parent_index)?.is_some()
                 || self.html_local(control, parent_index, "script")?;
@@ -2180,6 +2320,7 @@ impl SessionStorage {
             )?;
             control.charge(WorkCategory::ProviderCall, 1)?;
             control.charge(WorkCategory::RecordWrite, 4)?;
+            self.retire_field_group(control, old_ticket.expect("registered preceding text"))?;
             // Fixed commit after all fallible work. The old and incoming backing
             // remain owned and fully charged, detached from the live native slot.
             self.bind_string(
@@ -3953,12 +4094,20 @@ impl ParserArenaSession {
         payload_write::<FormattingCreation>(control, 1)?;
         let arena = Arc::downgrade(&self.active()?.identity);
         let owner = control.identity();
+        let cause = self
+            .active()?
+            .evidence
+            .as_ref()
+            .map(|evidence| evidence.current_cause(control))
+            .transpose()?
+            .flatten();
         let tag = take_payload(input, control)?;
         Ok(FormattingCreation {
             token: Some(tag),
             source,
             control: owner,
             arena,
+            cause,
         })
     }
 
@@ -4011,13 +4160,30 @@ impl ParserArenaSession {
                 return Err(error);
             }
         };
-        match self.active_mut()?.allocate_html_payload_prepared(
+        let previous = match self.active_mut()?.begin_formatting_replay(
+            control,
+            creation.cause.as_ref(),
+            Some(parent),
+        ) {
+            Ok(previous) => previous,
+            Err(error) => {
+                copied.name.release(control)?;
+                copied.attributes.release(control)?;
+                return Err(error);
+            }
+        };
+        let result = self.active_mut()?.allocate_html_payload_prepared(
             control,
             copied.name.value,
             Some(copied.name.origins),
             copied.attributes,
             prepared,
-        ) {
+        );
+        if control.stop().is_none() {
+            self.active_mut()?
+                .end_node_copy(control, previous.as_ref())?;
+        }
+        match result {
             Ok(node) => Ok(node),
             Err(error) => {
                 // Preconsumption failure still owns the actual independent
@@ -5736,7 +5902,11 @@ impl ParserArenaSession {
         storage.require(control)?;
         storage.payloads.check_aliases(&storage.records, control)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if storage.evidence.is_none() {
+        if storage
+            .evidence
+            .as_ref()
+            .is_none_or(|evidence| !evidence.retains_diagnostics())
+        {
             return Err(SessionError::WrongToken);
         }
         Ok(())
@@ -5764,15 +5934,14 @@ impl FrozenArena {
             .as_ref()
             .ok_or(SessionError::WrongToken)
     }
-    /// Current published diagnostics-only owner. Future native evidence must
-    /// partition through its issuer rather than disposing native authority here.
+    /// Partition the stopped frozen store through its original evidence issuer.
     pub(crate) fn take_stopped_evidence(
         &mut self,
         control: &mut ParseControl,
-    ) -> Result<Option<ParseEvidence>, SessionError> {
+    ) -> Result<Option<evidence::FailureDiagnosticEvidence>, SessionError> {
         let storage = self.storage.as_mut().ok_or(SessionError::Consumed)?;
         control.cleanup_release(&storage.control, HtmlParseResource::AuxiliaryEntries, 0)?;
-        Ok(storage.evidence.take())
+        ParseEvidence::partition_failed(&mut storage.evidence, control)
     }
     pub(crate) fn hidden_input_state(
         &self,
@@ -7122,10 +7291,11 @@ fn append_input_default(
 /// guessing source offsets; per-codepoint tokenizer origins establish the cut.
 fn copy_input_value(
     payloads: &PayloadStorage,
+    evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
     slot: usize,
     sanitize: bool,
-) -> Result<Text, SessionError> {
+) -> Result<FieldCopy, SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
     let RetainedPayload::String {
         value,
@@ -7143,7 +7313,10 @@ fn copy_input_value(
         let mut covered = 0;
         if let Some(origins) = origins {
             origins.require_disposal_owner(control)?;
-            for origin in origins.as_slice() {
+            for origin in evidence
+                .ok_or(SessionError::WrongToken)?
+                .group_origins(origins)?
+            {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 control.require_source_range(&origin.source)?;
                 if origin.start != covered || origin.end <= origin.start || origin.end > value.len()
@@ -7189,10 +7362,27 @@ fn copy_input_value(
         copied.release(control)?;
         return Err(error);
     }
+    let original = match origins
+        .as_ref()
+        .map(|group| {
+            evidence
+                .ok_or(SessionError::WrongToken)?
+                .copy_group_reference(control, group)
+        })
+        .transpose()
+    {
+        Ok(original) => original,
+        Err(error) => {
+            buffer.release(control)?;
+            copied.release(control)?;
+            return Err(error);
+        }
+    };
     match buffer.freeze(control) {
-        Ok(value) => Ok(Text {
+        Ok(value) => Ok(FieldCopy {
             value,
             origins: copied,
+            original,
         }),
         Err(stop) => {
             copied.release(control)?;
@@ -7735,6 +7925,10 @@ mod tests {
                 limits()
                     .into_builder()
                     .buffered_utf16_units(cap)
+                    // Forty genuine insertion batches retain their merge and
+                    // retirement histories; this test still isolates the exact
+                    // forty-unit observation buffer, not a work-credit cap.
+                    .work_credits(20_000_000)
                     .finish()
                     .unwrap(),
             );
@@ -9063,7 +9257,7 @@ mod tests {
             assert_eq!(attributes[1].name().local_name().code_units(), [97]);
             let origins = storage.payloads.values.iter().find_map(|payload| match payload {
                 RetainedPayload::String { origins:Some(origins),location:StringLocation::AttributeValue(container,0),.. }
-                    if matches!(&storage.payloads.values[*container],RetainedPayload::Attributes(Some(AttributeStorage::Frozen {element:Some(index),..})) if *index==node.index) => Some(origins.as_slice()),
+                    if matches!(&storage.payloads.values[*container],RetainedPayload::Attributes(Some(AttributeStorage::Frozen {element:Some(index),..})) if *index==node.index) => Some(storage.group_origins(origins).unwrap()),
                 _ => None,
             }).expect("actual attribute origins");
             let observed = origins
@@ -9561,7 +9755,9 @@ mod tests {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Real b/v/512 literal x values have 514 original codepoint origins.
         // Independent replay retains them and needs 514 new origin records.
-        for cap in [1027, 1028] {
+        // Native retention additionally owns four groups and four explicit
+        // source-independent field causes (name, URI, attribute name/value).
+        for cap in [1035, 1036] {
             let source = crate::HtmlSource::utf8(format!("<b v='{}'>", "x".repeat(512)));
             let mut c = ParseControl::new(
                 limits()
@@ -9591,13 +9787,13 @@ mod tests {
                 514
             );
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
-            if cap == 1027 {
+            if cap == 1035 {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::SourceMapEntries,
-                        limit: 1027,
-                        current: 1027,
+                        limit: 1035,
+                        current: 1035,
                         requested_delta: 1
                     }))
                 ));
@@ -9605,7 +9801,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .current,
-                    514
+                    1035
                 );
                 assert_eq!(
                     c.usage()
@@ -9624,13 +9820,13 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .current,
-                    1028
+                    1036
                 );
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .high_water,
-                    1028
+                    1036
                 );
             }
             let stop = c.stop();
@@ -11177,16 +11373,22 @@ mod tests {
         };
         assert_eq!(value.code_units(), expected);
         assert_eq!(
-            origins
-                .as_slice()
+            session
+                .active()
+                .unwrap()
+                .group_origins(origins)
+                .unwrap()
                 .iter()
                 .map(|o| (o.start, o.end))
                 .collect::<Vec<_>>(),
             [(0, 2), (2, 3), (3, 4), (4, 5), (5, 6)]
         );
         assert!(
-            origins
-                .as_slice()
+            session
+                .active()
+                .unwrap()
+                .group_origins(origins)
+                .unwrap()
                 .iter()
                 .all(|o| o.kind != crate::parser::tokenizer::token::OriginKind::RecoverySyntax)
         );
@@ -11203,13 +11405,16 @@ mod tests {
                     location: StringLocation::Detached,
                     ..
                 } if value.code_units() == [0xd83d, 0xde00, 0xd800, 65, 13, 66, 10, 67] => {
-                    Some(origins.as_slice())
+                    Some(session.active().unwrap().group_origins(origins).unwrap())
                 }
                 _ => None,
             })
             .unwrap();
         assert_eq!(originals.len(), 7);
-        assert_eq!(originals[4].source, origins.as_slice()[3].source);
+        assert_eq!(
+            originals[4].source,
+            session.active().unwrap().group_origins(origins).unwrap()[3].source
+        );
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
@@ -11795,7 +12000,9 @@ mod tests {
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
-        for extra in [1, 2] {
+        // One actual initialized raw group now precedes the unchanged pair
+        // of original token/value-attribute source ranges.
+        for extra in [2, 3] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(source),
                 limits()
@@ -11826,7 +12033,7 @@ mod tests {
                     ..
                 })
             ));
-            if extra == 1 {
+            if extra == 2 {
                 assert!(input.is_some());
                 assert!(
                     !session
@@ -12597,7 +12804,8 @@ mod tests {
         // document binding, name/URI/attrs and native ticket: completed15.
         // Ten stops after metadata but before document/native preflight;
         // fourteen stops at native-ticket admission after lexical transfer.
-        for cap in [10, 14, 15] {
+        // Root, html and script each also retain their actual node cause.
+        for cap in [12, 17, 18] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head><script>"),
                 limits()
@@ -12627,10 +12835,10 @@ mod tests {
                 crate::construction::parser_session::CreationContext::Ordinary,
                 &capability,
             );
-            assert_eq!(incoming.is_some(), cap == 10);
+            assert_eq!(incoming.is_some(), cap == 12);
             assert_eq!(
                 session.active().unwrap().records.len(),
-                if cap == 15 { 3 } else { 2 }
+                if cap == 18 { 3 } else { 2 }
             );
             let count = session
                 .active()
@@ -12640,14 +12848,14 @@ mod tests {
                 .iter()
                 .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
                 .count();
-            if cap == 15 {
+            if cap == 18 {
                 result.unwrap();
                 assert_eq!(count, 1);
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    15
+                    18
                 );
             } else {
                 assert!(matches!(
@@ -12673,7 +12881,7 @@ mod tests {
             assert_eq!(c.stop(), first);
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
-                if cap == 15 { 3 } else { 2 }
+                if cap == 18 { 3 } else { 2 }
             );
         }
     }
@@ -15629,7 +15837,7 @@ mod tests {
                     .uri()
                     .is_none())
             );
-            assert!(storage.payloads.values.iter().any(|v| matches!(v, RetainedPayload::String { origins: Some(origins), location: StringLocation::AttributeValue(_, 2), .. } if origins.as_slice()[0].source == expected_origin)));
+            assert!(storage.payloads.values.iter().any(|v| matches!(v, RetainedPayload::String { origins: Some(origins), location: StringLocation::AttributeValue(_, 2), .. } if storage.group_origins(origins).unwrap()[0].source == expected_origin)));
             assert_eq!(storage.usage.attributes, 4);
             t.release(&mut c).unwrap();
             let mut frozen = session.freeze(&mut c).unwrap();
@@ -16002,8 +16210,18 @@ mod tests {
                 if *owner == if short { prepared.stage } else { prepared.container }
                     && *offset == if short { 1 } else { 2 })
             );
-            assert_eq!(origins.as_slice()[0].source.start(), 25);
-            assert_eq!(origins.as_slice()[0].source.end(), 26);
+            assert_eq!(
+                session.active().unwrap().group_origins(origins).unwrap()[0]
+                    .source
+                    .start(),
+                25
+            );
+            assert_eq!(
+                session.active().unwrap().group_origins(origins).unwrap()[0]
+                    .source
+                    .end(),
+                26
+            );
             assert_partial_merge_storage(&session, &mut c, &root, &prepared, 2);
             dispose_stopped_merge(session, tokenizer, &mut c);
         }
@@ -17746,8 +17964,9 @@ mod tests {
             [0xd800, 0x20, 0xd83d, 0xde00, 0]
         );
         assert_eq!(session.active().unwrap().usage.utf16_units, 5);
-        // Actual retained strings: old2 + incoming3 + merged5; origins remain
-        // the exact two original token payloads, not invented merged records.
+        // Actual retained strings: old2 + incoming3 + merged5. Four origin
+        // records (old/incoming/rebased two), three groups, two field causes,
+        // merge and retirement give eleven actual source-map entries.
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedUtf16Units)
@@ -17758,7 +17977,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::SourceMapEntries)
                 .current,
-            2
+            11
         );
         let mut frozen = session.freeze(&mut c).unwrap();
         assert_eq!(frozen.fragment().unwrap().usage().utf16_units(), 5);
@@ -17817,8 +18036,9 @@ mod tests {
                             panic!("registered native Text field");
                         };
                         first_origins = origins.as_ref().map(|origins| {
-                            origins
-                                .as_slice()
+                            storage
+                                .group_origins(origins)
+                                .unwrap()
                                 .iter()
                                 .map(|origin| {
                                     (origin.start, origin.end, origin.source.clone(), origin.kind)
@@ -17842,8 +18062,9 @@ mod tests {
             panic!("registered native Text field");
         };
         let actual = origins.as_ref().map(|origins| {
-            origins
-                .as_slice()
+            storage
+                .group_origins(origins)
+                .unwrap()
                 .iter()
                 .map(|origin| (origin.start, origin.end, origin.source.clone(), origin.kind))
                 .collect::<Vec<_>>()
@@ -19408,7 +19629,10 @@ mod tests {
         let mut installed = false;
         let mut partial = false;
         let mut completed = false;
-        for remaining in 0..=16_384 {
+        // The sole evidence identity, origin/group/cause vectors and decoded
+        // field groups extend the original prefix interval. Keep every old
+        // credit and sweep the extended finite interval without skipping cuts.
+        for remaining in 0..=131_072 {
             let source = crate::HtmlSource::utf8("<?marker name='A' x='B'?>");
             let mut c = control();
             c.admit_source(&source).unwrap();

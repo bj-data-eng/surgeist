@@ -1,4 +1,5 @@
 use super::super::tests::{fresh_script_owner, limits, storage_zero};
+use super::provenance::ConstructionCauseRef;
 use super::*;
 use crate::parser::tokenizer::{
     states::{Raw, State},
@@ -687,8 +688,12 @@ fn select_fifo_consumes_two_actual_removal_tasks_in_source_order_and_keeps_exact
     }
     let storage = session.active().unwrap();
     let tasks = storage.effects.tasks.as_slice();
-    assert!(matches!(tasks[0], Some(IntrinsicTask::UpdateSelect(index)) if index == first.index));
-    assert!(matches!(tasks[1], Some(IntrinsicTask::UpdateSelect(index)) if index == second.index));
+    assert!(
+        matches!(&tasks[0], Some(QueuedTask { task: IntrinsicTask::UpdateSelect(index), .. }) if *index == first.index)
+    );
+    assert!(
+        matches!(&tasks[1], Some(QueuedTask { task: IntrinsicTask::UpdateSelect(index), .. }) if *index == second.index)
+    );
     assert_eq!(
         session.freeze(&mut c).err(),
         Some(SessionError::PendingIntrinsicWork)
@@ -766,7 +771,8 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
     // three registry slots plus actual root facts2/html binding1/completion1 =9. Prologue stack coexistence needs10. Select adds
     // Select/form metadata2, name/URI/attrs3, node1, ordered-attribute staging1, reset option snapshot1:
     // completed empty Select exactly18; seventeen stops after take at snapshot.
-    for cap in [10, 17, 18] {
+    // Actual root/html/select node causes add three permanent registry slots.
+    for cap in [12, 20, 21] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -793,7 +799,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             &token.source,
             &proof,
         );
-        if cap == 18 {
+        if cap == 21 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(!session.select_state(&mut c, &node).unwrap().user_validity);
@@ -801,7 +807,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                18
+                21
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -814,7 +820,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             assert!(
                 matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 10);
+            assert_eq!(input.is_some(), cap == 12);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
@@ -949,12 +955,13 @@ fn non_element_clone_fixture(
         1,
     )
     .unwrap();
-    // PI owns its map plus two copied fields and one node-document binding;
+    // PI owns its map plus two copied fields, a node-document binding,
+    // and the source-qualified construction-cause binding;
     // Text/comment need fewer. All later registry reserves are no-growth.
     c.reserve_vector(
         &mut storage.payloads.values,
         &mut storage.payloads.allocation,
-        4,
+        5,
     )
     .unwrap();
     (c, session, source, request.cancellation().clone())
@@ -964,6 +971,13 @@ fn non_element_copy_prefix(kind: usize) -> u64 {
     let (mut c, mut session, source, cancellation) = non_element_clone_fixture(kind);
     drop(cancellation);
     let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+    // The new actual clone lineage is part of field preparation, with the
+    // original fixed native allocation/binding windows preserved below.
+    let previous = session
+        .active_mut()
+        .unwrap()
+        .begin_node_copy(&mut c, source)
+        .unwrap();
     // Execute only the actual independent field-copy producers. No clone or
     // native allocation is used to produce the expected allocator/binding cost.
     c.charge(WorkCategory::RecordVisit, 1).unwrap();
@@ -983,6 +997,7 @@ fn non_element_copy_prefix(kind: usize) -> u64 {
         drop(value);
     }
     let prefix = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+    drop(previous);
     session.release(&mut c).unwrap();
     storage_zero(&c);
     prefix
@@ -1023,12 +1038,40 @@ fn non_element_clone_binding_boundary(kind: usize) {
     // empty-map clear2, ready copy/write2 = U+30. Invalid whole grammar
     // remains a successfully established empty map, rather than an error.
     let grammar = if kind == 2 {
-        mem::size_of::<usize>() as u64 + 30
+        let (mut fee_control, mut fee_session, _, cancellation) = non_element_clone_fixture(kind);
+        drop(cancellation);
+        // The new copied PI data field follows the map and target slots. Its
+        // literal D contributes one source-origin visit, fixed origin copy,
+        // handle clone and one first-capacity OwnedVec push (one planned slot).
+        let field_visits = fee_session.active().unwrap().payloads.values.len() as u64 + 3;
+        fee_session.release(&mut fee_control).unwrap();
+        storage_zero(&fee_control);
+        let origin = mem::size_of::<TextOrigin>() as u64;
+        mem::size_of::<usize>() as u64
+            + 30
+            + field_visits
+            + 1
+            + origin
+            + 1
+            + 1
+            + origin
+            + 1
+            + origin
+            + 1
     } else {
         0
     };
-    let allocated_prefix = copy_prefix + allocation + documents + map;
-    let complete = allocated_prefix + binding + usage + grammar;
+    // Source-qualified node allocation preadmits one cause handle, its
+    // fixed native binding, and its no-growth retained registry slot.
+    let cause_entry = mem::size_of::<ConstructionCauseRef>() as u64
+        + mem::size_of::<Option<usize>>() as u64
+        + mem::size_of::<RetainedPayload>() as u64
+        + 6;
+    let allocated_prefix = copy_prefix + allocation + documents + map + cause_entry;
+    // Restore the actual previously retained parser cause after the fully
+    // committed clone: one visit and its fixed copy/write.
+    let complete =
+        allocated_prefix + binding + usage + grammar + mem::size_of::<Option<usize>>() as u64 + 2;
     // Preserve the exact old native-installed/binding-not-admitted window and
     // both binding sub-boundaries, plus a successful clone and cancellation at
     // the first checkpoint after its fully bound native record.
@@ -1173,7 +1216,7 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
         "<body><select><selectedcontent></selectedcontent><option><script></script></option></select><div>A</div></body>",
     );
     let mut saw_list = false;
-    for credit in (0..60_000).step_by(113) {
+    for credit in (0..240_000).step_by(113) {
         let (mut c, mut session, proof, nodes) = graph(&request);
         let option = named(&nodes, "option", 0);
         let target = named(&nodes, "selectedcontent", 0);

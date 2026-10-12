@@ -30,6 +30,7 @@ pub(super) struct TableCharacter {
     source: HtmlSourceRange,
     kind: BodyTextKind,
     text: Option<Text>,
+    cause: Option<crate::construction::parser_session::provenance::ConstructionCauseRef>,
 }
 pub(super) struct TableCharacters {
     pub(super) entries: OwnedVec<Option<TableCharacter>>,
@@ -351,6 +352,7 @@ impl HeadState<'_> {
                     .ok_or(HeadError::MissingInput)?
                     .source
                     .clone();
+                let cause = self.before.kernel.session.current_parser_cause(c)?;
                 write(
                     size_of::<TableCharacter>()
                         + size_of::<Option<crate::construction::parser_session::TextRun>>(),
@@ -360,6 +362,7 @@ impl HeadState<'_> {
                 self.table.transfer = Some(TableCharacter {
                     source,
                     kind,
+                    cause,
                     text: self.body_run.take().map(|run| run.text),
                 });
                 if kind == BodyTextKind::Other {
@@ -437,6 +440,11 @@ impl HeadState<'_> {
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(HeadCondition::UnexpectedTableToken), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), crate::construction::parser_session::evidence::DiagnosticRule { anchor: "parsing-main-intable", branch: "anything-else/pending-character" }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &entry.source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::BufferedTableCharacter, token: Some(crate::construction::parser_session::evidence::DiagnosticToken::Text) })?;
             }
+            let previous = self
+                .before
+                .kernel
+                .session
+                .begin_buffered_replay(c, entry.cause.as_ref())?;
             c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
             let other = entry.kind == BodyTextKind::Other;
             write(size_of::<Option<Text>>() * 2, 2, c)?;
@@ -462,6 +470,10 @@ impl HeadState<'_> {
                     self.script.as_ref().map(|script| &script.capability),
                 )?;
             }
+            self.before
+                .kernel
+                .session
+                .finish_buffered_replay(c, previous.as_ref())?;
             write(size_of::<Option<TableCharacter>>(), 1, c)?;
             self.table.transfer = None;
         }
@@ -984,6 +996,12 @@ impl HeadState<'_> {
         }
         // Remaining table-body/row rules delegate InTable without changing the
         // actual current mode. Text entry saves that real current mode.
+        self.record_trigger(
+            crate::construction::parser_session::provenance::ParserRule::Tree(
+                InsertionMode::InTable,
+            ),
+            c,
+        )?;
         if text && self.current_in(&["table", "tbody", "template", "tfoot", "thead", "tr"], c)? {
             write(size_of::<Option<InsertionMode>>(), 1, c)?;
             self.return_mode = Some(mode);

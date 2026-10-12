@@ -216,14 +216,41 @@ impl SessionStorage {
                 return Err(error);
             }
         };
-        match self.register_text(c, original) {
-            Ok((value, _)) => drop(value),
+        let original = match self.register_text(c, original) {
+            Ok((value, slot)) => {
+                drop(value);
+                match &self.payloads.values[slot] {
+                    RetainedPayload::String {
+                        origins: Some(group),
+                        ..
+                    } => match self
+                        .evidence
+                        .as_ref()
+                        .ok_or(SessionError::WrongToken)
+                        .and_then(|evidence| evidence.copy_group_reference(c, group))
+                    {
+                        Ok(original) => Some(original),
+                        Err(error) => {
+                            adjusted.release(c)?;
+                            return Err(error);
+                        }
+                    },
+                    _ => None,
+                }
+            }
             Err(error) => {
                 adjusted.release(c)?;
                 return Err(error);
             }
-        }
-        self.register_text(c, adjusted)
+        };
+        self.register_field_copy(
+            c,
+            provenance::FieldCopy {
+                value: adjusted.value,
+                origins: adjusted.origins,
+                original,
+            },
+        )
     }
     fn foreign_attribute(
         &mut self,
@@ -365,7 +392,11 @@ mod tests {
             let exact = match resource {
                 HtmlParseResource::ManagedUtf16Units => 86,
                 HtmlParseResource::BufferedUtf16Units => 42,
-                _ => 29,
+                // The 28 retained original/replacement origin records coexist
+                // with five field groups, three request/prologue causes, one
+                // replacement cause, and
+                // the one canonical diagnostic location.
+                _ => 38,
             };
             for cap in [exact - 1, exact] {
                 let builder = super::super::tests::limits().into_builder();
@@ -523,23 +554,23 @@ mod tests {
                 if value == &DocumentString::from("viewbox") {
                     original = Some((
                         value.backing().as_ptr(),
-                        maps.as_slice()[0].source.clone(),
-                        maps.as_slice()[0].kind,
+                        storage.group_origins(maps).unwrap()[0].source.clone(),
+                        storage.group_origins(maps).unwrap()[0].kind,
                     ));
                 }
                 if matches!(location, StringLocation::AttributeName(_, 0)) {
                     adjusted = Some((
                         value.backing().as_ptr(),
-                        maps.as_slice()[0].source.clone(),
-                        maps.as_slice()[0].kind,
+                        storage.group_origins(maps).unwrap()[0].source.clone(),
+                        storage.group_origins(maps).unwrap()[0].kind,
                     ));
                 }
                 if matches!(location, StringLocation::AttributeName(_, 1)) {
                     href = Some((
-                        maps.len(),
-                        maps.as_slice()[0].start,
-                        maps.as_slice()[0].end,
-                        maps.as_slice()[0].source.clone(),
+                        storage.group_origins(maps).unwrap().len(),
+                        storage.group_origins(maps).unwrap()[0].start,
+                        storage.group_origins(maps).unwrap()[0].end,
+                        storage.group_origins(maps).unwrap()[0].source.clone(),
                     ));
                 }
             }

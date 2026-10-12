@@ -3720,7 +3720,13 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
     // owner reads checkpoint1, readiness6 and empty cursor/length2. Its actual
     // bool set/clear contributes CopyByte2/RecordWrite2, with StateStep1.
     // One-short fails the final clear write, retaining the flag under first-stop.
-    let expected_work = 23 + 2 + 2 + 1;
+    // The same queue now retains/restores its actual triggering cause. Its
+    // reference adds one ProviderCall/write; restoration adds one visit/write.
+    let cause_bytes = std::mem::size_of::<
+        crate::construction::parser_session::provenance::ConstructionCauseRef,
+    >() as u64
+        + std::mem::size_of::<Option<usize>>() as u64;
+    let expected_work = 24 + 1 + (2 + cause_bytes) + 4 + 1;
     for short in [false, true] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<script>x</script>"),
@@ -3743,15 +3749,15 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let result = proof.checkpoint(c, session);
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            23
+            24
         );
         assert_eq!(
             c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
-            0
+            1
         );
         assert_eq!(
             c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
-            2
+            2 + cause_bytes
         );
         assert_eq!(
             c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
@@ -3759,7 +3765,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         );
         assert_eq!(
             c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
-            2 - u64::from(short)
+            4 - u64::from(short)
         );
         if short {
             assert!(matches!(
@@ -8777,7 +8783,10 @@ fn frameset_afterafter_whitespace_reconstruction_stop_retains_exact_original_ran
             .usage()
             .resource(HtmlParseResource::SourceMapEntries)
             .current,
-        origin_slots + 1
+        // Replayed name origin, its group, replay cause, namespace group and
+        // the actual next-rule trigger plus its InBody delegation, both retained
+        // before the refused allocation.
+        origin_slots + 6
     );
     assert_eq!(state.formatting.len(), 1);
     assert_eq!(state.before.kernel.stack().unwrap().len(), 2);

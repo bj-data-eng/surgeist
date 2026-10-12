@@ -95,8 +95,11 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         write(size_of::<StandaloneDocumentDriver>(), 11, c)?;
         write(
             size_of::<Option<ParseUsage>>()
-                + 2 * size_of::<Option<crate::construction::parser_session::evidence::ParseEvidence>>(
-                )
+                + 2 * size_of::<
+                    Option<
+                        crate::construction::parser_session::evidence::FailureDiagnosticEvidence,
+                    >,
+                >()
                 + size_of::<super::end::FailedStandaloneDocument>()
                 + size_of::<Option<StandaloneDocumentDriver>>()
                 + size_of::<Self>(),
@@ -144,8 +147,12 @@ impl<'source> OrdinaryDocumentEntry<'source> {
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<&crate::construction::parser_session::evidence::ParseEvidence> {
-        self.driver.as_ref()?.failed_evidence.as_ref()
+    ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
+        self.driver
+            .as_ref()?
+            .failed_evidence
+            .as_ref()
+            .map(|evidence| evidence.diagnostics())
     }
     pub(crate) fn take_driver(
         &mut self,

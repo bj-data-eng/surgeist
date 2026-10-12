@@ -2056,8 +2056,10 @@ transfer retains the frozen arena and remaining execution owners for cleanup.
 Actual aliases can refuse release without losing that ownership; cleanup can
 retry after they drop. Both active and frozen failure readbacks use the sole
 controller's snapshot captured at first stop, separately from usage after cleanup.
-The present frozen evidence transfer retains committed diagnostics only; complete
-native provenance partitioning and public report assembly remain contribution work.
+Active and frozen stopped evidence use the same preflighted partition: committed
+diagnostics retain their original backing and tickets, while native association
+storage is reclaimed without post-stop allocation or useful work. Public report
+assembly remains contribution work.
 
 Public parsed document/fragment results, atomic diagnostic/source-map/report transfer
 and contextual fragment execution remain unimplemented. Private completion does
@@ -2104,9 +2106,15 @@ Selected [literal tests](src/parser/tree_builder/tests.rs) check chronology with
 backward source offsets and the distinct pre/listing self-closing rule label;
 they do not establish every diagnostic condition or corpus error conformance.
 The retained corpus `#errors`/`#new-errors` metadata below remains unverified.
-Complete native-field/output provenance, reverse lookup of all associations,
-feeding/chunk invariance, contextual fragments and public successful/failed
-report transfer remain unfinished. All these diagnostic operations are private
+The private ordinary completed owner also prepares native-field associations
+through the [same evidence authority](src/construction/parser_session/provenance.rs):
+text merging, replacement, cloning, retirement and replay retain original groups
+and later construction triggers. Its controlled projection reads actual canonical
+bindings and borrows only a complete admitted result. Completed, frozen and failed
+owners lend committed diagnostics through one fixed borrowed record/location view.
+Public all-overlap reverse queries, feeding/chunk invariance, contextual fragment
+integration and public successful/failed report transfer remain unfinished. All
+these diagnostic operations are private
 and test-compiled; no public API or complete HTML parser follows.
 The [origin record](PARSER-ORIGINS.md#ordered-private-parse-evidence) distinguishes
 this Surgeist-owned storage and consumer from the adapted parser emitters.

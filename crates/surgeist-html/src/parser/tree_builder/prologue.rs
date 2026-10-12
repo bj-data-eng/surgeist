@@ -211,7 +211,7 @@ impl<'a> DocumentPrologue<'a> {
                 session
                     .as_mut()
                     .expect("fresh Document")
-                    .initialize_parse_evidence(c)
+                    .initialize_parse_evidence(c, source)
             })
         {
             session.as_mut().expect("retained Document").release(c)?;
@@ -357,6 +357,21 @@ impl<'a> DocumentPrologue<'a> {
         loop {
             c.charge(WorkCategory::StateStep, 1)?;
             c.charge(WorkCategory::RecordVisit, 2)?;
+            let pending = self.pending.as_ref().ok_or(PrologueError::MissingInput)?;
+            self.kernel
+                .as_mut()
+                .ok_or(PrologueError::Consumed)?
+                .session
+                .record_parser_trigger(
+                    c,
+                    crate::construction::parser_session::provenance::ParserTrigger {
+                        source: &pending.source,
+                        rule: crate::construction::parser_session::provenance::ParserRule::Prologue(
+                            self.mode,
+                        ),
+                        family: pending.family,
+                    },
+                )?;
             if self.whitespace_prefix(c)? {
                 self.finish_pending(c)?;
                 return Ok(PrologueStep::Consumed);

@@ -366,6 +366,14 @@ impl HeadState<'_> {
         close: bool,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
+        // The pending token is now processed using the InHead rules, even
+        // when its actual insertion mode belongs to the delegating caller.
+        self.record_trigger(
+            crate::construction::parser_session::provenance::ParserRule::Tree(
+                InsertionMode::InHead,
+            ),
+            c,
+        )?;
         if self.token_in(&["template"], c)?.is_some() {
             return self.template_start(c);
         }
@@ -487,6 +495,10 @@ impl HeadState<'_> {
         source: &HtmlSource,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
+        self.record_trigger(
+            crate::construction::parser_session::provenance::ParserRule::Tree(mode),
+            c,
+        )?;
         if self.first_lf(c)? {
             return Ok(Some(self.finish(c)?));
         }

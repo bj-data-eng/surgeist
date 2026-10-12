@@ -102,6 +102,12 @@ impl HeadState<'_> {
                 self.whitespace_pending = self.body_run.take().map(|run| run.text);
                 if mode == InsertionMode::AfterAfterFrameset {
                     // Source delegates whitespace to InBody without changing mode.
+                    self.record_trigger(
+                        crate::construction::parser_session::provenance::ParserRule::Tree(
+                            InsertionMode::InBody,
+                        ),
+                        c,
+                    )?;
                     self.body_character(false, c)?;
                 } else {
                     self.before.kernel.insert_text(

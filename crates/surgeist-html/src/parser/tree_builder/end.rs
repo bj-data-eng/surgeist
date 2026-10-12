@@ -260,6 +260,50 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
 }
 impl CompletedStandaloneDocument<'_> {
+    pub(crate) fn prepare_native_associations(&mut self) -> Result<(), StandaloneError> {
+        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+        driver.control.require_source(driver.source)?;
+        let state = driver
+            .head
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .state
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?;
+        state.qualify_completed(&mut driver.control)?;
+        state
+            .before
+            .kernel
+            .session
+            .prepare_native_associations(&mut driver.control, driver.source)
+            .map_err(KernelError::from)
+            .map_err(HeadError::from)
+            .map_err(StandaloneError::from)
+    }
+    pub(crate) fn native_associations(
+        &mut self,
+    ) -> Result<
+        crate::construction::parser_session::provenance::NativeAssociations<'_>,
+        StandaloneError,
+    > {
+        self.prepare_native_associations()?;
+        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+        let state = driver
+            .head
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?;
+        state
+            .before
+            .kernel
+            .session
+            .native_associations(&mut driver.control)
+            .map_err(KernelError::from)
+            .map_err(HeadError::from)
+            .map_err(StandaloneError::from)
+    }
     /// Borrows the actual completed native records and the same control. No
     /// session mutation, fixture extraction, freeze or evidence disposal occurs.
     pub(crate) fn native_view(
@@ -285,7 +329,10 @@ impl CompletedStandaloneDocument<'_> {
     }
     pub(crate) fn take_diagnostics(
         &mut self,
-    ) -> Result<crate::construction::parser_session::evidence::ParseEvidence, StandaloneError> {
+    ) -> Result<
+        crate::construction::parser_session::evidence::FailureDiagnosticEvidence,
+        StandaloneError,
+    > {
         if self.frozen.is_some() {
             return Err(StandaloneError::Consumed);
         }
@@ -313,17 +360,22 @@ impl CompletedStandaloneDocument<'_> {
     /// not scan, allocate, mutate or resume execution authority.
     pub(crate) fn diagnostics(
         &self,
-    ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
-    {
+    ) -> Result<
+        crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>,
+        StandaloneError,
+    > {
         if let Some(evidence) = self
             .driver
             .as_ref()
             .and_then(|driver| driver.failed_evidence.as_ref())
         {
-            return Ok(evidence);
+            return Ok(evidence.diagnostics());
         }
         if let Some(frozen) = &self.frozen {
-            return frozen.retained_evidence().map_err(frozen_error);
+            return frozen
+                .retained_evidence()
+                .map(|evidence| evidence.diagnostics())
+                .map_err(frozen_error);
         }
         self.driver
             .as_ref()
@@ -338,6 +390,7 @@ impl CompletedStandaloneDocument<'_> {
             .kernel
             .session
             .retained_evidence()
+            .map(|evidence| evidence.diagnostics())
             .map_err(KernelError::from)
             .map_err(HeadError::from)
             .map_err(StandaloneError::from)
@@ -545,7 +598,8 @@ pub(crate) struct FrozenStandaloneParts {
     arena: Option<crate::construction::parser_session::FrozenArena>,
     document_state: StandaloneDocumentState,
     final_usage: super::super::control::ParseUsage,
-    failed_evidence: Option<crate::construction::parser_session::evidence::ParseEvidence>,
+    failed_evidence:
+        Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
     after_cleanup: Option<super::super::control::ParseUsage>,
 }
 impl FrozenStandaloneParts {
@@ -583,15 +637,18 @@ impl FrozenStandaloneParts {
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
-    {
+    ) -> Result<
+        crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>,
+        StandaloneError,
+    > {
         if let Some(evidence) = &self.failed_evidence {
-            return Ok(evidence);
+            return Ok(evidence.diagnostics());
         }
         self.arena
             .as_ref()
             .ok_or(StandaloneError::Consumed)?
             .retained_evidence()
+            .map(|evidence| evidence.diagnostics())
             .map_err(frozen_error)
     }
     /// Stops already exist; retain committed diagnostics while actual frozen
@@ -639,7 +696,7 @@ pub(crate) struct FailedStandaloneDocument<'source> {
     stop: ParseStop,
     at_stop: super::super::control::ParseUsage,
     after_cleanup: super::super::control::ParseUsage,
-    evidence: Option<crate::construction::parser_session::evidence::ParseEvidence>,
+    evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(crate) fn take_failed(
@@ -714,8 +771,10 @@ impl FailedStandaloneDocument<'_> {
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<&crate::construction::parser_session::evidence::ParseEvidence> {
-        self.evidence.as_ref()
+    ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
+        self.evidence
+            .as_ref()
+            .map(|evidence| evidence.diagnostics())
     }
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         if let Some(evidence) = self.evidence.take() {
@@ -868,6 +927,124 @@ mod tests {
         parts.release().unwrap();
         assert_eq!(parts.after_cleanup(), Some(&after));
         assert_eq!(parts.at_stop(), Some(&first));
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_native_projection_cancellation_partitions_only_committed_diagnostics() {
+        let source = HtmlSource::utf8("<p>A🙂\r\n&NotEqualTilde;\0");
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut completed = frozen_completed(&request);
+        assert!(completed.native_associations().unwrap().len() > 0);
+        let pointer = completed.diagnostics().unwrap().records_pointer();
+        let count = completed.diagnostics().unwrap().len();
+        assert_eq!(count, 3); // missing doctype, tokenizer null, and InBody null
+        let mut parts = completed.freeze_parts().unwrap();
+        assert!(
+            parts
+                .retained_usage()
+                .resource(HtmlParseResource::SourceMapEntries)
+                .current
+                > count as u64
+        );
+        let before = parts.retained_usage().clone();
+        {
+            let diagnostics = parts.diagnostics().unwrap();
+            assert_eq!(diagnostics.records_pointer(), pointer);
+            let (record, location) = diagnostics.retained_record(2).unwrap();
+            assert_eq!(
+                record.kind,
+                crate::construction::parser_session::evidence::DiagnosticKind::Tree(
+                    super::super::head::HeadCondition::NullInBody
+                )
+            );
+            assert_eq!(location.source, source.range(25, 26).unwrap());
+        }
+        assert_eq!(parts.retained_usage(), &before); // fixed lender performs no admitted work
+        request.cancellation().cancel();
+        assert!(matches!(
+            parts.document(),
+            Err(StandaloneError::Stop(ParseStop::Cancelled))
+        ));
+        let first = parts.at_stop().unwrap().clone();
+        let work = parts
+            .retained_usage()
+            .resource(HtmlParseResource::WorkCredits);
+        let polls = parts.control.owned_span_observation().polls;
+        parts.cleanup_failure().unwrap();
+        assert!(parts.arena.is_none());
+        assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
+        assert_eq!(
+            parts
+                .retained_usage()
+                .resource(HtmlParseResource::SourceMapEntries)
+                .current,
+            count as u64
+        );
+        assert_eq!(
+            parts
+                .retained_usage()
+                .resource(HtmlParseResource::WorkCredits),
+            work
+        );
+        assert_eq!(parts.control.owned_span_observation().polls, polls);
+        assert_eq!(parts.at_stop(), Some(&first));
+        parts.release().unwrap();
+        assert_eq!(parts.at_stop(), Some(&first));
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn frozen_native_projection_alias_refusal_keeps_partition_and_reclaims_it_once() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf16(crate::DocumentString::from_utf16([60, 112, 62, 65, 0])),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        assert!(completed.native_associations().unwrap().len() > 0);
+        let mut parts = completed.freeze_parts().unwrap();
+        let pointer = parts.diagnostics().unwrap().records_pointer();
+        let count = parts.diagnostics().unwrap().len();
+        assert_eq!(count, 3);
+        let alias = parts.document().unwrap().clone();
+        assert!(parts.release().is_err());
+        let first = parts.at_stop().unwrap().clone();
+        let work = parts
+            .retained_usage()
+            .resource(HtmlParseResource::WorkCredits);
+        assert!(parts.cleanup_failure().is_err());
+        assert!(parts.arena.is_some());
+        assert!(parts.failed_evidence.is_some());
+        assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
+        assert_eq!(
+            parts
+                .retained_usage()
+                .resource(HtmlParseResource::SourceMapEntries)
+                .current,
+            count as u64
+        );
+        let retained = parts.retained_usage().clone();
+        assert!(parts.cleanup_failure().is_err());
+        assert_eq!(parts.retained_usage(), &retained);
+        drop(alias);
+        parts.cleanup_failure().unwrap();
+        assert_eq!(
+            parts
+                .retained_usage()
+                .resource(HtmlParseResource::WorkCredits),
+            work
+        );
+        assert_eq!(parts.at_stop(), Some(&first));
+        assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
+        let diagnostics = parts.diagnostics().unwrap();
+        let (record, location) = diagnostics.retained_record(2).unwrap();
+        assert_eq!(
+            record.kind,
+            crate::construction::parser_session::evidence::DiagnosticKind::Tree(
+                super::super::head::HeadCondition::NullInBody
+            )
+        );
+        assert_eq!(location.source, request.source().range(4, 5).unwrap());
+        parts.release().unwrap();
         super::super::tests::assert_released(&parts.control);
     }
     #[test]
@@ -1213,10 +1390,878 @@ mod tests {
         super::super::tests::assert_released(&parts.control);
     }
 
+    #[test]
+    fn completed_native_field_projection_retains_atomic_merged_origins_and_later_trigger() {
+        use crate::construction::parser_session::provenance::ConstructionOperation;
+        use crate::parser::tokenizer::token::OriginKind;
+        let source = HtmlSource::utf8("<p>A🙂\r\n&NotEqualTilde;");
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut driver = super::super::entry::OrdinaryDocumentEntry::new(&request)
+            .take_driver()
+            .unwrap();
+        finish(&mut driver);
+        let mut input = Some(driver);
+        let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
+        let (text, root) = {
+            let mut view = completed.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            let p = child_named(&mut view, &body, "p");
+            let text = view.child_at(&p, 0).unwrap().unwrap();
+            let value = match view.kind(&text).unwrap() {
+                NativeKind::Text(value) => value,
+                _ => panic!("native Text"),
+            };
+            assert_eq!(
+                units(&mut view, value),
+                [65, 0xd83d, 0xde42, 10, 0x2242, 0x338]
+            );
+            (text, root)
+        };
+        let mut rows = completed.native_associations().unwrap();
+        let mut observed = Vec::new();
+        let mut roots = 0;
+        for index in 0..rows.len() {
+            if rows.node_for(index, &root).unwrap() {
+                let (_, cause) = rows.row(index).unwrap().unwrap();
+                assert_eq!(cause.operation, ConstructionOperation::Request);
+                assert!(cause.source.is_none());
+                assert!(cause.captured.is_none());
+                assert!(cause.original_node.is_none());
+                roots += 1;
+            }
+            if rows.text_for(index, &text).unwrap() {
+                let reference = rows.cause_reference(index).unwrap().unwrap();
+                let cause = rows.cause(&reference).unwrap();
+                assert_eq!(cause.operation, ConstructionOperation::Merge);
+                assert!(cause.original.is_some());
+                assert!(cause.incoming.is_some());
+                assert!(cause.trigger.is_some());
+                assert!(cause.source.is_none());
+                assert!(cause.rule.is_none());
+                assert!(cause.family.is_none());
+                let original = cause.original.unwrap();
+                let trigger = cause.trigger.unwrap();
+                let (group, origins) = rows.group(original).unwrap().unwrap();
+                assert!(!origins.is_empty());
+                let retirement = group.retirement.expect("actual replaced field retained");
+                let retired = rows.cause_at(retirement).unwrap().unwrap();
+                assert_eq!(retired.operation, ConstructionOperation::Retirement);
+                assert_eq!(retired.original, Some(original));
+                assert!(matches!(
+                    retired.retired_destination,
+                    Some(crate::construction::parser_session::StringLocation::Text(_))
+                ));
+                assert!(retired.source.is_none());
+                assert_eq!(retired.trigger, Some(trigger));
+                let trigger = rows.cause_at(trigger).unwrap().unwrap();
+                assert_eq!(trigger.operation, ConstructionOperation::Token);
+                assert_eq!(trigger.source, Some(source.range(10, 25).unwrap()));
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                observed.push((row.start, row.end, row.source.clone(), row.kind));
+            }
+        }
+        assert_eq!(
+            observed,
+            [
+                (
+                    0,
+                    1,
+                    Some(source.range(3, 4).unwrap()),
+                    Some(OriginKind::Literal)
+                ),
+                (
+                    1,
+                    3,
+                    Some(source.range(4, 8).unwrap()),
+                    Some(OriginKind::Literal)
+                ),
+                (
+                    3,
+                    4,
+                    Some(source.range(8, 10).unwrap()),
+                    Some(OriginKind::Newline)
+                ),
+                (
+                    4,
+                    5,
+                    Some(source.range(10, 25).unwrap()),
+                    Some(OriginKind::CharacterReference)
+                ),
+                (
+                    5,
+                    6,
+                    Some(source.range(10, 25).unwrap()),
+                    Some(OriginKind::CharacterReference)
+                ),
+            ]
+        );
+        assert_eq!(roots, 1);
+        let diagnostics = completed.take_diagnostics().unwrap();
+        completed.prepare_native_associations().unwrap();
+        diagnostics
+            .release(&mut completed.driver.as_mut().unwrap().control)
+            .unwrap();
+        drop(text);
+        drop(root);
+        completed.release().unwrap();
+    }
+
     fn units(view: &mut NativeView<'_>, text: NativeString<'_>) -> Vec<u16> {
         (0..text.len())
             .map(|i| view.unit(&text, i).unwrap().unwrap())
             .collect()
+    }
+    #[test]
+    fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relations() {
+        use crate::construction::parser_session::provenance::{
+            ConstructionOperation, RawFieldKind,
+        };
+        use crate::parser::tokenizer::token::OriginKind;
+        for (input, local, kind, expected, expected_maps) in [
+            (
+                "<textarea>A🙂\r\n&NotEqualTilde;</textarea>",
+                "textarea",
+                RawFieldKind::Textarea,
+                vec![65, 0xd83d, 0xde42, 10, 0x2242, 0x338],
+                vec![
+                    (0, 1, 10, 11, OriginKind::Literal),
+                    (1, 3, 11, 13, OriginKind::Literal),
+                    (3, 4, 13, 15, OriginKind::Newline),
+                    (4, 5, 15, 30, OriginKind::CharacterReference),
+                    (5, 6, 15, 30, OriginKind::CharacterReference),
+                ],
+            ),
+            (
+                "<input value='A&#13;B&#10;C' type=hidden>",
+                "input",
+                RawFieldKind::HiddenInput,
+                vec![65, 66, 67],
+                vec![
+                    (0, 1, 14, 15, OriginKind::Literal),
+                    (1, 2, 20, 21, OriginKind::Literal),
+                    (2, 3, 26, 27, OriginKind::Literal),
+                ],
+            ),
+        ] {
+            let source = HtmlSource::utf16(crate::DocumentString::from_utf16(
+                input.encode_utf16().collect::<Vec<_>>(),
+            ));
+            let request =
+                HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+            let mut owner = completed(&request);
+            let node = {
+                let mut view = owner.native_view().unwrap();
+                let root = view.root().unwrap();
+                let html = child_named(&mut view, &root, "html");
+                let body = child_named(&mut view, &html, "body");
+                child_named(&mut view, &body, local)
+            };
+            {
+                let driver = owner.driver.as_mut().unwrap();
+                let session = &driver
+                    .head
+                    .as_ref()
+                    .unwrap()
+                    .state
+                    .as_ref()
+                    .unwrap()
+                    .before
+                    .kernel
+                    .session;
+                match kind {
+                    RawFieldKind::Textarea => assert_eq!(
+                        session
+                            .textarea_raw_value(&mut driver.control, &node)
+                            .unwrap()
+                            .code_units(),
+                        expected
+                    ),
+                    RawFieldKind::HiddenInput => {
+                        let mut raw =
+                            crate::parser::buffer::Utf16Buffer::new(&mut driver.control).unwrap();
+                        session
+                            .append_hidden_input_internal_value(
+                                &mut driver.control,
+                                &node,
+                                &mut raw,
+                            )
+                            .unwrap();
+                        assert_eq!(raw.units(), expected);
+                        raw.release(&mut driver.control).unwrap();
+                    }
+                }
+            }
+            let mut rows = owner.native_associations().unwrap();
+            let mut actual = Vec::new();
+            for index in 0..rows.len() {
+                if rows.raw_for(index, &node, kind).unwrap() {
+                    let (row, cause) = rows.row(index).unwrap().unwrap();
+                    assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                    assert!(cause.original.is_some());
+                    assert!(cause.trigger.is_some());
+                    actual.push((
+                        row.start,
+                        row.end,
+                        row.source.as_ref().unwrap().start(),
+                        row.source.as_ref().unwrap().end(),
+                        row.kind.unwrap(),
+                    ));
+                }
+            }
+            assert_eq!(actual, expected_maps);
+            drop(node);
+            owner.release().unwrap();
+        }
+    }
+    #[test]
+    fn completed_formatting_reconstruction_distinguishes_original_creation_and_later_trigger() {
+        use crate::construction::parser_session::provenance::ConstructionOperation;
+        let source = HtmlSource::utf8("<p><b>A</p>B");
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut owner = completed(&request);
+        let (replay, body) = {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            let b = view.child_at(&body, 1).unwrap().unwrap();
+            assert!(matches!(view.kind(&b).unwrap(), NativeKind::Element(_)));
+            let text = view.child_at(&b, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+                panic!("reconstructed B")
+            };
+            assert_eq!(units(&mut view, value), [66]);
+            (b, body)
+        };
+        let mut rows = owner.native_associations().unwrap();
+        let mut intended = None;
+        for index in 0..rows.len() {
+            if rows.node_for(index, &body).unwrap() {
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                let crate::construction::parser_session::provenance::NativeDestination::Node(node) =
+                    row.destination
+                else {
+                    unreachable!()
+                };
+                intended = Some(node);
+            }
+        }
+        assert!(intended.is_some());
+        let mut seen = 0;
+        for index in 0..rows.len() {
+            if rows.node_for(index, &replay).unwrap() {
+                let (_, cause) = rows.row(index).unwrap().unwrap();
+                assert_eq!(cause.operation, ConstructionOperation::Replay);
+                assert_eq!(cause.intended_parent, intended);
+                let (original, trigger) = (cause.original_cause.unwrap(), cause.trigger.unwrap());
+                assert_eq!(
+                    rows.cause_at(original).unwrap().unwrap().source,
+                    Some(source.range(3, 6).unwrap())
+                );
+                assert_eq!(
+                    rows.cause_at(trigger).unwrap().unwrap().source,
+                    Some(source.range(11, 12).unwrap())
+                );
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 1);
+        drop((replay, body));
+        owner.release().unwrap();
+    }
+    #[test]
+    fn completed_adoption_replay_keeps_furthest_block_parent_and_original_moved_text() {
+        use crate::construction::parser_session::provenance::{
+            ConstructionOperation, NativeDestination,
+        };
+        use crate::parser::tokenizer::token::OriginKind;
+        let source = HtmlSource::utf8("<b>1<p>2</b>3</p>");
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut owner = completed(&request);
+        let (original, replay, parent, moved) = {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            assert_eq!(view.child_count(&body).unwrap(), 2);
+            let original = view.child_at(&body, 0).unwrap().unwrap();
+            let parent = view.child_at(&body, 1).unwrap().unwrap();
+            let replay = view.child_at(&parent, 0).unwrap().unwrap();
+            let moved = view.child_at(&replay, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&moved).unwrap() else {
+                panic!("actual adopted text")
+            };
+            assert_eq!(units(&mut view, value), [50]);
+            let tail = view.child_at(&parent, 1).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&tail).unwrap() else {
+                panic!("actual tail")
+            };
+            assert_eq!(units(&mut view, value), [51]);
+            (original, replay, parent, moved)
+        };
+        let mut rows = owner.native_associations().unwrap();
+        let mut intended = None;
+        let mut original_index = None;
+        for index in 0..rows.len() {
+            if rows.node_for(index, &parent).unwrap() {
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                let NativeDestination::Node(node) = row.destination else {
+                    unreachable!()
+                };
+                intended = Some(node);
+            }
+            if rows.node_for(index, &original).unwrap() {
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                let NativeDestination::Node(node) = row.destination else {
+                    unreachable!()
+                };
+                original_index = Some(node);
+            }
+        }
+        assert!(intended.is_some());
+        let mut seen = 0;
+        let mut moved_maps = Vec::new();
+        for index in 0..rows.len() {
+            if rows.node_for(index, &replay).unwrap() {
+                let (row, cause) = rows.row(index).unwrap().unwrap();
+                let NativeDestination::Node(node) = row.destination else {
+                    unreachable!()
+                };
+                assert_ne!(Some(node), original_index);
+                assert_eq!(cause.operation, ConstructionOperation::Replay);
+                assert_eq!(cause.intended_parent, intended);
+                let (creation, trigger) = (cause.original_cause.unwrap(), cause.trigger.unwrap());
+                assert_eq!(
+                    rows.cause_at(creation).unwrap().unwrap().source,
+                    Some(source.range(0, 3).unwrap())
+                );
+                assert_eq!(
+                    rows.cause_at(trigger).unwrap().unwrap().source,
+                    Some(source.range(8, 12).unwrap())
+                );
+                seen += 1;
+            }
+            if rows.text_for(index, &moved).unwrap() {
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                moved_maps.push((row.start, row.end, row.source.clone(), row.kind));
+            }
+        }
+        assert_eq!(seen, 1);
+        assert_eq!(
+            moved_maps,
+            [(
+                0,
+                1,
+                Some(source.range(7, 8).unwrap()),
+                Some(OriginKind::Literal)
+            )]
+        );
+        drop((original, replay, parent, moved));
+        owner.release().unwrap();
+    }
+    #[test]
+    fn native_projection_exact_and_one_short_admission_retains_only_safe_failed_diagnostics() {
+        let source = HtmlSource::utf8("<p>A🙂\r\n&NotEqualTilde;");
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut successful = completed(&request);
+        let before = successful.usage().unwrap().clone();
+        successful.prepare_native_associations().unwrap();
+        let after = successful.usage().unwrap().clone();
+        assert!(
+            after
+                .resource(HtmlParseResource::SourceMapEntries)
+                .high_water
+                > before
+                    .resource(HtmlParseResource::SourceMapEntries)
+                    .high_water
+        );
+        let cost = after.resource(HtmlParseResource::WorkCredits).current;
+        let map_peak = after
+            .resource(HtmlParseResource::SourceMapEntries)
+            .high_water;
+        successful.release().unwrap();
+        for resource in [
+            HtmlParseResource::WorkCredits,
+            HtmlParseResource::SourceMapEntries,
+        ] {
+            for exact in [false, true] {
+                let cap = if resource == HtmlParseResource::WorkCredits {
+                    cost
+                } else {
+                    map_peak
+                };
+                let limits = super::super::tests::limits(100).into_builder();
+                let limits = if resource == HtmlParseResource::WorkCredits {
+                    limits.work_credits(cap - u64::from(!exact))
+                } else {
+                    limits.source_map_entries(cap - u64::from(!exact))
+                }
+                .finish()
+                .unwrap();
+                let request = HtmlDocumentParseRequest::offline(source.clone(), limits);
+                let mut owner = completed(&request);
+                let pointer = owner.diagnostics().unwrap().records_pointer();
+                if exact {
+                    owner.prepare_native_associations().unwrap();
+                    assert_eq!(
+                        owner
+                            .usage()
+                            .unwrap()
+                            .resource(HtmlParseResource::SourceMapEntries)
+                            .current,
+                        after.resource(HtmlParseResource::SourceMapEntries).current
+                    );
+                    if owner.release().is_err() {
+                        owner.release().unwrap();
+                    }
+                } else {
+                    assert!(owner.prepare_native_associations().is_err());
+                    let stop = owner.driver.as_ref().unwrap().control.stop().unwrap();
+                    assert!(
+                        matches!(stop, ParseStop::LimitExceeded { resource: stopped, .. } if stopped == resource)
+                    );
+                    assert!(owner.native_associations().is_err());
+                    assert_eq!(owner.driver.as_ref().unwrap().control.stop(), Some(stop));
+                    let mut input = owner.driver.take();
+                    let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
+                    assert_eq!(failed.stop(), stop);
+                    assert_eq!(failed.diagnostics().unwrap().records_pointer(), pointer);
+                    // ManagedNodes is a permanent cumulative admission count,
+                    // not retained storage and is deliberately never refunded.
+                    assert_eq!(
+                        failed
+                            .after_cleanup()
+                            .resource(HtmlParseResource::ManagedNodes)
+                            .current,
+                        failed
+                            .at_stop()
+                            .resource(HtmlParseResource::ManagedNodes)
+                            .current
+                    );
+                    assert_eq!(
+                        failed
+                            .after_cleanup()
+                            .resource(HtmlParseResource::BufferedUtf16Units)
+                            .current,
+                        0
+                    );
+                    assert_eq!(
+                        failed
+                            .after_cleanup()
+                            .resource(HtmlParseResource::WorkCredits)
+                            .current,
+                        failed
+                            .at_stop()
+                            .resource(HtmlParseResource::WorkCredits)
+                            .current
+                    );
+                    assert!(
+                        failed
+                            .after_cleanup()
+                            .resource(HtmlParseResource::SourceMapEntries)
+                            .current
+                            < failed
+                                .at_stop()
+                                .resource(HtmlParseResource::SourceMapEntries)
+                                .current
+                    );
+                    assert!(failed.retained_usage().actual_capacity_bytes > 0);
+                    failed.release().unwrap();
+                    super::super::tests::assert_released(&failed.control);
+                }
+            }
+        }
+    }
+    #[test]
+    fn native_projection_cancel_and_alias_refusal_preserve_the_whole_owner_and_first_stop() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>A"),
+            super::super::tests::limits(100),
+        );
+        let mut owner = completed(&request);
+        let html = {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            child_named(&mut view, &root, "html")
+        };
+        let alias = {
+            let driver = owner.driver.as_mut().unwrap();
+            let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+            state
+                .before
+                .kernel
+                .session
+                .element_name(&mut driver.control, &html)
+                .unwrap()
+                .unwrap()
+                .local_name()
+                .clone()
+        };
+        assert!(owner.prepare_native_associations().is_err());
+        assert!(owner.driver.as_ref().unwrap().control.stop().is_none());
+        drop(alias);
+        drop(html);
+        owner.prepare_native_associations().unwrap();
+        request.cancellation().cancel();
+        assert!(owner.native_associations().is_err());
+        let stop = owner.driver.as_ref().unwrap().control.stop().unwrap();
+        assert_eq!(stop, ParseStop::Cancelled);
+        assert!(owner.native_view().is_err());
+        assert_eq!(owner.driver.as_ref().unwrap().control.stop(), Some(stop));
+        let mut input = owner.driver.take();
+        let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
+        assert_eq!(failed.stop(), stop);
+        failed.release().unwrap();
+        super::super::tests::assert_released(&failed.control);
+    }
+    #[test]
+    fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduling_trigger() {
+        use crate::construction::parser_session::provenance::{
+            ConstructionOperation, NativeDestination,
+        };
+        let input = "<select><button><selectedcontent></selectedcontent></button><option selected>A</option></select>";
+        let source = HtmlSource::utf8(input);
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut owner = completed(&request);
+        let (original, copy) = {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            let select = child_named(&mut view, &body, "select");
+            let button = child_named(&mut view, &select, "button");
+            let selected = child_named(&mut view, &button, "selectedcontent");
+            let option = child_named(&mut view, &select, "option");
+            let original = view.child_at(&option, 0).unwrap().unwrap();
+            let copy = view.child_at(&selected, 0).unwrap().unwrap();
+            for node in [&original, &copy] {
+                let NativeKind::Text(value) = view.kind(node).unwrap() else {
+                    panic!("actual cloned A")
+                };
+                assert_eq!(units(&mut view, value), [65]);
+            }
+            (original, copy)
+        };
+        let mut rows = owner.native_associations().unwrap();
+        let mut original_identity = None;
+        for index in 0..rows.len() {
+            if rows.node_for(index, &original).unwrap() {
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                let NativeDestination::Node(node) = row.destination else {
+                    panic!("qualified original node")
+                };
+                original_identity = Some(node);
+            }
+        }
+        let mut nodes = 0;
+        let mut fields = 0;
+        for index in 0..rows.len() {
+            if rows.node_for(index, &copy).unwrap() {
+                let (_, cause) = rows.row(index).unwrap().unwrap();
+                assert_eq!(cause.operation, ConstructionOperation::Copy);
+                assert_eq!(cause.original_node, original_identity);
+                let trigger = cause.trigger.unwrap();
+                let trigger = rows.cause_at(trigger).unwrap().unwrap();
+                let start = input.find("</option>").unwrap();
+                assert_eq!(
+                    trigger.source,
+                    Some(source.range(start, start + 9).unwrap())
+                );
+                nodes += 1;
+            }
+            if rows.text_for(index, &copy).unwrap() {
+                let (row, cause) = rows.row(index).unwrap().unwrap();
+                assert_eq!(cause.operation, ConstructionOperation::Copy);
+                assert!(cause.original.is_some());
+                let start = input.find(">A<").unwrap() + 1;
+                assert_eq!(row.source, Some(source.range(start, start + 1).unwrap()));
+                assert_eq!((row.start, row.end), (0, 1));
+                fields += 1;
+            }
+        }
+        assert_eq!((nodes, fields), (1, 1));
+        drop((original, copy));
+        owner.release().unwrap();
+    }
+    #[test]
+    fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() {
+        use crate::construction::parser_session::{
+            StringLocation,
+            provenance::{ConstructionOperation, NativeDestination},
+        };
+        use crate::parser::tokenizer::token::OriginKind;
+        let input =
+            "<template><svg><lineargradient></lineargradient></svg></template><image><br></br>";
+        let source = HtmlSource::utf8(input);
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut owner = completed(&request);
+        let nodes = {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let head = child_named(&mut view, &html, "head");
+            let template = child_named(&mut view, &head, "template");
+            let contents = view.template_contents(&template).unwrap().unwrap();
+            assert!(view.parent(&contents).unwrap().is_none());
+            let svg = child_named(&mut view, &contents, "svg");
+            let adjusted = child_named(&mut view, &svg, "linearGradient");
+            let NativeKind::Element(name) = view.kind(&adjusted).unwrap() else {
+                panic!("adjusted SVG")
+            };
+            assert_eq!(
+                units(&mut view, name.local),
+                "linearGradient".encode_utf16().collect::<Vec<_>>()
+            );
+            let body = child_named(&mut view, &html, "body");
+            let image = child_named(&mut view, &body, "img");
+            let end_br = view.child_at(&body, 2).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&end_br).unwrap() else {
+                panic!("recovered end br")
+            };
+            assert_eq!(units(&mut view, name.local), [98, 114]);
+            [adjusted, image, end_br]
+        };
+        let mut rows = owner.native_associations().unwrap();
+        let mut identities = [None; 3];
+        for index in 0..rows.len() {
+            for (position, node) in nodes.iter().enumerate() {
+                if rows.node_for(index, node).unwrap() {
+                    let (row, _) = rows.row(index).unwrap().unwrap();
+                    let NativeDestination::Node(id) = row.destination else {
+                        unreachable!()
+                    };
+                    identities[position] = Some(id);
+                }
+            }
+        }
+        assert!(identities.iter().all(Option::is_some));
+        let mut names = [Vec::new(), Vec::new(), Vec::new()];
+        let mut source_less_svg_namespace = false;
+        for index in 0..rows.len() {
+            let (row, cause) = rows.row(index).unwrap().unwrap();
+            match row.destination {
+                NativeDestination::Field(StringLocation::ElementName(node)) => {
+                    for (position, id) in identities.iter().enumerate() {
+                        if Some(node) == *id {
+                            if position == 0 {
+                                assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                                assert!(cause.original.is_some());
+                            }
+                            names[position].push((
+                                row.start,
+                                row.end,
+                                row.source.clone(),
+                                row.kind,
+                            ));
+                        }
+                    }
+                }
+                NativeDestination::Field(StringLocation::Namespace(node))
+                    if Some(node) == identities[0] =>
+                {
+                    assert!(row.source.is_none());
+                    assert_eq!((row.start, row.end), (0, 26));
+                    source_less_svg_namespace = true;
+                }
+                _ => {}
+            }
+        }
+        let expected = (0..14)
+            .map(|offset| {
+                (
+                    offset,
+                    offset + 1,
+                    Some(source.range(16 + offset, 17 + offset).unwrap()),
+                    Some(OriginKind::RecoverySyntax),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(names[0], expected);
+        assert_eq!(
+            names[1],
+            [(
+                0,
+                3,
+                Some(source.range(66, 71).unwrap()),
+                Some(OriginKind::RecoverySyntax)
+            )]
+        );
+        assert_eq!(
+            names[2],
+            [
+                (
+                    0,
+                    1,
+                    Some(source.range(78, 79).unwrap()),
+                    Some(OriginKind::Literal)
+                ),
+                (
+                    1,
+                    2,
+                    Some(source.range(79, 80).unwrap()),
+                    Some(OriginKind::Literal)
+                )
+            ]
+        );
+        assert!(source_less_svg_namespace);
+        drop(nodes);
+        owner.release().unwrap();
+    }
+    #[test]
+    fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigger() {
+        use crate::construction::parser_session::provenance::{ConstructionOperation, ParserRule};
+        use crate::parser::tokenizer::token::OriginKind;
+        use crate::parser::tree_builder::head::InsertionMode;
+        let source = HtmlSource::utf8("<table>AB<tr><td>Z</td></tr></table>");
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut owner = completed(&request);
+        let text = {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            let text = view.child_at(&body, 0).unwrap().unwrap();
+            let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+                panic!("actual fostered Text before table")
+            };
+            assert_eq!(units(&mut view, value), [65, 66]);
+            let table = view.child_at(&body, 1).unwrap().unwrap();
+            assert!(matches!(view.kind(&table).unwrap(), NativeKind::Element(_)));
+            text
+        };
+        let mut rows = owner.native_associations().unwrap();
+        let mut observed = Vec::new();
+        for index in 0..rows.len() {
+            if !rows.text_for(index, &text).unwrap() {
+                continue;
+            }
+            let (row, cause) = rows.row(index).unwrap().unwrap();
+            assert_eq!(cause.operation, ConstructionOperation::Merge);
+            let groups = [cause.original.unwrap(), cause.incoming.unwrap()];
+            observed.push((row.start, row.end, row.source.clone(), row.kind));
+            for (group, expected) in groups.into_iter().zip([(7, 8), (8, 9)]) {
+                let (group, _) = rows.group(group).unwrap().unwrap();
+                let replay = group.cause;
+                let replay = rows.cause_at(replay).unwrap().unwrap();
+                assert_eq!(replay.operation, ConstructionOperation::Replay);
+                let (original, trigger) = (replay.original_cause.unwrap(), replay.trigger.unwrap());
+                let original = rows.cause_at(original).unwrap().unwrap();
+                assert_eq!(original.operation, ConstructionOperation::Token);
+                assert_eq!(
+                    original.source,
+                    Some(source.range(expected.0, expected.1).unwrap())
+                );
+                assert_eq!(
+                    original.rule,
+                    Some(ParserRule::Tree(InsertionMode::InTableText))
+                );
+                let trigger = rows.cause_at(trigger).unwrap().unwrap();
+                assert_eq!(trigger.source, Some(source.range(9, 13).unwrap()));
+            }
+        }
+        assert_eq!(
+            observed,
+            [
+                (
+                    0,
+                    1,
+                    Some(source.range(7, 8).unwrap()),
+                    Some(OriginKind::Literal)
+                ),
+                (
+                    1,
+                    2,
+                    Some(source.range(8, 9).unwrap()),
+                    Some(OriginKind::Literal)
+                ),
+            ]
+        );
+        drop(text);
+        owner.release().unwrap();
+    }
+    #[test]
+    fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_groups() {
+        use crate::construction::parser_session::{
+            StringLocation,
+            provenance::{ConstructionOperation, NativeDestination},
+        };
+        use crate::parser::tokenizer::token::OriginKind;
+        let source = HtmlSource::utf8("<body><?marker name='x&amp;y'?>");
+        let request =
+            HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
+        let mut owner = completed(&request);
+        {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            let pi = view.child_at(&body, 0).unwrap().unwrap();
+            let NativeKind::ProcessingInstruction { target, data } = view.kind(&pi).unwrap() else {
+                panic!("actual PI")
+            };
+            assert_eq!(
+                units(&mut view, target),
+                "marker".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                units(&mut view, data),
+                "name='x&amp;y'".encode_utf16().collect::<Vec<_>>()
+            );
+        }
+        let mut rows = owner.native_associations().unwrap();
+        let mut values = Vec::new();
+        let mut names = 0;
+        for index in 0..rows.len() {
+            let (row, cause) = rows.row(index).unwrap().unwrap();
+            match row.destination {
+                NativeDestination::Field(StringLocation::PiName(_, 0)) => {
+                    assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                    assert!(cause.original.is_some());
+                    names += 1;
+                }
+                NativeDestination::Field(StringLocation::PiValue(_, 0)) => {
+                    assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                    assert!(cause.original.is_some());
+                    assert!(cause.trigger.is_some());
+                    values.push((row.start, row.end, row.source.clone(), row.kind));
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(names, 4);
+        assert_eq!(
+            values,
+            [
+                (
+                    0,
+                    1,
+                    Some(source.range(21, 22).unwrap()),
+                    Some(OriginKind::Literal)
+                ),
+                (
+                    1,
+                    2,
+                    Some(source.range(22, 27).unwrap()),
+                    Some(OriginKind::RecoverySyntax)
+                ),
+                (
+                    2,
+                    3,
+                    Some(source.range(27, 28).unwrap()),
+                    Some(OriginKind::Literal)
+                ),
+            ]
+        );
+        owner.release().unwrap();
     }
     fn child_named(view: &mut NativeView<'_>, parent: &ParserNode, local: &str) -> ParserNode {
         for i in 0..view.child_count(parent).unwrap() {
@@ -2096,10 +3141,11 @@ mod tests {
             let writes = driver.control.usage().work(WorkCategory::RecordWrite);
             driver.step().unwrap();
             assert_eq!(phase(&driver), Some(next));
-            // Actual FIFO entry true, empty-queue exit false, then phase write.
+            // Actual FIFO entry/exit plus retained triggering-cause reference,
+            // restored cause and final phase write: five fixed owned writes.
             assert_eq!(
                 driver.control.usage().work(WorkCategory::RecordWrite) - writes,
-                3
+                5
             );
             assert_eq!(
                 state(&mut driver).readiness,

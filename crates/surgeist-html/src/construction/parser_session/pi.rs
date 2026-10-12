@@ -41,6 +41,7 @@ impl SessionStorage {
     }
     fn retire_raw(&mut self, c: &mut ParseControl, slot: usize) -> Result<(), SessionError> {
         payload_write::<RetainedPayload>(c, 1)?;
+        self.retire_field_group(c, slot)?;
         let RetainedPayload::String {
             value,
             allocation,
@@ -52,9 +53,7 @@ impl SessionStorage {
         };
         drop(value);
         c.release_document_string(allocation)?;
-        if let Some(origins) = origins {
-            origins.release(c)?;
-        }
+        drop(origins);
         Ok(())
     }
     fn pi_scalar(
@@ -178,6 +177,7 @@ impl SessionStorage {
         offset: &mut usize,
     ) -> Result<bool, SessionError> {
         let mut name = Utf16Buffer::new(c)?;
+        let mut name_maps = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let parsed = (|| {
             let Some((cp, width)) = self.pi_scalar(c, node, *offset)? else {
                 return Ok(false);
@@ -186,13 +186,30 @@ impl SessionStorage {
                 return Ok(false);
             }
             append_scalar(&mut name, c, cp)?;
+            self.pi_piece_origins(
+                c,
+                node,
+                *offset..*offset + width,
+                0..name.len(),
+                false,
+                &mut name_maps,
+            )?;
             payload_write::<usize>(c, 1)?;
             *offset += width;
             while let Some((cp, width)) = self.pi_scalar(c, node, *offset)? {
                 if !name_char(cp) {
                     break;
                 }
+                let begin = name.len();
                 append_scalar(&mut name, c, cp)?;
+                self.pi_piece_origins(
+                    c,
+                    node,
+                    *offset..*offset + width,
+                    begin..name.len(),
+                    false,
+                    &mut name_maps,
+                )?;
                 payload_write::<usize>(c, 1)?;
                 *offset += width;
             }
@@ -209,6 +226,7 @@ impl SessionStorage {
             Ok(true) => {}
             result => {
                 name.release(c)?;
+                name_maps.release(c)?;
                 return result;
             }
         }
@@ -216,9 +234,11 @@ impl SessionStorage {
             Ok(v) => v,
             Err(stop) => {
                 name.release(c)?;
+                name_maps.release(c)?;
                 return Err(stop.into());
             }
         };
+        let mut value_maps = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let parsed = (|| {
             let Some((quote, _)) = self.pi_scalar(c, node, *offset)? else {
                 return Ok(false);
@@ -238,15 +258,34 @@ impl SessionStorage {
                     return Ok(true);
                 }
                 if cp == 38 {
+                    let source_begin = *offset;
+                    let output_begin = value.len();
                     let Some(cp) = self.pi_reference(c, node, offset)? else {
                         return Ok(false);
                     };
                     append_scalar(&mut value, c, cp)?;
+                    self.pi_piece_origins(
+                        c,
+                        node,
+                        source_begin..*offset,
+                        output_begin..value.len(),
+                        true,
+                        &mut value_maps,
+                    )?;
                 } else {
                     if cp == 60 || !xml_char(cp) {
                         return Ok(false);
                     }
+                    let output_begin = value.len();
                     append_scalar(&mut value, c, cp)?;
+                    self.pi_piece_origins(
+                        c,
+                        node,
+                        *offset..*offset + width,
+                        output_begin..value.len(),
+                        false,
+                        &mut value_maps,
+                    )?;
                     payload_write::<usize>(c, 1)?;
                     *offset += width;
                 }
@@ -257,6 +296,8 @@ impl SessionStorage {
             result => {
                 name.release(c)?;
                 value.release(c)?;
+                name_maps.release(c)?;
+                value_maps.release(c)?;
                 return result;
             }
         }
@@ -278,6 +319,8 @@ impl SessionStorage {
             result => {
                 name.release(c)?;
                 value.release(c)?;
+                name_maps.release(c)?;
+                value_maps.release(c)?;
                 return result.map(|_| false);
             }
         }
@@ -285,18 +328,27 @@ impl SessionStorage {
             Ok(n) => n,
             Err(stop) => {
                 value.release(c)?;
+                name_maps.release(c)?;
+                value_maps.release(c)?;
                 return Err(stop.into());
             }
         };
-        let name_slot = match self.register_raw(c, name) {
+        let name_slot = match self.register_pi_field(c, node, name, name_maps) {
             Ok(n) => n,
             Err(e) => {
                 value.release(c)?;
+                value_maps.release(c)?;
                 return Err(e);
             }
         };
-        let value = value.freeze(c)?;
-        let value_slot = self.register_raw(c, value)?;
+        let value = match value.freeze(c) {
+            Ok(value) => value,
+            Err(stop) => {
+                value_maps.release(c)?;
+                return Err(stop.into());
+            }
+        };
+        let value_slot = self.register_pi_field(c, node, value, value_maps)?;
         payload_write::<[StringLocation; 2]>(c, 2)?;
         let name = self.raw_value(c, name_slot)?;
         let value = self.raw_value(c, value_slot)?;

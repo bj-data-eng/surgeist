@@ -354,6 +354,10 @@ impl HeadState<'_> {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
+        self.record_trigger(
+            crate::construction::parser_session::provenance::ParserRule::Foreign,
+            c,
+        )?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         match &self
             .pending

@@ -804,7 +804,8 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
     before: Option<prologue::BeforeHead>,
     head: Option<head::HeadStage<'source>>,
     lexical: Option<OwnedVec<super::tokenizer::token::Event>>,
-    failed_evidence: Option<crate::construction::parser_session::evidence::ParseEvidence>,
+    failed_evidence:
+        Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
     failure_usage: Option<super::control::ParseUsage>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {

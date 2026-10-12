@@ -78,7 +78,7 @@ pub(crate) struct DiagnosticLocationInput<'a> {
     pub(crate) role: DiagnosticLocationRole,
     pub(crate) token: Option<DiagnosticToken>,
 }
-struct EvidenceIdentity;
+pub(super) struct EvidenceIdentity;
 pub(crate) struct DiagnosticId {
     index: usize,
     owner: ControlIdentity,
@@ -91,12 +91,92 @@ pub(crate) struct TokenizerDiagnosticView<'a> {
     pub(crate) source: &'a crate::HtmlSourceRange,
 }
 pub(crate) struct ParseEvidence {
-    identity: Arc<EvidenceIdentity>,
+    pub(super) identity: Arc<EvidenceIdentity>,
     identity_allocation: SharedAllocation<EvidenceIdentity>,
     records: OwnedVec<DiagnosticRecord>,
     locations: OwnedVec<DiagnosticLocation>,
+    pub(super) native: super::provenance::NativeProvenance,
+    diagnostics_taken: bool,
+}
+/// The terminal consumer receives only committed diagnostics and their actual
+/// issuer. No native association, construction cause or source-map draft can
+/// survive this partition as a usable parse result.
+pub(crate) struct FailureDiagnosticEvidence {
+    identity: Arc<EvidenceIdentity>,
+    identity_allocation: Option<SharedAllocation<EvidenceIdentity>>,
+    records: OwnedVec<DiagnosticRecord>,
+    locations: OwnedVec<DiagnosticLocation>,
+}
+/// Fixed borrowed lender of committed diagnostics. It carries no execution authority,
+/// allocation ticket or native storage, and each observation uses constant work.
+pub(crate) struct DiagnosticEvidenceView<'a> {
+    records: &'a [DiagnosticRecord],
+    locations: &'a [DiagnosticLocation],
+}
+impl DiagnosticEvidenceView<'_> {
+    pub(crate) fn len(&self) -> usize {
+        self.records.len()
+    }
+    pub(crate) fn retained_record(
+        &self,
+        index: usize,
+    ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
+        self.records
+            .get(index)
+            .map(|record| (record, &self.locations[record.location]))
+    }
+    #[cfg(test)]
+    pub(crate) fn records_pointer(&self) -> *const DiagnosticRecord {
+        self.records.as_ptr()
+    }
+}
+impl FailureDiagnosticEvidence {
+    pub(crate) fn diagnostics(&self) -> DiagnosticEvidenceView<'_> {
+        DiagnosticEvidenceView {
+            records: self.records.as_slice(),
+            locations: self.locations.as_slice(),
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.records.len()
+    }
+    pub(crate) fn retained_record(
+        &self,
+        index: usize,
+    ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
+        self.records
+            .as_slice()
+            .get(index)
+            .map(|record| (record, &self.locations.as_slice()[record.location]))
+    }
+    #[cfg(test)]
+    pub(crate) fn records_pointer(&self) -> *const DiagnosticRecord {
+        self.records.as_slice().as_ptr()
+    }
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        self.records.release(c)?;
+        self.locations.release(c)?;
+        if let Some(allocation) = self.identity_allocation {
+            c.release_zero_sized_shared(self.identity, allocation)
+                .map_err(|error| error.into_parts().0)
+        } else {
+            drop(self.identity);
+            Ok(())
+        }
+    }
 }
 impl ParseEvidence {
+    pub(super) fn retains_diagnostics(&self) -> bool {
+        !self.diagnostics_taken
+    }
+    pub(crate) fn diagnostics(&self) -> DiagnosticEvidenceView<'_> {
+        DiagnosticEvidenceView {
+            records: self.records.as_slice(),
+            locations: self.locations.as_slice(),
+        }
+    }
+
     /// The same initializer is used by the actual session and direct lexical
     /// fixtures. Preparing the storage slot is fallible before owner transfer.
     pub(crate) fn prepare(c: &mut ParseControl) -> Result<Self, SessionError> {
@@ -114,11 +194,23 @@ impl ParseEvidence {
         locations.require_owner(c)?;
         let (identity, identity_allocation) =
             c.share_owned(EvidenceIdentity).map_err(|(stop, _)| stop)?;
+        let native = match super::provenance::NativeProvenance::new(c) {
+            Ok(native) => native,
+            Err(stop) => {
+                records.release(c)?;
+                locations.release(c)?;
+                c.release_zero_sized_shared(identity, identity_allocation)
+                    .map_err(|error| error.into_parts().0)?;
+                return Err(stop);
+            }
+        };
         Ok(Self {
             identity,
             identity_allocation,
             records,
             locations,
+            native,
+            diagnostics_taken: false,
         })
     }
     pub(crate) fn append(
@@ -235,7 +327,46 @@ impl ParseEvidence {
     pub(crate) fn records_pointer(&self) -> *const DiagnosticRecord {
         self.records.as_slice().as_ptr()
     }
+    /// The actual active or frozen storage slot remains intact on every refusal.
+    /// The caller must already be stopped. Fixed owner/header validation precedes
+    /// the only transfer; cleanup does not allocate, copy, charge or poll.
+    pub(crate) fn partition_failed(
+        input: &mut Option<Self>,
+        c: &mut ParseControl,
+    ) -> Result<Option<FailureDiagnosticEvidence>, SessionError> {
+        if c.stop().is_none() {
+            return Err(SessionError::WrongToken);
+        }
+        let Some(evidence) = input.as_ref() else {
+            return Ok(None);
+        };
+        evidence.records.require_disposal_owner(c)?;
+        evidence.locations.require_disposal_owner(c)?;
+        evidence.native.preflight_failed_disposal(c)?;
+        let Some(Self {
+            identity,
+            identity_allocation,
+            records,
+            locations,
+            native,
+            diagnostics_taken: _,
+        }) = input.take()
+        else {
+            unreachable!("the exclusively borrowed slot was preflighted")
+        };
+        // Same-owner flat vectors, exact checked capacities and their aggregate
+        // logical/capacity totals were proved above. No ledger mutation intervenes,
+        // so each cleanup subtraction is covered by that aggregate proof.
+        native.release(c).expect("preflighted native cleanup");
+        Ok(Some(FailureDiagnosticEvidence {
+            identity,
+            identity_allocation: Some(identity_allocation),
+            records,
+            locations,
+        }))
+    }
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        self.native.release(c)?;
         self.records.release(c)?;
         self.locations.release(c)?;
         c.release_zero_sized_shared(self.identity, self.identity_allocation)
@@ -244,10 +375,15 @@ impl ParseEvidence {
 }
 impl ParserArenaSession {
     pub(crate) fn retained_evidence(&self) -> Result<&ParseEvidence, SessionError> {
-        self.active()?
+        let evidence = self
+            .active()?
             .evidence
             .as_ref()
-            .ok_or(SessionError::WrongToken)
+            .ok_or(SessionError::WrongToken)?;
+        if evidence.diagnostics_taken {
+            return Err(SessionError::Consumed);
+        }
+        Ok(evidence)
     }
     #[cfg(test)]
     pub(crate) fn observed_evidence(&self) -> &ParseEvidence {
@@ -260,14 +396,28 @@ impl ParserArenaSession {
     pub(crate) fn initialize_parse_evidence(
         &mut self,
         c: &mut ParseControl,
+        source: &crate::HtmlSource,
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         storage.require(c)?;
         if storage.evidence.is_some() {
             return Err(SessionError::WrongToken);
         }
-        let evidence = ParseEvidence::prepare(c)?;
-        storage.evidence = Some(evidence);
+        storage.evidence = Some(ParseEvidence::prepare(c)?);
+        storage
+            .evidence
+            .as_mut()
+            .expect("retained evidence")
+            .initialize_native_source(c, source)?;
+        let slots = storage.prepare_node_causes(c, 1)?;
+        if let Some(slot) = slots[0] {
+            let RetainedPayload::ConstructionCause { node, .. } =
+                &mut storage.payloads.values[slot]
+            else {
+                unreachable!()
+            };
+            *node = Some(0);
+        }
         Ok(())
     }
     pub(crate) fn evidence(
@@ -281,32 +431,42 @@ impl ParserArenaSession {
     pub(crate) fn take_completed_evidence(
         &mut self,
         c: &mut ParseControl,
-    ) -> Result<ParseEvidence, SessionError> {
+    ) -> Result<FailureDiagnosticEvidence, SessionError> {
         let storage = self.active_mut()?;
         storage.require(c)?;
         let evidence = storage.evidence.as_mut().ok_or(SessionError::WrongToken)?;
         evidence.records.require_owner(c)?;
         evidence.locations.require_owner(c)?;
-        payload_write::<Option<ParseEvidence>>(c, 2)?;
-        Ok(storage
-            .evidence
-            .take()
-            .expect("admitted actual evidence move"))
+        if evidence.diagnostics_taken {
+            return Err(SessionError::Consumed);
+        }
+        let mut records = OwnedVec::new(HtmlParseResource::Diagnostics)?;
+        let mut locations = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
+        records.require_owner(c)?;
+        locations.require_owner(c)?;
+        // The native group authority remains in the completed lender. The
+        // diagnostic consumer shares the existing zero-sized identity without
+        // allocating a second issuer or returning another mutable authority.
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        payload_write::<FailureDiagnosticEvidence>(c, 1)?;
+        payload_write::<bool>(c, 1)?;
+        let identity = evidence.identity.clone();
+        let records = mem::replace(&mut evidence.records, records);
+        let locations = mem::replace(&mut evidence.locations, locations);
+        evidence.diagnostics_taken = true;
+        Ok(FailureDiagnosticEvidence {
+            identity,
+            identity_allocation: None,
+            records,
+            locations,
+        })
     }
     /// Before reclamation, move only actual committed diagnostic ownership.
     pub(crate) fn take_failed_evidence(
         &mut self,
         c: &mut ParseControl,
-    ) -> Result<Option<ParseEvidence>, SessionError> {
-        if c.stop().is_none() {
-            return Err(SessionError::WrongToken);
-        }
-        let storage = self.active_mut()?;
-        if let Some(e) = &storage.evidence {
-            e.records.require_disposal_owner(c)?;
-            e.locations.require_disposal_owner(c)?;
-        }
-        Ok(storage.evidence.take())
+    ) -> Result<Option<FailureDiagnosticEvidence>, SessionError> {
+        ParseEvidence::partition_failed(&mut self.active_mut()?.evidence, c)
     }
 }
 
@@ -348,6 +508,72 @@ mod tests {
         c.admit_source(source).unwrap();
         let evidence = ParseEvidence::prepare(&mut c).unwrap();
         (c, evidence)
+    }
+
+    #[test]
+    fn failed_partition_refusals_preserve_the_actual_owner_and_committed_buffer() {
+        let source = HtmlSource::utf8("\0");
+        let (mut c, mut evidence) = owner(&source, limits(100));
+        evidence.initialize_native_source(&mut c, &source).unwrap();
+        append(&mut evidence, &mut c, &source, 0).unwrap();
+        let pointer = evidence.records_pointer();
+        let mut input = Some(evidence);
+        let before = c.usage().clone();
+        assert!(matches!(
+            ParseEvidence::partition_failed(&mut input, &mut c),
+            Err(SessionError::WrongToken)
+        ));
+        assert_eq!(input.as_ref().unwrap().records_pointer(), pointer);
+        assert_eq!(c.usage(), &before);
+
+        let mut foreign = ParseControl::new(limits(100), HtmlParseCancellation::new());
+        foreign.fail_invariant(Invariant::InputCursorState);
+        let foreign_stop = foreign.stop();
+        let foreign_before = foreign.usage().clone();
+        assert!(ParseEvidence::partition_failed(&mut input, &mut foreign).is_err());
+        assert_eq!(input.as_ref().unwrap().records_pointer(), pointer);
+        assert_eq!(foreign.stop(), foreign_stop);
+        assert_eq!(foreign.usage(), &foreign_before);
+        assert_eq!(c.usage(), &before);
+
+        c.fail_invariant(Invariant::InputCursorState);
+        let first = c.stop();
+        let stopped = c.usage().clone();
+        let failure = ParseEvidence::partition_failed(&mut input, &mut c)
+            .unwrap()
+            .unwrap();
+        assert!(input.is_none());
+        assert_eq!(failure.records_pointer(), pointer);
+        assert_eq!(failure.len(), 1);
+        let (record, location) = failure.retained_record(0).unwrap();
+        assert_eq!(
+            record.kind,
+            DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+        );
+        assert_eq!(location.source, source.range(0, 1).unwrap());
+        assert_eq!(c.stop(), first);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits),
+            stopped.resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::SourceMapEntries)
+                .current,
+            1
+        );
+        assert!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current
+                < stopped
+                    .resource(HtmlParseResource::ManagedCapacityBytes)
+                    .current
+        );
+        failure.release(&mut c).unwrap();
+        assert_eq!(c.stop(), first);
+        assert_released(&c);
+        assert_released(&foreign);
     }
 
     #[test]
@@ -624,9 +850,17 @@ mod tests {
         );
         drop(alias);
         let work = c.usage().resource(HtmlParseResource::WorkCredits);
+        let failure =
+            ParseEvidence::partition_failed(&mut frozen.storage.as_mut().unwrap().evidence, &mut c)
+                .unwrap()
+                .unwrap();
+        assert_eq!(failure.records_pointer(), pointer);
+        assert!(frozen.storage.as_ref().unwrap().evidence.is_none());
         frozen.release(&mut c).unwrap();
         assert_eq!(c.stop(), first);
         assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
+        failure.release(&mut c).unwrap();
+        assert_eq!(c.stop(), first);
         assert_released(&c);
     }
 
