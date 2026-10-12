@@ -368,6 +368,11 @@ impl<T> HtmlAttributeReport<T> {
         {
             return Some(self.rule.source);
         }
+        if self.rule.attribute == KnownHtmlAttribute::Scope
+            && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Th)
+        {
+            return Some(self.rule.source);
+        }
         if matches!(
             (
                 self.rule.context,
@@ -2158,6 +2163,9 @@ pub use input_colorspace::*;
 
 mod encoding_label;
 pub use encoding_label::*;
+
+mod table_header_scope;
+pub use table_header_scope::*;
 
 #[cfg(test)]
 mod stylesheet_context_tests {

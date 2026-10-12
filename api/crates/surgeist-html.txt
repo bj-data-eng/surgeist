@@ -1762,6 +1762,17 @@ pub surgeist_html::HtmlTabindexValue::Null
 pub enum surgeist_html::HtmlTableCellKind
 pub surgeist_html::HtmlTableCellKind::Data
 pub surgeist_html::HtmlTableCellKind::Header
+pub enum surgeist_html::HtmlTableHeaderScope
+pub surgeist_html::HtmlTableHeaderScope::Column
+pub surgeist_html::HtmlTableHeaderScope::ColumnGroup
+pub surgeist_html::HtmlTableHeaderScope::Row
+pub surgeist_html::HtmlTableHeaderScope::RowGroup
+impl surgeist_html::HtmlTableHeaderScope
+pub fn surgeist_html::HtmlTableHeaderScope::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlTableHeaderScope::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlTableHeaderScopeState
+pub surgeist_html::HtmlTableHeaderScopeState::Auto
+pub surgeist_html::HtmlTableHeaderScopeState::Keyword(surgeist_html::HtmlTableHeaderScope)
 pub enum surgeist_html::HtmlTableModelError
 pub surgeist_html::HtmlTableModelError::Overlap
 pub surgeist_html::HtmlTableModelError::Overlap::cell: surgeist_html::HtmlCaptureSubjectId
@@ -4175,6 +4186,8 @@ pub fn surgeist_html::HtmlValueInterpreter::spellcheck(&self, element: &surgeist
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::textarea_wrap(&self, element: &surgeist_html::QualifiedName, wrap: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTextareaWrap>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::textarea_wrap_with_cols(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTextareaWrap>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::th_scope(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTableHeaderScopeState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::track_kind(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlTrackKind>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

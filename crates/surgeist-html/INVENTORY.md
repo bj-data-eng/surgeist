@@ -302,7 +302,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a131"></a>A131 | rows; textarea | [attr-textarea-rows](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-rows); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Numeric content](#numeric-content): textarea rows positive author quantity; missing/failed/zero recovery2. |
 | <a id="a132"></a>A132 | rowspan; td; th | [attr-tdth-rowspan](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tdth-rowspan); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Numeric content](#numeric-content): rowspan 0..65534 author, default 1, clamp65534, zero means remaining group. [Tables](#tables) owns slot allocation. |
 | <a id="a133"></a>A133 | sandbox; iframe | [attr-iframe-sandbox](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox); [unordered-set-of-unique-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#unordered-set-of-unique-space-separated-tokens); [ascii-case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive); [attr-iframe-sandbox-allow-downloads](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-downloads); [attr-iframe-sandbox-allow-forms](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-forms); [attr-iframe-sandbox-allow-modals](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-modals); [attr-iframe-sandbox-allow-orientation-lock](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-orientation-lock); [attr-iframe-sandbox-allow-pointer-lock](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-pointer-lock); [attr-iframe-sandbox-allow-popups](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-popups); [attr-iframe-sandbox-allow-popups-to-escape-sandbox](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-popups-to-escape-sandbox); [attr-iframe-sandbox-allow-presentation](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-presentation); [attr-iframe-sandbox-allow-same-origin](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-same-origin); [attr-iframe-sandbox-allow-scripts](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-scripts); [attr-iframe-sandbox-allow-top-navigation](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-top-navigation); [attr-iframe-sandbox-allow-top-navigation-by-user-activation](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-top-navigation-by-user-activation); [attr-iframe-sandbox-allow-top-navigation-to-custom-protocols](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-sandbox-allow-top-navigation-to-custom-protocols) | [Sandbox](#sandbox): token vocabulary/diagnostics and flag-set complement; no browsing-context sandbox enforcement. |
-| <a id="a134"></a>A134 | scope; th | [attr-th-scope](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope); [attr-th-scope-row](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-row); [attr-th-scope-col](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-col); [attr-th-scope-rowgroup](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-rowgroup); [attr-th-scope-colgroup](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-colgroup) | [Table header scope](#table-header-scope): row/col/rowgroup/colgroup, Auto missing/invalid author/default report absent; TableModel has scoped header association using raw. |
+| <a id="a134"></a>A134 | scope; th | [attr-th-scope](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope); [attr-th-scope-row](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-row); [attr-th-scope-col](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-col); [attr-th-scope-rowgroup](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-rowgroup); [attr-th-scope-colgroup](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope-colgroup) | [Table header scope](#table-header-scope): four native keywords and local author/default report; missing/invalid Auto, group anchoring Unchecked; TableModel owns actual associations. |
 | <a id="a135"></a>A135 | selected; option | [attr-option-selected](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-option-selected); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Selected content default independent of CurrentSelectedness/OptionDirtiness. |
 | <a id="a136"></a>A136 | shadowrootclonable; template | [attr-template-shadowrootclonable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-template-shadowrootclonable); [shadowroot-clonable](https://dom.spec.whatwg.org/#shadowroot-clonable); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): ShadowRootClonable. Actual template attachment is a construction/parser effect, not proven by presence. |
 | <a id="a137"></a>A137 | shadowrootcustomelementregistry; template | [attr-template-shadowrootcustomelementregistry](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-template-shadowrootcustomelementregistry); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): ShadowRootCustomElementRegistry; registry behavior external and actual construction effects separately represented. |
@@ -467,6 +467,7 @@ invented empty default. Canonical native emission is separate from exact raw.
 | popover | NoPopover | Manual | Auto |
 | command | Unknown | Unknown | Unknown |
 | popovertargetaction | Toggle | Toggle | Toggle |
+| th scope | Auto | Auto | Auto |
 | translate | Inherit | Inherit | Yes |
 | spellcheck | Default | Default | True |
 | autocapitalize | Default | Sentences | Invalid processing Sentences |
@@ -851,6 +852,25 @@ order does not turn the author grammar into an ordered set.
 [Table model](tests/semantics_tables.rs) and
 [collections](tests/semantics_table_collections.rs) verify these separate contracts.
 
+## Table header scope
+
+[table_header_scope.rs](src/attributes/table_header_scope.rs) owns A134 local
+scope interpretation on exact HTML th. Row/Column/RowGroup/ColumnGroup select
+the four recognized keywords; missing, empty and invalid content select Auto
+processing independently of raw observation and author conformance. Literal
+`auto` is not a conforming author keyword. Native values emit only row, col,
+rowgroup and colgroup.
+
+RowGroup and ColumnGroup retain Unchecked author anchoring: actual table slots
+and row/column groups must establish the separate source constraint. This
+local result does not infer anchoring from a parent name or reconstruct a
+table. Existing TableModel scoped header association is unchanged; a complete
+anchoring author observation remains required. [Nine public tests](tests/attributes_table_header_scope.rs)
+cover literal spelling/defaults, exact UTF-16/raw retention, native emission,
+expanded-name roles, source metadata and original raw-cap boundaries.
+Ordinary allocation and the per-value cap do not establish aggregate work,
+cancellation or physical-memory guarantees.
+
 ## Details
 
 [details.rs](src/semantics/details.rs) exposes first direct HTML summary optional
@@ -1129,12 +1149,6 @@ interpretation is not exposed. HTML link-type semantics and actual supported-tok
 capability differ; network/navigation/CSS association belongs the consuming
 execution owner. Form rel is a supplemental defining clause outside these two
 printed rows, not evidence to silently change their identities.
-
-### Table header scope
-
-A134: TableModel implements source row/col/rowgroup/colgroup/Auto processing for
-header association. A separate native/local author scope grammar/report is absent;
-that is not absence of the existing table algorithm. No need duplicate TableModel.
 
 ### Icon sizes
 

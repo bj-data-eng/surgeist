@@ -232,6 +232,15 @@ targets, command validity, activation, dialog and popover transitions remain
 distinct operations. Existing Auto submit-button classification continues to
 use command/commandfor presence, including empty or unknown values.
 
+`th_scope` interprets exact HTML th content as row, col, rowgroup or
+colgroup, with missing and invalid Auto processing. Empty and literal `auto`
+are invalid authored keywords. `HtmlTableHeaderScope` emits only the four
+canonical author keywords. Raw content, recognition, author spelling and
+processing state remain independent. Group keywords leave actual table
+anchoring Unchecked; the existing TableModel continues to own header
+associations. These local reports use ordinary allocation and admit the entire
+original UTF-16 value before applicability through the per-value cap.
+
 `textarea_wrap` retains Soft/Hard content state, raw spelling and lexical
 conformance separately; missing and invalid content select Soft. Hard leaves
 its cols-presence author requirement unchecked until `textarea_wrap_with_cols`
