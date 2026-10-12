@@ -2924,3 +2924,196 @@ fn retained_attribute_growth_foreign_controller_refuses_without_consuming_draft(
     assert_eq!(c.usage().actual_capacity_bytes, 0);
     assert_eq!(foreign.usage().actual_capacity_bytes, 0);
 }
+
+#[test]
+fn long_comment_origin_storage_submits_bounded_layouts_with_exact_literal_mapping() {
+    use crate::construction::parser_session::provenance::{
+        ConstructionCause, LexicalDisposition as D, LexicalKind as K, LexicalOccurrence,
+        LexicalPart, LexicalRole,
+    };
+    let mut observations = Vec::new();
+    for count in [0usize, 1, 8, 32, 128, 512] {
+        // The source, value, intervals and syntax are defined before observing
+        // the actual lexer. Ordinary a does not introduce errors or references.
+        let raw = format!("<!--{}-->", "a".repeat(count));
+        let expected = vec![97u16; count];
+        let origin_bytes = size_of::<token::TextOrigin>() as u64;
+        let part_bytes = size_of::<LexicalPart>() as u64;
+        let fixed_bytes = (size_of::<Tokenizer<'_>>()
+            + size_of::<ConstructionCause>()
+            + size_of::<LexicalOccurrence>()
+            + size_of::<Token>()) as u64;
+        let n = count as u64;
+        // One field has at most N origins/N u16 units; one occurrence/cause
+        // and <=N+8 lexical data/syntax/empty anchors. Fourfold capacity room
+        // covers admitted doubling and old/new overlap, not observed limits.
+        let physical = 4
+            * (n * origin_bytes
+                + (n + 1) * size_of::<u16>() as u64
+                + (n + 8) * part_bytes
+                + size_of::<ConstructionCause>() as u64
+                + size_of::<LexicalOccurrence>() as u64
+                + size_of::<Token>() as u64
+                + size_of::<Vec<u16>>() as u64);
+        // Admit even the existing exact-growth N^2 submissions in both field
+        // vectors. The generous fixed per-input descriptor envelope covers
+        // lexer/range/lexical visits, writes and final transfer/disposal;
+        // growth is judged separately, never from this work-cap success.
+        let work = 2 * (n * n + 1) * (origin_bytes + size_of::<u16>() as u64)
+            + 256 * (n + 8) * (origin_bytes + part_bytes + size_of::<HtmlSourceRange>() as u64)
+            + 32 * fixed_bytes;
+        let caps = limits()
+            .into_builder()
+            .source_units(raw.len() as u64)
+            .buffered_utf16_units(n)
+            .token_attributes(0)
+            .auxiliary_entries(8)
+            .source_map_entries(2 * n + 16)
+            .source_map_payload_units(0)
+            .diagnostics(0)
+            .managed_capacity_bytes(physical)
+            .peak_transient_bytes(physical)
+            .atomic_layout_bytes(physical.max(2 * size_of::<Tokenizer<'_>>() as u64))
+            .work_credits(work)
+            .finish()
+            .unwrap();
+        let source = HtmlSource::utf8(raw.clone());
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut submitted_origin_slots = 0usize;
+        let mut origin_reservations = 0usize;
+        let mut last_origin_capacity = 0usize;
+        let mut comments = 0;
+        let mut eof = 0;
+        loop {
+            if lexer.pending_len != 0 || lexer.done {
+                let Some(event) = lexer.next(&mut c, false).unwrap() else {
+                    break;
+                };
+                match &event {
+                    Event::Token(token) => match &token.token().kind {
+                        TokenKind::Comment(text) => {
+                            comments += 1;
+                            assert_eq!(text.value.text().code_units(), expected);
+                            assert_eq!(text.origins.len(), count);
+                            assert_eq!(text.origins.capacity(), last_origin_capacity);
+                            for (i, origin) in text.origins.as_slice().iter().enumerate() {
+                                assert_eq!((origin.start, origin.end), (i, i + 1));
+                                assert_eq!(origin.kind, OriginKind::Literal);
+                                assert_eq!(origin.source.source(), source.identity());
+                                assert_eq!(
+                                    (origin.source.start(), origin.source.end()),
+                                    (4 + i, 5 + i)
+                                );
+                            }
+                            assert_eq!(
+                                (token.token().source.start(), token.token().source.end()),
+                                (0, count + 7)
+                            );
+                        }
+                        TokenKind::Eof => {
+                            eof += 1;
+                            assert_eq!(
+                                (token.token().source.start(), token.token().source.end()),
+                                (count + 7, count + 7)
+                            );
+                        }
+                        _ => panic!("unexpected token in the independently authored comment"),
+                    },
+                    _ => panic!("the closed ASCII comment has no diagnostic/preprocessing event"),
+                }
+                event.release(&mut c).unwrap();
+                continue;
+            }
+            let before = lexer
+                .comment
+                .as_ref()
+                .map_or(0, |draft| draft.origins.capacity());
+            lexer.step(&mut c, false).unwrap();
+            if let Some(draft) = &lexer.comment {
+                let after = draft.origins.capacity();
+                if after != before {
+                    assert!(after > before);
+                    submitted_origin_slots += before + after;
+                    origin_reservations += 1;
+                }
+                last_origin_capacity = after;
+            }
+        }
+        assert_eq!((comments, eof), (1, 1));
+        assert_eq!(c.stop(), None);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::Diagnostics).current,
+            0
+        );
+        let (occurrences, parts, omissions) = lexer.evidence.lexical_observations();
+        assert_eq!(occurrences.len(), 1);
+        let row = &occurrences[0];
+        assert_eq!(
+            (row.kind, row.disposition, row.parent),
+            (K::Comment, D::Emitted, None)
+        );
+        assert_eq!(row.source.source(), source.identity());
+        assert_eq!((row.source.start(), row.source.end()), (0, count + 7));
+        assert!(omissions.is_empty());
+        let data: Vec<_> = parts
+            .iter()
+            .filter(|part| part.role == LexicalRole::Data && part.kind.is_some())
+            .map(|part| {
+                (
+                    part.source.start(),
+                    part.source.end(),
+                    part.start,
+                    part.end,
+                    part.kind.unwrap(),
+                )
+            })
+            .collect();
+        let expected_data: Vec<_> = (0..count)
+            .map(|i| (4 + i, 5 + i, i, i + 1, OriginKind::Literal))
+            .collect();
+        assert_eq!(data, expected_data);
+        let mut syntax: Vec<_> = parts
+            .iter()
+            .filter(|part| part.role == LexicalRole::Syntax)
+            .flat_map(|part| part.source.start()..part.source.end())
+            .collect();
+        syntax.sort_unstable();
+        syntax.dedup();
+        assert_eq!(syntax, [0, 1, 2, 3, count + 4, count + 5, count + 6]);
+        // This all-writer total includes u16/lexical/token storage. Only the
+        // actual draft origin-vector transitions above are called origin work.
+        let all_writer_reserve = c.usage().work(WorkCategory::ReserveByte);
+        assert!(all_writer_reserve >= submitted_origin_slots as u64 * origin_bytes);
+        let before_release = c.usage().clone();
+        lexer.release(&mut c).unwrap();
+        assert_storage_released(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits),
+            before_release.resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(
+            c.usage().actual_capacity_high_water,
+            before_release.actual_capacity_high_water
+        );
+        assert_eq!(c.stop(), None);
+        eprintln!(
+            "comment units={count}, origins={count}, submitted origin slots={submitted_origin_slots}, origin reservations={origin_reservations}, retained origin capacity={last_origin_capacity}, all-writer ReserveByte={all_writer_reserve}, physical highwater={}, work={}",
+            c.usage().actual_capacity_high_water,
+            c.usage().resource(HtmlParseResource::WorkCredits).current
+        );
+        observations.push((count, submitted_origin_slots, origin_reservations));
+    }
+    // Roomy admitted doubling submits <6N slots; 8N is a generous fixture
+    // allowance, not HTML's normative coefficient or the archived100M limit.
+    // Assert only after every literal/native/source/lexical and cleanup oracle.
+    for (count, submitted, reservations) in observations {
+        assert!(
+            submitted <= 8 * count,
+            "comment units={count}, submitted origin slots={submitted}, reservations={reservations}, desired allowance={}",
+            8 * count
+        );
+    }
+}
