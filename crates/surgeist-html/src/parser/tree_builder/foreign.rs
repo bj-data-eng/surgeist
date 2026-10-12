@@ -13,7 +13,7 @@
 
 use super::{
     KernelError,
-    head::{HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep},
+    head::{HeadCondition, HeadError, HeadState, HeadStep},
     prologue::Payload,
     tag_sets, write,
 };
@@ -257,7 +257,14 @@ impl HeadState<'_> {
                 }
             }
             if mismatch {
-                self.emit(HeadCondition::ForeignNamespaceMismatch, c)?;
+                self.emit(
+                    HeadCondition::ForeignNamespaceMismatch,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inforeign",
+                        branch: "foreign-start/xmlns-namespace-mismatch",
+                    },
+                    c,
+                )?;
             }
         }
         Ok(())
@@ -308,16 +315,9 @@ impl HeadState<'_> {
                     .as_slice()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    write(size_of::<HeadDiagnostic>(), 3, c)?;
+
                     c.charge(WorkCategory::ProviderCall, 1)?;
-                    self.diagnostics.try_push(
-                        c,
-                        HeadDiagnostic {
-                            condition: HeadCondition::NullInForeign,
-                            mode,
-                            source: origin.source.clone(),
-                        },
-                    )?;
+                    self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(HeadCondition::NullInForeign), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), crate::construction::parser_session::evidence::DiagnosticRule { anchor: "parsing-main-inforeign", branch: "null-character/replace" }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &origin.source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::TextOrigin, token: Some(crate::construction::parser_session::evidence::DiagnosticToken::Text) })?;
                 }
             }
             write(
@@ -364,7 +364,14 @@ impl HeadState<'_> {
             Payload::Text(_) => return Ok(Some(self.foreign_characters(c)?)),
             Payload::Comment(_) | Payload::Pi(_) => return Ok(Some(self.ordinary_node(c)?)),
             Payload::Doctype(_) => {
-                self.emit(HeadCondition::UnexpectedDoctype, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedDoctype,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inforeign",
+                        branch: "foreign-doctype/ignore",
+                    },
+                    c,
+                )?;
                 return Ok(Some(self.discard(c)?));
             }
             Payload::Eof => return Ok(None),
@@ -427,7 +434,18 @@ impl HeadState<'_> {
             self.token_in(&["br", "p"], c)?.is_some()
         };
         if breakout {
-            self.emit(HeadCondition::UnexpectedForeignToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedForeignToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inforeign",
+                    branch: if kind == TagKind::Start {
+                        "foreign-start/html-breakout"
+                    } else {
+                        "foreign-end/html-breakout"
+                    },
+                },
+                c,
+            )?;
             loop {
                 c.charge(WorkCategory::StateStep, 1)?;
                 let current = self.before.kernel.current(c)?;
@@ -463,7 +481,14 @@ impl HeadState<'_> {
             }
         }
         if !self.foreign_end_matches(&current, c)? {
-            self.emit(HeadCondition::UnexpectedForeignToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedForeignToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inforeign",
+                    branch: "foreign-end/current-local-name-mismatch",
+                },
+                c,
+            )?;
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
         let mut index = self.before.kernel.stack()?.len() - 1;

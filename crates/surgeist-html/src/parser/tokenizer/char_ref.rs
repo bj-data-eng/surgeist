@@ -24,11 +24,12 @@ impl Tokenizer<'_> {
         &mut self,
         attribute: bool,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         let amp = self.current.clone();
         let mark = self.cursor.mark(c)?;
         let mut query = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        let result = self.reference_inner(attribute, &amp, &mark, &mut query, c);
+        let result = self.reference_inner(attribute, &amp, &mark, &mut query, c, evidence);
         query.release(c)?;
         result
     }
@@ -53,12 +54,13 @@ impl Tokenizer<'_> {
         mark: &InputCheckpoint,
         query: &mut OwnedVec<u32>,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         if let InputRead::Character(ch) = self.cursor.peek(c)?
             && ch.code_point().value() == 0x23
         {
-            self.read(c)?;
-            return self.numeric_reference(attribute, amp, mark, c);
+            self.read(c, evidence)?;
+            return self.numeric_reference(attribute, amp, mark, c, evidence);
         }
         if !matches!(self.cursor.peek(c)?,InputRead::Character(ref ch) if alnum(ch.code_point().value()))
         {
@@ -74,7 +76,7 @@ impl Tokenizer<'_> {
             if !(alnum(p) || p == 0x3B) {
                 break;
             }
-            self.read(c)?;
+            self.read(c, evidence)?;
             query.try_push(c, p)?;
             match references::lookup_name(query.as_slice(), c)? {
                 NameLookup::Complete {
@@ -103,7 +105,7 @@ impl Tokenizer<'_> {
             let source = self.range(amp.start(), self.cursor.position(c)?, c)?;
             self.set_current(&source, c)?;
             if !semicolon {
-                self.error(MissingSemicolonAfterCharacterReference, c)?;
+                self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
             }
             // Emit the two scalar replacement as one text record with one source
             // association per scalar, preserving the table's combining sequence.
@@ -170,11 +172,11 @@ impl Tokenizer<'_> {
                 if !alnum(p) {
                     if p == 0x3B {
                         self.set_current(ch.source(), c)?;
-                        self.error(UnknownNamedCharacterReference, c)?;
+                        self.error(UnknownNamedCharacterReference, c, evidence)?;
                     }
                     break;
                 }
-                self.read(c)?;
+                self.read(c, evidence)?;
                 end = self.current.end();
                 if attribute {
                     self.attribute_value(p, self.current_kind, &self.current.clone(), c)?;
@@ -204,10 +206,11 @@ impl Tokenizer<'_> {
         amp: &HtmlSourceRange,
         mark: &InputCheckpoint,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         let hex = matches!(self.cursor.peek(c)?,InputRead::Character(ref ch) if matches!(ch.code_point().value(),0x58|0x78));
         if hex {
-            self.read(c)?;
+            self.read(c, evidence)?;
         }
         let mut value = 0_u32;
         let mut digits = false;
@@ -226,7 +229,7 @@ impl Tokenizer<'_> {
             let Some(digit) = digit else {
                 break;
             };
-            self.read(c)?;
+            self.read(c, evidence)?;
             digits = true;
             // Once above Unicode, further digits cannot restore validity. This
             // bounded sentinel avoids arithmetic overflow for arbitrary input.
@@ -239,41 +242,41 @@ impl Tokenizer<'_> {
         if !digits {
             let source = self.range(amp.start(), self.cursor.position(c)?, c)?;
             self.set_current(&source, c)?;
-            self.error(AbsenceOfDigitsInNumericCharacterReference, c)?;
+            self.error(AbsenceOfDigitsInNumericCharacterReference, c, evidence)?;
             self.cursor.rewind(mark, c)?;
             return self.reference_point(0x26, attribute, amp, OriginKind::Literal, c);
         }
         let semicolon = matches!(self.cursor.peek(c)?,InputRead::Character(ref ch) if ch.code_point().value()==0x3B);
         if semicolon {
-            self.read(c)?;
+            self.read(c, evidence)?;
         }
         let source = self.range(amp.start(), self.cursor.position(c)?, c)?;
         self.set_current(&source, c)?;
         if !semicolon {
-            self.error(MissingSemicolonAfterCharacterReference, c)?;
+            self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
         }
         match value {
             0 => {
-                self.error(NullCharacterReference, c)?;
+                self.error(NullCharacterReference, c, evidence)?;
                 value = 0xFFFD;
             }
             0x110000.. => {
-                self.error(CharacterReferenceOutsideUnicodeRange, c)?;
+                self.error(CharacterReferenceOutsideUnicodeRange, c, evidence)?;
                 value = 0xFFFD;
             }
             0xD800..=0xDFFF => {
-                self.error(SurrogateCharacterReference, c)?;
+                self.error(SurrogateCharacterReference, c, evidence)?;
                 value = 0xFFFD;
             }
             _ => {
                 if (0xFDD0..=0xFDEF).contains(&value) || value & 0xFFFF >= 0xFFFE {
-                    self.error(NoncharacterCharacterReference, c)?;
+                    self.error(NoncharacterCharacterReference, c, evidence)?;
                 }
                 if value == 0x0D
                     || ((value <= 0x1F || (0x7F..=0x9F).contains(&value))
                         && !matches!(value, 9 | 10 | 12 | 32))
                 {
-                    self.error(ControlCharacterReference, c)?;
+                    self.error(ControlCharacterReference, c, evidence)?;
                 }
                 if let Some(replacement) = references::c1_replacement(value, c)? {
                     value = u32::from(replacement);

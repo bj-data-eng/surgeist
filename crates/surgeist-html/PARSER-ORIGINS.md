@@ -641,6 +641,46 @@ or complete allocator/RSS coverage. Public document/fragment parsing,
 diagnostic/source-map/report transfer and contextual execution remain unfinished.
 No new public API or complete enclosing parser capability follows.
 
+## Ordered private parse evidence
+
+The [private diagnostic checkpoint](README.md#private-ordered-diagnostics)
+retains actual error invocations from the pinned HTML Chapter 13 algorithms.
+Structured condition codes, current tokenizer/prologue/insertion state,
+recoverable severity, the selected rule anchor and an intentional engine branch
+replace upstream prose as the machine identity. A location labels its actual
+input frontier, token envelope, text origin or delayed table-character origin;
+an envelope is not a precise output-field or immutable-node extent.
+
+The new [parse-evidence owner](src/construction/parser_session/evidence.rs),
+paired record/location admission in the existing
+[controller](src/parser/control.rs), and the completed/stopped consumers in the
+[end owner](src/parser/tree_builder/end.rs) are Surgeist-owned machinery.
+Existing adapted tokenizer and tree-builder emitters now append to this single
+construction-session store at actual emission. Tokenizer events retain
+qualified receipts rather than a second diagnostic list. Phase-specific
+cfg-test views are temporary projections, not parallel evidence owners.
+No new third-party implementation file, source slice or language edition is
+incorporated; original notices and historical adaptation hashes remain intact.
+The HTML pin continues to govern language behavior, while the retained
+html5ever revision identifies implementation provenance.
+
+Both capacities, logical slots and fixed writes precede pair publication.
+Actual source/controller qualification, physical capacity retention, sticky
+first stop and explicit disposal remain with the sole parser owner. Completed
+observation borrows or moves the same backing. The private stopped result keeps
+only committed evidence, a borrowed original source, first stop and fixed usage
+snapshots after native/lexical reclamation; it is not the future owning public
+failed report. Cleanup performs no useful continuation or diagnostic emission.
+Alias refusal leaves retained owners available for a cleanup retry.
+
+Selected literal tests cover delayed chronological emission even when offsets
+go backwards, rule/location identity, the pre/listing self-closing descriptor,
+qualification and admission/cleanup boundaries. They do not certify complete
+diagnostic coverage, corpus error metadata, native-field/output provenance,
+reverse lookup, feed invariance, public report transfer or contextual fragments.
+This private test-compiled implementation adds no public API, new attribution
+material, linear-work or complete allocator/RSS guarantee.
+
 ## Attribution and verification
 
 Original file notices remain intact. The exact upstream

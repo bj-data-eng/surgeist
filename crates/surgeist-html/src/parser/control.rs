@@ -40,6 +40,7 @@ pub(crate) enum Invariant {
     MissingSource,
     InputCursorState,
     ForeignControl,
+    ForeignEvidence,
     CleanupWhileRunning,
     SharedAllocationAliased,
     PendingFormEffects,
@@ -1582,6 +1583,27 @@ impl<T> OwnedVec<T> {
         self.vector.push(value);
         Ok(())
     }
+    /// One consumed evidence commit. Both capacities, logical slots and fixed
+    /// writes are admitted before either vector's committed length changes.
+    pub(crate) fn try_push_pair<U>(
+        &mut self,
+        other: &mut OwnedVec<U>,
+        control: &mut ParseControl,
+        value: T,
+        other_value: U,
+    ) -> Result<(), ParseStop> {
+        let bytes = size_of::<T>()
+            .checked_add(size_of::<U>())
+            .ok_or_else(|| control.fail_invariant(Invariant::CapacityMismatch))?;
+        control.admit_atomic_layout(bytes)?;
+        self.prepare(control, 1, size_of::<T>() as u64, 1)?;
+        other.prepare(control, 1, size_of::<U>() as u64, 1)?;
+        control.acquire_many(&[(self.resource, 1), (other.resource, 1)])?;
+        // No fallible operation follows admission. Record is published last.
+        other.vector.push(other_value);
+        self.vector.push(value);
+        Ok(())
+    }
     pub(crate) fn clear(&mut self, control: &mut ParseControl) -> Result<(), ParseStop> {
         control.checkpoint()?;
         if self
@@ -2028,8 +2050,8 @@ mod tests {
     fn hidden_input_metadata_slots_are_admitted_before_take_and_bound_only_to_actual_nodes() {
         use crate::construction::parser_session::{SessionError, release_token_kind};
         use crate::parser::tokenizer::{
-            Tokenizer,
             states::State,
+            tests::LexerFixture,
             token::{Event, TokenKind},
         };
         use crate::parser::tree_builder::StandaloneDocumentDriver;
@@ -2057,7 +2079,7 @@ mod tests {
             }
             let (mut c, mut session, capability) =
                 StandaloneDocumentDriver::take_standalone_fixture(&mut driver).unwrap();
-            let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             let (mut input, token_source) = loop {
                 let event = lexer.next(&mut c, false).unwrap().unwrap();
                 match event {

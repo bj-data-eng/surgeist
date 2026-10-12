@@ -15,7 +15,7 @@
 
 use super::{
     KernelError,
-    head::{HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep, InsertionMode},
+    head::{HeadCondition, HeadError, HeadState, HeadStep, InsertionMode},
     prologue::Payload,
     write,
 };
@@ -42,6 +42,7 @@ impl HeadState<'_> {
 
     pub(super) fn frameset_start(
         &mut self,
+        anchor: &'static str,
         close: bool,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
@@ -49,7 +50,14 @@ impl HeadState<'_> {
         self.insert_tag(c)?;
         self.set_mode(InsertionMode::InFrameset, c)?;
         if close {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor,
+                    branch: "frameset-start/self-closing",
+                },
+                c,
+            )?;
         }
         self.finish(c)
     }
@@ -112,16 +120,9 @@ impl HeadState<'_> {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 for origin in run.text.origins.as_slice() {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    write(size_of::<HeadDiagnostic>(), 3, c)?;
+
                     c.charge(WorkCategory::ProviderCall, 1)?;
-                    self.diagnostics.try_push(
-                        c,
-                        HeadDiagnostic {
-                            condition,
-                            mode,
-                            source: origin.source.clone(),
-                        },
-                    )?;
+                    self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(condition), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), crate::construction::parser_session::evidence::DiagnosticRule { anchor: mode.rule_anchor(), branch: "non-whitespace-character/ignore" }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &origin.source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::TextOrigin, token: Some(crate::construction::parser_session::evidence::DiagnosticToken::Text) })?;
                 }
                 // Preserve actual omitted text evidence under the existing owner.
                 write(
@@ -165,7 +166,14 @@ impl HeadState<'_> {
                 };
             }
             Payload::Doctype(_) => {
-                self.emit(HeadCondition::UnexpectedDoctype, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedDoctype,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: mode.rule_anchor(),
+                        branch: "frameset-doctype/ignore",
+                    },
+                    c,
+                )?;
                 return self.discard(c);
             }
             Payload::Eof => {
@@ -173,7 +181,14 @@ impl HeadState<'_> {
                     let current = self.before.kernel.current(c)?;
                     let html = self.before.kernel.first(c)?;
                     if !self.before.kernel.session.same_node(c, &current, &html)? {
-                        self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedOpenElement,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: mode.rule_anchor(),
+                                branch: "frameset-eof/current-node-not-html",
+                            },
+                            c,
+                        )?;
                     }
                 }
                 return self.begin_end(c);
@@ -190,7 +205,7 @@ impl HeadState<'_> {
             }
             if mode == InsertionMode::InFrameset {
                 if self.token_in(&["frameset"], c)?.is_some() {
-                    return self.frameset_start(close, c);
+                    return self.frameset_start("parsing-main-inframeset", close, c);
                 }
                 if self.token_in(&["frame"], c)?.is_some() {
                     self.insert_tag(c)?;
@@ -208,7 +223,14 @@ impl HeadState<'_> {
                 let current = self.before.kernel.current(c)?;
                 let html = self.before.kernel.first(c)?;
                 if self.before.kernel.session.same_node(c, &current, &html)? {
-                    self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                    self.emit(
+                        HeadCondition::UnexpectedEndTag,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: mode.rule_anchor(),
+                            branch: "frameset-end/current-node-html",
+                        },
+                        c,
+                    )?;
                     return self.discard(c);
                 }
                 self.before
@@ -226,7 +248,14 @@ impl HeadState<'_> {
                 return self.discard(c);
             }
         }
-        self.emit(HeadCondition::UnexpectedFramesetToken, c)?;
+        self.emit(
+            HeadCondition::UnexpectedFramesetToken,
+            crate::construction::parser_session::evidence::DiagnosticRule {
+                anchor: mode.rule_anchor(),
+                branch: "frameset/anything-else",
+            },
+            c,
+        )?;
         self.discard(c)
     }
 }

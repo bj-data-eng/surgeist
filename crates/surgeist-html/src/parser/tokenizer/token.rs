@@ -250,12 +250,92 @@ pub(crate) enum DiagnosticCode {
     NoncharacterCharacterReference,
     ControlCharacterReference,
 }
-pub(crate) struct Diagnostic {
-    pub(crate) code: DiagnosticCode,
-    pub(crate) phase: DiagnosticPhase,
-    pub(crate) state: super::states::State,
-    pub(crate) source: HtmlSourceRange,
+impl DiagnosticCode {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::SurrogateInInputStream => "surrogate-in-input-stream",
+            Self::NoncharacterInInputStream => "noncharacter-in-input-stream",
+            Self::ControlCharacterInInputStream => "control-character-in-input-stream",
+            Self::UnexpectedNullCharacter => "unexpected-null-character",
+            Self::EofBeforeTagName => "eof-before-tag-name",
+            Self::InvalidFirstCharacterOfTagName => "invalid-first-character-of-tag-name",
+            Self::MissingEndTagName => "missing-end-tag-name",
+            Self::EofInTag => "eof-in-tag",
+            Self::UnexpectedEqualsSignBeforeAttributeName => {
+                "unexpected-equals-sign-before-attribute-name"
+            }
+            Self::UnexpectedCharacterInAttributeName => "unexpected-character-in-attribute-name",
+            Self::DuplicateAttribute => "duplicate-attribute",
+            Self::MissingAttributeValue => "missing-attribute-value",
+            Self::UnexpectedCharacterInUnquotedAttributeValue => {
+                "unexpected-character-in-unquoted-attribute-value"
+            }
+            Self::MissingWhitespaceBetweenAttributes => "missing-whitespace-between-attributes",
+            Self::UnexpectedSolidusInTag => "unexpected-solidus-in-tag",
+            Self::EndTagWithAttributes => "end-tag-with-attributes",
+            Self::EndTagWithTrailingSolidus => "end-tag-with-trailing-solidus",
+            Self::IncorrectlyOpenedComment => "incorrectly-opened-comment",
+            Self::CdataInHtmlContent => "cdata-in-html-content",
+            Self::AbruptClosingOfEmptyComment => "abrupt-closing-of-empty-comment",
+            Self::EofInComment => "eof-in-comment",
+            Self::NestedComment => "nested-comment",
+            Self::IncorrectlyClosedComment => "incorrectly-closed-comment",
+            Self::MissingWhitespaceBeforeDoctypeName => "missing-whitespace-before-doctype-name",
+            Self::MissingDoctypeName => "missing-doctype-name",
+            Self::EofInDoctype => "eof-in-doctype",
+            Self::InvalidCharacterSequenceAfterDoctypeName => {
+                "invalid-character-sequence-after-doctype-name"
+            }
+            Self::MissingWhitespaceAfterDoctypePublicKeyword => {
+                "missing-whitespace-after-doctype-public-keyword"
+            }
+            Self::MissingWhitespaceAfterDoctypeSystemKeyword => {
+                "missing-whitespace-after-doctype-system-keyword"
+            }
+            Self::MissingDoctypePublicIdentifier => "missing-doctype-public-identifier",
+            Self::MissingDoctypeSystemIdentifier => "missing-doctype-system-identifier",
+            Self::MissingQuoteBeforeDoctypePublicIdentifier => {
+                "missing-quote-before-doctype-public-identifier"
+            }
+            Self::MissingQuoteBeforeDoctypeSystemIdentifier => {
+                "missing-quote-before-doctype-system-identifier"
+            }
+            Self::AbruptDoctypePublicIdentifier => "abrupt-doctype-public-identifier",
+            Self::AbruptDoctypeSystemIdentifier => "abrupt-doctype-system-identifier",
+            Self::MissingWhitespaceBetweenDoctypePublicAndSystemIdentifiers => {
+                "missing-whitespace-between-doctype-public-and-system-identifiers"
+            }
+            Self::UnexpectedCharacterAfterDoctypeSystemIdentifier => {
+                "unexpected-character-after-doctype-system-identifier"
+            }
+            Self::EofInCdata => "eof-in-cdata",
+            Self::EofInScriptHtmlCommentLikeText => "eof-in-script-html-comment-like-text",
+            Self::EofInProcessingInstruction => "eof-in-processing-instruction",
+            Self::InvalidFirstCharacterOfProcessingInstructionTarget => {
+                "invalid-first-character-of-processing-instruction-target"
+            }
+            Self::InvalidProcessingInstructionTarget => "invalid-processing-instruction-target",
+            Self::DisallowedProcessingInstructionTarget => {
+                "disallowed-processing-instruction-target"
+            }
+            Self::MissingSemicolonAfterCharacterReference => {
+                "missing-semicolon-after-character-reference"
+            }
+            Self::UnknownNamedCharacterReference => "unknown-named-character-reference",
+            Self::AbsenceOfDigitsInNumericCharacterReference => {
+                "absence-of-digits-in-numeric-character-reference"
+            }
+            Self::NullCharacterReference => "null-character-reference",
+            Self::CharacterReferenceOutsideUnicodeRange => {
+                "character-reference-outside-unicode-range"
+            }
+            Self::SurrogateCharacterReference => "surrogate-character-reference",
+            Self::NoncharacterCharacterReference => "noncharacter-character-reference",
+            Self::ControlCharacterReference => "control-character-reference",
+        }
+    }
 }
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DiagnosticPhase {
     InputStream,
@@ -263,7 +343,7 @@ pub(crate) enum DiagnosticPhase {
 }
 pub(crate) enum Event {
     Token(TokenEvent),
-    Diagnostic(OwnedVec<Diagnostic>),
+    Diagnostic(crate::construction::parser_session::evidence::DiagnosticId),
     /// First committed cursor traversal only; no replay/lookahead duplication.
     Preprocessing {
         record: super::super::input::PreprocessingRecord,
@@ -281,7 +361,7 @@ impl Event {
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         match self {
             Self::Token(t) => t.release(c),
-            Self::Diagnostic(d) => d.release(c),
+            Self::Diagnostic(_) => Ok(()),
             Self::Preprocessing { retention, .. } => retention.release(c),
         }
     }
@@ -337,5 +417,103 @@ impl TokenEvent {
             token.release(c)?;
         }
         self.record.release(c)
+    }
+}
+
+impl DiagnosticCode {
+    pub(crate) fn rule_anchor(self) -> &'static str {
+        match self {
+            Self::SurrogateInInputStream => "parse-error-surrogate-in-input-stream",
+            Self::NoncharacterInInputStream => "parse-error-noncharacter-in-input-stream",
+            Self::ControlCharacterInInputStream => "parse-error-control-character-in-input-stream",
+            Self::UnexpectedNullCharacter => "parse-error-unexpected-null-character",
+            Self::EofBeforeTagName => "parse-error-eof-before-tag-name",
+            Self::InvalidFirstCharacterOfTagName => {
+                "parse-error-invalid-first-character-of-tag-name"
+            }
+            Self::MissingEndTagName => "parse-error-missing-end-tag-name",
+            Self::EofInTag => "parse-error-eof-in-tag",
+            Self::UnexpectedEqualsSignBeforeAttributeName => {
+                "parse-error-unexpected-equals-sign-before-attribute-name"
+            }
+            Self::UnexpectedCharacterInAttributeName => {
+                "parse-error-unexpected-character-in-attribute-name"
+            }
+            Self::DuplicateAttribute => "parse-error-duplicate-attribute",
+            Self::MissingAttributeValue => "parse-error-missing-attribute-value",
+            Self::UnexpectedCharacterInUnquotedAttributeValue => {
+                "parse-error-unexpected-character-in-unquoted-attribute-value"
+            }
+            Self::MissingWhitespaceBetweenAttributes => {
+                "parse-error-missing-whitespace-between-attributes"
+            }
+            Self::UnexpectedSolidusInTag => "parse-error-unexpected-solidus-in-tag",
+            Self::EndTagWithAttributes => "parse-error-end-tag-with-attributes",
+            Self::EndTagWithTrailingSolidus => "parse-error-end-tag-with-trailing-solidus",
+            Self::IncorrectlyOpenedComment => "parse-error-incorrectly-opened-comment",
+            Self::CdataInHtmlContent => "parse-error-cdata-in-html-content",
+            Self::AbruptClosingOfEmptyComment => "parse-error-abrupt-closing-of-empty-comment",
+            Self::EofInComment => "parse-error-eof-in-comment",
+            Self::NestedComment => "parse-error-nested-comment",
+            Self::IncorrectlyClosedComment => "parse-error-incorrectly-closed-comment",
+            Self::MissingWhitespaceBeforeDoctypeName => {
+                "parse-error-missing-whitespace-before-doctype-name"
+            }
+            Self::MissingDoctypeName => "parse-error-missing-doctype-name",
+            Self::EofInDoctype => "parse-error-eof-in-doctype",
+            Self::InvalidCharacterSequenceAfterDoctypeName => {
+                "parse-error-invalid-character-sequence-after-doctype-name"
+            }
+            Self::MissingWhitespaceAfterDoctypePublicKeyword => {
+                "parse-error-missing-whitespace-after-doctype-public-keyword"
+            }
+            Self::MissingWhitespaceAfterDoctypeSystemKeyword => {
+                "parse-error-missing-whitespace-after-doctype-system-keyword"
+            }
+            Self::MissingDoctypePublicIdentifier => "parse-error-missing-doctype-public-identifier",
+            Self::MissingDoctypeSystemIdentifier => "parse-error-missing-doctype-system-identifier",
+            Self::MissingQuoteBeforeDoctypePublicIdentifier => {
+                "parse-error-missing-quote-before-doctype-public-identifier"
+            }
+            Self::MissingQuoteBeforeDoctypeSystemIdentifier => {
+                "parse-error-missing-quote-before-doctype-system-identifier"
+            }
+            Self::AbruptDoctypePublicIdentifier => "parse-error-abrupt-doctype-public-identifier",
+            Self::AbruptDoctypeSystemIdentifier => "parse-error-abrupt-doctype-system-identifier",
+            Self::MissingWhitespaceBetweenDoctypePublicAndSystemIdentifiers => {
+                "parse-error-missing-whitespace-between-doctype-public-and-system-identifiers"
+            }
+            Self::UnexpectedCharacterAfterDoctypeSystemIdentifier => {
+                "parse-error-unexpected-character-after-doctype-system-identifier"
+            }
+            Self::EofInCdata => "parse-error-eof-in-cdata",
+            Self::EofInScriptHtmlCommentLikeText => {
+                "parse-error-eof-in-script-html-comment-like-text"
+            }
+            Self::EofInProcessingInstruction => "parse-error-eof-in-processing-instruction",
+            Self::InvalidFirstCharacterOfProcessingInstructionTarget => {
+                "parse-error-invalid-first-character-of-processing-instruction-target"
+            }
+            Self::InvalidProcessingInstructionTarget => {
+                "parse-error-invalid-processing-instruction-target"
+            }
+            Self::DisallowedProcessingInstructionTarget => {
+                "parse-error-disallowed-processing-instruction-target"
+            }
+            Self::MissingSemicolonAfterCharacterReference => {
+                "parse-error-missing-semicolon-after-character-reference"
+            }
+            Self::UnknownNamedCharacterReference => "parse-error-unknown-named-character-reference",
+            Self::AbsenceOfDigitsInNumericCharacterReference => {
+                "parse-error-absence-of-digits-in-numeric-character-reference"
+            }
+            Self::NullCharacterReference => "parse-error-null-character-reference",
+            Self::CharacterReferenceOutsideUnicodeRange => {
+                "parse-error-character-reference-outside-unicode-range"
+            }
+            Self::SurrogateCharacterReference => "parse-error-surrogate-character-reference",
+            Self::NoncharacterCharacterReference => "parse-error-noncharacter-character-reference",
+            Self::ControlCharacterReference => "parse-error-control-character-reference",
+        }
     }
 }

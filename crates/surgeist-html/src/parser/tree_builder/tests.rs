@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-pub(super) fn limits(open: u64) -> HtmlParseLimits {
+pub(crate) fn limits(open: u64) -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
@@ -45,7 +45,10 @@ fn control(open: u64) -> ParseControl {
 
 /// Selects actual tokenizer emissions. There is no fabricated token or tree
 /// parser here: each test invokes the named construction operation explicitly.
-fn next_kind(tokenizer: &mut Tokenizer<'_>, control: &mut ParseControl) -> TokenKind {
+fn next_kind(
+    tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+    control: &mut ParseControl,
+) -> TokenKind {
     loop {
         match tokenizer
             .next(control, false)
@@ -57,20 +60,26 @@ fn next_kind(tokenizer: &mut Tokenizer<'_>, control: &mut ParseControl) -> Token
         }
     }
 }
-fn tag(tokenizer: &mut Tokenizer<'_>, control: &mut ParseControl) -> Option<Tag> {
+fn tag(
+    tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+    control: &mut ParseControl,
+) -> Option<Tag> {
     let TokenKind::Tag(tag) = next_kind(tokenizer, control) else {
         panic!("expected tag")
     };
     Some(tag)
 }
-fn text(tokenizer: &mut Tokenizer<'_>, control: &mut ParseControl) -> Option<Text> {
+fn text(
+    tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+    control: &mut ParseControl,
+) -> Option<Text> {
     let TokenKind::Text(text) = next_kind(tokenizer, control) else {
         panic!("expected text")
     };
     Some(text)
 }
 fn begin(
-    tokenizer: &mut Tokenizer<'_>,
+    tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
     kind: RootKind,
     control: &mut ParseControl,
 ) -> (LocationKernel, ParserNode) {
@@ -91,7 +100,7 @@ fn begin(
 }
 fn add(
     kernel: &mut LocationKernel,
-    tokenizer: &mut Tokenizer<'_>,
+    tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
     push: StackPush,
     control: &mut ParseControl,
 ) -> ParserNode {
@@ -144,7 +153,7 @@ fn freeze(kernel: LocationKernel, control: &mut ParseControl) -> FrozenArena {
     open.unwrap().release(control).unwrap();
     session.freeze(control).unwrap()
 }
-pub(super) fn assert_released(control: &ParseControl) {
+pub(crate) fn assert_released(control: &ParseControl) {
     for resource in [
         HtmlParseResource::BufferedUtf16Units,
         HtmlParseResource::TokenAttributes,
@@ -174,7 +183,9 @@ fn ordinary_override_and_stack_pop_preserve_native_tree() {
     let source = HtmlSource::utf8("<html><body><p>A&amp;B");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, html) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -234,7 +245,9 @@ fn foster_text_uses_actual_table_parent_and_merges_only_preceding_text() {
     let source = HtmlSource::utf8("<html><body>A<table>B");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -282,7 +295,9 @@ fn detached_table_fosters_into_previous_stack_element() {
     let source = HtmlSource::utf8("<html><body><table>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -313,7 +328,9 @@ fn foster_parent_uses_moved_table_parent_instead_of_stack_predecessor() {
     let source = HtmlSource::utf8("<html><body><div><table>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, html) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -346,7 +363,9 @@ fn latest_template_or_table_determines_foster_route() {
         let source = HtmlSource::utf8(input);
         let mut c = control(100);
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+                .unwrap();
         let (mut kernel, _) = begin(
             &mut tokenizer,
             RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -382,7 +401,9 @@ fn fragment_no_table_foster_case_and_ordinary_first_node_use_actual_fragment_roo
     let source = HtmlSource::utf8("<html><tr><x>\u{feff}");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, html) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
     let root = kernel.session.root(&mut c).unwrap();
     let ordinary = kernel.adjusted_location(None, &mut c).unwrap();
@@ -416,7 +437,9 @@ fn template_contents_routing_precedes_fragment_first_node_substitution() {
     let source = HtmlSource::utf8("<html><template>x");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
     let template = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let contents = kernel
@@ -449,7 +472,9 @@ fn imported_html_template_has_unavailable_patching_state() {
     let source = HtmlSource::utf8("<html>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -474,7 +499,9 @@ fn foreign_template_and_table_names_are_ordinary_targets() {
     let source = HtmlSource::utf8("<html>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
     kernel.set_foster_parenting(true, &mut c).unwrap();
     for name in ["template", "table", "tr"] {
@@ -537,7 +564,9 @@ fn target_match_precedes_boundary_and_scopes_use_actual_stack_order() {
     let source = HtmlSource::utf8("<html><body><p><ol><button>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -579,7 +608,9 @@ fn literal_surrogates_and_supplementary_text_survive_real_transfer_and_merge() {
     ]));
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
     add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let mut first_node = None;
@@ -623,7 +654,9 @@ fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let root = session.root(&mut c).unwrap();
     let mut kernel = match LocationKernel::new(&mut Some(session), &mut c) {
@@ -687,7 +720,9 @@ fn exact_stack_cap_rejection_keeps_permanent_nodes_and_cleans_all_live_storage()
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(1);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
     let mut body = tag(&mut tokenizer, &mut c);
     let body = kernel.session.allocate_html_tag(&mut c, &mut body).unwrap();
@@ -727,7 +762,9 @@ fn cancellation_and_foreign_control_precede_mutation_and_allow_original_owner_cl
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(100), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
     let mut foreign = control(100);
     assert!(matches!(
@@ -870,7 +907,9 @@ fn document_character_target_discards_actual_token_without_allocating_a_text_nod
     let source = HtmlSource::utf8("<html>A");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -902,7 +941,9 @@ fn existing_document_element_ignores_new_element_insertion_but_retains_created_n
     let source = HtmlSource::utf8("<html><div id=x>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -949,7 +990,9 @@ fn ignored_document_insertion_still_pushes_created_element_for_following_text() 
     let source = HtmlSource::utf8("<html><div>X");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -1002,7 +1045,9 @@ fn document_without_element_child_accepts_actual_created_element() {
     let source = HtmlSource::utf8("<html><div>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, html) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -1045,7 +1090,9 @@ fn already_parented_element_ignores_placement_without_native_move() {
     let source = HtmlSource::utf8("<html><body><p>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, html) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -1077,7 +1124,9 @@ fn detached_element_is_ignored_as_inclusive_ancestor_of_itself() {
     let source = HtmlSource::utf8("<html><div>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -1105,7 +1154,9 @@ fn detached_template_owns_contents_for_host_including_ancestor_guard() {
     let source = HtmlSource::utf8("<html><template>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -1148,7 +1199,9 @@ fn ignored_element_push_cap_retains_owned_creation_and_original_terminal_stop() 
     let source = HtmlSource::utf8("<html><div id=x>");
     let mut c = control(1);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -1202,7 +1255,9 @@ fn cancelled_element_insertion_keeps_actual_token_before_creation() {
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(100), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -1243,7 +1298,7 @@ fn cancelled_element_insertion_keeps_actual_token_before_creation() {
 }
 
 fn next_token(
-    tokenizer: &mut Tokenizer<'_>,
+    tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
     c: &mut ParseControl,
 ) -> crate::parser::tokenizer::token::Token {
     loop {
@@ -1258,13 +1313,34 @@ fn next_token(
     }
 }
 
+fn next_owned_token(
+    tokenizer: &mut Tokenizer<'_>,
+    evidence: &mut crate::construction::parser_session::evidence::ParseEvidence,
+    c: &mut ParseControl,
+) -> crate::parser::tokenizer::token::Token {
+    loop {
+        match tokenizer
+            .next(c, false, evidence)
+            .unwrap()
+            .expect("actual token")
+        {
+            Event::Token(event) => return event.into_token(c).unwrap(),
+            event => event.release(c).unwrap(),
+        }
+    }
+}
+
 fn prologue(source: &HtmlSource, c: &mut ParseControl) -> super::prologue::BeforeHead {
     use super::prologue::{DocumentPrologue, PrologueStep};
     c.admit_source(source).unwrap();
     let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
     let mut engine = DocumentPrologue::new(source, c).unwrap();
     loop {
-        let mut input = Some(next_token(&mut tokenizer, c));
+        let mut input = Some(next_owned_token(
+            &mut tokenizer,
+            engine.kernel.as_mut().unwrap().session.evidence(c).unwrap(),
+            c,
+        ));
         let step = engine.process(&mut input, c).unwrap();
         assert!(input.is_none(), "prologue owns the admitted lexical input");
         if step == PrologueStep::BeforeHead {
@@ -1285,7 +1361,6 @@ fn observe_prologue(mut output: super::prologue::BeforeHead, c: &mut ParseContro
         text.release(c).unwrap();
     }
     output.whitespace.release(c).unwrap();
-    output.diagnostics.release(c).unwrap();
     freeze(output.kernel, c)
 }
 
@@ -1302,7 +1377,7 @@ fn fresh_document_prologue_preserves_initial_noquirks_and_exact_doctype_fields()
         let source = HtmlSource::utf8(input);
         let mut c = control(100);
         let output = prologue(&source, &mut c);
-        assert!(output.diagnostics.as_slice().is_empty());
+        assert!(output.diagnostics().is_empty());
         assert!(output.input.is_none());
         assert_eq!(
             c.usage().resource(HtmlParseResource::OpenElements).current,
@@ -1334,9 +1409,9 @@ fn fresh_document_prologue_preserves_initial_noquirks_and_exact_doctype_fields()
     let source = HtmlSource::utf8("<!doctype html PUBLIC '-//W3C//DTD HTML 4.0//EN'><html>");
     let mut c = control(100);
     let output = prologue(&source, &mut c);
-    assert_eq!(output.diagnostics.as_slice().len(), 1);
+    assert_eq!(output.diagnostics().len(), 1);
     assert_eq!(
-        output.diagnostics.as_slice()[0].condition,
+        output.diagnostics()[0].condition,
         PrologueCondition::InvalidDoctype
     );
     let mut frozen = observe_prologue(output, &mut c);
@@ -1381,9 +1456,9 @@ fn prologue_quirks_reconciles_silmaril_and_html4_empty_or_present_system() {
         let source = HtmlSource::utf8(input);
         let mut c = control(100);
         let output = prologue(&source, &mut c);
-        assert_eq!(output.diagnostics.as_slice().len(), 1);
+        assert_eq!(output.diagnostics().len(), 1);
         assert_eq!(
-            output.diagnostics.as_slice()[0].condition,
+            output.diagnostics()[0].condition,
             PrologueCondition::InvalidDoctype
         );
         let mut frozen = observe_prologue(output, &mut c);
@@ -1402,8 +1477,8 @@ fn prologue_inserts_comment_and_recovered_pi_in_document_order_in_both_modes() {
     let source = HtmlSource::utf8(" \r\n<!--a--><?x a??><!doctype html><?y b?><html/>");
     let mut c = control(100);
     let output = prologue(&source, &mut c);
-    assert_eq!(output.diagnostics.as_slice().len(), 1);
-    let diagnostic = &output.diagnostics.as_slice()[0];
+    assert_eq!(output.diagnostics().len(), 1);
+    let diagnostic = &output.diagnostics()[0];
     assert_eq!(
         diagnostic.condition,
         PrologueCondition::UnacknowledgedSelfClosing
@@ -1451,9 +1526,9 @@ fn absent_doctype_creates_actual_implicit_html_and_retains_exact_before_head_tok
         let source = HtmlSource::utf8(input);
         let mut c = control(100);
         let output = prologue(&source, &mut c);
-        assert_eq!(output.diagnostics.as_slice().len(), 1);
+        assert_eq!(output.diagnostics().len(), 1);
         assert_eq!(
-            output.diagnostics.as_slice()[0].condition,
+            output.diagnostics()[0].condition,
             PrologueCondition::MissingDoctype
         );
         let retained = output
@@ -1492,10 +1567,9 @@ fn before_html_discards_other_end_tags_and_late_doctype_with_qualified_diagnosti
     let source = HtmlSource::utf8("<!doctype html></p><!doctype other><html id=x>");
     let mut c = control(100);
     let output = prologue(&source, &mut c);
-    assert_eq!(output.diagnostics.as_slice().len(), 2);
+    assert_eq!(output.diagnostics().len(), 2);
     for (diagnostic, condition, literal) in output
-        .diagnostics
-        .as_slice()
+        .diagnostics()
         .iter()
         .zip([
             PrologueCondition::UnexpectedEndTag,
@@ -1576,7 +1650,9 @@ fn cancelled_prologue_keeps_caller_token_and_allows_original_owner_cleanup() {
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(100), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
     let mut input = Some(next_token(&mut tokenizer, &mut c));
     cancellation.cancel();
@@ -1608,7 +1684,9 @@ fn prologue_diagnostic_cap_stops_before_implicit_creation_and_releases_retained_
     let caps = limits(100).into_builder().diagnostics(0).finish().unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
     let mut input = Some(next_token(&mut tokenizer, &mut c));
     assert!(matches!(
@@ -1642,7 +1720,9 @@ fn prologue_stack_limit_keeps_created_element_payload_owned_until_terminal_clean
     let source = HtmlSource::utf8("<!doctype html><html id=x>");
     let mut c = control(0);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
     let mut first = Some(next_token(&mut tokenizer, &mut c));
     engine.process(&mut first, &mut c).unwrap();
@@ -1760,7 +1840,7 @@ fn ordinary_prologue_recognizes_every_normative_quirky_public_prefix_without_nam
         let source = HtmlSource::utf8(format!("<!doctype html PUBLIC \"{prefix}suffix\"><html>"));
         let mut c = control(100);
         let output = prologue(&source, &mut c);
-        assert_eq!(output.diagnostics.as_slice().len(), 1);
+        assert_eq!(output.diagnostics().len(), 1);
         let mut frozen = observe_prologue(output, &mut c);
         assert!(
             matches!(
@@ -1785,10 +1865,10 @@ fn prologue_doctype_matching_preserves_nonascii_units_and_exact_system_error_cas
         let source = HtmlSource::utf8(input);
         let mut c = control(100);
         let output = prologue(&source, &mut c);
-        assert_eq!(output.diagnostics.as_slice().len(), usize::from(error));
+        assert_eq!(output.diagnostics().len(), usize::from(error));
         if error {
             assert_eq!(
-                output.diagnostics.as_slice()[0].condition,
+                output.diagnostics()[0].condition,
                 PrologueCondition::InvalidDoctype
             );
         }
@@ -1810,7 +1890,7 @@ fn prologue_doctype_matching_preserves_nonascii_units_and_exact_system_error_cas
     let source = HtmlSource::utf16(DocumentString::from_utf16(units));
     let mut c = control(100);
     let output = prologue(&source, &mut c);
-    assert_eq!(output.diagnostics.as_slice().len(), 1);
+    assert_eq!(output.diagnostics().len(), 1);
     let mut frozen = observe_prologue(output, &mut c);
     let document = frozen.document().unwrap();
     assert!(matches!(
@@ -1837,7 +1917,13 @@ fn ordinary_prologue_rejects_foreign_source_token_before_consuming_its_actual_pa
     let mut engine = DocumentPrologue::new(&first, &mut owner).unwrap();
     let mut foreign = control(100);
     foreign.admit_source(&second).unwrap();
-    let mut tokenizer = Tokenizer::new(&second, State::Data, None, &mut foreign).unwrap();
+    let mut tokenizer = crate::parser::tokenizer::tests::LexerFixture::new(
+        &second,
+        State::Data,
+        None,
+        &mut foreign,
+    )
+    .unwrap();
     let mut input = Some(next_token(&mut tokenizer, &mut foreign));
     assert!(matches!(
         engine.process(&mut input, &mut owner),
@@ -1877,7 +1963,13 @@ fn prologue_rejects_same_source_foreign_payload_before_ownership_transfer_or_mod
     let mut engine = DocumentPrologue::new(&source, &mut owner).unwrap();
     let mut foreign = control(100);
     foreign.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut foreign).unwrap();
+    let mut tokenizer = crate::parser::tokenizer::tests::LexerFixture::new(
+        &source,
+        State::Data,
+        None,
+        &mut foreign,
+    )
+    .unwrap();
     let mut input = Some(next_token(&mut tokenizer, &mut foreign));
     let result = engine.process(&mut input, &mut owner);
     assert!(
@@ -2000,7 +2092,17 @@ fn paused_before_head<'a>(
     let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
     let mut prologue = DocumentPrologue::new(source, c).unwrap();
     loop {
-        let mut token = Some(next_token(&mut tokenizer, c));
+        let mut token = Some(next_owned_token(
+            &mut tokenizer,
+            prologue
+                .kernel
+                .as_mut()
+                .unwrap()
+                .session
+                .evidence(c)
+                .unwrap(),
+            c,
+        ));
         if prologue.process(&mut token, c).unwrap() == PrologueStep::BeforeHead {
             break;
         }
@@ -2041,8 +2143,6 @@ fn observe_head(
         text.release(c).unwrap();
     }
     state.before.whitespace.release(c).unwrap();
-    state.before.diagnostics.release(c).unwrap();
-    state.diagnostics.release(c).unwrap();
     state.lexical.release(c).unwrap();
     freeze(state.before.kernel, c)
 }
@@ -2085,7 +2185,7 @@ fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order(
     let state = output.driver.state.as_ref().unwrap();
     assert_eq!(state.mode, InsertionMode::AfterHead);
     assert!(state.pending.is_none());
-    assert!(state.diagnostics.as_slice().is_empty());
+    assert!(state.diagnostics().is_empty());
     assert_eq!(
         c.usage().resource(HtmlParseResource::OpenElements).current,
         1
@@ -2194,7 +2294,7 @@ fn head_rawtext_preserves_references_isolates_pairs_and_state_specific_null_reco
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
     let state = output.driver.state.as_ref().unwrap();
-    assert!(state.lexical.as_slice().iter().any(|event| matches!(event, Event::Diagnostic(records) if records.as_slice().iter().any(|d| d.code==crate::parser::tokenizer::token::DiagnosticCode::UnexpectedNullCharacter))));
+    assert!(state.lexical.as_slice().iter().any(|event| matches!(event, Event::Diagnostic(records) if state.before.kernel.session.observed_evidence().tokenizer_observation(records).code == crate::parser::tokenizer::token::DiagnosticCode::UnexpectedNullCharacter)));
     let mut frozen = observe_head(output, &mut c);
     let mut expected = DocumentString::from("&amp;<b>").code_units().to_vec();
     expected.extend([0xD800, 0xD83D, 0xDE00, 0xFFFD, 0xFEFF]);
@@ -2211,7 +2311,7 @@ fn disabled_head_noscript_style_returns_to_noscript_then_ignores_nested_noscript
     );
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
-    let diagnostics = output.driver.state.as_ref().unwrap().diagnostics.as_slice();
+    let diagnostics = output.driver.state.as_ref().unwrap().diagnostics();
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
         diagnostics[0].condition,
@@ -2250,7 +2350,7 @@ fn head_text_eof_emits_error_restores_mode_and_retains_original_eof_for_afterhea
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
     let state = output.driver.state.as_ref().unwrap();
-    let d = &state.diagnostics.as_slice()[0];
+    let d = &state.diagnostics()[0];
     assert_eq!(d.condition, HeadCondition::EofInText);
     assert_eq!(d.mode, InsertionMode::Text);
     assert_eq!(source.text(&d.source).unwrap().code_units(), []);
@@ -2319,14 +2419,13 @@ fn html_head_delegation_merges_missing_root_attributes_and_retains_duplicate_rec
     let state = output.driver.state.as_ref().unwrap();
     assert_eq!(
         state
-            .diagnostics
-            .as_slice()
+            .diagnostics()
             .iter()
             .filter(|d| d.condition == HeadCondition::UnexpectedHtml)
             .count(),
         3
     );
-    assert!(state.lexical.as_slice().iter().any(|event|matches!(event, Event::Diagnostic(records) if records.as_slice().iter().any(|d|d.code==crate::parser::tokenizer::token::DiagnosticCode::DuplicateAttribute))));
+    assert!(state.lexical.as_slice().iter().any(|event|matches!(event, Event::Diagnostic(records) if state.before.kernel.session.observed_evidence().tokenizer_observation(records).code == crate::parser::tokenizer::token::DiagnosticCode::DuplicateAttribute)));
     let mut frozen = observe_head(output, &mut c);
     let doc = frozen.document().unwrap();
     let html = doc.node(&doc.root().children().last().unwrap()).unwrap();
@@ -2366,8 +2465,7 @@ fn beforehead_and_inhead_ignore_erroneous_doctype_endtags_and_nested_head() {
         .state
         .as_ref()
         .unwrap()
-        .diagnostics
-        .as_slice()
+        .diagnostics()
         .iter()
         .map(|d| d.condition)
         .collect();
@@ -2520,7 +2618,7 @@ fn selfclosing_text_and_noscript_starttags_remain_open_and_emit_unacknowledged_e
         HtmlSource::utf8("<title/>x</title><style/>y</style><noscript/></noscript><meta/></head>");
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
-    let diagnostics = output.driver.state.as_ref().unwrap().diagnostics.as_slice();
+    let diagnostics = output.driver.state.as_ref().unwrap().diagnostics();
     assert_eq!(diagnostics.len(), 3);
     assert!(
         diagnostics
@@ -2550,11 +2648,10 @@ fn disabled_noscript_default_closes_then_reprocesses_br_as_afterhead_input() {
     let mut c = control(100);
     let output = head_boundary(&source, &mut c);
     let state = output.driver.state.as_ref().unwrap();
-    assert_eq!(state.diagnostics.as_slice().len(), 2);
+    assert_eq!(state.diagnostics().len(), 2);
     assert!(
         state
-            .diagnostics
-            .as_slice()
+            .diagnostics()
             .iter()
             .all(|d| d.condition == HeadCondition::UnexpectedInNoscript
                 && d.mode == InsertionMode::InHeadNoscript)
@@ -2599,7 +2696,7 @@ fn eof_and_permitted_beforehead_endtags_create_head_with_exact_continuation_inpu
                 .map(|p| source.text(&p.source).unwrap()),
             pending.map(DocumentString::from)
         );
-        assert!(state.diagnostics.as_slice().is_empty());
+        assert!(state.diagnostics().is_empty());
         let mut frozen = observe_head(output, &mut c);
         assert!(head_names(frozen.document().unwrap()).is_empty());
         frozen.release(&mut c).unwrap();
@@ -2672,7 +2769,9 @@ fn actual_template_stack_predicate_distinguishes_foreign_template_from_html_temp
     let source = HtmlSource::utf8("<html><template>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(
         &mut tokenizer,
         RootKind::Document(HtmlDocumentMode::NoQuirks),
@@ -2890,7 +2989,7 @@ fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_fac
     );
     let head = driver.head.as_ref().unwrap();
     let state = head.state.as_ref().unwrap();
-    let diagnostics = state.diagnostics.as_slice();
+    let diagnostics = state.diagnostics();
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
         diagnostics[0].condition,
@@ -3060,10 +3159,17 @@ fn standalone_scriptdata_preserves_newline_origins_and_state_specific_null_recov
         .as_slice()
         .iter()
         .find_map(|event| match event {
-            Event::Diagnostic(diagnostics) => diagnostics.as_slice().iter().find(|diagnostic| {
-                diagnostic.code
-                    == crate::parser::tokenizer::token::DiagnosticCode::UnexpectedNullCharacter
-            }),
+            Event::Diagnostic(id) => {
+                let diagnostic = state
+                    .before
+                    .kernel
+                    .session
+                    .observed_evidence()
+                    .tokenizer_observation(id);
+                (diagnostic.code
+                    == crate::parser::tokenizer::token::DiagnosticCode::UnexpectedNullCharacter)
+                    .then_some(diagnostic)
+            }
             _ => None,
         })
         .expect("actual ScriptData NULL diagnostic");
@@ -3246,7 +3352,9 @@ fn tokenizer_next_input_position_is_nonconsuming_and_uses_real_utf8_crlf_and_utf
     ] {
         let mut c = control(100);
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+                .unwrap();
         let mut start = Some(next_kind(&mut tokenizer, &mut c));
         crate::construction::parser_session::release_token_kind(&mut start, &mut c).unwrap();
         tokenizer
@@ -3372,7 +3480,9 @@ fn tokenizer_next_input_position_at_eof_is_checked_empty_and_foreign_owner_is_re
     let source = HtmlSource::utf8("");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let range = tokenizer
         .checked_next_input_position(&source, &mut c)
         .unwrap();
@@ -3470,7 +3580,7 @@ fn standalone_selfclosing_script_is_not_void_and_emits_exact_source_qualified_er
     let node = script_text_node(&mut driver);
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
-    let diagnostics = state.diagnostics.as_slice();
+    let diagnostics = state.diagnostics();
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
         diagnostics[0].condition,
@@ -3514,7 +3624,9 @@ fn tokenizer_next_input_point_has_independent_physical_provider_and_metadata_cat
     ] {
         let mut c = control(100);
         c.admit_source(&source).unwrap();
-        let tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let tokenizer =
+            crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+                .unwrap();
         let before = c.usage().clone();
         let point = tokenizer
             .checked_next_input_position(&source, &mut c)
@@ -3553,7 +3665,9 @@ fn tokenizer_next_input_point_uses_actual_reconsume_and_reference_lookahead_posi
     ] {
         let mut c = control(100);
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+                .unwrap();
         let first = next_kind(&mut tokenizer, &mut c);
         let TokenKind::Text(value) = &first else {
             panic!("real recovered literal")
@@ -3736,7 +3850,9 @@ fn present_token_disposal_accounts_for_real_pending_and_payload_moves() {
     let source = HtmlSource::utf8("");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let Event::Token(event) = tokenizer.next(&mut c, false).unwrap().unwrap() else {
         panic!("real EOF token");
     };
@@ -3744,7 +3860,7 @@ fn present_token_disposal_accounts_for_real_pending_and_payload_moves() {
     assert!(matches!(input.as_ref().unwrap().kind, TokenKind::Eof));
     let before = c.usage().clone();
     dispose_token(&mut input, &mut c).unwrap();
-    // Optional Token take + constructed PendingToken, then extracted TokenKind
+    // Optional Token take + PendingToken with actual family descriptor, then TokenKind
     // and its optional-slot disposal. EOF carries no nested payload tickets.
     let copied = size_of::<Option<super::super::tokenizer::token::Token>>()
         + size_of::<prologue::PendingToken>()
@@ -3760,7 +3876,7 @@ fn present_token_disposal_accounts_for_real_pending_and_payload_moves() {
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
-        6
+        7
     );
     assert!(input.is_none());
     assert!(c.stop().is_none());
@@ -3813,6 +3929,797 @@ pub(super) fn expected_outline(rows: &[(usize, &str)]) -> Vec<(usize, Vec<u16>)>
     rows.iter()
         .map(|(depth, value)| (*depth, value.encode_utf16().collect()))
         .collect()
+}
+
+fn assert_pre_listing_self_closing_rule(
+    source: &str,
+    start_end: usize,
+    br_start: usize,
+    br_end: usize,
+    rows: &[(usize, &str)],
+) {
+    use super::head::{HeadCondition, HeadStep, InsertionMode};
+    use crate::construction::parser_session::evidence::{
+        DiagnosticContext, DiagnosticKind, DiagnosticLocationRole, DiagnosticSeverity,
+        DiagnosticToken,
+    };
+
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(standalone_boundary(&mut driver), HeadStep::Complete);
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert!(!state.frameset_ok);
+    let evidence = state.before.kernel.session.retained_evidence().unwrap();
+    // HTML877d's pre/listing row does not acknowledge the start-token solidus.
+    // That error precedes the later end-br recovery in the same InBody phase.
+    // Neither the rule identity nor the offsets are derived from the producer.
+    assert_eq!(evidence.len(), 2);
+    for (index, (condition, branch, start, end)) in [
+        (
+            HeadCondition::UnacknowledgedSelfClosing,
+            "pre-or-listing-start/self-closing",
+            21,
+            start_end,
+        ),
+        (
+            HeadCondition::UnexpectedEndTag,
+            "br-end/reprocess-as-start",
+            br_start,
+            br_end,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (record, location) = evidence.retained_record(index).unwrap();
+        assert_eq!(record.kind, DiagnosticKind::Tree(condition));
+        assert_eq!(
+            record.context,
+            DiagnosticContext::Tree(InsertionMode::InBody)
+        );
+        assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+        assert_eq!(record.rule.anchor, "parsing-main-inbody");
+        assert_eq!(record.rule.branch, branch);
+        assert_eq!(location.source.source(), request.source().identity());
+        assert_eq!((location.start(), location.end()), (start, end));
+        assert_eq!(location.role, DiagnosticLocationRole::TokenEnvelope);
+        assert_eq!(location.token, Some(DiagnosticToken::Tag));
+    }
+    let (mut c, mut frozen) = body_document(driver);
+    // The self-closing flag leaves the actual element open; its initial LF is
+    // ignored, A remains inside it, and the recovered br precedes a sibling p.
+    assert_eq!(outline(frozen.document().unwrap()), expected_outline(rows));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn pre_self_closing_pre_listing_rule_keeps_literal_evidence_and_recovery() {
+    assert_pre_listing_self_closing_rule(
+        "<!doctype html><body><pre/>\nA</pre></br><p>Z</p>",
+        27,
+        35,
+        40,
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "pre"),
+            (3, "#A"),
+            (2, "br"),
+            (2, "p"),
+            (3, "#Z"),
+        ],
+    );
+}
+
+#[test]
+fn listing_self_closing_pre_listing_rule_keeps_literal_evidence_and_recovery() {
+    assert_pre_listing_self_closing_rule(
+        "<!doctype html><body><listing/>\nA</listing></br><p>Z</p>",
+        31,
+        43,
+        48,
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "listing"),
+            (3, "#A"),
+            (2, "br"),
+            (2, "p"),
+            (3, "#Z"),
+        ],
+    );
+}
+
+// Literal source-rule observations through the actual driver and native arena.
+struct ExpectedTreeRule {
+    condition: super::head::HeadCondition,
+    mode: super::head::InsertionMode,
+    anchor: &'static str,
+    branch: &'static str,
+    span: (usize, usize),
+}
+fn assert_caller_rule_evidence(
+    source: &str,
+    expected: &[ExpectedTreeRule],
+    rows: &[(usize, &str)],
+) {
+    use super::head::HeadStep;
+    use crate::construction::parser_session::evidence::{
+        DiagnosticContext, DiagnosticKind, DiagnosticLocationRole, DiagnosticSeverity,
+        DiagnosticToken,
+    };
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(standalone_boundary(&mut driver), HeadStep::Complete);
+    let evidence = driver
+        .head
+        .as_ref()
+        .unwrap()
+        .state
+        .as_ref()
+        .unwrap()
+        .before
+        .kernel
+        .session
+        .retained_evidence()
+        .unwrap();
+    assert_eq!(evidence.len(), expected.len(), "{source}");
+    for (index, expected) in expected.iter().enumerate() {
+        let (record, location) = evidence.retained_record(index).unwrap();
+        assert_eq!(
+            record.kind,
+            DiagnosticKind::Tree(expected.condition),
+            "{source} record {index}"
+        );
+        assert_eq!(
+            record.context,
+            DiagnosticContext::Tree(expected.mode),
+            "{source} record {index}"
+        );
+        assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+        assert_eq!(
+            record.rule.anchor, expected.anchor,
+            "{source} record {index}"
+        );
+        assert_eq!(
+            record.rule.branch, expected.branch,
+            "{source} record {index}"
+        );
+        assert_eq!(location.source.source(), request.source().identity());
+        assert_eq!((location.start(), location.end()), expected.span);
+        assert_eq!(location.role, DiagnosticLocationRole::TokenEnvelope);
+        assert_eq!(location.token, Some(DiagnosticToken::Tag));
+    }
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(outline(frozen.document().unwrap()), expected_outline(rows));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn in_table_body_tr_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><tbody><tr/></tr></tbody></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InRow,
+            anchor: "parsing-main-intbody",
+            branch: "table-structure-start/self-closing",
+            span: (29, 34),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+        ],
+    );
+}
+
+#[test]
+fn in_row_td_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><tbody><tr><td/></td></tr></tbody></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InCell,
+            anchor: "parsing-main-intr",
+            branch: "cell-start/self-closing",
+            span: (33, 38),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "td"),
+        ],
+    );
+}
+
+#[test]
+fn in_row_th_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><tbody><tr><th/></th></tr></tbody></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InCell,
+            anchor: "parsing-main-intr",
+            branch: "cell-start/self-closing",
+            span: (33, 38),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tbody"),
+            (4, "tr"),
+            (5, "th"),
+        ],
+    );
+}
+
+#[test]
+fn in_table_caption_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><caption/></caption></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InCaption,
+            anchor: "parsing-main-intable",
+            branch: "table-structure-start/self-closing",
+            span: (22, 32),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "caption"),
+        ],
+    );
+}
+
+#[test]
+fn in_table_colgroup_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><colgroup/></colgroup></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InColumnGroup,
+            anchor: "parsing-main-intable",
+            branch: "table-structure-start/self-closing",
+            span: (22, 33),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "colgroup"),
+        ],
+    );
+}
+
+#[test]
+fn in_table_tbody_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><tbody/></tbody></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InTableBody,
+            anchor: "parsing-main-intable",
+            branch: "table-structure-start/self-closing",
+            span: (22, 30),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tbody"),
+        ],
+    );
+}
+
+#[test]
+fn in_table_thead_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><thead/></thead></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InTableBody,
+            anchor: "parsing-main-intable",
+            branch: "table-structure-start/self-closing",
+            span: (22, 30),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "thead"),
+        ],
+    );
+}
+
+#[test]
+fn in_table_tfoot_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><tfoot/></tfoot></table>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InTableBody,
+            anchor: "parsing-main-intable",
+            branch: "table-structure-start/self-closing",
+            span: (22, 30),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "table"),
+            (3, "tfoot"),
+        ],
+    );
+}
+
+#[test]
+fn after_head_frameset_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head></head><frameset/></frameset>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InFrameset,
+            anchor: "the-after-head-insertion-mode",
+            branch: "frameset-start/self-closing",
+            span: (28, 39),
+        }],
+        &[(0, "html"), (1, "head"), (1, "frameset")],
+    );
+}
+
+#[test]
+fn in_body_frameset_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><input type=hidden><frameset/></frameset>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedBodyToken,
+                mode: InsertionMode::InBody,
+                anchor: "parsing-main-inbody",
+                branch: "frameset-start/in-body",
+                span: (34, 45),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::InFrameset,
+                anchor: "parsing-main-inbody",
+                branch: "frameset-start/self-closing",
+                span: (34, 45),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "frameset")],
+    );
+}
+
+#[test]
+fn in_frameset_nested_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head></head><frameset><frameset/></frameset></frameset>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnacknowledgedSelfClosing,
+            mode: InsertionMode::InFrameset,
+            anchor: "parsing-main-inframeset",
+            branch: "frameset-start/self-closing",
+            span: (38, 49),
+        }],
+        &[(0, "html"), (1, "head"), (1, "frameset"), (2, "frameset")],
+    );
+}
+
+#[test]
+fn before_head_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><html><html/><head></head><body>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::BeforeHead,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (21, 28),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::BeforeHead,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (21, 28),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "body")],
+    );
+}
+
+#[test]
+fn in_head_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head><html/></head><body>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::InHead,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (21, 28),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::InHead,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (21, 28),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "body")],
+    );
+}
+
+#[test]
+fn after_head_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head></head><html/><body>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::AfterHead,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (28, 35),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::AfterHead,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (28, 35),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "body")],
+    );
+}
+
+#[test]
+fn in_body_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><body><html/></body>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::InBody,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (21, 28),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::InBody,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (21, 28),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "body")],
+    );
+}
+
+#[test]
+fn after_body_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><body></body><html/>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::AfterBody,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (28, 35),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::AfterBody,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (28, 35),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "body")],
+    );
+}
+
+#[test]
+fn after_after_body_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><body></body></html><html/>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::AfterAfterBody,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (35, 42),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::AfterAfterBody,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (35, 42),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "body")],
+    );
+}
+
+#[test]
+fn in_frameset_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head></head><frameset><html/></frameset>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::InFrameset,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (38, 45),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::InFrameset,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (38, 45),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "frameset")],
+    );
+}
+
+#[test]
+fn after_frameset_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head></head><frameset></frameset><html/>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::AfterFrameset,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (49, 56),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::AfterFrameset,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (49, 56),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "frameset")],
+    );
+}
+
+#[test]
+fn after_after_frameset_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head></head><frameset></frameset></html><html/>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::AfterAfterFrameset,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (56, 63),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::AfterAfterFrameset,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (56, 63),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "frameset")],
+    );
+}
+
+#[test]
+fn in_head_noscript_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><head><noscript><html/></noscript></head><body>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::InHeadNoscript,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (31, 38),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::InHeadNoscript,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (31, 38),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (2, "noscript"), (1, "body")],
+    );
+}
+
+#[test]
+fn in_table_html_self_closing_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><table><html/></table>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedTableToken,
+                mode: InsertionMode::InTable,
+                anchor: "parsing-main-intable",
+                branch: "anything-else/foster",
+                span: (22, 29),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedHtml,
+                mode: InsertionMode::InTable,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+                span: (22, 29),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnacknowledgedSelfClosing,
+                mode: InsertionMode::InTable,
+                anchor: "parsing-main-inbody",
+                branch: "html-start/self-closing",
+                span: (22, 29),
+            },
+        ],
+        &[(0, "html"), (1, "head"), (1, "body"), (2, "table")],
+    );
+}
+
+#[test]
+fn foreign_end_br_breakout_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><svg><g></br>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedForeignToken,
+                mode: InsertionMode::InBody,
+                anchor: "parsing-main-inforeign",
+                branch: "foreign-end/html-breakout",
+                span: (23, 28),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedEndTag,
+                mode: InsertionMode::InBody,
+                anchor: "parsing-main-inbody",
+                branch: "br-end/reprocess-as-start",
+                span: (23, 28),
+            },
+        ],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "svg"),
+            (3, "g"),
+            (2, "br"),
+        ],
+    );
+}
+
+#[test]
+fn foreign_end_p_breakout_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><svg><g></p>",
+        &[
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedForeignToken,
+                mode: InsertionMode::InBody,
+                anchor: "parsing-main-inforeign",
+                branch: "foreign-end/html-breakout",
+                span: (23, 27),
+            },
+            ExpectedTreeRule {
+                condition: HeadCondition::UnexpectedEndTag,
+                mode: InsertionMode::InBody,
+                anchor: "parsing-main-inbody",
+                branch: "p-end/p-not-in-button-scope",
+                span: (23, 27),
+            },
+        ],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "svg"),
+            (3, "g"),
+            (2, "p"),
+        ],
+    );
+}
+
+#[test]
+fn foreign_start_breakout_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><svg><g><br/>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnexpectedForeignToken,
+            mode: InsertionMode::InBody,
+            anchor: "parsing-main-inforeign",
+            branch: "foreign-start/html-breakout",
+            span: (23, 28),
+        }],
+        &[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "svg"),
+            (3, "g"),
+            (2, "br"),
+        ],
+    );
+}
+
+#[test]
+fn explicit_body_frameset_guard_retains_caller_rule() {
+    use super::head::{HeadCondition, InsertionMode};
+    assert_caller_rule_evidence(
+        "<!doctype html><body><frameset/>",
+        &[ExpectedTreeRule {
+            condition: HeadCondition::UnexpectedBodyToken,
+            mode: InsertionMode::InBody,
+            anchor: "parsing-main-inbody",
+            branch: "frameset-start/in-body",
+            span: (21, 32),
+        }],
+        &[(0, "html"), (1, "head"), (1, "body")],
+    );
 }
 
 #[test]
@@ -4039,9 +4946,8 @@ fn body_first_lf_and_null_recovery_preserve_exact_units_and_omitted_origin_evide
         .collect();
     assert_eq!(omitted, vec![vec![10], vec![0], vec![10]]);
     let null = state
-        .diagnostics
-        .as_slice()
-        .iter()
+        .diagnostics()
+        .into_iter()
         .find(|d| d.condition == super::head::HeadCondition::NullInBody)
         .unwrap();
     assert_eq!((null.source.start(), null.source.end()), (16, 17));
@@ -4306,8 +5212,7 @@ fn body_eof_predicate_accepts_rb_rtc_and_reports_one_actual_unexpected_open_node
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert_eq!(
             state
-                .diagnostics
-                .as_slice()
+                .diagnostics()
                 .iter()
                 .filter(|d| d.condition == super::head::HeadCondition::UnexpectedOpenElement)
                 .count(),
@@ -4678,7 +5583,7 @@ fn late_script_revoked_provenance_rejects_before_temporary_head_push_or_delegati
         .state
         .as_ref()
         .unwrap()
-        .diagnostics
+        .diagnostics()
         .len();
     let error = driver.step().unwrap_err();
     assert!(matches!(
@@ -4697,7 +5602,7 @@ fn late_script_revoked_provenance_rejects_before_temporary_head_push_or_delegati
     );
     assert!(state.temporary_head.is_none());
     assert_eq!(
-        state.diagnostics.len(),
+        state.diagnostics().len(),
         diagnostics,
         "unsupported provenance precedes delegated row effects"
     );
@@ -5310,7 +6215,9 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let source = HtmlSource::utf8("<html><p><span>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
     let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
     let old = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
@@ -6397,7 +7304,7 @@ fn structural_table_unsupported_creation_retains_original_before_table_effects()
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         assert_eq!(state.mode, super::head::InsertionMode::InTable);
         assert!(!state.before.kernel.foster_parenting);
-        assert_eq!(state.diagnostics.len(), 0);
+        assert_eq!(state.diagnostics().len(), 0);
         assert!(matches!(
             state.pending.as_ref().unwrap().payload,
             Payload::Tag(Some(_))
@@ -6430,8 +7337,7 @@ fn structural_table_null_preprocessing_and_literal_utf16_are_retained_exactly() 
         .state
         .as_ref()
         .unwrap()
-        .diagnostics
-        .as_slice()
+        .diagnostics()
         .iter()
         .filter(|diagnostic| diagnostic.condition == super::head::HeadCondition::NullInTable)
         .map(|diagnostic| (diagnostic.source.start(), diagnostic.source.end()))
@@ -6722,8 +7628,7 @@ fn structural_table_real_comment_pi_and_malformed_column_and_row_recovery() {
         .state
         .as_ref()
         .unwrap()
-        .diagnostics
-        .as_slice()
+        .diagnostics()
         .iter()
         .filter(|d| d.condition == super::head::HeadCondition::UnexpectedTableToken)
         .count();
@@ -7465,8 +8370,7 @@ fn frameset_mixed_text_keeps_every_whitespace_run_and_exact_omitted_origins() {
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     let errors: Vec<_> = state
-        .diagnostics
-        .as_slice()
+        .diagnostics()
         .iter()
         .filter(|d| {
             matches!(
@@ -7565,8 +8469,7 @@ fn frameset_noframes_restores_each_actual_return_mode_on_end_and_eof() {
             assert_eq!(state.return_mode, None);
             assert_eq!(
                 state
-                    .diagnostics
-                    .as_slice()
+                    .diagnostics()
                     .iter()
                     .filter(|d| d.condition == HeadCondition::EofInText)
                     .count(),
@@ -7665,12 +8568,7 @@ fn frameset_selfclosing_acknowledgement_and_open_eof_follow_actual_stack() {
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.before.kernel.stack().unwrap().len(), 0);
-    let conditions: Vec<_> = state
-        .diagnostics
-        .as_slice()
-        .iter()
-        .map(|d| d.condition)
-        .collect();
+    let conditions: Vec<_> = state.diagnostics().iter().map(|d| d.condition).collect();
     assert_eq!(
         conditions,
         [
@@ -7741,7 +8639,7 @@ fn frameset_body_diagnostic_cap_stops_before_removal_or_stack_changes() {
             .state
             .as_ref()
             .unwrap()
-            .diagnostics
+            .diagnostics()
             .len(),
         1
     );
@@ -7782,11 +8680,17 @@ fn frameset_afterafter_whitespace_reconstruction_stop_retains_exact_original_ran
     let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
     assert!(state.pending.is_none());
     for _ in 0..100 {
+        let evidence = state
+            .before
+            .kernel
+            .session
+            .evidence(&mut driver.control)
+            .unwrap();
         let event = state
             .tokenizer
             .as_mut()
             .unwrap()
-            .next(&mut driver.control, false)
+            .next(&mut driver.control, false, evidence)
             .unwrap()
             .unwrap();
         match event {
@@ -7795,7 +8699,7 @@ fn frameset_afterafter_whitespace_reconstruction_stop_retains_exact_original_ran
                 write(
                     std::mem::size_of::<Option<super::prologue::PendingToken>>()
                         + std::mem::size_of::<super::prologue::PendingToken>(),
-                    2,
+                    3,
                     &mut driver.control,
                 )
                 .unwrap();
@@ -8045,7 +8949,7 @@ fn frameset_proofless_head_rejects_before_any_frame_family_effect() {
     );
     let state = stage.state.as_ref().unwrap();
     assert_eq!(state.before.kernel.stack().unwrap().len(), 1);
-    assert!(state.diagnostics.as_slice().is_empty());
+    assert!(state.diagnostics().is_empty());
     assert_eq!(
         c.usage().resource(HtmlParseResource::ManagedNodes).current,
         nodes
@@ -8090,7 +8994,7 @@ fn frameset_import_taint_rejects_frame_before_diagnostic_stack_and_creation_effe
     );
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
-    assert!(state.diagnostics.as_slice().is_empty());
+    assert!(state.diagnostics().is_empty());
     assert!(matches!(
         state.pending.as_ref().unwrap().payload,
         Payload::Tag(Some(_))
@@ -8626,7 +9530,7 @@ fn textarea_proofless_head_rejects_before_diagnostic_stack_and_creation_effects(
         ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
     );
     let state = stage.state.as_ref().unwrap();
-    assert!(state.diagnostics.as_slice().is_empty());
+    assert!(state.diagnostics().is_empty());
     assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
     assert!(matches!(
         state.pending.as_ref().unwrap().payload,
@@ -9308,7 +10212,7 @@ fn hidden_input_proofless_head_rejects_before_diagnostic_stack_or_creation() {
         ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
     );
     let state = stage.state.as_ref().unwrap();
-    assert!(state.diagnostics.as_slice().is_empty());
+    assert!(state.diagnostics().is_empty());
     assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
     assert!(matches!(
         state.pending.as_ref().unwrap().payload,
@@ -9951,8 +10855,7 @@ fn foreign_cdata_null_pi_comment_doctype_and_surrogates_keep_real_native_payload
     assert!(!state.frameset_ok);
     assert_eq!(
         state
-            .diagnostics
-            .as_slice()
+            .diagnostics()
             .iter()
             .filter(|d| d.condition == super::head::HeadCondition::NullInForeign)
             .count(),
@@ -9960,8 +10863,7 @@ fn foreign_cdata_null_pi_comment_doctype_and_surrogates_keep_real_native_payload
     );
     assert_eq!(
         state
-            .diagnostics
-            .as_slice()
+            .diagnostics()
             .iter()
             .filter(|d| d.condition == super::head::HeadCondition::UnexpectedDoctype)
             .count(),
@@ -10305,8 +11207,7 @@ fn foreign_all_namespace_adjustments_unknown_colons_and_xmlns_errors_keep_origin
     let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
     assert_eq!(
         state
-            .diagnostics
-            .as_slice()
+            .diagnostics()
             .iter()
             .filter(|d| d.condition == super::head::HeadCondition::ForeignNamespaceMismatch)
             .count(),
@@ -10479,7 +11380,7 @@ fn foreign_proofless_head_preserves_start_token_before_reconstruction_and_creati
         let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
         assert_eq!(c.stop(), Some(stop));
         let state = stage.state.as_ref().unwrap();
-        assert!(state.diagnostics.as_slice().is_empty());
+        assert!(state.diagnostics().is_empty());
         assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
         let Payload::Tag(Some(input)) = &state.pending.as_ref().unwrap().payload else {
             panic!("untouched tag");

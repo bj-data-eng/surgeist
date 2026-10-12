@@ -35,6 +35,8 @@ use std::{mem, sync::Weak};
 
 mod clone;
 mod completion;
+pub(crate) mod evidence;
+use evidence::ParseEvidence;
 mod foreign;
 pub(crate) mod native_view;
 mod pi;
@@ -185,6 +187,7 @@ impl FormattingCreation {
 struct SessionStorage {
     control: ControlIdentity,
     effects: ConstructionEffects,
+    evidence: Option<ParseEvidence>,
     #[cfg(test)]
     cancel_after_removal: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
@@ -222,6 +225,7 @@ struct FrozenStorage {
     tickets_allocation: VectorCapacity<VectorCapacity<usize>>,
     payloads: PayloadStorage,
     effects: ConstructionEffects,
+    evidence: Option<ParseEvidence>,
 }
 /// Actual backing and exact record-qualified ownership, not allocation proxies.
 struct PayloadStorage {
@@ -864,6 +868,7 @@ impl SessionStorage {
         let mut session = Self {
             control: control.identity(),
             effects,
+            evidence: None,
             #[cfg(test)]
             cancel_after_removal: None,
             #[cfg(test)]
@@ -3871,6 +3876,7 @@ impl SessionStorage {
         let Self {
             control: owner,
             effects,
+            evidence,
             #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
@@ -3889,6 +3895,9 @@ impl SessionStorage {
             usage,
             payloads,
         } = self;
+        if let Some(evidence) = evidence {
+            evidence.release(control).expect("actual diagnostic owner");
+        }
         effects
             .release(control)
             .expect("actual construction effect owners");
@@ -5633,9 +5642,16 @@ impl ParserArenaSession {
         control: &mut ParseControl,
     ) -> Result<FrozenArena, SessionError> {
         let document = self.active_mut()?.prepare_freeze(control)?;
+        // Only a parser-initialized session carries this actual variable owner.
+        // Prepay its active-to-frozen move before storage is taken; a stopped
+        // share restores that same owner without useful recovery work.
+        if self.active()?.evidence.is_some() {
+            payload_write::<Option<ParseEvidence>>(control, 2)?;
+        }
         let SessionStorage {
             control: owner,
             effects,
+            evidence,
             #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
@@ -5668,6 +5684,7 @@ impl ParserArenaSession {
                 self.storage = Some(SessionStorage {
                     control: owner,
                     effects,
+                    evidence,
                     #[cfg(test)]
                     cancel_after_removal: None,
                     #[cfg(test)]
@@ -5705,6 +5722,7 @@ impl ParserArenaSession {
                 tickets_allocation,
                 payloads,
                 effects,
+                evidence,
             }),
         })
     }
@@ -5987,6 +6005,7 @@ impl FrozenArena {
             tickets_allocation,
             payloads,
             effects,
+            evidence,
         } = self
             .storage
             .take()
@@ -6015,10 +6034,14 @@ impl FrozenArena {
                     tickets_allocation,
                     payloads,
                     effects,
+                    evidence,
                 });
                 return Err(stop.into());
             }
         };
+        if let Some(evidence) = evidence {
+            evidence.release(control)?;
+        }
         effects.release(control)?;
         release_parts(
             control,
@@ -7498,7 +7521,7 @@ mod tests {
         ParseControl,
         ParserArenaSession,
         ParserNode,
-        crate::parser::tokenizer::Tokenizer<'a>,
+        crate::parser::tokenizer::tests::LexerFixture<'a>,
     ) {
         output_owner_cancellable(source, caps, HtmlParseCancellation::new())
     }
@@ -7511,12 +7534,12 @@ mod tests {
         ParseControl,
         ParserArenaSession,
         ParserNode,
-        crate::parser::tokenizer::Tokenizer<'a>,
+        crate::parser::tokenizer::tests::LexerFixture<'a>,
     ) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let mut c = ParseControl::new(caps, cancellation);
         c.admit_source(source).unwrap();
-        let mut tokenizer = Tokenizer::new(source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -7795,7 +7818,7 @@ mod tests {
 
     #[test]
     fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundary() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for cap in [13, 14] {
             let source = crate::HtmlSource::utf8("<output>");
             let mut c = ParseControl::new(
@@ -7807,7 +7830,7 @@ mod tests {
                 HtmlParseCancellation::new(),
             );
             c.admit_source(&source).unwrap();
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
@@ -7894,12 +7917,12 @@ mod tests {
     #[test]
     fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retains_both_slots()
     {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><output>");
         let cancellation = HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancellation.clone());
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -8039,7 +8062,7 @@ mod tests {
         ParseControl,
         ParserArenaSession,
         ParserNode,
-        crate::parser::tokenizer::Tokenizer<'a>,
+        crate::parser::tokenizer::tests::LexerFixture<'a>,
     ) {
         textarea_owner_cancellable(source, caps, HtmlParseCancellation::new())
     }
@@ -8051,12 +8074,12 @@ mod tests {
         ParseControl,
         ParserArenaSession,
         ParserNode,
-        crate::parser::tokenizer::Tokenizer<'a>,
+        crate::parser::tokenizer::tests::LexerFixture<'a>,
     ) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let mut c = ParseControl::new(caps, cancellation);
         c.admit_source(source).unwrap();
-        let mut tokenizer = Tokenizer::new(source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -8084,7 +8107,7 @@ mod tests {
     }
 
     fn next_text(
-        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
     ) -> Option<Text> {
         let TokenKind::Text(text) = lexical_kind(tokenizer, c) else {
@@ -8410,7 +8433,7 @@ mod tests {
 
     #[test]
     fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for cap in [15, 16, 17] {
             let source = crate::HtmlSource::utf8("<textarea>");
             let mut c = ParseControl::new(
@@ -8422,7 +8445,7 @@ mod tests {
                 HtmlParseCancellation::new(),
             );
             c.admit_source(&source).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
@@ -8470,12 +8493,12 @@ mod tests {
 
     #[test]
     fn textarea_initial_reset_precedes_parser_association_commit_and_stop_owns_every_slot() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><textarea>");
         let cancellation = HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancellation.clone());
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -8650,7 +8673,7 @@ mod tests {
     }
 
     fn formatting_lexical_tag(
-        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
     ) -> (Option<Tag>, crate::HtmlSourceRange) {
         loop {
@@ -8676,7 +8699,7 @@ mod tests {
     }
     #[test]
     fn template_owned_html_wrapper_pre_registration_stops_reclaim_lexical_fields() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // require: 6 visits; kind: 1; name owner+alias: 2; lowercase
         // template: 16; indexed attribute: 1; its two owner+alias checks: 4;
         // lowercase a: 2. This is the actual borrowed preflight, before take.
@@ -8690,7 +8713,7 @@ mod tests {
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut input, _) = formatting_lexical_tag(&mut lexer, &mut c);
             lexer.release(&mut c).unwrap();
             let tag = input.as_ref().unwrap();
@@ -8739,7 +8762,7 @@ mod tests {
 
     #[test]
     fn template_owned_html_wrapper_cancellation_reclaims_transferred_lexical_fields() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<template a='V&#65;'>");
         let cancellation = HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancellation.clone());
@@ -8747,7 +8770,7 @@ mod tests {
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, _) = formatting_lexical_tag(&mut lexer, &mut c);
         lexer.release(&mut c).unwrap();
         // Exercise the real owned wrapper with fields from a validated actual
@@ -8849,7 +8872,7 @@ mod tests {
 
     #[test]
     fn formatting_completed_copy_take_stops_keep_recipe_and_reclaim_independent_fields() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         fn fixture(
             source: &crate::HtmlSource,
             c: &mut ParseControl,
@@ -8858,7 +8881,7 @@ mod tests {
             let mut session =
                 ParserArenaSession::new(c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
             let parent = formatting_parent(c, &mut session);
-            let mut lexer = Tokenizer::new(source, State::Data, None, c).unwrap();
+            let mut lexer = LexerFixture::new(source, State::Data, None, c).unwrap();
             let (mut input, range) = formatting_lexical_tag(&mut lexer, c);
             lexer.release(c).unwrap();
             let creation = session
@@ -8939,7 +8962,7 @@ mod tests {
     }
     #[test]
     fn formatting_replay_copies_exact_utf16_attributes_and_original_origins_into_distinct_nodes() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
             "<b z='A&#x1F600;\r\n"
                 .encode_utf16()
@@ -8953,7 +8976,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let parent = formatting_parent(&mut c, &mut session);
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         tokenizer.release(&mut c).unwrap();
         let original_pointer = input
@@ -9035,7 +9058,7 @@ mod tests {
     #[test]
     fn formatting_noah_ignores_attribute_order_duplicate_recovery_and_self_closing_but_preserves_exact_values()
      {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source =
             crate::HtmlSource::utf8("<b a=x z=y><b z=y a=x a=ignored /><b a=x z=Y><i z=y a=x>");
         let mut c = control();
@@ -9043,7 +9066,7 @@ mod tests {
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut first, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         let mut a = session
             .retain_formatting_creation(&mut c, &mut first, range)
@@ -9084,14 +9107,14 @@ mod tests {
 
     #[test]
     fn formatting_capture_rejects_alias_and_wrong_family_without_consuming_original() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<b a=x><applet>");
         let mut c = control();
         c.admit_source(&source).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         let alias = input.as_ref().unwrap().name.value.text().clone();
         assert!(matches!(
@@ -9119,7 +9142,7 @@ mod tests {
 
     #[test]
     fn formatting_replay_rejects_foreign_arena_and_parent_before_new_payload_admission() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<b a=x>");
         let mut c = control();
         c.admit_source(&source).unwrap();
@@ -9131,7 +9154,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let other_parent = other.root(&mut c).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         tokenizer.release(&mut c).unwrap();
         let mut creation = session
@@ -9163,7 +9186,7 @@ mod tests {
 
     #[test]
     fn formatting_replay_token_attribute_coexistence_exact_and_one_short_reclaims_only_copies() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for cap in [3, 4] {
             let source = crate::HtmlSource::utf8("<b a=x z=y>");
             let mut c = ParseControl::new(
@@ -9179,7 +9202,7 @@ mod tests {
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
             let parent = formatting_parent(&mut c, &mut session);
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
             tokenizer.release(&mut c).unwrap();
             let mut creation = session
@@ -9233,7 +9256,7 @@ mod tests {
 
     #[test]
     fn formatting_recipe_terminal_cancel_and_foreign_disposal_preserve_owner_then_reclaim_once() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<b a=x>");
         let cancel = HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancel.clone());
@@ -9242,7 +9265,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let parent = formatting_parent(&mut c, &mut session);
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         tokenizer.release(&mut c).unwrap();
         let mut creation = session
@@ -9271,7 +9294,7 @@ mod tests {
 
     #[test]
     fn formatting_same_source_foreign_control_replay_preserves_both_arenas_and_original_recipe() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<b a=x>");
         let mut c = control();
         c.admit_source(&source).unwrap();
@@ -9279,7 +9302,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         tokenizer.release(&mut c).unwrap();
         let mut creation = session
@@ -9379,7 +9402,7 @@ mod tests {
     #[test]
     fn formatting_namespace_copy_exact_and_one_short_buffer_limit_retains_original_and_staged_name()
     {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Original b needs one unit. Replay's copied name moves to Managed
         // before the defining 28-unit HTML namespace is buffered: peak 1+28.
         for cap in [28, 29] {
@@ -9397,7 +9420,7 @@ mod tests {
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
             let parent = session.root(&mut c).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
             tokenizer.release(&mut c).unwrap();
             let mut creation = session
@@ -9457,7 +9480,7 @@ mod tests {
     #[test]
     fn formatting_capture_one_short_ordinary_document_qualification_preserves_original_before_take()
     {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Readiness first inspects the real form phase plus five intrinsic readiness fields (six visits).
         // Qualification then admits eligibility/root-kind together (two).
         // One short leaves only readiness admitted; exactly eight completes
@@ -9469,7 +9492,7 @@ mod tests {
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
             tokenizer.release(&mut c).unwrap();
             let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -9501,7 +9524,7 @@ mod tests {
 
     #[test]
     fn formatting_wide_replay_source_map_coexistence_exact_and_one_short_reclaims_partial_copies() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Real b/v/512 literal x values have 514 original codepoint origins.
         // Independent replay retains them and needs 514 new origin records.
         for cap in [1027, 1028] {
@@ -9521,7 +9544,7 @@ mod tests {
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
             let parent = session.root(&mut c).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
             tokenizer.release(&mut c).unwrap();
             let mut creation = session
@@ -9586,7 +9609,7 @@ mod tests {
 
     #[test]
     fn formatting_capture_foreign_source_and_replay_import_refusal_leave_original_recipe_owned() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<b a=x>");
         let mut c = control();
         c.admit_source(&source).unwrap();
@@ -9594,7 +9617,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let parent = session.root(&mut c).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         tokenizer.release(&mut c).unwrap();
         let mut creation = session
@@ -9617,7 +9640,7 @@ mod tests {
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut input, _range) = formatting_lexical_tag(&mut tokenizer, &mut c);
         tokenizer.release(&mut c).unwrap();
         let foreign = crate::HtmlSource::utf8("<b a=x>").range(0, 7).unwrap();
@@ -9706,9 +9729,9 @@ mod tests {
     use crate::{HtmlParseCancellation, HtmlParseLimits};
 
     fn body_lexical_value(source: &crate::HtmlSource, c: &mut ParseControl) -> Text {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         c.admit_source(source).unwrap();
-        let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
+        let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();
         let (value, tag, attribute) = lexical_attribute_text(&mut tokenizer, c);
         tag.release(c).unwrap();
         attribute.release(c).unwrap();
@@ -9717,11 +9740,11 @@ mod tests {
     }
     #[test]
     fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_empty_attrs() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("</BR x=kept x=ignored>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -9775,12 +9798,12 @@ mod tests {
     }
     #[test]
     fn end_br_alias_foreign_and_cancel_reject_before_discarding_any_actual_field() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("</br x=kept>");
         let cancellation = HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancellation.clone());
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -9825,7 +9848,7 @@ mod tests {
     #[test]
     fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start_reprocessing()
     {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("</br x=one y=two>");
         let mut required = None;
         for remaining in [
@@ -9838,7 +9861,7 @@ mod tests {
         ] {
             let mut c = control();
             c.admit_source(&source).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("tag")
             };
@@ -9928,11 +9951,11 @@ mod tests {
     }
     #[test]
     fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<body a=x>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -9983,7 +10006,7 @@ mod tests {
     }
     #[test]
     fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_payloads() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<body id=old><body a=one b=two>");
         for cap in [2, 3] {
             let mut c = ParseControl::new(
@@ -9995,7 +10018,7 @@ mod tests {
                 HtmlParseCancellation::new(),
             );
             c.admit_source(&source).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::Tag(first) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("tag")
             };
@@ -10268,11 +10291,11 @@ mod tests {
     }
     #[test]
     fn recovered_image_keeps_actual_attributes_and_exact_original_name_span() {
-        use crate::parser::tokenizer::{Tokenizer, states::State, token::OriginKind};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::OriginKind};
         let source = crate::HtmlSource::utf8("<ImAgE id=x />");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -10330,7 +10353,7 @@ mod tests {
     }
     #[test]
     fn recovered_image_literal_coexistence_cap_preserves_old_backing_before_commit() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<image id=x>");
         // Actual incoming image(5), id(2), x(1), and tokenizer last-start(5)
         // occupy thirteen units; the replacement requires three more live.
@@ -10344,7 +10367,7 @@ mod tests {
                 HtmlParseCancellation::new(),
             );
             c.admit_source(&source).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("tag")
             };
@@ -10395,12 +10418,12 @@ mod tests {
     }
     #[test]
     fn image_alias_foreign_and_cancellation_leave_actual_name_and_attributes_in_input() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<image id=x>");
         let cancellation = HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancellation.clone());
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -10443,7 +10466,7 @@ mod tests {
     }
     #[test]
     fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<image id=x>");
         let mut required = None;
         for remaining in [
@@ -10456,7 +10479,7 @@ mod tests {
         ] {
             let mut c = control();
             c.admit_source(&source).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("tag")
             };
@@ -10587,11 +10610,11 @@ mod tests {
     }
     #[test]
     fn body_null_run_retains_the_actual_data_null_source() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("\0");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let TokenKind::Text(text) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("text")
         };
@@ -10818,13 +10841,13 @@ mod tests {
     }
     #[test]
     fn body_and_p_literals_and_both_body_merge_paths_freeze_same_native_arena() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for implied in [false, true] {
             let source =
                 crate::HtmlSource::utf8("<body id=old><body id=ignored x:id=p a=one a=last z=end>");
             let mut c = control();
             c.admit_source(&source).unwrap();
-            let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
                 panic!("tag")
@@ -10891,14 +10914,14 @@ mod tests {
         ParseControl,
         ParserArenaSession,
         crate::parser::tree_builder::StandaloneCapability<'a>,
-        crate::parser::tokenizer::Tokenizer<'a>,
+        crate::parser::tokenizer::tests::LexerFixture<'a>,
         ParserNode,
         Option<Tag>,
         crate::HtmlSourceRange,
     ) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let (mut c, session, capability) = fresh_script_owner(request);
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let (tag, source) = loop {
             match lexer.next(&mut c, false).unwrap().unwrap() {
                 crate::parser::tokenizer::token::Event::Token(event) => {
@@ -11422,7 +11445,7 @@ mod tests {
     }
     #[test]
     fn hidden_input_cancel_after_real_reset_precedes_parser_association() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8(
                 "<html><head></head><form><input value='A&#13;B' type=hidden checked>",
@@ -11431,7 +11454,8 @@ mod tests {
         );
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
             hidden_owner(&request);
-        let mut form_lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut form_lexer =
+            LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let mut form = Some(next_fixture_tag(
             &mut form_lexer,
             &mut c,
@@ -11590,9 +11614,9 @@ mod tests {
         crate::parser::tree_builder::StandaloneCapability<'a>,
         ParserNode,
     ) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let (mut c, mut session, capability) = fresh_script_owner(request);
-        let mut tokenizer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let mut incoming = loop {
             let kind = lexical_kind(&mut tokenizer, &mut c);
             if matches!(&kind, TokenKind::Tag(tag) if tag.name.value.text().code_units() == [0x73,0x63,0x72,0x69,0x70,0x74])
@@ -11794,7 +11818,7 @@ mod tests {
     }
 
     fn next_fixture_tag(
-        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
         expected: &[u16],
     ) -> Tag {
@@ -11817,8 +11841,8 @@ mod tests {
         c: &mut ParseControl,
         session: &mut ParserArenaSession,
     ) -> (ParserNode, ParserNode) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
-        let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+        let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();
         let template = next_fixture_tag(
             &mut tokenizer,
             c,
@@ -12145,7 +12169,7 @@ mod tests {
 
     #[test]
     fn empty_preparation_work_is_independent_of_actual_ordinary_ancestor_depth() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = format!("<html><head><script>{}", "<div>".repeat(16));
         let mut observed_work = Vec::new();
         for depth in [0, 16] {
@@ -12157,7 +12181,7 @@ mod tests {
             let html_index = session.active().unwrap().records[0].children[0];
             let mut parent = session.active().unwrap().node(&mut c, html_index).unwrap();
             let mut tokenizer =
-                Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+                LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             for _ in 0..depth {
                 let tag = next_fixture_tag(&mut tokenizer, &mut c, &[0x64, 0x69, 0x76]);
                 let child = session.allocate_html_tag(&mut c, &mut Some(tag)).unwrap();
@@ -12531,7 +12555,7 @@ mod tests {
     #[test]
     fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable()
     {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Root/html plus completion use9 retained slots, with prologue stack coexistence10.
         // Script metadata is reserved BEFORE transfer, followed by its actual
         // document binding, name/URI/attrs and native ticket: completed15.
@@ -12548,7 +12572,7 @@ mod tests {
             );
             let (mut c, mut session, capability) = fresh_script_owner(&request);
             let mut tokenizer =
-                Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+                LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             let mut incoming = loop {
                 let kind = lexical_kind(&mut tokenizer, &mut c);
                 if matches!(&kind, TokenKind::Tag(tag) if tag.name.value.text().code_units() == [0x73,0x63,0x72,0x69,0x70,0x74])
@@ -12620,13 +12644,13 @@ mod tests {
 
     #[test]
     fn script_allocation_alias_rejection_preserves_the_actual_lexical_owner_and_arena() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><script src=''>"),
             limits(),
         );
         let (mut c, mut session, capability, _) = fresh_script(&request, true, false);
-        let mut tokenizer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let tag = loop {
             let kind = lexical_kind(&mut tokenizer, &mut c);
             if let TokenKind::Tag(tag) = kind {
@@ -12665,10 +12689,10 @@ mod tests {
         lexical_script_type_source(crate::HtmlSource::utf8(format!("<script {attributes}>")))
     }
     fn lexical_script_type_source(source: crate::HtmlSource) -> Option<ScriptType> {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("script tag")
         };
@@ -12928,14 +12952,14 @@ mod tests {
     #[test]
     fn actual_template_contents_adoption_qualifies_inert_document_and_preserves_disconnected_script_prefix()
      {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><template><script src=''>"),
             limits(),
         );
         let (mut c, mut session, capability, node) = fresh_script(&request, false, false);
         let initial = session.script_metadata(&mut c, &node).unwrap();
-        let mut tokenizer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let tag = loop {
             let kind = lexical_kind(&mut tokenizer, &mut c);
             if let TokenKind::Tag(tag) = kind {
@@ -13020,7 +13044,7 @@ mod tests {
     }
     fn form_creation(
         session: &mut ParserArenaSession,
-        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
         parent: &ParserNode,
         form: Option<&ParserNode>,
@@ -13083,12 +13107,12 @@ mod tests {
 
     #[test]
     fn listed_creation_suppresses_pointer_for_present_empty_form_and_retains_qualified_kinds() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source =
             crate::HtmlSource::utf8("<form id=f><button><fieldset form=''><object form=f>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -13166,11 +13190,11 @@ mod tests {
 
     #[test]
     fn listed_first_id_tree_order_blocks_later_form_and_id_only_removal_reassociates() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<button form=f><div id=f><form id=f><form id=f>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -13213,11 +13237,11 @@ mod tests {
 
     #[test]
     fn listed_removal_id_event_resets_detached_same_document_recipient_after_local_preservation() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<div><button form=f><form id=f>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let group = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &group, None, None).unwrap();
@@ -13275,11 +13299,11 @@ mod tests {
 
     #[test]
     fn listed_connected_explicit_form_has_no_ancestor_fallback_but_detached_reset_does() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form id=f><fieldset form=missing><object form=''>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -13331,11 +13355,11 @@ mod tests {
 
     #[test]
     fn listed_late_body_id_merge_resets_exact_target_before_next_attribute_and_freezes() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=f title=after>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -13393,7 +13417,7 @@ mod tests {
 
     #[test]
     fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for text in ["<button>", "<fieldset>", "<object>"] {
             let source = crate::HtmlSource::utf8(text);
             let mut c = ParseControl::new(
@@ -13405,7 +13429,7 @@ mod tests {
                 HtmlParseCancellation::new(),
             );
             c.admit_source(&source).unwrap();
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
@@ -13463,11 +13487,11 @@ mod tests {
 
     #[test]
     fn listed_getters_require_actual_active_and_frozen_arena_and_control_owners() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<button>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let node = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &node, None, None).unwrap();
@@ -13524,7 +13548,7 @@ mod tests {
 
     #[test]
     fn listed_id_matching_is_exact_untrimmed_utf16_and_empty_id_never_matches_empty_form() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let mut units: Vec<u16> = "<button form='X ".encode_utf16().collect();
         units.extend([0xd800, 0xd83d, 0xde00]);
         units.extend("'><form id='x ".encode_utf16());
@@ -13535,7 +13559,7 @@ mod tests {
         let source = crate::HtmlSource::utf16(DocumentString::from_utf16(units));
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -13580,11 +13604,11 @@ mod tests {
 
     #[test]
     fn listed_detached_id_change_resets_only_same_ordinary_tree() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><button form=f><button form=f><body id=f>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         let in_form = form_creation(&mut session, &mut lexer, &mut c, &form, None);
@@ -13635,10 +13659,10 @@ mod tests {
     fn listed_move_fixture(
         c: &mut ParseControl,
     ) -> (ParserArenaSession, ParserNode, ParserNode, ParserNode) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<div><button form=f><form id=f><div>");
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, c).unwrap();
         let (mut session, body) = form_session(c);
         let group = form_creation(&mut session, &mut lexer, c, &body, None);
         session.insert(c, &body, &group, None, None).unwrap();
@@ -13776,10 +13800,10 @@ mod tests {
         ParserNode,
         PreparedAttributeMerge,
     ) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=f title=after>");
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, c).unwrap();
         let (mut session, body) = form_session(c);
         let button = form_creation(&mut session, &mut lexer, c, &body, None);
         session.insert(c, &body, &button, None, None).unwrap();
@@ -13990,12 +14014,12 @@ mod tests {
 
     #[test]
     fn listed_virtual_removal_excludes_moved_id_from_outside_tree_before_insertion() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let cancellation = HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancellation.clone());
         let source = crate::HtmlSource::utf8("<button form=f><div><form id=f><div>");
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -14048,11 +14072,11 @@ mod tests {
 
     #[test]
     fn listed_namespaced_id_is_inapplicable_and_imported_control_metadata_is_unavailable() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<button form=f><form id=f>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -14101,11 +14125,11 @@ mod tests {
 
     #[test]
     fn listed_empty_and_ignored_duplicate_late_id_do_not_replace_existing_form_owner() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=''><body id=f>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
         session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -14141,11 +14165,11 @@ mod tests {
 
     #[test]
     fn image_creation_uses_actual_same_tree_and_preserves_nonancestor_parser_owner() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><img form=other><form><img>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
         session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -14179,11 +14203,11 @@ mod tests {
     }
     #[test]
     fn image_remove_then_reinsert_resets_historical_owner_to_actual_nearest_form() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><form><img>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let first = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
         let second = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
@@ -14203,11 +14227,11 @@ mod tests {
     }
     #[test]
     fn image_subtree_move_keeps_owner_when_form_and_image_share_removed_tree() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><img><div>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
         session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -14227,11 +14251,11 @@ mod tests {
     }
     #[test]
     fn image_same_parent_reorder_and_adoption_child_transfer_apply_real_resets() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><form><img><img>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let a = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
         let b = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
@@ -14258,11 +14282,11 @@ mod tests {
     }
     #[test]
     fn image_frozen_metadata_resolves_actual_native_identity_and_unavailable_is_not_null() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><img><img>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
         session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -14317,11 +14341,11 @@ mod tests {
     }
     #[test]
     fn image_creation_rejects_wrong_arena_alias_and_foreign_lexical_owner_before_take() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<img><img>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let mut other =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
@@ -14368,7 +14392,7 @@ mod tests {
         let mut foreign_control = control();
         foreign_control.admit_source(&source).unwrap();
         let mut foreign_tokenizer =
-            Tokenizer::new(&source, State::Data, None, &mut foreign_control).unwrap();
+            LexerFixture::new(&source, State::Data, None, &mut foreign_control).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut foreign_tokenizer, &mut foreign_control) else {
             panic!("img")
         };
@@ -14398,10 +14422,10 @@ mod tests {
     fn image_move_fixture(
         c: &mut ParseControl,
     ) -> (ParserArenaSession, ParserNode, ParserNode, ParserNode) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<form><form><img>");
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, c).unwrap();
         let (mut session, body) = form_session(c);
         let old = form_creation(&mut session, &mut tokenizer, c, &body, None);
         let new = form_creation(&mut session, &mut tokenizer, c, &body, None);
@@ -14532,7 +14556,7 @@ mod tests {
     }
     #[test]
     fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<img>");
         let mut c = ParseControl::new(
             limits()
@@ -14543,7 +14567,7 @@ mod tests {
             HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -14667,11 +14691,11 @@ mod tests {
     }
     #[test]
     fn image_creation_original_rejections_precede_any_metadata_slot_or_capacity() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("</img><img x=one><img x=two>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let payloads = session.active().unwrap().payloads.values.len();
         let capacity = session.active().unwrap().payloads.values.capacity();
@@ -14771,11 +14795,11 @@ mod tests {
     }
     #[test]
     fn image_creation_binding_stop_retains_initialized_slot_and_actual_node_for_cleanup() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<img>");
         let mut measured = control();
         measured.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut measured).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut measured).unwrap();
         let (mut session, body) = form_session(&mut measured);
         let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut measured) else {
             panic!("actual img")
@@ -14803,7 +14827,7 @@ mod tests {
         storage_zero(&measured);
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
             panic!("actual img")
@@ -14891,7 +14915,7 @@ mod tests {
     }
     #[test]
     fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_terminal_cleanup() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for cap in [19, 18] {
             let source = crate::HtmlSource::utf8("<img>");
             let mut c = ParseControl::new(
@@ -14903,7 +14927,7 @@ mod tests {
                 HtmlParseCancellation::new(),
             );
             c.admit_source(&source).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut session, body) = form_session(&mut c);
             // Root plus html/body: 3 actual records/tickets, 6 payload slots and 4 document facts.
             assert_eq!(
@@ -15135,7 +15159,7 @@ mod tests {
 
     #[test]
     fn image_self_reference_insertion_runs_removal_before_insertion_with_unchanged_links() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for subtree in [false, true] {
             let source = crate::HtmlSource::utf8(if subtree {
                 "<form><div><img>"
@@ -15144,7 +15168,7 @@ mod tests {
             });
             let mut c = control();
             c.admit_source(&source).unwrap();
-            let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let (mut session, body) = form_session(&mut c);
             let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
             session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -15495,7 +15519,7 @@ mod tests {
 
     #[test]
     fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origins() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for implied in [false, true] {
             let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
                 "<html id=old><html id=ignored x:id=p a='"
@@ -15506,7 +15530,7 @@ mod tests {
             ));
             let mut c = control();
             c.admit_source(&source).unwrap();
-            let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
@@ -15591,7 +15615,7 @@ mod tests {
     }
 
     fn observed_root_merge(new_attributes: bool) -> crate::parser::control::OwnedSpanObservation {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // A real lexer produces every field and original source association.
         // Sixteen short attributes fit the existing finite fixture capacities.
         let attributes = (0..16).map(|i| format!(" a{i:02}=v")).collect::<String>();
@@ -15603,7 +15627,7 @@ mod tests {
         let source = crate::HtmlSource::utf8(input);
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let TokenKind::Tag(first) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("actual first tag")
@@ -15673,11 +15697,11 @@ mod tests {
         ParserArenaSession,
         ParserNode,
         PreparedAttributeMerge,
-        crate::parser::tokenizer::Tokenizer<'source>,
+        crate::parser::tokenizer::tests::LexerFixture<'source>,
     ) {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         c.admit_source(source).unwrap();
-        let mut tokenizer = Tokenizer::new(source, State::Data, None, c).unwrap();
+        let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();
         let mut session = ParserArenaSession::new(c, RootKind::Fragment).unwrap();
         let TokenKind::Tag(first) = lexical_kind(&mut tokenizer, c) else {
             panic!("actual first tag")
@@ -15760,7 +15784,7 @@ mod tests {
 
     fn dispose_stopped_merge(
         mut session: ParserArenaSession,
-        tokenizer: crate::parser::tokenizer::Tokenizer<'_>,
+        tokenizer: crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
     ) {
         let stop = c.stop().expect("real terminal boundary");
@@ -16016,11 +16040,11 @@ mod tests {
 
     #[test]
     fn merge_rejects_external_alias_and_foreign_origin_before_consuming_input() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<html id=x><html a=y>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
             panic!("tag")
@@ -16099,7 +16123,7 @@ mod tests {
 
     #[test]
     fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<html id=old><html a=one z=two>");
         let mut c = ParseControl::new(
             limits()
@@ -16110,7 +16134,7 @@ mod tests {
             crate::HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
             panic!("tag")
@@ -16172,13 +16196,13 @@ mod tests {
 
     #[test]
     fn merge_foreign_control_and_cancel_leave_the_real_lexical_owner_untaken() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         for cancel in [false, true] {
             let source = crate::HtmlSource::utf8("<html a=x>");
             let cancellation = crate::HtmlParseCancellation::new();
             let mut c = ParseControl::new(limits(), cancellation.clone());
             c.admit_source(&source).unwrap();
-            let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let root = session.allocate_implicit_html(&mut c).unwrap();
             let TokenKind::Tag(tag) = lexical_kind(&mut t, &mut c) else {
@@ -16218,7 +16242,7 @@ mod tests {
 
     #[test]
     fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_storage() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<html id=old><html a=one b=two>");
         let run = |cap: Option<u64>| {
             let selected = match cap {
@@ -16227,7 +16251,7 @@ mod tests {
             };
             let mut c = ParseControl::new(selected, crate::HtmlParseCancellation::new());
             c.admit_source(&source).unwrap();
-            let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
                 panic!("tag")
@@ -16368,7 +16392,7 @@ mod tests {
         }
     }
     fn lexical_kind(
-        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
     ) -> TokenKind {
         loop {
@@ -16384,7 +16408,7 @@ mod tests {
     /// currently emits one point per token; an attribute uses the same concrete
     /// Text producer and gives the splitter a real mixed record, not a fake map.
     fn lexical_attribute_text(
-        tokenizer: &mut crate::parser::tokenizer::Tokenizer<'_>,
+        tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
     ) -> (Text, Text, Text) {
         let TokenKind::Tag(Tag {
@@ -16401,7 +16425,7 @@ mod tests {
     }
     #[test]
     fn actual_comment_recovered_pi_and_doctype_keep_exact_managed_native_payloads() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
             "<!--a"
                 .encode_utf16()
@@ -16411,7 +16435,7 @@ mod tests {
         ));
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -16485,11 +16509,11 @@ mod tests {
     }
     #[test]
     fn missing_doctype_fields_lower_to_managed_empty_strings_and_detached_nodes_survive_guard() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<!DOCTYPE><!DOCTYPE html>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -16647,7 +16671,7 @@ mod tests {
     }
     #[test]
     fn mixed_whitespace_split_preserves_utf16_and_each_exact_origin_after_newline_preprocessing() {
-        use crate::parser::tokenizer::{Tokenizer, states::State, token::OriginKind};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::OriginKind};
         let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
             "<a v='"
                 .encode_utf16()
@@ -16657,7 +16681,7 @@ mod tests {
         ));
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (value, tag_name, attribute_name) = lexical_attribute_text(&mut tokenizer, &mut c);
         tag_name.release(&mut c).unwrap();
         attribute_name.release(&mut c).unwrap();
@@ -16700,7 +16724,7 @@ mod tests {
     }
     #[test]
     fn failed_mixed_split_preserves_original_payload_capacity_and_source_origins() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let source = crate::HtmlSource::utf8("<a v=' A'>");
         // Tag name + attribute name + two value units + tokenizer's real last
         // start-tag name occupy five units. Prefix fits at six; suffix does not.
@@ -16713,7 +16737,7 @@ mod tests {
             HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let (value, tag_name, attribute_name) = lexical_attribute_text(&mut tokenizer, &mut c);
         let mut input = Some(value);
         let capacity = c
@@ -17385,14 +17409,14 @@ mod tests {
     #[test]
     fn real_tokenizer_case_duplicate_recovery_and_reference_data_reach_managed_native_element() {
         use crate::parser::tokenizer::{
-            Tokenizer,
             states::State,
+            tests::LexerFixture,
             token::{Event, TokenKind},
         };
         let source = crate::HtmlSource::utf8("<DiV Z=x z=y A:B='&#x1F600;'>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let root = session.root(&mut c).unwrap();
         let mut inserted = None;
@@ -18913,7 +18937,7 @@ mod tests {
 
     #[test]
     fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes_all_owners() {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // The ordinary root already exists. Creation needs one actual inert
         // Document, the template Element and its hosted Fragment: three more.
         for cap in [3, 4] {
@@ -18927,7 +18951,7 @@ mod tests {
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
             let root = session.root(&mut c).unwrap();
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
                 panic!("actual template")
             };
@@ -18992,7 +19016,7 @@ mod tests {
     #[test]
     fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_cap_boundaries()
     {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Root record/self-document/cache facts =3 slots. Fresh template
         // adds three native records, five document/template facts, and the
         // three name/namespace/attribute owners: completed total14. The
@@ -19012,7 +19036,7 @@ mod tests {
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
             let root = session.root(&mut c).unwrap();
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
                 panic!("actual template")
             };
@@ -19071,7 +19095,7 @@ mod tests {
     #[test]
     fn template_pi_map_coexists_with_original_fields_at_exact_managed_units_and_reclaims_stopped_pair()
      {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Original marker target6 and data name='A'8 remain native-owned;
         // the independently decoded name4/value1 add5 managed units.
         for cap in [18, 19] {
@@ -19088,7 +19112,7 @@ mod tests {
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::ProcessingInstruction { target, data } =
                 lexical_kind(&mut lexer, &mut c)
             else {
@@ -19206,7 +19230,7 @@ mod tests {
     #[test]
     fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map_tickets_owned()
     {
-        use crate::parser::tokenizer::{Tokenizer, states::State};
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         // Sweep each credit in this finite operation, rather than deriving a
         // success total from it. Independent witnesses require an installed
         // original PI, a partially decoded map, and the complete literal map.
@@ -19220,7 +19244,7 @@ mod tests {
             let mut session =
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let TokenKind::ProcessingInstruction { target, data } =
                 lexical_kind(&mut lexer, &mut c)
             else {

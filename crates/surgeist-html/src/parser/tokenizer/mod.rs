@@ -13,11 +13,14 @@
 // Behavior is governed by HTML 877d6146487f15b15bc8dd0e3c625063a37b456a.
 
 use crate::HtmlParseResource;
+use crate::construction::parser_session::evidence::{
+    DiagnosticContext, DiagnosticKind, DiagnosticRule, ParseEvidence,
+};
 mod char_ref;
 mod state;
 pub(crate) mod states;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 pub(crate) mod token;
 
 use super::{
@@ -31,8 +34,8 @@ use crate::{DocumentString, HtmlSource, HtmlSourceRange};
 use states::{Identifier, State};
 use std::mem::size_of;
 use token::{
-    Attribute, Diagnostic, DiagnosticCode, DiagnosticPhase, Doctype, DraftText, Event, OriginKind,
-    Tag, TagKind, Token, TokenEvent, TokenKind, freeze_pair,
+    Attribute, DiagnosticCode, DiagnosticPhase, Doctype, DraftText, Event, OriginKind, Tag,
+    TagKind, Token, TokenEvent, TokenKind, freeze_pair,
 };
 
 /// Pre-admits explicit persistent record moves/writes, independently of state
@@ -346,11 +349,12 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         cdata_allowed: bool,
+        evidence: &mut ParseEvidence,
     ) -> Result<Option<Event>, ParseStop> {
         c.require_identity(&self.owner)?;
         while self.pending_len == 0 && !self.done {
             c.charge(WorkCategory::StateStep, 1)?;
-            self.step(c, cdata_allowed)?;
+            self.step(c, cdata_allowed, evidence)?;
         }
         c.checkpoint()?;
         if self.pending_len == 0 {
@@ -413,7 +417,11 @@ impl<'source> Tokenizer<'source> {
     ) -> Result<HtmlSourceRange, ParseStop> {
         self.cursor.checked_range(start, end, c)
     }
-    fn read(&mut self, c: &mut ParseControl) -> Result<Option<u32>, ParseStop> {
+    fn read(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<Option<u32>, ParseStop> {
         match self.cursor.consume(c)? {
             InputRead::Character(ch) => {
                 if ch.source() != &self.current {
@@ -435,7 +443,7 @@ impl<'source> Tokenizer<'source> {
                                 DiagnosticCode::ControlCharacterInInputStream
                             }
                         };
-                        self.error_at(code, DiagnosticPhase::InputStream, c)?;
+                        self.error_at(code, DiagnosticPhase::InputStream, c, evidence)?;
                     } else {
                         admit_record_write(size_of::<OriginKind>(), 1, c)?;
                         self.current_kind = OriginKind::Newline;
@@ -509,30 +517,25 @@ impl<'source> Tokenizer<'source> {
         self.pending_syntax = source;
         Ok(())
     }
-    fn error(&mut self, code: DiagnosticCode, c: &mut ParseControl) -> Result<(), ParseStop> {
-        self.error_at(code, DiagnosticPhase::Tokenizer, c)
+    fn error(
+        &mut self,
+        code: DiagnosticCode,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        self.error_at(code, DiagnosticPhase::Tokenizer, c, evidence)
     }
     fn error_at(
         &mut self,
         code: DiagnosticCode,
         phase: DiagnosticPhase,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
-        let mut diagnostics = OwnedVec::new(HtmlParseResource::Diagnostics)?;
-        if let Err(stop) = diagnostics.try_push(
-            c,
-            Diagnostic {
-                code,
-                phase,
-                state: self.state,
-                source: self.current.clone(),
-            },
-        ) {
-            diagnostics.release(c)?;
-            return Err(stop);
-        }
-        self.queue(Event::Diagnostic(diagnostics), c)
+        let id = evidence.append(c, DiagnosticKind::Tokenizer(code), DiagnosticContext::Tokenizer { phase, state: self.state }, DiagnosticRule { anchor: code.rule_anchor(), branch: code.name() }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &self.current, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::InputFrontier, token: None })?;
+        self.queue(Event::Diagnostic(id), c)
     }
+
     fn emit(
         &mut self,
         kind: TokenKind,
@@ -562,8 +565,12 @@ impl<'source> Tokenizer<'source> {
     fn character(&mut self, point: u32, c: &mut ParseControl) -> Result<(), ParseStop> {
         self.emit_point(point, &self.current.clone(), self.current_kind, c)
     }
-    fn replacement(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        self.error(DiagnosticCode::UnexpectedNullCharacter, c)?;
+    fn replacement(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
         self.emit_point(
             0xFFFD,
             &self.current.clone(),
@@ -616,9 +623,14 @@ impl<'source> Tokenizer<'source> {
         });
         Ok(())
     }
-    fn tag_name(&mut self, point: u32, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn tag_name(
+        &mut self,
+        point: u32,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c)?;
+            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
             OriginKind::NullReplacement
         } else if lower(point) != point {
             OriginKind::AsciiLowercase
@@ -636,8 +648,12 @@ impl<'source> Tokenizer<'source> {
                 c,
             )
     }
-    fn create_attribute(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        self.finish_attribute(c)?;
+    fn create_attribute(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        self.finish_attribute(c, evidence)?;
         admit_record_write(size_of::<Option<DraftAttribute>>(), 1, c)?;
         self.tag
             .as_mut()
@@ -652,10 +668,15 @@ impl<'source> Tokenizer<'source> {
         });
         Ok(())
     }
-    fn attribute_name(&mut self, point: u32, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn attribute_name(
+        &mut self,
+        point: u32,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         self.attribute_end(self.current.end(), c)?;
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c)?;
+            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
             OriginKind::NullReplacement
         } else if lower(point) != point {
             OriginKind::AsciiLowercase
@@ -677,7 +698,11 @@ impl<'source> Tokenizer<'source> {
                 c,
             )
     }
-    fn check_attribute_name(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn check_attribute_name(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         let t = self
             .tag
             .as_mut()
@@ -692,7 +717,7 @@ impl<'source> Tokenizer<'source> {
             if a.duplicate {
                 admit_record_write(size_of::<bool>(), 1, c)?;
                 t.had_duplicates = true;
-                self.error(DiagnosticCode::DuplicateAttribute, c)?;
+                self.error(DiagnosticCode::DuplicateAttribute, c, evidence)?;
             }
         }
         Ok(())
@@ -715,8 +740,12 @@ impl<'source> Tokenizer<'source> {
             .value
             .push(point, source, kind, c)
     }
-    fn finish_attribute(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        self.check_attribute_name(c)?;
+    fn finish_attribute(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        self.check_attribute_name(c, evidence)?;
         let t = self
             .tag
             .as_ref()
@@ -768,14 +797,18 @@ impl<'source> Tokenizer<'source> {
         }
         Ok(())
     }
-    fn emit_tag(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        self.finish_attribute(c)?;
+    fn emit_tag(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        self.finish_attribute(c, evidence)?;
         if self.tag.as_ref().is_some_and(|t| t.kind == TagKind::End) {
             if self.tag.as_ref().is_some_and(|t| t.attributes.len() != 0) {
-                self.error(DiagnosticCode::EndTagWithAttributes, c)?;
+                self.error(DiagnosticCode::EndTagWithAttributes, c, evidence)?;
             }
             if self.tag.as_ref().is_some_and(|t| t.self_closing) {
-                self.error(DiagnosticCode::EndTagWithTrailingSolidus, c)?;
+                self.error(DiagnosticCode::EndTagWithTrailingSolidus, c, evidence)?;
             }
         }
         let t = self
@@ -815,9 +848,14 @@ impl<'source> Tokenizer<'source> {
         self.comment = Some(DraftText::new(c)?);
         Ok(())
     }
-    fn comment_point(&mut self, point: u32, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn comment_point(
+        &mut self,
+        point: u32,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c)?;
+            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
             OriginKind::NullReplacement
         } else {
             self.current_kind
@@ -853,9 +891,14 @@ impl<'source> Tokenizer<'source> {
             .freeze(c)?;
         self.emit(TokenKind::Comment(text), self.start, self.current.end(), c)
     }
-    fn doctype_name(&mut self, point: u32, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn doctype_name(
+        &mut self,
+        point: u32,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c)?;
+            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
             OriginKind::NullReplacement
         } else if lower(point) != point {
             OriginKind::AsciiLowercase
@@ -901,9 +944,10 @@ impl<'source> Tokenizer<'source> {
         kind: Identifier,
         point: u32,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         let origin = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c)?;
+            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
             OriginKind::NullReplacement
         } else {
             self.current_kind
@@ -984,6 +1028,7 @@ impl<'source> Tokenizer<'source> {
         bytes: &[u8],
         insensitive: bool,
         c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
     ) -> Result<bool, ParseStop> {
         if !self.cursor.matches_ascii(
             bytes,
@@ -998,7 +1043,7 @@ impl<'source> Tokenizer<'source> {
         }
         for _ in bytes {
             c.charge(WorkCategory::StateStep, 1)?;
-            self.read(c)?;
+            self.read(c, evidence)?;
         }
         Ok(true)
     }

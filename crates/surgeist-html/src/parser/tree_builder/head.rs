@@ -36,7 +36,7 @@ use crate::{
 use std::mem::size_of;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum InsertionMode {
+pub(crate) enum InsertionMode {
     BeforeHead,
     InHead,
     InHeadNoscript,
@@ -57,8 +57,33 @@ pub(super) enum InsertionMode {
     AfterAfterFrameset,
     InTemplate,
 }
+impl InsertionMode {
+    pub(super) fn rule_anchor(self) -> &'static str {
+        match self {
+            Self::BeforeHead => "the-before-head-insertion-mode",
+            Self::InHead => "parsing-main-inhead",
+            Self::InHeadNoscript => "parsing-main-inheadnoscript",
+            Self::Text => "parsing-main-incdata",
+            Self::AfterHead => "the-after-head-insertion-mode",
+            Self::InBody => "parsing-main-inbody",
+            Self::AfterBody => "parsing-main-afterbody",
+            Self::AfterAfterBody => "the-after-after-body-insertion-mode",
+            Self::InTable => "parsing-main-intable",
+            Self::InTableText => "parsing-main-intabletext",
+            Self::InCaption => "parsing-main-incaption",
+            Self::InColumnGroup => "parsing-main-incolgroup",
+            Self::InTableBody => "parsing-main-intbody",
+            Self::InRow => "parsing-main-intr",
+            Self::InCell => "parsing-main-intd",
+            Self::InFrameset => "parsing-main-inframeset",
+            Self::AfterFrameset => "parsing-main-afterframeset",
+            Self::AfterAfterFrameset => "the-after-after-frameset-insertion-mode",
+            Self::InTemplate => "parsing-main-intemplate",
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum HeadCondition {
+pub(crate) enum HeadCondition {
     UnexpectedDoctype,
     UnexpectedEndTag,
     UnexpectedHead,
@@ -219,7 +244,6 @@ pub(super) struct HeadState<'source> {
     pub(super) current_form: Option<ParserNode>,
     pub(super) return_mode: Option<InsertionMode>,
     pub(super) boundary: Option<HeadBoundary>,
-    pub(super) diagnostics: OwnedVec<HeadDiagnostic>,
     pub(super) lexical: OwnedVec<Event>,
     lexical_pending: Option<Event>,
     pub(super) whitespace_pending: Option<Text>,
@@ -263,7 +287,6 @@ impl<'source> HeadStage<'source> {
         c.charge(WorkCategory::RecordVisit, 2)?;
         let input = before.as_mut().ok_or(HeadError::MissingInput)?;
         input.kernel.require(c)?;
-        input.diagnostics.require_owner(c)?;
         input.whitespace.require_owner(c)?;
         if let Some(token) = &input.input {
             validate_source(source, token, c)?;
@@ -272,20 +295,17 @@ impl<'source> HeadStage<'source> {
             .as_ref()
             .ok_or(HeadError::MissingTokenizer)?
             .validate_head_handoff(source, c)?;
-        let mut diagnostics = OwnedVec::new(HtmlParseResource::Diagnostics)?;
         let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let mut formatting = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        diagnostics.require_owner(c)?;
         lexical.require_owner(c)?;
         formatting.require_owner(c)?;
         let table = super::tables::TableCharacters::new(c)?;
         let mut template_modes = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         template_modes.require_owner(c)?;
         // Preserve the existing enclosing ownership-transfer admission and add
-        // the actual end-continuation field. The table constructor separately
+        // the actual end-continuation field, removing the former diagnostic vector. The table constructor separately
         // admits its four field writes. All admissions precede the first take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 30, c) {
-            diagnostics.release(c)?;
+        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 29, c) {
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
@@ -293,7 +313,6 @@ impl<'source> HeadStage<'source> {
             return Err(stop.into());
         }
         if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
-            diagnostics.release(c)?;
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
@@ -314,7 +333,7 @@ impl<'source> HeadStage<'source> {
                 current_form: None,
                 return_mode: None,
                 boundary: None,
-                diagnostics,
+
                 lexical,
                 lexical_pending: None,
                 whitespace_pending: None,
@@ -486,12 +505,7 @@ impl<'source> HeadStage<'source> {
             HtmlParseResource::AuxiliaryEntries,
             c,
         )?;
-        release_fixture_vector(
-            &mut state.before.diagnostics,
-            HtmlParseResource::Diagnostics,
-            c,
-        )?;
-        release_fixture_vector(&mut state.diagnostics, HtmlParseResource::Diagnostics, c)?;
+
         release_fixture_vector(&mut state.lexical, HtmlParseResource::AuxiliaryEntries, c)?;
         Ok(())
     }
@@ -548,19 +562,34 @@ impl<'source> HeadStage<'source> {
             // Namespace, including a foreign HTML integration point, controls
             // CDATA permission. Ordinary parsing has no fragment substitution.
             let cdata = state.foreign_namespace(c)?.is_some();
+            let evidence = state
+                .before
+                .kernel
+                .session
+                .evidence(c)
+                .map_err(KernelError::from)?;
             state.lexical_pending = state
                 .tokenizer
                 .as_mut()
                 .ok_or(HeadError::Consumed)?
-                .next(c, cdata)?;
+                .next(c, cdata, evidence)?;
             let event = state
                 .lexical_pending
                 .as_ref()
                 .ok_or(HeadError::TokenizerExhausted)?;
+            if let Event::Diagnostic(id) = event {
+                state
+                    .before
+                    .kernel
+                    .session
+                    .evidence(c)
+                    .map_err(KernelError::from)?
+                    .get(c, id)?;
+            }
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let Some(token) = event.token() {
                 validate_source(self.source, token, c)?;
-                write(size_of::<Option<Event>>() + size_of::<PendingToken>(), 3, c)?;
+                write(size_of::<Option<Event>>() + size_of::<PendingToken>(), 4, c)?;
                 let Event::Token(event) = state.lexical_pending.take().expect("retained event")
                 else {
                     unreachable!("actual token variant inspected")
@@ -672,9 +701,7 @@ impl<'source> HeadStage<'source> {
         // These empty vectors still retain admitted capacities. Move and release
         // the whole state only after alias-sensitive arena release succeeded.
         let state = self.state.take().expect("retained active state");
-        state.before.diagnostics.release(c)?;
         state.before.whitespace.release(c)?;
-        state.diagnostics.release(c)?;
         state.lexical.release(c)?;
         state.formatting.release(c)?;
         state.table.entries.release(c)?;
@@ -727,23 +754,22 @@ impl HeadState<'_> {
     pub(super) fn emit(
         &mut self,
         condition: HeadCondition,
+        rule: crate::construction::parser_session::evidence::DiagnosticRule,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 2)?;
-        let source = &self.pending.as_ref().ok_or(HeadError::MissingInput)?.source;
-        write(size_of::<HeadDiagnostic>(), 3, c)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        let mode = self.mode(c)?;
-        self.diagnostics.try_push(
-            c,
-            HeadDiagnostic {
-                condition,
-                mode,
-                source: source.clone(),
-            },
+        c.charge(
+            WorkCategory::InspectByte,
+            size_of::<crate::construction::parser_session::evidence::DiagnosticToken>() as u64,
         )?;
+        let mode = self.mode(c)?;
+        let pending = self.pending.as_ref().ok_or(HeadError::MissingInput)?;
+        let source = &pending.source;
+        let family = pending.family;
+        self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(condition), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), rule, crate::construction::parser_session::evidence::DiagnosticLocationInput { source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::TokenEnvelope, token: Some(family) })?;
         Ok(())
     }
+
     pub(super) fn finish(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         write(size_of::<Option<PendingToken>>(), 1, c)?;
         self.pending = None;
@@ -1045,7 +1071,14 @@ impl HeadState<'_> {
         self.return_mode = Some(mode);
         self.set_mode(InsertionMode::Text, c)?;
         if self_closing {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inhead",
+                    branch: "raw-text-start/self-closing",
+                },
+                c,
+            )?;
         }
         self.finish(c)
     }
@@ -1145,7 +1178,14 @@ impl HeadState<'_> {
         self.return_mode = Some(mode);
         self.set_mode(InsertionMode::Text, c)?;
         if self_closing {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inhead",
+                    branch: "script-start/self-closing",
+                },
+                c,
+            )?;
         }
         self.finish(c)
     }
@@ -1331,7 +1371,14 @@ impl HeadState<'_> {
         self_closing: bool,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
-        self.emit(HeadCondition::UnexpectedHtml, c)?;
+        self.emit(
+            HeadCondition::UnexpectedHtml,
+            crate::construction::parser_session::evidence::DiagnosticRule {
+                anchor: "parsing-main-inbody",
+                branch: "html-start/delegate-in-body",
+            },
+            c,
+        )?;
         if self.before.kernel.contains_html_template(c)? {
             return self.discard(c);
         }
@@ -1349,7 +1396,14 @@ impl HeadState<'_> {
             .session
             .add_attributes_if_missing(c, &top, input)?;
         if self_closing {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "html-start/self-closing",
+                },
+                c,
+            )?;
         }
         self.finish(c)
     }
@@ -1453,7 +1507,14 @@ impl HeadState<'_> {
                             return Err(HeadError::InvalidTextToken);
                         }
                         if matches!(class, Class::Eof) {
-                            self.emit(HeadCondition::EofInText, c)?;
+                            self.emit(
+                                HeadCondition::EofInText,
+                                crate::construction::parser_session::evidence::DiagnosticRule {
+                                    anchor: mode.rule_anchor(),
+                                    branch: "text/eof",
+                                },
+                                c,
+                            )?;
                             if is_script {
                                 c.charge(WorkCategory::RecordVisit, 1)?;
                                 let script = self
@@ -1492,7 +1553,14 @@ impl HeadState<'_> {
                 return self.html(close, c);
             }
             if matches!(class, Class::Doctype) {
-                self.emit(HeadCondition::UnexpectedDoctype, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedDoctype,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: mode.rule_anchor(),
+                        branch: "doctype/ignore",
+                    },
+                    c,
+                )?;
                 return self.discard(c);
             }
             if mode == InsertionMode::BeforeHead {
@@ -1502,13 +1570,27 @@ impl HeadState<'_> {
                         let node = self.insert_tag(c)?;
                         self.set_head(&node, c)?;
                         if close {
-                            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                            self.emit(
+                                HeadCondition::UnacknowledgedSelfClosing,
+                                crate::construction::parser_session::evidence::DiagnosticRule {
+                                    anchor: mode.rule_anchor(),
+                                    branch: "head-start/self-closing",
+                                },
+                                c,
+                            )?;
                         }
                         return self.finish(c);
                     }
                     Class::End(Name::Head | Name::Body | Name::Html | Name::Br) => {}
                     Class::End(_) => {
-                        self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedEndTag,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: mode.rule_anchor(),
+                                branch: "before-head/disallowed-end-tag",
+                            },
+                            c,
+                        )?;
                         return self.discard(c);
                     }
                     _ => {}
@@ -1538,15 +1620,36 @@ impl HeadState<'_> {
                         _,
                     ) => {}
                     Class::Start(Name::Head | Name::Noscript, _) => {
-                        self.emit(HeadCondition::UnexpectedInNoscript, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedInNoscript,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: mode.rule_anchor(),
+                                branch: "noscript/head-or-noscript-start",
+                            },
+                            c,
+                        )?;
                         return self.discard(c);
                     }
                     Class::End(name) if !matches!(name, Name::Br) => {
-                        self.emit(HeadCondition::UnexpectedInNoscript, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedInNoscript,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: mode.rule_anchor(),
+                                branch: "noscript/disallowed-end-tag",
+                            },
+                            c,
+                        )?;
                         return self.discard(c);
                     }
                     _ => {
-                        self.emit(HeadCondition::UnexpectedInNoscript, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedInNoscript,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: mode.rule_anchor(),
+                                branch: "noscript/anything-else",
+                            },
+                            c,
+                        )?;
                         self.before
                             .kernel
                             .pop(c, self.script.as_ref().map(|script| &script.capability))?
@@ -1579,7 +1682,14 @@ impl HeadState<'_> {
                     self.insert_tag(c)?;
                     self.set_mode(InsertionMode::InHeadNoscript, c)?;
                     if close {
-                        self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                        self.emit(
+                            HeadCondition::UnacknowledgedSelfClosing,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-inhead",
+                                branch: "noscript-start/self-closing",
+                            },
+                            c,
+                        )?;
                     }
                     return self.finish(c);
                 }
@@ -1601,7 +1711,14 @@ impl HeadState<'_> {
                     return self.stop_at(HeadBoundary::AfterHead, c);
                 }
                 Class::Start(Name::Head, _) => {
-                    self.emit(HeadCondition::UnexpectedHead, c)?;
+                    self.emit(
+                        HeadCondition::UnexpectedHead,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-inhead",
+                            branch: "head-start/ignore",
+                        },
+                        c,
+                    )?;
                     return self.discard(c);
                 }
                 Class::End(Name::Template) => {
@@ -1609,7 +1726,14 @@ impl HeadState<'_> {
                 }
                 Class::End(Name::Body | Name::Html | Name::Br) => {}
                 Class::End(_) => {
-                    self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                    self.emit(
+                        HeadCondition::UnexpectedEndTag,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-inhead",
+                            branch: "head/disallowed-end-tag",
+                        },
+                        c,
+                    )?;
                     return self.discard(c);
                 }
                 _ => {}
@@ -1621,6 +1745,33 @@ impl HeadState<'_> {
             self.set_mode(InsertionMode::AfterHead, c)?;
             return self.stop_at(HeadBoundary::AfterHead, c);
         }
+    }
+}
+
+impl HeadState<'_> {
+    #[cfg(test)]
+    pub(super) fn diagnostics(&self) -> Vec<HeadDiagnostic> {
+        let e = self.before.kernel.session.observed_evidence();
+        (0..e.len())
+            .filter_map(|index| {
+                let (record, source) = e.retained_record(index)?;
+                match (record.kind, record.context) {
+                    (
+                        crate::construction::parser_session::evidence::DiagnosticKind::Tree(
+                            condition,
+                        ),
+                        crate::construction::parser_session::evidence::DiagnosticContext::Tree(
+                            mode,
+                        ),
+                    ) => Some(HeadDiagnostic {
+                        condition,
+                        mode,
+                        source: source.source.clone(),
+                    }),
+                    _ => None,
+                }
+            })
+            .collect()
     }
 }
 

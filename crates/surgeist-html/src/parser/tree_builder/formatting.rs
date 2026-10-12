@@ -293,7 +293,14 @@ impl HeadState<'_> {
         if self.token_in(&["a"], c)?.is_some()
             && let Some(old) = self.format_named("a", c)?
         {
-            self.emit(HeadCondition::UnexpectedFormatting, c)?;
+            self.emit(
+                HeadCondition::UnexpectedFormatting,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "a-start/active-formatting-a",
+                },
+                c,
+            )?;
             self.adoption(c)?;
             if let Some(index) = self.format_index(&old, c)? {
                 self.erase_format(index, c)?;
@@ -310,7 +317,14 @@ impl HeadState<'_> {
         if self.token_in(&["nobr"], c)?.is_some()
             && self.before.kernel.scoped_name("nobr", Scope::Default, c)?
         {
-            self.emit(HeadCondition::UnexpectedFormatting, c)?;
+            self.emit(
+                HeadCondition::UnexpectedFormatting,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "nobr-start/nobr-in-scope",
+                },
+                c,
+            )?;
             self.adoption(c)?;
             self.reconstruct_formatting(c)?;
         }
@@ -363,7 +377,14 @@ impl HeadState<'_> {
         self.noah(c)?;
         self.push_format_pending(c)?;
         if close {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "formatting-start/self-closing",
+                },
+                c,
+            )?;
         }
         self.finish(c)
     }
@@ -397,7 +418,14 @@ impl HeadState<'_> {
         self.push_marker(c)?;
         self.frameset(false, c)?;
         if close {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "formatting-marker-start/self-closing",
+                },
+                c,
+            )?;
         }
         self.finish(c)
     }
@@ -407,7 +435,14 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
         if !self.before.kernel.scoped_name(name, Scope::Default, c)? {
-            self.emit(HeadCondition::UnexpectedEndTag, c)?;
+            self.emit(
+                HeadCondition::UnexpectedEndTag,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "formatting-marker-end/not-in-scope",
+                },
+                c,
+            )?;
             return self.discard(c);
         }
         self.before.kernel.implied_ends(
@@ -417,7 +452,14 @@ impl HeadState<'_> {
         )?;
         let current = self.before.kernel.current(c)?;
         if !self.before.kernel.named(&current, name, c)? {
-            self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+            self.emit(
+                HeadCondition::UnexpectedOpenElement,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "formatting-marker-end/current-node-mismatch",
+                },
+                c,
+            )?;
         }
         loop {
             let node = self
@@ -449,7 +491,14 @@ impl HeadState<'_> {
                 .format_node(format_index, c)?
                 .ok_or(HeadError::InvalidFormattingState)?;
             let Some(open_index) = self.before.kernel.stack_index(&formatting, c)? else {
-                self.emit(HeadCondition::UnexpectedFormatting, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedFormatting,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "adoption/formatting-element-not-open",
+                    },
+                    c,
+                )?;
                 self.erase_format(format_index, c)?;
                 return Ok(());
             };
@@ -458,7 +507,14 @@ impl HeadState<'_> {
                 .kernel
                 .in_scope(&formatting, Scope::Default, c)?
             {
-                self.emit(HeadCondition::UnexpectedFormatting, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedFormatting,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "adoption/formatting-element-not-in-scope",
+                    },
+                    c,
+                )?;
                 return Ok(());
             }
             let current = self.before.kernel.current(c)?;
@@ -468,7 +524,14 @@ impl HeadState<'_> {
                 .session
                 .same_node(c, &current, &formatting)?
             {
-                self.emit(HeadCondition::UnexpectedFormatting, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedFormatting,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "adoption/formatting-element-not-current",
+                    },
+                    c,
+                )?;
             }
             let mut furthest = None;
             write(size_of::<Option<(usize, ParserNode)>>(), 1, c)?;

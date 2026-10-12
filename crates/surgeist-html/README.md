@@ -1771,6 +1771,50 @@ The [end owner](src/parser/tree_builder/end.rs),
 [qualified completion facts](src/construction/parser_session/completion.rs) and
 [origin record](PARSER-ORIGINS.md#ordinary-eof-completion) record this boundary.
 
+<a id="private-ordered-diagnostics"></a>
+
+The test-compiled ordinary driver retains chronological diagnostics in one
+[parse-evidence owner](src/construction/parser_session/evidence.rs), initialized
+in the real construction session before the first tokenizer pull. Tokenizer,
+prologue and tree recovery append to that same owner when their actual error
+conditions occur. Each recoverable record retains its typed condition,
+severity, processing state, selected HTML rule anchor and intentional engine
+branch. Its paired location distinguishes an input frontier, token envelope,
+text origin or buffered table character; a token envelope does not claim an
+exact name/value span or a complete node extent. Records follow actual emission
+order, including delayed table-text recovery, rather than source-offset sorting
+or concatenation of phase-local lists.
+
+The [shared controller](src/parser/control.rs) admits both record/location
+capacities, logical slots and fixed writes before either committed length
+changes. A rejected append retains the earlier complete prefix; prepared
+capacities remain charged until cleanup. Source and controller qualification
+also applies to diagnostic receipts and readers. The existing work,
+cancellation, capacity and fixed-layout policy covers these private owners;
+this adds no allocator/RSS or linear-work guarantee.
+
+The [completed consumer](src/parser/tree_builder/end.rs) borrows the committed
+records or moves the same evidence backing through the qualified completed
+owner. A stopped driver can instead retain its committed diagnostic prefix in
+a private failed result after reclaiming the native and lexical owners. That
+result borrows the original source, keeps the first typed stop and fixed
+at-stop/after-cleanup usage snapshots, and retains evidence tickets until their
+explicit release. Terminal transfers are prepared before parsing; cleanup does
+not resume parsing, emit diagnostics or perform useful post-stop work. An alias
+that prevents reclamation leaves the actual owner reachable for cleanup retry.
+
+Old phase-specific test views are ephemeral projections of this one store.
+Selected [literal tests](src/parser/tree_builder/tests.rs) check chronology with
+backward source offsets and the distinct pre/listing self-closing rule label;
+they do not establish every diagnostic condition or corpus error conformance.
+The retained corpus `#errors`/`#new-errors` metadata below remains unverified.
+Complete native-field/output provenance, reverse lookup of all associations,
+feeding/chunk invariance, contextual fragments and public successful/failed
+report transfer remain unfinished. All these diagnostic operations are private
+and test-compiled; no public API or complete HTML parser follows.
+The [origin record](PARSER-ORIGINS.md#ordered-private-parse-evidence) distinguishes
+this Surgeist-owned storage and consumer from the adapted parser emitters.
+
 <a id="private-conformance-observation"></a>
 
 The test-compiled [completed native observer](src/construction/parser_session/native_view.rs)

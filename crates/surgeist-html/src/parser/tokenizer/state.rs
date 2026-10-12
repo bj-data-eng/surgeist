@@ -47,20 +47,21 @@ impl Tokenizer<'_> {
         &mut self,
         c: &mut ParseControl,
         cdata_allowed: bool,
+        evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         // These lookahead states examine the next input without consuming a
         // mismatching character. The indexed cursor charges each repeated read.
         if self.state == MarkupDeclaration {
-            if self.consume_ascii(b"--", false, c)? {
+            if self.consume_ascii(b"--", false, c, evidence)? {
                 self.create_comment(c)?;
                 self.set_state(CommentStart, c)?;
-            } else if self.consume_ascii(b"DOCTYPE", true, c)? {
+            } else if self.consume_ascii(b"DOCTYPE", true, c, evidence)? {
                 self.set_state(Doctype, c)?;
-            } else if self.consume_ascii(b"[CDATA[", false, c)? {
+            } else if self.consume_ascii(b"[CDATA[", false, c, evidence)? {
                 if cdata_allowed {
                     self.set_state(Cdata, c)?;
                 } else {
-                    self.error(CdataInHtmlContent, c)?;
+                    self.error(CdataInHtmlContent, c, evidence)?;
                     self.create_comment(c)?;
                     let source = self.range(self.less_than.end() + 1, self.current.end(), c)?;
                     for &p in b"[CDATA[" {
@@ -75,47 +76,47 @@ impl Tokenizer<'_> {
                 // No input was consumed here: diagnostic covers the opening.
                 let source = self.range(self.start, self.cursor.position(c)?, c)?;
                 self.set_current(&source, c)?;
-                self.error(IncorrectlyOpenedComment, c)?;
+                self.error(IncorrectlyOpenedComment, c, evidence)?;
                 self.create_comment(c)?;
                 self.set_state(BogusComment, c)?;
             }
             return Ok(());
         }
         if self.state == AfterDoctypeName {
-            if self.consume_ascii(b"PUBLIC", true, c)? {
+            if self.consume_ascii(b"PUBLIC", true, c, evidence)? {
                 self.set_state(AfterDoctypeKeyword(Public), c)?;
                 return Ok(());
             }
-            if self.consume_ascii(b"SYSTEM", true, c)? {
+            if self.consume_ascii(b"SYSTEM", true, c, evidence)? {
                 self.set_state(AfterDoctypeKeyword(System), c)?;
                 return Ok(());
             }
         }
-        let Some(p) = self.read(c)? else {
-            return self.eof(c);
+        let Some(p) = self.read(c, evidence)? else {
+            return self.eof(c, evidence);
         };
         match self.state {
             Data => match p {
-                0x26 => self.character_reference(false, c)?,
+                0x26 => self.character_reference(false, c, evidence)?,
                 0x3C => {
                     self.mark_less_than(c)?;
                     self.set_state(TagOpen, c)?;
                 }
                 0 => {
-                    self.error(UnexpectedNullCharacter, c)?;
+                    self.error(UnexpectedNullCharacter, c, evidence)?;
                     self.character(0, c)?;
                 }
                 _ => self.character(p, c)?,
             },
             Plaintext => {
                 if p == 0 {
-                    self.replacement(c)?;
+                    self.replacement(c, evidence)?;
                 } else {
                     self.character(p, c)?;
                 }
             }
             Raw(kind) => match p {
-                0x26 if kind == Rcdata => self.character_reference(false, c)?,
+                0x26 if kind == Rcdata => self.character_reference(false, c, evidence)?,
                 0x3C => {
                     self.mark_less_than(c)?;
                     if kind == ScriptEscaped(DoubleEscaped) {
@@ -129,7 +130,7 @@ impl Tokenizer<'_> {
                         self.set_state(ScriptDash(e), c)?;
                     }
                 }
-                0 => self.replacement(c)?,
+                0 => self.replacement(c, evidence)?,
                 _ => self.character(p, c)?,
             },
             TagOpen => match p {
@@ -145,11 +146,11 @@ impl Tokenizer<'_> {
                 }
                 _ if alpha(p) => {
                     self.create_tag(TagKind::Start, c)?;
-                    self.tag_name(p, c)?;
+                    self.tag_name(p, c, evidence)?;
                     self.set_state(TagName, c)?;
                 }
                 _ => {
-                    self.error(InvalidFirstCharacterOfTagName, c)?;
+                    self.error(InvalidFirstCharacterOfTagName, c, evidence)?;
                     self.emit_point(0x3C, &self.less_than.clone(), OriginKind::Literal, c)?;
                     self.reconsume(Data, c)?;
                 }
@@ -157,15 +158,15 @@ impl Tokenizer<'_> {
             EndTagOpen => match p {
                 _ if alpha(p) => {
                     self.create_tag(TagKind::End, c)?;
-                    self.tag_name(p, c)?;
+                    self.tag_name(p, c, evidence)?;
                     self.set_state(TagName, c)?;
                 }
                 0x3E => {
-                    self.error(MissingEndTagName, c)?;
+                    self.error(MissingEndTagName, c, evidence)?;
                     self.set_state(Data, c)?;
                 }
                 _ => {
-                    self.error(InvalidFirstCharacterOfTagName, c)?;
+                    self.error(InvalidFirstCharacterOfTagName, c, evidence)?;
                     self.create_comment(c)?;
                     self.reconsume(BogusComment, c)?;
                 }
@@ -173,8 +174,8 @@ impl Tokenizer<'_> {
             TagName => match p {
                 _ if space(p) => self.set_state(BeforeAttributeName, c)?,
                 0x2F => self.set_state(SelfClosing, c)?,
-                0x3E => self.emit_tag(c)?,
-                _ => self.tag_name(p, c)?,
+                0x3E => self.emit_tag(c, evidence)?,
+                _ => self.tag_name(p, c, evidence)?,
             },
             RawLessThan(ScriptEscaped(DoubleEscaped)) => {
                 if p == 0x2F {
@@ -220,7 +221,7 @@ impl Tokenizer<'_> {
             RawEndOpen(kind) => {
                 if alpha(p) {
                     self.create_tag(TagKind::End, c)?;
-                    self.tag_name(p, c)?;
+                    self.tag_name(p, c, evidence)?;
                     self.temporary
                         .push(p, &self.current, self.current_kind, c)?;
                     self.set_state(RawEndName(kind), c)?;
@@ -237,10 +238,10 @@ impl Tokenizer<'_> {
                     } else if p == 0x2F {
                         self.set_state(SelfClosing, c)?;
                     } else {
-                        self.emit_tag(c)?;
+                        self.emit_tag(c, evidence)?;
                     }
                 } else if alpha(p) {
-                    self.tag_name(p, c)?;
+                    self.tag_name(p, c, evidence)?;
                     self.temporary
                         .push(p, &self.current, self.current_kind, c)?;
                 } else {
@@ -313,7 +314,7 @@ impl Tokenizer<'_> {
                         self.set_state(Raw(Script), c)?;
                     }
                     0 => {
-                        self.replacement(c)?;
+                        self.replacement(c, evidence)?;
                         self.set_state(Raw(ScriptEscaped(e)), c)?;
                     }
                     _ => {
@@ -325,41 +326,41 @@ impl Tokenizer<'_> {
             BeforeAttributeName => match p {
                 _ if space(p) => {}
                 0x2F => self.set_state(SelfClosing, c)?,
-                0x3E => self.emit_tag(c)?,
+                0x3E => self.emit_tag(c, evidence)?,
                 0x3D => {
-                    self.error(UnexpectedEqualsSignBeforeAttributeName, c)?;
-                    self.create_attribute(c)?;
-                    self.attribute_name(p, c)?;
+                    self.error(UnexpectedEqualsSignBeforeAttributeName, c, evidence)?;
+                    self.create_attribute(c, evidence)?;
+                    self.attribute_name(p, c, evidence)?;
                     self.set_state(AttributeName, c)?;
                 }
                 _ => {
-                    self.create_attribute(c)?;
+                    self.create_attribute(c, evidence)?;
                     self.reconsume(AttributeName, c)?;
                 }
             },
             AttributeName => match p {
                 _ if space(p) => {
-                    self.check_attribute_name(c)?;
+                    self.check_attribute_name(c, evidence)?;
                     self.set_state(AfterAttributeName, c)?;
                 }
                 0x2F => {
-                    self.check_attribute_name(c)?;
+                    self.check_attribute_name(c, evidence)?;
                     self.set_state(SelfClosing, c)?;
                 }
                 0x3E => {
-                    self.check_attribute_name(c)?;
-                    self.emit_tag(c)?;
+                    self.check_attribute_name(c, evidence)?;
+                    self.emit_tag(c, evidence)?;
                 }
                 0x3D => {
-                    self.check_attribute_name(c)?;
+                    self.check_attribute_name(c, evidence)?;
                     self.attribute_end(self.current.end(), c)?;
                     self.set_state(BeforeAttributeValue, c)?;
                 }
                 _ => {
                     if matches!(p, 0x22 | 0x27 | 0x3C) {
-                        self.error(UnexpectedCharacterInAttributeName, c)?;
+                        self.error(UnexpectedCharacterInAttributeName, c, evidence)?;
                     }
-                    self.attribute_name(p, c)?;
+                    self.attribute_name(p, c, evidence)?;
                 }
             },
             AfterAttributeName => match p {
@@ -369,9 +370,9 @@ impl Tokenizer<'_> {
                     self.attribute_end(self.current.end(), c)?;
                     self.set_state(BeforeAttributeValue, c)?;
                 }
-                0x3E => self.emit_tag(c)?,
+                0x3E => self.emit_tag(c, evidence)?,
                 _ => {
-                    self.create_attribute(c)?;
+                    self.create_attribute(c, evidence)?;
                     self.reconsume(AttributeName, c)?;
                 }
             },
@@ -386,8 +387,8 @@ impl Tokenizer<'_> {
                     self.set_state(AttributeValue(Single), c)?;
                 }
                 0x3E => {
-                    self.error(MissingAttributeValue, c)?;
-                    self.emit_tag(c)?;
+                    self.error(MissingAttributeValue, c, evidence)?;
+                    self.emit_tag(c, evidence)?;
                 }
                 _ => self.reconsume(AttributeValue(Unquoted), c)?,
             },
@@ -401,10 +402,10 @@ impl Tokenizer<'_> {
                     self.set_state(AfterAttributeValue, c)?;
                 }
                 _ if q == Unquoted && space(p) => self.set_state(BeforeAttributeName, c)?,
-                0x3E if q == Unquoted => self.emit_tag(c)?,
-                0x26 => self.character_reference(true, c)?,
+                0x3E if q == Unquoted => self.emit_tag(c, evidence)?,
+                0x26 => self.character_reference(true, c, evidence)?,
                 0 => {
-                    self.error(UnexpectedNullCharacter, c)?;
+                    self.error(UnexpectedNullCharacter, c, evidence)?;
                     self.attribute_value(
                         0xFFFD,
                         OriginKind::NullReplacement,
@@ -414,7 +415,7 @@ impl Tokenizer<'_> {
                 }
                 _ => {
                     if q == Unquoted && matches!(p, 0x22 | 0x27 | 0x3C | 0x3D | 0x60) {
-                        self.error(UnexpectedCharacterInUnquotedAttributeValue, c)?;
+                        self.error(UnexpectedCharacterInUnquotedAttributeValue, c, evidence)?;
                     }
                     self.attribute_value(p, self.current_kind, &self.current.clone(), c)?;
                 }
@@ -422,18 +423,18 @@ impl Tokenizer<'_> {
             AfterAttributeValue => match p {
                 _ if space(p) => self.set_state(BeforeAttributeName, c)?,
                 0x2F => self.set_state(SelfClosing, c)?,
-                0x3E => self.emit_tag(c)?,
+                0x3E => self.emit_tag(c, evidence)?,
                 _ => {
-                    self.error(MissingWhitespaceBetweenAttributes, c)?;
+                    self.error(MissingWhitespaceBetweenAttributes, c, evidence)?;
                     self.reconsume(BeforeAttributeName, c)?;
                 }
             },
             SelfClosing => {
                 if p == 0x3E {
                     self.mark_self_closing(c)?;
-                    self.emit_tag(c)?;
+                    self.emit_tag(c, evidence)?;
                 } else {
-                    self.error(UnexpectedSolidusInTag, c)?;
+                    self.error(UnexpectedSolidusInTag, c, evidence)?;
                     self.reconsume(BeforeAttributeName, c)?;
                 }
             }
@@ -441,7 +442,7 @@ impl Tokenizer<'_> {
                 if p == 0x3E {
                     self.emit_comment(c)?;
                 } else {
-                    self.comment_point(p, c)?;
+                    self.comment_point(p, c, evidence)?;
                 }
             }
             CommentStart => match p {
@@ -450,7 +451,7 @@ impl Tokenizer<'_> {
                     self.set_state(CommentStartDash, c)?;
                 }
                 0x3E => {
-                    self.error(AbruptClosingOfEmptyComment, c)?;
+                    self.error(AbruptClosingOfEmptyComment, c, evidence)?;
                     self.emit_comment(c)?;
                 }
                 _ => self.reconsume(Comment, c)?,
@@ -458,7 +459,7 @@ impl Tokenizer<'_> {
             CommentStartDash => match p {
                 0x2D => self.set_state(CommentEnd, c)?,
                 0x3E => {
-                    self.error(AbruptClosingOfEmptyComment, c)?;
+                    self.error(AbruptClosingOfEmptyComment, c, evidence)?;
                     self.emit_comment(c)?;
                 }
                 _ => {
@@ -468,21 +469,21 @@ impl Tokenizer<'_> {
             },
             Comment => match p {
                 0x3C => {
-                    self.comment_point(p, c)?;
+                    self.comment_point(p, c, evidence)?;
                     self.set_state(CommentLessThan, c)?;
                 }
                 0x2D => {
                     self.remember_current_syntax(c)?;
                     self.set_state(CommentEndDash, c)?;
                 }
-                _ => self.comment_point(p, c)?,
+                _ => self.comment_point(p, c, evidence)?,
             },
             CommentLessThan => match p {
                 0x21 => {
-                    self.comment_point(p, c)?;
+                    self.comment_point(p, c, evidence)?;
                     self.set_state(CommentLessThanBang, c)?;
                 }
-                0x3C => self.comment_point(p, c)?,
+                0x3C => self.comment_point(p, c, evidence)?,
                 _ => self.reconsume(Comment, c)?,
             },
             CommentLessThanBang => {
@@ -502,7 +503,7 @@ impl Tokenizer<'_> {
             }
             CommentLessThanBangDashDash => {
                 if p != 0x3E {
-                    self.error(NestedComment, c)?;
+                    self.error(NestedComment, c, evidence)?;
                 }
                 self.reconsume(CommentEnd, c)?;
             }
@@ -538,7 +539,7 @@ impl Tokenizer<'_> {
                     self.set_state(CommentEndDash, c)?;
                 }
                 0x3E => {
-                    self.error(IncorrectlyClosedComment, c)?;
+                    self.error(IncorrectlyClosedComment, c, evidence)?;
                     self.emit_comment(c)?;
                 }
                 _ => {
@@ -550,7 +551,7 @@ impl Tokenizer<'_> {
                 _ if space(p) => self.set_state(BeforeDoctypeName, c)?,
                 0x3E => self.reconsume(BeforeDoctypeName, c)?,
                 _ => {
-                    self.error(MissingWhitespaceBeforeDoctypeName, c)?;
+                    self.error(MissingWhitespaceBeforeDoctypeName, c, evidence)?;
                     self.reconsume(BeforeDoctypeName, c)?;
                 }
             },
@@ -558,11 +559,11 @@ impl Tokenizer<'_> {
                 if !space(p) {
                     self.create_doctype(c)?;
                     if p == 0x3E {
-                        self.error(MissingDoctypeName, c)?;
+                        self.error(MissingDoctypeName, c, evidence)?;
                         self.quirks(c)?;
                         self.emit_doctype(c)?;
                     } else {
-                        self.doctype_name(p, c)?;
+                        self.doctype_name(p, c, evidence)?;
                         self.set_state(DoctypeName, c)?;
                     }
                 }
@@ -570,13 +571,13 @@ impl Tokenizer<'_> {
             DoctypeName => match p {
                 _ if space(p) => self.set_state(AfterDoctypeName, c)?,
                 0x3E => self.emit_doctype(c)?,
-                _ => self.doctype_name(p, c)?,
+                _ => self.doctype_name(p, c, evidence)?,
             },
             AfterDoctypeName => match p {
                 _ if space(p) => {}
                 0x3E => self.emit_doctype(c)?,
                 _ => {
-                    self.error(InvalidCharacterSequenceAfterDoctypeName, c)?;
+                    self.error(InvalidCharacterSequenceAfterDoctypeName, c, evidence)?;
                     self.quirks(c)?;
                     self.reconsume(BogusDoctype, c)?;
                 }
@@ -593,6 +594,7 @@ impl Tokenizer<'_> {
                                 System => MissingWhitespaceAfterDoctypeSystemKeyword,
                             },
                             c,
+                            evidence,
                         )?;
                     }
                     self.create_identifier(kind, c)?;
@@ -609,6 +611,7 @@ impl Tokenizer<'_> {
                             (System, _) => MissingQuoteBeforeDoctypeSystemIdentifier,
                         },
                         c,
+                        evidence,
                     )?;
                     self.quirks(c)?;
                     if p == 0x3E {
@@ -628,18 +631,23 @@ impl Tokenizer<'_> {
                             System => AbruptDoctypeSystemIdentifier,
                         },
                         c,
+                        evidence,
                     )?;
                     self.quirks(c)?;
                     self.emit_doctype(c)?;
                 }
-                _ => self.identifier_point(kind, p, c)?,
+                _ => self.identifier_point(kind, p, c, evidence)?,
             },
             AfterDoctypeIdentifier(Public) | BetweenDoctypeIdentifiers => match p {
                 _ if space(p) => self.set_state(BetweenDoctypeIdentifiers, c)?,
                 0x3E => self.emit_doctype(c)?,
                 0x22 | 0x27 => {
                     if self.state == AfterDoctypeIdentifier(Public) {
-                        self.error(MissingWhitespaceBetweenDoctypePublicAndSystemIdentifiers, c)?;
+                        self.error(
+                            MissingWhitespaceBetweenDoctypePublicAndSystemIdentifiers,
+                            c,
+                            evidence,
+                        )?;
                     }
                     self.create_identifier(System, c)?;
                     self.set_state(
@@ -648,7 +656,7 @@ impl Tokenizer<'_> {
                     )?;
                 }
                 _ => {
-                    self.error(MissingQuoteBeforeDoctypeSystemIdentifier, c)?;
+                    self.error(MissingQuoteBeforeDoctypeSystemIdentifier, c, evidence)?;
                     self.quirks(c)?;
                     self.reconsume(BogusDoctype, c)?;
                 }
@@ -657,13 +665,13 @@ impl Tokenizer<'_> {
                 _ if space(p) => {}
                 0x3E => self.emit_doctype(c)?,
                 _ => {
-                    self.error(UnexpectedCharacterAfterDoctypeSystemIdentifier, c)?;
+                    self.error(UnexpectedCharacterAfterDoctypeSystemIdentifier, c, evidence)?;
                     self.reconsume(BogusDoctype, c)?;
                 }
             },
             BogusDoctype => match p {
                 0x3E => self.emit_doctype(c)?,
-                0 => self.error(UnexpectedNullCharacter, c)?,
+                0 => self.error(UnexpectedNullCharacter, c, evidence)?,
                 _ => {}
             },
             Cdata => {
@@ -706,7 +714,11 @@ impl Tokenizer<'_> {
                 if alpha(p) || p == 0x5F {
                     self.reconsume(PiTarget, c)?;
                 } else {
-                    self.error(InvalidFirstCharacterOfProcessingInstructionTarget, c)?;
+                    self.error(
+                        InvalidFirstCharacterOfProcessingInstructionTarget,
+                        c,
+                        evidence,
+                    )?;
                     self.pi_comment(c)?;
                     self.reconsume(BogusComment, c)?;
                 }
@@ -716,7 +728,7 @@ impl Tokenizer<'_> {
                     if ascii_eq(self.temporary.value.units(), b"xml", true, c)?
                         || ascii_eq(self.temporary.value.units(), b"xml-stylesheet", true, c)?
                     {
-                        self.error(DisallowedProcessingInstructionTarget, c)?;
+                        self.error(DisallowedProcessingInstructionTarget, c, evidence)?;
                         self.pi_comment(c)?;
                         self.reconsume(BogusComment, c)?;
                     } else {
@@ -727,7 +739,7 @@ impl Tokenizer<'_> {
                     self.temporary
                         .push(p, &self.current, self.current_kind, c)?;
                 } else {
-                    self.error(InvalidProcessingInstructionTarget, c)?;
+                    self.error(InvalidProcessingInstructionTarget, c, evidence)?;
                     self.pi_comment(c)?;
                     self.reconsume(BogusComment, c)?;
                 }
@@ -764,7 +776,7 @@ impl Tokenizer<'_> {
         }
         Ok(())
     }
-    fn eof(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn eof(&mut self, c: &mut ParseControl, evidence: &mut ParseEvidence) -> Result<(), ParseStop> {
         match self.state {
             Data | Plaintext | Raw(Rcdata) | Raw(Rawtext) | Raw(Script) => {
                 self.emit(TokenKind::Eof, self.current.start(), self.current.end(), c)?;
@@ -772,7 +784,7 @@ impl Tokenizer<'_> {
                 self.done = true;
             }
             TagOpen | EndTagOpen => {
-                self.error(EofBeforeTagName, c)?;
+                self.error(EofBeforeTagName, c, evidence)?;
                 if self.state == TagOpen {
                     self.emit_point(0x3C, &self.less_than.clone(), OriginKind::Literal, c)?;
                 } else {
@@ -781,12 +793,12 @@ impl Tokenizer<'_> {
                 self.reconsume(Data, c)?;
             }
             AttributeName => {
-                self.check_attribute_name(c)?;
+                self.check_attribute_name(c, evidence)?;
                 self.reconsume(AfterAttributeName, c)?;
             }
             TagName | BeforeAttributeName | AfterAttributeName | BeforeAttributeValue
             | AttributeValue(_) | AfterAttributeValue | SelfClosing => {
-                self.error(EofInTag, c)?;
+                self.error(EofInTag, c, evidence)?;
                 if self.tag.is_some() {
                     admit_record_write(size_of::<Option<DraftTag>>(), 1, c)?;
                     if let Some(t) = self.tag.take() {
@@ -796,7 +808,7 @@ impl Tokenizer<'_> {
                 self.reconsume(Data, c)?;
             }
             Raw(ScriptEscaped(_)) | ScriptDash(_) | ScriptDashDash(_) => {
-                self.error(EofInScriptHtmlCommentLikeText, c)?;
+                self.error(EofInScriptHtmlCommentLikeText, c, evidence)?;
                 self.reconsume(Data, c)?;
             }
             RawLessThan(ScriptEscaped(DoubleEscaped)) => {
@@ -815,7 +827,7 @@ impl Tokenizer<'_> {
             ScriptDoubleEscapeEnd => self.reconsume(Raw(ScriptEscaped(DoubleEscaped)), c)?,
             CommentStart | CommentStartDash | Comment | CommentEndDash | CommentEnd
             | CommentEndBang => {
-                self.error(EofInComment, c)?;
+                self.error(EofInComment, c, evidence)?;
                 self.emit_comment(c)?;
                 self.cursor.reconsume(c)?;
             }
@@ -827,7 +839,7 @@ impl Tokenizer<'_> {
                 self.cursor.reconsume(c)?;
             }
             Doctype | BeforeDoctypeName => {
-                self.error(EofInDoctype, c)?;
+                self.error(EofInDoctype, c, evidence)?;
                 self.create_doctype(c)?;
                 self.quirks(c)?;
                 self.emit_doctype(c)?;
@@ -840,7 +852,7 @@ impl Tokenizer<'_> {
             | DoctypeIdentifier(_, _)
             | AfterDoctypeIdentifier(_)
             | BetweenDoctypeIdentifiers => {
-                self.error(EofInDoctype, c)?;
+                self.error(EofInDoctype, c, evidence)?;
                 self.quirks(c)?;
                 self.emit_doctype(c)?;
                 self.cursor.reconsume(c)?;
@@ -850,7 +862,7 @@ impl Tokenizer<'_> {
                 self.cursor.reconsume(c)?;
             }
             Cdata => {
-                self.error(EofInCdata, c)?;
+                self.error(EofInCdata, c, evidence)?;
                 self.reconsume(Data, c)?;
             }
             CdataBracket => {
@@ -863,7 +875,7 @@ impl Tokenizer<'_> {
                 self.reconsume(Cdata, c)?;
             }
             PiOpen | PiTarget | AfterPiTarget | PiData | PiQuestionable => {
-                self.error(EofInProcessingInstruction, c)?;
+                self.error(EofInProcessingInstruction, c, evidence)?;
                 self.reconsume(Data, c)?;
             }
             MarkupDeclaration => return Err(c.fail_invariant(Invariant::InputCursorState)),

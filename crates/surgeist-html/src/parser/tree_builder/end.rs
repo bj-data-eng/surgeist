@@ -272,6 +272,52 @@ impl CompletedStandaloneDocument<'_> {
             .map_err(HeadError::from)
             .map_err(StandaloneError::from)
     }
+    pub(crate) fn take_diagnostics(
+        &mut self,
+    ) -> Result<crate::construction::parser_session::evidence::ParseEvidence, StandaloneError> {
+        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+        driver.control.require_source(driver.source)?;
+        let state = driver
+            .head
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .state
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?;
+        state.qualify_completed(&mut driver.control)?;
+        state
+            .before
+            .kernel
+            .session
+            .take_completed_evidence(&mut driver.control)
+            .map_err(KernelError::from)
+            .map_err(HeadError::from)
+            .map_err(StandaloneError::from)
+    }
+    /// Fixed borrowed readback of the actual committed store, in emission order.
+    /// The completed owner already qualified the sole source/session. This does
+    /// not scan, allocate, mutate or resume execution authority.
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
+    {
+        self.driver
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .head
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .state
+            .as_ref()
+            .ok_or(StandaloneError::Consumed)?
+            .before
+            .kernel
+            .session
+            .retained_evidence()
+            .map_err(KernelError::from)
+            .map_err(HeadError::from)
+            .map_err(StandaloneError::from)
+    }
     pub(crate) fn document_state(&mut self) -> Result<StandaloneDocumentState, StandaloneError> {
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         driver.control.require_source(driver.source)?;
@@ -312,6 +358,95 @@ impl CompletedStandaloneDocument<'_> {
         }
         driver.release()?;
         self.driver = None;
+        Ok(())
+    }
+}
+
+/// Private assembler input. No tree, native references, effects or uncommitted
+/// token drafts survive successful extraction. Source ownership stays with the
+/// borrowed request; the later consuming public entry must move that handle.
+pub(crate) struct FailedStandaloneDocument<'source> {
+    source: &'source crate::HtmlSource,
+    control: ParseControl,
+    stop: ParseStop,
+    at_stop: super::super::control::ParseUsage,
+    after_cleanup: super::super::control::ParseUsage,
+    evidence: Option<crate::construction::parser_session::evidence::ParseEvidence>,
+}
+impl<'source> StandaloneDocumentDriver<'source> {
+    pub(crate) fn take_failed(
+        input: &mut Option<Self>,
+    ) -> Result<FailedStandaloneDocument<'source>, StandaloneError> {
+        let driver = input.as_mut().ok_or(StandaloneError::Consumed)?;
+        let stop = driver.control.stop().ok_or(StandaloneError::Consumed)?;
+        // Fixed snapshots and moves use the envelope admitted before first pull.
+        // No checkpoint, allocation, variable copy or error append follows stop.
+        if driver.failure_usage.is_none() {
+            driver.failure_usage = Some(driver.control.usage().clone());
+            let session = if let Some(head) = &mut driver.head {
+                &mut head
+                    .state
+                    .as_mut()
+                    .ok_or(StandaloneError::Consumed)?
+                    .before
+                    .kernel
+                    .session
+            } else if let Some(before) = &mut driver.before {
+                &mut before.kernel.session
+            } else {
+                &mut driver
+                    .prologue
+                    .as_mut()
+                    .ok_or(StandaloneError::Consumed)?
+                    .kernel
+                    .as_mut()
+                    .ok_or(StandaloneError::Consumed)?
+                    .session
+            };
+            driver.failed_evidence = session
+                .take_failed_evidence(&mut driver.control)
+                .map_err(KernelError::from)
+                .map_err(HeadError::from)?;
+        }
+        // A cleanup refusal keeps the driver and detached committed evidence in
+        // the caller's original owning slot. A retry cannot lose or re-copy it.
+        driver.reclaim_parse_owners()?;
+        let driver = input.take().expect("stopped actual owner reclaimed");
+        Ok(FailedStandaloneDocument {
+            source: driver.source,
+            after_cleanup: driver.control.usage().clone(),
+            control: driver.control,
+            stop,
+            at_stop: driver.failure_usage.expect("prepared fixed snapshot"),
+            evidence: driver.failed_evidence,
+        })
+    }
+}
+impl FailedStandaloneDocument<'_> {
+    pub(crate) fn source(&self) -> &crate::HtmlSource {
+        self.source
+    }
+    pub(crate) fn stop(&self) -> ParseStop {
+        self.stop
+    }
+    pub(crate) fn at_stop(&self) -> &super::super::control::ParseUsage {
+        &self.at_stop
+    }
+    pub(crate) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
+        &self.after_cleanup
+    }
+    pub(crate) fn retained_usage(&self) -> &super::super::control::ParseUsage {
+        self.control.usage()
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Option<&crate::construction::parser_session::evidence::ParseEvidence> {
+        self.evidence.as_ref()
+    }
+    pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
+        if let Some(evidence) = self.evidence.take() {
+            evidence.release(&mut self.control)?;
+        }
         Ok(())
     }
 }
@@ -752,6 +887,332 @@ mod tests {
     }
 
     #[test]
+    fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
+        use crate::construction::parser_session::evidence::{
+            DiagnosticContext as C, DiagnosticKind as K, DiagnosticSeverity,
+        };
+        use crate::parser::tokenizer::token::{DiagnosticCode as L, DiagnosticPhase};
+        use head::{HeadCondition as T, InsertionMode as M};
+        use prologue::{PrologueCondition as P, PrologueMode};
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<table>A<!--\0-->\0</table>"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        finish(&mut driver);
+        let pointer = driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session
+            .observed_evidence()
+            .records_pointer();
+        let mut input = Some(driver);
+        let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
+        let evidence = completed.diagnostics().unwrap();
+        assert_eq!(evidence.records_pointer(), pointer);
+        // HTML Initial; comment-state NULL; delayed InTableText list error,
+        // InTable anything-else; Data NULL; InTableText NULL. Source offsets
+        // intentionally go backwards after the lexical comment error.
+        let expected = [
+            (
+                K::Prologue(P::MissingDoctype),
+                C::Prologue(PrologueMode::Initial),
+                0,
+                7,
+                "the-initial-insertion-mode",
+            ),
+            (
+                K::Tokenizer(L::UnexpectedNullCharacter),
+                C::Tokenizer {
+                    phase: DiagnosticPhase::Tokenizer,
+                    state: crate::parser::tokenizer::states::State::Comment,
+                },
+                12,
+                13,
+                "parse-error-unexpected-null-character",
+            ),
+            (
+                K::Tree(T::NonWhitespaceInTable),
+                C::Tree(M::InTableText),
+                7,
+                8,
+                "parsing-main-intabletext",
+            ),
+            (
+                K::Tree(T::UnexpectedTableToken),
+                C::Tree(M::InTableText),
+                7,
+                8,
+                "parsing-main-intable",
+            ),
+            (
+                K::Tokenizer(L::UnexpectedNullCharacter),
+                C::Tokenizer {
+                    phase: DiagnosticPhase::Tokenizer,
+                    state: crate::parser::tokenizer::states::State::Data,
+                },
+                16,
+                17,
+                "parse-error-unexpected-null-character",
+            ),
+            (
+                K::Tree(T::NullInTable),
+                C::Tree(M::InTableText),
+                16,
+                17,
+                "parsing-main-intabletext",
+            ),
+        ];
+        assert_eq!(evidence.len(), expected.len());
+        for (index, (kind, context, start, end, anchor)) in expected.into_iter().enumerate() {
+            let (record, source) = evidence.retained_record(index).unwrap();
+            assert_eq!(
+                (record.kind, record.context, record.severity),
+                (kind, context, DiagnosticSeverity::Recoverable)
+            );
+            assert_eq!((source.start(), source.end()), (start, end));
+            assert_eq!(source.source(), request.source().identity());
+            assert_eq!(record.rule.anchor, anchor);
+            use crate::construction::parser_session::evidence::{
+                DiagnosticLocationRole as R, DiagnosticToken,
+            };
+            assert_eq!(
+                source.role,
+                match index {
+                    0 => R::TokenEnvelope,
+                    1 | 4 => R::InputFrontier,
+                    2 | 3 => R::BufferedTableCharacter,
+                    _ => R::TextOrigin,
+                }
+            );
+            assert_eq!(
+                source.token,
+                match index {
+                    0 => Some(DiagnosticToken::Tag),
+                    1 | 4 => None,
+                    _ => Some(DiagnosticToken::Text),
+                }
+            );
+            assert!(!record.rule.branch.is_empty());
+        }
+        assert!(evidence.retained_record(expected.len()).is_none());
+        completed.release().unwrap();
+    }
+
+    #[test]
+    fn completed_evidence_move_preserves_both_buffers_and_requires_same_completion_owner() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p/>A"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        finish(&mut driver);
+        let mut input = Some(driver);
+        let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
+        let before = completed.diagnostics().unwrap().records_pointer();
+        let evidence = completed.take_diagnostics().unwrap();
+        assert_eq!(evidence.records_pointer(), before);
+        assert!(completed.diagnostics().is_err());
+        assert_eq!(evidence.len(), 2); // missing doctype; nonvoid self-closing p
+        let c = &mut completed.driver.as_mut().unwrap().control;
+        evidence.release(c).unwrap();
+        completed.release().unwrap();
+    }
+
+    #[test]
+    fn failed_extraction_cleanup_refusal_keeps_actual_evidence_for_retry_or_disposal() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<div>A"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        to_phase(&mut driver, EndPhase::InsertionPoint);
+        let node = driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .current(&mut driver.control)
+            .unwrap();
+        let (c, session, _) = driver.standalone_parts().unwrap();
+        let alias = session
+            .element_name(c, &node)
+            .unwrap()
+            .unwrap()
+            .local_name()
+            .clone();
+        request.cancellation().cancel();
+        assert!(driver.step().is_err());
+        let stop = driver.control.stop();
+        let pointer = driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session
+            .observed_evidence()
+            .records_pointer();
+        let mut input = Some(driver);
+        assert!(StandaloneDocumentDriver::take_failed(&mut input).is_err());
+        assert!(input.is_some());
+        assert_eq!(
+            input
+                .as_ref()
+                .unwrap()
+                .failed_evidence
+                .as_ref()
+                .unwrap()
+                .records_pointer(),
+            pointer
+        );
+        assert_eq!(input.as_ref().unwrap().control.stop(), stop);
+        drop(alias);
+        let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
+        assert!(input.is_none());
+        assert_eq!(failed.diagnostics().unwrap().records_pointer(), pointer);
+        assert_eq!(Some(failed.stop()), stop);
+        failed.release().unwrap();
+        super::super::tests::assert_released(&failed.control);
+    }
+
+    #[test]
+    fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
+        let limits = super::super::tests::limits(100)
+            .into_builder()
+            .diagnostics(1)
+            .finish()
+            .unwrap();
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<table>\0"), limits);
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        loop {
+            if driver.step().is_err() {
+                break;
+            }
+        }
+        let stop = driver.control.stop().unwrap();
+        assert!(matches!(
+            stop,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::Diagnostics,
+                ..
+            }
+        ));
+        let before = driver.control.usage().clone();
+        let polls = driver.control.owned_span_observation().polls;
+        let mut input = Some(driver);
+        let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
+        assert!(input.is_none());
+        assert_eq!(failed.stop(), stop);
+        assert_eq!(failed.source().identity(), request.source().identity());
+        assert_eq!(failed.at_stop(), &before);
+        // ManagedNodes is the nonrefundable cumulative allocation count;
+        // native reclamation must not rewrite this execution history.
+        assert_eq!(
+            failed
+                .after_cleanup()
+                .resource(HtmlParseResource::ManagedNodes),
+            before.resource(HtmlParseResource::ManagedNodes)
+        );
+        assert_eq!(
+            failed
+                .after_cleanup()
+                .resource(HtmlParseResource::ManagedEdges)
+                .current,
+            0
+        );
+        assert_eq!(
+            failed
+                .after_cleanup()
+                .resource(HtmlParseResource::OpenElements)
+                .current,
+            0
+        );
+        assert_eq!(
+            failed
+                .after_cleanup()
+                .resource(HtmlParseResource::Diagnostics)
+                .current,
+            1
+        );
+        assert_eq!(
+            failed
+                .after_cleanup()
+                .resource(HtmlParseResource::SourceMapEntries)
+                .current,
+            1
+        );
+        assert!(failed.after_cleanup().actual_capacity_bytes > 0);
+        assert_eq!(
+            failed
+                .after_cleanup()
+                .resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(failed.control.owned_span_observation().polls, polls);
+        let evidence = failed.diagnostics().unwrap();
+        assert_eq!(evidence.len(), 1);
+        let (record, source) = evidence.retained_record(0).unwrap();
+        assert_eq!(
+            record.kind,
+            crate::construction::parser_session::evidence::DiagnosticKind::Prologue(
+                prologue::PrologueCondition::MissingDoctype
+            )
+        );
+        assert_eq!((source.start(), source.end()), (0, 7));
+        assert_eq!(failed.retained_usage(), failed.after_cleanup());
+        failed.release().unwrap();
+        assert!(failed.diagnostics().is_none());
+        super::super::tests::assert_released(&failed.control);
+        assert_eq!(failed.control.owned_span_observation().polls, polls);
+        assert_eq!(failed.stop(), stop);
+        assert_eq!(
+            failed
+                .retained_usage()
+                .resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
+    }
+
+    #[test]
+    fn cancellation_at_final_completion_retains_prior_diagnostics_without_useful_cleanup() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<div>A"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        to_phase(&mut driver, EndPhase::VerifyComplete);
+        request.cancellation().cancel();
+        assert!(driver.step().is_err());
+        let mut input = Some(driver);
+        assert!(StandaloneDocumentDriver::take_completed(&mut input).is_err());
+        let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
+        assert_eq!(failed.stop(), ParseStop::Cancelled);
+        assert_eq!(
+            failed.at_stop().resource(HtmlParseResource::WorkCredits),
+            failed
+                .after_cleanup()
+                .resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(failed.diagnostics().unwrap().len(), 2); // missing doctype; open div at EOF
+        failed.release().unwrap();
+        super::super::tests::assert_released(&failed.control);
+    }
+
+    #[test]
     fn interactive_precedes_all_pops_and_postload_precedes_complete_continuation() {
         let request = HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<!doctype html><div>A"),
@@ -1104,12 +1565,17 @@ mod tests {
         finish(&mut driver);
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
         let lexical = state.lexical.as_slice().as_ptr();
-        let diagnostics = state.diagnostics.as_slice().as_ptr();
-        let before_diagnostics = state.before.diagnostics.as_slice().as_ptr();
+        let diagnostics = state
+            .before
+            .kernel
+            .session
+            .observed_evidence()
+            .records_pointer();
+
         let lengths = (
             state.lexical.len(),
-            state.diagnostics.len(),
-            state.before.diagnostics.len(),
+            state.before.kernel.session.observed_evidence().len(),
+            state.before.diagnostics().len(),
         );
         assert!(lengths.0 > 0 && lengths.1 > 0 && lengths.2 > 0);
         let usage = driver.control.usage().clone();
@@ -1141,17 +1607,22 @@ mod tests {
         assert_eq!(
             (
                 retained.lexical.len(),
-                retained.diagnostics.len(),
-                retained.before.diagnostics.len()
+                retained.before.kernel.session.observed_evidence().len(),
+                retained.before.diagnostics().len()
             ),
             lengths
         );
         assert_eq!(retained.lexical.as_slice().as_ptr(), lexical);
-        assert_eq!(retained.diagnostics.as_slice().as_ptr(), diagnostics);
         assert_eq!(
-            retained.before.diagnostics.as_slice().as_ptr(),
-            before_diagnostics
+            retained
+                .before
+                .kernel
+                .session
+                .observed_evidence()
+                .records_pointer(),
+            diagnostics
         );
+
         completed.release().unwrap();
         assert!(completed.driver.is_none());
         assert!(matches!(

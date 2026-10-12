@@ -169,7 +169,14 @@ impl HeadState<'_> {
             }
             let current = self.before.kernel.current(c)?;
             if !self.before.kernel.named(&current, "template", c)? {
-                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedOpenElement,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inhead",
+                        branch: "template-end/current-node-mismatch",
+                    },
+                    c,
+                )?;
             }
             self.before.kernel.session.finish_template_patching(
                 c,
@@ -200,7 +207,14 @@ impl HeadState<'_> {
         if !self.before.kernel.contains_html_template(c)? {
             return Ok(Some(self.begin_end(c)?));
         }
-        self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+        self.emit(
+            HeadCondition::UnexpectedOpenElement,
+            crate::construction::parser_session::evidence::DiagnosticRule {
+                anchor: "parsing-main-intemplate",
+                branch: "template-eof/template-open",
+            },
+            c,
+        )?;
         self.close_template(c, false)?;
         Ok(None)
     }
@@ -231,7 +245,14 @@ impl HeadState<'_> {
             if self.token_in(&["template"], c)?.is_some() {
                 return Ok(Some(self.end_template(c)?));
             }
-            self.emit(HeadCondition::UnexpectedEndTag, c)?;
+            self.emit(
+                HeadCondition::UnexpectedEndTag,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-intemplate",
+                    branch: "template/disallowed-end-tag",
+                },
+                c,
+            )?;
             return Ok(Some(self.discard(c)?));
         }
         if self

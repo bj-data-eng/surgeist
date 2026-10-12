@@ -2,12 +2,80 @@ use super::*;
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use states::{Raw, State};
 
+/// Actual lexer/evidence owners under one admitted controller. This fixture
+/// supplies no token, diagnostic, fee, callback or semantic expectation.
+pub(crate) struct LexerFixture<'a> {
+    lexer: Tokenizer<'a>,
+    evidence: ParseEvidence,
+}
+impl<'a> LexerFixture<'a> {
+    pub(crate) fn new(
+        source: &'a HtmlSource,
+        state: State,
+        last: Option<&DocumentString>,
+        c: &mut ParseControl,
+    ) -> Result<Self, ParseStop> {
+        c.require_source(source)?;
+        let evidence = ParseEvidence::prepare(c).map_err(|error| match error {
+            crate::construction::parser_session::SessionError::Stop(stop) => stop,
+            _ => unreachable!("initializer has only checked admission failures"),
+        })?;
+        match Tokenizer::new(source, state, last, c) {
+            Ok(lexer) => Ok(Self { lexer, evidence }),
+            Err(stop) => {
+                evidence.release(c)?;
+                Err(stop)
+            }
+        }
+    }
+    pub(crate) fn next(
+        &mut self,
+        c: &mut ParseControl,
+        cdata: bool,
+    ) -> Result<Option<Event>, ParseStop> {
+        self.lexer.next(c, cdata, &mut self.evidence)
+    }
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        self.lexer.release(c)?;
+        self.evidence.release(c)
+    }
+    fn diagnostic(
+        &self,
+        id: &crate::construction::parser_session::evidence::DiagnosticId,
+    ) -> crate::construction::parser_session::evidence::TokenizerDiagnosticView<'_> {
+        self.evidence.tokenizer_observation(id)
+    }
+    fn step(&mut self, c: &mut ParseControl, cdata: bool) -> Result<(), ParseStop> {
+        self.lexer.step(c, cdata, &mut self.evidence)
+    }
+    fn read(&mut self, c: &mut ParseControl) -> Result<Option<u32>, ParseStop> {
+        self.lexer.read(c, &mut self.evidence)
+    }
+    fn finish_attribute(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        self.lexer.finish_attribute(c, &mut self.evidence)
+    }
+    fn check_attribute_name(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        self.lexer.check_attribute_name(c, &mut self.evidence)
+    }
+}
+impl<'a> std::ops::Deref for LexerFixture<'a> {
+    type Target = Tokenizer<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.lexer
+    }
+}
+impl std::ops::DerefMut for LexerFixture<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.lexer
+    }
+}
+
 #[test]
 fn head_handoff_keeps_the_real_pause_and_accepts_returned_eof() {
     let source = HtmlSource::utf8("<html>A");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(
         matches!(&event, Event::Token(value) if matches!(&value.token().kind, TokenKind::Tag(_)))
@@ -34,7 +102,7 @@ fn head_handoff_rejects_foreign_owner_raw_state_and_pending_without_consumption(
     let source = HtmlSource::utf8("\0");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Raw(Raw::Rawtext), None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Raw(Raw::Rawtext), None, &mut c).unwrap();
     assert_eq!(
         t.validate_head_handoff(&source, &mut c),
         Err(TokenizerHandoffError::NotData)
@@ -70,7 +138,7 @@ fn head_handoff_work_cancel_and_foreign_source_preserve_the_borrowed_tokenizer()
     let source = HtmlSource::utf8("A");
     let mut probe = ParseControl::new(limits(), HtmlParseCancellation::new());
     probe.admit_source(&source).unwrap();
-    let tokenizer = Tokenizer::new(&source, State::Data, None, &mut probe).unwrap();
+    let tokenizer = LexerFixture::new(&source, State::Data, None, &mut probe).unwrap();
     let setup_work = probe
         .usage()
         .resource(HtmlParseResource::WorkCredits)
@@ -89,7 +157,7 @@ fn head_handoff_work_cancel_and_foreign_source_preserve_the_borrowed_tokenizer()
         };
         let mut c = ParseControl::new(selected, cancellation.clone());
         c.admit_source(&source).unwrap();
-        let t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         if reason == 0 {
             assert!(matches!(
                 t.validate_head_handoff(&source, &mut c),
@@ -174,30 +242,29 @@ fn collect(
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(source).unwrap();
     let last = last.map(DocumentString::from);
-    let mut tokenizer = Tokenizer::new(source, state, last.as_ref(), &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(source, state, last.as_ref(), &mut c).unwrap();
     let mut output = Vec::new();
     let mut errors = Vec::new();
     while let Some(event) = tokenizer.next(&mut c, cdata).unwrap() {
         match &event {
             Event::Diagnostic(d) => {
-                for diagnostic in d.as_slice() {
-                    assert_eq!(diagnostic.source.source(), source.identity());
-                    let _state = diagnostic.state;
-                    assert_eq!(
-                        diagnostic.phase,
-                        if matches!(
-                            diagnostic.code,
-                            DiagnosticCode::SurrogateInInputStream
-                                | DiagnosticCode::NoncharacterInInputStream
-                                | DiagnosticCode::ControlCharacterInInputStream
-                        ) {
-                            token::DiagnosticPhase::InputStream
-                        } else {
-                            token::DiagnosticPhase::Tokenizer
-                        }
-                    );
-                    errors.push(diagnostic.code);
-                }
+                let diagnostic = tokenizer.diagnostic(d);
+                assert_eq!(diagnostic.source.source(), source.identity());
+                let _state = diagnostic.state;
+                assert_eq!(
+                    diagnostic.phase,
+                    if matches!(
+                        diagnostic.code,
+                        DiagnosticCode::SurrogateInInputStream
+                            | DiagnosticCode::NoncharacterInInputStream
+                            | DiagnosticCode::ControlCharacterInInputStream
+                    ) {
+                        token::DiagnosticPhase::InputStream
+                    } else {
+                        token::DiagnosticPhase::Tokenizer
+                    }
+                );
+                errors.push(diagnostic.code);
             }
             Event::Preprocessing {
                 record,
@@ -523,7 +590,7 @@ fn spans_cover_original_crlf_utf8_and_reference_spelling() {
     let source = HtmlSource::utf8("é\r\n&NotEqualTilde;");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let mut records = Vec::new();
     while let Some(event) = t.next(&mut c, false).unwrap() {
         if let Some(Token {
@@ -568,7 +635,7 @@ fn cancellation_and_terminal_stop_never_return_a_later_token() {
     let cancel = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancel.clone());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     cancel.cancel();
     assert!(matches!(t.next(&mut c, false), Err(ParseStop::Cancelled)));
     assert!(matches!(t.next(&mut c, false), Err(ParseStop::Cancelled)));
@@ -589,7 +656,7 @@ fn run_with_limits(
 ) -> (Option<ParseStop>, u64) {
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
     if c.admit_source(source).is_ok()
-        && let Ok(mut tokenizer) = Tokenizer::new(source, state, last, &mut c)
+        && let Ok(mut tokenizer) = LexerFixture::new(source, state, last, &mut c)
     {
         loop {
             match tokenizer.next(&mut c, true) {
@@ -735,7 +802,7 @@ fn tree_state_selection_after_actual_start_tag_is_functional() {
     let source = HtmlSource::utf8("<title>&amp;</title>");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let tag = tokenizer.next(&mut c, false).unwrap().unwrap();
     assert!(
         matches!(tag.token(),Some(Token{kind:TokenKind::Tag(t),..}) if t.kind==TagKind::Start&&text(&t.name)==units("title"))
@@ -883,16 +950,15 @@ fn input_diagnostics_and_reconsume_newline_origins_are_emitted_once() {
     ]));
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let mut errors = Vec::new();
     let mut newlines = 0;
     while let Some(event) = tokenizer.next(&mut c, false).unwrap() {
         match &event {
             Event::Diagnostic(d) => {
-                for diagnostic in d.as_slice() {
-                    assert_eq!(diagnostic.phase, token::DiagnosticPhase::InputStream);
-                    errors.push(diagnostic.code);
-                }
+                let diagnostic = tokenizer.diagnostic(d);
+                assert_eq!(diagnostic.phase, token::DiagnosticPhase::InputStream);
+                errors.push(diagnostic.code);
             }
             Event::Preprocessing { record, .. } => {
                 assert_eq!(
@@ -949,10 +1015,10 @@ fn cancellation_discards_a_prepared_token_behind_a_real_diagnostic() {
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(
-        matches!(&event,Event::Diagnostic(d) if d.as_slice()[0].code==DiagnosticCode::UnexpectedNullCharacter)
+        matches!(&event,Event::Diagnostic(d) if t.diagnostic(d).code==DiagnosticCode::UnexpectedNullCharacter)
     );
     event.release(&mut c).unwrap();
     cancellation.cancel();
@@ -976,7 +1042,7 @@ fn attribute_occurrence_spans_exclude_separating_whitespace() {
     let source = HtmlSource::utf8("<a X = 'v'  y >");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
     let Some(Token {
         kind: TokenKind::Tag(tag),
@@ -1000,7 +1066,7 @@ fn consumer_transfer_releases_outer_slot_and_preserves_nested_payload() {
     let source = HtmlSource::utf16(DocumentString::from_utf16(vec![0xD800]));
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(matches!(event, Event::Diagnostic(_)));
     event.release(&mut c).unwrap();
@@ -1075,7 +1141,7 @@ fn repeated_cdata_brackets_keep_the_two_pending_original_spans() {
         let source = HtmlSource::utf8(input);
         let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let mut observed = Vec::new();
         while let Some(event) = t.next(&mut c, true).unwrap() {
             if let Some(Token {
@@ -1127,7 +1193,7 @@ fn emitted_text_accounts_for_each_actual_utf8_endpoint_read() {
         let source = HtmlSource::utf8(input);
         let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let before = c.usage().work(WorkCategory::InputUnitRead);
         let event = t.next(&mut c, false).unwrap().unwrap();
         assert_eq!(
@@ -1156,7 +1222,7 @@ fn tokenizer_range_counts_identical_interior_endpoints_and_zero_utf16_reads() {
     ] {
         let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let before = c.usage().clone();
         let range = t.range(1, 1, &mut c).unwrap();
         assert_eq!((range.start(), range.end()), (1, 1));
@@ -1182,7 +1248,7 @@ fn rejected_range_endpoint_admission_performs_neither_provider_endpoint_read() {
     let source = HtmlSource::utf8("ab");
     let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
     baseline.admit_source(&source).unwrap();
-    let t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
+    let t = LexerFixture::new(&source, State::Data, None, &mut baseline).unwrap();
     let entry = baseline
         .usage()
         .resource(HtmlParseResource::WorkCredits)
@@ -1200,7 +1266,7 @@ fn rejected_range_endpoint_admission_performs_neither_provider_endpoint_read() {
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let result = t.range(1, 1, &mut c);
         if remaining < 2 {
             let stop = result.unwrap_err();
@@ -1223,7 +1289,7 @@ fn rejected_range_endpoint_admission_performs_neither_provider_endpoint_read() {
     }
 }
 
-fn prepare_quoted_attribute(t: &mut Tokenizer<'_>, c: &mut ParseControl) {
+fn prepare_quoted_attribute(t: &mut LexerFixture<'_>, c: &mut ParseControl) {
     while t.state != State::AfterAttributeValue {
         t.step(c, false).unwrap();
     }
@@ -1234,7 +1300,7 @@ fn attribute_span_accounts_for_actual_interior_reads_and_keeps_failed_draft_owne
     let source = HtmlSource::utf8("<a x='v' >");
     let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
     baseline.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut baseline).unwrap();
     prepare_quoted_attribute(&mut t, &mut baseline);
     let entry = baseline
         .usage()
@@ -1261,7 +1327,7 @@ fn attribute_span_accounts_for_actual_interior_reads_and_keeps_failed_draft_owne
         .unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     prepare_quoted_attribute(&mut t, &mut c);
     let before = c.usage().work(WorkCategory::InputUnitRead);
     let stop = t.finish_attribute(&mut c).unwrap_err();
@@ -1326,7 +1392,7 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     let source = HtmlSource::utf8("&#xFFFF&#xFFFF");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     t.step(&mut c, false).unwrap();
     t.step(&mut c, false).unwrap();
     assert_eq!(t.pending_len, 6);
@@ -1336,7 +1402,7 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     let entry = before.resource(HtmlParseResource::WorkCredits).current;
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(
-        matches!(&event,Event::Diagnostic(d) if d.as_slice()[0].code==DiagnosticCode::MissingSemicolonAfterCharacterReference)
+        matches!(&event,Event::Diagnostic(d) if t.diagnostic(d).code==DiagnosticCode::MissingSemicolonAfterCharacterReference)
     );
     assert_eq!(
         c.usage()
@@ -1365,7 +1431,7 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
         .unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     t.step(&mut c, false).unwrap();
     t.step(&mut c, false).unwrap();
     let before = c.usage().clone();
@@ -1397,7 +1463,7 @@ fn actual_data_to_tag_open_transition_admits_separate_persistent_writes() {
     let source = HtmlSource::utf8("<");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let before = c.usage().clone();
     t.step(&mut c, false).unwrap();
     assert_eq!(t.state, State::TagOpen);
@@ -1419,7 +1485,7 @@ fn rejected_state_write_does_not_change_state_and_exact_admission_does() {
     let source = HtmlSource::utf8("");
     let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
     baseline.admit_source(&source).unwrap();
-    let t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
+    let t = LexerFixture::new(&source, State::Data, None, &mut baseline).unwrap();
     let entry = baseline
         .usage()
         .resource(HtmlParseResource::WorkCredits)
@@ -1434,7 +1500,7 @@ fn rejected_state_write_does_not_change_state_and_exact_admission_does() {
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         let before = c.usage().clone();
         let result = t.set_state(State::TagOpen, &mut c);
         if remaining == 0 {
@@ -1459,7 +1525,7 @@ fn self_closing_and_force_quirks_flags_each_admit_one_independent_record_write()
     let source = HtmlSource::utf8("<a/>");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     while t.state != State::SelfClosing {
         t.step(&mut c, false).unwrap();
     }
@@ -1481,7 +1547,7 @@ fn self_closing_and_force_quirks_flags_each_admit_one_independent_record_write()
     let source = HtmlSource::utf8("<!DOCTYPE >");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     while t.state != State::BeforeDoctypeName {
         t.step(&mut c, false).unwrap();
     }
@@ -1507,7 +1573,7 @@ fn duplicate_bookkeeping_admits_each_flag_in_addition_to_lookup_and_diagnostic_w
     let source = HtmlSource::utf8("<a x X>");
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     c.admit_source(&source).unwrap();
-    let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     loop {
         t.step(&mut c, false).unwrap();
         if t.tag
@@ -1524,16 +1590,16 @@ fn duplicate_bookkeeping_admits_each_flag_in_addition_to_lookup_and_diagnostic_w
     let a = tag.attribute.as_ref().unwrap();
     assert!(a.duplicate && a.name_checked && tag.had_duplicates);
     // Lookup terminal; duplicate/name-checked/had-duplicates flags; one
-    // diagnostic slot; its queue slot and queue length = seven writes.
+    // diagnostic and location slots; queue slot and queue length = eight writes.
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
-        7
+        8
     );
     t.release(&mut c).unwrap();
     assert_storage_released(&c);
 }
 
-fn prepare_flag_write(t: &mut Tokenizer<'_>, c: &mut ParseControl, doctype: bool) {
+fn prepare_flag_write(t: &mut LexerFixture<'_>, c: &mut ParseControl, doctype: bool) {
     let state = if doctype {
         State::BeforeDoctypeName
     } else {
@@ -1554,7 +1620,7 @@ fn rejected_self_closing_and_quirks_write_leave_each_flag_false_and_release_its_
         let source = HtmlSource::utf8(input);
         let mut baseline = ParseControl::new(limits(), HtmlParseCancellation::new());
         baseline.admit_source(&source).unwrap();
-        let mut t = Tokenizer::new(&source, State::Data, None, &mut baseline).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut baseline).unwrap();
         prepare_flag_write(&mut t, &mut baseline, doctype);
         let entry = baseline
             .usage()
@@ -1571,7 +1637,7 @@ fn rejected_self_closing_and_quirks_write_leave_each_flag_false_and_release_its_
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let mut t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
         prepare_flag_write(&mut t, &mut c, doctype);
         let before = c.usage().clone();
         let stop = if doctype {

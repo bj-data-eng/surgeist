@@ -1,13 +1,16 @@
 use super::super::tests::{fresh_script_owner, limits, storage_zero};
 use super::*;
 use crate::parser::tokenizer::{
-    Tokenizer,
     states::{Raw, State},
+    tests::LexerFixture,
     token::{Event, Token},
 };
 use crate::parser::tree_builder::StandaloneCapability;
 
-fn next(lexer: &mut Tokenizer<'_>, c: &mut ParseControl) -> Token {
+fn next(
+    lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+    c: &mut ParseControl,
+) -> Token {
     loop {
         match lexer.next(c, false).unwrap().expect("actual fixture token") {
             Event::Token(event) => return event.into_token(c).unwrap(),
@@ -31,7 +34,7 @@ fn graph<'a>(
     let html = session.active().unwrap().node(&mut c, html_index).unwrap();
     let mut stack = vec![html];
     let mut nodes = vec![];
-    let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
     loop {
         let token = next(&mut lexer, &mut c);
         match token.kind {
@@ -261,7 +264,7 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
     );
     // A separately admitted real lexical replay supplies two useful text
     // payloads on the same controller; no detached synthetic Text is fabricated.
-    let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
     let mut texts = Vec::new();
     loop {
         let token = next(&mut lexer, &mut c);
@@ -773,7 +776,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<select>"), caps);
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let parent = session.active().unwrap().node(&mut c, 1).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let token = next(&mut lexer, &mut c);
         let TokenKind::Tag(tag) = token.kind else {
             panic!("actual select")
@@ -832,7 +835,7 @@ fn select_creation_rejects_real_alias_and_foreign_parent_before_retaining_metada
     let request = request("<select>");
     let (mut c, mut session, proof) = fresh_script_owner(&request);
     let parent = session.active().unwrap().node(&mut c, 1).unwrap();
-    let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
     let token = next(&mut lexer, &mut c);
     let TokenKind::Tag(tag) = token.kind else {
         panic!("actual select")
@@ -1122,7 +1125,7 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
     let parent = session.active().unwrap().node(&mut c, 1).unwrap();
     let mut foreign = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
     foreign.admit_source(request.source()).unwrap();
-    let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut foreign).unwrap();
+    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut foreign).unwrap();
     let token = next(&mut lexer, &mut foreign);
     let TokenKind::Tag(tag) = token.kind else {
         panic!("real foreign select token")
@@ -1186,7 +1189,7 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
                 .unwrap()
                 .already_started
         );
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let mut text = loop {
             let token = next(&mut lexer, &mut c);
             if let TokenKind::Text(text) = token.kind {

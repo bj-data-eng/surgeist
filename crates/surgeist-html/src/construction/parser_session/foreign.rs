@@ -306,13 +306,13 @@ impl SessionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{Tokenizer, states::State, token::Event};
+    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
 
     fn lexical<'a>(
         source: &'a crate::HtmlSource,
         c: &mut ParseControl,
-    ) -> (Tokenizer<'a>, Option<Tag>, crate::HtmlSourceRange) {
-        let mut lexer = Tokenizer::new(source, State::Data, None, c).unwrap();
+    ) -> (LexerFixture<'a>, Option<Tag>, crate::HtmlSourceRange) {
+        let mut lexer = LexerFixture::new(source, State::Data, None, c).unwrap();
         loop {
             match lexer.next(c, false).unwrap().unwrap() {
                 Event::Token(event) => {
@@ -356,7 +356,8 @@ mod tests {
         ] {
             // Fresh implicit html owns 4+28 units. The real lowercase token
             // owns 14, its case-adjusted replacement owns 14, SVG URI owns26.
-            // Both original/replacement maps coexist (14+14); their buffers
+            // Both original/replacement maps coexist (14+14), plus one actual
+            // canonical MissingDoctype diagnostic location; their buffers
             // also coexist with the actual tokenizer last-start name14 (42).
             // The shorter head fixture keeps factory peak below that boundary.
             // Neither source nor old ticket is
@@ -364,7 +365,7 @@ mod tests {
             let exact = match resource {
                 HtmlParseResource::ManagedUtf16Units => 86,
                 HtmlParseResource::BufferedUtf16Units => 42,
-                _ => 28,
+                _ => 29,
             };
             for cap in [exact - 1, exact] {
                 let builder = super::super::tests::limits().into_builder();
@@ -381,6 +382,7 @@ mod tests {
                 );
                 let (mut c, mut session, capability) =
                     super::super::tests::fresh_script_owner(&request);
+                assert_eq!(session.retained_evidence().unwrap().len(), 1);
                 let root = session.root(&mut c).unwrap();
                 let (lexer, mut input, range) = lexical(request.source(), &mut c);
                 let result = session.allocate_foreign_tag_for_creation(

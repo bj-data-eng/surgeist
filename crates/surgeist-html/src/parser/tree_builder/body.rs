@@ -21,9 +21,7 @@
 use super::{
     KernelError, Scope, copy_node,
     formatting::FORMATTING,
-    head::{
-        HeadBoundary, HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep, InsertionMode,
-    },
+    head::{HeadBoundary, HeadCondition, HeadError, HeadState, HeadStep, InsertionMode},
     prologue::Payload,
     tag_sets::{self, NodeSet},
     write,
@@ -251,16 +249,9 @@ impl HeadState<'_> {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 for origin in run.text.origins.as_slice() {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    write(size_of::<HeadDiagnostic>(), 3, c)?;
+
                     c.charge(WorkCategory::ProviderCall, 1)?;
-                    self.diagnostics.try_push(
-                        c,
-                        HeadDiagnostic {
-                            condition: HeadCondition::NullInBody,
-                            mode,
-                            source: origin.source.clone(),
-                        },
-                    )?;
+                    self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(HeadCondition::NullInBody), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), crate::construction::parser_session::evidence::DiagnosticRule { anchor: "parsing-main-inbody", branch: "null-character/ignore" }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &origin.source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::TextOrigin, token: Some(crate::construction::parser_session::evidence::DiagnosticToken::Text) })?;
                 }
                 write(
                     size_of::<Option<TextRun>>() + size_of::<Option<Text>>(),
@@ -313,7 +304,14 @@ impl HeadState<'_> {
         )?;
         let current = self.before.kernel.current(c)?;
         if !self.before.kernel.named(&current, "p", c)? {
-            self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+            self.emit(
+                HeadCondition::UnexpectedOpenElement,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "p-close/current-node-mismatch",
+                },
+                c,
+            )?;
         }
         loop {
             let node = self
@@ -349,7 +347,14 @@ impl HeadState<'_> {
         for index in 0..self.before.kernel.stack()?.len() {
             let node = self.before.kernel.at(index, c)?;
             if !self.before.kernel.node_set(&node, NodeSet::BodyEnd, c)? {
-                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedOpenElement,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "body-end-or-eof/disallowed-open-element",
+                    },
+                    c,
+                )?;
                 break;
             }
         }
@@ -370,7 +375,14 @@ impl HeadState<'_> {
             self.validate_standalone_capability(c)?;
         }
         if late {
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedBodyToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "the-after-head-insertion-mode",
+                    branch: "head-start/delegate-using-head-pointer",
+                },
+                c,
+            )?;
             c.charge(WorkCategory::RecordVisit, 1)?;
             let head = self.head.as_ref().ok_or(HeadError::MissingInput)?;
             let node = copy_node(head, c)?;
@@ -412,7 +424,14 @@ impl HeadState<'_> {
             self.close_template(c, true)?;
             return self.discard(c);
         }
-        self.emit(HeadCondition::UnexpectedEndTag, c)?;
+        self.emit(
+            HeadCondition::UnexpectedEndTag,
+            crate::construction::parser_session::evidence::DiagnosticRule {
+                anchor: "parsing-main-inhead",
+                branch: "template-end/no-template-in-scope",
+            },
+            c,
+        )?;
         self.discard(c)
     }
     pub(super) fn ordinary_at(
@@ -505,7 +524,14 @@ impl HeadState<'_> {
             }));
         }
         if matches!(payload, Payload::Doctype(_)) {
-            self.emit(HeadCondition::UnexpectedDoctype, c)?;
+            self.emit(
+                HeadCondition::UnexpectedDoctype,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: mode.rule_anchor(),
+                    branch: "doctype/ignore",
+                },
+                c,
+            )?;
             return Ok(Some(self.discard(c)?));
         }
         if kind.is_some_and(|(kind, _)| kind == TagKind::Start)
@@ -523,7 +549,14 @@ impl HeadState<'_> {
                     self.frameset(false, c)?;
                     self.set_mode(InsertionMode::InBody, c)?;
                     if close {
-                        self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                        self.emit(
+                            HeadCondition::UnacknowledgedSelfClosing,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "the-after-head-insertion-mode",
+                                branch: "after-head/body-start/self-closing",
+                            },
+                            c,
+                        )?;
                     }
                     return Ok(Some(self.finish(c)?));
                 }
@@ -531,10 +564,21 @@ impl HeadState<'_> {
                     return Ok(Some(self.head_delegation(true, close, c)?));
                 }
                 if self.token_in(&["frameset"], c)?.is_some() {
-                    return Ok(Some(self.frameset_start(close, c)?));
+                    return Ok(Some(self.frameset_start(
+                        "the-after-head-insertion-mode",
+                        close,
+                        c,
+                    )?));
                 }
                 if self.token_in(&["head"], c)?.is_some() {
-                    self.emit(HeadCondition::UnexpectedHead, c)?;
+                    self.emit(
+                        HeadCondition::UnexpectedHead,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: mode.rule_anchor(),
+                            branch: "after-head/head-start/ignore",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
             }
@@ -543,7 +587,14 @@ impl HeadState<'_> {
                     return Ok(Some(self.end_template(c)?));
                 }
                 if self.token_in(&["body", "html", "br"], c)?.is_none() {
-                    self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                    self.emit(
+                        HeadCondition::UnexpectedEndTag,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: mode.rule_anchor(),
+                            branch: "after-head/disallowed-end-tag",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
             }
@@ -564,7 +615,14 @@ impl HeadState<'_> {
                 self.set_mode(InsertionMode::AfterAfterBody, c)?;
                 return Ok(Some(self.discard(c)?));
             }
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedBodyToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: mode.rule_anchor(),
+                    branch: "after-body/anything-else",
+                },
+                c,
+            )?;
             self.set_mode(InsertionMode::InBody, c)?;
             return Ok(None);
         }
@@ -587,7 +645,14 @@ impl HeadState<'_> {
         {
             self.frameset_admission(c)?;
             // The governing source diagnoses before stack/flag checks/removal.
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedBodyToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "frameset-start/in-body",
+                },
+                c,
+            )?;
             c.charge(WorkCategory::RecordVisit, 1)?;
             if self.before.kernel.stack()?.len() < 2 {
                 return Ok(Some(self.discard(c)?));
@@ -616,7 +681,11 @@ impl HeadState<'_> {
                         .pop(c, self.script.as_ref().map(|script| &script.capability))?
                         .ok_or(KernelError::EmptyStack)?;
                 }
-                return Ok(Some(self.frameset_start(close, c)?));
+                return Ok(Some(self.frameset_start(
+                    "parsing-main-inbody",
+                    close,
+                    c,
+                )?));
             }
             return Ok(Some(self.discard(c)?));
         }
@@ -631,7 +700,14 @@ impl HeadState<'_> {
                 )?
                 .is_some()
         {
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedBodyToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "disallowed-table-or-frame-start",
+                },
+                c,
+            )?;
             return Ok(Some(self.discard(c)?));
         }
         if let Some(boundary) = self.excluded(kind.ok_or(HeadError::MissingInput)?.0, c)? {
@@ -658,7 +734,14 @@ impl HeadState<'_> {
                     .kernel
                     .scoped_name("select", Scope::Default, c)?
                 {
-                    self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+                    self.emit(
+                        HeadCondition::UnexpectedBodyToken,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-inbody",
+                            branch: "input-start/select-in-scope",
+                        },
+                        c,
+                    )?;
                     self.pop_select(c)?;
                 }
                 self.reconstruct_formatting(c)?;
@@ -692,7 +775,14 @@ impl HeadState<'_> {
                 self.frameset(false, c)?;
                 self.set_mode(InsertionMode::Text, c)?;
                 if close {
-                    self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                    self.emit(
+                        HeadCondition::UnacknowledgedSelfClosing,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-inbody",
+                            branch: "textarea-start/self-closing",
+                        },
+                        c,
+                    )?;
                 }
                 return Ok(Some(self.finish(c)?));
             }
@@ -730,9 +820,23 @@ impl HeadState<'_> {
         // HTML877d4394: reject the nested opener before close-p or creation.
         c.charge(WorkCategory::RecordVisit, 1)?;
         if self.current_form.is_some() && !template {
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedBodyToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "form-start/existing-form-pointer",
+                },
+                c,
+            )?;
             if close {
-                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                self.emit(
+                    HeadCondition::UnacknowledgedSelfClosing,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "ignored-form-start/self-closing",
+                    },
+                    c,
+                )?;
             }
             return self.discard(c);
         }
@@ -744,7 +848,14 @@ impl HeadState<'_> {
             self.current_form = Some(node);
         }
         if close {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "form-start/self-closing",
+                },
+                c,
+            )?;
         }
         self.finish(c)
     }
@@ -753,7 +864,14 @@ impl HeadState<'_> {
         // an actual continuation before effects in this ordinary unit.
         if self.before.kernel.contains_html_template(c)? {
             if !self.before.kernel.scoped_name("form", Scope::Default, c)? {
-                self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedEndTag,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "template-form-end/not-in-scope",
+                    },
+                    c,
+                )?;
                 return self.discard(c);
             }
             self.before.kernel.implied_ends(
@@ -763,7 +881,14 @@ impl HeadState<'_> {
             )?;
             let current = self.before.kernel.current(c)?;
             if !self.before.kernel.named(&current, "form", c)? {
-                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedOpenElement,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "template-form-end/current-node-mismatch",
+                    },
+                    c,
+                )?;
             }
             loop {
                 let node = self
@@ -781,11 +906,25 @@ impl HeadState<'_> {
         write(size_of::<Option<ParserNode>>(), 1, c)?;
         let node = self.current_form.take();
         let Some(node) = node else {
-            self.emit(HeadCondition::UnexpectedEndTag, c)?;
+            self.emit(
+                HeadCondition::UnexpectedEndTag,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "form-end/null-form-pointer",
+                },
+                c,
+            )?;
             return self.discard(c);
         };
         if !self.before.kernel.in_scope(&node, Scope::Default, c)? {
-            self.emit(HeadCondition::UnexpectedEndTag, c)?;
+            self.emit(
+                HeadCondition::UnexpectedEndTag,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "form-end/pointed-form-not-in-scope",
+                },
+                c,
+            )?;
             return self.discard(c);
         }
         self.before.kernel.implied_ends(
@@ -797,7 +936,14 @@ impl HeadState<'_> {
         if !self.before.kernel.session.same_node(c, &current, &node)? {
             // Governing HTML4516 diagnoses BEFORE4518 removes the identity;
             // the acquired engine's reversed ordering is not carried over.
-            self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+            self.emit(
+                HeadCondition::UnexpectedOpenElement,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "form-end/current-node-mismatch",
+                },
+                c,
+            )?;
         }
         self.before.kernel.remove_stack_identity(
             &node,
@@ -832,7 +978,14 @@ impl HeadState<'_> {
                 .kernel
                 .scoped_name("select", Scope::Default, c)?;
             if name == "select" && select {
-                self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedBodyToken,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "select-start/select-in-scope",
+                    },
+                    c,
+                )?;
                 let step = self.discard(c)?;
                 self.pop_select(c)?;
                 return Ok(Some(step));
@@ -854,7 +1007,14 @@ impl HeadState<'_> {
                                 .kernel
                                 .scoped_name("optgroup", Scope::Default, c)?)
                     {
-                        self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedOpenElement,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-inbody",
+                                branch: "select-start/current-option-or-optgroup-not-in-scope",
+                            },
+                            c,
+                        )?;
                     }
                 } else {
                     let current = self.before.kernel.current(c)?;
@@ -871,7 +1031,14 @@ impl HeadState<'_> {
                 self.frameset(false, c)?;
             }
             if close {
-                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                self.emit(
+                    HeadCondition::UnacknowledgedSelfClosing,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "select-start/self-closing",
+                    },
+                    c,
+                )?;
             }
             return Ok(Some(self.finish(c)?));
         }
@@ -884,7 +1051,14 @@ impl HeadState<'_> {
                 // HTML877d4478-4484 requires the diagnostic before implied
                 // ends or stack removal, so rejected diagnostics retain the
                 // old button and the actual unconsumed new token.
-                self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedBodyToken,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "button-start/button-in-scope",
+                    },
+                    c,
+                )?;
                 self.before.kernel.implied_ends(
                     None,
                     c,
@@ -905,7 +1079,14 @@ impl HeadState<'_> {
             self.insert_tag(c)?;
             self.frameset(false, c)?;
             if close {
-                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                self.emit(
+                    HeadCondition::UnacknowledgedSelfClosing,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "button-start/self-closing",
+                    },
+                    c,
+                )?;
             }
             return Ok(Some(self.finish(c)?));
         }
@@ -917,12 +1098,26 @@ impl HeadState<'_> {
             self.frameset(false, c)?;
             self.set_mode(InsertionMode::InTable, c)?;
             if close {
-                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                self.emit(
+                    HeadCondition::UnacknowledgedSelfClosing,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "table-start/self-closing",
+                    },
+                    c,
+                )?;
             }
             return Ok(Some(self.finish(c)?));
         }
         if self.token_in(&["body"], c)?.is_some() {
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedBodyToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "body-start/in-body",
+                },
+                c,
+            )?;
             c.charge(WorkCategory::RecordVisit, 1)?;
             if self.before.kernel.stack()?.len() > 1
                 && !self.before.kernel.contains_html_template(c)?
@@ -948,7 +1143,14 @@ impl HeadState<'_> {
             return Ok(Some(self.discard(c)?));
         }
         if self.token_in(&["head"], c)?.is_some() {
-            self.emit(HeadCondition::UnexpectedHead, c)?;
+            self.emit(
+                HeadCondition::UnexpectedHead,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "head-start/in-body",
+                },
+                c,
+            )?;
             return Ok(Some(self.discard(c)?));
         }
         if self.token_in(BLOCK, c)?.is_some() {
@@ -957,7 +1159,14 @@ impl HeadState<'_> {
             self.close_p_in_scope(c)?;
             let current = self.before.kernel.current(c)?;
             if self.before.kernel.node_set(&current, NodeSet::Heading, c)? {
-                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedOpenElement,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "heading-start/current-heading",
+                    },
+                    c,
+                )?;
                 self.before
                     .kernel
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?;
@@ -969,7 +1178,14 @@ impl HeadState<'_> {
             self.ignore_first_lf = true;
             self.frameset(false, c)?;
             if close {
-                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                self.emit(
+                    HeadCondition::UnacknowledgedSelfClosing,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "pre-or-listing-start/self-closing",
+                    },
+                    c,
+                )?;
             }
             return Ok(Some(self.finish(c)?));
         } else if let Some(name) = self.token_in(&["li", "dd", "dt"], c)? {
@@ -998,7 +1214,14 @@ impl HeadState<'_> {
                     )?;
                     let current = self.before.kernel.current(c)?;
                     if !self.before.kernel.session.same_node(c, &current, &node)? {
-                        self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedOpenElement,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-inbody",
+                                branch: "list-item-start/current-node-mismatch",
+                            },
+                            c,
+                        )?;
                     }
                     self.before.kernel.pop_through(
                         &node,
@@ -1024,7 +1247,14 @@ impl HeadState<'_> {
                 .ok_or(HeadError::Consumed)?
                 .set_state(State::Plaintext, c)?;
             if close {
-                self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                self.emit(
+                    HeadCondition::UnacknowledgedSelfClosing,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "plaintext-start/self-closing",
+                    },
+                    c,
+                )?;
             }
             return Ok(Some(self.finish(c)?));
         } else if self.token_in(&["xmp", "iframe", "noembed"], c)?.is_some() {
@@ -1037,7 +1267,14 @@ impl HeadState<'_> {
             }
             return Ok(Some(self.raw_text(Raw::Rawtext, close, c)?));
         } else if self.token_in(&["image"], c)?.is_some() {
-            self.emit(HeadCondition::UnexpectedBodyToken, c)?;
+            self.emit(
+                HeadCondition::UnexpectedBodyToken,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "image-start/reprocess-as-img",
+                },
+                c,
+            )?;
             let Payload::Tag(input) = &mut self
                 .pending
                 .as_mut()
@@ -1084,7 +1321,14 @@ impl HeadState<'_> {
                             .kernel
                             .scoped_name("optgroup", Scope::Default, c)?
                     {
-                        self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedOpenElement,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-inbody",
+                                branch: "option-start/current-option-or-optgroup-not-in-scope",
+                            },
+                            c,
+                        )?;
                     }
                 }
             }
@@ -1109,7 +1353,14 @@ impl HeadState<'_> {
         }
         self.insert_tag(c)?;
         if close {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "ordinary-start/self-closing",
+                },
+                c,
+            )?;
         }
         Ok(Some(self.finish(c)?))
     }
@@ -1128,7 +1379,14 @@ impl HeadState<'_> {
             if !self.before.kernel.named(&current, "ruby", c)?
                 && !(matches!(name, "rp" | "rt") && self.before.kernel.named(&current, "rtc", c)?)
             {
-                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedOpenElement,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "ruby-start/current-node-mismatch",
+                    },
+                    c,
+                )?;
             }
         }
         Ok(())
@@ -1178,7 +1436,14 @@ impl HeadState<'_> {
     fn body_end(&mut self, c: &mut ParseControl) -> Result<Option<HeadStep>, HeadError> {
         if let Some(name) = self.token_in(&["body", "html"], c)? {
             if !self.before.kernel.scoped_name("body", Scope::Default, c)? {
-                self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedEndTag,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "body-or-html-end/body-not-in-scope",
+                    },
+                    c,
+                )?;
                 return Ok(Some(self.discard(c)?));
             }
             self.body_end_check(c)?;
@@ -1190,7 +1455,14 @@ impl HeadState<'_> {
             };
         }
         if self.token_in(&["br"], c)?.is_some() {
-            self.emit(HeadCondition::UnexpectedEndTag, c)?;
+            self.emit(
+                HeadCondition::UnexpectedEndTag,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-inbody",
+                    branch: "br-end/reprocess-as-start",
+                },
+                c,
+            )?;
             let Payload::Tag(input) = &mut self
                 .pending
                 .as_mut()
@@ -1204,7 +1476,14 @@ impl HeadState<'_> {
         }
         if self.token_in(&["p"], c)?.is_some() {
             if !self.before.kernel.scoped_name("p", Scope::Button, c)? {
-                self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedEndTag,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "p-end/p-not-in-button-scope",
+                    },
+                    c,
+                )?;
                 let location = self.before.kernel.adjusted_location(None, c)?;
                 let node = self
                     .before
@@ -1235,7 +1514,14 @@ impl HeadState<'_> {
                 },
                 c,
             )? {
-                self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedEndTag,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "ordinary-end/no-target-in-required-scope",
+                    },
+                    c,
+                )?;
                 return Ok(Some(self.discard(c)?));
             }
             self.before.kernel.implied_ends(
@@ -1249,7 +1535,14 @@ impl HeadState<'_> {
             )?;
             let current = self.before.kernel.current(c)?;
             if !self.before.kernel.named(&current, name, c)? {
-                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedOpenElement,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "ordinary-end/current-node-mismatch",
+                    },
+                    c,
+                )?;
             }
             loop {
                 let node = self
@@ -1284,7 +1577,14 @@ impl HeadState<'_> {
                 }
             }
             let Some(target) = target else {
-                self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedEndTag,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "heading-end/no-heading-in-scope",
+                    },
+                    c,
+                )?;
                 return Ok(Some(self.discard(c)?));
             };
             self.before.kernel.implied_ends(
@@ -1294,7 +1594,14 @@ impl HeadState<'_> {
             )?;
             let current = self.before.kernel.current(c)?;
             if !self.token_matches_node(&current, c)? {
-                self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedOpenElement,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "heading-end/current-node-mismatch",
+                    },
+                    c,
+                )?;
             }
             self.before.kernel.pop_through(
                 &target,
@@ -1324,7 +1631,14 @@ impl HeadState<'_> {
                 }
                 let current = self.before.kernel.current(c)?;
                 if !self.before.kernel.session.same_node(c, &node, &current)? {
-                    self.emit(HeadCondition::UnexpectedOpenElement, c)?;
+                    self.emit(
+                        HeadCondition::UnexpectedOpenElement,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-inbody",
+                            branch: "generic-end/matching-node-not-current",
+                        },
+                        c,
+                    )?;
                 }
                 self.before.kernel.pop_through(
                     &node,
@@ -1334,7 +1648,14 @@ impl HeadState<'_> {
                 return Ok(());
             }
             if self.before.kernel.node_set(&node, NodeSet::Special, c)? {
-                self.emit(HeadCondition::UnexpectedEndTag, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedEndTag,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "generic-end/special-node-before-match",
+                    },
+                    c,
+                )?;
                 return Ok(());
             }
         }

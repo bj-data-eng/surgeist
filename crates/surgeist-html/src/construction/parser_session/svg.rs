@@ -253,10 +253,13 @@ impl FrozenArena {
 mod tests {
     use super::super::tests::{fresh_script_owner, limits, storage_zero};
     use super::*;
-    use crate::parser::tokenizer::{Tokenizer, states::State, token::Event};
+    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
     use crate::parser::tree_builder::StandaloneCapability;
 
-    fn tag(lexer: &mut Tokenizer<'_>, c: &mut ParseControl) -> (Tag, crate::HtmlSourceRange) {
+    fn tag(
+        lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+        c: &mut ParseControl,
+    ) -> (Tag, crate::HtmlSourceRange) {
         loop {
             let event = lexer.next(c, false).unwrap().expect("real token");
             if let Event::Token(event) = event {
@@ -274,7 +277,7 @@ mod tests {
     fn script(
         session: &mut ParserArenaSession,
         c: &mut ParseControl,
-        lexer: &mut Tokenizer<'_>,
+        lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         parent: &ParserNode,
         proof: &StandaloneCapability<'_>,
     ) -> ParserNode {
@@ -325,7 +328,7 @@ mod tests {
             let request = request(&format!("<script {attrs}>"));
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
             assert_eq!(
                 session.svg_script_state(&mut c, &node).unwrap(),
@@ -378,7 +381,7 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         assert_eq!(
             session.process_disabled_svg(&mut c, &node, &proof).unwrap(),
@@ -423,7 +426,7 @@ mod tests {
             let request = request("<script xlink:href='#saved'>");
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             let source = script(&mut session, &mut c, &mut lexer, &root, &proof);
             if processed {
                 session
@@ -474,7 +477,7 @@ mod tests {
         let request = request("<template><script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let (tag, _) = tag(&mut lexer, &mut c);
         let template = session
             .allocate_html_tag_for_creation(
@@ -530,7 +533,7 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         session
             .insert_parser(&mut c, &root, &node, None, &proof)
@@ -562,7 +565,7 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         let foreign =
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<script>"), limits());
@@ -606,7 +609,7 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         session
             .insert_parser(&mut c, &root, &node, None, &proof)
@@ -626,7 +629,7 @@ mod tests {
             let request = request("<script>");
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
             session
                 .insert_parser(&mut c, &root, &node, None, &proof)
@@ -720,7 +723,7 @@ mod tests {
             let request = request("<script>");
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
             let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
             session
                 .insert_parser(&mut c, &root, &node, None, &proof)
@@ -778,7 +781,7 @@ mod tests {
         let request = request("<script xlink:href='#saved'>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let (tag, source) = tag(&mut lexer, &mut c);
         let alias = tag.name.value.text().clone();
         let mut input = Some(tag);
@@ -820,7 +823,7 @@ mod tests {
     ) {
         let (mut c, mut session, proof) = fresh_script_owner(request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = Tokenizer::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let (tag, _) = tag(&mut lexer, &mut c);
         let parent = session
             .allocate_html_tag_for_creation(

@@ -36,13 +36,13 @@ mod end;
 mod foreign;
 mod formatting;
 mod frameset;
-mod head;
-mod prologue;
+pub(crate) mod head;
+pub(crate) mod prologue;
 mod tables;
 mod tag_sets;
 mod template;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use super::{
     control::{
@@ -787,6 +787,8 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
     before: Option<prologue::BeforeHead>,
     head: Option<head::HeadStage<'source>>,
     lexical: Option<OwnedVec<super::tokenizer::token::Event>>,
+    failed_evidence: Option<crate::construction::parser_session::evidence::ParseEvidence>,
+    failure_usage: Option<super::control::ParseUsage>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(crate) fn new(
@@ -805,7 +807,20 @@ impl<'source> StandaloneDocumentDriver<'source> {
         let source = request.source();
         let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
         c.admit_source(source)?;
-        write(size_of::<Self>(), 9, &mut c)?;
+        write(size_of::<Self>(), 11, &mut c)?;
+        // Prepare the actual terminal transfers before any pull: the at-stop
+        // snapshot slot, evidence source/destination slots, six envelope fields
+        // and consumed driver slot. Completion may leave this preparation unused.
+        // No allocation, variable copy, fee or poll follows a latched stop.
+        write(
+            size_of::<Option<super::control::ParseUsage>>()
+                + 2 * size_of::<Option<crate::construction::parser_session::evidence::ParseEvidence>>(
+                )
+                + size_of::<end::FailedStandaloneDocument>()
+                + size_of::<Option<Self>>(),
+            1 + 2 + 6 + 1,
+            &mut c,
+        )?;
         let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         lexical.require_owner(&mut c)?;
         let tokenizer = match super::tokenizer::Tokenizer::new(
@@ -838,6 +853,8 @@ impl<'source> StandaloneDocumentDriver<'source> {
             before: None,
             head: None,
             lexical: Some(lexical),
+            failed_evidence: None,
+            failure_usage: None,
         })
     }
     pub(crate) fn step(&mut self) -> Result<head::HeadStep, StandaloneError> {
@@ -898,16 +915,38 @@ impl<'source> StandaloneDocumentDriver<'source> {
             if self.token.is_none() {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 write(size_of::<Option<Event>>(), 1, c)?;
+                let evidence = self
+                    .prologue
+                    .as_mut()
+                    .ok_or(StandaloneError::Consumed)?
+                    .kernel
+                    .as_mut()
+                    .ok_or(StandaloneError::Consumed)?
+                    .session
+                    .evidence(c)
+                    .map_err(|e| StandaloneError::Head(e.into()))?;
                 self.event = self
                     .tokenizer
                     .as_mut()
                     .ok_or(StandaloneError::Consumed)?
-                    .next(c, false)?;
+                    .next(c, false, evidence)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let event = self
                     .event
                     .as_ref()
                     .ok_or(StandaloneError::TokenizerExhausted)?;
+                if let Event::Diagnostic(id) = event {
+                    self.prologue
+                        .as_mut()
+                        .ok_or(StandaloneError::Consumed)?
+                        .kernel
+                        .as_mut()
+                        .ok_or(StandaloneError::Consumed)?
+                        .session
+                        .evidence(c)
+                        .map_err(|e| StandaloneError::Head(e.into()))?
+                        .get(c, id)?;
+                }
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if event.token().is_some() {
                     write(
@@ -1070,6 +1109,13 @@ impl<'source> StandaloneDocumentDriver<'source> {
         Ok((driver.control, session, capability))
     }
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
+        self.reclaim_parse_owners()?;
+        if let Some(evidence) = self.failed_evidence.take() {
+            evidence.release(&mut self.control)?;
+        }
+        Ok(())
+    }
+    fn reclaim_parse_owners(&mut self) -> Result<(), StandaloneError> {
         let c = &mut self.control;
         if c.stop().is_none() {
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -1103,7 +1149,6 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 write(size_of::<Option<prologue::BeforeHead>>(), 1, c)?;
             }
             let before = self.before.take().expect("retained BeforeHead");
-            before.diagnostics.release(c)?;
             before.whitespace.release(c)?;
         }
         if c.stop().is_none() {
@@ -1168,7 +1213,7 @@ fn dispose_token(
         c.charge(WorkCategory::RecordVisit, 1)?;
         let slot_bytes = size_of::<Option<super::tokenizer::token::Token>>();
         if input.is_some() {
-            write(slot_bytes + size_of::<prologue::PendingToken>(), 2, c)?;
+            write(slot_bytes + size_of::<prologue::PendingToken>(), 3, c)?;
         } else {
             write(slot_bytes, 1, c)?;
         }

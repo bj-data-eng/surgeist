@@ -13,9 +13,7 @@
 // diagnostic order and source reprocessing. Other input/resettable controls, templates,
 // fragments and SVG script remain actual pre-effect continuations.
 
-use super::head::{
-    HeadBoundary, HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep, InsertionMode,
-};
+use super::head::{HeadBoundary, HeadCondition, HeadError, HeadState, HeadStep, InsertionMode};
 use super::prologue::Payload;
 use super::{KernelError, Scope, copy_node, write};
 use crate::{
@@ -60,8 +58,12 @@ const PARTS: &[&str] = &[
 ];
 const SECTIONS: &[&str] = &["tbody", "thead", "tfoot"];
 impl HeadState<'_> {
-    fn table_error(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
-        self.emit(HeadCondition::UnexpectedTableToken, c)
+    fn table_error(
+        &mut self,
+        rule: crate::construction::parser_session::evidence::DiagnosticRule,
+        c: &mut ParseControl,
+    ) -> Result<(), HeadError> {
+        self.emit(HeadCondition::UnexpectedTableToken, rule, c)
     }
     fn current_in(&self, names: &[&'static str], c: &mut ParseControl) -> Result<bool, HeadError> {
         let current = self.before.kernel.current(c)?;
@@ -201,13 +203,21 @@ impl HeadState<'_> {
     fn table_insert(
         &mut self,
         mode: InsertionMode,
+        anchor: &'static str,
         close: bool,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
         self.insert_tag(c)?;
         self.set_mode(mode, c)?;
         if close {
-            self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+            self.emit(
+                HeadCondition::UnacknowledgedSelfClosing,
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor,
+                    branch: "table-structure-start/self-closing",
+                },
+                c,
+            )?;
         }
         Ok(Some(self.finish(c)?))
     }
@@ -247,7 +257,13 @@ impl HeadState<'_> {
         if let Some(step) = self.table_delegate_boundary(c)? {
             return Ok(Some(step));
         }
-        self.table_error(c)?;
+        self.table_error(
+            crate::construction::parser_session::evidence::DiagnosticRule {
+                anchor: "parsing-main-intable",
+                branch: "anything-else/foster",
+            },
+            c,
+        )?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
         let previous = self.before.kernel.foster_parenting;
@@ -308,16 +324,9 @@ impl HeadState<'_> {
                     .as_slice()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    write(size_of::<HeadDiagnostic>(), 3, c)?;
+
                     c.charge(WorkCategory::ProviderCall, 1)?;
-                    self.diagnostics.try_push(
-                        c,
-                        HeadDiagnostic {
-                            condition: HeadCondition::NullInTable,
-                            mode,
-                            source: origin.source.clone(),
-                        },
-                    )?;
+                    self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(HeadCondition::NullInTable), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), crate::construction::parser_session::evidence::DiagnosticRule { anchor: "parsing-main-intabletext", branch: "null-character/ignore" }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &origin.source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::TextOrigin, token: Some(crate::construction::parser_session::evidence::DiagnosticToken::Text) })?;
                 }
                 write(
                     size_of::<Option<crate::construction::parser_session::TextRun>>()
@@ -391,16 +400,8 @@ impl HeadState<'_> {
                 let entry = entry.as_ref().ok_or(HeadError::MissingInput)?;
                 c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
                 if entry.kind == BodyTextKind::Other {
-                    write(size_of::<HeadDiagnostic>(), 3, c)?;
                     c.charge(WorkCategory::ProviderCall, 1)?;
-                    self.diagnostics.try_push(
-                        c,
-                        HeadDiagnostic {
-                            condition: HeadCondition::NonWhitespaceInTable,
-                            mode,
-                            source: entry.source.clone(),
-                        },
-                    )?;
+                    self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(HeadCondition::NonWhitespaceInTable), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), crate::construction::parser_session::evidence::DiagnosticRule { anchor: "parsing-main-intabletext", branch: "pending-characters/non-whitespace" }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &entry.source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::BufferedTableCharacter, token: Some(crate::construction::parser_session::evidence::DiagnosticToken::Text) })?;
                     break;
                 }
             }
@@ -432,16 +433,9 @@ impl HeadState<'_> {
                 .ok_or(HeadError::MissingInput)?;
             if nonwhite {
                 let mode = self.mode(c)?;
-                write(size_of::<HeadDiagnostic>(), 3, c)?;
+
                 c.charge(WorkCategory::ProviderCall, 1)?;
-                self.diagnostics.try_push(
-                    c,
-                    HeadDiagnostic {
-                        condition: HeadCondition::UnexpectedTableToken,
-                        mode,
-                        source: entry.source.clone(),
-                    },
-                )?;
+                self.before.kernel.session.evidence(c)?.append(c, crate::construction::parser_session::evidence::DiagnosticKind::Tree(HeadCondition::UnexpectedTableToken), crate::construction::parser_session::evidence::DiagnosticContext::Tree(mode), crate::construction::parser_session::evidence::DiagnosticRule { anchor: "parsing-main-intable", branch: "anything-else/pending-character" }, crate::construction::parser_session::evidence::DiagnosticLocationInput { source: &entry.source, role: crate::construction::parser_session::evidence::DiagnosticLocationRole::BufferedTableCharacter, token: Some(crate::construction::parser_session::evidence::DiagnosticToken::Text) })?;
             }
             c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
             let other = entry.kind == BodyTextKind::Other;
@@ -535,7 +529,13 @@ impl HeadState<'_> {
             self.script.as_ref().map(|script| &script.capability),
         )?;
         if !self.current_in(&["td", "th"], c)? {
-            self.table_error(c)?;
+            self.table_error(
+                crate::construction::parser_session::evidence::DiagnosticRule {
+                    anchor: "parsing-main-intd",
+                    branch: "cell-close/current-node-mismatch",
+                },
+                c,
+            )?;
         }
         loop {
             let node = self
@@ -584,7 +584,13 @@ impl HeadState<'_> {
                     || (end && self.token_in(&["table"], c)?.is_some());
                 if close_caption || reprocess {
                     if !self.before.kernel.scoped_name("caption", Scope::Table, c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-incaption",
+                                branch: "caption-close/not-in-scope",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     self.before.kernel.implied_ends(
@@ -593,7 +599,13 @@ impl HeadState<'_> {
                         self.script.as_ref().map(|script| &script.capability),
                     )?;
                     if !self.current_in(&["caption"], c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-incaption",
+                                branch: "caption-close/current-node-mismatch",
+                            },
+                            c,
+                        )?;
                     }
                     self.pop_table_name("caption", c)?;
                     self.clear_marker(c)?;
@@ -615,7 +627,13 @@ impl HeadState<'_> {
                         )?
                         .is_some()
                 {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-incaption",
+                            branch: "disallowed-end-tag",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
                 return self.delegate_body(source, c);
@@ -635,7 +653,14 @@ impl HeadState<'_> {
                         return Ok(Some(self.ordinary_node(c)?));
                     }
                     Payload::Doctype(_) => {
-                        self.emit(HeadCondition::UnexpectedDoctype, c)?;
+                        self.emit(
+                            HeadCondition::UnexpectedDoctype,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-incolgroup",
+                                branch: "doctype/ignore",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     Payload::Eof => return self.delegate_body(source, c),
@@ -653,7 +678,13 @@ impl HeadState<'_> {
                 }
                 if end && self.token_in(&["colgroup"], c)?.is_some() {
                     if !self.current_in(&["colgroup"], c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-incolgroup",
+                                branch: "colgroup-end/current-node-mismatch",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     self.before
@@ -663,7 +694,13 @@ impl HeadState<'_> {
                     return Ok(Some(self.discard(c)?));
                 }
                 if end && self.token_in(&["col"], c)?.is_some() {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-incolgroup",
+                            branch: "col-end/ignore",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
                 if self.token_in(&["template"], c)?.is_some() {
@@ -674,7 +711,13 @@ impl HeadState<'_> {
                     };
                 }
                 if !self.current_in(&["colgroup"], c)? {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-incolgroup",
+                            branch: "anything-else/current-node-mismatch",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
                 self.before
@@ -686,10 +729,21 @@ impl HeadState<'_> {
             InsertionMode::InTableBody => {
                 if start && self.token_in(&["tr"], c)?.is_some() {
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
-                    return self.table_insert(InsertionMode::InRow, close, c);
+                    return self.table_insert(
+                        InsertionMode::InRow,
+                        "parsing-main-intbody",
+                        close,
+                        c,
+                    );
                 }
                 if start && self.token_in(&["td", "th"], c)?.is_some() {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-intbody",
+                            branch: "cell-start/implied-row",
+                        },
+                        c,
+                    )?;
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
                     self.implied_table_element("tr", c)?;
                     self.set_mode(InsertionMode::InRow, c)?;
@@ -697,7 +751,13 @@ impl HeadState<'_> {
                 }
                 if end && let Some(name) = self.token_in(SECTIONS, c)? {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intbody",
+                                branch: "section-end/not-in-scope",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
@@ -717,7 +777,13 @@ impl HeadState<'_> {
                     || (end && self.token_in(&["table"], c)?.is_some())
                 {
                     if !self.table_scope_any(SECTIONS, c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intbody",
+                                branch: "table-structure/no-section-in-scope",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
@@ -737,7 +803,13 @@ impl HeadState<'_> {
                         )?
                         .is_some()
                 {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-intbody",
+                            branch: "disallowed-end-tag",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
             }
@@ -748,7 +820,14 @@ impl HeadState<'_> {
                     self.set_mode(InsertionMode::InCell, c)?;
                     self.push_marker(c)?;
                     if close {
-                        self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                        self.emit(
+                            HeadCondition::UnacknowledgedSelfClosing,
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intr",
+                                branch: "cell-start/self-closing",
+                            },
+                            c,
+                        )?;
                     }
                     return Ok(Some(self.finish(c)?));
                 }
@@ -770,7 +849,13 @@ impl HeadState<'_> {
                 };
                 if let Some(name) = section {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intr",
+                                branch: "section-end/not-in-scope",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     if !self.before.kernel.scoped_name("tr", Scope::Table, c)? {
@@ -779,7 +864,13 @@ impl HeadState<'_> {
                 }
                 if end_row || outer || section.is_some() {
                     if !self.before.kernel.scoped_name("tr", Scope::Table, c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intr",
+                                branch: "row-close/not-in-scope",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     self.clear_table_context(&["tr", "template", "html"], c)?;
@@ -801,14 +892,26 @@ impl HeadState<'_> {
                         )?
                         .is_some()
                 {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-intr",
+                            branch: "disallowed-end-tag",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
             }
             InsertionMode::InCell => {
                 if end && let Some(name) = self.token_in(&["td", "th"], c)? {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intd",
+                                branch: "cell-end/not-in-scope",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     self.before.kernel.implied_ends(
@@ -817,7 +920,13 @@ impl HeadState<'_> {
                         self.script.as_ref().map(|script| &script.capability),
                     )?;
                     if !self.current_in(&[name], c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intd",
+                                branch: "cell-end/current-node-mismatch",
+                            },
+                            c,
+                        )?;
                     }
                     self.pop_table_name(name, c)?;
                     self.clear_marker(c)?;
@@ -843,7 +952,13 @@ impl HeadState<'_> {
                         .token_in(&["body", "caption", "col", "colgroup", "html"], c)?
                         .is_some()
                 {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-intd",
+                            branch: "disallowed-end-tag",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
                 if end
@@ -851,7 +966,13 @@ impl HeadState<'_> {
                         self.token_in(&["table", "tbody", "tfoot", "thead", "tr"], c)?
                 {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
-                        self.table_error(c)?;
+                        self.table_error(
+                            crate::construction::parser_session::evidence::DiagnosticRule {
+                                anchor: "parsing-main-intd",
+                                branch: "outer-end/not-in-scope",
+                            },
+                            c,
+                        )?;
                         return Ok(Some(self.discard(c)?));
                     }
                     self.close_table_cell(c)?;
@@ -878,7 +999,14 @@ impl HeadState<'_> {
         {
             Payload::Comment(_) | Payload::Pi(_) => return Ok(Some(self.ordinary_node(c)?)),
             Payload::Doctype(_) => {
-                self.emit(HeadCondition::UnexpectedDoctype, c)?;
+                self.emit(
+                    HeadCondition::UnexpectedDoctype,
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-intable",
+                        branch: "doctype/ignore",
+                    },
+                    c,
+                )?;
                 return Ok(Some(self.discard(c)?));
             }
             Payload::Eof => return self.delegate_body(source, c),
@@ -888,11 +1016,21 @@ impl HeadState<'_> {
             if self.token_in(&["caption"], c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
                 self.push_marker(c)?;
-                return self.table_insert(InsertionMode::InCaption, close, c);
+                return self.table_insert(
+                    InsertionMode::InCaption,
+                    "parsing-main-intable",
+                    close,
+                    c,
+                );
             }
             if self.token_in(&["colgroup"], c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
-                return self.table_insert(InsertionMode::InColumnGroup, close, c);
+                return self.table_insert(
+                    InsertionMode::InColumnGroup,
+                    "parsing-main-intable",
+                    close,
+                    c,
+                );
             }
             if self.token_in(&["col"], c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
@@ -902,7 +1040,12 @@ impl HeadState<'_> {
             }
             if self.token_in(SECTIONS, c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
-                return self.table_insert(InsertionMode::InTableBody, close, c);
+                return self.table_insert(
+                    InsertionMode::InTableBody,
+                    "parsing-main-intable",
+                    close,
+                    c,
+                );
             }
             if self.token_in(&["td", "th", "tr"], c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
@@ -911,7 +1054,13 @@ impl HeadState<'_> {
                 return Ok(None);
             }
             if self.token_in(&["table"], c)?.is_some() {
-                self.table_error(c)?;
+                self.table_error(
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-intable",
+                        branch: "table-start/nested",
+                    },
+                    c,
+                )?;
                 if !self.before.kernel.scoped_name("table", Scope::Table, c)? {
                     return Ok(Some(self.discard(c)?));
                 }
@@ -930,7 +1079,13 @@ impl HeadState<'_> {
                     return Ok(Some(self.stop_at(HeadBoundary::Form, c)?));
                 }
                 self.admit_hidden_capability(c)?;
-                self.table_error(c)?;
+                self.table_error(
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-intable",
+                        branch: "hidden-input-start",
+                    },
+                    c,
+                )?;
                 self.insert_hidden_input(c)?;
                 self.before
                     .kernel
@@ -938,7 +1093,13 @@ impl HeadState<'_> {
                 return Ok(Some(self.finish(c)?));
             }
             if self.token_in(&["form"], c)?.is_some() {
-                self.table_error(c)?;
+                self.table_error(
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-intable",
+                        branch: "form-start",
+                    },
+                    c,
+                )?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if self.current_form.is_some() || self.before.kernel.contains_html_template(c)? {
                     return Ok(Some(self.discard(c)?));
@@ -951,7 +1112,14 @@ impl HeadState<'_> {
                     .kernel
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                 if close {
-                    self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
+                    self.emit(
+                        HeadCondition::UnacknowledgedSelfClosing,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-intable",
+                            branch: "form-start/self-closing",
+                        },
+                        c,
+                    )?;
                 }
                 return Ok(Some(self.finish(c)?));
             }
@@ -959,7 +1127,13 @@ impl HeadState<'_> {
         if end {
             if self.token_in(&["table"], c)?.is_some() {
                 if !self.before.kernel.scoped_name("table", Scope::Table, c)? {
-                    self.table_error(c)?;
+                    self.table_error(
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-intable",
+                            branch: "table-end/not-in-scope",
+                        },
+                        c,
+                    )?;
                     return Ok(Some(self.discard(c)?));
                 }
                 self.pop_table_name("table", c)?;
@@ -976,7 +1150,13 @@ impl HeadState<'_> {
                 )?
                 .is_some()
             {
-                self.table_error(c)?;
+                self.table_error(
+                    crate::construction::parser_session::evidence::DiagnosticRule {
+                        anchor: "parsing-main-intable",
+                        branch: "disallowed-end-tag",
+                    },
+                    c,
+                )?;
                 return Ok(Some(self.discard(c)?));
             }
             if self.token_in(&["template"], c)?.is_some() {
