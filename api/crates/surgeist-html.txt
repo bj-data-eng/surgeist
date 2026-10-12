@@ -1399,6 +1399,7 @@ pub surgeist_html::HtmlSemanticFact::ImageMapAttribute(surgeist_html::HtmlSemant
 pub surgeist_html::HtmlSemanticFact::Indeterminateness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Inertness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::InputSuggestionsSource(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlSemanticFact::InputTextValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::IsContentEditable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::LabelFormOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::LabeledControl(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
@@ -1437,6 +1438,7 @@ pub surgeist_html::HtmlSemanticFact::TableRowCells(surgeist_html::HtmlSemanticVa
 pub surgeist_html::HtmlSemanticFact::TableRows(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableRowCollection>)
 pub surgeist_html::HtmlSemanticFact::TableSectionRows(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableRowCollection>)
 pub surgeist_html::HtmlSemanticFact::TextareaDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
+pub surgeist_html::HtmlSemanticFact::TextareaValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::TimeElement(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTimeElementReadback>)
 pub surgeist_html::HtmlSemanticFact::TranslationMode(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTranslationMode>)
 pub surgeist_html::HtmlSemanticFact::UsedAutocapitalizationHint(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlUsedAutocapitalizationHint>)
@@ -1508,6 +1510,7 @@ pub surgeist_html::HtmlSemanticQuery::ImageMapAttribute
 pub surgeist_html::HtmlSemanticQuery::Indeterminateness
 pub surgeist_html::HtmlSemanticQuery::Inertness
 pub surgeist_html::HtmlSemanticQuery::InputSuggestionsSource
+pub surgeist_html::HtmlSemanticQuery::InputTextValueMissing
 pub surgeist_html::HtmlSemanticQuery::IsContentEditable
 pub surgeist_html::HtmlSemanticQuery::LabelFormOwner
 pub surgeist_html::HtmlSemanticQuery::LabeledControl
@@ -1546,6 +1549,7 @@ pub surgeist_html::HtmlSemanticQuery::TableRowCells
 pub surgeist_html::HtmlSemanticQuery::TableRows
 pub surgeist_html::HtmlSemanticQuery::TableSectionRows
 pub surgeist_html::HtmlSemanticQuery::TextareaDefaultValue
+pub surgeist_html::HtmlSemanticQuery::TextareaValueMissing
 pub surgeist_html::HtmlSemanticQuery::TimeElement
 pub surgeist_html::HtmlSemanticQuery::TranslationMode
 pub surgeist_html::HtmlSemanticQuery::UsedAutocapitalizationHint

@@ -7,7 +7,7 @@
 //! readbacks, placeholder-label-option classification and static select and checkable-input missingness, datalist association and option/suggestion membership, map area membership, details/summary relationships, option form/text/label/value and select value getters, autocomplete
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
-//! submission conditions, static constraint-validation candidacy, the static tabIndex getter,
+//! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
 //! and own/used capitalization, used autocorrection and computed writing suggestions.
 //! Computed list participation, flat-tree/modal facts, document design mode and
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
@@ -18,6 +18,7 @@ pub use table::*;
 mod language;
 pub use language::*;
 mod range;
+mod value_missing;
 pub use range::*;
 mod inert;
 pub use inert::*;
@@ -738,6 +739,10 @@ pub enum HtmlSemanticQuery {
     SelectValueMissing,
     /// Static Checkbox/Radio missingness from supplied current checkedness.
     CheckableInputValueMissing,
+    /// Required-current-value missingness for Text/Search/Telephone/URL/Email/Password inputs.
+    InputTextValueMissing,
+    /// Required-current-value missingness for HTML textarea.
+    TextareaValueMissing,
     ControlAutocomplete,
     SubmitterFormMethod,
     SubmitterFormEnctype,
@@ -813,6 +818,12 @@ impl HtmlSemanticQuery {
             }
             Self::OptionValue => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
+            }
+            Self::InputTextValueMissing => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-required"
+            }
+            Self::TextareaValueMissing => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-required"
             }
             Self::CheckableInputValueMissing => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#suffering-from-being-missing"
@@ -1128,6 +1139,8 @@ pub enum HtmlSemanticFact {
     SelectPlaceholderLabelOption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     SelectValueMissing(HtmlSemanticValue<bool>),
     CheckableInputValueMissing(HtmlSemanticValue<bool>),
+    InputTextValueMissing(HtmlSemanticValue<bool>),
+    TextareaValueMissing(HtmlSemanticValue<bool>),
     ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
     SubmitterFormMethod(HtmlSemanticValue<HtmlSubmitterFormMethod>),
     SubmitterFormEnctype(HtmlSemanticValue<HtmlSubmitterFormEnctype>),
@@ -2628,6 +2641,24 @@ impl<'a> HtmlSemanticSession<'a> {
                                 HtmlOptionReadbackOrigin::ValueAttribute,
                             )?)
                         }
+                        HtmlSemanticQuery::InputTextValueMissing => {
+                            HtmlSemanticFact::InputTextValueMissing(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.input_text_value_missing(&request.subject, element)?
+                            })
+                        }
+                        HtmlSemanticQuery::TextareaValueMissing => {
+                            HtmlSemanticFact::TextareaValueMissing(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.textarea_value_missing(&request.subject, element)?
+                            })
+                        }
                         HtmlSemanticQuery::CheckableInputValueMissing => {
                             HtmlSemanticFact::CheckableInputValueMissing(
                                 self.checkable_input_value_missing(&request.subject)?,
@@ -2882,6 +2913,12 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::OptionValue => {
                         HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::InputTextValueMissing => {
+                        HtmlSemanticFact::InputTextValueMissing(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TextareaValueMissing => {
+                        HtmlSemanticFact::TextareaValueMissing(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::CheckableInputValueMissing => {
                         HtmlSemanticFact::CheckableInputValueMissing(

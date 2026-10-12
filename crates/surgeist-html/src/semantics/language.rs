@@ -853,23 +853,21 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
 
-    fn direction_current_value(
+    pub(super) fn control_current_value(
         &mut self,
         subject: &HtmlCaptureSubjectId,
-    ) -> LanguageResult<&'a DocumentString> {
+    ) -> Result<Result<&'a DocumentString, HtmlSemanticMissing>, HtmlSemanticFailure> {
         if let Some(facts) = self.context.language_direction() {
             for fact in facts.current_values() {
                 self.charge(1)?;
                 if fact.subject() == subject {
-                    return fact.value().ok_or_else(|| {
-                        LanguageStop::Missing(HtmlSemanticMissing::CurrentValue(subject.clone()))
-                    });
+                    return Ok(fact
+                        .value()
+                        .ok_or_else(|| HtmlSemanticMissing::CurrentValue(subject.clone())));
                 }
             }
         }
-        Err(LanguageStop::Missing(HtmlSemanticMissing::CurrentValue(
-            subject.clone(),
-        )))
+        Ok(Err(HtmlSemanticMissing::CurrentValue(subject.clone())))
     }
 
     fn direction_assigned(
@@ -1016,7 +1014,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                     | HtmlInputType::Button
                             ));
                     if control {
-                        let value = self.direction_current_value(&id)?;
+                        let value = self
+                            .control_current_value(&id)?
+                            .map_err(LanguageStop::Missing)?;
                         result = self.direction_first_strong(value)?;
                         if result.is_none() && !value.is_empty() {
                             result = Some(HtmlDirectionality::Ltr);

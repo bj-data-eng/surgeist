@@ -617,6 +617,20 @@ existing admission caps, traversal releases scratch on every result, and termina
 failures preserve the session's sticky, atomic-batch contract. This immutable
 Boolean observation performs no validation or radio-state transition.
 
+`InputTextValueMissing` and `TextareaValueMissing` observe the required,
+mutable, empty-current-value conditions for the six text input states and
+textarea. They reuse the supplied current-string lookup and ordinary disabledness
+owner, including fieldset and first-legend rules. Authored value attributes and
+default descendant text do not substitute for current state.
+
+Required and readonly use exact attribute presence. A known nonempty current
+string or known immutability can establish false despite unavailable facts;
+otherwise the first influencing missing fact remains explicit. Current strings
+retain the checked supplement's aggregate UTF-16 limit, independently of selected
+attribute admission. These queries add no traversal scratch or value copying and
+retain the session's sticky terminal failures and atomic batches. They observe
+missingness without performing validation or a live state transition.
+
 `TextareaDefaultValue` concatenates exact Text data from immediate ordinary
 children only. `OutputValue` concatenates exact Text data from all ordinary
 descendants. Both preserve UTF-16 units and whitespace; output traversal includes
