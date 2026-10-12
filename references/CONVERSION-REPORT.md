@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **357 source identities: 257 full documents/source witnesses, 90 partial witnesses and 10 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **363 source identities: 257 full documents/source witnesses, 92 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -476,3 +476,36 @@ The current catalog contains **357 identities: 257 full, 90 partial and ten
 metadata-only**. Historical dated counts and **81 passive SVG assets** remain
 unchanged. Local source/heading links, UTF-8/LF and whitespace are checked;
 these provenance checks do not establish browser parity or live effects.
+
+## HTML-delegated SVG script sources — 2026-10-12
+
+The [Tiny processing reference](svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md) retains selected
+edition-index ranges 15–49 and 74–146 and script-chapter range 91–198 from the dated
+2008 Recommendation. The complete original chapter and index have separate
+catalog identities. Conversion preserves original prose, four-step order,
+notification qualification, later modification rules, notice and complete status;
+only bounded selection, Markdown presentation, heading IDs, absolute dated links
+and inter-element whitespace change. All 74 source link occurrences and selected
+text/IDs were checked against retained raw captures. The original copyright is
+©2008; the separately labelled ©2015 derivative notice and local document-license
+terms cover software-support conversion under the official 2015 update, which
+extends permission to existing publications. This is not a replacement technical
+specification or an edited offline algorithm.
+
+The [SVG2 observations](svg-script-observations--capture-20261012-metadata.md) add three metadata-only
+URL/hash identities. Their conformance-chapter bodies differ at publication
+header raw line 62; relied-on raw 91–161 clauses match. That bounded comparison
+establishes no global edition equivalence. No scripts, stylesheets, MathJax or
+linked resource was run or acquired. The
+[WebKit clone witness](webkit-svg-script-clone--73aa6c89e2cb-metadata.md) adds one metadata-only
+identity, retaining original URL/hash and inspected 117–120 scope. Its original
+GNU Library GPL source stays private; no browser code/header excerpt is shipped.
+The existing DOM clone reference supplies its acknowledged standards gap.
+
+The [source-edition mapping](SOURCE-EDITIONS.md#offline-disabled-svg-script-and-clone-sources)
+separates normative delegation, offline capability policy, dated observations
+and the bounded clone correction. Reference retention is not implementation
+acceptance. The catalog contains **363 identities: 257 full, 92 partial and
+fourteen metadata-only**. Historical dated counts and **81 passive SVG assets**
+remain unchanged. Original captures and conversion-fidelity evidence remain
+available for the active parser implementation and review.

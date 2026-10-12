@@ -449,3 +449,12 @@ and [W3C Software and Document License](licenses/w3c/software-license-2023.txt).
 The [attribution and modification notice](licenses/w3c/NOTICE.md#html-delegated-editability-definitions)
 identifies the selected paragraphs and Markdown conversion. HTML retains its
 separate WHATWG behavioral authority; no editing-command runtime is incorporated.
+
+## HTML-delegated SVG script material
+
+The [bounded SVG Tiny 1.2 reference](references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md) supplies HTML-delegated script
+processing clauses with the original Recommendation notice and status.
+The [W3C attribution](licenses/w3c/NOTICE.md#html-delegated-svg-script-processing)
+and existing complete local document licenses accompany the software-support
+Markdown conversion. No browser source excerpt, SVG runtime or new dependency
+is incorporated.

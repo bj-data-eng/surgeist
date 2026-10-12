@@ -1430,3 +1430,24 @@ Copyright © 2015 World Wide Web Consortium. Changes by Surgeist on 2026-10-11:
 bounded selection, Markdown presentation, absolute links and provenance/scope
 notes. Source algorithms were not edited. The selection covers the delegated
 editable definition, not command execution or a complete editing API.
+
+## HTML-delegated SVG script processing
+
+Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document
+includes material copied from or derived from
+[Scalable Vector Graphics (SVG) Tiny 1.2 Specification](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/).
+
+The [bounded implementation-support reference](../../references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md)
+retains the original ©2008 notice and complete status of the 22 December 2008
+Recommendation, selected edition-title/editor material and script processing
+clauses. Changes by Surgeist on 2026-10-12: bounded extraction, Markdown
+presentation, heading IDs, absolute dated links and normalized inter-element
+whitespace. Original prose and algorithm conditions/order remain unchanged.
+This is software-support material, not a replacement technical specification.
+
+Applicable legal material remains the local complete
+[W3C Document License 2015](document-license-2015.txt), with the historical
+[2002 terms](document-license-2002.txt). The
+[official 5 February 2015 update](https://www.w3.org/news/2015/w3c-updates-general-document-license/)
+extends the software-support derivative permission to existing publications.
+No upstream code component or executable example is transcribed.

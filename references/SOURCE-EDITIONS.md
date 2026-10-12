@@ -431,3 +431,37 @@ disposition is an explicit architecture capability specialization, not an
 implementation of the external timing algorithm or a normative null-script
 return. These source selections do not certify a complete parser or browser
 event loop.
+
+### Offline Disabled SVG script and clone sources
+
+For [#1136](https://github.com/bj-data-eng/surgeist/issues/1136), HTML877d's
+foreign-content script-end operation delegates to the
+[SVG Tiny 1.2 processing steps](svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md#ScriptContentProcessing),
+W3C Recommendation 22 December 2008. The partial reference retains the complete
+selected four-step algorithm, load-notification qualification and subsequent
+modification rules, with the edition's original notice and status. This selects
+the delegated operation, not the whole SVG Tiny profile.
+
+The [recorded offline reconciliation](https://github.com/bj-data-eng/surgeist/issues/1136#offline-disabled-svg-script-explicit-processing-reconciliation)
+suppresses all acquisition and execution through the fresh standalone owner's
+explicit closed capabilities. Tiny's already-processed and connectivity guards
+remain; an eligible element still acquires its actual processed bit. Suppression
+is separate from a failed fetch and does not classify or decode URLs. Neither
+SVG2 script-disabled nor external-reference-disabled alone establishes this
+stronger boundary. The [SVG2 observations](svg-script-observations--capture-20261012-metadata.md)
+retain dated URL/hash provenance without selecting another production edition
+or a named SVG processing mode. No HTML preparation algorithm or HTML script-end
+microtask checkpoint is imported into this SVG operation. Any removed load
+notification requires actual absence of recipients and retained effects.
+
+The [clone determination](https://github.com/bj-data-eng/surgeist/issues/1136#svg-script-cloning-preserve-the-processed-bit-by-bounded-correction)
+selects a bounded correction for the
+[DOM source's missing SVG clone steps](dom-foundation--editor-capture-20261010--08dff0a4827f.md#concept-node-clone-ext).
+The [pinned WebKit witness](webkit-svg-script-clone--73aa6c89e2cb-metadata.md)
+supports copying the actual at-most-once bit before clone insertion, with the
+clone marked non-parser-inserted. It contributes no browser source excerpt or
+combined HTML/SVG preparation algorithm. Same-registry qualified true/false facts
+are required; unknown does not become false. Non-parser insertion retains actual
+document-order processing and topology effects without the parser wrapper.
+These source selections do not certify implemented SVG script handling or a
+complete parser.
