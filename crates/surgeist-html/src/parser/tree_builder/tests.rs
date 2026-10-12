@@ -3574,10 +3574,10 @@ fn tokenizer_next_input_point_uses_actual_reconsume_and_reference_lookahead_posi
 fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short_terminal_admission()
  {
     // Two actual proof checks each read seven qualification facts. The queue
-    // owner reads checkpoint1, readiness5 and empty cursor/length2. Its actual
+    // owner reads checkpoint1, readiness6 and empty cursor/length2. Its actual
     // bool set/clear contributes CopyByte2/RecordWrite2, with StateStep1.
     // One-short fails the final clear write, retaining the flag under first-stop.
-    let expected_work = 22 + 2 + 2 + 1;
+    let expected_work = 23 + 2 + 2 + 1;
     for short in [false, true] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<script>x</script>"),
@@ -3600,7 +3600,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let result = proof.checkpoint(c, session);
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            22
+            23
         );
         assert_eq!(
             c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
@@ -5304,14 +5304,14 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = c.usage().clone();
     kernel.replace_stack(1, &replacement, &mut c, None).unwrap();
-    // Kernel readiness1, target index6, at1, pre-removal qualification11,
-    // get_mut1, post-removal qualification11, removed index6, option5 and
-    // textarea5. Each index includes five actual effect-readiness fields. Four
+    // Kernel readiness1, target index7, at1, pre-removal qualification12,
+    // get_mut1, post-removal qualification12, removed index7, option5 and
+    // textarea5. Each index includes six actual effect-readiness fields. Four
     // HTML namespace comparisons inspect28 units at three credits each; local
     // p length differs from both option and textarea, so no local units read.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        47
+        51
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -10141,41 +10141,51 @@ fn foreign_font_breakout_mismatched_end_and_table_foster_keep_actual_order() {
 }
 
 #[test]
-fn foreign_svg_script_retains_untouched_token_before_creation_even_when_self_closing() {
-    for source in [
-        "<!doctype html><svg><script data-x=kept>",
-        "<!doctype html><svg><script data-x='kept'/>",
+fn foreign_svg_script_fresh_start_and_self_closing_preserve_native_attributes_and_processed_state()
+{
+    for (source, processed) in [
+        ("<!doctype html><svg><script data-x=kept>", false),
+        ("<!doctype html><svg><script data-x='kept'/>", true),
     ] {
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
         let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
         assert_eq!(
             standalone_boundary(&mut driver),
-            super::head::HeadBoundary::Foreign
+            super::head::HeadBoundary::ConstructionEof
         );
-        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
-        let current = state.before.kernel.current(&mut driver.control).unwrap();
-        let name = state
-            .before
-            .kernel
-            .session
-            .element_name(&mut driver.control, &current)
-            .unwrap()
-            .unwrap();
-        assert_eq!(name.namespace(), &Namespace::svg());
-        assert_eq!(name.local_name(), &DocumentString::from("svg"));
-        let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-            panic!("actual retained start tag");
-        };
-        assert_eq!(tag.name.value.text(), &DocumentString::from("script"));
-        assert_eq!(tag.attributes.len(), 1);
+        let (mut c, mut frozen) = body_document(driver);
+        let doc = frozen.document().unwrap();
+        let mut pending: Vec<_> = doc.root().children().collect();
+        let mut found = None;
+        while let Some(id) = pending.pop() {
+            let node = doc.node(&id).unwrap();
+            pending.extend(node.children());
+            if matches!(node.kind(), HtmlNodeKind::Element(e)
+                if e.name().namespace()==&Namespace::svg() && e.name().local_name()==&DocumentString::from("script"))
+            {
+                let HtmlNodeKind::Element(e) = node.kind() else {
+                    unreachable!()
+                };
+                assert_eq!(e.attributes().len(), 1);
+                assert_eq!(
+                    e.attributes().as_slice()[0].name().local_name(),
+                    &DocumentString::from("data-x")
+                );
+                assert_eq!(
+                    e.attributes().as_slice()[0].value(),
+                    &DocumentString::from("kept")
+                );
+                found = Some(id);
+            }
+        }
+        let id = found.expect("actual native SVG script");
         assert_eq!(
-            tag.attributes.as_slice()[0].value.value.text(),
-            &DocumentString::from("kept")
+            frozen.svg_script_state(&mut c, &id).unwrap().processed,
+            processed
         );
-        driver.release().unwrap();
-        assert_released(&driver.control);
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
     }
 }
 
@@ -11713,6 +11723,376 @@ fn ordinary_svg_script_foreign_text_and_self_closing_preserve_native_siblings() 
             for (other, ..) in elements.iter().skip(position + 1) {
                 assert_ne!(id, other, "{source}");
             }
+        }
+    }
+}
+
+fn svg_open_node(driver: &mut StandaloneDocumentDriver<'_>) -> ParserNode {
+    for _ in 0..1_000 {
+        driver.step().unwrap();
+        let Some(head) = &driver.head else { continue };
+        let kernel = &head.state.as_ref().unwrap().before.kernel;
+        let Some(last) = kernel.stack().unwrap().len().checked_sub(1) else {
+            continue;
+        };
+        let node = kernel.at(last, &mut driver.control).unwrap();
+        if kernel
+            .session
+            .element_name(&mut driver.control, &node)
+            .unwrap()
+            .is_some_and(|name| {
+                name.namespace() == &Namespace::svg()
+                    && name.local_name() == &DocumentString::from("script")
+            })
+        {
+            assert_ne!(
+                head.state.as_ref().unwrap().mode,
+                super::head::InsertionMode::Text
+            );
+            return node;
+        }
+    }
+    panic!("real foreign SVG script start");
+}
+#[test]
+fn svg_script_parser_end_defers_then_restores_wrapper_without_html_preparation() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><svg><script xlink:href='offline.js'></script><g/></svg><p>Z</p>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let node = svg_open_node(&mut driver);
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(!session.svg_script_state(c, &node).unwrap().processed);
+    assert_eq!(
+        session.script_metadata(c, &node).err(),
+        Some(SessionError::ScriptMetadataUnavailable)
+    );
+    driver.step().unwrap();
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert!(session.svg_script_state(c, &node).unwrap().processed);
+    assert_eq!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .script_observation(&mut driver.control)
+            .unwrap(),
+        (0, false, false, false, false)
+    );
+    assert!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .svg_pending
+            .is_none()
+    );
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+fn svg_end_cost() -> u64 {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><svg><script></script>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let _node = svg_open_node(&mut driver);
+    let before = driver
+        .control
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
+    driver.step().unwrap();
+    let cost = driver
+        .control
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current
+        - before;
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    cost
+}
+#[test]
+fn svg_script_every_foreign_end_work_cut_including_flag_and_restore_has_terminal_cleanup() {
+    let cost = svg_end_cost();
+    assert!(cost > 100);
+    for allowance in 0..cost {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><svg><script></script>"),
+            limits(100),
+        );
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        let _node = svg_open_node(&mut driver);
+        let used = driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        driver
+            .control
+            .charge(
+                WorkCategory::StateStep,
+                request.limits().work_credits() - used - allowance,
+            )
+            .unwrap();
+        assert!(driver.step().is_err(), "cut {allowance}/{cost}");
+        let stop = driver.control.stop().unwrap();
+        assert!(matches!(
+            stop,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            }
+        ));
+        let reads = driver.control.usage().work(WorkCategory::InputUnitRead);
+        assert!(matches!(driver.step(),Err(StandaloneError::Stop(s)) if s==stop));
+        assert_eq!(
+            driver.control.usage().work(WorkCategory::InputUnitRead),
+            reads
+        );
+        let work = driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), Some(stop));
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            work
+        );
+    }
+}
+#[test]
+fn svg_script_cancelled_foreign_end_keeps_false_and_original_first_stop() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<svg><script></script>"),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let _node = svg_open_node(&mut driver);
+    request.cancellation().cancel();
+    assert!(matches!(
+        driver.step(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+}
+#[test]
+fn svg_script_inert_template_and_actual_patch_connection_have_distinct_processed_states() {
+    for (source, processed) in [
+        (
+            "<body><template><svg><script>A</script></svg></template><p>Z</p>",
+            false,
+        ),
+        (
+            "<body><div><?marker name='x'?></div><template for=x><svg><script>A</script></svg></template><p>Z</p>",
+            true,
+        ),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadBoundary::ConstructionEof
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let mut pending = vec![document.root().id()];
+        let mut scripts = vec![];
+        while let Some(id) = pending.pop() {
+            let node = document.node(&id).unwrap();
+            if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().namespace()==&Namespace::svg()
+                && e.name().local_name()==&DocumentString::from("script"))
+            {
+                scripts.push(id.clone());
+            }
+            pending.extend(node.children());
+            if let Some(contents) = node.template_contents() {
+                pending.push(contents);
+            }
+        }
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(
+            frozen
+                .svg_script_state(&mut c, &scripts[0])
+                .unwrap()
+                .processed,
+            processed
+        );
+        drop((pending, scripts));
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+#[test]
+fn svg_script_foreign_end_does_not_drain_pending_select_tasks_as_an_html_checkpoint() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><select><option><div><option selected>A</option></div><div><option selected>B</option></div></option><selectedcontent></selectedcontent></select><svg><script></script></svg>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (c, session, _) = driver.standalone_parts().unwrap();
+    assert_eq!(
+        session.freeze(c).err(),
+        Some(SessionError::PendingIntrinsicWork)
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn svg_script_selectedcontent_deep_clone_preserves_true_bits_and_inert_nested_false_bits() {
+    use crate::construction::parser_session::SvgScriptOrigin;
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><svg><script>A</script><script xlink:href='#x'/><foreignObject><template><svg><script>B</script></svg></template></foreignObject></svg></option></select>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mut pending = vec![(document.root().id(), false)];
+    let mut states = vec![];
+    let mut ids = vec![];
+    while let Some((id, inert)) = pending.pop() {
+        let node = document.node(&id).unwrap();
+        if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().namespace()==&Namespace::svg()
+            && e.name().local_name()==&DocumentString::from("script"))
+        {
+            let state = frozen.svg_script_state(&mut c, &id).unwrap();
+            assert_eq!(state.processed, !inert);
+            states.push((state.origin, inert));
+            ids.push(id.clone());
+        }
+        pending.extend(node.children().map(|id| (id, inert)));
+        if let Some(contents) = node.template_contents() {
+            pending.push((contents, true));
+        }
+    }
+    assert_eq!(states.len(), 6);
+    for origin in [SvgScriptOrigin::Parser, SvgScriptOrigin::Clone] {
+        assert_eq!(
+            states
+                .iter()
+                .filter(|&&(o, inert)| o == origin && !inert)
+                .count(),
+            2
+        );
+        assert_eq!(
+            states
+                .iter()
+                .filter(|&&(o, inert)| o == origin && inert)
+                .count(),
+            1
+        );
+    }
+    for (i, id) in ids.iter().enumerate() {
+        assert!(!ids[i + 1..].contains(id));
+    }
+    drop((states, ids, pending));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_terminal_boundaries() {
+    let source = "<!doctype html><svg><script xlink:href='#saved'/></svg>";
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadBoundary::ConstructionEof
+    );
+    // Native allocator/layout observations qualify physical boundaries, not a
+    // semantic oracle. Each subsequent cap admits the same real producer sequence.
+    let auxiliary = driver
+        .usage()
+        .resource(HtmlParseResource::AuxiliaryEntries)
+        .high_water;
+    let atomic = driver.usage().largest_atomic_layout;
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    for (resource, exact) in [
+        (HtmlParseResource::AuxiliaryEntries, auxiliary),
+        (HtmlParseResource::AtomicLayoutBytes, atomic),
+        (HtmlParseResource::OpenElements, 4),
+    ] {
+        for short in [false, true] {
+            let cap = exact - u64::from(short);
+            let builder = limits(100).into_builder();
+            let caps = match resource {
+                HtmlParseResource::AuxiliaryEntries => builder.auxiliary_entries(cap),
+                HtmlParseResource::AtomicLayoutBytes => builder.atomic_layout_bytes(cap),
+                HtmlParseResource::OpenElements => builder.open_elements(cap),
+                _ => unreachable!(),
+            }
+            .finish()
+            .unwrap();
+            let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), caps);
+            let mut driver = match StandaloneDocumentDriver::new(&request) {
+                Ok(driver) => driver,
+                Err(error) => {
+                    // Initial fixed layouts can dominate the same aggregate cap;
+                    // no fictitious later flag-only layout boundary is asserted.
+                    assert!(
+                        short && resource == HtmlParseResource::AtomicLayoutBytes,
+                        "{error:?}"
+                    );
+                    continue;
+                }
+            };
+            let mut reached = false;
+            for _ in 0..1_000 {
+                match driver.step() {
+                    Ok(super::head::HeadStep::Boundary(
+                        super::head::HeadBoundary::ConstructionEof,
+                    )) => {
+                        reached = true;
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+            assert_eq!(reached, !short, "{resource:?}, cap {cap}");
+            if short {
+                assert!(
+                    matches!(driver.control.stop(),Some(ParseStop::LimitExceeded{resource:r,..}) if r==resource)
+                );
+            }
+            driver.release().unwrap();
+            assert_released(&driver.control);
         }
     }
 }

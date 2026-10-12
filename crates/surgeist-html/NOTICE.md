@@ -114,6 +114,34 @@ retained verbatim, with separate adaptation notes and origin hashes. The same
 MIT OR Apache-2.0 attribution applies; see the
 [tree-source notice](../../licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).
 
+## Restricted SVG script processing
+
+The private fresh standalone SVG operation adapts the pinned HTML foreign-end
+wrapper under the existing [WHATWG terms](../../licenses/whatwg/NOTICE.md).
+Its processed/connectivity guard, parser-end versus nonparser connection and
+processed mark derive separately from
+[SVG Tiny 1.2 §15.2.1](../../references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md#ScriptContentProcessing).
+The [W3C notice](../../licenses/w3c/NOTICE.md#html-delegated-svg-script-processing)
+retains the original Recommendation notice/status and the required ©2015
+implementation-support derivative notice, with complete local
+[2002](../../licenses/w3c/document-license-2002.txt) and
+[2015](../../licenses/w3c/document-license-2015.txt) document terms.
+This Rust algorithm adaptation is a bounded software implementation, not a
+replacement technical specification or imported marked W3C code component.
+
+Surgeist's separate closed no-loader and Disabled capabilities suppress all
+acquisition and execution; the actual no-recipient domain eliminates SVG
+notification work. The restriction preserves Tiny step 1 and connected step 3,
+not a purported literal Tiny Disabled return. The session SVG child, state
+registry, actual insertion cause, clone and connection integration are
+Surgeist-authored. Existing html5ever-derived drivers retain their notices;
+the [origin record](PARSER-ORIGINS.md#restricted-svg-script-extension) distinguishes
+the pinned implementation's unimplemented SVG branches from the new HTML-owned
+wrapper. The [WebKit clone metadata](../../references/webkit-svg-script-clone--73aa6c89e2cb-metadata.md)
+supplies only the selected processed-bit preservation witness: no Library-GPL
+source excerpt or executable WebKit code is incorporated. No SVG runtime,
+loader, rendering-mode implementation or new dependency is added.
+
 ## Srcset density overflow adaptation
 
 The intrinsic srcset producer follows the pinned HTML author grammar and

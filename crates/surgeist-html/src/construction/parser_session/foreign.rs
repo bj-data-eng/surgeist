@@ -111,6 +111,16 @@ impl ParserArenaSession {
         let prepared = self
             .active_mut()?
             .prepare_document_allocation(c, Some(document), false)?;
+        let svg = if namespace == ForeignNamespace::Svg
+            && exact_ascii(c, Some(tag.name.value.text()), "script")?
+        {
+            Some(
+                self.active_mut()?
+                    .retain_svg_slot(c, SvgScriptState::fresh())?,
+            )
+        } else {
+            None
+        };
         let tag = take_payload(input, c)?;
         self.active_mut()?.allocate_foreign_payload(
             c,
@@ -118,6 +128,7 @@ impl ParserArenaSession {
             namespace,
             tag.attributes,
             prepared,
+            svg,
         )
     }
     pub(crate) fn element_attributes<'a>(
@@ -875,6 +886,7 @@ impl SessionStorage {
         foreign: ForeignNamespace,
         mut attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
         prepared: Option<template::PreparedDocuments>,
+        svg: Option<usize>,
     ) -> Result<ParserNode, SessionError> {
         let result = (|| {
             let replacement = match foreign.element_adjustment(control, name.value.text()) {
@@ -1044,6 +1056,9 @@ impl SessionStorage {
             payload_write::<[StringLocation; 2]>(control, 2)?;
             payload_write::<Option<usize>>(control, 1)?;
             payload_write::<[usize; 2]>(control, 2)?;
+            if svg.is_some() {
+                payload_write::<Option<usize>>(control, 1)?;
+            }
             let node = self.allocate_prepared_owned(
                 control,
                 HtmlNodeKind::Element(HtmlElement {
@@ -1055,6 +1070,9 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
+            if let Some(slot) = svg {
+                self.bind_svg_slot(slot, node.index);
+            }
             self.bind_string(name_ticket, StringLocation::ElementName(node.index));
             self.bind_string(namespace_ticket, StringLocation::Namespace(node.index));
             let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =

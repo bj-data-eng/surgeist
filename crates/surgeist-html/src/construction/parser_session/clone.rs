@@ -11,6 +11,7 @@ struct CloneBindings {
     hidden: Option<usize>,
     output: Option<usize>,
     script: Option<usize>,
+    svg: Option<usize>,
 }
 
 impl SessionStorage {
@@ -87,6 +88,9 @@ impl SessionStorage {
                             && self.textarea_slot(c, node)?.is_none()
                         {
                             return Err(SessionError::TextareaMetadataUnavailable);
+                        }
+                        if self.svg_script_local(c, node)? {
+                            self.svg_state_at(c, node)?;
                         }
                         if self.html_local(c, node, "script")? {
                             script_metadata(&self.payloads, c, node)?;
@@ -616,6 +620,17 @@ impl SessionStorage {
                 },
             )?);
         }
+        if self.svg_script_local(c, source)? {
+            let (_, original) = self.svg_state_at(c, source)?;
+            payload_write::<Option<usize>>(c, 1)?;
+            result.svg = Some(self.retain_svg_slot(
+                c,
+                SvgScriptState {
+                    processed: original.processed,
+                    origin: SvgScriptOrigin::Clone,
+                },
+            )?);
+        }
         Ok(result)
     }
     fn bind_clone_metadata(
@@ -631,6 +646,7 @@ impl SessionStorage {
             bindings.hidden,
             bindings.output,
             bindings.script,
+            bindings.svg,
         ]
         .into_iter()
         .flatten()
@@ -643,7 +659,8 @@ impl SessionStorage {
                 | RetainedPayload::Textarea { node: bound, .. }
                 | RetainedPayload::HiddenInput { node: bound, .. }
                 | RetainedPayload::Output { node: bound, .. }
-                | RetainedPayload::Script { node: bound, .. } => *bound = Some(node),
+                | RetainedPayload::Script { node: bound, .. }
+                | RetainedPayload::SvgScript { node: bound, .. } => *bound = Some(node),
                 _ => return Err(SessionError::WrongToken),
             }
         }

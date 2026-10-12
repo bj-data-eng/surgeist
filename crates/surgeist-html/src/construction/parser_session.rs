@@ -37,9 +37,11 @@ mod clone;
 mod foreign;
 mod pi;
 mod select;
+mod svg;
 mod template;
 pub(crate) use foreign::ForeignNamespace;
 use select::{ConstructionEffects, SelectMetadata};
+pub(crate) use svg::{SvgScriptOrigin, SvgScriptState};
 pub(crate) use template::{CreationContext, CreationLocation, ParserDocument, TemplateState};
 
 #[derive(Clone, Debug)]
@@ -67,6 +69,7 @@ pub(crate) enum SessionError {
     OriginSplitUnavailable,
     AttributeStorageUnavailable,
     ScriptMetadataUnavailable,
+    SvgScriptMetadataUnavailable,
     ImageFormMetadataUnavailable,
     FormAssociationMetadataUnavailable,
     TextareaMetadataUnavailable,
@@ -244,6 +247,10 @@ enum RetainedPayload {
         location: StringLocation,
     },
     Attributes(Option<AttributeStorage>),
+    SvgScript {
+        node: Option<usize>,
+        state: SvgScriptState,
+    },
     Script {
         node: Option<usize>,
         metadata: ScriptMetadata,
@@ -367,8 +374,14 @@ struct FormEffects {
     new_parent: Option<usize>,
     stage: FormEffectStage,
     insert: bool,
+    cause: InsertionCause,
     next: Option<usize>,
     pass: FormEffectPass,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InsertionCause {
+    Parser,
+    NonParser,
 }
 /// Source processing model facts retained in the actual arena owner.
 /// Document indices are private and resolved only through qualified handles.
@@ -526,7 +539,8 @@ impl PayloadStorage {
                     AttributeStorage::Building { .. } | AttributeStorage::Transferring { .. },
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
-                RetainedPayload::Script { .. }
+                RetainedPayload::SvgScript { .. }
+                | RetainedPayload::Script { .. }
                 | RetainedPayload::NodeDocument { .. }
                 | RetainedPayload::Document { .. }
                 | RetainedPayload::Template { .. }
@@ -2164,6 +2178,7 @@ impl SessionStorage {
                     new_parent: Some(parent_index),
                     stage: FormEffectStage::InsertionChildren,
                     insert: false,
+                    cause: InsertionCause::NonParser,
                     next: None,
                     pass: FormEffectPass::Local,
                 });
@@ -2183,7 +2198,7 @@ impl SessionStorage {
             )?;
             self.bind_string(ticket, StringLocation::Text(node.index));
             self.usage.utf16_units += units;
-            self.insert(control, parent, &node, before)?;
+            self.insert(control, parent, &node, before, InsertionCause::NonParser)?;
             Ok(Some(TextInsertion { node, offset: 0 }))
         }
     }
@@ -2620,6 +2635,7 @@ impl SessionStorage {
                     new_parent: None,
                     stage: FormEffectStage::IdChange,
                     insert: false,
+                    cause: InsertionCause::NonParser,
                     next: Some(target),
                     pass: FormEffectPass::Local,
                 }));
@@ -3010,6 +3026,10 @@ impl SessionStorage {
                     }
                 }
             }
+            if self.svg_script_local(control, node)? {
+                self.svg_state_at(control, node)?;
+                local = true;
+            }
             next = self.next_effect_node(control, root, node)?;
         }
         if !local && !children_changed {
@@ -3027,6 +3047,7 @@ impl SessionStorage {
                 FormEffectStage::Insertion
             },
             insert,
+            cause: InsertionCause::NonParser,
             next: Some(root),
             pass: FormEffectPass::Local,
         }))
@@ -3260,6 +3281,7 @@ impl SessionStorage {
                         control,
                         select::EffectFrame::InsertionPostConnection {
                             roots: select::PostConnectionRoots::Single(effects.root),
+                            cause: effects.cause,
                         },
                     )?;
                 }
@@ -3497,11 +3519,12 @@ impl SessionStorage {
         parent: &ParserNode,
         node: &ParserNode,
         before: Option<&ParserNode>,
+        cause: InsertionCause,
     ) -> Result<(), SessionError> {
         let parent = self.index(control, parent)?;
         let node = self.index(control, node)?;
         let before = before.map(|node| self.index(control, node)).transpose()?;
-        self.insert_indices(control, parent, node, before)?;
+        self.insert_indices_with_cause(control, parent, node, before, cause)?;
         self.drain_construction_effects(control)
     }
 
@@ -3511,6 +3534,16 @@ impl SessionStorage {
         parent: usize,
         node: usize,
         before: Option<usize>,
+    ) -> Result<(), SessionError> {
+        self.insert_indices_with_cause(control, parent, node, before, InsertionCause::NonParser)
+    }
+    fn insert_indices_with_cause(
+        &mut self,
+        control: &mut ParseControl,
+        parent: usize,
+        node: usize,
+        before: Option<usize>,
+        cause: InsertionCause,
     ) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
         self.container(control, parent)?;
@@ -3530,9 +3563,11 @@ impl SessionStorage {
                 // Pre-insert adjusts the reference child but still adopts
                 // (removes) and inserts the root. Final links/order are equal;
                 // actual managed image facts nevertheless receive both hooks.
-                if let Some(effects) =
+                if let Some(mut effects) =
                     self.prepare_form_effects(control, node, true, true, Some(parent))?
                 {
+                    payload_write::<InsertionCause>(control, 1)?;
+                    effects.cause = cause;
                     payload_write::<Option<FormEffects>>(control, 1)?;
                     self.effects.form = Some(effects);
                 }
@@ -3540,8 +3575,12 @@ impl SessionStorage {
             }
         }
         let old_parent = self.records[node].parent;
-        let form_effects =
+        let mut form_effects =
             self.prepare_form_effects(control, node, old_parent.is_some(), true, Some(parent))?;
+        if let Some(effects) = &mut form_effects {
+            payload_write::<InsertionCause>(control, 1)?;
+            effects.cause = cause;
+        }
         let depth = self.maximum_depth(control, Some((node, Some(parent))))?;
         control.observe_tree_depth(depth as u64)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -3789,6 +3828,7 @@ impl SessionStorage {
         self.effects.require_freezable(control)?;
         self.require(control)?;
         self.validate_template_facts(control)?;
+        self.validate_svg_facts(control)?;
         let depth = self.maximum_depth(control, None)?;
         control.observe_tree_depth(depth as u64)?;
         for index in 0..self.records.len() {
@@ -5506,7 +5546,22 @@ impl ParserArenaSession {
         capability: Option<&crate::parser::tree_builder::StandaloneCapability<'_>>,
     ) -> Result<(), SessionError> {
         self.qualify_intrinsic_mutation(control, node, capability)?;
-        self.active_mut()?.insert(control, parent, node, before)
+        self.active_mut()?
+            .insert(control, parent, node, before, InsertionCause::NonParser)
+    }
+    /// Actual parser insertion; qualification precedes topology/effect mutation.
+    pub(crate) fn insert_parser(
+        &mut self,
+        control: &mut ParseControl,
+        parent: &ParserNode,
+        node: &ParserNode,
+        before: Option<&ParserNode>,
+        capability: &crate::parser::tree_builder::StandaloneCapability<'_>,
+    ) -> Result<(), SessionError> {
+        capability.validate_session(control, self)?;
+        self.qualify_intrinsic_mutation(control, node, Some(capability))?;
+        self.active_mut()?
+            .insert(control, parent, node, before, InsertionCause::Parser)
     }
     pub(crate) fn remove(
         &mut self,
@@ -5527,6 +5582,15 @@ impl ParserArenaSession {
         let root = storage.index(c, node)?;
         let mut next = Some(root);
         while let Some(index) = next {
+            if storage.svg_script_local(c, index)? {
+                storage.svg_state_at(c, index)?;
+                let capability = capability.ok_or_else(|| {
+                    SessionError::Stop(
+                        c.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
+                    )
+                })?;
+                capability.validate_session(c, self)?;
+            }
             for name in ["select", "option", "selectedcontent", "script"] {
                 if storage.html_local(c, index, name)? {
                     if name == "script"
@@ -7966,7 +8030,7 @@ mod tests {
 
     #[test]
     fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanup() {
-        for remaining in [19, 20] {
+        for remaining in [20, 21] {
             let source = crate::HtmlSource::utf8("<output>A");
             let (mut c, mut session, output, mut lexer) = output_owner(&source, limits());
             let mut text = next_text(&mut lexer, &mut c);
@@ -7977,8 +8041,8 @@ mod tests {
             let mut destination = Utf16Buffer::new(&mut c).unwrap();
             destination.push_unit(81, &mut c).unwrap();
             destination.clear(&mut c).unwrap(); // capacity for1 exists before measured copying.
-            // Getter visits: active readiness+index6, root Document/self-binding2 + Output node-binding1 + Output slot1,
-            // root+child2, Text1, leaf/parent/child-list/sibling4 =17.
+            // Getter visits: active readiness+index7, root Document/self-binding2 + Output node-binding1 + Output slot1,
+            // root+child2, Text1, leaf/parent/child-list/sibling4 =18.
             // Copies are one finite state byte plus one UTF16 unit =3.
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = limits().work_credits();
@@ -7987,12 +8051,12 @@ mod tests {
             let before = c.usage().clone();
             let result = session.append_output_value(&mut c, &output, &mut destination);
             assert_eq!(destination.units(), [65]);
-            if remaining == 20 {
+            if remaining == 21 {
                 result.unwrap();
                 assert_eq!(
                     c.usage().work(WorkCategory::RecordVisit)
                         - before.work(WorkCategory::RecordVisit),
-                    17
+                    18
                 );
                 assert_eq!(
                     c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
@@ -8671,10 +8735,10 @@ mod tests {
     #[test]
     fn template_owned_html_wrapper_pre_registration_stops_reclaim_lexical_fields() {
         use crate::parser::tokenizer::{Tokenizer, states::State};
-        // require: 5 visits; kind: 1; name owner+alias: 2; lowercase
+        // require: 6 visits; kind: 1; name owner+alias: 2; lowercase
         // template: 16; indexed attribute: 1; its two owner+alias checks: 4;
         // lowercase a: 2. This is the actual borrowed preflight, before take.
-        const PREFLIGHT: u64 = 31;
+        const PREFLIGHT: u64 = 32;
         // The newly owned wrapper reads length (1), eight units (3 each),
         // then root kind (1). Cut each credit before document preparation.
         for wrapper_credit in 0..26 {
@@ -9452,11 +9516,11 @@ mod tests {
     fn formatting_capture_one_short_ordinary_document_qualification_preserves_original_before_take()
     {
         use crate::parser::tokenizer::{Tokenizer, states::State};
-        // Readiness first inspects the real form phase plus four intrinsic readiness fields (five visits).
+        // Readiness first inspects the real form phase plus five intrinsic readiness fields (six visits).
         // Qualification then admits eligibility/root-kind together (two).
-        // One short leaves only readiness admitted; exactly seven completes
+        // One short leaves only readiness admitted; exactly eight completes
         // qualification but cannot admit the next source-range visit.
-        for remaining in [6, 7] {
+        for remaining in [7, 8] {
             let source = crate::HtmlSource::utf8("<b>");
             let mut c = control();
             c.admit_source(&source).unwrap();
@@ -9483,7 +9547,7 @@ mod tests {
             assert!(input.is_some());
             assert_eq!(
                 c.usage().work(WorkCategory::RecordVisit) - before,
-                if remaining == 7 { 7 } else { 5 }
+                if remaining == 8 { 8 } else { 6 }
             );
             let stop = c.stop();
             discard_formatting_tag(&mut input, &mut c).unwrap();
@@ -15239,8 +15303,8 @@ mod tests {
             let copies = c.usage().work(WorkCategory::CopyByte);
             let writes = c.usage().work(WorkCategory::RecordWrite);
             assert_eq!(session.document_mode(&mut c), Ok(mode));
-            // Form readiness plus four intrinsic-owner reads + root discriminant, then the mode copy.
-            assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 6);
+            // Form readiness plus five intrinsic-owner reads + root discriminant, then the mode copy.
+            assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 7);
             assert_eq!(
                 c.usage().work(WorkCategory::CopyByte) - copies,
                 mem::size_of::<HtmlDocumentMode>() as u64
@@ -15308,8 +15372,8 @@ mod tests {
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
-        // Independent getter envelope: six actual reads and fixed mode copy.
-        let complete = 6 + mem::size_of::<HtmlDocumentMode>() as u64;
+        // Independent getter envelope: seven actual reads and fixed mode copy.
+        let complete = 7 + mem::size_of::<HtmlDocumentMode>() as u64;
         for remaining in [complete, complete - 1] {
             let mut c = control();
             let mut session =
@@ -16879,9 +16943,9 @@ mod tests {
             session.element_insertion_ignored(&mut c, &first, &root),
             Ok(None)
         );
-        // Ten readiness visits + two checked handles, element kind,
+        // Twelve readiness visits + two checked handles, element kind,
         // ancestry root and target kind.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 15);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 17);
         session.insert(&mut c, &root, &first, None, None).unwrap();
         let visits = c.usage().work(WorkCategory::RecordVisit);
         assert_eq!(
@@ -16889,7 +16953,7 @@ mod tests {
             Ok(Some(ElementInsertionIgnored::DocumentAlreadyHasElement))
         );
         // The additional real child-index and referenced-kind reads cost two.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 17);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 19);
         assert_eq!(session.active().unwrap().records[0].children, [first.index]);
         assert!(
             session.active().unwrap().records[second.index]
@@ -16933,9 +16997,9 @@ mod tests {
                 ElementInsertionIgnored::HostIncludingInclusiveAncestor
             ))
         );
-        // Ten readiness visits + two handles + element kind +
+        // Twelve readiness visits + two handles + element kind +
         // child/contents/template ancestors.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 16);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 18);
         assert_eq!(c.usage().work(WorkCategory::ProviderCall) - providers, 1);
         assert_eq!(
             session.element_insertion_ignored(&mut c, &template, &template),
@@ -16973,7 +17037,7 @@ mod tests {
         let nodes = c.usage().resource(HtmlParseResource::ManagedNodes);
         let edges = c.usage().resource(HtmlParseResource::ManagedEdges);
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, limits().work_credits() - used - 16)
+        c.charge(WorkCategory::StateStep, limits().work_credits() - used - 18)
             .unwrap();
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         assert!(matches!(
@@ -16986,7 +17050,7 @@ mod tests {
         ));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
-            used + 15
+            used + 17
         );
         assert_eq!(c.usage().resource(HtmlParseResource::ManagedNodes), nodes);
         assert_eq!(c.usage().resource(HtmlParseResource::ManagedEdges), edges);

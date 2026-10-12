@@ -456,8 +456,15 @@ The [bounded SVG Tiny 1.2 reference](references/svg-tiny12-script-processing--RE
 processing clauses with the original Recommendation notice and status.
 The [W3C attribution](licenses/w3c/NOTICE.md#html-delegated-svg-script-processing)
 and existing complete local document licenses accompany the software-support
-Markdown conversion. No browser source excerpt, SVG runtime or new dependency
-is incorporated.
+Markdown conversion and the disclosed bounded private Rust algorithm adaptation.
+The restricted operation preserves Tiny’s processed/connectivity guard and
+connected processed mark while separate no-loader and Disabled capabilities
+suppress acquisition and execution. It is not literal Tiny Disabled behavior or
+an SVG runtime. The
+[crate notice](crates/surgeist-html/NOTICE.md#restricted-svg-script-processing)
+and [origin record](crates/surgeist-html/PARSER-ORIGINS.md#restricted-svg-script-extension)
+distinguish the HTML wrapper, Tiny incorporation and metadata-only WebKit clone
+selection. No browser source excerpt or new dependency is incorporated.
 
 ## HTML-delegated Fetch vocabulary
 

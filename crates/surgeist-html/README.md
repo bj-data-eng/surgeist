@@ -1248,8 +1248,8 @@ void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
-Other resettable control creation and SVG script dispatch retain
-untouched-token continuations when their required machinery is unavailable.
+Other resettable control creation retains untouched-token continuations when
+its required machinery is unavailable.
 Source-defined error-and-ignore rows still execute. Construction EOF remains an
 unfinished lifecycle state; these private operations produce no public parse report.
 
@@ -1280,8 +1280,8 @@ pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Other resettable
-controls, unfinished table rows, SVG script dispatch, contextual
-fragment execution, hosted parsing and full EOF/report completion remain unfinished.
+controls, unfinished table rows, contextual fragment execution, hosted parsing
+and full EOF/report completion remain unfinished.
 
 The same association registry now admits parser-created button, fieldset and
 object elements. These are listed and form-associated, but not resettable.
@@ -1376,8 +1376,8 @@ owners use the sole controller. A terminal stop can retain a coherent flush
 prefix, remaining characters and the triggering token for cleanup, while refusing
 continued construction or publication.
 
-This is a structural checkpoint. Other unavailable control creation
-and SVG script branches preserve their original token before unsupported effects.
+This is a structural checkpoint. Other unavailable control creation preserves
+its original token before unsupported effects.
 It does not establish complete InTable behavior,
 contextual fragment parsing or completed EOF/report publication.
 
@@ -1396,7 +1396,7 @@ and selectedcontent in source order, including reinsertion into the same parent.
 Fragment children are removed and inserted as a complete sibling batch before
 the parent's children-changed and static post-connection processing. Iterative
 same-arena cloning preserves exact UTF-16, attributes and original source maps
-with new identities. Script clones receive fresh metadata, copy only
+with new identities. HTML script clones receive fresh metadata, copy only
 already-started, and use the existing staged Disabled preparation owner for
 actual connection and children-changed hooks.
 
@@ -1467,7 +1467,7 @@ The [template state owner](src/construction/parser_session/template.rs),
 [template dispatcher](src/parser/tree_builder/template.rs) and
 [origin record](PARSER-ORIGINS.md#ordinary-template-extension) identify this private,
 test-compiled boundary. Imported templates with unavailable patch facts, captured
-context-sensitive fragments, shadow attachment, SVG script and complete public
+context-sensitive fragments, shadow attachment and complete public
 stop-parsing/report publication remain unfinished. No public captured
 template-for reference query or live DOM follows. Repeated registry/topology
 scans, comparisons, copies and moves can be quadratic; finite charged/polled work
@@ -1496,11 +1496,73 @@ coexisting original/adjusted buffers, map slots, physical capacity and variable
 visits through the sole controller; cancellation and first failure remain sticky.
 Interrupted creation and qualified cloning retain every owner for disposal and
 refuse freeze. Repeated registry/topology scans may be quadratic; no linear-time
-or allocator/RSS guarantee follows. SVG script starts retain the untouched token
-before creation, including self-closing starts. The HTML Disabled-script proof
-does not implement SVG script processing. Construction EOF remains unfinished
-stop-parsing/report publication; contextual fragments and imported templates
-still require their own construction facts and effects.
+or allocator/RSS guarantee follows. The separately qualified
+[restricted SVG script operation](#private-svg-script) uses the same foreign
+creator and dispatcher. Construction EOF remains unfinished stop-parsing/report
+publication; contextual fragments and imported templates still require their
+own construction facts and effects.
+
+<a id="private-svg-script"></a>
+
+The fresh private standalone driver now retains a distinct processed state for
+exact SVG-namespace script elements in the same arena. The
+[SVG state owner](src/construction/parser_session/svg.rs) implements the
+[explicit source selection](../../references/SOURCE-EDITIONS.md#offline-disabled-svg-script-and-clone-sources)
+over [SVG Tiny 1.2 processing](../../references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md#ScriptContentProcessing):
+step 1 returns unchanged for an already processed script or one outside the
+ordinary document tree. An eligible unprocessed script reaches the actual
+step-3 processed=true mark. Fresh parser-created scripts start false; unavailable
+or imported metadata does not stand for false.
+
+This is a restricted processing attempt. A separate closed no-loader capability
+suppresses every resource acquisition, including network, data and same-document
+references; Disabled suppresses execution. The actual no-host/no-listener/
+no-observer/no-retained-notification-producer domain permits notification
+elimination. Raw attributes and content remain intact. No URL classification,
+failed-load result, inline fallback, execution or SVG load task is fabricated.
+This is not literal SVG Tiny Disabled behavior, HTML prepare-script step 18,
+a named SVG rendering mode or complete SVG support.
+
+The canonical insertion command carries its actual Parser or NonParser cause
+through the existing effect frames. Parser insertion defers processing to the
+specified foreign end. An exact current SVG script end, including a self-closing
+start, uses the same created node: retain its handle, pop it, save/install the
+tokenizer insertion point, increment nesting and set pause, process, then
+decrement nesting, clear pause at zero and restore the previous insertion point.
+The [foreign-end wrapper](src/parser/tree_builder/head.rs) consumes the real
+lexical payload without entering HTML Text/ScriptData mode or draining the
+intrinsic FIFO. Foreign CDATA, entities, qualified XLink attributes and native
+sibling order remain with their existing owners. EOF or an unrelated breakout
+does not invent a script-end invocation.
+
+Actual nonparser connection uses the existing static ordinary postconnection
+list in document order, after removal, node-document adoption and insertion.
+Creation provenance does not determine later insertion cause. Template hosted
+contents are not ordinary ancestor edges: fresh unprocessed scripts there stay
+disconnected and false, while actual patch placement or adoption followed by
+ordinary connection can make an eligible false script true. Removing or reconnecting a true script
+never re-arms it. The [existing clone owner](src/construction/parser_session/clone.rs)
+copies the actual source bit to a distinct clone before insertion can observe it,
+including deep selectedcontent and template-contents clones. This is the
+[bounded clone completion](../../references/webkit-svg-script-clone--73aa6c89e2cb-metadata.md),
+not an SVG Tiny cloning clause or copied WebKit implementation. HTML script
+metadata and preparation remain separate.
+
+Fresh SVG slot admission precedes lexical transfer; its fixed binding write is
+admitted before native allocation. Later owned transfer work has terminal-safe
+cleanup boundaries. Registry capacities, scalar slots, clone bindings, effect
+frames and wrapper layouts use the sole controller and actual physical layouts.
+A retained SVG wrapper blocks useful continuation and normal freeze; successful
+freeze validates complete bound SVG facts. Cancellation or a limit failure
+retains the coherent prefix and first stop, then releases lexical/native backing,
+maps, registry capacities, handles and tickets without rescue processing.
+Repeated scans, subtree walks, copies and moves can be quadratic; finite charged
+and polled work is not linearity, allocator cancellation or an RSS guarantee.
+These operations remain private and test-compiled. Imported/hosted execution,
+captured context fragments, shadow attachment and completed public EOF/report
+publication remain separate work. The [origin record](PARSER-ORIGINS.md#restricted-svg-script-extension)
+and [source attribution](NOTICE.md#restricted-svg-script-processing) record the
+distinct HTML, Tiny and implementation-provenance terms.
 
 Remaining insertion modes, required contextual fragments, context effects and
 parse-report publication remain unfinished.

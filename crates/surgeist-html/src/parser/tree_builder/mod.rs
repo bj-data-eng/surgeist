@@ -601,13 +601,23 @@ impl LocationKernel {
             {
                 Some(reason) => ElementInsertionOutcome::Ignored(reason),
                 None => {
-                    self.session.insert(
-                        control,
-                        &location.parent,
-                        element,
-                        location.before.as_ref(),
-                        capability,
-                    )?;
+                    if let Some(capability) = capability {
+                        self.session.insert_parser(
+                            control,
+                            &location.parent,
+                            element,
+                            location.before.as_ref(),
+                            capability,
+                        )?;
+                    } else {
+                        self.session.insert(
+                            control,
+                            &location.parent,
+                            element,
+                            location.before.as_ref(),
+                            None,
+                        )?;
+                    }
                     ElementInsertionOutcome::Inserted
                 }
             };
@@ -685,9 +695,11 @@ impl LocationKernel {
 /// Admitted producers are real lexical and implicit HTML construction, attribute
 /// merging, ordinary placement, and the supported control/clone/effect owners.
 /// Their intrinsic tasks share this arena's controlled FIFO; no external task or
-/// execution domain is admitted. Imported elements/hosted fragments and shadow
-/// attachment producers are unreachable from that constructor; template starts
-/// suspend before effects. Structural records and metadata remain retained.
+/// execution domain is admitted. Managed template contents have distinct inert
+/// node documents; supported SVG scripts retain their own processed state under
+/// explicit no-loader, Disabled execution and no-notification-recipient closure.
+/// Imported elements/hosted fragments and shadow attachment producers are
+/// unreachable from that constructor. Structural records and metadata remain retained.
 /// No running-script/frame-timing domain exists: checkpoint specialization does
 /// not implement an external timing algorithm or assume a normative null return.
 pub(crate) struct StandaloneCapability<'source> {
@@ -841,7 +853,8 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     StandaloneUnsupported::Provenance
                 }
                 StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
-                    SessionError::ScriptMetadataUnavailable,
+                    SessionError::ScriptMetadataUnavailable
+                    | SessionError::SvgScriptMetadataUnavailable,
                 ))) => StandaloneUnsupported::ScriptDocument,
                 _ => StandaloneUnsupported::InvalidNesting,
             };

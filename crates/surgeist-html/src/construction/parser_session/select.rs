@@ -113,6 +113,7 @@ pub(super) enum EffectFrame {
     PostConnection {
         list: usize,
         cursor: usize,
+        cause: InsertionCause,
     },
     ScriptPreparation {
         node: usize,
@@ -126,6 +127,7 @@ pub(super) enum EffectFrame {
     },
     InsertionPostConnection {
         roots: PostConnectionRoots,
+        cause: InsertionCause,
     },
 }
 #[derive(Clone, Copy)]
@@ -161,10 +163,11 @@ pub(super) struct ConstructionEffects {
     dequeue: usize,
     task: Option<IntrinsicTask>,
     checkpoint: bool,
+    pub(super) svg_wrapper: Option<usize>,
 }
 impl ConstructionEffects {
     pub(super) fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
-        payload_write::<Self>(c, 8)?;
+        payload_write::<Self>(c, 9)?;
         Ok(Self {
             form: None,
             frames: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
@@ -174,11 +177,13 @@ impl ConstructionEffects {
             dequeue: 0,
             task: None,
             checkpoint: false,
+            svg_wrapper: None,
         })
     }
     pub(super) fn require_idle(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 4)?;
-        if self.current.is_some()
+        c.charge(WorkCategory::RecordVisit, 5)?;
+        if self.svg_wrapper.is_some()
+            || self.current.is_some()
             || self.transfer.is_some()
             || self.frames.len() != 0
             || self.checkpoint
@@ -190,8 +195,9 @@ impl ConstructionEffects {
         Ok(())
     }
     pub(super) fn require_freezable(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 7)?;
-        if self.dequeue != self.tasks.len()
+        c.charge(WorkCategory::RecordVisit, 8)?;
+        if self.svg_wrapper.is_some()
+            || self.dequeue != self.tasks.len()
             || self.task.is_some()
             || self.checkpoint
             || self.current.is_some()
@@ -206,7 +212,7 @@ impl ConstructionEffects {
     #[cfg(test)]
     pub(super) fn retained_post_connection(&self) -> Option<(usize, usize)> {
         match self.current {
-            Some(EffectFrame::PostConnection { list, cursor }) => Some((list, cursor)),
+            Some(EffectFrame::PostConnection { list, cursor, .. }) => Some((list, cursor)),
             _ => None,
         }
     }
@@ -613,7 +619,11 @@ impl SessionStorage {
                     self.insert_indices(c, copy, copied, None)
                 }
             }
-            EffectFrame::PostConnection { list, cursor } => {
+            EffectFrame::PostConnection {
+                list,
+                cursor,
+                cause,
+            } => {
                 let Some(node) = self.work_list_node(c, list, cursor)? else {
                     self.release_work_list(c, list)?;
                     return self.write_current_effect(c, None);
@@ -623,10 +633,14 @@ impl SessionStorage {
                     Some(EffectFrame::PostConnection {
                         list,
                         cursor: cursor + 1,
+                        cause,
                     }),
                 )?;
                 if !self.connected(c, node, None)? {
                     return Ok(());
+                }
+                if self.svg_script_local(c, node)? && cause == InsertionCause::NonParser {
+                    self.process_svg_owned(c, node)?;
                 }
                 if self.html_local(c, node, "option")? {
                     self.update_for_option(c, node)?;
@@ -697,6 +711,7 @@ impl SessionStorage {
                             c,
                             Some(EffectFrame::InsertionPostConnection {
                                 roots: PostConnectionRoots::Fragment(list),
+                                cause: InsertionCause::NonParser,
                             }),
                         )?;
                         if self.html_local(c, parent, "script")?
@@ -714,13 +729,19 @@ impl SessionStorage {
                     }
                 }
             }
-            EffectFrame::InsertionPostConnection { roots } => {
+            EffectFrame::InsertionPostConnection { roots, cause } => {
                 let post = match roots {
-                    PostConnectionRoots::Single(root) => self.post_connection_frame(c, root)?,
+                    PostConnectionRoots::Single(root) => {
+                        self.post_connection_frame_with_cause(c, root, cause)?
+                    }
                     PostConnectionRoots::Fragment(roots) => {
                         let list = self.retain_fragment_post_connection(c, roots)?;
                         self.release_work_list(c, roots)?;
-                        EffectFrame::PostConnection { list, cursor: 0 }
+                        EffectFrame::PostConnection {
+                            list,
+                            cursor: 0,
+                            cause,
+                        }
                     }
                 };
                 self.write_current_effect(c, Some(post))
@@ -847,13 +868,18 @@ impl SessionStorage {
         }
         Err(SessionError::Cycle)
     }
-    pub(super) fn post_connection_frame(
+    fn post_connection_frame_with_cause(
         &mut self,
         c: &mut ParseControl,
         root: usize,
+        cause: InsertionCause,
     ) -> Result<EffectFrame, SessionError> {
         let list = self.retain_work_list(c, root, WorkListKind::PostConnection)?;
-        Ok(EffectFrame::PostConnection { list, cursor: 0 })
+        Ok(EffectFrame::PostConnection {
+            list,
+            cursor: 0,
+            cause,
+        })
     }
     fn work_list_node(
         &self,

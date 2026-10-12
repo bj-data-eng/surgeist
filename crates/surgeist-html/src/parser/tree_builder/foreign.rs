@@ -13,7 +13,7 @@
 
 use super::{
     KernelError,
-    head::{HeadBoundary, HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep},
+    head::{HeadCondition, HeadDiagnostic, HeadError, HeadState, HeadStep},
     prologue::Payload,
     tag_sets, write,
 };
@@ -183,11 +183,8 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
         self.admit_hidden_capability(c)?;
-        // SVG script requires SVG processing facts; HTML Disabled is not its
-        // implementation. Retain the untouched token before creation/effects.
-        if namespace == ForeignNamespace::Svg && self.token_in(&["script"], c)?.is_some() {
-            return self.stop_at(HeadBoundary::Foreign, c);
-        }
+        let svg_script =
+            namespace == ForeignNamespace::Svg && self.token_in(&["script"], c)?.is_some();
         let location = self.before.kernel.adjusted_location(None, c)?;
         c.charge(WorkCategory::RecordVisit, 2)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
@@ -219,6 +216,9 @@ impl HeadState<'_> {
             self.script.as_ref().map(|s| &s.capability),
         )?;
         self.before.kernel.push(&node, c)?;
+        if close && svg_script {
+            return self.svg_end(&node, c);
+        }
         if close {
             self.before
                 .kernel
@@ -459,7 +459,7 @@ impl HeadState<'_> {
                 .element_name(c, &current)?
                 .ok_or(KernelError::EmptyStack)?;
             if tag_sets::local_in(name, &["script"], c)? {
-                return Ok(Some(self.stop_at(HeadBoundary::Foreign, c)?));
+                return Ok(Some(self.svg_end(&current, c)?));
             }
         }
         if !self.foreign_end_matches(&current, c)? {

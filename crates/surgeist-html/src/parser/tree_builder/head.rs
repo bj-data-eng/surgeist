@@ -90,7 +90,6 @@ pub(crate) enum HeadBoundary {
     Script,
     Template,
     Form,
-    Foreign,
     ConstructionEof,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -233,6 +232,7 @@ pub(super) struct HeadState<'source> {
     pub(super) table: super::tables::TableCharacters,
     pub(super) template_modes: OwnedVec<InsertionMode>,
     pub(super) script: Option<StandaloneScriptState<'source>>,
+    pub(super) svg_pending: Option<ParserNode>,
 }
 /// Source-established ordinary offline/Disabled head construction. No imported
 /// host, srcdoc, mode-fixed state or execution mode can be supplied here.
@@ -317,6 +317,7 @@ impl<'source> HeadStage<'source> {
                 lexical_pending: None,
                 whitespace_pending: None,
                 script: None,
+                svg_pending: None,
                 frameset_ok: true,
                 ignore_first_lf: false,
                 temporary_head: None,
@@ -411,6 +412,9 @@ impl<'source> HeadStage<'source> {
             .ok_or(HeadError::StandaloneCapabilityUnavailable)?
             .capability
             .validate_session(c, &state.before.kernel.session)?;
+        if state.svg_pending.is_some() {
+            return Err(HeadError::UnsupportedScriptPause);
+        }
         state.release_table(c)?;
         state.release_body(c)?;
         state.release_formatting(c)?;
@@ -520,6 +524,9 @@ impl<'source> HeadStage<'source> {
             if script.pause {
                 return Err(HeadError::UnsupportedScriptPause);
             }
+        }
+        if state.svg_pending.is_some() {
+            return Err(HeadError::UnsupportedScriptPause);
         }
         if state.boundary.is_some() {
             return Err(HeadError::AlreadyAtBoundary);
@@ -647,6 +654,10 @@ impl<'source> HeadStage<'source> {
         state.release_table(c)?;
         state.release_body(c)?;
         state.release_formatting(c)?;
+        if c.stop().is_none() {
+            write(size_of::<Option<ParserNode>>(), 1, c)?;
+        }
+        state.svg_pending = None;
         state.before.kernel.release(c)?;
         if let Some(tokenizer) = state.tokenizer.take() {
             tokenizer.release(c)?;
@@ -1098,6 +1109,92 @@ impl HeadState<'_> {
             self.emit(HeadCondition::UnacknowledgedSelfClosing, c)?;
         }
         self.finish(c)
+    }
+    /// HTML foreign SVG end ordering; no HTML Text-mode or microtask checkpoint.
+    pub(super) fn svg_end(
+        &mut self,
+        node: &ParserNode,
+        c: &mut ParseControl,
+    ) -> Result<HeadStep, HeadError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self.svg_pending.is_some() {
+            return Err(HeadError::UnsupportedScriptPause);
+        }
+        let capability = &self
+            .script
+            .as_ref()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?
+            .capability;
+        capability.validate_session(c, &self.before.kernel.session)?;
+        // Retain before the fallible canonical pop and its intrinsic consequences.
+        let retained = super::copy_node(node, c)?;
+        write(size_of::<Option<ParserNode>>(), 1, c)?;
+        self.svg_pending = Some(retained);
+        self.before
+            .kernel
+            .pop(c, self.script.as_ref().map(|s| &s.capability))?
+            .ok_or(KernelError::EmptyStack)?;
+        let node = self
+            .svg_pending
+            .as_ref()
+            .ok_or(HeadError::InvalidScriptNesting)?;
+        let script = self
+            .script
+            .as_mut()
+            .ok_or(HeadError::StandaloneCapabilityUnavailable)?;
+        self.before
+            .kernel
+            .session
+            .begin_svg_wrapper(c, node, &script.capability)?;
+        let next = self
+            .tokenizer
+            .as_ref()
+            .ok_or(HeadError::Consumed)?
+            .checked_next_input_position(script.capability.source, c)?;
+        write(
+            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            2,
+            c,
+        )?;
+        script.saved_insertion_point = Some(script.insertion_point.take());
+        script.insertion_point = Some(next);
+        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        let nesting = script
+            .nesting
+            .checked_add(1)
+            .ok_or(HeadError::InvalidScriptNesting)?;
+        write(size_of::<u32>(), 1, c)?;
+        script.nesting = nesting;
+        write(size_of::<bool>(), 1, c)?;
+        script.pause = true;
+        self.before
+            .kernel
+            .session
+            .process_svg_wrapper(c, node, &script.capability)?;
+        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        let nesting = script
+            .nesting
+            .checked_sub(1)
+            .ok_or(HeadError::InvalidScriptNesting)?;
+        write(size_of::<u32>(), 1, c)?;
+        script.nesting = nesting;
+        if nesting == 0 {
+            write(size_of::<bool>(), 1, c)?;
+            script.pause = false;
+        }
+        write(
+            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            2,
+            c,
+        )?;
+        script.insertion_point = script
+            .saved_insertion_point
+            .take()
+            .ok_or(HeadError::InvalidScriptNesting)?;
+        self.before.kernel.session.finish_svg_wrapper(c, node)?;
+        write(size_of::<Option<ParserNode>>(), 1, c)?;
+        self.svg_pending = None;
+        self.discard(c)
     }
     fn script_end(
         &mut self,

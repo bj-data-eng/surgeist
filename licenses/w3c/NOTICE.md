@@ -1452,6 +1452,19 @@ Applicable legal material remains the local complete
 extends the software-support derivative permission to existing publications.
 No upstream code component or executable example is transcribed.
 
+The private fresh standalone implementation additionally adapts §15.2.1’s
+processed/connectivity guard, parser-end versus nonparser document-order trigger
+and processed mark into Surgeist-authored Rust. Its separate closed no-loader
+capability suppresses all acquisition and Disabled suppresses execution;
+notification elimination depends on the actual closed domain with no host,
+recipients or retained notification effects. This is a disclosed restricted processing attempt, not literal
+SVG Tiny Disabled behavior, simulated loading or whole SVG conformance.
+The required ©2015 derivative notice above covers this software incorporation
+as well as its support documents; the original ©2008 notice and complete STATUS
+remain in the linked reference. No upstream marked code component is imported.
+The [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md#restricted-svg-script-extension)
+records the HTML wrapper and separate processed-bit clone selection.
+
 ## DOM-delegated XML pseudo-attribute grammar
 
 Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document

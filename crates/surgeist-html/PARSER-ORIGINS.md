@@ -25,10 +25,12 @@ Fresh ordinary output creation also completes its empty reset before association
 null-default and current observations read actual ordinary descendant text.
 Ordinary select/option/optgroup/selectedcontent creation and source-ordered
 selection, cloning and intrinsic checkpoint effects now use that driver. Other
-resettable control creation, unsupported table rows and SVG script
-dispatch retain explicit unfinished continuations. Fresh ordinary templates now
+resettable control creation and unsupported table rows retain explicit
+unfinished continuations. Fresh ordinary templates now
 use that same driver with real inert-document/contents ownership and PI patching.
-Construction EOF is not
+Exact SVG scripts now retain separate processed state under the selected
+restricted offline operation, with source-ordered foreign-end and nonparser
+connection handling. Construction EOF is not
 completed stop-parsing or a public report.
 
 ## Original source and incorporated files
@@ -375,8 +377,7 @@ body-character handling. Transfer slots retain popped owners before fallible
 disposal, so terminal cleanup can release remaining storage after a stopped
 flush. Actual delegated insertion modes, Text return and foster state survive
 source-ordered reprocessing. Form and image effects reuse their existing owners.
-Unsupported control and SVG script branches retain the original token
-before unavailable effects. This checkpoint does not certify complete
+Unsupported control branches retain the original token before unavailable effects. This checkpoint does not certify complete
 InTable behavior, fragment initialization, EOF/report completion or complete
 parser resource accounting.
 
@@ -460,17 +461,17 @@ Foreign dispatch precedes the current HTML insertion mode and reprocessing
 returns to that actual mode. MathML text exceptions, SVG and annotation-xml
 integration, self-closing acknowledgement, NULL replacement, comments/PI,
 namespace diagnostics, HTML breakout and mismatched-end recovery use existing
-insertion, stack and cleanup owners. SVG script starts, including self-closing
-ones, remain untouched before creation; the HTML Disabled-script preparation
-does not certify the source's separate SVG algorithm. No new dependency or
-external execution domain is introduced. All original/adjusted backing, maps,
+insertion, stack and cleanup owners. The separate
+[restricted SVG extension](#restricted-svg-script-extension) now supplies its
+qualified processed state and foreign-end route. No new dependency or external
+execution domain is introduced. All original/adjusted backing, maps,
 qualified clone slots, writes and variable scans are admitted; failures retain
 owned prefixes and refuse useful continuation/freeze. Repeated registry and
 topology scans may be quadratic. This remains private, test-compiled machinery,
 without a complete allocator/RSS or public parse/report claim.
 
-Remaining insertion modes, SVG script processing,
-context effects and report publication remain required engine work. The upstream driver, encoding implementation, serializer,
+Remaining insertion modes, context effects and report publication remain
+required engine work. The upstream driver, encoding implementation, serializer,
 XML parser and RcDom are not incorporated here. Research prototypes and their
 measurements do not certify this adapted implementation or supply a public
 parsing contract.
@@ -540,10 +541,64 @@ for disposal without useful continuation. Repeated registry/topology scans and
 copies/moves can be quadratic; finite charged/polled work is not a linearity or
 allocator/RSS guarantee. This remains private, test-compiled fresh ordinary
 construction. Proofless head dispatch still suspends at script/template starts;
-imported template facts, captured context-sensitive fragments, shadow attachment,
-SVG script and complete public parsing/report lifecycle remain outside it.
+imported template facts, captured context-sensitive fragments, shadow attachment
+and complete public parsing/report lifecycle remain outside it.
 No new dependency, upstream driver, serializer, Tendril/atom implementation,
 XML document parser or RcDom is incorporated.
+
+## Restricted SVG script extension
+
+The existing html5ever-derived foreign dispatch and creation files retain their
+complete original eight-line notices and original rules/mod hashes above.
+No additional upstream source file or slice is ingested at this checkpoint.
+At the pinned implementation revision, rules.rs line 1651 and mod.rs line 1853
+explicitly leave SVG end and self-closing processing as FIXME gaps. Surgeist's
+new source-ordered wrapper in the existing head/foreign drivers fills those gaps
+from the [pinned HTML foreign clauses](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md#scriptForeignEndTag),
+rather than attributing the implementation to absent upstream SVG processing.
+All earlier adapted hashes remain historical incorporation checkpoints.
+
+The new [session SVG child](src/construction/parser_session/svg.rs) and the
+registry, insertion-cause, clone and static postconnection integrations are
+Surgeist-authored adaptations. Their behavioral sources are the existing
+HTML/DOM captures and the separately attributed
+[SVG Tiny 1.2 processing clauses](../../references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md#ScriptContentProcessing).
+The [selected source determination](../../references/SOURCE-EDITIONS.md#offline-disabled-svg-script-and-clone-sources)
+preserves Tiny step 1 and the connected step-3 processed mark while a separate
+closed no-loader capability suppresses all acquisition and Disabled suppresses
+execution. Actual absence of host/listener/observer/retained notification
+producers permits notification elimination. This is neither a literal Tiny
+Disabled return nor a successful/failed resource load. HTML preparation rules
+and the intrinsic FIFO checkpoint are not applied to SVG.
+
+Exact namespace/local-name and owner/document qualification distinguish
+unavailable state from false. Fresh SVG metadata slots are admitted before
+lexical transfer; binding writes are admitted before native allocation. Later
+owned transfer work retains explicit terminal-safe cleanup boundaries.
+The canonical insertion command carries actual Parser/NonParser cause through
+the existing effects: parser insertion defers to foreign end, while nonparser
+connection processes the existing ordinary static list in document order.
+Template contents remain detached ordinary roots; adoption updates real
+node-document bindings before final connection, without resetting the bit.
+
+Managed cloning qualifies source SVG state through the existing whole-closure
+preflight and copies its true/false bit into a distinct clone before insertion.
+The [WebKit witness](../../references/webkit-svg-script-clone--73aa6c89e2cb-metadata.md)
+selects that bounded standards-gap completion only. No Library-GPL source
+excerpt, combined WebKit HTML/SVG algorithm or executable implementation is
+incorporated. Existing HTML script clone/preparation behavior remains separate.
+
+The retained foreign-end wrapper uses the same tokenizer insertion point,
+nesting/pause state, arena and controller; it releases the actual lexical
+payload and does not drain intrinsic tasks. Pending wrapper/effect work blocks
+useful entry and freeze. Actual registry/vector capacities and fixed layouts
+stay charged until disposal; terminal cleanup preserves first stop and performs
+no rescue processing. Scans, clone/adoption walks and moves may be quadratic.
+This private test-compiled checkpoint supplies no complete allocator/RSS,
+linear-work or public parsing/report lifecycle promise. Separate
+[W3C attribution](../../licenses/w3c/NOTICE.md#html-delegated-svg-script-processing)
+and [crate attribution](NOTICE.md#restricted-svg-script-processing) cover Tiny
+algorithm incorporation; WHATWG terms do not replace those W3C terms.
 
 ## Attribution and verification
 

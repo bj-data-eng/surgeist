@@ -137,7 +137,7 @@ not assert all child/content constraints are machine checked.
 | <a id="e090"></a>E090 | sub; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact subscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e091"></a>E091 | summary; HTML | [the-summary-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-summary-element) | [Details](#details) first direct summary predicate and captured TabIndex default; disclosure toggle external. |
 | <a id="e092"></a>E092 | sup; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact superscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e093"></a>E093 | SVG svg; SVG | [elementdef-svg](https://w3c.github.io/svgwg/svg2-draft/struct.html#elementdef-svg) | SVG namespace/open names retained; ordinary private non-script HTML foreign construction/integration implemented, SVG language semantics/runtime delegated. |
+| <a id="e093"></a>E093 | SVG svg; SVG | [elementdef-svg](https://w3c.github.io/svgwg/svg2-draft/struct.html#elementdef-svg) | SVG namespace/open names retained; ordinary private HTML foreign construction/integration and [restricted SVG script processing](README.md#private-svg-script) implemented, broader SVG language semantics/runtime delegated. |
 | <a id="e094"></a>E094 | table; HTML | [the-table-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) | [Tables](#tables): static bodies/rows/cells plus separate slot/column/header model; no live collections/mutation/layout. |
 | <a id="e095"></a>E095 | tbody; HTML | [the-tbody-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tbody-element) | [Tables](#tables) direct row membership; geometric layout and live DOM collection external. |
 | <a id="e096"></a>E096 | td; HTML | [the-td-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-td-element) | [Tables](#tables) cell/span/header model; geometry and live cellIndex/mutation not covered by immutable collection. |
@@ -1371,9 +1371,13 @@ is retained; JS grammar/event compilation/dispatch is not executed here.
 
 Ordinary private foreign construction implements the HTML-defined MathML/SVG
 name/attribute adjustment, integration, CDATA, recovery and qualified native
-cloning through the existing controlled parser owner. It does not implement the
-SVG/MathML languages, SVG script, contextual fragments or completed
-public reports. [Parser origins](PARSER-ORIGINS.md) records the selected upstream
+cloning through the existing controlled parser owner. Exact SVG script elements
+also have [restricted private processing](README.md#private-svg-script): actual
+processed state, parser-end wrapper, nonparser connection and qualified clone
+bit preservation. Separate no-loader and Disabled capabilities suppress
+acquisition and execution; this is not literal SVG Tiny Disabled behavior or
+whole SVG/MathML language support. Contextual fragments and completed public
+reports remain unfinished. [Parser origins](PARSER-ORIGINS.md) records the selected upstream
 adaptation and HTML differences; [the crate overview](README.md) records actual
 admission, cleanup and capability limits.
 

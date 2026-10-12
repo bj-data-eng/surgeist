@@ -49,6 +49,13 @@ factoring from tree_builder/mod.rs lines 417–450, 1265–1313 and 1463–1505.
 The new template module preserves the complete original eight-line notice.
 The session template/PI modules and actual document/patch/adopt/clone providers
 are Surgeist-owned implementations, not additional copied html5ever files.
+The restricted SVG extension fills the pinned source’s explicit SVG end and
+self-closing FIXME gaps (rules.rs line 1651 and mod.rs line 1853) from selected
+HTML/Tiny clauses; it ingests no additional html5ever slice. Existing driver
+notices remain verbatim. Its new session SVG state and insertion/clone/connection
+providers are Surgeist-authored, with separate W3C Tiny attribution and a
+metadata-only WebKit clone witness in the
+[SVG origin record](../../crates/surgeist-html/PARSER-ORIGINS.md#restricted-svg-script-extension).
 The [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;
