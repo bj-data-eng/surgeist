@@ -10651,3 +10651,235 @@ fn ordinary_selectedcontent_clones_foreign_children_with_distinct_qualified_nati
     assert_eq!(elements[14].1, vec![texts[1].0.clone()]);
     assert_ne!(texts[0].0, texts[1].0);
 }
+
+#[test]
+fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_sibling_order() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><template id=t><tr><td>A</td><td>B</td></tr></template><p>Z</p>",
+        ),
+        limits(100),
+    );
+    let mut driver = StandaloneDocumentDriver::new(&request).unwrap();
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadBoundary::ConstructionEof {
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(boundary, super::head::HeadBoundary::ConstructionEof);
+        return;
+    }
+
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let ordinary_outline = outline(document);
+    let mut elements = Vec::new();
+    let mut ordinary_texts = Vec::new();
+    let mut template = None;
+    let mut stack: Vec<_> = document.root().children().collect();
+    stack.reverse();
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        let children: Vec<_> = node.children().collect();
+        stack.extend(children.iter().rev().cloned());
+        match node.kind() {
+            HtmlNodeKind::Element(element) => {
+                let name = element.name();
+                elements.push((
+                    id.clone(),
+                    node.parent(),
+                    children,
+                    name.namespace()
+                        .uri()
+                        .map(|value| value.code_units().to_vec()),
+                    name.prefix().map(|value| value.code_units().to_vec()),
+                    name.local_name().code_units().to_vec(),
+                    element
+                        .attributes()
+                        .iter()
+                        .map(|attribute| {
+                            (
+                                attribute
+                                    .name()
+                                    .namespace()
+                                    .uri()
+                                    .map(|value| value.code_units().to_vec()),
+                                attribute
+                                    .name()
+                                    .prefix()
+                                    .map(|value| value.code_units().to_vec()),
+                                attribute.name().local_name().code_units().to_vec(),
+                                attribute.value().code_units().to_vec(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ));
+                if name.local_name() == &DocumentString::from("template") {
+                    template = Some((id, node.template_contents()));
+                }
+            }
+            HtmlNodeKind::Text(value) => ordinary_texts.push((id, value.code_units().to_vec())),
+            _ => {}
+        }
+    }
+    let mut contents = None;
+    let mut contents_outline = Vec::new();
+    let mut content_elements = Vec::new();
+    let mut content_texts = Vec::new();
+    if let Some((_, Some(fragment_id))) = &template {
+        let fragment = document.node(fragment_id).unwrap();
+        let host = match fragment.fragment_owner() {
+            Some(crate::HtmlFragmentOwner::Template(id)) => Some(id.clone()),
+            _ => None,
+        };
+        let children: Vec<_> = fragment.children().collect();
+        contents = Some((
+            fragment_id.clone(),
+            matches!(fragment.kind(), HtmlNodeKind::Fragment),
+            fragment.parent(),
+            host,
+            children.clone(),
+        ));
+        let mut stack: Vec<_> = children.into_iter().map(|id| (0, id)).collect();
+        stack.reverse();
+        while let Some((depth, id)) = stack.pop() {
+            let node = document.node(&id).unwrap();
+            let children: Vec<_> = node.children().collect();
+            stack.extend(children.iter().rev().cloned().map(|id| (depth + 1, id)));
+            match node.kind() {
+                HtmlNodeKind::Element(element) => {
+                    let name = element.name();
+                    contents_outline.push((depth, name.local_name().code_units().to_vec()));
+                    content_elements.push((
+                        id,
+                        node.parent(),
+                        children,
+                        name.namespace()
+                            .uri()
+                            .map(|value| value.code_units().to_vec()),
+                        name.prefix().map(|value| value.code_units().to_vec()),
+                        name.local_name().code_units().to_vec(),
+                        element.attributes().len(),
+                    ));
+                }
+                HtmlNodeKind::Text(value) => {
+                    let mut label = vec![b'#' as u16];
+                    label.extend_from_slice(value.code_units());
+                    contents_outline.push((depth, label));
+                    content_texts.push((id, node.parent(), value.code_units().to_vec()));
+                }
+                _ => {}
+            }
+        }
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        ordinary_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (2, "template"),
+            (1, "body"),
+            (2, "p"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(
+        contents_outline,
+        expected_outline(&[(0, "tr"), (1, "td"), (2, "#A"), (1, "td"), (2, "#B"),])
+    );
+    let units = |value: &str| value.encode_utf16().collect::<Vec<_>>();
+    assert_eq!(elements.len(), 5);
+    let expected_elements: Vec<_> = ["html", "head", "template", "body", "p"]
+        .into_iter()
+        .map(|name| {
+            (
+                Some(units("http://www.w3.org/1999/xhtml")),
+                None::<Vec<u16>>,
+                units(name),
+                if name == "template" {
+                    vec![(None, None, units("id"), units("t"))]
+                } else {
+                    vec![]
+                },
+            )
+        })
+        .collect();
+    assert_eq!(
+        elements
+            .iter()
+            .map(|entry| (
+                entry.3.clone(),
+                entry.4.clone(),
+                entry.5.clone(),
+                entry.6.clone()
+            ))
+            .collect::<Vec<_>>(),
+        expected_elements
+    );
+    let template = template.unwrap();
+    let contents = contents.unwrap();
+    assert_eq!(
+        elements[0].2,
+        vec![elements[1].0.clone(), elements[3].0.clone()]
+    );
+    assert_eq!(elements[1].2, vec![template.0.clone()]);
+    assert_eq!(elements[2].0, template.0);
+    assert!(elements[2].2.is_empty());
+    assert_eq!(elements[2].1, Some(elements[1].0.clone()));
+    assert_eq!(template.1, Some(contents.0.clone()));
+    assert!(contents.1);
+    assert!(contents.2.is_none());
+    assert_eq!(contents.3, Some(template.0.clone()));
+    assert_eq!(content_elements.len(), 3);
+    assert_eq!(contents.4, vec![content_elements[0].0.clone()]);
+    assert_eq!(content_elements[0].1, Some(contents.0.clone()));
+    assert_eq!(
+        content_elements[0].2,
+        vec![content_elements[1].0.clone(), content_elements[2].0.clone()]
+    );
+    assert_eq!(content_elements[1].1, Some(content_elements[0].0.clone()));
+    assert_eq!(content_elements[2].1, Some(content_elements[0].0.clone()));
+    assert_eq!(
+        content_elements
+            .iter()
+            .map(|entry| (entry.3.clone(), entry.4.clone(), entry.5.clone(), entry.6))
+            .collect::<Vec<_>>(),
+        ["tr", "td", "td"]
+            .into_iter()
+            .map(|name| (
+                Some(units("http://www.w3.org/1999/xhtml")),
+                None::<Vec<u16>>,
+                units(name),
+                0
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(content_texts.len(), 2);
+    assert_eq!(content_elements[1].2, vec![content_texts[0].0.clone()]);
+    assert_eq!(content_elements[2].2, vec![content_texts[1].0.clone()]);
+    assert_eq!(content_texts[0].1, Some(content_elements[1].0.clone()));
+    assert_eq!(content_texts[1].1, Some(content_elements[2].0.clone()));
+    assert_eq!(content_texts[0].2, units("A"));
+    assert_eq!(content_texts[1].2, units("B"));
+    assert_eq!(ordinary_texts.len(), 1);
+    assert_eq!(ordinary_texts[0].1, units("Z"));
+    assert_eq!(elements[3].2, vec![elements[4].0.clone()]);
+    assert_eq!(elements[4].2, vec![ordinary_texts[0].0.clone()]);
+    let ids: Vec<_> = elements
+        .iter()
+        .map(|entry| &entry.0)
+        .chain(std::iter::once(&contents.0))
+        .chain(content_elements.iter().map(|entry| &entry.0))
+        .chain(content_texts.iter().map(|entry| &entry.0))
+        .chain(ordinary_texts.iter().map(|entry| &entry.0))
+        .collect();
+    for (index, id) in ids.iter().enumerate() {
+        for other in &ids[index + 1..] {
+            assert_ne!(id, other);
+        }
+    }
+}
