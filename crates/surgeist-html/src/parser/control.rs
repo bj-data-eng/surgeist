@@ -2519,7 +2519,7 @@ mod tests {
                 .current;
             c.limits[HtmlParseResource::AuxiliaryEntries as usize] = slots + additional;
             assert!(matches!(
-                session.allocate_hidden_input_for_creation(
+                session.allocate_input_for_creation(
                     &mut c,
                     &mut input,
                     crate::construction::parser_session::CreationLocation {

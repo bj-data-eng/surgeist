@@ -653,6 +653,27 @@ const INPUT_SOURCE: &str = source!("the-input-element");
 const BUTTON_TYPE_SOURCE: &str = source!("attr-button-type");
 const BUTTON_SOURCE: &str = source!("the-button-element");
 
+#[cfg(test)]
+pub(crate) fn input_type_keyword(index: usize) -> Option<(&'static str, HtmlInputType)> {
+    INPUT_TYPE
+        .keywords
+        .get(index)
+        .map(|row| (row.spelling, row.state))
+}
+#[cfg(test)]
+pub(crate) fn input_type_default() -> HtmlInputType {
+    INPUT_TYPE
+        .missing
+        .expect("input type has a missing-value default")
+}
+
+#[cfg(test)]
+pub(crate) fn input_type_invalid_default() -> HtmlInputType {
+    INPUT_TYPE
+        .invalid
+        .expect("input type has an invalid-value default")
+}
+
 fn input_state_source(state: HtmlInputType) -> &'static str {
     match state {
         HtmlInputType::Hidden => source!("hidden-state-(type=hidden)"),

@@ -73,7 +73,7 @@ fn graph<'a>(
                         .unwrap()
                 } else if name == "input" {
                     session
-                        .allocate_hidden_input_for_creation(
+                        .allocate_input_for_creation(
                             &mut c,
                             &mut input,
                             crate::construction::parser_session::CreationLocation {
@@ -372,7 +372,7 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
     let textarea = session.active().unwrap().node(&mut c, copies[1]).unwrap();
     let mut buffer = Utf16Buffer::new(&mut c).unwrap();
     session
-        .append_hidden_input_value(&mut c, &hidden, &mut buffer)
+        .append_input_default_value(&mut c, &hidden, &mut buffer)
         .unwrap();
     assert_eq!(buffer.units(), exact);
     buffer.release(&mut c).unwrap();

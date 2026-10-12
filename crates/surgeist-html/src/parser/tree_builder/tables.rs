@@ -260,7 +260,7 @@ impl HeadState<'_> {
         if let Some((TagKind::Start, _)) = self.kind(c)? {
             for (names, boundary) in [(&["input"][..], HeadBoundary::Form)] {
                 if self.token_in(names, c)?.is_some() {
-                    if boundary == HeadBoundary::Form && self.hidden_input(c)? {
+                    if boundary == HeadBoundary::Form && self.supported_input(c)? {
                         continue;
                     }
                     return Ok(Some(self.stop_at(boundary, c)?));
@@ -1132,8 +1132,11 @@ impl HeadState<'_> {
                 return Ok(Some(self.head_delegation(false, close, c)?));
             }
             if self.token_in(&["input"], c)?.is_some() {
-                if !self.hidden_input(c)? {
+                if !self.supported_input(c)? {
                     return Ok(Some(self.stop_at(HeadBoundary::Form, c)?));
+                }
+                if !self.hidden_input(c)? {
+                    return self.foster_body(source, c);
                 }
                 self.admit_hidden_capability(c)?;
                 self.table_error(
@@ -1143,7 +1146,7 @@ impl HeadState<'_> {
                     },
                     c,
                 )?;
-                self.insert_hidden_input(c)?;
+                self.insert_input(c)?;
                 self.before
                     .kernel
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?;

@@ -8,7 +8,7 @@ struct CloneBindings {
     association: Option<usize>,
     select: Option<usize>,
     textarea: Option<usize>,
-    hidden: Option<usize>,
+    input: Option<usize>,
     output: Option<usize>,
     script: Option<usize>,
     svg: Option<usize>,
@@ -115,7 +115,7 @@ impl SessionStorage {
                             script_metadata(&self.payloads, c, node)?;
                         }
                         if self.html_local(c, node, "input")? {
-                            self.hidden_clone_slot(c, node)?;
+                            self.input_clone_slot(c, node)?;
                         }
                         if self.html_local(c, node, "output")? {
                             self.output_clone_slot(c, node)?;
@@ -649,18 +649,19 @@ impl SessionStorage {
             )?);
         }
         if self.html_local(c, source, "input")? {
-            self.hidden_clone_slot(c, source)?;
+            self.input_clone_slot(c, source)?;
             let empty = literal_string(c, b"")?;
             let raw = self.register_raw(c, empty)?;
             payload_write::<Option<usize>>(c, 1)?;
-            result.hidden = Some(self.retain_clone_metadata(
+            result.input = Some(self.retain_clone_metadata(
                 c,
-                RetainedPayload::HiddenInput {
+                RetainedPayload::Input {
                     node: None,
                     raw,
-                    hidden: false,
                     complete: false,
-                    state: HiddenInputState {
+                    state: InputState {
+                        kind: crate::attributes::HtmlInputType::Text,
+                        cursor: 0,
                         dirty_value: false,
                         dirty_checkedness: false,
                         checkedness: false,
@@ -730,7 +731,7 @@ impl SessionStorage {
             bindings.association,
             bindings.select,
             bindings.textarea,
-            bindings.hidden,
+            bindings.input,
             bindings.output,
             bindings.script,
             bindings.svg,
@@ -746,7 +747,7 @@ impl SessionStorage {
                 | RetainedPayload::FormAssociation { node: bound, .. }
                 | RetainedPayload::SelectFamily { node: bound, .. }
                 | RetainedPayload::Textarea { node: bound, .. }
-                | RetainedPayload::HiddenInput { node: bound, .. }
+                | RetainedPayload::Input { node: bound, .. }
                 | RetainedPayload::Output { node: bound, .. }
                 | RetainedPayload::Script { node: bound, .. }
                 | RetainedPayload::SvgScript { node: bound, .. } => *bound = Some(node),
@@ -763,7 +764,7 @@ impl SessionStorage {
         container: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        if let Some(input) = bindings.hidden {
+        if let Some(input) = bindings.input {
             self.initial_input_attribute(
                 c,
                 node,
@@ -831,8 +832,8 @@ impl SessionStorage {
             *stored = state;
             self.retire_raw_field(c, retired)?;
         }
-        if let Some(slot) = bindings.hidden {
-            let (_, original_raw, original) = self.hidden_clone_slot(c, source)?;
+        if let Some(slot) = bindings.input {
+            let (_, original_raw, original) = self.input_clone_slot(c, source)?;
             let text = copy_input_value(
                 &self.payloads,
                 self.evidence.as_ref(),
@@ -842,19 +843,16 @@ impl SessionStorage {
             )?;
             self.replace_input_raw(c, slot, text)?;
             let mut state = self.read_input_state(c, slot)?;
+            state.kind = original.kind;
             state.dirty_value = original.dirty_value;
             state.dirty_checkedness = original.dirty_checkedness;
             state.checkedness = original.checkedness;
             state.indeterminate = original.indeterminate;
             self.write_input_state(c, slot, state)?;
-            payload_write::<[bool; 2]>(c, 2)?;
-            let RetainedPayload::HiddenInput {
-                hidden, complete, ..
-            } = &mut self.payloads.values[slot]
-            else {
+            payload_write::<bool>(c, 1)?;
+            let RetainedPayload::Input { complete, .. } = &mut self.payloads.values[slot] else {
                 unreachable!()
             };
-            *hidden = true;
             *complete = true;
         }
         if bindings.select.is_some() {
@@ -862,14 +860,14 @@ impl SessionStorage {
         }
         Ok(())
     }
-    fn hidden_clone_slot(
+    fn input_clone_slot(
         &self,
         c: &mut ParseControl,
         node: usize,
-    ) -> Result<(usize, usize, HiddenInputState), SessionError> {
+    ) -> Result<(usize, usize, InputState), SessionError> {
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::HiddenInput {
+            if let RetainedPayload::Input {
                 node: Some(owner),
                 raw,
                 complete: true,
@@ -880,12 +878,12 @@ impl SessionStorage {
             {
                 c.charge(
                     WorkCategory::CopyByte,
-                    (mem::size_of::<usize>() + mem::size_of::<HiddenInputState>()) as u64,
+                    (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64,
                 )?;
                 return Ok((slot, *raw, *state));
             }
         }
-        Err(SessionError::HiddenInputMetadataUnavailable)
+        Err(SessionError::InputMetadataUnavailable)
     }
     fn output_clone_slot(&self, c: &mut ParseControl, node: usize) -> Result<usize, SessionError> {
         for (slot, payload) in self.payloads.values.iter().enumerate() {

@@ -16,7 +16,7 @@
 //! metadata, source reports and public parsing remain later producers. Qualified
 //! hosted context, local shadow records and captured attachment effects stay in
 //! this owner; they do not implement a live DOM or public parse entry.
-//! Hidden initialization installs source-order attributes, retaining original
+//! Input initialization installs source-order attributes, retaining original
 //! token/value-attribute ranges and lexical maps for actual conditional writeback.
 //! Script facts are retained for a sealed fresh ordinary Disabled execution;
 //! preparation ends at step18 and never fabricates a loaded or executed result.
@@ -88,7 +88,7 @@ pub(crate) enum SessionError {
     FormAssociationMetadataUnavailable,
     TextareaMetadataUnavailable,
     OutputMetadataUnavailable,
-    HiddenInputMetadataUnavailable,
+    InputMetadataUnavailable,
     SelectMetadataUnavailable,
     NodeDocumentUnavailable,
     TemplateMetadataUnavailable,
@@ -135,7 +135,7 @@ enum AttributeMergeName {
 #[derive(Clone, Copy)]
 enum CreationProfile<'a, 'source> {
     Ordinary,
-    Hidden(
+    Input(
         &'a crate::parser::tree_builder::ConstructionCapability<'source>,
         &'a crate::HtmlSourceRange,
     ),
@@ -146,7 +146,7 @@ enum CreationProfile<'a, 'source> {
 }
 #[derive(Clone, Copy)]
 enum OrderedCreation {
-    Hidden {
+    Input {
         input: usize,
         association: usize,
         source: usize,
@@ -207,7 +207,7 @@ struct SessionStorage {
     #[cfg(test)]
     cancel_after_output_reset: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
-    cancel_after_hidden_reset: Option<crate::HtmlParseCancellation>,
+    cancel_after_input_reset: Option<crate::HtmlParseCancellation>,
     standalone_ineligibility: Option<StandaloneUnsupported>,
     identity: Arc<Identity>,
     identity_allocation: SharedAllocation<Identity>,
@@ -315,14 +315,13 @@ enum RetainedPayload {
         node: Option<usize>,
         state: OutputState,
     },
-    HiddenInput {
+    Input {
         node: Option<usize>,
         raw: usize,
-        hidden: bool,
         complete: bool,
-        state: HiddenInputState,
+        state: InputState,
     },
-    HiddenInputSource {
+    InputSource {
         node: Option<usize>,
         token: crate::HtmlSourceRange,
         value_attribute: Option<crate::HtmlSourceRange>,
@@ -354,7 +353,9 @@ pub(crate) struct OutputState {
     pub(crate) default_value_override: OutputDefaultValueOverride,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct HiddenInputState {
+pub(crate) struct InputState {
+    pub(crate) kind: crate::attributes::HtmlInputType,
+    pub(crate) cursor: usize,
     pub(crate) dirty_value: bool,
     pub(crate) dirty_checkedness: bool,
     pub(crate) checkedness: bool,
@@ -372,7 +373,7 @@ pub(crate) enum FormAssociationKind {
     Object,
     Textarea,
     Output,
-    HiddenInput,
+    Input,
     Select,
 }
 impl FormAssociationKind {
@@ -597,8 +598,8 @@ impl PayloadStorage {
                 | RetainedPayload::FormAssociation { .. }
                 | RetainedPayload::Textarea { .. }
                 | RetainedPayload::Output { .. }
-                | RetainedPayload::HiddenInputSource { .. }
-                | RetainedPayload::HiddenInput { .. }
+                | RetainedPayload::InputSource { .. }
+                | RetainedPayload::Input { .. }
                 | RetainedPayload::SelectFamily { .. }
                 | RetainedPayload::Retired => {}
                 RetainedPayload::HistoricalString { origins } => {
@@ -692,7 +693,7 @@ impl PayloadStorage {
                     .expect("actual retained work-list ticket");
                 continue;
             }
-            if let RetainedPayload::HiddenInputSource {
+            if let RetainedPayload::InputSource {
                 value_attribute, ..
             } = &payload
             {
@@ -909,7 +910,7 @@ impl SessionStorage {
             #[cfg(test)]
             cancel_after_output_reset: None,
             #[cfg(test)]
-            cancel_after_hidden_reset: None,
+            cancel_after_input_reset: None,
             standalone_ineligibility: None,
             identity,
             identity_allocation,
@@ -1265,19 +1266,19 @@ impl SessionStorage {
                 prepared,
             )?;
             match creation {
-                OrderedCreation::Hidden {
+                OrderedCreation::Input {
                     input,
                     association,
                     source,
                 } => {
                     payload_write::<[Option<usize>; 3]>(control, 3)?;
-                    let RetainedPayload::HiddenInputSource { node: bound, .. } =
+                    let RetainedPayload::InputSource { node: bound, .. } =
                         &mut self.payloads.values[source]
                     else {
                         unreachable!()
                     };
                     *bound = Some(node.index);
-                    let RetainedPayload::HiddenInput { node: bound, .. } =
+                    let RetainedPayload::Input { node: bound, .. } =
                         &mut self.payloads.values[input]
                     else {
                         unreachable!()
@@ -1373,7 +1374,7 @@ impl SessionStorage {
                     self.drain_form_effects(control)?;
                 }
                 match creation {
-                    OrderedCreation::Hidden {
+                    OrderedCreation::Input {
                         input, association, ..
                     } => self.initial_input_attribute(
                         control,
@@ -1422,8 +1423,8 @@ impl SessionStorage {
             )?;
             self.usage.attributes += count;
             match creation {
-                OrderedCreation::Hidden { input, .. } => {
-                    self.reset_hidden_input(control, node.index, input)?
+                OrderedCreation::Input { input, .. } => {
+                    self.reset_input(control, node.index, input)?
                 }
                 OrderedCreation::Select { .. } => self.initial_select_reset(control, node.index)?,
             }
@@ -1439,8 +1440,8 @@ impl SessionStorage {
         slot: usize,
     ) -> Result<usize, SessionError> {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::HiddenInput { raw, .. } = &self.payloads.values[slot] else {
-            return Err(SessionError::HiddenInputMetadataUnavailable);
+        let RetainedPayload::Input { raw, .. } = &self.payloads.values[slot] else {
+            return Err(SessionError::InputMetadataUnavailable);
         };
         control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
         Ok(*raw)
@@ -1449,14 +1450,11 @@ impl SessionStorage {
         &self,
         control: &mut ParseControl,
         slot: usize,
-    ) -> Result<HiddenInputState, SessionError> {
+    ) -> Result<InputState, SessionError> {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        control.charge(
-            WorkCategory::CopyByte,
-            mem::size_of::<HiddenInputState>() as u64,
-        )?;
-        let RetainedPayload::HiddenInput { state, .. } = &self.payloads.values[slot] else {
-            return Err(SessionError::HiddenInputMetadataUnavailable);
+        control.charge(WorkCategory::CopyByte, mem::size_of::<InputState>() as u64)?;
+        let RetainedPayload::Input { state, .. } = &self.payloads.values[slot] else {
+            return Err(SessionError::InputMetadataUnavailable);
         };
         Ok(*state)
     }
@@ -1464,11 +1462,11 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
         slot: usize,
-        next: HiddenInputState,
+        next: InputState,
     ) -> Result<(), SessionError> {
-        payload_write::<HiddenInputState>(control, 1)?;
-        let RetainedPayload::HiddenInput { state, .. } = &mut self.payloads.values[slot] else {
-            return Err(SessionError::HiddenInputMetadataUnavailable);
+        payload_write::<InputState>(control, 1)?;
+        let RetainedPayload::Input { state, .. } = &mut self.payloads.values[slot] else {
+            return Err(SessionError::InputMetadataUnavailable);
         };
         *state = next;
         Ok(())
@@ -1501,7 +1499,7 @@ impl SessionStorage {
         payload_write::<usize>(control, 1)?;
         payload_write::<RetainedPayload>(control, 2)?;
         self.retire_field_group(control, previous)?;
-        let RetainedPayload::HiddenInput { raw, .. } = &mut self.payloads.values[slot] else {
+        let RetainedPayload::Input { raw, .. } = &mut self.payloads.values[slot] else {
             unreachable!()
         };
         *raw = next;
@@ -1555,12 +1553,8 @@ impl SessionStorage {
         let type_attr = exact_ascii(control, Some(name), "type")?;
         let checked_attr = exact_ascii(control, Some(name), "checked")?;
         let form_attr = exact_ascii(control, Some(name), "form")?;
-        control.charge(WorkCategory::CopyByte, mem::size_of::<bool>() as u64)?;
-        let RetainedPayload::HiddenInput { hidden, .. } = &self.payloads.values[slot] else {
-            unreachable!()
-        };
-        let hidden = *hidden;
         let state = self.read_input_state(control, slot)?;
+        let hidden = state.kind == crate::attributes::HtmlInputType::Hidden;
         let dirty = state.dirty_value;
         if value_attr && !dirty {
             let source = self.attribute_value_slot(control, node, position)?;
@@ -1579,43 +1573,58 @@ impl SessionStorage {
             self.write_input_state(control, slot, next)?;
         }
         if type_attr {
-            // Final exact Hidden admission was checked before take. The real
-            // type is changed before the nested value-attribute change.
-            payload_write::<bool>(control, 1)?;
-            let RetainedPayload::HiddenInput { hidden, .. } = &mut self.payloads.values[slot]
-            else {
+            let HtmlNodeKind::Element(element) = &self.records[node].kind else {
                 unreachable!()
             };
-            *hidden = true;
-            let raw = self.input_raw_slot(control, slot)?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            let nonempty = !textarea_raw(&self.payloads, control, raw)?.is_empty();
-            if nonempty {
-                let mut value_position = None;
+            let next_kind =
+                input_type_state(control, element.attributes().as_slice()[position].value())?;
+            // The type-change algorithm is triggered by a change of state,
+            // not merely by installing another spelling of the same state.
+            if next_kind != state.kind {
+                let mut next = state;
+                next.kind = next_kind;
+                self.write_input_state(control, slot, next)?;
+                let raw = self.input_raw_slot(control, slot)?;
                 control.charge(WorkCategory::RecordVisit, 1)?;
-                let HtmlNodeKind::Element(element) = &self.records[node].kind else {
-                    unreachable!()
-                };
-                for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
+                let nonempty = !textarea_raw(&self.payloads, control, raw)?.is_empty();
+                if nonempty && next_kind == crate::attributes::HtmlInputType::Hidden && !hidden {
+                    let mut value_position = None;
                     control.charge(WorkCategory::RecordVisit, 1)?;
-                    if exact_ascii(control, Some(attribute.name().local_name()), "value")? {
-                        value_position = Some(index);
-                        break;
+                    let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+                        unreachable!()
+                    };
+                    for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
+                        control.charge(WorkCategory::RecordVisit, 1)?;
+                        if exact_ascii(control, Some(attribute.name().local_name()), "value")? {
+                            value_position = Some(index);
+                            break;
+                        }
                     }
+                    let position = value_position.ok_or(SessionError::WrongToken)?;
+                    self.writeback_input_value(control, node, slot, container, position, raw)?;
+                    // Nested dirty=false value change under current Hidden: copy
+                    // the actual replaced native field, with no Text sanitization.
+                    let source = self.attribute_value_slot(control, node, position)?;
+                    let text = copy_input_value(
+                        &self.payloads,
+                        self.evidence.as_ref(),
+                        control,
+                        source,
+                        false,
+                    )?;
+                    self.replace_input_raw(control, slot, text)?;
                 }
-                let position = value_position.ok_or(SessionError::WrongToken)?;
-                self.writeback_input_value(control, node, slot, container, position, raw)?;
-                // Nested dirty=false value change under current Hidden: copy
-                // the actual replaced native field, with no Text sanitization.
-                let source = self.attribute_value_slot(control, node, position)?;
-                let text = copy_input_value(
-                    &self.payloads,
-                    self.evidence.as_ref(),
-                    control,
-                    source,
-                    false,
-                )?;
-                self.replace_input_raw(control, slot, text)?;
+                if next_kind != crate::attributes::HtmlInputType::Hidden {
+                    let raw = self.input_raw_slot(control, slot)?;
+                    let text = copy_input_value(
+                        &self.payloads,
+                        self.evidence.as_ref(),
+                        control,
+                        raw,
+                        true,
+                    )?;
+                    self.replace_input_raw(control, slot, text)?;
+                }
             }
         }
         if form_attr {
@@ -1656,7 +1665,7 @@ impl SessionStorage {
             payload_write::<[StringLocation; 2]>(control, 2)?;
             let mut next_state = self.read_input_state(control, slot)?;
             next_state.value_rewritten_during_creation = true;
-            payload_write::<HiddenInputState>(control, 1)?;
+            payload_write::<InputState>(control, 1)?;
             payload_write::<[Option<AttributeStorage>; 2]>(control, 2)?;
             control.charge(WorkCategory::ProviderCall, 2)?;
             payload_write::<OrderedAttributes>(control, 1)?;
@@ -1697,8 +1706,7 @@ impl SessionStorage {
                         new_slot,
                         StringLocation::AttributeValue(container, position),
                     );
-                    let RetainedPayload::HiddenInput { state, .. } =
-                        &mut self.payloads.values[slot]
+                    let RetainedPayload::Input { state, .. } = &mut self.payloads.values[slot]
                     else {
                         unreachable!()
                     };
@@ -1713,7 +1721,7 @@ impl SessionStorage {
             }
         })()
     }
-    fn reset_hidden_input(
+    fn reset_input(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -1746,7 +1754,7 @@ impl SessionStorage {
                 self.evidence.as_ref(),
                 control,
                 source,
-                false,
+                state.kind != crate::attributes::HtmlInputType::Hidden,
             )?
         } else {
             FieldCopy {
@@ -1760,20 +1768,13 @@ impl SessionStorage {
         self.write_input_state(control, slot, state)?;
         state.selected_files_empty = true;
         self.write_input_state(control, slot, state)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::HiddenInput { hidden, .. } = &self.payloads.values[slot] else {
-            unreachable!()
-        };
-        if !*hidden {
-            return Err(SessionError::WrongToken);
-        }
         payload_write::<bool>(control, 1)?;
-        let RetainedPayload::HiddenInput { complete, .. } = &mut self.payloads.values[slot] else {
+        let RetainedPayload::Input { complete, .. } = &mut self.payloads.values[slot] else {
             unreachable!()
         };
         *complete = true;
         #[cfg(test)]
-        if let Some(cancellation) = self.cancel_after_hidden_reset.take() {
+        if let Some(cancellation) = self.cancel_after_input_reset.take() {
             cancellation.cancel();
         }
         Ok(())
@@ -4168,7 +4169,7 @@ impl SessionStorage {
             #[cfg(test)]
                 cancel_after_output_reset: _,
             #[cfg(test)]
-                cancel_after_hidden_reset: _,
+                cancel_after_input_reset: _,
             standalone_ineligibility: _,
             identity,
             identity_allocation,
@@ -4664,7 +4665,7 @@ impl ParserArenaSession {
             context,
         )
     }
-    pub(crate) fn allocate_hidden_input_for_creation(
+    pub(crate) fn allocate_input_for_creation(
         &mut self,
         control: &mut ParseControl,
         input: &mut Option<Tag>,
@@ -4678,7 +4679,7 @@ impl ParserArenaSession {
             input,
             location.intended_parent,
             location.current_form,
-            CreationProfile::Hidden(capability, token_source),
+            CreationProfile::Input(capability, token_source),
             location.context,
         )
     }
@@ -4766,7 +4767,7 @@ impl ParserArenaSession {
         }
         let token_source = match profile {
             CreationProfile::Ordinary => None,
-            CreationProfile::Hidden(capability, source)
+            CreationProfile::Input(capability, source)
             | CreationProfile::Select(capability, source) => {
                 // Concrete borrowed capability, not a caller-supplied eligibility flag.
                 capability.validate_session(control, self)?;
@@ -4785,20 +4786,20 @@ impl ParserArenaSession {
         }
         if !matches!(profile, CreationProfile::Ordinary) {
             storage.payloads.check_aliases(&storage.records, control)?;
-            if matches!(profile, CreationProfile::Hidden(..))
+            if matches!(profile, CreationProfile::Input(..))
                 && (!exact_ascii(control, Some(tag.name.value.text()), "input")?
-                    || !hidden_input_tag(control, tag)?)
+                    || !supported_input_state(input_tag_state(control, tag)?))
             {
                 return Err(SessionError::WrongToken);
             }
-            let source = token_source.ok_or(SessionError::HiddenInputMetadataUnavailable)?;
+            let source = token_source.ok_or(SessionError::InputMetadataUnavailable)?;
             control.require_source_range(source)?;
             // Validate every original field against the actual token, including
             // empty-value attributes, before retaining any construction slot.
             check_formatting_tag(control, tag, source)?;
-            if matches!(profile, CreationProfile::Hidden(..)) {
+            if matches!(profile, CreationProfile::Input(..)) {
                 validate_initial_input_origins(control, tag)?;
-                kind = Some(FormAssociationKind::HiddenInput);
+                kind = Some(FormAssociationKind::Input);
             }
         }
         let mut explicit_form = false;
@@ -4830,7 +4831,7 @@ impl ParserArenaSession {
         } else {
             None
         };
-        let value_source = if kind == Some(FormAssociationKind::HiddenInput) {
+        let value_source = if kind == Some(FormAssociationKind::Input) {
             let mut selected = None;
             for attribute in tag.attributes.as_slice() {
                 control.charge(WorkCategory::RecordVisit, 1)?;
@@ -4843,8 +4844,8 @@ impl ParserArenaSession {
         } else {
             None
         };
-        let hidden_sources = if let Some(token) =
-            token_source.filter(|_| kind == Some(FormAssociationKind::HiddenInput))
+        let input_sources = if let Some(token) =
+            token_source.filter(|_| kind == Some(FormAssociationKind::Input))
         {
             control.charge(
                 WorkCategory::ProviderCall,
@@ -4918,17 +4919,18 @@ impl ParserArenaSession {
         } else {
             None
         };
-        let hidden_slot = if kind == Some(FormAssociationKind::HiddenInput) {
+        let input_slot = if kind == Some(FormAssociationKind::Input) {
             let empty = literal_string(control, b"")?;
             let raw = storage.register_raw(control, empty)?;
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::HiddenInput {
+            storage.payloads.values.push(RetainedPayload::Input {
                 node: None,
                 raw,
-                hidden: false,
                 complete: false,
-                state: HiddenInputState {
+                state: InputState {
+                    kind: crate::attributes::HtmlInputType::Text,
+                    cursor: 0,
                     dirty_value: false,
                     dirty_checkedness: false,
                     checkedness: false,
@@ -4942,7 +4944,7 @@ impl ParserArenaSession {
         } else {
             None
         };
-        let source_slot = if let Some((token, value_attribute)) = hidden_sources {
+        let source_slot = if let Some((token, value_attribute)) = input_sources {
             let entries = 1 + u64::from(value_attribute.is_some());
             control.acquire(HtmlParseResource::SourceMapEntries, entries)?;
             if let Err(error) = storage.prepare_payload_slot(control) {
@@ -4955,21 +4957,18 @@ impl ParserArenaSession {
                 return Err(error);
             }
             let slot = storage.payloads.values.len();
-            storage
-                .payloads
-                .values
-                .push(RetainedPayload::HiddenInputSource {
-                    node: None,
-                    token,
-                    value_attribute,
-                });
+            storage.payloads.values.push(RetainedPayload::InputSource {
+                node: None,
+                token,
+                value_attribute,
+            });
             Some(slot)
         } else {
             None
         };
         let reset_before_association = textarea_slot.is_some()
             || output_slot.is_some()
-            || hidden_slot.is_some()
+            || input_slot.is_some()
             || kind == Some(FormAssociationKind::Select);
         let slot = if let Some(kind) = kind {
             storage.prepare_payload_slot(control)?;
@@ -5002,16 +5001,16 @@ impl ParserArenaSession {
             let Tag {
                 name, attributes, ..
             } = take_payload(input, control)?;
-            let node = if let Some(hidden_slot) = hidden_slot {
+            let node = if let Some(input_slot) = input_slot {
                 storage.allocate_ordered_payload(
                     control,
                     name,
                     attributes,
                     prepared,
-                    OrderedCreation::Hidden {
-                        input: hidden_slot,
-                        association: slot.expect("canonical hidden association"),
-                        source: source_slot.expect("original hidden sources"),
+                    OrderedCreation::Input {
+                        input: input_slot,
+                        association: slot.expect("canonical input association"),
+                        source: source_slot.expect("original input sources"),
                     },
                 )?
             } else if matches!(profile, CreationProfile::Select(..)) {
@@ -5117,19 +5116,19 @@ impl ParserArenaSession {
         }
     }
 
-    pub(crate) fn hidden_input_state(
+    pub(crate) fn input_state(
         &self,
         control: &mut ParseControl,
         node: &ParserNode,
-    ) -> Result<HiddenInputState, SessionError> {
+    ) -> Result<InputState, SessionError> {
         let storage = self.active()?;
         let node = storage.index(control, node)?;
-        Ok(find_hidden_input_state(&storage.payloads, control, node)?.1)
+        Ok(find_input_state(&storage.payloads, control, node)?.1)
     }
     /// Returns original token/value-attribute ranges only when creation actually
     /// rewrote the native value. A completed no-writeback input returns None;
     /// unavailable/imported/incomplete metadata returns its typed error.
-    pub(crate) fn hidden_input_writeback_sources<'a>(
+    pub(crate) fn input_writeback_sources<'a>(
         &'a self,
         control: &mut ParseControl,
         node: &ParserNode,
@@ -5137,9 +5136,9 @@ impl ParserArenaSession {
     {
         let storage = self.active()?;
         let index = storage.index(control, node)?;
-        find_hidden_input_sources(&storage.payloads, control, index)
+        find_input_sources(&storage.payloads, control, index)
     }
-    pub(crate) fn append_hidden_input_internal_value(
+    pub(crate) fn append_input_internal_value(
         &self,
         control: &mut ParseControl,
         node: &ParserNode,
@@ -5148,21 +5147,21 @@ impl ParserArenaSession {
         destination.require_owner(control)?;
         let storage = self.active()?;
         let node = storage.index(control, node)?;
-        let raw = find_hidden_input_state(&storage.payloads, control, node)?.0;
+        let raw = find_input_state(&storage.payloads, control, node)?.0;
         destination.extend_units(
             textarea_raw(&storage.payloads, control, raw)?.code_units(),
             control,
         )?;
         Ok(())
     }
-    pub(crate) fn append_hidden_input_value(
+    pub(crate) fn append_input_default_value(
         &self,
         control: &mut ParseControl,
         node: &ParserNode,
         destination: &mut Utf16Buffer,
     ) -> Result<(), SessionError> {
         destination.require_owner(control)?;
-        self.hidden_input_state(control, node)?;
+        self.input_state(control, node)?;
         append_input_default(&self.active()?.records, control, node.index, destination)
     }
 
@@ -6036,7 +6035,7 @@ impl ParserArenaSession {
             #[cfg(test)]
                 cancel_after_output_reset: _,
             #[cfg(test)]
-                cancel_after_hidden_reset: _,
+                cancel_after_input_reset: _,
             standalone_ineligibility,
             identity,
             identity_allocation,
@@ -6070,7 +6069,7 @@ impl ParserArenaSession {
                     #[cfg(test)]
                     cancel_after_output_reset: None,
                     #[cfg(test)]
-                    cancel_after_hidden_reset: None,
+                    cancel_after_input_reset: None,
                     standalone_ineligibility,
                     identity: arena.identity,
                     identity_allocation,
@@ -6155,11 +6154,11 @@ impl FrozenArena {
         control.cleanup_release(&storage.control, HtmlParseResource::AuxiliaryEntries, 0)?;
         ParseEvidence::partition_failed(&mut storage.evidence, control)
     }
-    pub(crate) fn hidden_input_state(
+    pub(crate) fn input_state(
         &self,
         control: &mut ParseControl,
         node: &HtmlNodeId,
-    ) -> Result<HiddenInputState, SessionError> {
+    ) -> Result<InputState, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         control.require_identity(&storage.control)?;
         let arena = match &storage.view {
@@ -6171,17 +6170,17 @@ impl FrozenArena {
         if !Arc::ptr_eq(&node.identity, &arena.identity) || node.index >= arena.records.len() {
             return Err(SessionError::ForeignNode);
         }
-        Ok(find_hidden_input_state(&storage.payloads, control, node.index)?.1)
+        Ok(find_input_state(&storage.payloads, control, node.index)?.1)
     }
     /// Same conditional availability as the active owner, qualified to this arena.
-    pub(crate) fn hidden_input_writeback_sources<'a>(
+    pub(crate) fn input_writeback_sources<'a>(
         &'a self,
         control: &mut ParseControl,
         node: &HtmlNodeId,
     ) -> Result<Option<(&'a crate::HtmlSourceRange, &'a crate::HtmlSourceRange)>, SessionError>
     {
-        self.hidden_input_state(control, node)?;
-        find_hidden_input_sources(
+        self.input_state(control, node)?;
+        find_input_sources(
             &self
                 .storage
                 .as_ref()
@@ -6191,30 +6190,30 @@ impl FrozenArena {
             node.index,
         )
     }
-    pub(crate) fn append_hidden_input_internal_value(
+    pub(crate) fn append_input_internal_value(
         &self,
         control: &mut ParseControl,
         node: &HtmlNodeId,
         destination: &mut Utf16Buffer,
     ) -> Result<(), SessionError> {
         destination.require_owner(control)?;
-        self.hidden_input_state(control, node)?;
+        self.input_state(control, node)?;
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
-        let raw = find_hidden_input_state(&storage.payloads, control, node.index)?.0;
+        let raw = find_input_state(&storage.payloads, control, node.index)?.0;
         destination.extend_units(
             textarea_raw(&storage.payloads, control, raw)?.code_units(),
             control,
         )?;
         Ok(())
     }
-    pub(crate) fn append_hidden_input_value(
+    pub(crate) fn append_input_default_value(
         &self,
         control: &mut ParseControl,
         node: &HtmlNodeId,
         destination: &mut Utf16Buffer,
     ) -> Result<(), SessionError> {
         destination.require_owner(control)?;
-        self.hidden_input_state(control, node)?;
+        self.input_state(control, node)?;
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let arena = match &storage.view {
             FrozenView::Document(view) => &view.arena,
@@ -7378,10 +7377,10 @@ fn slice_text(
     Ok(Text { value, origins })
 }
 
-pub(crate) fn hidden_input_tag(
+pub(crate) fn input_tag_state(
     control: &mut ParseControl,
     tag: &Tag,
-) -> Result<bool, SessionError> {
+) -> Result<crate::attributes::HtmlInputType, SessionError> {
     control.require_document_string(tag.name.value.allocation(), tag.name.value.text())?;
     tag.attributes.require_disposal_owner(control)?;
     for attribute in tag.attributes.as_slice() {
@@ -7389,10 +7388,37 @@ pub(crate) fn hidden_input_tag(
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
             let value = attribute.value.value.text();
             control.require_document_string(attribute.value.value.allocation(), value)?;
-            return script_match(control, b"", value, 0, value.len(), b"hidden");
+            return input_type_state(control, value);
         }
     }
-    Ok(false)
+    Ok(crate::attributes::input_type_default())
+}
+fn input_type_state(
+    control: &mut ParseControl,
+    value: &DocumentString,
+) -> Result<crate::attributes::HtmlInputType, SessionError> {
+    let mut index = 0;
+    loop {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let Some((keyword, state)) = crate::attributes::input_type_keyword(index) else {
+            break;
+        };
+        index += 1;
+        if script_match(control, b"", value, 0, value.len(), keyword.as_bytes())? {
+            return Ok(state);
+        }
+    }
+    Ok(crate::attributes::input_type_invalid_default())
+}
+pub(crate) fn supported_input_state(state: crate::attributes::HtmlInputType) -> bool {
+    matches!(
+        state,
+        crate::attributes::HtmlInputType::Hidden
+            | crate::attributes::HtmlInputType::Text
+            | crate::attributes::HtmlInputType::Search
+            | crate::attributes::HtmlInputType::Telephone
+            | crate::attributes::HtmlInputType::Password
+    )
 }
 fn validate_initial_input_origins(
     control: &mut ParseControl,
@@ -7402,7 +7428,8 @@ fn validate_initial_input_origins(
     for attribute in tag.attributes.as_slice() {
         control.charge(WorkCategory::RecordVisit, 1)?;
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
-            hidden = true;
+            hidden = input_type_state(control, attribute.value.value.text())?
+                == crate::attributes::HtmlInputType::Hidden;
         }
         if !exact_ascii(control, Some(attribute.name.value.text()), "value")? {
             continue;
@@ -7438,14 +7465,14 @@ fn validate_initial_input_origins(
     }
     Ok(())
 }
-fn find_hidden_input_state(
+fn find_input_state(
     payloads: &PayloadStorage,
     control: &mut ParseControl,
     node: usize,
-) -> Result<(usize, HiddenInputState), SessionError> {
+) -> Result<(usize, InputState), SessionError> {
     for payload in &payloads.values {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::HiddenInput {
+        if let RetainedPayload::Input {
             node: Some(owner),
             raw,
             complete: true,
@@ -7456,25 +7483,25 @@ fn find_hidden_input_state(
         {
             control.charge(
                 WorkCategory::CopyByte,
-                (mem::size_of::<usize>() + mem::size_of::<HiddenInputState>()) as u64,
+                (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64,
             )?;
             return Ok((*raw, *state));
         }
     }
-    Err(SessionError::HiddenInputMetadataUnavailable)
+    Err(SessionError::InputMetadataUnavailable)
 }
-fn find_hidden_input_sources<'a>(
+fn find_input_sources<'a>(
     payloads: &'a PayloadStorage,
     control: &mut ParseControl,
     node: usize,
 ) -> Result<Option<(&'a crate::HtmlSourceRange, &'a crate::HtmlSourceRange)>, SessionError> {
-    let (_, state) = find_hidden_input_state(payloads, control, node)?;
+    let (_, state) = find_input_state(payloads, control, node)?;
     if !state.value_rewritten_during_creation {
         return Ok(None);
     }
     for payload in &payloads.values {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::HiddenInputSource {
+        if let RetainedPayload::InputSource {
             node: Some(owner),
             token,
             value_attribute: Some(value),
@@ -7488,7 +7515,7 @@ fn find_hidden_input_sources<'a>(
             return Ok(Some((token, value)));
         }
     }
-    Err(SessionError::HiddenInputMetadataUnavailable)
+    Err(SessionError::InputMetadataUnavailable)
 }
 fn append_input_default(
     records: &[Record],
@@ -7498,7 +7525,7 @@ fn append_input_default(
 ) -> Result<(), SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
     let HtmlNodeKind::Element(element) = &records[node].kind else {
-        return Err(SessionError::HiddenInputMetadataUnavailable);
+        return Err(SessionError::InputMetadataUnavailable);
     };
     for attribute in element.attributes().as_slice() {
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -7528,7 +7555,7 @@ fn copy_input_value(
         ..
     } = &payloads.values[slot]
     else {
-        return Err(SessionError::HiddenInputMetadataUnavailable);
+        return Err(SessionError::InputMetadataUnavailable);
     };
     control.require_document_string(allocation, value)?;
     let mut buffer = Utf16Buffer::new(control)?;
@@ -11382,7 +11409,7 @@ mod tests {
         }
     }
 
-    fn hidden_owner<'a>(
+    fn input_owner<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
     ) -> (
         ParseControl,
@@ -11445,7 +11472,7 @@ mod tests {
                 limits(),
             );
             let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-                hidden_owner(&request);
+                input_owner(&request);
             let original_value_source = input
                 .as_ref()
                 .unwrap()
@@ -11455,7 +11482,7 @@ mod tests {
                 .find(|a| a.name.value.text().code_units() == [118, 97, 108, 117, 101])
                 .map(|a| a.source.clone());
             let node = session
-                .allocate_hidden_input_for_creation(
+                .allocate_input_for_creation(
                     &mut c,
                     &mut input,
                     crate::construction::parser_session::CreationLocation {
@@ -11468,10 +11495,7 @@ mod tests {
                 )
                 .unwrap();
             assert!(input.is_none());
-            match session
-                .hidden_input_writeback_sources(&mut c, &node)
-                .unwrap()
-            {
+            match session.input_writeback_sources(&mut c, &node).unwrap() {
                 Some((token, value)) => {
                     assert!(rewritten);
                     assert_eq!(token, &token_source);
@@ -11480,7 +11504,7 @@ mod tests {
                 }
                 None => assert!(!rewritten),
             }
-            let state = session.hidden_input_state(&mut c, &node).unwrap();
+            let state = session.input_state(&mut c, &node).unwrap();
             assert!(
                 !state.dirty_value
                     && !state.dirty_checkedness
@@ -11491,7 +11515,7 @@ mod tests {
             assert_eq!(state.checkedness, attrs.contains("checked"));
             assert_eq!(state.value_rewritten_during_creation, rewritten);
             let association = session.form_association_state(&mut c, &node).unwrap();
-            assert_eq!(association.kind, FormAssociationKind::HiddenInput);
+            assert_eq!(association.kind, FormAssociationKind::Input);
             assert!(
                 session
                     .form_association_owner(&mut c, &node)
@@ -11500,17 +11524,17 @@ mod tests {
             );
             let mut value = Utf16Buffer::new(&mut c).unwrap();
             session
-                .append_hidden_input_internal_value(&mut c, &node, &mut value)
+                .append_input_internal_value(&mut c, &node, &mut value)
                 .unwrap();
             assert_eq!(value.units(), expected);
             value.clear(&mut c).unwrap();
             session
-                .append_hidden_input_value(&mut c, &node, &mut value)
+                .append_input_default_value(&mut c, &node, &mut value)
                 .unwrap();
             assert_eq!(value.units(), expected);
             value.release(&mut c).unwrap();
             let storage = session.active().unwrap();
-            let raw = find_hidden_input_state(&storage.payloads, &mut c, node.index)
+            let raw = find_input_state(&storage.payloads, &mut c, node.index)
                 .unwrap()
                 .0;
             let RetainedPayload::String {
@@ -11535,8 +11559,8 @@ mod tests {
             let document = frozen.document().unwrap();
             let html = document.root().children().next().unwrap();
             let id = document.node(&html).unwrap().children().last().unwrap();
-            assert_eq!(frozen.hidden_input_state(&mut c, &id).unwrap(), state);
-            match frozen.hidden_input_writeback_sources(&mut c, &id).unwrap() {
+            assert_eq!(frozen.input_state(&mut c, &id).unwrap(), state);
+            match frozen.input_writeback_sources(&mut c, &id).unwrap() {
                 Some((token, value)) => {
                     assert!(rewritten);
                     assert_eq!(token, &token_source);
@@ -11546,12 +11570,12 @@ mod tests {
             }
             let mut value = Utf16Buffer::new(&mut c).unwrap();
             frozen
-                .append_hidden_input_internal_value(&mut c, &id, &mut value)
+                .append_input_internal_value(&mut c, &id, &mut value)
                 .unwrap();
             assert_eq!(value.units(), expected);
             value.clear(&mut c).unwrap();
             frozen
-                .append_hidden_input_value(&mut c, &id, &mut value)
+                .append_input_default_value(&mut c, &id, &mut value)
                 .unwrap();
             assert_eq!(value.units(), expected);
             value.release(&mut c).unwrap();
@@ -11559,6 +11583,669 @@ mod tests {
             drop(html);
             frozen.release(&mut c).unwrap();
             storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn text_input_types_reset_exact_defaults_internal_values_and_selection_in_one_owner() {
+        use crate::attributes::HtmlInputType;
+        for (attrs, kind) in [
+            ("value='A&#13;B&#10;C' checked", HtmlInputType::Text),
+            ("type=TeXt value='A&#13;B&#10;C'", HtmlInputType::Text),
+            ("value='A&#13;B&#10;C' type=SEARCH", HtmlInputType::Search),
+            ("type=tel value='A&#13;B&#10;C'", HtmlInputType::Telephone),
+            (
+                "value='A&#13;B&#10;C' type=password",
+                HtmlInputType::Password,
+            ),
+            ("type='' value='A&#13;B&#10;C'", HtmlInputType::Text),
+            ("type=' hidden' value='A&#13;B&#10;C'", HtmlInputType::Text),
+            ("type=bogus value='A&#13;B&#10;C'", HtmlInputType::Text),
+        ] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(format!("<html><head></head><input {attrs}>")),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
+                input_owner(&request);
+            let node = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &token_source,
+                    &capability,
+                )
+                .unwrap();
+            assert!(input.is_none());
+            let state = session.input_state(&mut c, &node).unwrap();
+            assert_eq!(state.kind, kind, "{attrs}");
+            assert_eq!(state.cursor, 0);
+            assert!(
+                !state.dirty_value
+                    && !state.dirty_checkedness
+                    && !state.indeterminate
+                    && !state.user_validity
+            );
+            assert!(state.selected_files_empty);
+            assert_eq!(state.checkedness, attrs.ends_with("checked"));
+            assert!(!state.value_rewritten_during_creation);
+            assert!(
+                session
+                    .input_writeback_sources(&mut c, &node)
+                    .unwrap()
+                    .is_none()
+            );
+            let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+            session
+                .append_input_internal_value(&mut c, &node, &mut buffer)
+                .unwrap();
+            assert_eq!(buffer.units(), [65, 66, 67]);
+            buffer.clear(&mut c).unwrap();
+            session
+                .append_input_default_value(&mut c, &node, &mut buffer)
+                .unwrap();
+            assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
+            buffer.release(&mut c).unwrap();
+            session.insert(&mut c, &parent, &node, None, None).unwrap();
+            lexer.release(&mut c).unwrap();
+            let mut frozen = session.freeze(&mut c).unwrap();
+            let document = frozen.document().unwrap();
+            let html = document.root().children().next().unwrap();
+            let id = document.node(&html).unwrap().children().last().unwrap();
+            assert_eq!(frozen.input_state(&mut c, &id).unwrap(), state);
+            let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+            frozen
+                .append_input_internal_value(&mut c, &id, &mut buffer)
+                .unwrap();
+            assert_eq!(buffer.units(), [65, 66, 67]);
+            buffer.clear(&mut c).unwrap();
+            frozen
+                .append_input_default_value(&mut c, &id, &mut buffer)
+                .unwrap();
+            assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
+            buffer.release(&mut c).unwrap();
+            drop(id);
+            drop(html);
+            frozen.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn text_input_other_valid_states_refuse_before_any_metadata_or_lexical_take() {
+        for kind in [
+            "url",
+            "email",
+            "date",
+            "month",
+            "week",
+            "time",
+            "datetime-local",
+            "number",
+            "range",
+            "color",
+            "checkbox",
+            "radio",
+            "file",
+            "submit",
+            "image",
+            "reset",
+            "button",
+        ] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(format!("<html><head></head><input type={kind} value=x>")),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
+                input_owner(&request);
+            let records = session.active().unwrap().records.len();
+            let payloads = session.active().unwrap().payloads.values.len();
+            let units = input.as_ref().unwrap().attributes.as_slice()[0]
+                .value
+                .value
+                .text()
+                .code_units()
+                .to_vec();
+            assert_eq!(
+                session
+                    .allocate_input_for_creation(
+                        &mut c,
+                        &mut input,
+                        CreationLocation {
+                            intended_parent: &parent,
+                            current_form: None,
+                            context: CreationContext::Ordinary,
+                        },
+                        &token_source,
+                        &capability
+                    )
+                    .err(),
+                Some(SessionError::WrongToken),
+                "{kind}"
+            );
+            assert_eq!(session.active().unwrap().records.len(), records);
+            assert_eq!(session.active().unwrap().payloads.values.len(), payloads);
+            assert_eq!(
+                input.as_ref().unwrap().attributes.as_slice()[0]
+                    .value
+                    .value
+                    .text()
+                    .code_units(),
+                units
+            );
+            assert!(c.stop().is_none());
+            release_formatting_tag(&mut input, &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn text_input_copy_clone_preserves_actual_type_and_independent_internal_default_owners() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=password value='A&#13;B&#10;C' checked>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
+            input_owner(&request);
+        let node = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &token_source,
+                &capability,
+            )
+            .unwrap();
+        let original = session.input_state(&mut c, &node).unwrap();
+        let storage = session.active_mut().unwrap();
+        let copy = storage
+            .clone_node(&mut c, node.index, DocumentRef::Owned(0))
+            .unwrap();
+        let copy = storage.node(&mut c, copy).unwrap();
+        assert_ne!(node.index, copy.index);
+        assert_eq!(session.input_state(&mut c, &copy).unwrap(), original);
+        let storage = session.active().unwrap();
+        let raw_a = find_input_state(&storage.payloads, &mut c, node.index)
+            .unwrap()
+            .0;
+        let raw_b = find_input_state(&storage.payloads, &mut c, copy.index)
+            .unwrap()
+            .0;
+        let RetainedPayload::String { value: a, .. } = &storage.payloads.values[raw_a] else {
+            unreachable!()
+        };
+        let RetainedPayload::String { value: b, .. } = &storage.payloads.values[raw_b] else {
+            unreachable!()
+        };
+        assert!(!Arc::ptr_eq(a.backing(), b.backing()));
+        assert_eq!(a.code_units(), [65, 66, 67]);
+        assert_eq!(b.code_units(), [65, 66, 67]);
+        let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+        session
+            .append_input_default_value(&mut c, &copy, &mut buffer)
+            .unwrap();
+        assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
+        buffer.release(&mut c).unwrap();
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn text_input_exact_work_and_one_short_preserve_original_stop_and_dispose_all_prefixes() {
+        let source = "<html><head></head><input value='A&#13;B&#10;C' type=search checked>";
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            )
+            .unwrap();
+        let total = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        // Measure the complete real issuer transaction, then verify its exact
+        // boundary and multiple actual partial allocation/write prefixes.
+        for tail in [0, 1, 32, 128, 512, 1024, 2048] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(source),
+                limits()
+                    .into_builder()
+                    .work_credits(total - tail)
+                    .finish()
+                    .unwrap(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let result = session.allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            );
+            if tail == 0 {
+                assert!(result.is_ok());
+                assert!(input.is_none());
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::WorkCredits).current,
+                    total
+                );
+                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    }))
+                ));
+            }
+            let first = c.stop().unwrap();
+            assert_eq!(
+                session.freeze(&mut c).err(),
+                Some(SessionError::Stop(first))
+            );
+            let at_stop = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            release_formatting_tag(&mut input, &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), Some(first));
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::WorkCredits).current,
+                at_stop
+            );
+        }
+    }
+
+    #[test]
+    fn text_input_reset_cancellation_retains_completed_value_before_association_and_cleanup() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=tel value='A&#13;B&#10;C' checked>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        session.active_mut().unwrap().cancel_after_input_reset =
+            Some(request.cancellation().clone());
+        assert_eq!(
+            session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability
+                )
+                .err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        assert!(input.is_none());
+        let storage = session.active().unwrap();
+        let (node, raw, state) = storage
+            .payloads
+            .values
+            .iter()
+            .find_map(|p| match p {
+                RetainedPayload::Input {
+                    node: Some(node),
+                    raw,
+                    complete: true,
+                    state,
+                    ..
+                } => Some((*node, *raw, *state)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(state.kind, crate::attributes::HtmlInputType::Telephone);
+        assert_eq!(state.cursor, 0);
+        assert!(state.checkedness);
+        assert!(!state.value_rewritten_during_creation);
+        let RetainedPayload::String { value, .. } = &storage.payloads.values[raw] else {
+            unreachable!()
+        };
+        assert_eq!(value.code_units(), [65, 66, 67]);
+        assert!(storage.records[node].parent.is_none());
+        let association = storage
+            .payloads
+            .values
+            .iter()
+            .find_map(|p| match p {
+                RetainedPayload::FormAssociation {
+                    node: Some(owner),
+                    state,
+                } if *owner == node => Some(*state),
+                _ => None,
+            })
+            .unwrap();
+        assert!(!association.parser_inserted);
+        assert_eq!(association.evidence, FormAssociationEvidence::Created);
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    }
+
+    #[test]
+    fn text_input_utf16_preserves_surrogates_and_filters_only_actual_cr_lf_origin_rows() {
+        let mut units: Vec<u16> = "<html><head></head><input type=password value='"
+            .encode_utf16()
+            .collect();
+        units.extend([0xd83d, 0xde00, 0xd800, 0x41]);
+        units.extend("&#13;B&#10;C'>".encode_utf16());
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf16(DocumentString::from_utf16(units)),
+            limits(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        let node = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            )
+            .unwrap();
+        let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+        session
+            .append_input_internal_value(&mut c, &node, &mut buffer)
+            .unwrap();
+        assert_eq!(buffer.units(), [0xd83d, 0xde00, 0xd800, 65, 66, 67]);
+        buffer.clear(&mut c).unwrap();
+        session
+            .append_input_default_value(&mut c, &node, &mut buffer)
+            .unwrap();
+        assert_eq!(buffer.units(), [0xd83d, 0xde00, 0xd800, 65, 13, 66, 10, 67]);
+        buffer.release(&mut c).unwrap();
+        let storage = session.active().unwrap();
+        let raw = find_input_state(&storage.payloads, &mut c, node.index)
+            .unwrap()
+            .0;
+        let RetainedPayload::String {
+            origins: Some(group),
+            ..
+        } = &storage.payloads.values[raw]
+        else {
+            unreachable!()
+        };
+        let evidence = storage.evidence.as_ref().unwrap();
+        let mut cursor = provenance::GroupOriginCursor::new(evidence, group, &mut c).unwrap();
+        let mut end = 0;
+        while let Some(origin) = cursor.next(evidence, &mut c).unwrap() {
+            assert_eq!(origin.start, end);
+            end = origin.end;
+            assert_eq!(
+                origin.source.coordinates(),
+                crate::HtmlSourceCoordinates::Utf16CodeUnits
+            );
+        }
+        assert_eq!(end, 6);
+        cursor.release(&mut c).unwrap();
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn text_input_alias_foreign_parent_and_cancel_refuse_before_take_with_live_owner_recovery() {
+        for case in 0..3 {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<html><head></head><input type=search value=x>"),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let records = session.active().unwrap().records.len();
+            let slots = session.active().unwrap().payloads.values.len();
+            let alias = (case == 0).then(|| {
+                input.as_ref().unwrap().attributes.as_slice()[1]
+                    .value
+                    .value
+                    .text()
+                    .clone()
+            });
+            let mut foreign = None;
+            let target = if case == 1 {
+                let other =
+                    ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                        .unwrap();
+                let root = other.root(&mut c).unwrap();
+                foreign = Some(other);
+                root
+            } else {
+                parent
+            };
+            if case == 2 {
+                request.cancellation().cancel();
+            }
+            let error = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &target,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap_err();
+            assert_eq!(
+                error,
+                match case {
+                    0 => SessionError::AliasedPayload,
+                    1 => SessionError::ForeignNode,
+                    _ => SessionError::Stop(ParseStop::Cancelled),
+                }
+            );
+            assert!(input.is_some());
+            assert_eq!(session.active().unwrap().records.len(), records);
+            assert_eq!(session.active().unwrap().payloads.values.len(), slots);
+            drop(alias);
+            let first = c.stop();
+            release_formatting_tag(&mut input, &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            if let Some(mut other) = foreign {
+                other.release(&mut c).unwrap();
+            }
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), first);
+        }
+    }
+
+    #[test]
+    fn text_input_source_unit_coexistence_exact_and_one_short_own_every_raw_copy() {
+        for cap in [100, 101] {
+            // html name+namespace=32, input name+namespace=33, attribute
+            // names=16 and original values=11: 92 lexical/native units.
+            // Value insertion, type sanitization, and creation reset each
+            // own one independent ABC (3 units), with original leaves retained.
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(
+                    "<html><head></head><input value='A&#13;B&#10;C' type=search checked>",
+                ),
+                limits()
+                    .into_builder()
+                    .managed_utf16_units(cap)
+                    .finish()
+                    .unwrap(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let result = session.allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            );
+            if cap == 101 {
+                assert!(result.is_ok());
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .high_water,
+                    101
+                );
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::ManagedUtf16Units,
+                        ..
+                    }))
+                ));
+                assert!(session.freeze(&mut c).is_err());
+            }
+            let first = c.stop();
+            release_formatting_tag(&mut input, &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), first);
+        }
+    }
+    #[test]
+    fn text_input_same_state_type_installation_skips_type_change_only_effects() {
+        use crate::attributes::HtmlInputType;
+        for (keyword, kind, units) in [
+            ("text", HtmlInputType::Text, 89),
+            ("bogus", HtmlInputType::Text, 90),
+            ("search", HtmlInputType::Search, 94),
+        ] {
+            for short in [false, true] {
+                // Names/namespaces html32+input33, attribute names9, and
+                // values5+keyword length. The value-change and reset paths
+                // each own ABC. Only actual Text→Search additionally runs
+                // the type-change sanitizer; Text→Text has no such trigger.
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(format!(
+                        "<html><head></head><input value='A&#13;B&#10;C' type={keyword}>"
+                    )),
+                    limits()
+                        .into_builder()
+                        .managed_utf16_units(units - u64::from(short))
+                        .finish()
+                        .unwrap(),
+                );
+                let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                    input_owner(&request);
+                let result = session.allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                );
+                if !short && result.is_err() {
+                    let error = result.err();
+                    let first = c.stop();
+                    release_formatting_tag(&mut input, &mut c).unwrap();
+                    lexer.release(&mut c).unwrap();
+                    session.release(&mut c).unwrap();
+                    storage_zero(&c);
+                    assert_eq!(c.stop(), first);
+                    assert_eq!(error, None, "{keyword}: source-required work fits");
+                    return;
+                }
+                if short {
+                    assert!(matches!(
+                        result,
+                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::ManagedUtf16Units,
+                            ..
+                        }))
+                    ));
+                    assert!(session.freeze(&mut c).is_err());
+                } else {
+                    let node = result.unwrap();
+                    assert_eq!(session.input_state(&mut c, &node).unwrap().kind, kind);
+                    assert_eq!(
+                        c.usage()
+                            .resource(HtmlParseResource::ManagedUtf16Units)
+                            .high_water,
+                        units
+                    );
+                    assert!(
+                        session
+                            .input_writeback_sources(&mut c, &node)
+                            .unwrap()
+                            .is_none()
+                    );
+                    let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+                    session
+                        .append_input_internal_value(&mut c, &node, &mut buffer)
+                        .unwrap();
+                    assert_eq!(buffer.units(), [65, 66, 67]);
+                    buffer.clear(&mut c).unwrap();
+                    session
+                        .append_input_default_value(&mut c, &node, &mut buffer)
+                        .unwrap();
+                    assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
+                    buffer.release(&mut c).unwrap();
+                }
+                let stop = c.stop();
+                release_formatting_tag(&mut input, &mut c).unwrap();
+                lexer.release(&mut c).unwrap();
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.stop(), stop);
+            }
         }
     }
     #[test]
@@ -11571,13 +12258,13 @@ mod tests {
             limits(),
         );
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-            hidden_owner(&request);
+            input_owner(&request);
         let original_value_source = input.as_ref().unwrap().attributes.as_slice()[0]
             .source
             .clone();
         let expected = [0xd83d, 0xde00, 0xd800, 65, 66, 67];
         let node = session
-            .allocate_hidden_input_for_creation(
+            .allocate_input_for_creation(
                 &mut c,
                 &mut input,
                 crate::construction::parser_session::CreationLocation {
@@ -11590,7 +12277,7 @@ mod tests {
             )
             .unwrap();
         let (token, value) = session
-            .hidden_input_writeback_sources(&mut c, &node)
+            .input_writeback_sources(&mut c, &node)
             .unwrap()
             .unwrap();
         assert_eq!(token, &token_source);
@@ -11677,7 +12364,7 @@ mod tests {
                 limits(),
             );
             let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-                hidden_owner(&request);
+                input_owner(&request);
             if case == 0 {
                 let alias = input.as_ref().unwrap().attributes.as_slice()[1]
                     .value
@@ -11686,7 +12373,7 @@ mod tests {
                     .clone();
                 assert_eq!(
                     session
-                        .allocate_hidden_input_for_creation(
+                        .allocate_input_for_creation(
                             &mut c,
                             &mut input,
                             crate::construction::parser_session::CreationLocation {
@@ -11709,7 +12396,7 @@ mod tests {
                         .unwrap();
                 let root = other.root(&mut c).unwrap();
                 assert!(matches!(
-                    other.allocate_hidden_input_for_creation(
+                    other.allocate_input_for_creation(
                         &mut c,
                         &mut input,
                         crate::construction::parser_session::CreationLocation {
@@ -11737,12 +12424,12 @@ mod tests {
                     )
                     .unwrap();
                 assert_eq!(
-                    session.hidden_input_state(&mut c, &generic),
-                    Err(SessionError::HiddenInputMetadataUnavailable)
+                    session.input_state(&mut c, &generic),
+                    Err(SessionError::InputMetadataUnavailable)
                 );
                 assert!(matches!(
-                    session.hidden_input_writeback_sources(&mut c, &generic),
-                    Err(SessionError::HiddenInputMetadataUnavailable)
+                    session.input_writeback_sources(&mut c, &generic),
+                    Err(SessionError::InputMetadataUnavailable)
                 ));
             }
             release_formatting_tag(&mut input, &mut c).unwrap();
@@ -11751,14 +12438,14 @@ mod tests {
             storage_zero(&c);
         }
         let request = crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8("<html><head></head><input type=text>"),
+            crate::HtmlSource::utf8("<html><head></head><input type=number>"),
             limits(),
         );
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-            hidden_owner(&request);
+            input_owner(&request);
         assert_eq!(
             session
-                .allocate_hidden_input_for_creation(
+                .allocate_input_for_creation(
                     &mut c,
                     &mut input,
                     crate::construction::parser_session::CreationLocation {
@@ -11784,9 +12471,9 @@ mod tests {
         let request =
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-            hidden_owner(&request);
+            input_owner(&request);
         session
-            .allocate_hidden_input_for_creation(
+            .allocate_input_for_creation(
                 &mut c,
                 &mut input,
                 crate::construction::parser_session::CreationLocation {
@@ -11813,9 +12500,9 @@ mod tests {
                     .unwrap(),
             );
             let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-                hidden_owner(&request);
+                input_owner(&request);
             assert!(matches!(
-                session.allocate_hidden_input_for_creation(
+                session.allocate_input_for_creation(
                     &mut c,
                     &mut input,
                     crate::construction::parser_session::CreationLocation {
@@ -11832,7 +12519,7 @@ mod tests {
                 }))
             ));
             let first = c.stop().unwrap();
-            partial |= session.active().unwrap().payloads.values.iter().any(|p| matches!(p,RetainedPayload::HiddenInput { complete:false,state,.. } if state.value_rewritten_during_creation));
+            partial |= session.active().unwrap().payloads.values.iter().any(|p| matches!(p,RetainedPayload::Input { complete:false,state,.. } if state.value_rewritten_during_creation));
             assert!(
                 matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
             );
@@ -11872,8 +12559,8 @@ mod tests {
                     .unwrap(),
             );
             let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-                hidden_owner(&request);
-            let result = session.allocate_hidden_input_for_creation(
+                input_owner(&request);
+            let result = session.allocate_input_for_creation(
                 &mut c,
                 &mut input,
                 crate::construction::parser_session::CreationLocation {
@@ -11899,12 +12586,7 @@ mod tests {
                     101
                 );
                 assert_eq!(session.active().unwrap().usage.utf16_units, 90);
-                assert!(
-                    session
-                        .hidden_input_state(&mut c, &node)
-                        .unwrap()
-                        .checkedness
-                );
+                assert!(session.input_state(&mut c, &node).unwrap().checkedness);
                 assert_eq!(
                     session
                         .active()
@@ -11947,7 +12629,7 @@ mod tests {
             limits(),
         );
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-            hidden_owner(&request);
+            input_owner(&request);
         let mut form_lexer =
             LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let mut form = Some(next_fixture_tag(
@@ -11966,10 +12648,10 @@ mod tests {
             .unwrap();
         session.insert(&mut c, &parent, &form, None, None).unwrap();
         form_lexer.release(&mut c).unwrap();
-        session.active_mut().unwrap().cancel_after_hidden_reset =
+        session.active_mut().unwrap().cancel_after_input_reset =
             Some(request.cancellation().clone());
         assert!(matches!(
-            session.allocate_hidden_input_for_creation(
+            session.allocate_input_for_creation(
                 &mut c,
                 &mut input,
                 crate::construction::parser_session::CreationLocation {
@@ -11989,7 +12671,7 @@ mod tests {
             .values
             .iter()
             .find_map(|v| match v {
-                RetainedPayload::HiddenInput {
+                RetainedPayload::Input {
                     node: Some(node),
                     raw,
                     complete: true,
@@ -12040,9 +12722,9 @@ mod tests {
             limits(),
         );
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-            hidden_owner(&request);
+            input_owner(&request);
         let node = session
-            .allocate_hidden_input_for_creation(
+            .allocate_input_for_creation(
                 &mut c,
                 &mut input,
                 crate::construction::parser_session::CreationLocation {
@@ -12058,7 +12740,7 @@ mod tests {
         let mut buffer = Utf16Buffer::new(&mut foreign).unwrap();
         buffer.push_unit(81, &mut foreign).unwrap();
         assert!(matches!(
-            session.append_hidden_input_value(&mut c, &node, &mut buffer),
+            session.append_input_default_value(&mut c, &node, &mut buffer),
             Err(SessionError::Stop(ParseStop::InternalInvariant(
                 crate::parser::control::Invariant::ForeignControl
             )))
@@ -12066,7 +12748,7 @@ mod tests {
         assert_eq!(buffer.units(), [81]);
         let first = c.stop();
         assert_eq!(
-            session.hidden_input_state(&mut c, &node).err(),
+            session.input_state(&mut c, &node).err(),
             first.map(SessionError::Stop)
         );
         assert_eq!(session.freeze(&mut c).err(), first.map(SessionError::Stop));
@@ -12160,7 +12842,7 @@ mod tests {
                 limits(),
             );
             let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-                hidden_owner(&request);
+                input_owner(&request);
             let wrong = if case == 1 {
                 crate::HtmlSource::utf8("different").range(0, 9).unwrap()
             } else if case == 2 {
@@ -12187,7 +12869,7 @@ mod tests {
                 .code_units()
                 .as_ptr();
             let error = session
-                .allocate_hidden_input_for_creation(
+                .allocate_input_for_creation(
                     &mut c,
                     &mut input,
                     crate::construction::parser_session::CreationLocation {
@@ -12246,7 +12928,7 @@ mod tests {
         let request =
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
         let (mut c, mut session, _capability, lexer, _parent, mut input, _token_source) =
-            hidden_owner(&request);
+            input_owner(&request);
         let baseline = c
             .usage()
             .resource(HtmlParseResource::SourceMapEntries)
@@ -12267,9 +12949,9 @@ mod tests {
                     .unwrap(),
             );
             let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
-                hidden_owner(&request);
+                input_owner(&request);
             let error = session
-                .allocate_hidden_input_for_creation(
+                .allocate_input_for_creation(
                     &mut c,
                     &mut input,
                     crate::construction::parser_session::CreationLocation {
@@ -12297,13 +12979,13 @@ mod tests {
                         .payloads
                         .values
                         .iter()
-                        .any(|p| matches!(p, RetainedPayload::HiddenInputSource { .. }))
+                        .any(|p| matches!(p, RetainedPayload::InputSource { .. }))
                 );
             } else {
                 // The fixed two original ranges fit. Later actual text-origin
                 // coexistence exhausts the cap, with the source record retained.
                 assert!(input.is_none());
-                assert!(session.active().unwrap().payloads.values.iter().any(|p| matches!(p, RetainedPayload::HiddenInputSource { token, value_attribute: Some(_), .. } if token==&token_source)));
+                assert!(session.active().unwrap().payloads.values.iter().any(|p| matches!(p, RetainedPayload::InputSource { token, value_attribute: Some(_), .. } if token==&token_source)));
             }
             let first = c.stop();
             assert!(matches!(session.freeze(&mut c), Err(SessionError::Stop(_))));

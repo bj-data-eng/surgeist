@@ -5036,7 +5036,7 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     {
         let (name, boundary) = ("input", HeadBoundary::Form);
         let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept>tail")),
+            HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept type=number>tail")),
             limits(100),
         );
         let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
@@ -5052,10 +5052,14 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
             panic!("retained actual family tag");
         };
         assert_eq!(tag.name.value.text(), &DocumentString::from(name));
-        assert_eq!(tag.attributes.len(), 1);
+        assert_eq!(tag.attributes.len(), 2);
         assert_eq!(
             tag.attributes.as_slice()[0].value.value.text(),
             &DocumentString::from("kept")
+        );
+        assert_eq!(
+            tag.attributes.as_slice()[1].value.value.text(),
+            &DocumentString::from("number")
         );
         let node_count = driver
             .control
@@ -6914,7 +6918,9 @@ fn ordinary_form_control_and_template_continuations_preserve_pointer_and_origina
     {
         let (name, expected) = ("input", super::head::HeadBoundary::Form);
         let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8(format!("<!doctype html><form id=f><{name} id=kept>")),
+            HtmlSource::utf8(format!(
+                "<!doctype html><form id=f><{name} id=kept type=number>"
+            )),
             limits(100),
         );
         let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
@@ -7333,7 +7339,7 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
 #[test]
 fn structural_table_unsupported_creation_retains_original_before_table_effects() {
     {
-        let (tag, boundary) = ("<input>", super::head::HeadBoundary::Form);
+        let (tag, boundary) = ("<input type=number>", super::head::HeadBoundary::Form);
         let source = format!("<!doctype html><table>{tag}");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
@@ -10234,11 +10240,11 @@ fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value
         assert_eq!(owner, associated.then(|| form.clone()));
         assert_eq!(
             frozen.form_association_state(&mut c, &input).unwrap().kind,
-            crate::construction::parser_session::FormAssociationKind::HiddenInput
+            crate::construction::parser_session::FormAssociationKind::Input
         );
         let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
         frozen
-            .append_hidden_input_value(&mut c, &input, &mut value)
+            .append_input_default_value(&mut c, &input, &mut value)
             .unwrap();
         let actual = value.units().to_vec();
         value.release(&mut c).unwrap();
@@ -10287,10 +10293,10 @@ fn hidden_input_proofless_head_rejects_before_diagnostic_stack_or_creation() {
 #[test]
 fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
     for markup in [
-        "<input>",
-        "<input type=text>",
-        "<input type=' hidden'>",
-        "<input type='hidden '>",
+        "<input type=number>",
+        "<input type=email>",
+        "<input type=checkbox>",
+        "<input type=file>",
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{markup}")),
@@ -13431,4 +13437,159 @@ fn ordinary_text_input_keeps_exact_default_value_and_form_siblings_through_eof()
     );
     assert_eq!(following_text, vec![90]);
     assert!(owner_is_form);
+}
+
+#[test]
+fn ordinary_text_input_selected_types_foster_in_table_keep_form_and_exact_values() {
+    for (kind, expected_type) in [
+        ("text", crate::attributes::HtmlInputType::Text),
+        ("SEARCH", crate::attributes::HtmlInputType::Search),
+        ("tel", crate::attributes::HtmlInputType::Telephone),
+        ("password", crate::attributes::HtmlInputType::Password),
+        ("not-a-type", crate::attributes::HtmlInputType::Text),
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!(
+                "<!doctype html><form id=f><table><input type={kind} value='A&#13;B&#10;C' checked><tr><td>T</table>Z</form>"
+            )),
+            limits(100),
+        );
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadStep::Complete
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        assert_eq!(
+            outline(document),
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "form"),
+                (3, "input"),
+                (3, "table"),
+                (4, "tbody"),
+                (5, "tr"),
+                (6, "td"),
+                (7, "#T"),
+                (3, "#Z")
+            ])
+        );
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().last().unwrap();
+        let form = document.node(&body).unwrap().children().next().unwrap();
+        let input = document.node(&form).unwrap().children().next().unwrap();
+        assert_eq!(
+            frozen.form_association_owner(&mut c, &input).unwrap(),
+            Some(form.clone())
+        );
+        let state = frozen.input_state(&mut c, &input).unwrap();
+        assert_eq!(state.kind, expected_type);
+        assert_eq!(state.cursor, 0);
+        assert!(state.checkedness && state.selected_files_empty);
+        assert!(!state.value_rewritten_during_creation);
+        let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
+        frozen
+            .append_input_internal_value(&mut c, &input, &mut value)
+            .unwrap();
+        assert_eq!(value.units(), [65, 66, 67]);
+        value.clear(&mut c).unwrap();
+        frozen
+            .append_input_default_value(&mut c, &input, &mut value)
+            .unwrap();
+        assert_eq!(value.units(), [65, 13, 66, 10, 67]);
+        value.release(&mut c).unwrap();
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
+fn ordinary_text_input_makes_frameset_not_ok_and_is_void_inside_reconstructed_formatting() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><p><b>A</p><input type=search value=x/>Z<frameset><frame></frameset>",
+        ),
+        limits(100),
+    );
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadStep::Complete
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(
+        outline(frozen.document().unwrap()),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "p"),
+            (3, "b"),
+            (4, "#A"),
+            (2, "b"),
+            (3, "input"),
+            (3, "#Z")
+        ])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_before_effects() {
+    for kind in [
+        "url",
+        "email",
+        "date",
+        "month",
+        "week",
+        "time",
+        "datetime-local",
+        "number",
+        "range",
+        "color",
+        "checkbox",
+        "radio",
+        "file",
+        "submit",
+        "image",
+        "reset",
+        "button",
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!(
+                "<!doctype html><table><input type={kind} value=kept>"
+            )),
+            limits(100),
+        );
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadStep::Boundary(super::head::HeadBoundary::Form)
+        );
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.mode, super::head::InsertionMode::InTable);
+        assert!(!state.before.kernel.foster_parenting);
+        let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
+            panic!("actual original tag retained")
+        };
+        assert_eq!(
+            tag.attributes.as_slice()[0].value.value.text().code_units(),
+            kind.encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            tag.attributes.as_slice()[1].value.value.text().code_units(),
+            [107, 101, 112, 116]
+        );
+        assert!(driver.control.stop().is_none());
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
 }

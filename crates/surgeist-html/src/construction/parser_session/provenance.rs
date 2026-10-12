@@ -380,7 +380,7 @@ pub(crate) enum NativeDestination {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RawFieldKind {
-    HiddenInput,
+    Input,
     Textarea,
 }
 pub(crate) struct NativeAssociation {
@@ -2108,12 +2108,12 @@ impl ParserArenaSession {
         for (payload_slot, payload) in storage.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let raw = match payload {
-                RetainedPayload::HiddenInput {
+                RetainedPayload::Input {
                     node: Some(node),
                     raw,
                     complete: true,
                     ..
-                } => Some((*node, *raw, RawFieldKind::HiddenInput)),
+                } => Some((*node, *raw, RawFieldKind::Input)),
                 RetainedPayload::Textarea {
                     node: Some(node),
                     state,

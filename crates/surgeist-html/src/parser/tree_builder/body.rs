@@ -105,7 +105,10 @@ const HEAD: &[&str] = &[
 const HEADING: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 
 impl HeadState<'_> {
-    pub(super) fn hidden_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
+    pub(super) fn input_type(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<crate::attributes::HtmlInputType, HeadError> {
         c.charge(WorkCategory::RecordVisit, 2)?;
         let Payload::Tag(input) = &self
             .pending
@@ -113,12 +116,20 @@ impl HeadState<'_> {
             .ok_or(HeadError::MissingInput)?
             .payload
         else {
-            return Ok(false);
+            return Err(HeadError::MissingInput);
         };
-        Ok(crate::construction::parser_session::hidden_input_tag(
+        Ok(crate::construction::parser_session::input_tag_state(
             c,
             input.as_ref().ok_or(HeadError::MissingInput)?,
         )?)
+    }
+    pub(super) fn hidden_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
+        Ok(self.input_type(c)? == crate::attributes::HtmlInputType::Hidden)
+    }
+    pub(super) fn supported_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
+        Ok(crate::construction::parser_session::supported_input_state(
+            self.input_type(c)?,
+        ))
     }
     pub(super) fn admit_hidden_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         match self.validate_standalone_capability(c) {
@@ -506,7 +517,7 @@ impl HeadState<'_> {
         }
         for (names, boundary) in [(&["input"][..], HeadBoundary::Form)] {
             if self.token_in(names, c)?.is_some() {
-                if boundary == HeadBoundary::Form && self.hidden_input(c)? {
+                if boundary == HeadBoundary::Form && self.supported_input(c)? {
                     continue;
                 }
                 return Ok(Some(boundary));
@@ -781,11 +792,15 @@ impl HeadState<'_> {
                     )?;
                     self.pop_select(c)?;
                 }
+                let hidden = self.hidden_input(c)?;
                 self.reconstruct_formatting(c)?;
-                self.insert_hidden_input(c)?;
+                self.insert_input(c)?;
                 self.before
                     .kernel
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?;
+                if !hidden {
+                    self.frameset(false, c)?;
+                }
                 return Ok(Some(self.finish(c)?));
             }
             if self.token_in(&["textarea"], c)?.is_some() {

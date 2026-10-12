@@ -1737,9 +1737,7 @@ mod tests {
                 .code_units(),
             [88]
         );
-        arena
-            .hidden_input_state(&mut parts.control, &hidden)
-            .unwrap();
+        arena.input_state(&mut parts.control, &hidden).unwrap();
         parts.release().unwrap();
         super::super::tests::assert_released(&parts.control);
     }
@@ -1935,7 +1933,18 @@ mod tests {
             (
                 "<input value='A&#13;B&#10;C' type=hidden>",
                 "input",
-                RawFieldKind::HiddenInput,
+                RawFieldKind::Input,
+                vec![65, 66, 67],
+                vec![
+                    (0, 1, 14, 15, OriginKind::Literal),
+                    (1, 2, 20, 21, OriginKind::Literal),
+                    (2, 3, 26, 27, OriginKind::Literal),
+                ],
+            ),
+            (
+                "<input value='A&#13;B&#10;C' type=password>",
+                "input",
+                RawFieldKind::Input,
                 vec![65, 66, 67],
                 vec![
                     (0, 1, 14, 15, OriginKind::Literal),
@@ -1977,15 +1986,11 @@ mod tests {
                             .code_units(),
                         expected
                     ),
-                    RawFieldKind::HiddenInput => {
+                    RawFieldKind::Input => {
                         let mut raw =
                             crate::parser::buffer::Utf16Buffer::new(&mut driver.control).unwrap();
                         session
-                            .append_hidden_input_internal_value(
-                                &mut driver.control,
-                                &node,
-                                &mut raw,
-                            )
+                            .append_input_internal_value(&mut driver.control, &node, &mut raw)
                             .unwrap();
                         assert_eq!(raw.units(), expected);
                         raw.release(&mut driver.control).unwrap();
