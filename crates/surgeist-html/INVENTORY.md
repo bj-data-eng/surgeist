@@ -45,7 +45,7 @@ not assert all child/content constraints are machine checked.
 
 | Identity | Exact item and namespace | Defining source | Intrinsic association and execution boundary |
 | --- | --- | --- | --- |
-| <a id="e001"></a>E001 | a; HTML | [the-a-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-a-element) | Hyperlink references, rel/target/referrer settings and captured TabIndex; navigation/activation external. |
+| <a id="e001"></a>E001 | a; HTML | [the-a-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-a-element) | Hyperlink references, rel/target/referrer settings, captured TabIndex and [Anchor text](#anchor-text); navigation/activation and remaining author obligations separate. |
 | <a id="e002"></a>E002 | abbr; HTML | [the-abbr-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-abbr-element) | Exact abbreviation role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e003"></a>E003 | address; HTML | [the-address-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-address-element) | Exact contact content retained; the defining nearest article/body scope is source context, not a computed contact-owner query in the current surface. Applicable global states remain independently queryable; author/content-model checks are not certified. |
 | <a id="e004"></a>E004 | area; HTML | [the-area-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-area-element) | [Area geometry](#area-geometry), map membership and hyperlink settings; image association/hit testing not performed. |
@@ -1105,6 +1105,18 @@ selection, boundaries, exact UTF-16, work/storage/cancellation and retained repo
 A163 title-of-link and stylesheet-set names still require their distinct
 document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
 contextual author meaning; this query is no semantic-adequacy or exposure proof.
+
+## Anchor text
+
+E001 additionally supplies the captured `AnchorText` getter through
+[anchor.rs](src/semantics/anchor.rs) and the shared ordinary descendant-text
+owner. Exact UTF-16 Text data is concatenated in tree order without requiring
+href, trimming, rendered-text rules or associated template/shadow traversal.
+Known empty text differs from influencing unavailable ordered children.
+The [canonical explanation](README.md#captured-anchor-text) and
+[literal/resource tests](tests/semantics_anchor_text.rs) describe qualification,
+shared admission and atomic batches. Setter mutation, navigation/activation
+and remaining anchor author obligations are separate.
 
 ## Figure caption
 

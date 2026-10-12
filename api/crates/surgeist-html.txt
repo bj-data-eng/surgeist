@@ -1887,6 +1887,7 @@ pub enum surgeist_html::HtmlSemanticDependencies
 pub surgeist_html::HtmlSemanticDependencies::ConservativeRecompute
 pub enum surgeist_html::HtmlSemanticFact
 pub surgeist_html::HtmlSemanticFact::AdvisoryInformation(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlAdvisoryInformation>)
+pub surgeist_html::HtmlSemanticFact::AnchorText(surgeist_html::HtmlSemanticValue<surgeist_html::DocumentString>)
 pub surgeist_html::HtmlSemanticFact::CheckableInputValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::CommandForElement(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlAssociatedElement>)
 pub surgeist_html::HtmlSemanticFact::CommandValidity(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlCommandValidity>)
@@ -2021,6 +2022,7 @@ pub surgeist_html::HtmlSemanticMissing::SlotAssignment(surgeist_html::HtmlCaptur
 pub surgeist_html::HtmlSemanticMissing::SpellcheckDefault(surgeist_html::HtmlCaptureSubjectId)
 pub enum surgeist_html::HtmlSemanticQuery
 pub surgeist_html::HtmlSemanticQuery::AdvisoryInformation
+pub surgeist_html::HtmlSemanticQuery::AnchorText
 pub surgeist_html::HtmlSemanticQuery::CheckableInputValueMissing
 pub surgeist_html::HtmlSemanticQuery::CommandForElement
 pub surgeist_html::HtmlSemanticQuery::CommandValidity

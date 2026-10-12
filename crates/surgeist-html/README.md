@@ -1539,6 +1539,37 @@ allocation retains the existing provider limitation. This query computes
 advisory information; link titles, stylesheet-set names and tooltip or
 accessibility exposure remain separate operations.
 
+<a id="captured-anchor-text"></a>
+
+Captured `HtmlSemanticQuery::AnchorText` returns the exact ordinary descendant
+Text content of an HTML `a` as a `DocumentString`. It requires no `href`.
+Text inside scripts and foreign wrappers contributes in tree order; comments
+and processing instructions do not, and `br` adds no separator. Whitespace,
+newlines, null and isolated UTF-16 units are preserved. Template contents,
+shadow associations and slot distribution are not ordinary child edges.
+
+Complete absence of contributing text returns `Known` empty text. Unavailable
+ordered children that influence traversal return typed `Missing` without a
+known text prefix; unrelated attributes, ancestry and host state are not read.
+Exact HTML namespace/local-name recognition ignores prefixes. Wrong HTML roles
+and non-elements are Inapplicable; foreign subjects retain typed Unsupported.
+
+The [anchor adapter](src/semantics/anchor.rs) uses the existing
+[descendant-text owner](src/semantics/control_text.rs). Borrowed traversal frames
+are released on success, Missing and terminal failure. The same qualified
+semantic session admits actual UTF-16 buffer and outer result capacity, retains
+cumulative usage and sticky first failure, and publishes requested batches
+atomically. Fixed immutable wrappers and preexisting capture/context backing
+remain outside its measured allocation boundary. Repeated requests recompute
+and charge their actual materialization.
+
+The [HTML getter](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#dom-a-text),
+[DOM text definition](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md#concept-descendant-text-content)
+and [literal/resource tests](tests/semantics_anchor_text.rs) define this readback.
+The closed Query/Fact additions intentionally break exhaustive matches. The
+getter supplies no setter mutation, rendered/CSS text, navigation, activation
+or complete anchor author-conformance result.
+
 <a id="captured-figure-caption"></a>
 
 Captured `HtmlSemanticQuery::FigureCaption` selects the first direct HTML

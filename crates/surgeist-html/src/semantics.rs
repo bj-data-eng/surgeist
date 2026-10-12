@@ -8,7 +8,7 @@
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
-//! advisory information, dfn defining terms, title-element text and document titles, own/used capitalization,
+//! advisory information, dfn defining terms, title-element and anchor text and document titles, own/used capitalization,
 //! used autocorrection, computed writing suggestions, reflected command/popover
 //! Element associations, static command support, guarded popover targets and
 //! img/input dimension getters over qualified completed producer observations.
@@ -23,6 +23,7 @@ pub use language::*;
 mod advisory_title;
 mod dfn;
 pub use dfn::*;
+mod anchor;
 mod document_title;
 pub use document_title::*;
 mod range;
@@ -828,6 +829,8 @@ pub enum HtmlSemanticQuery {
     DfnDefiningTerm,
     /// Exact direct-child Text data of an HTML title element.
     TitleText,
+    /// Exact ordinary descendant Text data of an HTML a element.
+    AnchorText,
     /// Selected document title with ASCII whitespace stripped and collapsed.
     DocumentTitle,
     Meter,
@@ -937,6 +940,9 @@ impl HtmlSemanticQuery {
             }
             Self::EmbeddedDimensionAuthorConformance => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dimension-attributes"
+            }
+            Self::AnchorText => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-a-text"
             }
             Self::TitleText => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-title-text"
@@ -1321,6 +1327,7 @@ pub enum HtmlSemanticFact {
     AdvisoryInformation(HtmlSemanticValue<HtmlAdvisoryInformation>),
     DfnDefiningTerm(HtmlSemanticValue<HtmlDefiningTerm>),
     TitleText(HtmlSemanticValue<DocumentString>),
+    AnchorText(HtmlSemanticValue<DocumentString>),
     DocumentTitle(HtmlSemanticValue<HtmlDocumentTitle>),
     Meter(HtmlSemanticValue<HtmlMeterState>),
     Progress(HtmlSemanticValue<HtmlProgressState>),
@@ -2714,6 +2721,13 @@ impl<'a> HtmlSemanticSession<'a> {
                                 )?,
                             )
                         }
+                        HtmlSemanticQuery::AnchorText => HtmlSemanticFact::AnchorText(if foreign {
+                            HtmlSemanticValue::Unsupported(
+                                HtmlSemanticUnsupported::ForeignNamespace,
+                            )
+                        } else {
+                            self.anchor_text(&request.subject, element)?
+                        }),
                         HtmlSemanticQuery::TitleText => HtmlSemanticFact::TitleText(if foreign {
                             HtmlSemanticValue::Unsupported(
                                 HtmlSemanticUnsupported::ForeignNamespace,
@@ -3157,6 +3171,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticFact::EmbeddedDimensionAuthorConformance(
                             HtmlSemanticValue::Inapplicable,
                         )
+                    }
+                    HtmlSemanticQuery::AnchorText => {
+                        HtmlSemanticFact::AnchorText(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::TitleText => {
                         HtmlSemanticFact::TitleText(HtmlSemanticValue::Inapplicable)
