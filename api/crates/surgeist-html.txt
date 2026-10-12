@@ -1099,6 +1099,40 @@ pub surgeist_html::HtmlLanguageOrigin::NoInformation(surgeist_html::HtmlCaptureS
 pub surgeist_html::HtmlLanguageOrigin::Pragma(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlLanguageOrigin::Protocol(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlLanguageOrigin::XmlAttribute(surgeist_html::HtmlCaptureSubjectId)
+pub enum surgeist_html::HtmlLinkDestination
+pub surgeist_html::HtmlLinkDestination::AudioWorklet
+pub surgeist_html::HtmlLinkDestination::Fetch
+pub surgeist_html::HtmlLinkDestination::Font
+pub surgeist_html::HtmlLinkDestination::Image
+pub surgeist_html::HtmlLinkDestination::Json
+pub surgeist_html::HtmlLinkDestination::PaintWorklet
+pub surgeist_html::HtmlLinkDestination::Script
+pub surgeist_html::HtmlLinkDestination::ServiceWorker
+pub surgeist_html::HtmlLinkDestination::SharedWorker
+pub surgeist_html::HtmlLinkDestination::Style
+pub surgeist_html::HtmlLinkDestination::Text
+pub surgeist_html::HtmlLinkDestination::Track
+pub surgeist_html::HtmlLinkDestination::Worker
+impl surgeist_html::HtmlLinkDestination
+pub fn surgeist_html::HtmlLinkDestination::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlLinkDestination::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlLinkDestinationContextAuthorState
+pub surgeist_html::HtmlLinkDestinationContextAuthorState::Conforming
+pub surgeist_html::HtmlLinkDestinationContextAuthorState::Nonconforming(surgeist_html::HtmlLinkDestinationContextError)
+pub surgeist_html::HtmlLinkDestinationContextAuthorState::NotRequired
+pub surgeist_html::HtmlLinkDestinationContextAuthorState::Unapplied
+pub enum surgeist_html::HtmlLinkDestinationContextError
+pub surgeist_html::HtmlLinkDestinationContextError::AsRequiresPreloadOrModulePreloadRel
+pub surgeist_html::HtmlLinkDestinationContextError::ModulePreloadRequiresModuleDestination
+pub surgeist_html::HtmlLinkDestinationContextError::PreloadRequiresAs
+pub surgeist_html::HtmlLinkDestinationContextError::PreloadRequiresPreloadDestination
+pub enum surgeist_html::HtmlLinkDestinationProcessing
+pub surgeist_html::HtmlLinkDestinationProcessing::Destination(surgeist_html::HtmlLinkDestination)
+pub surgeist_html::HtmlLinkDestinationProcessing::NoState
+pub surgeist_html::HtmlLinkDestinationProcessing::Nonmember(surgeist_html::HtmlLinkDestination)
+pub surgeist_html::HtmlLinkDestinationProcessing::NotSelected
+pub surgeist_html::HtmlLinkDestinationProcessing::ScriptForNoState
+pub surgeist_html::HtmlLinkDestinationProcessing::Unapplied
 pub enum surgeist_html::HtmlLoading
 pub surgeist_html::HtmlLoading::Eager
 pub surgeist_html::HtmlLoading::Lazy
@@ -3462,6 +3496,20 @@ pub const fn surgeist_html::HtmlLegacyColor::channels(&self) -> [u8; 3]
 pub const fn surgeist_html::HtmlLegacyColor::green(&self) -> u8
 pub const fn surgeist_html::HtmlLegacyColor::new(red: u8, green: u8, blue: u8) -> Self
 pub const fn surgeist_html::HtmlLegacyColor::red(&self) -> u8
+pub struct surgeist_html::HtmlLinkDestinationReport
+impl surgeist_html::HtmlLinkDestinationReport
+pub fn surgeist_html::HtmlLinkDestinationReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLinkDestination>
+pub fn surgeist_html::HtmlLinkDestinationReport::modulepreload_author(&self) -> surgeist_html::HtmlLinkDestinationContextAuthorState
+pub fn surgeist_html::HtmlLinkDestinationReport::modulepreload_processing(&self) -> surgeist_html::HtmlLinkDestinationProcessing
+pub fn surgeist_html::HtmlLinkDestinationReport::modulepreload_processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlLinkDestinationReport::modulepreload_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlLinkDestinationReport::other_rel_author(&self) -> surgeist_html::HtmlLinkDestinationContextAuthorState
+pub fn surgeist_html::HtmlLinkDestinationReport::preload_author(&self) -> surgeist_html::HtmlLinkDestinationContextAuthorState
+pub fn surgeist_html::HtmlLinkDestinationReport::preload_processing(&self) -> surgeist_html::HtmlLinkDestinationProcessing
+pub fn surgeist_html::HtmlLinkDestinationReport::preload_processing_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlLinkDestinationReport::preload_source_clause(&self) -> &'static str
+pub fn surgeist_html::HtmlLinkDestinationReport::rel_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlLinkDestinationReport::rel_source_clause(&self) -> &'static str
 pub struct surgeist_html::HtmlListIntegerAttributeReport
 impl surgeist_html::HtmlListIntegerAttributeReport
 pub fn surgeist_html::HtmlListIntegerAttributeReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
@@ -4544,6 +4592,9 @@ pub fn surgeist_html::HtmlValueInterpreter::inputmode(&self, element: &surgeist_
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::li_value(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlListIntegerAttributeReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::ol_start(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlListIntegerAttributeReport, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::link_as(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLinkDestination>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::link_as_with_attributes(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlLinkDestinationReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter

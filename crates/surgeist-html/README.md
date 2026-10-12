@@ -135,6 +135,24 @@ assignment, implicit/current render blocking or linked-resource availability.
 These standalone operations use ordinary allocation and the original-value
 UTF-16 cap described below.
 
+`HtmlLinkDestination` supplies the thirteen `as` keywords from pinned HTML's
+preload/modulepreload domains and its [delegated Fetch subset](../../references/fetch-script-like-destinations--e9460d1b22ea.md).
+`link_as` matches the entire raw value case-insensitively in ASCII without
+trimming; missing, empty and invalid input have no intrinsic state.
+`link_as_with_attributes` observes actual `as` and `rel` slots and reports
+preload and modulepreload author requirements independently when both tokens
+occur. Missing preload `as` fails required presence; modulepreload `as` is
+optional. Content-only interpretation leaves those context checks Unchecked.
+
+The [link-destination report](src/attributes/link_destination.rs) also gives
+symbolic destination decisions. Modulepreload projects script from no state,
+including invalid values, while retaining the author failure. A recognized
+image remains an out-of-domain image state. This projection does not assert that
+the real algorithm reached the destination step: href checks, Fetch translation,
+requests, resource loading and module execution are separate consumers. The
+report does not certify full `rel` vocabulary or uniqueness. Both selected raw
+slots use the original-value UTF-16 cap and ordinary allocation.
+
 `HtmlValueInterpreter` admits each raw value against a caller-selected finite
 UTF-16 input capacity. Its immutable `HtmlValueReport<A, R>` reports distinguish
 missing values, whole-value author conformance, representation failure and

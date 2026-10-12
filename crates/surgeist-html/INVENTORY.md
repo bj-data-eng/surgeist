@@ -178,7 +178,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a007"></a>A007 | allowfullscreen; iframe | [attr-iframe-allowfullscreen](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-iframe-allowfullscreen); [the-iframe-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-iframe-element); [dom-element-requestfullscreen](https://fullscreen.spec.whatwg.org/#dom-element-requestfullscreen); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): AllowFullscreen. Permissions/fullscreen transition remains host-owned. |
 | <a id="a008"></a>A008 | alpha; input | [attr-input-alpha](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-alpha); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Alpha with actual input state; CSS color conversion and live well update are separate. |
 | <a id="a009"></a>A009 | alt; area; img; input | [attr-area-alt](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-area-alt); [attr-img-alt](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-img-alt); [attr-input-alt](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-alt); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Exact alternative text for area/img/input; raw text retained. [Input Image and embedded dimensions](#input-image-and-embedded-dimensions) supplies the Image-state input alt required-presence/nonempty report. Label adequacy remains an independent source requirement. |
-| <a id="a010"></a>A010 | as; link | [attr-link-as](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-as); [attr-link-rel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-rel); [link-type-preload](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#link-type-preload); [link-type-modulepreload](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#link-type-modulepreload); [preload-destination](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#preload-destination); [module-preload-destination](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#module-preload-destination) | [Link destinations](#link-destinations): as enumeration/preload rel restrictions and no-state defaults not implemented. |
+| <a id="a010"></a>A010 | as; link | [attr-link-as](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-as); [attr-link-rel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-rel); [link-type-preload](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#link-type-preload); [link-type-modulepreload](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#link-type-modulepreload); [preload-destination](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#preload-destination); [module-preload-destination](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#module-preload-destination) | [Link destinations](#link-destinations): native thirteen-state as vocabulary, whole ASCII-insensitive content report and independent actual-rel author requirements; symbolic branch decisions retain no-state recovery separately from requests/execution. |
 | <a id="a011"></a>A011 | async; script | [attr-script-async](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-async); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Async with script-kind applicability; scheduling/fetch not computed. |
 | <a id="a012"></a>A012 | autocapitalize; HTML elements | [attr-autocapitalize](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocapitalize); [attr-autocapitalize-on](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocapitalize-on); [attr-autocapitalize-off](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocapitalize-off); [attr-autocapitalize-none](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocapitalize-none); [attr-autocapitalize-sentences](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocapitalize-sentences); [attr-autocapitalize-words](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocapitalize-words); [attr-autocapitalize-characters](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-autocapitalize-characters) | [Enumerations](#enumerations) and [Captured global states](#captured-global-states): default hint, used hint and inheritance are distinct. |
 | <a id="a013"></a>A013 | autocomplete; form | [attr-form-autocomplete](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-form-autocomplete) | [Enumerations](#enumerations): form autocomplete defaults On; not the control token grammar. |
@@ -1221,9 +1221,28 @@ dimensions or ratio are inferred from raw width/height or canvas defaults.
 
 ### Link destinations
 
-A010 as must classify source preload/modulepreload destinations, none-state
-missing/invalid and actual rel context; modulepreload missing later treats script.
-No local as report exists. Fetch processing is not the local author/state check.
+A010 `as` uses the six HTML preload destinations and nine modulepreload
+destinations, with thirteen distinct states in their union. The
+[local owner](src/attributes/link_destination.rs) consumes the shared enumeration
+and token scanners. Native `HtmlLinkDestination` emits canonical spelling;
+`link_as` preserves whole-value ASCII-insensitive recognition without trimming,
+with no state for missing, empty or invalid values and no enum default.
+
+`link_as_with_attributes` admits actual original `as` and `rel` slots before
+context checks. Preload requires a present preload destination; modulepreload
+permits absence but requires its own destination domain when present. If both
+rel members occur, both author requirements remain independent. Presence with
+neither rel member is forbidden. Content-only reports retain Unchecked context.
+
+Symbolic processing reports keep preload no state distinct from modulepreload's
+later script selection for no state, including invalid author input. Recognized
+image remains a modulepreload nonmember, not a recovered script. The projection
+does not assert the real algorithm reached this step: it does not inspect href,
+translate Fetch destinations, create requests, load resources or execute modules.
+It does not certify all rel grammar or full element conformance. The vocabulary
+retains the [fixed Fetch definition](../../references/fetch-script-like-destinations--e9460d1b22ea.md);
+xslt is excluded. Ordinary allocation and per-original-value UTF-16 admission
+apply; no aggregate work, physical-memory or cancellation control is claimed.
 
 ### Metadata
 

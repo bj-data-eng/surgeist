@@ -2218,6 +2218,9 @@ pub use table_header_scope::*;
 mod image_values;
 pub use image_values::*;
 
+mod link_destination;
+pub use link_destination::*;
+
 #[cfg(test)]
 mod stylesheet_context_tests {
     use super::*;
