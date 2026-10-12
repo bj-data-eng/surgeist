@@ -13321,3 +13321,114 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
         size_of::<Option<ParserNode>>()
     );
 }
+
+#[test]
+fn ordinary_text_input_keeps_exact_default_value_and_form_siblings_through_eof() {
+    // HTML877d: create/append/reset/associate (syntax3511–3539), then
+    // InBody input insert/immediate-pop (4654–4676). Value-mode reset strips
+    // CR/LF from internal value, not from the native default value attribute.
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><form id=f><input value='A&#13;B&#10;C'>Z</form>"),
+        limits(100),
+    );
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "ordinary default Text input must be constructed before source EOF"
+        );
+        return;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_mode = document.mode();
+    let actual_outline = outline(document);
+    // Select the unique real document element, after the doctype.
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let input = children[0].clone();
+    let input_children = document.node(&input).unwrap().children().count();
+    let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
+        panic!("the source input is a real native Element");
+    };
+    let input_namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let input_name = element.name().local_name().code_units().to_vec();
+    let actual_attributes: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|attribute| {
+            (
+                attribute
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                attribute.name().local_name().code_units().to_vec(),
+                attribute.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    let HtmlNodeKind::Text(text) = document.node(&children[1]).unwrap().kind() else {
+        panic!("Z follows the void input as a sibling in the form");
+    };
+    let following_text = text.code_units().to_vec();
+    let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+    let owner_is_form = owner.as_ref() == Some(&form);
+    let child_count = children.len();
+    drop(owner);
+    drop(input);
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 2);
+    assert_eq!(input_children, 0);
+    assert_eq!(
+        input_namespace,
+        "http://www.w3.org/1999/xhtml"
+            .encode_utf16()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(input_name, vec![105, 110, 112, 117, 116]);
+    assert_eq!(
+        actual_attributes,
+        vec![(None, vec![118, 97, 108, 117, 101], vec![65, 13, 66, 10, 67])]
+    );
+    assert_eq!(following_text, vec![90]);
+    assert!(owner_is_form);
+}
