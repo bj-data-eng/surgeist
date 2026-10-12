@@ -1111,6 +1111,49 @@ their supplied classification. The result is an immutable association snapshot;
 it does not attach ElementInternals or provide a live NodeList. Traversal and
 nested output retain the semantic session's admission and atomic batch contract.
 
+<a id="captured-meta-description-author"></a>
+
+Captured `HtmlSemanticQuery::MetaDescriptionAuthor` observes an actual HTML
+meta whose no-namespace lowercase `name` is an exact ASCII-insensitive
+`description` match. It does not trim padding or fold non-ASCII units; prefixes
+do not replace expanded-name identity. The
+[report](src/semantics/meta_description.rs) retains the original name and optional
+content attributes and their exact UTF-16. Missing content remains absent,
+reports `MissingContent` and uses the context's prebuilt empty value as
+`effective_content()`. Present empty content satisfies the required-presence
+rule. `content_appropriateness()` stays Unchecked: whether the prose appropriately
+describes this page is a human author obligation, not lexical validation.
+
+Independent `uniqueness()` observes `NoDocumentMetadataScope`, `Unique`, an actual
+capture-qualified `Duplicate` witness, or influencing `Missing`. Ordinary
+Document ancestry must be established first; node-document identity alone does
+not join a detached Element/Fragment to a metadata population. Unknown ancestry
+remains Missing even when a matching meta is nearby. After Document membership
+is proved, every ordinary HTML meta with a matching name counts, including body
+descendants and competitors with missing content or unrelated author violations.
+Competitor content is not consulted. Separate Documents, template/shadow
+contents, hosts and slots do not join populations. A witness can resolve an
+unrelated nonterminal child gap; Unique needs complete influencing coverage.
+Earlier terminal raw/resource/cancellation failure cannot be rescued by a later
+witness. Known(report) is not complete meta or document conformance.
+
+The [semantic session](src/semantics.rs) admits each consulted whole name before
+keyword processing, and own content only after description selection. Shared
+handles preserve content, including NULL and isolated UTF-16 surrogates.
+Charged lookup, keyword and ordinary traversal use the sole qualified controller;
+actual scratch, one retained nested record and compiled outer result capacities
+use its finite ledger. Scratch is released on success/failure, cumulative usage
+is retained, and late terminal failure discards the requested batch with sticky
+first stop and capture/context/host/configuration qualification. Fixed shared
+wrapper/backing allocation exclusions still apply; no recoverable fixed-wrapper
+OOM, linear work or complete allocator/RSS bound is promised.
+
+The [defining clause](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#meta-description)
+and [literal tests](tests/semantics_meta_description.rs) distinguish these
+observations. General meta discriminators, media/charset/pragma/other-name rules,
+live mutation, search/UI use and public parsing remain separate. Closed
+Query/Fact additions are intentionally breaking for exhaustive matches.
+
 <a id="captured-form-name-author"></a>
 
 [Form names](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#attr-form-name)

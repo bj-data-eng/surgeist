@@ -49,6 +49,8 @@ pub use select::*;
 mod datalist;
 mod form_name;
 mod id_author;
+mod meta_description;
+pub use meta_description::*;
 mod image_map;
 mod map_name;
 pub use form_name::*;
@@ -859,6 +861,8 @@ pub enum HtmlSemanticQuery {
     FormNameAuthor,
     /// Independent local HTML id grammar and ordinary-tree DOM-ID uniqueness.
     IdAuthor,
+    /// Content-presence and actual Document description uniqueness observations.
+    MetaDescriptionAuthor,
     /// Independent img usemap author witness and first processing map.
     UsemapReference,
     ConstraintValidationCandidate,
@@ -979,6 +983,9 @@ impl HtmlSemanticQuery {
             }
             Self::MapNameAuthor => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name"
+            }
+            Self::MetaDescriptionAuthor => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#meta-description"
             }
             Self::IdAuthor => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-id-attribute"
@@ -1315,6 +1322,7 @@ pub enum HtmlSemanticFact {
     MapNameAuthor(HtmlSemanticValue<HtmlMapNameAuthorReport>),
     FormNameAuthor(HtmlSemanticValue<HtmlFormNameAuthorReport>),
     IdAuthor(HtmlSemanticValue<HtmlIdAuthorReport>),
+    MetaDescriptionAuthor(HtmlSemanticValue<HtmlMetaDescriptionAuthorReport>),
     UsemapReference(HtmlSemanticValue<HtmlUsemapReferenceResult>),
     ConstraintValidationCandidate(HtmlSemanticValue<bool>),
     TabIndex(HtmlSemanticValue<HtmlTabIndexReadback>),
@@ -2850,6 +2858,11 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::MapNameAuthor => {
                             HtmlSemanticFact::MapNameAuthor(self.map_name_author(&request.subject)?)
                         }
+                        HtmlSemanticQuery::MetaDescriptionAuthor => {
+                            HtmlSemanticFact::MetaDescriptionAuthor(
+                                self.meta_description_author(&request.subject)?,
+                            )
+                        }
                         HtmlSemanticQuery::IdAuthor => {
                             HtmlSemanticFact::IdAuthor(self.id_author(&request.subject)?)
                         }
@@ -3192,6 +3205,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::MapNameAuthor => {
                         HtmlSemanticFact::MapNameAuthor(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::MetaDescriptionAuthor => {
+                        HtmlSemanticFact::MetaDescriptionAuthor(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::IdAuthor => {
                         HtmlSemanticFact::IdAuthor(HtmlSemanticValue::Inapplicable)
