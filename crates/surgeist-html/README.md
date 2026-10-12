@@ -208,6 +208,30 @@ selected value; the captured form-setting queries below use the actual form
 owner for effective fallback. These content operations do not allocate canvas surfaces, lay out text,
 move focus or submit a form.
 
+`command` interprets exact HTML button content as one of six standard commands,
+Custom or Unknown. `HtmlStandardCommand` emits canonical standard spelling;
+`HtmlCustomCommandKeyword` checks a two-hyphen prefix and the selected ASCII
+boundary-whitespace rule before exact native emission. The privately coupled
+`HtmlCommandReadback` always retains a payload for Custom and none for other
+states. Processing preserves a prefix-qualified Custom even when trailing
+ASCII whitespace violates author syntax. Bare `--`, internal spaces and
+non-ASCII whitespace are retained under the
+[selected interpretation](https://github.com/bj-data-eng/surgeist/issues/1133#issuecomment-6117207035);
+this records a source-qualified ASCII boundary choice, not an upstream
+clarification or full serialized-character conformance.
+
+`popovertargetaction` has its own Toggle/Show/Hide domain, with missing and
+invalid Toggle defaults. Exact HTML button and input roles retain local content
+independently of target or activation facts. The input-state companion permits
+author presence only for Submit, Image, Reset and Button, retaining the local
+state when another type violates that restriction; unavailable type leaves the
+author context unchecked. Missing action has no presence violation.
+These reports admit the entire raw UTF-16 value before applicability and use
+ordinary allocation with the per-value cap. Same-tree and explicitly reflected
+targets, command validity, activation, dialog and popover transitions remain
+distinct operations. Existing Auto submit-button classification continues to
+use command/commandfor presence, including empty or unknown values.
+
 `textarea_wrap` retains Soft/Hard content state, raw spelling and lexical
 conformance separately; missing and invalid content select Soft. Hard leaves
 its cols-presence author requirement unchecked until `textarea_wrap_with_cols`

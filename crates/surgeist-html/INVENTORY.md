@@ -196,7 +196,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a025"></a>A025 | colorspace; input | [attr-input-colorspace](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace); [attr-input-colorspace-limited-srgb](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace-limited-srgb); [attr-input-colorspace-display-p3](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace-display-p3) | [Color input](#color-input): input_colorspace supplies limited-srgb/display-p3 recognition and missing/invalid Limited sRGB fallback; the actual-input-state companion independently observes Color-only author presence. CSS grammar and interactive well remain separate. |
 | <a id="a026"></a>A026 | cols; textarea | [attr-textarea-cols](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-cols); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Numeric content](#numeric-content): textarea cols positive author quantity; missing/failed/zero recovery 20. |
 | <a id="a027"></a>A027 | colspan; td; th | [attr-tdth-colspan](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tdth-colspan); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Numeric content](#numeric-content): cell colspan author 1..1000; missing/failed/zero recovery 1, clamp 1000. [Tables](#tables) owns slots. |
-| <a id="a028"></a>A028 | command; button | [attr-button-command](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command); [attr-button-command-toggle-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-toggle-popover); [attr-button-command-show-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-show-popover); [attr-button-command-hide-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-hide-popover); [attr-button-command-close](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-close); [attr-button-command-request-close](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-request-close); [attr-button-command-show-modal](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-show-modal); [attr-button-command-custom](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-custom) | [Commands and popovers](#commands-and-popovers): standard/custom command classification and Unknown default absent; activation distinct. |
+| <a id="a028"></a>A028 | command; button | [attr-button-command](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command); [attr-button-command-toggle-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-toggle-popover); [attr-button-command-show-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-show-popover); [attr-button-command-hide-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-hide-popover); [attr-button-command-close](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-close); [attr-button-command-request-close](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-request-close); [attr-button-command-show-modal](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-show-modal); [attr-button-command-custom](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-custom) | [Commands and popovers](#commands-and-popovers): standard/Custom/Unknown content, checked native emission and retained Custom payload; target validity and activation distinct. |
 | <a id="a029"></a>A029 | commandfor; button | [attr-button-commandfor](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-commandfor); [concept-id](https://dom.spec.whatwg.org/#concept-id) | [Commands and popovers](#commands-and-popovers): same-tree commandfor target relation absent; no invented ID target. |
 | <a id="a030"></a>A030 | content; meta | [attr-meta-content](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-content); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Metadata](#metadata): meta content meaning selected by actual name/http-equiv; missing metadata content empty string, not generic invalid-default substitution. |
 | <a id="a031"></a>A031 | contenteditable; HTML elements | [attr-contenteditable](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-contenteditable) | [Enumerations](#enumerations) and [Captured global states](#captured-global-states): editing host/editable inheritance plus designMode facts; no editing engine. |
@@ -289,7 +289,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a118"></a>A118 | playsinline; video | [attr-video-playsinline](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-video-playsinline); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): PlaysInline; media presentation external. |
 | <a id="a119"></a>A119 | popover; HTML elements | [attr-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover); [attr-popover-auto](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover-auto); [attr-popover-manual](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover-manual); [attr-popover-hint](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popover-hint) | [Enumerations](#enumerations): popover missing NoPopover, invalid Manual, empty Auto; target/toggle/open transitions separate. |
 | <a id="a120"></a>A120 | popovertarget; button; input | [attr-popovertarget](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertarget); [concept-id](https://dom.spec.whatwg.org/#concept-id) | [Commands and popovers](#commands-and-popovers): same-tree popovertarget ID must target element with popover; static target query absent. |
-| <a id="a121"></a>A121 | popovertargetaction; button; input | [attr-popovertargetaction](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction); [attr-popovertargetaction-toggle](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction-toggle); [attr-popovertargetaction-show](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction-show); [attr-popovertargetaction-hide](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction-hide) | [Commands and popovers](#commands-and-popovers): action toggle/show/hide, missing/invalid Toggle classification absent; actual transition external. |
+| <a id="a121"></a>A121 | popovertargetaction; button; input | [attr-popovertargetaction](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction); [attr-popovertargetaction-toggle](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction-toggle); [attr-popovertargetaction-show](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction-show); [attr-popovertargetaction-hide](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction-hide) | [Commands and popovers](#commands-and-popovers): Toggle/Show/Hide content, missing/invalid Toggle and independent input-state author presence; actual transition external. |
 | <a id="a122"></a>A122 | poster; video | [attr-video-poster](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-video-poster); [valid-non-empty-url-potentially-surrounded-by-spaces](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-empty-url-potentially-surrounded-by-spaces) | [URLs and references](#urls-and-references): poster author nonempty reference; video poster loading/display state external. |
 | <a id="a123"></a>A123 | preload; audio; video | [attr-media-preload](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-media-preload); [media-resource](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#media-resource); [attr-media-preload-none](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-media-preload-none); [attr-media-preload-metadata](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-media-preload-metadata); [attr-media-preload-auto](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-media-preload-auto) | [Enumerations](#enumerations): preload empty Auto, missing/invalid implementation-defined; no provider choice invented. |
 | <a id="a124"></a>A124 | readonly; input; textarea | [attr-input-readonly](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-readonly); [attr-textarea-readonly](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-readonly); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Readonly input-state/textarea own content, validation candidacy and selected text-control mutability in [Control facts](#control-facts); editing/dirty transitions external. |
@@ -465,6 +465,8 @@ invented empty default. Canonical native emission is separate from exact raw.
 | draggable | Auto | Auto | Auto |
 | hidden | NotHidden | Hidden | Hidden |
 | popover | NoPopover | Manual | Auto |
+| command | Unknown | Unknown | Unknown |
+| popovertargetaction | Toggle | Toggle | Toggle |
 | translate | Inherit | Inherit | Yes |
 | spellcheck | Default | Default | True |
 | autocapitalize | Default | Sentences | Invalid processing Sentences |
@@ -966,6 +968,33 @@ A163 title-of-link and stylesheet-set names still require their distinct
 document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
 contextual author meaning; this query is no semantic-adequacy or exposure proof.
 
+## Commands and popovers
+
+[command.rs](src/attributes/command.rs) supplies six standard command keywords,
+Custom with an exact retained UTF-16 payload, and missing/invalid Unknown.
+Checked native standard and Custom values emit command attributes; Unknown is
+a processing state without an author emitter. Native Custom requires two exact
+hyphens and no trailing ASCII whitespace; processing still retains a
+prefix-qualified value with that author violation. The
+[selected boundary interpretation](https://github.com/bj-data-eng/surgeist/issues/1133#issuecomment-6117207035)
+uses Infra TAB/LF/FF/CR/SPACE, preserving bare `--`, internal whitespace and
+non-ASCII tails. It is a selected reading, not an upstream clarification.
+
+Popover target action is a separate Toggle/Show/Hide domain with missing and
+invalid Toggle defaults. Its input companion retains local content while
+independently checking author presence for Submit/Image/Reset/Button; other
+states report a context violation, unavailable context stays Unchecked and
+absence has no presence violation. Exact expanded names and complete raw
+admission precede these operations. [Twenty-two public tests](tests/attributes_command.rs)
+cover literal keywords/defaults, native emission, Custom/raw retention,
+all input states, qualification, cap boundaries and existing presence-based
+Auto submitter behavior. Ordinary allocation and the per-original-value cap do
+not establish work/cancellation or physical-memory bounds.
+
+A029/A120 targets, source command validity and live dispatch/transitions remain
+distinct required consumers. Local classification does not infer target
+identity, validity, connectedness or activation.
+
 ## HTML-local operations with no corresponding complete producer
 
 The following entries specify remaining rule/consumer boundaries. They are not
@@ -1022,13 +1051,15 @@ recognized render tokens, with actual link rel/script/style context. No selected
 local public report exists. Host render-blocking resource lifecycle is a separate
 consumer, not an excuse for absent HTML token/placement processing.
 
-### Commands and popovers
+### Command target relations
 
-A028/A029/A120/A121: command standard keywords/custom -- prefix/Unknown defaults,
-valid-for-target and same-tree commandfor relation, popovertarget relation and
-action toggle/show/hide Toggle defaults have no public selected intrinsic owner.
-HTML classification/target relation is distinct from command dispatch, popover
-show/hide and dialog transition which belong actual DOM/host execution.
+A029/A120: complete source target operations remain required. They consume
+actual explicitly reflected element-reference state as well as the source's
+ordinary-tree ID branch; absent facts must not be guessed null. Command
+validity is a separate source predicate. These captured operations are distinct
+from command dispatch, popover show/hide and dialog transitions, which need
+actual DOM/host execution. [Local content classification](#commands-and-popovers)
+does not establish their result.
 
 ### Metadata
 

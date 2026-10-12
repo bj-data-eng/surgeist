@@ -174,6 +174,9 @@ pub enum HtmlAttributeRecognition {
     Empty,
     /// The selected text rule recognizes an exact nonempty value.
     NonemptyText,
+    /// A command keyword begins with two exact ASCII hyphens.
+    /// Independent author checks can still reject its boundary spelling.
+    CustomCommand,
     Keyword {
         matched: &'static str,
         canonical: &'static str,
@@ -187,7 +190,7 @@ pub enum HtmlAttributeRecognition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAttributeConformanceError {
     UnrecognizedKeyword,
-    /// A source-recognized alias is forbidden in authored markup.
+    /// A source-recognized keyword spelling is forbidden in authored markup.
     NonconformingKeyword,
     BooleanSpelling,
     BdoDirectionRequired,
@@ -339,6 +342,14 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the defining clause for additional element-context facts.
     pub fn context_source_clause(&self) -> Option<&'static str> {
+        if self.rule.context == Context::PopoverTargetAction
+            && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Input)
+        {
+            return Some(match &self.supplied_context {
+                SuppliedContext::Input(state) => input_state_source(*state),
+                _ => INPUT_SOURCE,
+            });
+        }
         if self.rule.attribute == KnownHtmlAttribute::Colorspace
             && KnownHtmlElement::from_name(&self.element) == Some(KnownHtmlElement::Input)
         {
@@ -444,6 +455,7 @@ enum Context {
     DisabledControls,
     InputControl(InputBooleanApplicability),
     SubmitterOverride,
+    PopoverTargetAction,
     ScriptBoolean(ScriptApplicability),
     ImageMap,
     ImageControls,
@@ -1288,7 +1300,7 @@ fn applies(
             known.is_some_and(|name| elements.contains(&name))
         }
         Context::InputControl(condition) => return condition.applicability(known),
-        Context::SubmitterOverride => {
+        Context::SubmitterOverride | Context::PopoverTargetAction => {
             matches!(
                 known,
                 Some(KnownHtmlElement::Input | KnownHtmlElement::Button)
@@ -1357,7 +1369,9 @@ fn report<T>(
     } else if raw.is_some()
         && (has_boolean_author_constraint(rule, element)
             || has_hyperlink_author_constraint(rule, element)
-            || rule.context == Context::SubmitterOverride)
+            || rule.context == Context::SubmitterOverride
+            || (rule.context == Context::PopoverTargetAction
+                && KnownHtmlElement::from_name(element) == Some(KnownHtmlElement::Input)))
     {
         HtmlAttributeContextAuthorState::Unchecked
     } else {
@@ -1548,7 +1562,10 @@ impl HtmlValueInterpreter {
                         )
                 );
                 if result.applicability == HtmlAttributeApplicability::Applicable
-                    && (rule.metadata.context != Context::SubmitterOverride || !matches_element)
+                    && (!matches_element
+                        || !(rule.metadata.context == Context::SubmitterOverride
+                            || (rule.metadata.context == Context::PopoverTargetAction
+                                && matches!(supplied_context, SuppliedContext::Input(_)))))
                 {
                     result.applicability = HtmlAttributeApplicability::DifferentContext;
                 }
@@ -1568,6 +1585,8 @@ impl HtmlValueInterpreter {
         // evidence, intrinsic interpretation retains an unchecked author fact.
         if !has_hyperlink_author_constraint(rule.metadata, element)
             && rule.metadata.context != Context::SubmitterOverride
+            && !(rule.metadata.context == Context::PopoverTargetAction
+                && KnownHtmlElement::from_name(element) == Some(KnownHtmlElement::Input))
         {
             result.context_author = HtmlAttributeContextAuthorState::NotRequired;
         }
@@ -1600,6 +1619,20 @@ impl HtmlValueInterpreter {
                     )
                 }
                 _ => HtmlAttributeContextAuthorState::Unchecked,
+            };
+        }
+        if raw.is_some() && rule.metadata.context == Context::PopoverTargetAction {
+            result.context_author = match &result.supplied_context {
+                SuppliedContext::Input(
+                    HtmlInputType::Submit
+                    | HtmlInputType::Image
+                    | HtmlInputType::Reset
+                    | HtmlInputType::Button,
+                ) => HtmlAttributeContextAuthorState::Conforming,
+                SuppliedContext::Input(_) => HtmlAttributeContextAuthorState::Nonconforming(
+                    HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
+                ),
+                _ => result.context_author,
             };
         }
         let selection = enum_value_selection(rule, raw.map(Attribute::value));
@@ -2090,6 +2123,9 @@ pub use input_bounds::*;
 
 mod srcset;
 pub use srcset::*;
+
+mod command;
+pub use command::*;
 
 mod modification;
 pub use modification::*;

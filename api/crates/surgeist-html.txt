@@ -120,6 +120,7 @@ pub surgeist_html::HtmlAttributeObservation::PresentEmpty
 pub surgeist_html::HtmlAttributeObservation::PresentNonempty
 pub enum surgeist_html::HtmlAttributeRecognition
 pub surgeist_html::HtmlAttributeRecognition::BooleanName
+pub surgeist_html::HtmlAttributeRecognition::CustomCommand
 pub surgeist_html::HtmlAttributeRecognition::Empty
 pub surgeist_html::HtmlAttributeRecognition::Keyword
 pub surgeist_html::HtmlAttributeRecognition::Keyword::canonical: &'static str
@@ -481,6 +482,15 @@ pub fn surgeist_html::HtmlClosedBy::into_attribute(self) -> surgeist_html::Attri
 pub enum surgeist_html::HtmlClosedByState
 pub surgeist_html::HtmlClosedByState::Auto
 pub surgeist_html::HtmlClosedByState::Keyword(surgeist_html::HtmlClosedBy)
+pub enum surgeist_html::HtmlCommandKeyword
+pub surgeist_html::HtmlCommandKeyword::Custom(surgeist_html::HtmlCustomCommandKeyword)
+pub surgeist_html::HtmlCommandKeyword::Standard(surgeist_html::HtmlStandardCommand)
+impl surgeist_html::HtmlCommandKeyword
+pub fn surgeist_html::HtmlCommandKeyword::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlCommandState
+pub surgeist_html::HtmlCommandState::Custom
+pub surgeist_html::HtmlCommandState::Standard(surgeist_html::HtmlStandardCommand)
+pub surgeist_html::HtmlCommandState::Unknown
 #[non_exhaustive] pub enum surgeist_html::HtmlConstructionError
 pub surgeist_html::HtmlConstructionError::AllocationFailed
 pub surgeist_html::HtmlConstructionError::ForeignBuilder
@@ -601,6 +611,9 @@ pub fn surgeist_html::HtmlCrossOrigin::into_attribute(self) -> surgeist_html::At
 pub enum surgeist_html::HtmlCrossOriginState
 pub surgeist_html::HtmlCrossOriginState::Keyword(surgeist_html::HtmlCrossOrigin)
 pub surgeist_html::HtmlCrossOriginState::NoCors
+pub enum surgeist_html::HtmlCustomCommandError
+pub surgeist_html::HtmlCustomCommandError::BoundaryWhitespace
+pub surgeist_html::HtmlCustomCommandError::MissingPrefix
 pub enum surgeist_html::HtmlCustomControlAttributeContext
 pub surgeist_html::HtmlCustomControlAttributeContext::FormAssociated
 pub surgeist_html::HtmlCustomControlAttributeContext::NotFormAssociated
@@ -1196,6 +1209,13 @@ pub fn surgeist_html::HtmlPopover::into_attribute(self) -> surgeist_html::Attrib
 pub enum surgeist_html::HtmlPopoverState
 pub surgeist_html::HtmlPopoverState::Keyword(surgeist_html::HtmlPopover)
 pub surgeist_html::HtmlPopoverState::NoPopover
+pub enum surgeist_html::HtmlPopoverTargetAction
+pub surgeist_html::HtmlPopoverTargetAction::Hide
+pub surgeist_html::HtmlPopoverTargetAction::Show
+pub surgeist_html::HtmlPopoverTargetAction::Toggle
+impl surgeist_html::HtmlPopoverTargetAction
+pub fn surgeist_html::HtmlPopoverTargetAction::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlPopoverTargetAction::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlPragmaLanguage
 pub surgeist_html::HtmlPragmaLanguage::Absent
 pub surgeist_html::HtmlPragmaLanguage::Tag(surgeist_html::DocumentString)
@@ -1718,6 +1738,16 @@ pub surgeist_html::HtmlSrcsetUrlTokenError::Empty
 impl core::error::Error for surgeist_html::HtmlSrcsetUrlTokenError
 impl core::fmt::Display for surgeist_html::HtmlSrcsetUrlTokenError
 pub fn surgeist_html::HtmlSrcsetUrlTokenError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlStandardCommand
+pub surgeist_html::HtmlStandardCommand::Close
+pub surgeist_html::HtmlStandardCommand::HidePopover
+pub surgeist_html::HtmlStandardCommand::RequestClose
+pub surgeist_html::HtmlStandardCommand::ShowModal
+pub surgeist_html::HtmlStandardCommand::ShowPopover
+pub surgeist_html::HtmlStandardCommand::TogglePopover
+impl surgeist_html::HtmlStandardCommand
+pub fn surgeist_html::HtmlStandardCommand::canonical_keyword(self) -> &'static str
+pub fn surgeist_html::HtmlStandardCommand::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlSubmitterTypeObservation
 pub surgeist_html::HtmlSubmitterTypeObservation::Button(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlButtonTypeState>)
 pub surgeist_html::HtmlSubmitterTypeObservation::Input(surgeist_html::HtmlAttributeReport<surgeist_html::HtmlInputType>)
@@ -2557,6 +2587,10 @@ pub struct surgeist_html::HtmlCommaToken
 impl surgeist_html::HtmlCommaToken
 pub fn surgeist_html::HtmlCommaToken::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlTokenError>
 pub fn surgeist_html::HtmlCommaToken::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlCommandReadback
+impl surgeist_html::HtmlCommandReadback
+pub fn surgeist_html::HtmlCommandReadback::custom_value(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlCommandReadback::state(&self) -> surgeist_html::HtmlCommandState
 pub struct surgeist_html::HtmlComputedHeadingLevel(_)
 impl surgeist_html::HtmlComputedHeadingLevel
 pub fn surgeist_html::HtmlComputedHeadingLevel::value(self) -> u8
@@ -2653,6 +2687,10 @@ pub struct surgeist_html::HtmlControlTextReadback
 impl surgeist_html::HtmlControlTextReadback
 pub fn surgeist_html::HtmlControlTextReadback::origin(&self) -> surgeist_html::HtmlControlTextOrigin
 pub fn surgeist_html::HtmlControlTextReadback::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlCustomCommandKeyword
+impl surgeist_html::HtmlCustomCommandKeyword
+pub fn surgeist_html::HtmlCustomCommandKeyword::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlCustomCommandError>
+pub fn surgeist_html::HtmlCustomCommandKeyword::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlCustomControlClassification
 impl surgeist_html::HtmlCustomControlClassification
 pub fn surgeist_html::HtmlCustomControlClassification::form_associated(&self) -> bool
@@ -4028,6 +4066,10 @@ pub fn surgeist_html::HtmlValueInterpreter::time_element_value(&self, raw: core:
 pub fn surgeist_html::HtmlValueInterpreter::time_zone_offset(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeZoneOffset, surgeist_html::HtmlTimeZoneOffset>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::week(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlWeek, surgeist_html::HtmlWeek>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlYearlessDate, surgeist_html::HtmlYearlessDate>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::command(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCommandReadback>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::popovertargetaction(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPopoverTargetAction>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::popovertargetaction_for_input(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, state: surgeist_html::HtmlInputType) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPopoverTargetAction>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::contenteditable(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlContentEditableState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
