@@ -13802,3 +13802,397 @@ fn ordinary_details_name_group_closes_newly_inserted_open_member() {
         "insertion must preserve the existing open peer and close the given member"
     );
 }
+
+#[test]
+fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
+    use crate::construction::parser_session::{
+        StringLocation,
+        evidence::{
+            DiagnosticContext, DiagnosticKind, DiagnosticLocation, DiagnosticLocationRole,
+            DiagnosticRecord, DiagnosticSeverity, ParseEvidence,
+        },
+        native_view::{NativeKind, NativeString, NativeView},
+        provenance::{
+            AssociationRelation, ConstructionCause, NativeAssociation, NativeDestination,
+            OriginGroup,
+        },
+        provenance::{
+            LexicalDisposition, LexicalKind, LexicalOccurrence, LexicalPart, LexicalRole,
+        },
+    };
+    use crate::parser::tokenizer::token::{
+        DiagnosticCode, DiagnosticPhase, OriginKind, TextOrigin,
+    };
+    use std::mem::size_of;
+
+    fn units(view: &mut NativeView<'_>, value: NativeString<'_>, expected: &[u16]) {
+        assert_eq!(value.len(), expected.len());
+        for (index, &unit) in expected.iter().enumerate() {
+            assert_eq!(view.unit(&value, index).unwrap(), Some(unit));
+        }
+        assert_eq!(view.unit(&value, expected.len()).unwrap(), None);
+    }
+
+    // HTML 877d comment state: each literal NULL reports one tokenizer error
+    // and appends U+FFFD. The proper doctype and explicit skeleton require no
+    // implied-node or missing-doctype recovery. All NULLs precede head handoff.
+    // The source has N+61 UTF-8 bytes, six nodes, five edges and no attributes.
+    // Before any observation, allow all exact-growth submissions by these
+    // three N-record writers: Event, DiagnosticRecord and DiagnosticLocation.
+    // 2*(N+64)^2*(their sizes + u16) also covers old/new comment-unit layouts;
+    // the independent linear allowance covers lexer/origin/lexical/native/D1
+    // operations and their compiled records. These are roomy fixture fees,
+    // not a universal work bound or the archived 100M diagnostic threshold.
+    let per_record = size_of::<Event>()
+        + size_of::<DiagnosticRecord>()
+        + size_of::<DiagnosticLocation>()
+        + size_of::<TextOrigin>()
+        + size_of::<LexicalPart>()
+        + size_of::<LexicalOccurrence>()
+        + size_of::<ConstructionCause>()
+        + size_of::<OriginGroup>()
+        + size_of::<NativeAssociation>()
+        + size_of::<crate::HtmlSourceRange>()
+        + size_of::<ParserNode>()
+        + size_of::<u16>();
+    let fixed = size_of::<StandaloneDocumentDriver<'_>>()
+        + size_of::<head::HeadStage<'_>>()
+        + size_of::<head::HeadState<'_>>()
+        + size_of::<Tokenizer<'_>>()
+        + size_of::<ParserArenaSession>()
+        + size_of::<ParseEvidence>()
+        + size_of::<ParseControl>()
+        + size_of::<end::CompletedStandaloneDocument<'_>>()
+        + size_of::<end::FrozenStandaloneParts>();
+    let exact_growth_record = size_of::<Event>()
+        + size_of::<DiagnosticRecord>()
+        + size_of::<DiagnosticLocation>()
+        + size_of::<u16>();
+    let mut observations = Vec::new(); // Caller-owned test observations, not parser storage.
+    for n in [0_usize, 1, 8, 32, 128, 512] {
+        let room = (n + 64) as u64;
+        let physical = 64 * room * per_record as u64 + 16 * fixed as u64;
+        let work = 2 * room * room * exact_growth_record as u64
+            + 1024 * room * per_record as u64
+            + 32 * fixed as u64;
+        // N origins, N diagnostic locations, N lexical data parts and fixed
+        // native fields/causes, plus their final source-qualified D1 rows.
+        // The 128-record/unit allowance also admits transient cursor/cache
+        // slots without making observed row counts select the limit.
+        let caps = HtmlParseLimits::builder()
+            .source_units((n + 61) as u64)
+            .buffered_utf16_units(64 * room)
+            .token_attributes(0)
+            .auxiliary_entries(64 * room)
+            .managed_nodes(8)
+            .managed_edges(8)
+            .managed_attributes(0)
+            .managed_utf16_units(64 * room)
+            .source_map_entries(128 * room)
+            .source_map_payload_units(64 * room)
+            .diagnostics((n + 8) as u64)
+            .diagnostic_payload_units(0)
+            .context_effects(0)
+            .open_elements(8)
+            .tree_depth(8)
+            .managed_capacity_bytes(physical)
+            .peak_transient_bytes(2 * physical)
+            .atomic_layout_bytes(physical)
+            .work_credits(work)
+            .finish()
+            .unwrap();
+        let raw = format!(
+            "<!doctype html><!--{}--><html><head></head><body></body></html>",
+            "\0".repeat(n)
+        );
+        assert_eq!(raw.len(), n + 61);
+        let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), caps);
+        let source = request.source();
+        let mut driver = entry::initialized_driver(&request);
+        let mut submitted_slots = 0_usize;
+        let mut reservations = 0_usize;
+        let mut retained_capacity = 0_usize;
+        let mut handed_off = false;
+        let mut complete = false;
+        for _ in 0..(2 * source.len() + 128) {
+            let before_head = driver.head.is_none();
+            let old_capacity = driver.lexical.as_ref().unwrap().capacity();
+            let step = driver.step().unwrap();
+            if before_head && driver.head.is_none() {
+                let events = driver.lexical.as_ref().unwrap();
+                let capacity = events.capacity();
+                if capacity != old_capacity {
+                    // Actual old+new submitted layouts at this writer, never
+                    // total ReserveByte attributed to one vector or memcpy.
+                    submitted_slots += old_capacity + capacity;
+                    reservations += 1;
+                }
+                assert!(events.len() <= n);
+                retained_capacity = capacity;
+            } else if before_head {
+                let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+                assert_eq!(state.lexical.len(), n);
+                assert_eq!(state.lexical.capacity(), retained_capacity);
+                handed_off = true; // Same owning vector moved, not copied/reissued.
+            }
+            match step {
+                head::HeadStep::Consumed => {}
+                head::HeadStep::Complete => {
+                    complete = true;
+                    break;
+                }
+                boundary => panic!("unexpected ordinary boundary for N={n}: {boundary:?}"),
+            }
+        }
+        assert!(complete && handed_off, "actual EOF completion for N={n}");
+        assert_eq!(driver.control.stop(), None);
+        let parse_reserve = driver.control.usage().work(WorkCategory::ReserveByte);
+        assert!(parse_reserve >= (submitted_slots * size_of::<Event>()) as u64);
+        {
+            let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+            let evidence = state.before.kernel.session.observed_evidence();
+            let events = state.lexical.as_slice();
+            assert_eq!(events.len(), n);
+            for (i, event) in events.iter().enumerate() {
+                let Event::Diagnostic(id) = event else {
+                    panic!("only NULL diagnostics retained");
+                };
+                let (record, location) = evidence.get(&mut driver.control, id).unwrap();
+                assert_eq!(
+                    record.kind,
+                    DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                );
+                assert_eq!(
+                    record.context,
+                    DiagnosticContext::Tokenizer {
+                        phase: DiagnosticPhase::Tokenizer,
+                        state: State::Comment
+                    }
+                );
+                assert_eq!(location.source.source(), source.identity());
+                assert_eq!(
+                    (location.source.start(), location.source.end()),
+                    (19 + i, 20 + i)
+                );
+            }
+            let (occurrences, parts, omissions) = evidence.lexical_observations();
+            assert!(omissions.is_empty());
+            let comments: Vec<_> = occurrences
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| item.kind == LexicalKind::Comment)
+                .collect();
+            assert_eq!(comments.len(), 1);
+            let (comment, occurrence) = comments[0];
+            assert_eq!(occurrence.disposition, LexicalDisposition::Applied);
+            assert_eq!(occurrence.parent, None);
+            assert_eq!(occurrence.source.source(), source.identity());
+            assert_eq!(
+                (occurrence.source.start(), occurrence.source.end()),
+                (15, n + 22)
+            );
+            let data: Vec<_> = parts
+                .iter()
+                .filter(|part| part.occurrence == comment && part.role == LexicalRole::Data)
+                .collect();
+            assert_eq!(data.len(), n.max(1));
+            for (i, part) in data.iter().enumerate() {
+                if n == 0 {
+                    assert_eq!(part.kind, None);
+                    assert_eq!((part.start, part.end), (0, 0));
+                    assert_eq!(part.source.source(), source.identity());
+                    assert_eq!((part.source.start(), part.source.end()), (21, 21));
+                    continue;
+                }
+                assert_eq!(part.kind, Some(OriginKind::NullReplacement));
+                assert_eq!((part.start, part.end), (i, i + 1));
+                assert_eq!(part.source.source(), source.identity());
+                assert_eq!((part.source.start(), part.source.end()), (19 + i, 20 + i));
+            }
+        }
+        let mut input = Some(driver);
+        let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
+        assert!(input.is_none());
+        {
+            let diagnostics = completed.diagnostics().unwrap();
+            assert_eq!(diagnostics.len(), n);
+            for i in 0..n {
+                let (record, location) = diagnostics.retained_record(i).unwrap();
+                assert_eq!(
+                    record.kind,
+                    DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                );
+                assert_eq!(
+                    record.context,
+                    DiagnosticContext::Tokenizer {
+                        phase: DiagnosticPhase::Tokenizer,
+                        state: State::Comment
+                    }
+                );
+                assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+                assert_eq!(record.rule.anchor, "parse-error-unexpected-null-character");
+                assert_eq!(record.rule.branch, "unexpected-null-character");
+                assert_eq!(location.role, DiagnosticLocationRole::InputFrontier);
+                assert_eq!(location.token, None);
+                assert_eq!(location.source.source(), source.identity());
+                assert_eq!(
+                    (location.source.start(), location.source.end()),
+                    (19 + i, 20 + i)
+                );
+            }
+        }
+        let comment;
+        {
+            let mut view = completed.native_view().unwrap();
+            let root = view.root().unwrap();
+            assert!(matches!(
+                view.kind(&root).unwrap(),
+                NativeKind::Document(HtmlDocumentMode::NoQuirks)
+            ));
+            assert!(view.parent(&root).unwrap().is_none());
+            assert_eq!(view.child_count(&root).unwrap(), 3);
+            let doctype = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Doctype {
+                name,
+                public_id,
+                system_id,
+            } = view.kind(&doctype).unwrap()
+            else {
+                panic!("doctype");
+            };
+            units(&mut view, name, &[104, 116, 109, 108]);
+            // DOM creation defaults are real empty strings, not absent IDs.
+            units(&mut view, public_id.unwrap(), &[]);
+            units(&mut view, system_id.unwrap(), &[]);
+            assert_eq!(view.child_count(&doctype).unwrap(), 0);
+            comment = view.child_at(&root, 1).unwrap().unwrap();
+            let NativeKind::Comment(value) = view.kind(&comment).unwrap() else {
+                panic!("comment");
+            };
+            units(&mut view, value, &vec![0xfffd; n]);
+            assert_eq!(view.child_count(&comment).unwrap(), 0);
+            let html = view.child_at(&root, 2).unwrap().unwrap();
+            assert_eq!(view.child_count(&html).unwrap(), 2);
+            for (node, expected) in [
+                (&html, "html"),
+                (&view.child_at(&html, 0).unwrap().unwrap(), "head"),
+                (&view.child_at(&html, 1).unwrap().unwrap(), "body"),
+            ] {
+                let NativeKind::Element(name) = view.kind(node).unwrap() else {
+                    panic!("HTML element");
+                };
+                assert!(name.prefix.is_none());
+                units(
+                    &mut view,
+                    name.namespace.unwrap(),
+                    &"http://www.w3.org/1999/xhtml"
+                        .encode_utf16()
+                        .collect::<Vec<_>>(),
+                );
+                units(
+                    &mut view,
+                    name.local,
+                    &expected.encode_utf16().collect::<Vec<_>>(),
+                );
+                assert_eq!(view.attribute_count(node).unwrap(), 0);
+                if expected != "html" {
+                    assert_eq!(view.child_count(node).unwrap(), 0);
+                }
+                let parent = view.parent(node).unwrap().unwrap();
+                assert!(
+                    view.same_node(&parent, if expected == "html" { &root } else { &html })
+                        .unwrap()
+                );
+            }
+            for node in [&doctype, &comment] {
+                let parent = view.parent(node).unwrap().unwrap();
+                assert!(view.same_node(&parent, &root).unwrap());
+            }
+        }
+        {
+            let mut rows = completed.native_associations().unwrap();
+            let mut node_index = None;
+            for index in 0..rows.len() {
+                if rows.node_for(index, &comment).unwrap() {
+                    let (row, _) = rows.row(index).unwrap().unwrap();
+                    if let NativeDestination::Node(node) = row.destination {
+                        node_index = Some(node);
+                    }
+                }
+            }
+            let node = node_index.unwrap();
+            let mut count = 0;
+            for index in 0..rows.len() {
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                if row.destination == NativeDestination::Field(StringLocation::Comment(node))
+                    && row.relation == AssociationRelation::Output
+                {
+                    assert!(row.group.is_some());
+                    if n == 0 {
+                        assert_eq!((row.start, row.end), (0, 0));
+                        assert!(row.source.is_none() && row.kind.is_none());
+                    } else {
+                        assert_eq!((row.start, row.end), (count, count + 1));
+                        assert_eq!(row.kind, Some(OriginKind::NullReplacement));
+                        let range = row.source.as_ref().unwrap();
+                        assert_eq!(range.source(), source.identity());
+                        assert_eq!((range.start(), range.end()), (19 + count, 20 + count));
+                    }
+                    count += 1;
+                }
+            }
+            assert_eq!(count, n.max(1));
+        }
+        drop(comment);
+        assert!(completed.at_stop().is_none());
+        let before_cleanup = completed.usage().unwrap().clone();
+        let mut frozen = completed.freeze_parts().unwrap();
+        assert_eq!(frozen.source_binding().0, source.identity());
+        assert_eq!(frozen.source_binding().2, n + 61);
+        assert!(frozen.at_stop().is_none());
+        frozen.release().unwrap();
+        let after = frozen.retained_usage();
+        assert_eq!(after.actual_capacity_bytes, 0);
+        for resource in [
+            HtmlParseResource::BufferedUtf16Units,
+            HtmlParseResource::TokenAttributes,
+            HtmlParseResource::AuxiliaryEntries,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::SourceMapEntries,
+            HtmlParseResource::SourceMapPayloadUnits,
+            HtmlParseResource::Diagnostics,
+            HtmlParseResource::DiagnosticPayloadUnits,
+            HtmlParseResource::ContextEffects,
+            HtmlParseResource::OpenElements,
+            HtmlParseResource::ManagedCapacityBytes,
+            HtmlParseResource::PeakTransientBytes,
+        ] {
+            assert_eq!(after.resource(resource).current, 0, "N={n} {resource:?}");
+            assert!(
+                after.resource(resource).high_water >= before_cleanup.resource(resource).high_water
+            );
+        }
+        assert!(after.work(WorkCategory::ReserveByte) >= parse_reserve);
+        assert!(frozen.after_cleanup().is_some());
+        assert!(frozen.at_stop().is_none());
+        eprintln!(
+            "Event witness N={n} reservations={reservations} submitted_slots={submitted_slots} retained_capacity={retained_capacity} compiled_event_bytes={} parse_all_writer_reserve_bytes={parse_reserve} cleanup_actual_bytes={}",
+            size_of::<Event>(),
+            after.actual_capacity_bytes
+        );
+        observations.push((n, submitted_slots));
+    }
+    // All six actual completed trees, diagnostics, lexical/native ranges and
+    // zero-storage disposal were checked above. A generous 8N old+new slot
+    // envelope tests this actual writer's avoidable repeated exact growth;
+    // it is not an HTML constant or a blanket reservation-policy requirement.
+    for (n, submitted_slots) in observations {
+        assert!(
+            submitted_slots <= 8 * n,
+            "Event layout submissions for N={n}: {submitted_slots} > {}",
+            8 * n
+        );
+    }
+}
