@@ -19,14 +19,6 @@ pub enum HtmlMetaContentPresenceRequirement {
     UnexpectedContent,
 }
 
-/// Placement only; AllowedForThemeColor does not validate CSS media grammar.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlMetaMediaPlacement {
-    NotSpecified,
-    AllowedForThemeColor,
-    Forbidden,
-}
-
 /// At most one HTML meta with a specified charset per actual ordinary Document.
 /// This is not the broader meta-based encoding-declaration/serialization proof.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -185,25 +177,18 @@ impl<'a> HtmlSemanticSession<'a> {
         Ok(attribute)
     }
 
-    fn meta_author_theme_color(
+    pub(super) fn meta_author_theme_color(
         &mut self,
         name: Option<&DocumentString>,
     ) -> Result<bool, HtmlSemanticFailure> {
         self.charge(1)?;
-        let Some(name) = name else { return Ok(false) };
-        let units = name.code_units();
-        if units.len() != 11 {
-            return Ok(false);
-        }
-        // Source's fixed standard metadata name: whole ASCII-insensitive proof.
-        // No trim, Unicode fold, allocation or independent value grammar.
-        for (unit, byte) in units.iter().zip(b"theme-color") {
+        let mut cursor =
+            crate::media::ThemeColorNameCursor::new(name.map(DocumentString::code_units));
+        while !cursor.is_complete() {
             self.charge(1)?;
-            if !u8::try_from(*unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(byte)) {
-                return Ok(false);
-            }
+            cursor.advance();
         }
-        Ok(true)
+        Ok(cursor.result())
     }
 
     fn meta_charset_uniqueness(

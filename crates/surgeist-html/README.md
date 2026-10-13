@@ -1350,6 +1350,44 @@ Unchecked declaration context. Specified-charset multiplicity is not the broader
 encoding-declaration/serialization proof, actual decoding, pragma processing or
 whole meta conformance. Closed Query/Fact additions are intentionally breaking.
 
+<a id="media-surrounding-rules"></a>
+
+`HtmlValueInterpreter::media` preserves original media content and distinguishes
+absence, specified empty, the five ASCII whitespace characters and other UTF-16
+content. `media_for_meta` adds the actual name field for theme-color placement.
+These [local reports](src/attributes/media.rs) leave CSS grammar unchecked.
+The [pinned media clause](../../references/html-language-foundations--877d6146487f--b55e73c31978.md#mq)
+defines the HTML match branch separately from CSS parsing.
+The shared [borrowed cursor](src/media.rs) performs no allocation or normalization.
+
+Captured `HtmlSemanticQuery::MediaAttributeRules` separates CSS grammar evidence
+from the HTML processing condition. Empty and ASCII-whitespace-only content
+match unconditionally. Omitted link/style media defaults to all; omitted source
+or theme-color media supplies no filter. Nontrivial values use separately
+qualified grammar and environment observations; unavailable matching stays
+Missing. Specified `all` does not take the unconditional branch.
+
+Link results offer separate conditional hyperlink advice and external-resource
+gates; the consuming relationship owner determines which applies. Style returns
+its necessary media gate. Source keeps a known mismatch/skip separate from
+invalid grammar, unavailable evidence and unsupported capability. Picture
+requirements use actual type presence or restrictive media as sufficient
+witnesses, otherwise inspect following direct HTML source/img-with-srcset
+siblings. Theme-color uniqueness compares exact specified media in the ordinary
+HTML Document; template/shadow populations remain separate and a duplicate
+witness can resolve an unrelated child gap.
+
+[`HtmlMediaFacts`](src/semantics/media_facts.rs) binds each observation to its
+actual captured media field, host and independently expected grammar/environment
+revisions. Formation bounds incoming vector capacity and validation work. The
+[semantic operation](src/semantics/media.rs) shares the session's finite work,
+nested output, scratch cleanup and sticky atomic batch failure. Existing shared
+backing and fixed-wrapper allocation limitations still apply. These results do
+not execute CSS matching, stylesheet/resource application or theme UI selection.
+[Public tests](tests/media_rules.rs) cover those distinctions and admission
+boundaries. Closed Query/Fact additions are intentionally breaking for exhaustive
+Rust matches.
+
 <a id="captured-meta-pragma-content"></a>
 
 [HtmlValueInterpreter::meta_http_equiv](src/attributes/meta_pragma.rs) recognizes

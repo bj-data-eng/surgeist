@@ -1796,10 +1796,26 @@ separate surfaces.
 
 ### Media queries
 
-M:mq/A095: delegated CSS media grammar and environment matching need real CSS/
-host capability. HTML's empty/ASCII-whitespace match branch and per-element
-placement remain source-owned; the current surface has no uniform media
-attribute/environment operation. Unavailable environment must not mean mismatch.
+M:mq/A095: [media.rs](src/media.rs) owns the borrowed UTF-16 cursor and HTML's
+specified-empty/ASCII-whitespace unconditional match. Specified `all` remains a
+CSS observation; its boundary-trimmed spelling separately controls picture
+source author requirements. [Local reports](src/attributes/media.rs) retain exact
+fields, expanded-name applicability and independent theme-color placement.
+
+Captured `MediaAttributeRules` exposes conditional link advice/resource gates,
+style gates, source filtering/picture requirements and theme-color uniqueness
+over the actual ordinary HTML Document. Missing media gives link/style DefaultAll
+or source/theme NoFilter; unavailable influencing environment is Missing, never
+a mismatch. [Qualified facts](src/semantics/media_facts.rs) bind the actual media
+ordinal/capture/host and independent grammar/environment revisions, with bounded
+incoming record capacity and validation work. HTML does not execute CSS matching,
+resource application or theme selection. Link readers need actual relationship
+classification from their consumer.
+
+The [semantic owner](src/semantics/media.rs) uses the existing session's raw
+admission, work, nested output, scratch cleanup and atomic first-stop behavior.
+[Public literal tests](tests/media_rules.rs) cover exact values, qualification,
+picture order, ordinary-tree uniqueness and resource/batch boundaries.
 
 ## Supplemental source domains
 

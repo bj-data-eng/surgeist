@@ -57,6 +57,10 @@ mod form_name;
 mod id_author;
 mod meta_description;
 pub use meta_description::*;
+mod media;
+pub use media::*;
+mod media_facts;
+pub use media_facts::*;
 mod meta_author;
 pub use meta_author::*;
 mod meta_pragma;
@@ -97,8 +101,8 @@ use crate::{
     Attribute, DocumentString, HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedChildren, HtmlCapturedElement,
     HtmlCapturedNode, HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCustomControlAttributeContext,
-    HtmlHiddenState, HtmlHostFactsRevision, HtmlInteger, HtmlValueAdmissionError,
-    HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
+    HtmlDocumentClass, HtmlHiddenState, HtmlHostFactsRevision, HtmlInteger, HtmlMetaMediaPlacement,
+    HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
 };
 use std::{
     error::Error,
@@ -302,6 +306,8 @@ impl HtmlListParticipation {
 /// checks capture and host qualification before minting its immutable identity.
 #[derive(Debug)]
 pub struct HtmlSemanticContextInput {
+    media_revision: Option<HtmlMediaContextRevision>,
+    media: Option<HtmlMediaFacts>,
     image_dimension_revision: Option<HtmlImageDimensionRevision>,
     image_dimensions: Option<HtmlImageDimensionFacts>,
     natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
@@ -321,6 +327,8 @@ pub struct HtmlSemanticContextInput {
 impl HtmlSemanticContextInput {
     pub fn new(classifications: Vec<HtmlCustomControlClassification>) -> Self {
         Self {
+            media_revision: None,
+            media: None,
             natural_dimension_revision: None,
             image_dimension_revision: None,
             image_dimensions: None,
@@ -345,6 +353,15 @@ impl HtmlSemanticContextInput {
     ) -> Self {
         self.participation_revision = Some(expected);
         self.participation = participation;
+        self
+    }
+    pub fn with_media(
+        mut self,
+        expected: HtmlMediaContextRevision,
+        facts: Option<HtmlMediaFacts>,
+    ) -> Self {
+        self.media_revision = Some(expected);
+        self.media = facts;
         self
     }
     pub fn with_natural_dimensions(
@@ -404,6 +421,8 @@ impl HtmlSemanticContextInput {
 /// Checked immutable inputs, shared by queries over one exact capture.
 #[derive(Debug)]
 pub struct HtmlSemanticContext {
+    media_revision: Option<HtmlMediaContextRevision>,
+    media: Option<HtmlMediaFacts>,
     image_dimension_revision: Option<HtmlImageDimensionRevision>,
     image_dimensions: Option<HtmlImageDimensionFacts>,
     natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
@@ -427,6 +446,9 @@ pub struct HtmlSemanticContext {
 /// Rejected producer context; no query result is created.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticContextError {
+    MediaCaptureMismatch,
+    MediaHostRevisionMismatch,
+    MediaRevisionMismatch,
     ImageDimensionsCaptureMismatch,
     ImageDimensionsHostRevisionMismatch,
     ImageDimensionsRevisionMismatch,
@@ -472,6 +494,12 @@ impl fmt::Display for HtmlSemanticContextError {
 }
 impl Error for HtmlSemanticContextError {}
 impl HtmlSemanticContext {
+    pub fn media_revision(&self) -> Option<&HtmlMediaContextRevision> {
+        self.media_revision.as_ref()
+    }
+    pub fn media(&self) -> Option<&HtmlMediaFacts> {
+        self.media.as_ref()
+    }
     /// Moves already supplied records without projecting or copying the tree.
     /// `max_classifications` bounds classification vector capacity and duplicate
     /// validation. Each optional supplement carries its own checked, finite
@@ -486,6 +514,8 @@ impl HtmlSemanticContext {
             return Err(HtmlSemanticContextError::HostRevisionMismatch);
         }
         let HtmlSemanticContextInput {
+            media_revision,
+            media,
             image_dimension_revision,
             mut image_dimensions,
             natural_dimension_revision,
@@ -502,6 +532,17 @@ impl HtmlSemanticContext {
             global_inheritance_revision,
             global_inheritance,
         } = input;
+        if let Some(facts) = &media {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::MediaCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::MediaHostRevisionMismatch);
+            }
+            if media_revision.as_ref() != Some(facts.revision()) {
+                return Err(HtmlSemanticContextError::MediaRevisionMismatch);
+            }
+        }
         if let Some(facts) = &mut image_dimensions {
             if facts.capture() != capture.identity() {
                 return Err(HtmlSemanticContextError::ImageDimensionsCaptureMismatch);
@@ -624,6 +665,8 @@ impl HtmlSemanticContext {
             })?;
         Ok(Self {
             identity: HtmlSemanticContextId(Arc::new(())),
+            media_revision,
+            media,
             image_dimension_revision,
             image_dimensions,
             natural_dimension_revision,
@@ -898,6 +941,8 @@ pub enum HtmlSemanticQuery {
     IdAuthor,
     /// Content-presence and actual Document description uniqueness observations.
     MetaDescriptionAuthor,
+    /// Role-specific media rules, qualified CSS evidence and independent author checks.
+    MediaAttributeRules,
     /// Independent meta discriminator, content, media and charset-population evidence.
     MetaAttributeAuthorStructure,
     /// Non-executing pragma classification, content and Document observations.
@@ -1044,6 +1089,9 @@ impl HtmlSemanticQuery {
             }
             Self::MetaPragmaContent => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#pragma-directives"
+            }
+            Self::MediaAttributeRules => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#mq"
             }
             Self::MetaAttributeAuthorStructure => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-meta-element"
@@ -1283,6 +1331,9 @@ impl HtmlSemanticRequest {
 /// Evidence needed by an implemented query but not established by its producer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticMissing {
+    MediaGrammar(HtmlCaptureSubjectId),
+    MediaEnvironment(HtmlCaptureSubjectId),
+    DocumentClass(HtmlCaptureSubjectId),
     Parent(HtmlCaptureSubjectId),
     OrderedChildren(HtmlCaptureSubjectId),
     CustomControlClassification(HtmlCaptureSubjectId),
@@ -1423,6 +1474,7 @@ pub enum HtmlSemanticFact {
     FormNameAuthor(HtmlSemanticValue<HtmlFormNameAuthorReport>),
     IdAuthor(HtmlSemanticValue<HtmlIdAuthorReport>),
     MetaDescriptionAuthor(HtmlSemanticValue<HtmlMetaDescriptionAuthorReport>),
+    MediaAttributeRules(HtmlSemanticValue<HtmlMediaAttributeReadback>),
     MetaAttributeAuthorStructure(HtmlSemanticValue<HtmlMetaAttributeAuthorStructureReport>),
     MetaPragmaContent(HtmlSemanticValue<HtmlMetaPragmaContentReport>),
     UsemapReference(HtmlSemanticValue<HtmlUsemapReferenceResult>),
@@ -1505,6 +1557,7 @@ impl HtmlDirectionalitySource {
 /// This stores identities and finite configuration, never tree or query payloads.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticQualification {
+    media_revision: Option<HtmlMediaContextRevision>,
     image_dimension_revision: Option<HtmlImageDimensionRevision>,
     natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
     capture: HtmlCaptureId,
@@ -1519,6 +1572,9 @@ pub struct HtmlSemanticQualification {
     inert_revision: Option<HtmlFlatTreeRevision>,
 }
 impl HtmlSemanticQualification {
+    pub fn media_revision(&self) -> Option<&HtmlMediaContextRevision> {
+        self.media_revision.as_ref()
+    }
     pub fn image_dimension_revision(&self) -> Option<&HtmlImageDimensionRevision> {
         self.image_dimension_revision.as_ref()
     }
@@ -1694,6 +1750,7 @@ impl<'a> HtmlSemanticSession<'a> {
             // Prepare this fixed-size key before execution. Terminal stops and
             // repeated failures only clone its Arc; they do not allocate.
             qualification: Arc::new(HtmlSemanticQualification {
+                media_revision: context.media_revision.clone(),
                 image_dimension_revision: context.image_dimension_revision.clone(),
                 natural_dimension_revision: context.natural_dimension_revision.clone(),
                 capture: capture.identity().clone(),
@@ -2745,7 +2802,11 @@ impl<'a> HtmlSemanticSession<'a> {
             let node = self.node(&request.subject)?;
             let fact = match node.kind() {
                 HtmlCapturedNodeKind::Element(element) => {
-                    let foreign = if request.query == HtmlSemanticQuery::IsAttributeAuthorContext {
+                    let foreign = if matches!(
+                        request.query,
+                        HtmlSemanticQuery::IsAttributeAuthorContext
+                            | HtmlSemanticQuery::MediaAttributeRules
+                    ) {
                         false
                     } else {
                         !self.html_namespace(element)?
@@ -3044,6 +3105,11 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::MetaPragmaContent => {
                             HtmlSemanticFact::MetaPragmaContent(
                                 self.meta_pragma_content(&request.subject)?,
+                            )
+                        }
+                        HtmlSemanticQuery::MediaAttributeRules => {
+                            HtmlSemanticFact::MediaAttributeRules(
+                                self.media_attribute_rules(&request.subject)?,
                             )
                         }
                         HtmlSemanticQuery::MetaAttributeAuthorStructure => {
@@ -3448,6 +3514,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::MetaPragmaContent => {
                         HtmlSemanticFact::MetaPragmaContent(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::MediaAttributeRules => {
+                        HtmlSemanticFact::MediaAttributeRules(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::MetaAttributeAuthorStructure => {
                         HtmlSemanticFact::MetaAttributeAuthorStructure(

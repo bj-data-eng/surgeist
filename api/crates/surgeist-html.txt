@@ -1476,6 +1476,73 @@ pub surgeist_html::HtmlMapNameUniqueness::Duplicate(surgeist_html::HtmlCaptureSu
 pub surgeist_html::HtmlMapNameUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
 pub surgeist_html::HtmlMapNameUniqueness::NoName
 pub surgeist_html::HtmlMapNameUniqueness::Unique
+pub enum surgeist_html::HtmlMediaCondition
+pub surgeist_html::HtmlMediaCondition::CssDoesNotMatch
+pub surgeist_html::HtmlMediaCondition::CssMatches
+pub surgeist_html::HtmlMediaCondition::DefaultAll
+pub surgeist_html::HtmlMediaCondition::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlMediaCondition::NoFilter
+pub surgeist_html::HtmlMediaCondition::Unconditional
+pub surgeist_html::HtmlMediaCondition::Unsupported(surgeist_html::HtmlMediaExternalCapability)
+pub enum surgeist_html::HtmlMediaCursorAction
+pub surgeist_html::HtmlMediaCursorAction::Complete
+pub surgeist_html::HtmlMediaCursorAction::Finish
+pub surgeist_html::HtmlMediaCursorAction::InspectUnit(usize)
+pub enum surgeist_html::HtmlMediaElementRole
+pub surgeist_html::HtmlMediaElementRole::Link
+pub surgeist_html::HtmlMediaElementRole::Meta
+pub surgeist_html::HtmlMediaElementRole::Source
+pub surgeist_html::HtmlMediaElementRole::Style
+pub enum surgeist_html::HtmlMediaExternalCapability
+pub surgeist_html::HtmlMediaExternalCapability::Edition
+pub surgeist_html::HtmlMediaExternalCapability::EnvironmentFeature
+pub surgeist_html::HtmlMediaExternalCapability::GrammarFeature
+pub enum surgeist_html::HtmlMediaFactsError
+pub surgeist_html::HtmlMediaFactsError::ByteLimit
+pub surgeist_html::HtmlMediaFactsError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlMediaFactsError::DuplicateInput(surgeist_html::HtmlMediaAttributeInput)
+pub surgeist_html::HtmlMediaFactsError::GrammarRevisionMismatch
+pub surgeist_html::HtmlMediaFactsError::HostRevisionMismatch
+pub surgeist_html::HtmlMediaFactsError::InvalidInput
+pub surgeist_html::HtmlMediaFactsError::MatchRevisionMismatch
+pub surgeist_html::HtmlMediaFactsError::RecordLimit
+pub surgeist_html::HtmlMediaFactsError::RepresentationExhausted
+pub surgeist_html::HtmlMediaFactsError::WorkLimit
+impl core::error::Error for surgeist_html::HtmlMediaFactsError
+impl core::fmt::Display for surgeist_html::HtmlMediaFactsError
+pub fn surgeist_html::HtmlMediaFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlMediaGrammarEvidence
+pub surgeist_html::HtmlMediaGrammarEvidence::External(surgeist_html::HtmlMediaGrammarOutcome)
+pub surgeist_html::HtmlMediaGrammarEvidence::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlMediaGrammarEvidence::NotSpecified
+pub enum surgeist_html::HtmlMediaGrammarOutcome
+pub surgeist_html::HtmlMediaGrammarOutcome::Invalid
+pub surgeist_html::HtmlMediaGrammarOutcome::Unavailable
+pub surgeist_html::HtmlMediaGrammarOutcome::Unsupported(surgeist_html::HtmlMediaExternalCapability)
+pub surgeist_html::HtmlMediaGrammarOutcome::Valid
+pub enum surgeist_html::HtmlMediaMatchOutcome
+pub surgeist_html::HtmlMediaMatchOutcome::DoesNotMatch
+pub surgeist_html::HtmlMediaMatchOutcome::Matches
+pub surgeist_html::HtmlMediaMatchOutcome::Unavailable
+pub surgeist_html::HtmlMediaMatchOutcome::Unsupported(surgeist_html::HtmlMediaExternalCapability)
+pub enum surgeist_html::HtmlMediaPlacementObservation
+pub surgeist_html::HtmlMediaPlacementObservation::Known(surgeist_html::HtmlMetaMediaPlacement)
+pub surgeist_html::HtmlMediaPlacementObservation::Unapplied
+pub surgeist_html::HtmlMediaPlacementObservation::Unchecked
+pub enum surgeist_html::HtmlMediaProcessing
+pub surgeist_html::HtmlMediaProcessing::Link(surgeist_html::HtmlLinkMediaRules)
+pub surgeist_html::HtmlMediaProcessing::Meta(surgeist_html::HtmlMetaMediaProcessing)
+pub surgeist_html::HtmlMediaProcessing::Source
+pub surgeist_html::HtmlMediaProcessing::Source::context: surgeist_html::HtmlSourceMediaContext
+pub surgeist_html::HtmlMediaProcessing::Source::decision: surgeist_html::HtmlSourceMediaDecision
+pub surgeist_html::HtmlMediaProcessing::Source::picture_requirement: surgeist_html::HtmlPictureSourceRequirement
+pub surgeist_html::HtmlMediaProcessing::Source::type_attribute: core::option::Option<surgeist_html::Attribute>
+pub surgeist_html::HtmlMediaProcessing::Style(surgeist_html::HtmlStyleMediaGate)
+pub enum surgeist_html::HtmlMediaValueClass
+pub surgeist_html::HtmlMediaValueClass::Absent
+pub surgeist_html::HtmlMediaValueClass::AsciiWhitespaceOnly
+pub surgeist_html::HtmlMediaValueClass::Empty
+pub surgeist_html::HtmlMediaValueClass::Nontrivial
 pub enum surgeist_html::HtmlMetaCharsetUniqueness
 pub surgeist_html::HtmlMetaCharsetUniqueness::Duplicate(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlMetaCharsetUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
@@ -1508,6 +1575,11 @@ pub enum surgeist_html::HtmlMetaMediaPlacement
 pub surgeist_html::HtmlMetaMediaPlacement::AllowedForThemeColor
 pub surgeist_html::HtmlMetaMediaPlacement::Forbidden
 pub surgeist_html::HtmlMetaMediaPlacement::NotSpecified
+pub enum surgeist_html::HtmlMetaMediaProcessing
+pub surgeist_html::HtmlMetaMediaProcessing::NoProcessingEffect
+pub surgeist_html::HtmlMetaMediaProcessing::ThemeColor
+pub surgeist_html::HtmlMetaMediaProcessing::ThemeColor::condition: surgeist_html::HtmlMediaCondition
+pub surgeist_html::HtmlMetaMediaProcessing::ThemeColor::uniqueness: surgeist_html::HtmlThemeColorMediaUniqueness
 pub enum surgeist_html::HtmlMetaPragma
 pub surgeist_html::HtmlMetaPragma::ContentSecurityPolicy
 pub surgeist_html::HtmlMetaPragma::ContentType
@@ -2099,6 +2171,14 @@ pub surgeist_html::HtmlParserScriptingMode::Disabled
 pub surgeist_html::HtmlParserScriptingMode::Fragment
 pub surgeist_html::HtmlParserScriptingMode::Inert
 pub surgeist_html::HtmlParserScriptingMode::Normal
+pub enum surgeist_html::HtmlPictureSourceRequirement
+pub surgeist_html::HtmlPictureSourceRequirement::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlPictureSourceRequirement::NotApplicable
+pub surgeist_html::HtmlPictureSourceRequirement::NotTriggered
+pub surgeist_html::HtmlPictureSourceRequirement::SatisfiedByRestrictiveMedia
+pub surgeist_html::HtmlPictureSourceRequirement::SatisfiedByTypePresence
+pub surgeist_html::HtmlPictureSourceRequirement::Violated
+pub surgeist_html::HtmlPictureSourceRequirement::Violated::following: surgeist_html::HtmlCaptureSubjectId
 pub enum surgeist_html::HtmlPopover
 pub surgeist_html::HtmlPopover::Auto
 pub surgeist_html::HtmlPopover::Hint
@@ -2338,6 +2418,9 @@ pub surgeist_html::HtmlSemanticContextError::InertHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::InertRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::MediaCaptureMismatch
+pub surgeist_html::HtmlSemanticContextError::MediaHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::MediaRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsRevisionMismatch
@@ -2411,6 +2494,7 @@ pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<
 pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
 pub surgeist_html::HtmlSemanticFact::MapAreas(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlAreaCollection>)
 pub surgeist_html::HtmlSemanticFact::MapNameAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMapNameAuthorReport>)
+pub surgeist_html::HtmlSemanticFact::MediaAttributeRules(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMediaAttributeReadback>)
 pub surgeist_html::HtmlSemanticFact::MetaAttributeAuthorStructure(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaAttributeAuthorStructureReport>)
 pub surgeist_html::HtmlSemanticFact::MetaDescriptionAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaDescriptionAuthorReport>)
 pub surgeist_html::HtmlSemanticFact::MetaPragmaContent(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaPragmaContentReport>)
@@ -2480,6 +2564,7 @@ pub surgeist_html::HtmlSemanticMissing::ControlState::flag: surgeist_html::HtmlC
 pub surgeist_html::HtmlSemanticMissing::ControlState::subject: surgeist_html::HtmlCaptureSubjectId
 pub surgeist_html::HtmlSemanticMissing::CurrentValue(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::CustomControlClassification(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::DocumentClass(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::DocumentDesignMode(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::ElementReference
 pub surgeist_html::HtmlSemanticMissing::ElementReference::key: surgeist_html::HtmlElementReferenceKey
@@ -2488,6 +2573,8 @@ pub surgeist_html::HtmlSemanticMissing::FormAssociation(surgeist_html::HtmlCaptu
 pub surgeist_html::HtmlSemanticMissing::InertAncestry(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::InertNodeFacts(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::LanguageFallback(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::MediaEnvironment(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::MediaGrammar(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::ModalBlocking(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OrderedChildren(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OutputDefaultValueOverride(surgeist_html::HtmlCaptureSubjectId)
@@ -2554,6 +2641,7 @@ pub surgeist_html::HtmlSemanticQuery::ListOwner
 pub surgeist_html::HtmlSemanticQuery::ListStartingValue
 pub surgeist_html::HtmlSemanticQuery::MapAreas
 pub surgeist_html::HtmlSemanticQuery::MapNameAuthor
+pub surgeist_html::HtmlSemanticQuery::MediaAttributeRules
 pub surgeist_html::HtmlSemanticQuery::MetaAttributeAuthorStructure
 pub surgeist_html::HtmlSemanticQuery::MetaDescriptionAuthor
 pub surgeist_html::HtmlSemanticQuery::MetaPragmaContent
@@ -2637,6 +2725,17 @@ pub fn surgeist_html::HtmlSlotAssignment::into_shadowrootslotassignment_attribut
 pub enum surgeist_html::HtmlSourceCoordinates
 pub surgeist_html::HtmlSourceCoordinates::Utf16CodeUnits
 pub surgeist_html::HtmlSourceCoordinates::Utf8Bytes
+pub enum surgeist_html::HtmlSourceMediaContext
+pub surgeist_html::HtmlSourceMediaContext::MediaElement
+pub surgeist_html::HtmlSourceMediaContext::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlSourceMediaContext::Other
+pub surgeist_html::HtmlSourceMediaContext::Picture
+pub enum surgeist_html::HtmlSourceMediaDecision
+pub surgeist_html::HtmlSourceMediaDecision::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlSourceMediaDecision::NoFilter
+pub surgeist_html::HtmlSourceMediaDecision::NoMediaExclusion(surgeist_html::HtmlMediaCondition)
+pub surgeist_html::HtmlSourceMediaDecision::Skip
+pub surgeist_html::HtmlSourceMediaDecision::Unsupported(surgeist_html::HtmlMediaExternalCapability)
 pub enum surgeist_html::HtmlSourceRangeError
 pub surgeist_html::HtmlSourceRangeError::ForeignSource
 pub surgeist_html::HtmlSourceRangeError::OutOfBounds
@@ -2832,6 +2931,16 @@ pub surgeist_html::HtmlTextareaWrap::Soft
 impl surgeist_html::HtmlTextareaWrap
 pub fn surgeist_html::HtmlTextareaWrap::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlTextareaWrap::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlThemeColorMediaUniqueness
+pub surgeist_html::HtmlThemeColorMediaUniqueness::Duplicate
+pub surgeist_html::HtmlThemeColorMediaUniqueness::Duplicate::document: surgeist_html::HtmlCaptureSubjectId
+pub surgeist_html::HtmlThemeColorMediaUniqueness::Duplicate::peer: surgeist_html::HtmlCaptureSubjectId
+pub surgeist_html::HtmlThemeColorMediaUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlThemeColorMediaUniqueness::NoDocumentMetadataScope
+pub surgeist_html::HtmlThemeColorMediaUniqueness::NoHtmlDocumentScope
+pub surgeist_html::HtmlThemeColorMediaUniqueness::NotRequired
+pub surgeist_html::HtmlThemeColorMediaUniqueness::Unique
+pub surgeist_html::HtmlThemeColorMediaUniqueness::Unique::document: surgeist_html::HtmlCaptureSubjectId
 pub enum surgeist_html::HtmlTimeElementDescendantAuthorState
 pub surgeist_html::HtmlTimeElementDescendantAuthorState::Conforming
 pub surgeist_html::HtmlTimeElementDescendantAuthorState::Nonconforming(surgeist_html::HtmlCaptureSubjectId)
@@ -4150,6 +4259,9 @@ pub fn surgeist_html::HtmlEmbeddedDimensionReport::attribute(&self) -> &surgeist
 pub fn surgeist_html::HtmlEmbeddedDimensionReport::author(&self) -> surgeist_html::HtmlImageAttributeAuthorState
 pub fn surgeist_html::HtmlEmbeddedDimensionReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>>
 pub fn surgeist_html::HtmlEmbeddedDimensionReport::recovered(&self) -> core::option::Option<&surgeist_html::HtmlNonNegativeInteger>
+pub struct surgeist_html::HtmlExternalResourceMediaGate
+impl surgeist_html::HtmlExternalResourceMediaGate
+pub fn surgeist_html::HtmlExternalResourceMediaGate::condition(&self) -> &surgeist_html::HtmlMediaCondition
 pub struct surgeist_html::HtmlFlatTreeProducerId(_)
 impl surgeist_html::HtmlFlatTreeProducerId
 pub fn surgeist_html::HtmlFlatTreeProducerId::fresh() -> Self
@@ -4303,6 +4415,9 @@ impl core::cmp::PartialEq for surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlHostFactsRevision::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_html::HtmlHostFactsRevision
 pub fn surgeist_html::HtmlHostFactsRevision::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_html::HtmlHyperlinkMediaAdvice
+impl surgeist_html::HtmlHyperlinkMediaAdvice
+pub fn surgeist_html::HtmlHyperlinkMediaAdvice::condition(&self) -> &surgeist_html::HtmlMediaCondition
 pub struct surgeist_html::HtmlHyperlinkReferrerPolicyReadback
 impl surgeist_html::HtmlHyperlinkReferrerPolicyReadback
 pub fn surgeist_html::HtmlHyperlinkReferrerPolicyReadback::attribute_report(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>
@@ -4700,6 +4815,10 @@ pub fn surgeist_html::HtmlLinkDestinationReport::preload_processing_source_claus
 pub fn surgeist_html::HtmlLinkDestinationReport::preload_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlLinkDestinationReport::rel_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
 pub fn surgeist_html::HtmlLinkDestinationReport::rel_source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlLinkMediaRules
+impl surgeist_html::HtmlLinkMediaRules
+pub fn surgeist_html::HtmlLinkMediaRules::external_resource_gate(&self) -> surgeist_html::HtmlExternalResourceMediaGate
+pub fn surgeist_html::HtmlLinkMediaRules::hyperlink_advisory(&self) -> surgeist_html::HtmlHyperlinkMediaAdvice
 pub struct surgeist_html::HtmlListIntegerAttributeReport
 impl surgeist_html::HtmlListIntegerAttributeReport
 pub fn surgeist_html::HtmlListIntegerAttributeReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
@@ -4750,6 +4869,88 @@ pub fn surgeist_html::HtmlMapNameAuthorReport::id_attribute(&self) -> core::opti
 pub fn surgeist_html::HtmlMapNameAuthorReport::id_relation(&self) -> surgeist_html::HtmlMapNameIdRelation
 pub fn surgeist_html::HtmlMapNameAuthorReport::local(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>
 pub fn surgeist_html::HtmlMapNameAuthorReport::uniqueness(&self) -> &surgeist_html::HtmlMapNameUniqueness
+pub struct surgeist_html::HtmlMediaAttributeInput
+impl surgeist_html::HtmlMediaAttributeInput
+pub fn surgeist_html::HtmlMediaAttributeInput::new(capture: &surgeist_html::HtmlCapture, subject: surgeist_html::HtmlCaptureSubjectId, ordinal: usize) -> core::result::Result<Self, surgeist_html::HtmlMediaFactsError>
+pub fn surgeist_html::HtmlMediaAttributeInput::ordinal(&self) -> usize
+pub fn surgeist_html::HtmlMediaAttributeInput::raw<'a>(&self, capture: &'a surgeist_html::HtmlCapture) -> core::result::Result<&'a surgeist_html::DocumentString, surgeist_html::HtmlMediaFactsError>
+pub fn surgeist_html::HtmlMediaAttributeInput::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlMediaAttributeReadback
+impl surgeist_html::HtmlMediaAttributeReadback
+pub fn surgeist_html::HtmlMediaAttributeReadback::grammar(&self) -> &surgeist_html::HtmlMediaGrammarEvidence
+pub fn surgeist_html::HtmlMediaAttributeReadback::local(&self) -> &surgeist_html::HtmlMediaAttributeReport
+pub fn surgeist_html::HtmlMediaAttributeReadback::processing(&self) -> &surgeist_html::HtmlMediaProcessing
+pub struct surgeist_html::HtmlMediaAttributeReport
+impl surgeist_html::HtmlMediaAttributeReport
+pub fn surgeist_html::HtmlMediaAttributeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
+pub fn surgeist_html::HtmlMediaAttributeReport::meta_placement(&self) -> surgeist_html::HtmlMediaPlacementObservation
+pub fn surgeist_html::HtmlMediaAttributeReport::name_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlMediaAttributeReport::raw(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlMediaAttributeReport::role(&self) -> core::option::Option<surgeist_html::HtmlMediaElementRole>
+pub fn surgeist_html::HtmlMediaAttributeReport::value(&self) -> surgeist_html::HtmlMediaValue
+pub struct surgeist_html::HtmlMediaContextRevision
+impl surgeist_html::HtmlMediaContextRevision
+pub fn surgeist_html::HtmlMediaContextRevision::environment(&self) -> &surgeist_html::HtmlMediaEnvironmentRevision
+pub fn surgeist_html::HtmlMediaContextRevision::grammar(&self) -> &surgeist_html::HtmlMediaGrammarRevision
+pub fn surgeist_html::HtmlMediaContextRevision::new(grammar: surgeist_html::HtmlMediaGrammarRevision, environment: surgeist_html::HtmlMediaEnvironmentRevision) -> Self
+pub struct surgeist_html::HtmlMediaEnvironmentRevision
+impl surgeist_html::HtmlMediaEnvironmentRevision
+pub fn surgeist_html::HtmlMediaEnvironmentRevision::configuration(&self) -> u64
+pub fn surgeist_html::HtmlMediaEnvironmentRevision::new(producer: surgeist_html::HtmlMediaProducerId, configuration: u64, revision: u64) -> Self
+pub fn surgeist_html::HtmlMediaEnvironmentRevision::producer(&self) -> &surgeist_html::HtmlMediaProducerId
+pub fn surgeist_html::HtmlMediaEnvironmentRevision::revision(&self) -> u64
+pub struct surgeist_html::HtmlMediaFact
+impl surgeist_html::HtmlMediaFact
+pub fn surgeist_html::HtmlMediaFact::grammar(&self) -> core::option::Option<&surgeist_html::HtmlMediaGrammarAttestation>
+pub fn surgeist_html::HtmlMediaFact::input(&self) -> &surgeist_html::HtmlMediaAttributeInput
+pub fn surgeist_html::HtmlMediaFact::matching(&self) -> core::option::Option<&surgeist_html::HtmlMediaMatchAttestation>
+pub fn surgeist_html::HtmlMediaFact::new(input: surgeist_html::HtmlMediaAttributeInput, grammar: core::option::Option<surgeist_html::HtmlMediaGrammarAttestation>, matching: core::option::Option<surgeist_html::HtmlMediaMatchAttestation>) -> Self
+pub struct surgeist_html::HtmlMediaFacts
+impl surgeist_html::HtmlMediaFacts
+pub fn surgeist_html::HtmlMediaFacts::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlMediaFacts::facts(&self) -> &[surgeist_html::HtmlMediaFact]
+pub fn surgeist_html::HtmlMediaFacts::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlMediaFacts::new(capture: &surgeist_html::HtmlCapture, host: surgeist_html::HtmlHostFactsRevision, revision: surgeist_html::HtmlMediaContextRevision, facts: alloc::vec::Vec<surgeist_html::HtmlMediaFact>, limits: surgeist_html::HtmlMediaFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlMediaFactsError>
+pub fn surgeist_html::HtmlMediaFacts::revision(&self) -> &surgeist_html::HtmlMediaContextRevision
+pub struct surgeist_html::HtmlMediaFactsLimits
+impl surgeist_html::HtmlMediaFactsLimits
+pub fn surgeist_html::HtmlMediaFactsLimits::bytes(self) -> usize
+pub fn surgeist_html::HtmlMediaFactsLimits::new(records: usize, bytes: usize, work: usize) -> Self
+pub fn surgeist_html::HtmlMediaFactsLimits::records(self) -> usize
+pub fn surgeist_html::HtmlMediaFactsLimits::work(self) -> usize
+pub struct surgeist_html::HtmlMediaGrammarAttestation
+impl surgeist_html::HtmlMediaGrammarAttestation
+pub fn surgeist_html::HtmlMediaGrammarAttestation::new(revision: surgeist_html::HtmlMediaGrammarRevision, outcome: surgeist_html::HtmlMediaGrammarOutcome) -> Self
+pub fn surgeist_html::HtmlMediaGrammarAttestation::outcome(&self) -> surgeist_html::HtmlMediaGrammarOutcome
+pub fn surgeist_html::HtmlMediaGrammarAttestation::revision(&self) -> &surgeist_html::HtmlMediaGrammarRevision
+pub struct surgeist_html::HtmlMediaGrammarRevision
+impl surgeist_html::HtmlMediaGrammarRevision
+pub fn surgeist_html::HtmlMediaGrammarRevision::configuration(&self) -> u64
+pub fn surgeist_html::HtmlMediaGrammarRevision::new(producer: surgeist_html::HtmlMediaProducerId, configuration: u64, revision: u64) -> Self
+pub fn surgeist_html::HtmlMediaGrammarRevision::producer(&self) -> &surgeist_html::HtmlMediaProducerId
+pub fn surgeist_html::HtmlMediaGrammarRevision::revision(&self) -> u64
+pub struct surgeist_html::HtmlMediaMatchAttestation
+impl surgeist_html::HtmlMediaMatchAttestation
+pub fn surgeist_html::HtmlMediaMatchAttestation::new(revision: surgeist_html::HtmlMediaContextRevision, outcome: surgeist_html::HtmlMediaMatchOutcome) -> Self
+pub fn surgeist_html::HtmlMediaMatchAttestation::outcome(&self) -> surgeist_html::HtmlMediaMatchOutcome
+pub fn surgeist_html::HtmlMediaMatchAttestation::revision(&self) -> &surgeist_html::HtmlMediaContextRevision
+pub struct surgeist_html::HtmlMediaProducerId(_)
+impl surgeist_html::HtmlMediaProducerId
+pub fn surgeist_html::HtmlMediaProducerId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlMediaProducerId
+impl core::cmp::PartialEq for surgeist_html::HtmlMediaProducerId
+pub fn surgeist_html::HtmlMediaProducerId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlMediaValue
+impl surgeist_html::HtmlMediaValue
+pub fn surgeist_html::HtmlMediaValue::class(self) -> surgeist_html::HtmlMediaValueClass
+pub fn surgeist_html::HtmlMediaValue::matches_unconditionally(self) -> bool
+pub fn surgeist_html::HtmlMediaValue::restrictive_picture_value(self) -> bool
+pub struct surgeist_html::HtmlMediaValueCursor<'a>
+impl<'a> surgeist_html::HtmlMediaValueCursor<'a>
+pub fn surgeist_html::HtmlMediaValueCursor<'a>::advance(&mut self)
+pub fn surgeist_html::HtmlMediaValueCursor<'a>::new(units: core::option::Option<&'a [u16]>) -> Self
+pub fn surgeist_html::HtmlMediaValueCursor<'a>::next_action(&self) -> surgeist_html::HtmlMediaCursorAction
+pub fn surgeist_html::HtmlMediaValueCursor<'a>::result(&self) -> core::option::Option<surgeist_html::HtmlMediaValue>
 pub struct surgeist_html::HtmlMetaAttributeAuthorStructureReport
 impl surgeist_html::HtmlMetaAttributeAuthorStructureReport
 pub fn surgeist_html::HtmlMetaAttributeAuthorStructureReport::charset_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
@@ -5564,6 +5765,8 @@ pub fn surgeist_html::HtmlSemanticContext::image_dimensions(&self) -> core::opti
 pub fn surgeist_html::HtmlSemanticContext::inert(&self) -> core::option::Option<&surgeist_html::HtmlInertFacts>
 pub fn surgeist_html::HtmlSemanticContext::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticContext::language_direction(&self) -> core::option::Option<&surgeist_html::HtmlLanguageDirectionFacts>
+pub fn surgeist_html::HtmlSemanticContext::media(&self) -> core::option::Option<&surgeist_html::HtmlMediaFacts>
+pub fn surgeist_html::HtmlSemanticContext::media_revision(&self) -> core::option::Option<&surgeist_html::HtmlMediaContextRevision>
 pub fn surgeist_html::HtmlSemanticContext::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
 pub fn surgeist_html::HtmlSemanticContext::natural_dimensions(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensions>
 pub fn surgeist_html::HtmlSemanticContext::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, input: surgeist_html::HtmlSemanticContextInput, max_classifications: usize) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
@@ -5584,6 +5787,7 @@ pub fn surgeist_html::HtmlSemanticContextInput::with_image_dimensions(self, expe
 pub fn surgeist_html::HtmlSemanticContextInput::with_inert(self, expected: surgeist_html::HtmlFlatTreeRevision, facts: core::option::Option<surgeist_html::HtmlInertFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_language_direction(self, facts: surgeist_html::HtmlLanguageDirectionFacts) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_list_participation(self, expected: surgeist_html::HtmlListParticipationRevision, participation: core::option::Option<surgeist_html::HtmlListParticipation>) -> Self
+pub fn surgeist_html::HtmlSemanticContextInput::with_media(self, expected: surgeist_html::HtmlMediaContextRevision, facts: core::option::Option<surgeist_html::HtmlMediaFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_natural_dimensions(self, expected: surgeist_html::HtmlNaturalDimensionRevision, facts: core::option::Option<surgeist_html::HtmlNaturalDimensions>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_output_defaults(self, facts: surgeist_html::HtmlOutputDefaultFacts) -> Self
 pub struct surgeist_html::HtmlSemanticFailure
@@ -5615,6 +5819,7 @@ pub fn surgeist_html::HtmlSemanticQualification::host_revision(&self) -> &surgei
 pub fn surgeist_html::HtmlSemanticQualification::image_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionRevision>
 pub fn surgeist_html::HtmlSemanticQualification::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticQualification::limits(&self) -> surgeist_html::HtmlSemanticLimits
+pub fn surgeist_html::HtmlSemanticQualification::media_revision(&self) -> core::option::Option<&surgeist_html::HtmlMediaContextRevision>
 pub fn surgeist_html::HtmlSemanticQualification::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
 pub fn surgeist_html::HtmlSemanticQualification::participation_revision(&self) -> core::option::Option<&surgeist_html::HtmlListParticipationRevision>
 pub fn surgeist_html::HtmlSemanticQualification::source_revision(&self) -> &'static str
@@ -5793,6 +5998,9 @@ pub struct surgeist_html::HtmlSrcsetWidthError
 impl core::error::Error for surgeist_html::HtmlSrcsetWidthError
 impl core::fmt::Display for surgeist_html::HtmlSrcsetWidthError
 pub fn surgeist_html::HtmlSrcsetWidthError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlStyleMediaGate
+impl surgeist_html::HtmlStyleMediaGate
+pub fn surgeist_html::HtmlStyleMediaGate::condition(&self) -> &surgeist_html::HtmlMediaCondition
 pub struct surgeist_html::HtmlStylesheetLinkAttributeContext
 impl surgeist_html::HtmlStylesheetLinkAttributeContext
 pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::contains_stylesheet(&self) -> bool
@@ -6166,6 +6374,9 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::loading(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlLoading>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::map_name(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::media(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlMediaAttributeReport, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::media_for_meta(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, name: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlMediaAttributeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::meta_http_equiv(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlMetaPragmaState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
