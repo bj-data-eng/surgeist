@@ -16,6 +16,8 @@
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
 
+mod microdata;
+pub use microdata::*;
 mod table;
 pub use table::*;
 mod language;
@@ -323,7 +325,9 @@ pub struct HtmlSemanticContextInput {
     controls: Option<HtmlControlFacts>,
     element_references: Option<HtmlElementReferenceFacts>,
     output_defaults: Option<HtmlOutputDefaultFacts>,
+    microdata_revision: Option<HtmlMicrodataRevision>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
+    microdata: Option<HtmlMicrodataFacts>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
 }
 impl HtmlSemanticContextInput {
@@ -344,9 +348,20 @@ impl HtmlSemanticContextInput {
             controls: None,
             element_references: None,
             output_defaults: None,
+            microdata_revision: None,
+            microdata: None,
             global_inheritance_revision: None,
             global_inheritance: None,
         }
+    }
+    pub fn with_microdata(
+        mut self,
+        expected: HtmlMicrodataRevision,
+        facts: Option<HtmlMicrodataFacts>,
+    ) -> Self {
+        self.microdata_revision = Some(expected);
+        self.microdata = facts;
+        self
     }
     pub fn with_list_participation(
         mut self,
@@ -441,7 +456,9 @@ pub struct HtmlSemanticContext {
     controls: Option<HtmlControlFacts>,
     element_references: Option<HtmlElementReferenceFacts>,
     output_defaults: Option<HtmlOutputDefaultFacts>,
+    microdata_revision: Option<HtmlMicrodataRevision>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
+    microdata: Option<HtmlMicrodataFacts>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
     empty_language: DocumentString,
 }
@@ -451,6 +468,7 @@ pub enum HtmlSemanticContextError {
     MediaCaptureMismatch,
     MediaHostRevisionMismatch,
     MediaRevisionMismatch,
+    MicrodataFactsMismatch,
     ImageDimensionsCaptureMismatch,
     ImageDimensionsHostRevisionMismatch,
     ImageDimensionsRevisionMismatch,
@@ -531,6 +549,8 @@ impl HtmlSemanticContext {
             controls,
             element_references,
             output_defaults,
+            microdata_revision,
+            microdata,
             global_inheritance_revision,
             global_inheritance,
         } = input;
@@ -544,6 +564,12 @@ impl HtmlSemanticContext {
             if media_revision.as_ref() != Some(facts.revision()) {
                 return Err(HtmlSemanticContextError::MediaRevisionMismatch);
             }
+        }
+        if microdata
+            .as_ref()
+            .is_some_and(|facts| !facts.qualifies(capture, microdata_revision.as_ref()))
+        {
+            return Err(HtmlSemanticContextError::MicrodataFactsMismatch);
         }
         if let Some(facts) = &mut image_dimensions {
             if facts.capture() != capture.identity() {
@@ -684,6 +710,8 @@ impl HtmlSemanticContext {
             controls,
             element_references,
             output_defaults,
+            microdata_revision,
+            microdata,
             global_inheritance_revision,
             global_inheritance,
             empty_language: DocumentString::default(),
@@ -736,6 +764,9 @@ impl HtmlSemanticContext {
     }
     pub fn controls(&self) -> Option<&HtmlControlFacts> {
         self.controls.as_ref()
+    }
+    pub fn microdata_revision(&self) -> Option<&HtmlMicrodataRevision> {
+        self.microdata_revision.as_ref()
     }
     pub fn global_inheritance_revision(&self) -> Option<&HtmlGlobalInheritanceRevision> {
         self.global_inheritance_revision.as_ref()
@@ -854,6 +885,10 @@ impl HtmlSemanticCancellation {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticQuery {
+    MicrodataItem,
+    MicrodataProperty,
+    MicrodataAuthor,
+    MicrodataDocumentAuthor,
     IsAttributeAuthorContext,
     ImageDimensions,
     EmbeddedDimensionAuthorConformance,
@@ -998,6 +1033,12 @@ pub enum HtmlSemanticQuery {
 impl HtmlSemanticQuery {
     pub fn source_clause(self) -> &'static str {
         match self {
+            Self::MicrodataItem
+            | Self::MicrodataProperty
+            | Self::MicrodataAuthor
+            | Self::MicrodataDocumentAuthor => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#microdata"
+            }
             Self::IsAttributeAuthorContext => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-is"
             }
@@ -1341,6 +1382,8 @@ pub enum HtmlSemanticMissing {
     MediaGrammar(HtmlCaptureSubjectId),
     MediaEnvironment(HtmlCaptureSubjectId),
     DocumentClass(HtmlCaptureSubjectId),
+    MicrodataTypeCycle(HtmlCaptureSubjectId),
+    MicrodataFacts(HtmlCaptureSubjectId),
     Parent(HtmlCaptureSubjectId),
     OrderedChildren(HtmlCaptureSubjectId),
     CustomControlClassification(HtmlCaptureSubjectId),
@@ -1407,6 +1450,10 @@ impl HtmlOptionCollection {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlSemanticFact {
+    MicrodataItem(HtmlSemanticValue<HtmlMicrodataItem>),
+    MicrodataProperty(HtmlSemanticValue<HtmlMicrodataProperty>),
+    MicrodataAuthor(HtmlSemanticValue<HtmlMicrodataAuthor>),
+    MicrodataDocumentAuthor(HtmlSemanticValue<HtmlMicrodataDocumentAuthor>),
     IsAttributeAuthorContext(HtmlSemanticValue<HtmlCustomElementIsAuthorContext>),
     ImageDimensions(HtmlSemanticValue<HtmlImageDimensionReadback>),
     EmbeddedDimensionAuthorConformance(HtmlSemanticValue<HtmlEmbeddedDimensionAuthorReadback>),
@@ -1576,6 +1623,7 @@ pub struct HtmlSemanticQualification {
     participation_revision: Option<HtmlListParticipationRevision>,
     directionality_source: HtmlDirectionalitySource,
     editability_source: HtmlEditabilitySource,
+    microdata_revision: Option<HtmlMicrodataRevision>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     inert_revision: Option<HtmlFlatTreeRevision>,
 }
@@ -1612,6 +1660,9 @@ impl HtmlSemanticQualification {
     }
     pub fn inert_revision(&self) -> Option<&HtmlFlatTreeRevision> {
         self.inert_revision.as_ref()
+    }
+    pub fn microdata_revision(&self) -> Option<&HtmlMicrodataRevision> {
+        self.microdata_revision.as_ref()
     }
     pub fn global_inheritance_revision(&self) -> Option<&HtmlGlobalInheritanceRevision> {
         self.global_inheritance_revision.as_ref()
@@ -1770,6 +1821,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 attribute_input_limit: interpreter.max_input_code_units(),
                 participation_revision: context.participation_revision.clone(),
                 inert_revision: context.inert_revision.clone(),
+                microdata_revision: context.microdata_revision.clone(),
                 global_inheritance_revision: context.global_inheritance_revision.clone(),
                 editability_source: HtmlEditabilitySource,
                 directionality_source: HtmlDirectionalitySource {
@@ -2825,6 +2877,38 @@ impl<'a> HtmlSemanticSession<'a> {
                         !self.html_namespace(element)?
                     };
                     match request.query {
+                        HtmlSemanticQuery::MicrodataItem => {
+                            HtmlSemanticFact::MicrodataItem(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.microdata_item(&request.subject)?
+                            })
+                        }
+                        HtmlSemanticQuery::MicrodataProperty => {
+                            HtmlSemanticFact::MicrodataProperty(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.microdata_property(&request.subject)?
+                            })
+                        }
+                        HtmlSemanticQuery::MicrodataAuthor => {
+                            HtmlSemanticFact::MicrodataAuthor(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.microdata_author(&request.subject)?
+                            })
+                        }
+                        HtmlSemanticQuery::MicrodataDocumentAuthor => {
+                            HtmlSemanticFact::MicrodataDocumentAuthor(
+                                HtmlSemanticValue::Inapplicable,
+                            )
+                        }
                         HtmlSemanticQuery::IsAttributeAuthorContext => {
                             HtmlSemanticFact::IsAttributeAuthorContext(
                                 self.is_attribute_author_context(&request.subject, element)?,
@@ -3327,6 +3411,20 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 _ => match request.query {
+                    HtmlSemanticQuery::MicrodataItem => {
+                        HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::MicrodataProperty => {
+                        HtmlSemanticFact::MicrodataProperty(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::MicrodataAuthor => {
+                        HtmlSemanticFact::MicrodataAuthor(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::MicrodataDocumentAuthor => {
+                        HtmlSemanticFact::MicrodataDocumentAuthor(
+                            self.microdata_document_author(&request.subject)?,
+                        )
+                    }
                     HtmlSemanticQuery::IsAttributeAuthorContext => {
                         HtmlSemanticFact::IsAttributeAuthorContext(HtmlSemanticValue::Inapplicable)
                     }

@@ -383,10 +383,83 @@ pub(crate) fn split_space_tokens(input: &DocumentString) -> HtmlSpaceSeparatedTo
 
 /// Shared Infra token boundaries for ordinary and controlled materialization.
 pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item = &[u16]> + Clone {
-    input
-        .code_units()
-        .split(|&u| ascii_whitespace(u))
-        .filter(|token| !token.is_empty())
+    SpaceTokenSlices(SpaceTokenCursor::new(input.code_units()))
+}
+
+/// One bounded shared Infra action; admission belongs to the consuming caller.
+#[derive(Clone)]
+pub(crate) struct SpaceTokenCursor<'a> {
+    units: &'a [u16],
+    position: usize,
+    start: Option<usize>,
+    ready: Option<(usize, usize)>,
+    done: bool,
+}
+pub(crate) enum SpaceTokenStep {
+    Continue,
+    Token { start: usize, end: usize },
+    Done,
+}
+impl<'a> SpaceTokenCursor<'a> {
+    pub(crate) const BEGIN_WORK: usize = 1;
+    // Header selection/read/classification/progress or fixed token emission.
+    pub(crate) const STEP_WORK: usize = 4;
+    /// Header-only classification, before any source-unit operation.
+    pub(crate) fn inspects_unit(&self) -> bool {
+        self.ready.is_none() && !self.done && self.position < self.units.len()
+    }
+    pub(crate) fn new(units: &'a [u16]) -> Self {
+        Self {
+            units,
+            position: 0,
+            start: None,
+            ready: None,
+            done: false,
+        }
+    }
+    pub(crate) fn step(&mut self) -> SpaceTokenStep {
+        if let Some((start, end)) = self.ready.take() {
+            return SpaceTokenStep::Token { start, end };
+        }
+        if self.done {
+            return SpaceTokenStep::Done;
+        }
+        if self.position == self.units.len() {
+            self.done = true;
+            return match self.start.take() {
+                Some(start) => SpaceTokenStep::Token {
+                    start,
+                    end: self.position,
+                },
+                None => SpaceTokenStep::Done,
+            };
+        }
+        let position = self.position;
+        let white = ascii_whitespace(self.units[position]);
+        self.position += 1;
+        if white {
+            if let Some(start) = self.start.take() {
+                self.ready = Some((start, position));
+            }
+        } else if self.start.is_none() {
+            self.start = Some(position);
+        }
+        SpaceTokenStep::Continue
+    }
+}
+#[derive(Clone)]
+struct SpaceTokenSlices<'a>(SpaceTokenCursor<'a>);
+impl<'a> Iterator for SpaceTokenSlices<'a> {
+    type Item = &'a [u16];
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.0.step() {
+                SpaceTokenStep::Continue => {}
+                SpaceTokenStep::Done => return None,
+                SpaceTokenStep::Token { start, end } => return Some(&self.0.units[start..end]),
+            }
+        }
+    }
 }
 
 /// One borrowed Infra split-on-commas field. The separator is the actual

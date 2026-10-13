@@ -3,7 +3,9 @@
 //! This bounded family covers global and selected element-specific enumerations,
 //! Boolean attributes, exact scalar content values, submitter keyword overrides,
 //! and declarative-shadow template modes/flags. It does not resolve inheritance,
-//! editing, directionality, dragging, focus, microdata, or shadow-root creation.
+//! editing, directionality, dragging, focus, or shadow-root creation. Microdata
+//! token observations are local; qualified tree/URL/vocabulary facts belong to
+//! the semantic owner.
 //! The defining HTML clauses, rather than non-normative index summaries, own
 //! these rules. WHATWG source attribution is in `licenses/whatwg/NOTICE.md`.
 //! Referrer-policy vocabulary is qualified separately in its report metadata.
@@ -2247,6 +2249,8 @@ pub use navigable_target::*;
 mod textarea_wrap;
 pub use textarea_wrap::*;
 
+mod microdata;
+pub use microdata::*;
 mod hash_name;
 pub use hash_name::*;
 

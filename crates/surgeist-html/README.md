@@ -2695,6 +2695,55 @@ The [select construction owner](src/construction/parser_session/select.rs),
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
 record the consumed boundary.
 
+<a id="captured-microdata"></a>
+
+The captured `MicrodataItem`, `MicrodataProperty`, `MicrodataAuthor` and
+`MicrodataDocumentAuthor` queries interpret the
+[pinned microdata rules](../../references/html-microdata--877d6146487f.md#encoding-microdata)
+over actual ordinary tree relations. Local
+[`microdata_tokens`](src/attributes/microdata.rs) observations retain exact UTF-16
+backing, occurrence ranges and duplicate positions. Processing deduplicates
+itemprop names but retains itemref occurrences; author uniqueness is reported
+separately. Typed `HtmlMicrodataTokenList` authoring enforces local nonempty and
+case-sensitive uniqueness rules without claiming URL or vocabulary validity.
+
+Property discovery follows actual descendants and first same-tree itemref ID
+matches, sorts properties in tree order, and stops descent at nested itemscope
+elements. Foreign wrappers may contain participating HTML descendants, and the
+first referenced ID may belong to a foreign element. Template/shadow/host
+associations do not join ordinary trees. Values follow the element-specific
+content, src/href/data, value, datetime and text rules; an itemscope property
+supplies the actual nested item. Type context follows receiving item-value
+relationships, preserving independent type paths rather than guessing a nearest
+ancestor or merging incompatible vocabularies.
+
+Missing coverage and positive witnesses are separate report fields. For example,
+an item A containing a proved nested item B and an unavailable subtree may leave
+A's complete properties and B's complete type paths Missing while A's known type
+seed proves B typed. A proved contribution or concrete cycle likewise survives
+unrelated unavailable coverage; absence, full paths and complete collections
+still require all influencing evidence. Author checks retain independent
+eligibility, references, vocabulary, receiver and document cycle/orphan results.
+
+URL parsing and vocabulary definitions arrive through finite concrete
+`HtmlMicrodataFacts`, qualified to the capture, host, expected provider revisions,
+actual subject and original raw field/token. Property URL values require actual
+attribute-set-time document/base/encoding/event facts; current document context
+does not replace that history. Item identifiers use their separately qualified
+current-document operation. Missing observations remain Missing rather than
+inventing successful parsing or vocabulary truth. Fact construction uses ordinary
+allocation with incoming capacity and per-value limits; it is separate from the
+semantic session's controlled execution.
+
+The [semantic owner](src/semantics/microdata.rs) reuses the shared space-token
+cursor and actual session admission, work, scratch, nested output, cancellation
+and atomic first-stop publication. [Local tests](tests/attributes_microdata.rs)
+and [captured tests](tests/semantics_microdata.rs) use literal trees, values,
+receivers and qualified external observations. These are immutable HTML results;
+URL/vocabulary producers and live DOM collections retain their own boundaries.
+Repeated graph/path comparisons can be expensive; finite admitted work does not
+establish a linear-time or allocator/RSS bound.
+
 <a id="captured-template-marker-selection"></a>
 
 `HtmlSemanticQuery::TemplateForReference` interprets an HTML template's exact

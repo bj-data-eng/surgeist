@@ -1670,6 +1670,65 @@ pub enum surgeist_html::HtmlMeterRelationUnavailable
 pub surgeist_html::HtmlMeterRelationUnavailable::MissingRequiredValue
 pub surgeist_html::HtmlMeterRelationUnavailable::Representation
 pub surgeist_html::HtmlMeterRelationUnavailable::Syntax(surgeist_html::HtmlMeterNumberRole)
+pub enum surgeist_html::HtmlMicrodataCondition<T>
+pub surgeist_html::HtmlMicrodataCondition::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlMicrodataCondition::Satisfied
+pub surgeist_html::HtmlMicrodataCondition::Unchecked
+pub surgeist_html::HtmlMicrodataCondition::Violated(T)
+pub enum surgeist_html::HtmlMicrodataFactsError
+pub surgeist_html::HtmlMicrodataFactsError::Attribute(surgeist_html::HtmlValueAdmissionError)
+pub surgeist_html::HtmlMicrodataFactsError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlMicrodataFactsError::Duplicate
+pub surgeist_html::HtmlMicrodataFactsError::Limit
+pub surgeist_html::HtmlMicrodataFactsError::MissingRaw
+pub surgeist_html::HtmlMicrodataFactsError::OperationMismatch
+pub surgeist_html::HtmlMicrodataFactsError::TokenIndex
+pub surgeist_html::HtmlMicrodataFactsError::WrongRole
+impl core::error::Error for surgeist_html::HtmlMicrodataFactsError
+impl core::fmt::Display for surgeist_html::HtmlMicrodataFactsError
+pub fn surgeist_html::HtmlMicrodataFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlMicrodataRawSource
+pub surgeist_html::HtmlMicrodataRawSource::Data
+pub surgeist_html::HtmlMicrodataRawSource::Href
+pub surgeist_html::HtmlMicrodataRawSource::ItemId
+pub surgeist_html::HtmlMicrodataRawSource::ItemPropToken(usize)
+pub surgeist_html::HtmlMicrodataRawSource::ItemTypeToken(usize)
+pub surgeist_html::HtmlMicrodataRawSource::Src
+pub enum surgeist_html::HtmlMicrodataTokenKind
+pub surgeist_html::HtmlMicrodataTokenKind::ItemProp
+pub surgeist_html::HtmlMicrodataTokenKind::ItemRef
+pub surgeist_html::HtmlMicrodataTokenKind::ItemType
+impl surgeist_html::HtmlMicrodataTokenKind
+pub fn surgeist_html::HtmlMicrodataTokenKind::attribute(self) -> surgeist_html::KnownHtmlAttribute
+pub enum surgeist_html::HtmlMicrodataTokenListError
+pub surgeist_html::HtmlMicrodataTokenListError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
+pub surgeist_html::HtmlMicrodataTokenListError::Empty
+impl core::error::Error for surgeist_html::HtmlMicrodataTokenListError
+impl core::fmt::Display for surgeist_html::HtmlMicrodataTokenListError
+pub fn surgeist_html::HtmlMicrodataTokenListError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlMicrodataTyping
+pub surgeist_html::HtmlMicrodataTyping::Cyclic
+pub surgeist_html::HtmlMicrodataTyping::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlMicrodataTyping::Typed
+pub surgeist_html::HtmlMicrodataTyping::Untyped
+pub enum surgeist_html::HtmlMicrodataUrlOperation
+pub surgeist_html::HtmlMicrodataUrlOperation::AbsoluteAuthorToken(surgeist_html::HtmlMicrodataProviderRevision)
+pub surgeist_html::HtmlMicrodataUrlOperation::CurrentItemIdentifier
+pub surgeist_html::HtmlMicrodataUrlOperation::CurrentItemIdentifier::document: surgeist_html::HtmlCaptureDocumentId
+pub surgeist_html::HtmlMicrodataUrlOperation::CurrentItemIdentifier::revision: surgeist_html::HtmlMicrodataProviderRevision
+pub surgeist_html::HtmlMicrodataUrlOperation::ItemIdAuthor(surgeist_html::HtmlMicrodataProviderRevision)
+pub surgeist_html::HtmlMicrodataUrlOperation::PropertyAttributeSet
+pub surgeist_html::HtmlMicrodataUrlOperation::PropertyAttributeSet::base_revision: u64
+pub surgeist_html::HtmlMicrodataUrlOperation::PropertyAttributeSet::document: surgeist_html::HtmlCaptureDocumentId
+pub surgeist_html::HtmlMicrodataUrlOperation::PropertyAttributeSet::encoding_revision: u64
+pub surgeist_html::HtmlMicrodataUrlOperation::PropertyAttributeSet::event: u64
+pub surgeist_html::HtmlMicrodataUrlOperation::PropertyAttributeSet::revision: surgeist_html::HtmlMicrodataProviderRevision
+pub enum surgeist_html::HtmlMicrodataUrlResult
+pub surgeist_html::HtmlMicrodataUrlResult::AuthorSyntax(bool)
+pub surgeist_html::HtmlMicrodataUrlResult::Parsed(core::option::Option<surgeist_html::DocumentString>)
+pub enum surgeist_html::HtmlMicrodataValue
+pub surgeist_html::HtmlMicrodataValue::Item(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlMicrodataValue::String(surgeist_html::DocumentString)
 pub enum surgeist_html::HtmlModificationTimestamp<'a>
 pub surgeist_html::HtmlModificationTimestamp::Date(&'a surgeist_html::HtmlDate)
 pub surgeist_html::HtmlModificationTimestamp::Global(&'a surgeist_html::HtmlParsedGlobalDateTime)
@@ -2421,6 +2480,7 @@ pub surgeist_html::HtmlSemanticContextError::LanguageDirectionHostRevisionMismat
 pub surgeist_html::HtmlSemanticContextError::MediaCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::MediaHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::MediaRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::MicrodataFactsMismatch
 pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::NaturalDimensionsRevisionMismatch
@@ -2499,6 +2559,10 @@ pub surgeist_html::HtmlSemanticFact::MetaAttributeAuthorStructure(surgeist_html:
 pub surgeist_html::HtmlSemanticFact::MetaDescriptionAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaDescriptionAuthorReport>)
 pub surgeist_html::HtmlSemanticFact::MetaPragmaContent(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMetaPragmaContentReport>)
 pub surgeist_html::HtmlSemanticFact::Meter(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMeterState>)
+pub surgeist_html::HtmlSemanticFact::MicrodataAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataAuthor>)
+pub surgeist_html::HtmlSemanticFact::MicrodataDocumentAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataDocumentAuthor>)
+pub surgeist_html::HtmlSemanticFact::MicrodataItem(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataItem>)
+pub surgeist_html::HtmlSemanticFact::MicrodataProperty(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataProperty>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionFormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionFormOwner>)
 pub surgeist_html::HtmlSemanticFact::OptionIndex(surgeist_html::HtmlSemanticValue<usize>)
@@ -2576,6 +2640,8 @@ pub surgeist_html::HtmlSemanticMissing::InertNodeFacts(surgeist_html::HtmlCaptur
 pub surgeist_html::HtmlSemanticMissing::LanguageFallback(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::MediaEnvironment(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::MediaGrammar(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::MicrodataFacts(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::MicrodataTypeCycle(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::ModalBlocking(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OrderedChildren(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OutputDefaultValueOverride(surgeist_html::HtmlCaptureSubjectId)
@@ -2647,6 +2713,10 @@ pub surgeist_html::HtmlSemanticQuery::MetaAttributeAuthorStructure
 pub surgeist_html::HtmlSemanticQuery::MetaDescriptionAuthor
 pub surgeist_html::HtmlSemanticQuery::MetaPragmaContent
 pub surgeist_html::HtmlSemanticQuery::Meter
+pub surgeist_html::HtmlSemanticQuery::MicrodataAuthor
+pub surgeist_html::HtmlSemanticQuery::MicrodataDocumentAuthor
+pub surgeist_html::HtmlSemanticQuery::MicrodataItem
+pub surgeist_html::HtmlSemanticQuery::MicrodataProperty
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
 pub surgeist_html::HtmlSemanticQuery::OptionFormOwner
 pub surgeist_html::HtmlSemanticQuery::OptionIndex
@@ -5043,6 +5113,118 @@ pub fn surgeist_html::HtmlMeterState::maximum(&self) -> surgeist_html::HtmlFloat
 pub fn surgeist_html::HtmlMeterState::minimum(&self) -> surgeist_html::HtmlFloatingPointNumber
 pub fn surgeist_html::HtmlMeterState::optimum(&self) -> surgeist_html::HtmlFloatingPointNumber
 pub fn surgeist_html::HtmlMeterState::value(&self) -> surgeist_html::HtmlFloatingPointNumber
+pub struct surgeist_html::HtmlMicrodataAuthor
+impl surgeist_html::HtmlMicrodataAuthor
+pub fn surgeist_html::HtmlMicrodataAuthor::contribution(&self) -> &surgeist_html::HtmlMicrodataCondition<()>
+pub fn surgeist_html::HtmlMicrodataAuthor::id_eligibility(&self) -> &surgeist_html::HtmlMicrodataCondition<()>
+pub fn surgeist_html::HtmlMicrodataAuthor::identifier_permission(&self) -> &surgeist_html::HtmlMicrodataCondition<usize>
+pub fn surgeist_html::HtmlMicrodataAuthor::identifier_syntax(&self) -> &surgeist_html::HtmlMicrodataCondition<()>
+pub fn surgeist_html::HtmlMicrodataAuthor::itemid(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlMicrodataAuthor::itemscope(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlMicrodataAuthor::itemscope_author(&self) -> surgeist_html::HtmlAttributeAuthorState
+pub fn surgeist_html::HtmlMicrodataAuthor::names(&self) -> &surgeist_html::HtmlMicrodataTokenReport
+pub fn surgeist_html::HtmlMicrodataAuthor::receivers(&self) -> &surgeist_html::HtmlSemanticValue<alloc::vec::Vec<surgeist_html::HtmlMicrodataReceiverCheck>>
+pub fn surgeist_html::HtmlMicrodataAuthor::ref_eligibility(&self) -> &surgeist_html::HtmlMicrodataCondition<()>
+pub fn surgeist_html::HtmlMicrodataAuthor::references(&self) -> &surgeist_html::HtmlMicrodataCondition<usize>
+pub fn surgeist_html::HtmlMicrodataAuthor::references_local(&self) -> &surgeist_html::HtmlMicrodataTokenReport
+pub fn surgeist_html::HtmlMicrodataAuthor::same_vocabulary(&self) -> &surgeist_html::HtmlMicrodataCondition<usize>
+pub fn surgeist_html::HtmlMicrodataAuthor::type_definitions(&self) -> &surgeist_html::HtmlMicrodataCondition<usize>
+pub fn surgeist_html::HtmlMicrodataAuthor::type_eligibility(&self) -> &surgeist_html::HtmlMicrodataCondition<()>
+pub fn surgeist_html::HtmlMicrodataAuthor::type_urls(&self) -> &surgeist_html::HtmlMicrodataCondition<usize>
+pub fn surgeist_html::HtmlMicrodataAuthor::types(&self) -> &surgeist_html::HtmlMicrodataTokenReport
+pub struct surgeist_html::HtmlMicrodataDocumentAuthor
+impl surgeist_html::HtmlMicrodataDocumentAuthor
+pub fn surgeist_html::HtmlMicrodataDocumentAuthor::cycles(&self) -> &surgeist_html::HtmlMicrodataCondition<surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlMicrodataDocumentAuthor::orphans(&self) -> &surgeist_html::HtmlMicrodataCondition<surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlMicrodataDocumentAuthor::revisits(&self) -> &surgeist_html::HtmlMicrodataCondition<surgeist_html::HtmlCaptureSubjectId>
+pub struct surgeist_html::HtmlMicrodataFacts
+impl surgeist_html::HtmlMicrodataFacts
+pub fn surgeist_html::HtmlMicrodataFacts::new(capture: &surgeist_html::HtmlCapture, revision: surgeist_html::HtmlMicrodataRevision, urls: alloc::vec::Vec<surgeist_html::HtmlMicrodataUrlFact>, types: alloc::vec::Vec<surgeist_html::HtmlMicrodataTypeFact>, properties: alloc::vec::Vec<surgeist_html::HtmlMicrodataPropertyFact>, max_records: usize, max_units: usize) -> core::result::Result<Self, surgeist_html::HtmlMicrodataFactsError>
+pub struct surgeist_html::HtmlMicrodataItem
+impl surgeist_html::HtmlMicrodataItem
+pub fn surgeist_html::HtmlMicrodataItem::identifier(&self) -> &surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::DocumentString>>
+pub fn surgeist_html::HtmlMicrodataItem::own_types(&self) -> &surgeist_html::HtmlMicrodataTokenReport
+pub fn surgeist_html::HtmlMicrodataItem::properties(&self) -> &surgeist_html::HtmlSemanticValue<alloc::vec::Vec<surgeist_html::HtmlMicrodataProperty>>
+pub fn surgeist_html::HtmlMicrodataItem::revisits(&self) -> &surgeist_html::HtmlMicrodataCondition<surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlMicrodataItem::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlMicrodataItem::top_level(&self) -> bool
+pub fn surgeist_html::HtmlMicrodataItem::type_context(&self) -> &surgeist_html::HtmlMicrodataTypeContext
+pub struct surgeist_html::HtmlMicrodataProperty
+impl surgeist_html::HtmlMicrodataProperty
+pub fn surgeist_html::HtmlMicrodataProperty::names(&self) -> &surgeist_html::HtmlMicrodataTokenReport
+pub fn surgeist_html::HtmlMicrodataProperty::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlMicrodataProperty::value(&self) -> &surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataValue>
+pub struct surgeist_html::HtmlMicrodataPropertyFact
+impl surgeist_html::HtmlMicrodataPropertyFact
+pub fn surgeist_html::HtmlMicrodataPropertyFact::new(capture: &surgeist_html::HtmlCapture, binding: surgeist_html::HtmlMicrodataRawBinding, revision: surgeist_html::HtmlMicrodataProviderRevision, receiver: surgeist_html::HtmlCaptureSubjectId, origin: core::option::Option<surgeist_html::HtmlCaptureSubjectId>, permission: surgeist_html::HtmlMicrodataPropertyPermission, max_raw_units: usize) -> core::result::Result<Self, surgeist_html::HtmlMicrodataFactsError>
+pub struct surgeist_html::HtmlMicrodataPropertyPermission
+impl surgeist_html::HtmlMicrodataPropertyPermission
+pub fn surgeist_html::HtmlMicrodataPropertyPermission::new(defined_name: core::option::Option<bool>, defined_url: core::option::Option<bool>, takes_url: core::option::Option<bool>, proprietary: core::option::Option<bool>) -> Self
+pub struct surgeist_html::HtmlMicrodataProviderId(_)
+impl surgeist_html::HtmlMicrodataProviderId
+pub fn surgeist_html::HtmlMicrodataProviderId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlMicrodataProviderId
+impl core::cmp::PartialEq for surgeist_html::HtmlMicrodataProviderId
+pub fn surgeist_html::HtmlMicrodataProviderId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlMicrodataProviderRevision
+impl surgeist_html::HtmlMicrodataProviderRevision
+pub fn surgeist_html::HtmlMicrodataProviderRevision::new(producer: surgeist_html::HtmlMicrodataProviderId, configuration: u64, revision: u64) -> Self
+pub struct surgeist_html::HtmlMicrodataRawBinding
+impl surgeist_html::HtmlMicrodataRawBinding
+pub fn surgeist_html::HtmlMicrodataRawBinding::new(capture: &surgeist_html::HtmlCapture, subject: surgeist_html::HtmlCaptureSubjectId, source: surgeist_html::HtmlMicrodataRawSource, max_raw_units: usize) -> core::result::Result<Self, surgeist_html::HtmlMicrodataFactsError>
+pub fn surgeist_html::HtmlMicrodataRawBinding::source(&self) -> surgeist_html::HtmlMicrodataRawSource
+pub fn surgeist_html::HtmlMicrodataRawBinding::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlMicrodataRawBinding::units(&self) -> &[u16]
+pub struct surgeist_html::HtmlMicrodataReceiverCheck
+impl surgeist_html::HtmlMicrodataReceiverCheck
+pub fn surgeist_html::HtmlMicrodataReceiverCheck::name(&self) -> &surgeist_html::HtmlMicrodataCondition<usize>
+pub fn surgeist_html::HtmlMicrodataReceiverCheck::origin(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlMicrodataReceiverCheck::receiver(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlMicrodataReceiverCheck::token(&self) -> usize
+pub fn surgeist_html::HtmlMicrodataReceiverCheck::type_path(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub fn surgeist_html::HtmlMicrodataReceiverCheck::value_kind(&self) -> &surgeist_html::HtmlMicrodataCondition<usize>
+pub struct surgeist_html::HtmlMicrodataRevision
+impl surgeist_html::HtmlMicrodataRevision
+pub fn surgeist_html::HtmlMicrodataRevision::new(url: core::option::Option<surgeist_html::HtmlMicrodataProviderRevision>, vocabulary: core::option::Option<surgeist_html::HtmlMicrodataProviderRevision>) -> Self
+pub struct surgeist_html::HtmlMicrodataToken
+impl surgeist_html::HtmlMicrodataToken
+pub fn surgeist_html::HtmlMicrodataToken::contains_dot_or_colon(&self) -> bool
+pub fn surgeist_html::HtmlMicrodataToken::duplicate_of(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlMicrodataToken::end(&self) -> usize
+pub fn surgeist_html::HtmlMicrodataToken::start(&self) -> usize
+pub struct surgeist_html::HtmlMicrodataTokenList
+impl surgeist_html::HtmlMicrodataTokenList
+pub fn surgeist_html::HtmlMicrodataTokenList::into_attribute(self) -> surgeist_html::Attribute
+pub fn surgeist_html::HtmlMicrodataTokenList::new(kind: surgeist_html::HtmlMicrodataTokenKind, tokens: alloc::vec::Vec<surgeist_html::HtmlSpaceToken>) -> core::result::Result<Self, surgeist_html::HtmlMicrodataTokenListError>
+pub struct surgeist_html::HtmlMicrodataTokenReport
+impl surgeist_html::HtmlMicrodataTokenReport
+pub fn surgeist_html::HtmlMicrodataTokenReport::kind(&self) -> surgeist_html::HtmlMicrodataTokenKind
+pub fn surgeist_html::HtmlMicrodataTokenReport::local_author_conforming(&self) -> bool
+pub fn surgeist_html::HtmlMicrodataTokenReport::processing_tokens(&self) -> impl core::iter::traits::iterator::Iterator<Item = &[u16]>
+pub fn surgeist_html::HtmlMicrodataTokenReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlMicrodataTokenReport::token_units(&self, index: usize) -> core::option::Option<&[u16]>
+pub fn surgeist_html::HtmlMicrodataTokenReport::tokens(&self) -> &[surgeist_html::HtmlMicrodataToken]
+pub struct surgeist_html::HtmlMicrodataTypeContext
+impl surgeist_html::HtmlMicrodataTypeContext
+pub fn surgeist_html::HtmlMicrodataTypeContext::cycle(&self) -> core::option::Option<&surgeist_html::HtmlCaptureSubjectId>
+pub fn surgeist_html::HtmlMicrodataTypeContext::paths(&self) -> &surgeist_html::HtmlSemanticValue<alloc::vec::Vec<surgeist_html::HtmlMicrodataTypePath>>
+pub fn surgeist_html::HtmlMicrodataTypeContext::typing(&self) -> &surgeist_html::HtmlMicrodataTyping
+pub struct surgeist_html::HtmlMicrodataTypeFact
+impl surgeist_html::HtmlMicrodataTypeFact
+pub fn surgeist_html::HtmlMicrodataTypeFact::new(binding: surgeist_html::HtmlMicrodataRawBinding, revision: surgeist_html::HtmlMicrodataProviderRevision, defined: core::option::Option<bool>, vocabulary: core::option::Option<surgeist_html::HtmlMicrodataVocabularyId>, global_ids: core::option::Option<bool>) -> core::result::Result<Self, surgeist_html::HtmlMicrodataFactsError>
+pub struct surgeist_html::HtmlMicrodataTypePath
+impl surgeist_html::HtmlMicrodataTypePath
+pub fn surgeist_html::HtmlMicrodataTypePath::items(&self) -> &[surgeist_html::HtmlCaptureSubjectId]
+pub fn surgeist_html::HtmlMicrodataTypePath::types(&self) -> &surgeist_html::HtmlMicrodataTokenReport
+pub struct surgeist_html::HtmlMicrodataUrlFact
+impl surgeist_html::HtmlMicrodataUrlFact
+pub fn surgeist_html::HtmlMicrodataUrlFact::new(binding: surgeist_html::HtmlMicrodataRawBinding, expected: surgeist_html::HtmlMicrodataUrlOperation, actual: core::option::Option<surgeist_html::HtmlMicrodataUrlOperation>, result: core::option::Option<surgeist_html::HtmlMicrodataUrlResult>) -> core::result::Result<Self, surgeist_html::HtmlMicrodataFactsError>
+pub struct surgeist_html::HtmlMicrodataVocabularyId(_)
+impl surgeist_html::HtmlMicrodataVocabularyId
+pub fn surgeist_html::HtmlMicrodataVocabularyId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlMicrodataVocabularyId
+impl core::cmp::PartialEq for surgeist_html::HtmlMicrodataVocabularyId
+pub fn surgeist_html::HtmlMicrodataVocabularyId::eq(&self, o: &Self) -> bool
 pub struct surgeist_html::HtmlModificationDatetimeReport
 impl surgeist_html::HtmlModificationDatetimeReport
 pub fn surgeist_html::HtmlModificationDatetimeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
@@ -5783,6 +5965,7 @@ pub fn surgeist_html::HtmlSemanticContext::inert_revision(&self) -> core::option
 pub fn surgeist_html::HtmlSemanticContext::language_direction(&self) -> core::option::Option<&surgeist_html::HtmlLanguageDirectionFacts>
 pub fn surgeist_html::HtmlSemanticContext::media(&self) -> core::option::Option<&surgeist_html::HtmlMediaFacts>
 pub fn surgeist_html::HtmlSemanticContext::media_revision(&self) -> core::option::Option<&surgeist_html::HtmlMediaContextRevision>
+pub fn surgeist_html::HtmlSemanticContext::microdata_revision(&self) -> core::option::Option<&surgeist_html::HtmlMicrodataRevision>
 pub fn surgeist_html::HtmlSemanticContext::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
 pub fn surgeist_html::HtmlSemanticContext::natural_dimensions(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensions>
 pub fn surgeist_html::HtmlSemanticContext::new(capture: &surgeist_html::HtmlCapture, host_revision: surgeist_html::HtmlHostFactsRevision, input: surgeist_html::HtmlSemanticContextInput, max_classifications: usize) -> core::result::Result<Self, surgeist_html::HtmlSemanticContextError>
@@ -5804,6 +5987,7 @@ pub fn surgeist_html::HtmlSemanticContextInput::with_inert(self, expected: surge
 pub fn surgeist_html::HtmlSemanticContextInput::with_language_direction(self, facts: surgeist_html::HtmlLanguageDirectionFacts) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_list_participation(self, expected: surgeist_html::HtmlListParticipationRevision, participation: core::option::Option<surgeist_html::HtmlListParticipation>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_media(self, expected: surgeist_html::HtmlMediaContextRevision, facts: core::option::Option<surgeist_html::HtmlMediaFacts>) -> Self
+pub fn surgeist_html::HtmlSemanticContextInput::with_microdata(self, expected: surgeist_html::HtmlMicrodataRevision, facts: core::option::Option<surgeist_html::HtmlMicrodataFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_natural_dimensions(self, expected: surgeist_html::HtmlNaturalDimensionRevision, facts: core::option::Option<surgeist_html::HtmlNaturalDimensions>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_output_defaults(self, facts: surgeist_html::HtmlOutputDefaultFacts) -> Self
 pub struct surgeist_html::HtmlSemanticFailure
@@ -5836,6 +6020,7 @@ pub fn surgeist_html::HtmlSemanticQualification::image_dimension_revision(&self)
 pub fn surgeist_html::HtmlSemanticQualification::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticQualification::limits(&self) -> surgeist_html::HtmlSemanticLimits
 pub fn surgeist_html::HtmlSemanticQualification::media_revision(&self) -> core::option::Option<&surgeist_html::HtmlMediaContextRevision>
+pub fn surgeist_html::HtmlSemanticQualification::microdata_revision(&self) -> core::option::Option<&surgeist_html::HtmlMicrodataRevision>
 pub fn surgeist_html::HtmlSemanticQualification::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
 pub fn surgeist_html::HtmlSemanticQualification::participation_revision(&self) -> core::option::Option<&surgeist_html::HtmlListParticipationRevision>
 pub fn surgeist_html::HtmlSemanticQualification::source_revision(&self) -> &'static str
@@ -6402,6 +6587,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::meta_http_equiv(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlMetaPragmaState>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::meter_attributes(&self, element: &surgeist_html::QualifiedName, input: surgeist_html::HtmlMeterAttributeInput<'_>) -> core::result::Result<surgeist_html::HtmlMeterAttributeReport, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::microdata_tokens(&self, kind: surgeist_html::HtmlMicrodataTokenKind, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlMicrodataTokenReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::modification_datetime(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlModificationDatetimeReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
