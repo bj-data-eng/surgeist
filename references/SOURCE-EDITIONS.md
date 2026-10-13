@@ -541,3 +541,26 @@ the spin source's checkpoint occurs even if its wait goal is already met.
 Retaining this reference does not implement task scheduling, JavaScript stacks,
 global event delivery, loading, a live Document lifecycle or complete parser
 success. Hosted/captured/shadow domains require their own qualified facts.
+
+## Counter image output determination — 2026-10-12
+
+[#707](https://github.com/bj-data-eng/surgeist/issues/707) owns the selected
+text-only consumer policy. The [Counter Styles Editor’s Draft, 8 October 2026](css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md)
+remains the complete selected reference: a fresh check found identical
+whitespace-normalized text in sections 2, 3.7, 3.8 and 3.9. Image symbols remain
+at risk, and the general text-only conversion is not defined. The defined
+speech fallback is not a general string-conversion algorithm.
+
+The [current Lists 3 section 4.7](counter-image-output-css-lists-3--editor-capture-20261012--3059ea0c1e88.md)
+retains string-or-image output and counter-stack ordering. Its bounded Markdown
+conversion passed ID, link, prose and literal checks: 64 IDs, six literal
+blocks, no tables. It does not adopt unrelated authored grammar changes.
+
+The [pinned WebKit and Blink witness](counter-image-output-browser-witness--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
+records gated image syntax but text-only representation paths; it establishes
+no complete browser image-to-string precedent. Therefore #707 explicitly
+selects per-value same-integer fallback traversal for an image-bearing result
+when the consumer requires text, preserving rich image output and the separate
+normative speech rules. This is Surgeist policy, not a CSSWG resolution or
+browser-parity claim. #534/#693/#694 own implementation and tests; resolving the
+source decision does not complete them.
