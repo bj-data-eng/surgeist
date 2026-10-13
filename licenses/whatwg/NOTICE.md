@@ -195,3 +195,25 @@ The delegated XML-stylesheet/XML grammar is a separate W3C origin.
 Its [source-specific attribution](../w3c/NOTICE.md#dom-delegated-xml-pseudo-attribute-grammar)
 and complete historical/2015 document terms, original notices and prescribed
 derivative notices apply independently. WHATWG terms do not replace them.
+
+## Intrinsic HTML source supplements — 2026-10-13
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [nonce attributes](../../references/html-nonce--877d6146487f.md) and
+[microdata encoding](../../references/html-microdata--877d6146487f.md) references
+retain complete sections 2.5.6 and 5.2 of the already selected HTML revision
+`877d6146487f15b15bc8dd0e3c625063a37b456a`, complete original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Surgeist extracted and reformatted these sections offline on 13 October 2026
+from the original retrieved on 11 October. MDN compatibility annotations and
+source scripts/styles are omitted without execution; source clauses, examples
+and normative/informative labels remain authoritative. No semantic change or
+endorsement is implied.
+
+Specification prose remains Creative Commons Attribution 4.0 International
+under the existing exact [LICENSE](LICENSE). The BSD 3-Clause permission applies
+to portions incorporated into code, not as an alternative prose license.
+The [edition map](../../references/SOURCE-EDITIONS.md#remaining-intrinsic-html-source-clauses)
+and [conversion report](../../references/CONVERSION-REPORT.md#intrinsic-html-supplements--2026-10-13)
+record scope and fidelity; this reference addition makes no implementation claim.

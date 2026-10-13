@@ -304,7 +304,7 @@ suppress recognized contributions. The active Document policy, ancestor/CSP
 and popup composition, navigation and enforcement remain external operations.
 This additional representation adds no source identity or edition change.
 
-The collection omits unrelated full browser runtime chapters (microdata, loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing and scripting-state clauses. Their original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
+The collection omits unrelated full browser runtime chapters (loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing and scripting-state clauses. The supplemental [microdata encoding clauses](#remaining-intrinsic-html-source-clauses) retain section 5.2; section 5.3 vocabulary examples remain outside that capture. Original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
 
 The previous live [language/direction](dom-html-language-direction--editor-capture-20261010--494ac341fe2b.md), [interaction](dom-html-host-interaction--editor-capture-20261010--8a01a8043e7c.md), [HTML selector facts](dom-html-host-selector-facts--editor-capture-20261010--07d421b207b3.md) and [table processing](style-specialized-determinations-html-tables--editor-capture-20261011--7e90e654e94f.md) captures remain historical source identities and original decision evidence. For unstarted HTML language and HTML-supplied host facts, this pinned baseline supersedes those bounded live source selections. This changes source selection, not completed implementation provenance or the separately selected WHATWG DOM foundation. The repository LICENSE pin previously associated with those live captures did not identify their served chapter bytes; the new immutable full snapshot does identify this retained HTML edition.
 
@@ -680,3 +680,33 @@ The [Ecma notice and full terms](../licenses/ecma262/NOTICE.md) accompany this
 bounded conversion. No JS runtime, BigInt/object coercion, other-radix behavior,
 dtoa code or dependency is selected. This reference supplies source evidence,
 not implementation or whole HTML/ECMA conformance acceptance.
+
+## Remaining intrinsic HTML source clauses
+
+The [nonce attributes](html-nonce--877d6146487f.md#nonce-attributes) and
+[microdata encoding](html-microdata--877d6146487f.md#encoding-microdata) captures
+retain complete sections 2.5.6 and 5.2 from the existing HTML877d edition for
+[#1168](https://github.com/bj-data-eng/surgeist/issues/1168) and
+[#1166](https://github.com/bj-data-eng/surgeist/issues/1166). They were extracted
+offline on 13 October 2026 from the same complete original retrieved on
+11 October, SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+No new standard edition is selected.
+
+Nonce retains the independent content attribute and cryptographic slot, IDL
+getter/setter, exact attribute-change hook, conditional browsing-context-connected
+hiding and slot restoration, and cloning. Browsing-context connection and mixin
+eligibility remain governed by the retained foundations and the same snapshot.
+HTML consumes actual policy facts; this source does not assign CSP parsing or
+enforcement to the HTML crate.
+
+Microdata retains the generic model, item/type/identifier/reference relationships,
+all property-name alternatives, property-value selection, the property crawl,
+document cycle/orphan obligations and namespace. Section 5.3 vocabulary examples
+are excluded. URL/encoding and vocabulary facts keep their actual external
+owners; source retention does not certify those facts or implementation completion.
+
+The [conversion report](CONVERSION-REPORT.md#intrinsic-html-supplements--2026-10-13)
+records bounded extraction and fidelity checks. Specification prose remains
+CC BY 4.0 under the [WHATWG notice](../licenses/whatwg/NOTICE.md#intrinsic-html-source-supplements--2026-10-13),
+independently of BSD terms for source-code incorporation.

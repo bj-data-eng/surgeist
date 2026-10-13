@@ -669,3 +669,31 @@ visual equivalence or source-integrated implementation.
 The converted reference SHA-256 is
 `d9a172cec01000e5abcced21ee4f9bade1f9b6266eb59a5eb1877c54e1b91bf5`.
 This representation hash does not replace any complete original-page hash.
+
+## Intrinsic HTML supplements — 2026-10-13
+
+The [nonce attributes](html-nonce--877d6146487f.md) and
+[microdata encoding](html-microdata--877d6146487f.md) references are complete
+heading-section extractions from the already retained HTML877d source, SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Nonce ends before `lazy-loading-attributes`; microdata ends before `mdvocabs`.
+No new edition, software or source scripts were acquired or executed.
+
+The existing preparation/filter, approved Pandoc 3.1.11.1 and bundled parsed-GFM
+renderer preserve exact text order, headings, IDs, inline code, variables,
+literal examples and resolved links. Two nonce and five microdata MDN
+compatibility annotations were omitted as presentation material. No normative
+clause or source note is omitted. Whitespace-normalized rendered prose and the
+independent structural comparisons passed without errors.
+
+| Capture | Normalized extraction bytes / SHA-256 | Verified structure | Markdown SHA-256 |
+| --- | --- | --- | --- |
+| Nonce | 7,794 / `1ce61900b19cdbad79076014e3a03b4ec1401ceae153bdedd08f43adb594fb5a` | 40 IDs, 1 heading, 16 inline-code values, 28 variables, 39 links; no literal blocks or tables | `ec148b281a9e1c6270a9ab1b62a5857d37e708d5fb080b6fb7db2dc7fc82d19b` |
+| Microdata | 42,687 / `35d3d012166bfb6f977e81a154a28259467433df799b1647e3c9f7ef19abb2f0` | 209 IDs, 7 headings, 87 inline-code values, 28 variables, 191 links, 9 literal blocks; no tables | `ae6859843e3d08b7258f0d8c2e58380dd945b41a6c382fd726d75f38a16c6418` |
+
+The original, bounded extraction, preparation, rendered GFM and verification
+records are retained under `tmp/html-final-integration/reference-retention/`
+while the contribution's review consumes them. The exact existing
+[WHATWG terms and supplemental attribution](../licenses/whatwg/NOTICE.md#intrinsic-html-source-supplements--2026-10-13)
+remain linked. These checks establish source fidelity and navigation, not
+implementation correctness, browser behavior, external fact truth or conformance.

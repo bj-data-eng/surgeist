@@ -441,7 +441,7 @@ The 2026-10-10/11 additions below preserve bounded source selections. Current Co
 
 ## Pinned HTML language and supplemental engine contracts — 2026-10-11
 
-The ten HTML chapter representations and the supplemental being-rendered excerpt share one complete-original-source identity. Chapter filenames identify bounded extraction hashes; the row identifies the full immutable HTML snapshot. Scope and operative/history mapping are in the [edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline). Engine source excerpts are implementation evidence, independently of the normative HTML baseline.
+The ten HTML chapter representations and supplemental clause captures share one complete-original-source identity. Chapter filenames identify bounded extraction hashes; the row identifies the full immutable HTML snapshot. Scope and operative/history mapping are in the [edition map](SOURCE-EDITIONS.md#pinned-html-language-baseline). Engine source excerpts are implementation evidence, independently of the normative HTML baseline.
 
 | Source | Exact snapshot | Complete original source SHA-256 | Representation |
 | --- | --- | --- | --- |
@@ -600,3 +600,17 @@ and dated historical counts are retained. The 81 passive SVG assets are unchange
 | [ToString](ecmascript-number-serialization--2026--cd65f2eaa201.md#sec-tostring) | [ECMA2026 abstract operations](https://tc39.es/ecma262/2026/multipage/abstract-operations.html) | cd65f2eaa201aee5c37c2c6045ca9d7097644599cc14d3f4805fe2c55205b5d4 | partial; complete §7.1.17, selected Number branch |
 | [Number definitions and serialization](ecmascript-number-serialization--2026--cd65f2eaa201.md#sec-ecmascript-language-types-number-type) | [ECMA2026 data types and values](https://tc39.es/ecma262/2026/multipage/ecmascript-data-types-and-values.html) | 1d18bdb598f7b6c3c0093926dc98a42d79fb667ebdaaf030258371fccc27d3f3 | partial; Number introductory representation/rounding definitions, complete §6.1.6.1.20 and all notes |
 | [Mathematical definitions](ecmascript-number-serialization--2026--cd65f2eaa201.md#sec-mathematical-operations) | [ECMA2026 notation](https://tc39.es/ecma262/2026/multipage/notational-conventions.html) | 8b1a5e473eb59d285a2873ad428ce745013fb85384a80ed924644f81083c6d09 | partial; selected complete numeric/type/operator/conversion/abs/interval paragraphs and lists |
+
+## Intrinsic HTML supplements — 2026-10-13
+
+These two representations reuse the existing complete HTML877d source identity,
+retrieved on 11 October 2026 and extracted offline on 13 October. They add no
+original source identity; the collection remains 372 identities: 260 full,
+98 partial and 14 metadata-only. The [edition map](SOURCE-EDITIONS.md#remaining-intrinsic-html-source-clauses)
+records scope; the [conversion report](CONVERSION-REPORT.md#intrinsic-html-supplements--2026-10-13)
+records fidelity. Representation hashes are separate from the complete source hash.
+
+| Representation | Complete original source | Original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [Nonce attributes](html-nonce--877d6146487f.md#nonce-attributes) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | partial; complete §2.5.6 attribute, slot, change, hiding/restoration and clone clauses |
+| [Microdata encoding](html-microdata--877d6146487f.md#encoding-microdata) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | partial; complete §5.2 model, items, property names/values, crawl, document obligations and namespace; §5.3 excluded |
