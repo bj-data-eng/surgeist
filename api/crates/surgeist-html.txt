@@ -1246,6 +1246,7 @@ pub surgeist_html::HtmlInputRuleWork::ReadField
 pub surgeist_html::HtmlInputRuleWork::ReadValueLengths
 pub enum surgeist_html::HtmlInputSanitization
 pub surgeist_html::HtmlInputSanitization::Email
+pub surgeist_html::HtmlInputSanitization::Number
 pub surgeist_html::HtmlInputSanitization::Preserve
 pub surgeist_html::HtmlInputSanitization::StripCrLf
 pub surgeist_html::HtmlInputSanitization::StripCrLfAndTrim
@@ -1269,6 +1270,7 @@ pub surgeist_html::HtmlInputStringKind::Email
 pub surgeist_html::HtmlInputStringKind::Hidden
 pub surgeist_html::HtmlInputStringKind::LocalDateTime
 pub surgeist_html::HtmlInputStringKind::Month
+pub surgeist_html::HtmlInputStringKind::Number
 pub surgeist_html::HtmlInputStringKind::Password
 pub surgeist_html::HtmlInputStringKind::Radio
 pub surgeist_html::HtmlInputStringKind::Reset

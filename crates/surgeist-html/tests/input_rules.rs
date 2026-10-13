@@ -65,6 +65,7 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
                 | HtmlInputType::Week
                 | HtmlInputType::Time
                 | HtmlInputType::LocalDateTime
+                | HtmlInputType::Number
         ) {
             assert_eq!(
                 HtmlInputStringKind::try_from(state).unwrap().input_type(),
@@ -558,5 +559,127 @@ fn selection_range_validation_clamping_and_direction_use_actual_capabilities() {
     assert_eq!(
         Backward.resolve_none(HtmlInputNoneDirectionSupport::Unsupported),
         Backward
+    );
+}
+
+#[test]
+fn number_shared_rules_preserve_complete_grammar_without_binary64_conversion() {
+    let kind = HtmlInputStringKind::try_from(HtmlInputType::Number).unwrap();
+    assert_eq!(kind.value_mode(), HtmlInputValueMode::Value);
+    assert_eq!(kind.sanitization(), HtmlInputSanitization::Number);
+    assert!(!kind.is_selectable());
+    for (raw, expected) in [
+        (".5", ".5"),
+        ("-0", "-0"),
+        ("1e+2", "1e+2"),
+        ("1e999", "1e999"),
+        ("001.00", "001.00"),
+        ("+1", ""),
+        ("1.", ""),
+        ("1e", ""),
+        ("1e+", ""),
+        ("12junk", ""),
+        (" 1", ""),
+        ("1 ", ""),
+        ("1\r\n2", ""),
+        ("NaN", ""),
+        ("Infinity", ""),
+        ("", ""),
+    ] {
+        let units = raw.encode_utf16().collect::<Vec<_>>();
+        let mut cursor = HtmlInputSanitizationCursor::new(
+            kind.sanitization(),
+            &units,
+            HtmlInputEmailMode::Single,
+        );
+        let mut ranges = Vec::new();
+        let mut steps = 0;
+        while cursor.required_work().is_some() {
+            if let Some(range) = cursor.advance() {
+                ranges.push(range);
+            }
+            steps += 1;
+            assert!(steps <= units.len() * 4 + 14, "bounded complete grammar");
+        }
+        assert_eq!(ranges.len(), 1);
+        let range = ranges[0];
+        assert_eq!(
+            &units[range.start()..range.end()],
+            expected.encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(cursor.email_value_count(), None);
+        assert!((0..units.len()).all(|i| cursor.replacement_unit(i).is_none()));
+    }
+    let units = [0x31, 0xd800, 0x32];
+    let mut cursor =
+        HtmlInputSanitizationCursor::new(kind.sanitization(), &units, HtmlInputEmailMode::Multiple);
+    let mut range = None;
+    while cursor.required_work().is_some() {
+        range = cursor.advance().or(range);
+    }
+    assert_eq!(range.unwrap().end(), 0);
+}
+
+#[test]
+fn number_sanitizer_inspection_actions_are_explicit_and_source_ordered() {
+    let units = [0x31, 0x65, 0x39, 0x39, 0x39];
+    let mut cursor = HtmlInputSanitizationCursor::new(
+        HtmlInputSanitization::Number,
+        &units,
+        HtmlInputEmailMode::Single,
+    );
+    let mut inspections = 0;
+    let mut fixed = 0;
+    let mut result = None;
+    while let Some(work) = cursor.required_work() {
+        match work {
+            HtmlInputRuleWork::InspectValueUnit => inspections += 1,
+            HtmlInputRuleWork::ReadField => fixed += 1,
+            _ => panic!("no unrelated rule operation"),
+        }
+        result = cursor.advance().or(result);
+    }
+    // Sign; digit loop (digit plus terminator); decimal-point decision;
+    // exponent marker/sign decisions; three exponent digits = nine reads.
+    // Initial state, EOF exponent decision, finish, and interval emission = four.
+    assert_eq!((inspections, fixed), (9, 4));
+    assert_eq!((result.unwrap().start(), result.unwrap().end()), (0, 5));
+    assert_eq!(cursor.required_work(), None);
+    assert_eq!(cursor.advance(), None);
+}
+
+#[test]
+fn number_reset_type_and_clone_use_value_mode_without_selection_effects() {
+    use HtmlInputTypeEffect::*;
+    let number = HtmlInputStringKind::Number;
+    let old = HtmlInputStringFlags::from_retained(number, true, true, true, true, true);
+    let reset = old.reset_begin().reset_checkedness(false);
+    assert_eq!(reset.kind(), number);
+    assert!(!reset.dirty_value() && !reset.dirty_checkedness() && !reset.checkedness());
+    let clone = HtmlInputStringFlags::fresh()
+        .type_changed(number)
+        .clone_flags_from(old);
+    assert!(clone.dirty_value() && clone.dirty_checkedness() && clone.checkedness());
+    assert!(!clone.user_validity());
+    let mut change = HtmlInputTypeChange::new(HtmlInputStringKind::Hidden, number, 3);
+    let effects = std::iter::from_fn(|| change.next_effect()).collect::<Vec<_>>();
+    assert_eq!(
+        effects,
+        [
+            SetCurrentFromDefaultAndClearDirty,
+            SetRendering,
+            SignalTypeChange,
+            Sanitize(HtmlInputSanitization::Number),
+        ]
+    );
+    let mut change = HtmlInputTypeChange::new(number, HtmlInputStringKind::Text, 3);
+    assert_eq!(
+        std::iter::from_fn(|| change.next_effect()).collect::<Vec<_>>(),
+        [
+            SetRendering,
+            SignalTypeChange,
+            Sanitize(HtmlInputSanitization::StripCrLf),
+            SetInitialCursorAndNoneDirection,
+        ]
     );
 }

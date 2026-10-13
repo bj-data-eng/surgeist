@@ -884,7 +884,7 @@ limits, and reports retain its exact producer/configuration revision.
 
 The [shared input rules](src/input.rs) expose fixed state and source-ordered
 requirements for Hidden, Text, Search, Telephone, Password, Checkbox, Radio,
-Email, URL, Submit, Reset, Button, Date, Month, Week, Time and LocalDateTime.
+Email, URL, Submit, Reset, Button, Date, Month, Week, Time, LocalDateTime and Number.
 Submit/Reset/Button use Default mode: present value content, including empty,
 is read unchanged; absence supplies empty rather than `on` or a display label.
 They preserve exact UTF-16 and do not support selection.
@@ -911,6 +911,15 @@ make an input value valid. LocalDateTime preserves the valid date spelling,
 uses `T` and emits the shortest valid time: unnecessary zero seconds and trailing
 fraction zeros are omitted. These rules do not trim arbitrary whitespace, add a
 zone or execute stepping, constraint validation, a picker or live editing.
+
+Number also uses Value mode without selection. Its borrowed cursor checks the
+complete shared floating-point grammar and preserves every valid string exactly,
+including `1e999`. This check does not convert the value to binary64: an overflow
+in ordinary numeric conversion does not make the string grammatically invalid.
+Invalid whole strings become empty; the sanitizer does not trim whitespace or
+recover a numeric prefix. It does not clamp to min/max or perform optional step
+rounding.
+
 `HtmlInputStringFlags` retains the actual intrinsic flags; strings, selection
 and form identity remain separately owned. Type/default/checked changes,
 per-control reset and cloning keep their distinct triggers. Keyword recognition
@@ -2007,7 +2016,7 @@ context facts or required custom reactions produce typed failures. Neither entry
 executes JavaScript, fetches resources, attaches a live shadow root or synthesizes
 browser events. Supported input construction covers Text, Search, Telephone,
 Password, Hidden, Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month,
-Week, Time and LocalDateTime. Number, Range, Color, File and Image input
+Week, Time, LocalDateTime and Number. Range, Color, File and Image input
 construction remain unsupported. Other unavailable construction branches stop
 explicitly rather than publishing a partial success.
 
@@ -2329,8 +2338,9 @@ freeze; terminal cleanup performs no useful reset. General setters, nonnull
 overrides, form reset and hosted initialization remain separate work.
 
 Internal input creation supports Hidden, Text, Search, Telephone, Password,
-Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month, Week, Time and
-LocalDateTime through the [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
+Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month, Week, Time,
+LocalDateTime and Number through the
+[shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
 Text loses CR and LF; changing from Value mode to Hidden, Submit, Reset or Button
 writes a nonempty internal value back to the native value attribute. Changing to
@@ -2371,6 +2381,19 @@ variants intentionally break exhaustive matches; no compatibility shim is added.
 These operations do not execute live setters, validation or stepping; typed
 content-coordinate conversion remains a separate operation. Time zones,
 activation, submission and form-wide reset events remain outside this unit.
+
+Number creation and final per-control reset use the same whole-string grammar
+cursor over the actual default. Valid spelling is copied unchanged, while an
+invalid value produces empty current value without changing the native default.
+The existing controller admits each cursor inspection or fixed action before
+advance, and admits the selected UTF-16 copy and its source origins. Cloning
+copies actual current backing and canonical flags without resanitizing it;
+a later reset reloads and sanitizes the native default. Source-ordered creation
+still applies the fresh Text sanitizer to a value encountered before its type;
+type-first Number checks the complete string without trimming it. Public report
+readers expose the resulting current value, independent native default and
+qualified origins. No parsed current-number scalar, min/max clamping or optional
+step rounding is produced by these hooks.
 
 Radio construction applies the five [source-defined group triggers](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
 through the existing admitted effect owner. Peer normalization changes only

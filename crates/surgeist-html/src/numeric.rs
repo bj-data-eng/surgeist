@@ -2251,71 +2251,223 @@ struct FloatingPointPrefix<'a> {
     exponent: Option<IntegerPrefix<'a>>,
 }
 
+/// One bounded grammar action per advance; no conversion or allocation.
+/// Author mode recognizes the complete HTML floating-point grammar, independently
+/// of whether its decimal value can be represented as a finite binary64 number.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FloatingPointGrammarCursor<'a> {
+    units: &'a [u16],
+    mode: FloatingPointParseMode,
+    step: FloatingGrammarStep,
+    position: usize,
+    start: usize,
+    integer_start: usize,
+    integer_end: usize,
+    fraction_start: usize,
+    fraction_end: usize,
+    significand_end: usize,
+    exponent_start: usize,
+    negative: bool,
+    exponent_negative: bool,
+    has_exponent: bool,
+    valid: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FloatingGrammarStep {
+    Whitespace,
+    Sign,
+    Integer,
+    Point,
+    Fraction,
+    Exponent,
+    ExponentSign,
+    ExponentDigits,
+    Finish,
+    Done,
+}
+
+impl<'a> FloatingPointGrammarCursor<'a> {
+    pub(crate) fn new(units: &'a [u16], mode: FloatingPointParseMode) -> Self {
+        Self {
+            units,
+            mode,
+            step: FloatingGrammarStep::Whitespace,
+            position: 0,
+            start: 0,
+            integer_start: 0,
+            integer_end: 0,
+            fraction_start: 0,
+            fraction_end: 0,
+            significand_end: 0,
+            exponent_start: 0,
+            negative: false,
+            exponent_negative: false,
+            has_exponent: false,
+            valid: false,
+        }
+    }
+
+    pub(crate) fn is_finished(&self) -> bool {
+        self.step == FloatingGrammarStep::Done
+    }
+
+    pub(crate) fn is_valid(&self) -> bool {
+        self.is_finished() && self.valid
+    }
+
+    pub(crate) fn inspects_unit(&self) -> bool {
+        self.position < self.units.len()
+            && match self.step {
+                FloatingGrammarStep::Whitespace => self.mode == FloatingPointParseMode::Recovery,
+                FloatingGrammarStep::Sign
+                | FloatingGrammarStep::Integer
+                | FloatingGrammarStep::Point
+                | FloatingGrammarStep::Fraction
+                | FloatingGrammarStep::Exponent
+                | FloatingGrammarStep::ExponentSign
+                | FloatingGrammarStep::ExponentDigits => true,
+                FloatingGrammarStep::Finish | FloatingGrammarStep::Done => false,
+            }
+    }
+
+    fn reject(&mut self) {
+        self.valid = false;
+        self.step = FloatingGrammarStep::Done;
+    }
+
+    pub(crate) fn advance(&mut self) {
+        use FloatingGrammarStep::*;
+        match self.step {
+            Whitespace => {
+                if self.mode == FloatingPointParseMode::Recovery
+                    && self
+                        .units
+                        .get(self.position)
+                        .is_some_and(|&u| is_ascii_whitespace(u))
+                {
+                    self.position += 1;
+                } else {
+                    self.start = self.position;
+                    self.step = Sign;
+                }
+            }
+            Sign => {
+                let unit = self.units.get(self.position).copied();
+                self.negative = unit == Some(b'-' as u16);
+                if self.negative
+                    || (self.mode == FloatingPointParseMode::Recovery && unit == Some(b'+' as u16))
+                {
+                    self.position += 1;
+                }
+                self.integer_start = self.position;
+                self.step = Integer;
+            }
+            Integer => {
+                if self.units.get(self.position).is_some_and(|&u| is_digit(u)) {
+                    self.position += 1;
+                } else {
+                    self.integer_end = self.position;
+                    self.fraction_start = self.position;
+                    self.fraction_end = self.position;
+                    self.step = Point;
+                }
+            }
+            Point => {
+                if self.units.get(self.position) == Some(&(b'.' as u16)) {
+                    self.position += 1;
+                    self.fraction_start = self.position;
+                    self.step = Fraction;
+                } else if self.integer_end == self.integer_start {
+                    self.reject();
+                } else {
+                    self.significand_end = self.position;
+                    self.step = Exponent;
+                }
+            }
+            Fraction => {
+                if self.units.get(self.position).is_some_and(|&u| is_digit(u)) {
+                    self.position += 1;
+                } else {
+                    self.fraction_end = self.position;
+                    if self.fraction_end == self.fraction_start
+                        && (self.mode == FloatingPointParseMode::Author
+                            || self.integer_end == self.integer_start)
+                    {
+                        self.reject();
+                    } else {
+                        self.significand_end = self.position;
+                        self.step = Exponent;
+                    }
+                }
+            }
+            Exponent => {
+                if matches!(self.units.get(self.position), Some(&0x45) | Some(&0x65)) {
+                    self.position += 1;
+                    self.step = ExponentSign;
+                } else {
+                    self.step = Finish;
+                }
+            }
+            ExponentSign => {
+                let unit = self.units.get(self.position).copied();
+                self.exponent_negative = unit == Some(b'-' as u16);
+                if matches!(unit, Some(0x2b) | Some(0x2d)) {
+                    self.position += 1;
+                }
+                self.exponent_start = self.position;
+                self.step = ExponentDigits;
+            }
+            ExponentDigits => {
+                if self.units.get(self.position).is_some_and(|&u| is_digit(u)) {
+                    self.position += 1;
+                } else if self.position == self.exponent_start {
+                    if self.mode == FloatingPointParseMode::Author {
+                        self.reject();
+                    } else {
+                        self.position = self.significand_end;
+                        self.step = Finish;
+                    }
+                } else {
+                    self.has_exponent = true;
+                    self.step = Finish;
+                }
+            }
+            Finish => {
+                self.valid = self.mode == FloatingPointParseMode::Recovery
+                    || self.position == self.units.len();
+                self.step = Done;
+            }
+            Done => {}
+        }
+    }
+
+    fn prefix(&self) -> Result<FloatingPointPrefix<'a>, NumericParseError> {
+        if !self.is_valid() {
+            return Err(NumericParseError::InvalidSyntax);
+        }
+        Ok(FloatingPointPrefix {
+            token: &self.units[self.start..self.position],
+            negative: self.negative,
+            integer_digits: &self.units[self.integer_start..self.integer_end],
+            fraction_digits: &self.units[self.fraction_start..self.fraction_end],
+            exponent: self.has_exponent.then(|| IntegerPrefix {
+                negative: self.exponent_negative,
+                digits: &self.units[self.exponent_start..self.position],
+            }),
+        })
+    }
+}
+
 fn floating_point_prefix(
     units: &[u16],
     mode: FloatingPointParseMode,
 ) -> Result<FloatingPointPrefix<'_>, NumericParseError> {
-    let recover = mode == FloatingPointParseMode::Recovery;
-    let mut position = 0;
-    if recover {
-        skip_whitespace(units, &mut position);
+    let mut cursor = FloatingPointGrammarCursor::new(units, mode);
+    while !cursor.is_finished() {
+        cursor.advance();
     }
-    let start = position;
-    let negative = units.get(position) == Some(&(b'-' as u16));
-    if negative || (recover && units.get(position) == Some(&(b'+' as u16))) {
-        position += 1;
-    }
-    let integer_start = position;
-    collect_digits(units, &mut position);
-    let has_integer = position > integer_start;
-    let integer_digits = &units[integer_start..position];
-    let mut has_fraction = false;
-    let mut fraction_digits = &units[0..0];
-    if units.get(position) == Some(&(b'.' as u16)) {
-        position += 1;
-        let fraction_start = position;
-        collect_digits(units, &mut position);
-        has_fraction = position > fraction_start;
-        fraction_digits = &units[fraction_start..position];
-        if !recover && !has_fraction {
-            return Err(NumericParseError::InvalidSyntax);
-        }
-    }
-    if !has_integer && !has_fraction {
-        return Err(NumericParseError::InvalidSyntax);
-    }
-    let significand_end = position;
-    let mut exponent = None;
-    if matches!(units.get(position), Some(0x45 | 0x65)) {
-        position += 1;
-        let negative = units.get(position) == Some(&0x2d);
-        if matches!(units.get(position), Some(0x2b | 0x2d)) {
-            position += 1;
-        }
-        let exponent_start = position;
-        collect_digits(units, &mut position);
-        if position == exponent_start {
-            if !recover {
-                return Err(NumericParseError::InvalidSyntax);
-            }
-            position = significand_end;
-        } else {
-            exponent = Some(IntegerPrefix {
-                negative,
-                digits: &units[exponent_start..position],
-            });
-        }
-    }
-    if !recover && position != units.len() {
-        return Err(NumericParseError::InvalidSyntax);
-    }
-    Ok(FloatingPointPrefix {
-        token: &units[start..position],
-        negative,
-        integer_digits,
-        fraction_digits,
-        exponent,
-    })
+    cursor.prefix()
 }
 
 fn convert_floating_point_token(token: &str) -> Result<HtmlFloatingPointNumber, NumericParseError> {
@@ -4571,6 +4723,54 @@ mod tests {
         assert_eq!(
             HtmlInteger::from(-2).compare(&HtmlInteger::from(-1)),
             Ordering::Less
+        );
+    }
+    #[test]
+    fn bounded_floating_grammar_keeps_author_and_recovery_components_and_conversion_distinct() {
+        for (raw, token, integer, fraction, exponent) in [
+            (" \t+001.20e-03tail", "+001.20e-03", "001", "20", Some("03")),
+            ("1.e+oops", "1.", "1", "", None),
+            ("-.5e+", "-.5", "", "5", None),
+        ] {
+            let units = raw.encode_utf16().collect::<Vec<_>>();
+            let mut cursor =
+                FloatingPointGrammarCursor::new(&units, FloatingPointParseMode::Recovery);
+            let mut actions = 0;
+            while !cursor.is_finished() {
+                cursor.advance();
+                actions += 1;
+                assert!(actions <= units.len() * 4 + 12);
+            }
+            let prefix = cursor.prefix().unwrap();
+            assert_eq!(prefix.token, token.encode_utf16().collect::<Vec<_>>());
+            assert_eq!(
+                prefix.integer_digits,
+                integer.encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                prefix.fraction_digits,
+                fraction.encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                prefix.exponent.map(|e| e.digits.to_vec()),
+                exponent.map(|e| e.encode_utf16().collect::<Vec<_>>())
+            );
+            assert!(matches!(
+                floating_point_prefix(&units, FloatingPointParseMode::Author),
+                Err(NumericParseError::InvalidSyntax)
+            ));
+        }
+        let units = text("1e999");
+        let mut cursor =
+            FloatingPointGrammarCursor::new(units.code_units(), FloatingPointParseMode::Author);
+        while !cursor.is_finished() {
+            cursor.advance();
+        }
+        assert!(cursor.is_valid());
+        assert_eq!(cursor.prefix().unwrap().token, units.code_units());
+        assert_eq!(
+            validate_floating_point_number(&units),
+            Err(NumericParseError::FloatingPointOverflow)
         );
     }
 }

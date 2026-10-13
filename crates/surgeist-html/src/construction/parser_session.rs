@@ -1635,6 +1635,7 @@ impl SessionStorage {
             crate::HtmlInputSanitization::Email
                 | crate::HtmlInputSanitization::StripCrLfAndTrim
                 | crate::HtmlInputSanitization::Temporal(_)
+                | crate::HtmlInputSanitization::Number
         ) {
             let mode = if policy == crate::HtmlInputSanitization::Email
                 && self.form_attribute(control, node, "multiple")?.is_some()
@@ -14325,7 +14326,7 @@ mod tests {
 
     #[test]
     fn text_input_other_valid_states_refuse_before_any_metadata_or_lexical_take() {
-        for kind in ["number", "range", "color", "file", "image"] {
+        for kind in ["range", "color", "file", "image"] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(format!("<html><head></head><input type={kind} value=x>")),
                 limits(),
@@ -15078,7 +15079,7 @@ mod tests {
             storage_zero(&c);
         }
         let request = crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8("<html><head></head><input type=number>"),
+            crate::HtmlSource::utf8("<html><head></head><input type=range>"),
             limits(),
         );
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
@@ -25130,6 +25131,413 @@ mod tests {
                     source_end
                 )]
             );
+        }
+    }
+    #[test]
+    fn number_input_exact_managed_units_owns_every_independent_current_copy() {
+        for cap in [101, 102] {
+            // Real html/input names+namespaces: 32+33; three attribute names:
+            // value5+type4+checked7; values: 1e999(5)+number(6).
+            // Value-before-type performs three independent five-unit copies:
+            // initial Text value, Number type sanitizer, fresh creation reset.
+            // Each replacement releases the preceding aggregate after the new
+            // copy is admitted, so at most two five-unit copies coexist.
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(
+                    "<html><head></head><input value=1e999 type=number checked>",
+                ),
+                limits()
+                    .into_builder()
+                    .managed_utf16_units(cap)
+                    .finish()
+                    .unwrap(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let result = session.allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            );
+            if cap == 102 {
+                assert!(result.is_ok());
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .high_water,
+                    102
+                );
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::ManagedUtf16Units,
+                        ..
+                    }))
+                ));
+                assert!(session.freeze(&mut c).is_err());
+            }
+            let first = c.stop();
+            let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            release_formatting_tag(&mut input, &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            assert_eq!(c.stop(), first);
+            if first.is_some() {
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::WorkCredits).current,
+                    work
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn number_input_exact_work_partial_grammar_and_copy_stops_keep_all_owners() {
+        for (source, expected) in [
+            (
+                "<html><head></head><input value=1e999 type=number>",
+                "1e999",
+            ),
+            ("<html><head></head><input type=number value=12junk>", ""),
+        ] {
+            let request =
+                crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let node = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap();
+            let total = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            let state = session.input_state(&mut c, &node).unwrap();
+            let mut output = Utf16Buffer::new(&mut c).unwrap();
+            session
+                .append_input_internal_value(&mut c, &node, &mut output)
+                .unwrap();
+            let actual = output.units().to_vec();
+            output.release(&mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(actual, expected.encode_utf16().collect::<Vec<_>>());
+            assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Number);
+            assert_eq!(state.email_value_count, None);
+            for tail in [0, 1, 32, 128, 512, 1024, 2048] {
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(source),
+                    limits()
+                        .into_builder()
+                        .work_credits(total - tail)
+                        .finish()
+                        .unwrap(),
+                );
+                let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                    input_owner(&request);
+                let result = session.allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                );
+                if tail == 0 {
+                    assert!(result.is_ok());
+                    assert_eq!(
+                        c.usage().resource(HtmlParseResource::WorkCredits).current,
+                        total
+                    );
+                    assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }))
+                    ));
+                }
+                let first = c.stop().unwrap();
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+                let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+                release_formatting_tag(&mut input, &mut c).unwrap();
+                lexer.release(&mut c).unwrap();
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.usage().actual_capacity_bytes, 0);
+                assert_eq!(c.stop(), Some(first));
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::WorkCredits).current,
+                    work
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn number_input_clone_reset_and_original_source_keep_exact_independent_strings() {
+        for (value, expected) in [("1e999", "1e999"), ("12junk", "")] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(format!(
+                    "<html><head></head><input value={value} type=number checked>"
+                )),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let node = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap();
+            let before = session.input_state(&mut c, &node).unwrap();
+            let raw = find_input_state(&session.active().unwrap().payloads, &mut c, node.index)
+                .unwrap()
+                .0;
+            let copy_index = session
+                .active_mut()
+                .unwrap()
+                .clone_node(&mut c, node.index, DocumentRef::Owned(0))
+                .unwrap();
+            let copy = session.active().unwrap().node(&mut c, copy_index).unwrap();
+            let clone_state = session.input_state(&mut c, &copy).unwrap();
+            let copy_raw =
+                find_input_state(&session.active().unwrap().payloads, &mut c, copy.index)
+                    .unwrap()
+                    .0;
+            let independent = {
+                let storage = session.active().unwrap();
+                let RetainedPayload::String { value: a, .. } = &storage.payloads.values[raw] else {
+                    unreachable!()
+                };
+                let RetainedPayload::String { value: b, .. } = &storage.payloads.values[copy_raw]
+                else {
+                    unreachable!()
+                };
+                !Arc::ptr_eq(a.backing(), b.backing())
+            };
+            let slot = session.active().unwrap().payloads.values.iter().position(
+                |p| matches!(p, RetainedPayload::Input { node: Some(id), .. } if *id == copy.index)
+            ).unwrap();
+            session
+                .active_mut()
+                .unwrap()
+                .reset_input(&mut c, copy.index, slot)
+                .unwrap();
+            let reset = session.input_state(&mut c, &copy).unwrap();
+            let mut output = Utf16Buffer::new(&mut c).unwrap();
+            session
+                .append_input_internal_value(&mut c, &copy, &mut output)
+                .unwrap();
+            let current = output.units().to_vec();
+            output.clear(&mut c).unwrap();
+            session
+                .append_input_default_value(&mut c, &copy, &mut output)
+                .unwrap();
+            let default = output.units().to_vec();
+            output.release(&mut c).unwrap();
+            assert!(
+                session
+                    .input_writeback_sources(&mut c, &node)
+                    .unwrap()
+                    .is_none()
+            );
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            assert!(independent);
+            assert_eq!(before, clone_state);
+            assert_eq!(current, expected.encode_utf16().collect::<Vec<_>>());
+            assert_eq!(default, value.encode_utf16().collect::<Vec<_>>());
+            assert_eq!(reset.flags.kind(), crate::HtmlInputStringKind::Number);
+            assert!(reset.flags.checkedness());
+            assert!(!reset.flags.dirty_value() && !reset.flags.dirty_checkedness());
+            assert!(!reset.flags.kind().is_selectable());
+        }
+    }
+
+    #[test]
+    fn number_input_real_reset_cancellation_retains_prefix_before_association() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head></head><input type=number value=1e999>"),
+            limits(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        // Existing test scheduling hook cancels the supplied request token only
+        // after the actual creation reset, before the next normal association read.
+        session.active_mut().unwrap().cancel_after_input_reset =
+            Some(request.cancellation().clone());
+        let result = session.allocate_input_for_creation(
+            &mut c,
+            &mut input,
+            CreationLocation {
+                intended_parent: &parent,
+                current_form: None,
+                context: CreationContext::Ordinary,
+            },
+            &range,
+            &capability,
+        );
+        assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+        assert!(input.is_none());
+        let (actual, attached, associated) = {
+            let storage = session.active().unwrap();
+            let (node, raw) = storage
+                .payloads
+                .values
+                .iter()
+                .find_map(|p| match p {
+                    RetainedPayload::Input {
+                        node: Some(node),
+                        raw,
+                        complete: true,
+                        state,
+                        ..
+                    } if state.flags.kind() == crate::HtmlInputStringKind::Number => {
+                        Some((*node, *raw))
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let RetainedPayload::String { value, .. } = &storage.payloads.values[raw] else {
+                unreachable!()
+            };
+            let associated = storage
+                .payloads
+                .values
+                .iter()
+                .find_map(|p| match p {
+                    RetainedPayload::FormAssociation {
+                        node: Some(id),
+                        state,
+                    } if *id == node => Some(state.parser_inserted),
+                    _ => None,
+                })
+                .unwrap();
+            (
+                value.code_units().to_vec(),
+                storage.records[node].parent.is_some(),
+                associated,
+            )
+        };
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+        assert_eq!(actual, [49, 101, 57, 57, 57]);
+        assert!(!attached && !associated);
+    }
+
+    #[test]
+    fn number_input_alias_foreign_and_pre_cancelled_rejections_preserve_original_tag() {
+        for case in 0..3 {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<html><head></head><input type=number value=1e999>"),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let records = session.active().unwrap().records.len();
+            let slots = session.active().unwrap().payloads.values.len();
+            let alias = (case == 0).then(|| {
+                input.as_ref().unwrap().attributes.as_slice()[1]
+                    .value
+                    .value
+                    .text()
+                    .clone()
+            });
+            let mut foreign = None;
+            let target = if case == 1 {
+                let other =
+                    ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                        .unwrap();
+                let root = other.root(&mut c).unwrap();
+                foreign = Some(other);
+                root
+            } else {
+                parent
+            };
+            if case == 2 {
+                request.cancellation().cancel();
+            }
+            let error = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &target,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap_err();
+            assert_eq!(
+                error,
+                match case {
+                    0 => SessionError::AliasedPayload,
+                    1 => SessionError::ForeignNode,
+                    _ => SessionError::Stop(ParseStop::Cancelled),
+                }
+            );
+            assert!(input.is_some());
+            assert_eq!(session.active().unwrap().records.len(), records);
+            assert_eq!(session.active().unwrap().payloads.values.len(), slots);
+            drop(alias);
+            let first = c.stop();
+            release_formatting_tag(&mut input, &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            if let Some(mut other) = foreign {
+                other.release(&mut c).unwrap();
+            }
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), first);
         }
     }
 }

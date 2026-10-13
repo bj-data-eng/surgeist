@@ -33,6 +33,7 @@ pub enum HtmlInputStringKind {
     Week,
     Time,
     LocalDateTime,
+    Number,
 }
 
 /// An actual recognized input state whose rules are outside this family.
@@ -64,6 +65,7 @@ impl TryFrom<HtmlInputType> for HtmlInputStringKind {
             HtmlInputType::Week => Self::Week,
             HtmlInputType::Time => Self::Time,
             HtmlInputType::LocalDateTime => Self::LocalDateTime,
+            HtmlInputType::Number => Self::Number,
 
             other => return Err(HtmlInputStringUnsupportedType(other)),
         })
@@ -89,6 +91,7 @@ impl HtmlInputStringKind {
             Self::Week => HtmlInputType::Week,
             Self::Time => HtmlInputType::Time,
             Self::LocalDateTime => HtmlInputType::LocalDateTime,
+            Self::Number => HtmlInputType::Number,
         }
     }
     pub fn value_mode(self) -> HtmlInputValueMode {
@@ -116,7 +119,9 @@ impl HtmlInputStringKind {
         }
     }
     pub fn sanitization(self) -> HtmlInputSanitization {
-        if let Some(format) = self.temporal_format() {
+        if self == Self::Number {
+            return HtmlInputSanitization::Number;
+        } else if let Some(format) = self.temporal_format() {
             return HtmlInputSanitization::Temporal(format);
         }
         if self == Self::Email {
@@ -157,14 +162,17 @@ pub enum HtmlInputSanitization {
     Email,
     /// Strict source-defined temporal grammar; invalid becomes empty.
     Temporal(HtmlInputTemporalFormat),
+    Number,
 }
 impl HtmlInputSanitization {
     /// Unit-local filtering only. Boundary trimming, Email comma processing
     /// and strict temporal validation/normalization require
     /// HtmlInputSanitizationCursor; this predicate cannot certify them.
     pub fn retain_unit(self, unit: u16) -> bool {
-        matches!(self, Self::Preserve | Self::Email | Self::Temporal(_))
-            || !matches!(unit, 0x0d | 0x0a)
+        matches!(
+            self,
+            Self::Preserve | Self::Email | Self::Temporal(_) | Self::Number
+        ) || !matches!(unit, 0x0d | 0x0a)
     }
 }
 
@@ -213,12 +221,18 @@ impl HtmlInputRetainedRange {
 }
 enum SanitizerStep {
     Temporal,
+    Number,
     Leading,
     Trailing,
     Emit,
     Commas,
     Pending,
     Done,
+}
+enum InputValidationCursor<'a> {
+    None,
+    Temporal(crate::temporal::TemporalValidationCursor<'a>),
+    Number(crate::numeric::FloatingPointGrammarCursor<'a>),
 }
 /// Complete borrowed sanitizer boundary decisions. Each advance performs at
 /// most one admitted source-unit inspection or fixed state action. Adapters
@@ -234,19 +248,26 @@ pub struct HtmlInputSanitizationCursor<'a> {
     commas: crate::tokens::CommaTokenCursor<'a>,
     pending: Option<HtmlInputRetainedRange>,
     count: usize,
-    temporal: Option<crate::temporal::TemporalValidationCursor<'a>>,
+    validation: InputValidationCursor<'a>,
     temporal_plan: Option<crate::temporal::TemporalInputPlan>,
 }
 impl<'a> HtmlInputSanitizationCursor<'a> {
     pub fn new(policy: HtmlInputSanitization, units: &'a [u16], mode: HtmlInputEmailMode) -> Self {
-        let temporal = match policy {
-            HtmlInputSanitization::Temporal(format) => Some(
+        let validation = match policy {
+            HtmlInputSanitization::Temporal(format) => InputValidationCursor::Temporal(
                 crate::temporal::TemporalValidationCursor::new(units, format.owner(), true),
             ),
-            _ => None,
+            HtmlInputSanitization::Number => {
+                InputValidationCursor::Number(crate::numeric::FloatingPointGrammarCursor::new(
+                    units,
+                    crate::numeric::FloatingPointParseMode::Author,
+                ))
+            }
+            _ => InputValidationCursor::None,
         };
         let step = match policy {
             HtmlInputSanitization::Temporal(_) => SanitizerStep::Temporal,
+            HtmlInputSanitization::Number => SanitizerStep::Number,
             HtmlInputSanitization::Email if mode == HtmlInputEmailMode::Multiple => {
                 SanitizerStep::Commas
             }
@@ -265,7 +286,7 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
             commas: crate::tokens::CommaTokenCursor::new(units),
             pending: None,
             count: 0,
-            temporal,
+            validation,
             temporal_plan: None,
         }
     }
@@ -280,13 +301,12 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
     pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
         match self.step {
             SanitizerStep::Done => None,
-            SanitizerStep::Temporal => Some(
-                if self
-                    .temporal
-                    .as_ref()
-                    .expect("temporal scanner")
-                    .inspects_unit()
-                {
+            SanitizerStep::Number | SanitizerStep::Temporal => Some(
+                if match &self.validation {
+                    InputValidationCursor::Number(cursor) => cursor.inspects_unit(),
+                    InputValidationCursor::Temporal(cursor) => cursor.inspects_unit(),
+                    InputValidationCursor::None => unreachable!("validation step"),
+                } {
                     HtmlInputRuleWork::InspectValueUnit
                 } else {
                     HtmlInputRuleWork::ReadField
@@ -303,8 +323,24 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
     }
     pub fn advance(&mut self) -> Option<HtmlInputRetainedRange> {
         match self.step {
+            SanitizerStep::Number => {
+                let InputValidationCursor::Number(cursor) = &mut self.validation else {
+                    unreachable!("Number grammar state")
+                };
+                cursor.advance();
+                if cursor.is_finished() {
+                    self.end = if cursor.is_valid() {
+                        self.units.len()
+                    } else {
+                        0
+                    };
+                    self.step = SanitizerStep::Emit;
+                }
+            }
             SanitizerStep::Temporal => {
-                let scanner = self.temporal.as_mut().expect("temporal scanner");
+                let InputValidationCursor::Temporal(scanner) = &mut self.validation else {
+                    unreachable!("temporal scanner")
+                };
                 scanner.advance();
                 if scanner.finished() {
                     self.temporal_plan = scanner.normalization();
