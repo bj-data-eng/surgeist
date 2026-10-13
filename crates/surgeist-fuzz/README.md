@@ -306,7 +306,8 @@ is a fresh engine run and does not preserve its in-memory coverage state.
 The summary's run directory contains `session-state/progress.json`. This
 replaceable checkpoint records mode, completed rounds, aggregate evaluated and
 generation-rejected counts, checked properties, source/build identity, round
-budgets, retention/drop facts, elapsed engine campaign time and terminal status.
+budgets, retention/drop facts, streamed output byte totals, diagnostic truncation,
+elapsed engine campaign time and terminal status.
 It is replaced periodically and at round completion or termination. The
 checkpoint size and the number of session directories do not grow with the
 number of rounds. Interrupted replacement remains recovery material rather than

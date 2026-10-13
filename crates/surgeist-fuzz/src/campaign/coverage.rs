@@ -348,7 +348,10 @@ fn run_with_executor(
         &WorkerSpec,
         &AtomicBool,
         &mut execution::OutputConsumer<'_, FuzzError>,
-    ) -> std::result::Result<execution::StreamingOutcome<FuzzError>, execution::ExecutionError>,
+    ) -> std::result::Result<
+        execution::StreamingOutcome<FuzzError>,
+        execution::ExecutionError,
+    >,
 ) -> Result<()> {
     let o = context.options;
     reserve_evidence(context)?;
@@ -486,27 +489,35 @@ fn run_with_executor(
             worker_limits,
         )
         .map_err(|e| infrastructure(e.to_string()))?;
-        let streamed = execute(
-            &spec,
-            context.cancellation,
-            &mut |stream, bytes| -> Result<()> {
-                if stream == OutputStream::Stdout {
-                    decoder.push(bytes, &mut |response| observed.accept(response))?;
-                    if last_checkpoint.elapsed() >= Duration::from_millis(o.progress_ms) {
-                        checkpoint.write(
-                            &mut session,
-                            &totals,
-                            observed.counts,
-                            &observed.checked,
-                            None,
-                        )?;
-                        last_checkpoint = Instant::now();
-                    }
+        let streamed = match execute(&spec, context.cancellation, &mut |stream,
+                                                                        bytes|
+         -> Result<()> {
+            if stream == OutputStream::Stdout {
+                decoder.push(bytes, &mut |response| observed.accept(response))?;
+                if last_checkpoint.elapsed() >= Duration::from_millis(o.progress_ms) {
+                    checkpoint.write(
+                        &mut session,
+                        &totals,
+                        observed.counts,
+                        &observed.checked,
+                        None,
+                    )?;
+                    last_checkpoint = Instant::now();
                 }
-                Ok(())
-            },
-        )
-        .map_err(|e| infrastructure(e.to_string()))?;
+            }
+            Ok(())
+        }) {
+            Ok(streamed) => streamed,
+            Err(execution::ExecutionError::CancelledBeforeSpawn) => {
+                summary.status = CampaignStatus::Cancelled;
+                break;
+            }
+            Err(error) => {
+                summary.status = CampaignStatus::InfrastructureFailure;
+                summary.detail = error.to_string();
+                break;
+            }
+        };
         totals.stdout_bytes = add(totals.stdout_bytes, streamed.stdout_bytes)?;
         totals.stderr_bytes = add(totals.stderr_bytes, streamed.stderr_bytes)?;
         let process = streamed.process;
@@ -521,12 +532,17 @@ fn run_with_executor(
             }
             None => None,
         };
-        if let Err(error) = decoder.finish()
-            && summary.status == CampaignStatus::Sufficient
-            && observation_error.is_none()
-        {
-            observation_error = Some(error);
-        }
+        let framing_complete = match decoder.finish() {
+            Ok(()) => true,
+            Err(error) => {
+                if summary.status == CampaignStatus::Sufficient && observation_error.is_none() {
+                    observation_error = Some(error);
+                } else if observation_error.is_none() {
+                    summary.detail = format!("incomplete protocol at process stop: {error}");
+                }
+                false
+            }
+        };
         if summary.status == CampaignStatus::Sufficient && observed.pending.is_some() {
             observation_error = Some(infrastructure("coverage exit omitted final evaluation"));
         }
@@ -576,7 +592,8 @@ fn run_with_executor(
             || (process.stop == ProcessStop::Deadline
                 && process.cleanup == CleanupStatus::Complete
                 && observed.pending.is_none()
-                && observation_error.is_none());
+                && observation_error.is_none()
+                && framing_complete);
         if round_complete {
             match session.finish_round() {
                 Ok(report) => totals.retained(report)?,
