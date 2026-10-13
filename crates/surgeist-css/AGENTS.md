@@ -7,14 +7,21 @@ facts; it grants no additional authority. The root guide prohibits executable
 `unsafe` in all Surgeist-owned Rust.
 
 This crate owns authored CSS syntax, intrinsic grammar validation, browser recovery,
-diagnostic provenance, and support metadata. Ordinary parsing returns retained
-syntax and ordered diagnostics; the always-available validators accept exactly
-clean reports without selecting another grammar. Keep symbolic values unresolved. Cascade, inheritance,
-substitution, selector/query evaluation, resource loading, layout, painting, and
-cross-crate lowering remain outside this crate.
+diagnostic provenance, support metadata, and shared pure CSS language operations.
+Ordinary authored parsing returns retained syntax and ordered diagnostics; the
+always-available validators accept exactly clean reports without selecting another
+grammar. Keep authored symbolic values unresolved. The separately selected
+[standalone color producer](../../references/SOURCE-EDITIONS.md#html-color-delegation-and-intrinsic-contrast-policy)
+is contribution work under [#805](https://github.com/bj-data-eng/surgeist/issues/805):
+CSS owns its pure parsing, intrinsic resolution/conversion and used serialization
+over explicit inputs. Current source and tests establish implemented capabilities.
+Cascade, inheritance, substitution, selector/query evaluation, resource retrieval,
+layout, painting and each consuming crate's lowering remain outside this crate.
 
-Consume sibling public front doors. Cross-crate lowering and composition remain
-at the root boundary defined by the root guide.
+Consume sibling public front doors. Each consuming crate owns its direct adapter
+to lower-level contracts, including HTML's adapter to shared CSS color operations.
+The root facade owns optional host-facing composition; it is not a mandatory
+integration intermediary. Follow the root guide's ownership and dependency rules.
 
 ## Sources
 

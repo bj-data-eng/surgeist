@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 366 retained source identities and states their representations: 257 full documents/source witnesses, 95 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 369 retained source identities and states their representations: 260 full documents/source witnesses, 95 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -136,3 +136,15 @@ cataloged source identity, not a new edition or identity. The
 separates this original algorithm from the selected fresh standalone
 construction reduction. Source retention supplies no public event loop,
 browser load lifecycle or complete parser acceptance.
+
+## HTML-delegated color and intrinsic contrast sources
+
+The [bounded HTML Color delegation](SOURCE-EDITIONS.md#html-color-delegation-and-intrinsic-contrast-policy)
+selects the existing Color 4 publication for HTML877d's standalone used-color
+operation and preserves the scoped Color 5, CMYK/profile and rounding selections.
+The [complete WebKit contrast witness](webkit-contrast-color--73aa6c89e2cb--6592a4862701.md)
+adds three full source identities with original file-specific notices. The
+[selected contrast policy](SOURCE-EDITIONS.md#contrastcolor-metric-and-bounded-browser-evidence)
+distinguishes the UA-defined metric, WebKit evidence and Surgeist's clamp/tie
+choices. Source retention and this reference checkpoint do not implement the
+producer or certify accessibility.

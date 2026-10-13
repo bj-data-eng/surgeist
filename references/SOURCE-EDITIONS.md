@@ -183,6 +183,88 @@ For #604, the current Web Animations clauses select document clocks with fixed o
 
 The owning issue determinations record the operative choices beyond the captured clause boundaries: [#460 subtractive output](https://github.com/bj-data-eng/surgeist/issues/460), [#461 preference overrides](https://github.com/bj-data-eng/surgeist/issues/461), [#884 border-image applicability](https://github.com/bj-data-eng/surgeist/issues/884), [#892 nine-slice painting](https://github.com/bj-data-eng/surgeist/issues/892) and [#954 table composition](https://github.com/bj-data-eng/surgeist/issues/954). The bookmark selection and host projection are owned by [#681](https://github.com/bj-data-eng/surgeist/issues/681) and [#675](https://github.com/bj-data-eng/surgeist/issues/675); accessible generated-content projection and its consumer contract are owned by [#682](https://github.com/bj-data-eng/surgeist/issues/682) and [#671](https://github.com/bj-data-eng/surgeist/issues/671). These issue contracts identify the selected requirements, browser divergences and explicit product completion without silently adopting an entire newer module.
 
+## HTML Color delegation and intrinsic contrast policy
+
+For [#805](https://github.com/bj-data-eng/surgeist/issues/805), the Architecture
+Coordinator selects CSS-owned standalone color parsing, intrinsic resolution,
+conversion and used-color serialization, consumed directly by HTML. Each
+consuming crate owns its adapter; the root facade supplies optional composition.
+Style owns contextual property/profile facts and runtime owns resource retrieval.
+This is selected contribution work, not a claim that the complete producer or
+HTML Color construction has shipped. The owning issue retains its separate
+contextual CSSOM and quirky-color/CSS.supports acceptance.
+
+HTML remains at `877d6146487f15b15bc8dd0e3c625063a37b456a`. Its
+[color-well update](html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#update-a-color-well-control-color)
+and [serialization](html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#serialize-a-color-well-control-color)
+delegate bounded parsing, resolution, conversion and serialization to the
+already selected [Color 4 CRD of 8 September 2026](css-color-4--CRD-css-color-4-20260908--bada647312a7.md).
+The original HTML snapshot SHA-256 is
+`bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba`;
+the converted Markdown file SHA-256 is
+`31b9210596843b84bdc1a61d82687b3d1278f885a1559ec0c64264e3642076fe`.
+These identify different representations, not different operative editions.
+
+The selected boundaries are
+[parse-a-css-color-value](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#parse-a-css-color-value),
+[resolving-color-values](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#resolving-color-values),
+[color-conversion](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#color-conversion)
+and [serializing-color-values](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#serializing-color-values),
+including [conditional HTML-compatible sRGB serialization](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#HTML-compatible-serialization-of-srgb).
+HTML supplies no context element. Required property values use their selected
+initial values; [initial color is CanvasText](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#propdef-color),
+which does not itself supply a system palette. HTML owns dirty/default/current
+selection, alpha/colorspace policy, quantization and source-positioned updates.
+Its positive-infinity tie rounding retains
+[Values 4 of 12 March 2024](css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#css-round-to-the-nearest-integer).
+No HTML pin, accepted authored grammar or global gamut policy is replaced.
+
+Existing selected Color 5 editions and explicitly scoped later determinations
+remain operative for their admitted syntax. The [#822 device-CMYK selection](https://github.com/bj-data-eng/surgeist/issues/822)
+and [#823 profile-channel selection](https://github.com/bj-data-eng/surgeist/issues/823)
+remain distinct product determinations where reached. This delegation does not
+select every later editor-draft clause.
+
+### ContrastColor metric and bounded browser evidence
+
+[Color 5 of 8 September 2026 §8](css-color-5--WD-css-color-5-20260908--f749cb75ec1c.md#contrast-color)
+requires the black/white choice with maximum contrast under a UA-defined metric
+and white on equal contrast. It advises against simply using the WCAG 2.1
+ratio algorithm. The selected [#805 policy](https://github.com/bj-data-eng/surgeist/issues/805)
+explicitly considers that warning and chooses the relative-luminance ratio
+comparison as Surgeist's deterministic intrinsic operation. The metric is
+product policy, not a normative CSS requirement or an accessibility
+certification.
+
+The [complete pinned WebKit witness](webkit-contrast-color--73aa6c89e2cb--6592a4862701.md)
+retains CSSContrastColorResolver.cpp, ColorLuminance.h and ColorLuminance.cpp at
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`, with original notices and full
+per-file hashes. Its helper converts to XYZ D65 Y and compares luminance ratios.
+The browser resolver uses strict `>` and therefore black on an exact tie;
+that branch is not selected.
+
+The selected operation resolves the input using the same used-color producer
+and only its reached facts. For the solid-background analysis it ignores alpha,
+resolves missing components through the selected CSS conversion rules, and uses
+the CSS-owned XYZ D65 conversion's Y. Finite Y is locally clamped to [0,1] only
+for this comparison. This clamp is Surgeist policy; the cited helper does not
+establish it. The actual input color and alpha remain intact, with no invented
+canvas compositing, global gamut mapping or sRGB byte quantization.
+
+Under the producer's binary64 contract, black scores `(Y + 0.05) / 0.05` and
+white scores `1.05 / (Y + 0.05)`. White is selected when its computed score is
+greater than or equal to black's; otherwise black is selected. The result is
+opaque sRGB. No epsilon or rounded crossover threshold is selected. Required
+conversion/numerical failures and unavailable influencing facts retain their
+typed outcomes; they do not become a successful black fallback. Contrast itself
+requires no external service.
+
+The owning issue supplies the detailed capability and test contract. This
+reference checkpoint records its exact source selection and the
+[file-specific attribution](../licenses/webkit/NOTICE.md#contrast-color-source-witnesses);
+it ingests no WebKit code, implements no algorithm and claims no browser parity
+or completed producer.
+
 ## Pinned HTML language baseline
 
 The unstarted native HTML language contracts select WHATWG HTML commit snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a` (9 October 2026), independently of the html5ever implementation ingestion baseline. The complete original source SHA-256 is `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. Companion captures retain complete selected sections, all chapter 4 element definitions, syntax/parsing, language foundations, host facts, DOM parsing and obsolete behavior. These bounded source references do not claim whole browser implementation or assign JavaScript runtime APIs to the HTML crate.

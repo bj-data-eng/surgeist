@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **366 source identities: 257 full documents/source witnesses, 95 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **369 source identities: 260 full documents/source witnesses, 95 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -600,3 +600,31 @@ and historical dated counts are unchanged. The
 distinguishes the normative algorithm from the separately selected restricted
 construction completion. Reference retention does not certify its implementation
 or provide a browser event loop.
+
+## ContrastColor source witnesses — 2026-10-13
+
+The [combined WebKit reference](webkit-contrast-color--73aa6c89e2cb--6592a4862701.md)
+retains three complete files at revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`, rather than another standards
+edition. Its three fenced bodies were checked byte-for-byte against the
+already retained source files and their declared full-file SHA-256 values:
+CSSContrastColorResolver.cpp `660886c44d4d6b1c6bc6e1dacedf733bf9eb596e0bb9cb123d34c2cffe3830c0`,
+ColorLuminance.h `794f5f1a3edc3241422cc73fcb9d523be1ba613a03a1fcbb2829f465cc00201c`,
+and ColorLuminance.cpp `915b775c2184892eeb4f4d93c86ca601648083e8709a15ab8c1ab6ad76cee722`.
+The combined Markdown SHA-256 is
+`6592a4862701d7056d12f2591c3cdc3151c7acbcd6e22d513afd7824fd4dc045`.
+Only headings and provenance labels are added; no original body is changed or
+omitted. Both distinct BSD notices have
+[exact local header companions](../licenses/webkit/NOTICE.md#contrast-color-source-witnesses).
+
+The [edition map](SOURCE-EDITIONS.md#html-color-delegation-and-intrinsic-contrast-policy)
+records HTML877d's bounded delegation to the existing selected Color 4 and
+the explicit #805 contrast policy, preserving normative versus browser versus
+product distinctions. It does not implement the operation, select a new
+standard edition or ingest browser code.
+
+This addition takes the collection from 366 to 369 identities: 260 full,
+95 partial and 14 metadata-only. Earlier dated addition counts and the 81
+passive SVG figures remain unchanged. Whole witness bodies, legal companion
+equality, UTF-8/LF/whitespace and affected local links/fragments were checked.
+No source acquisition, browser-source execution or new media/diagram conversion occurred.

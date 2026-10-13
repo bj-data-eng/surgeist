@@ -191,3 +191,25 @@ These bounded source references retain complete original file-level copyright an
 | [Source/WebCore/accessibility/AccessibilityNodeObject.cpp](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/accessibility/AccessibilityNodeObject.cpp); [bounded accessibility witness](../../references/webkit-css-generated-alternative--73aa6c89e2cb--066bf381649e.md) | [accessibilitynodeobject-generated-alternative-bsd-header.txt](accessibilitynodeobject-generated-alternative-bsd-header.txt); exact original file-specific three-clause BSD notice |
 
 File-specific terms remain distinct. In particular, the generated-alternative accessibility files carry their own original three-clause BSD notices; those are not replaced by a generic project license. Applicable GNU Library GPL version 2-or-later declarations retain the complete license text, while Chromium project BSD declarations reuse the exact retained root LICENSE. These copies are not compiled or linked into Surgeist.
+
+## Contrast-color source witnesses
+
+The [complete contrast-color witness](../../references/webkit-contrast-color--73aa6c89e2cb--6592a4862701.md)
+retains three complete files at immutable WebKit revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`. Their exact original source hashes
+and complete file-specific notices remain in the fenced bodies. The two
+standalone headers below are copied verbatim from those bodies; the identical
+2021 header is shared only by ColorLuminance.h and ColorLuminance.cpp.
+
+| Retained source | Exact local copyright, conditions and disclaimer |
+| --- | --- |
+| [CSSContrastColorResolver.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/values/color/CSSContrastColorResolver.cpp), complete file; Copyright (C) 2024 Apple Inc. | [css-contrast-color-resolver-bsd-2-clause.txt](css-contrast-color-resolver-bsd-2-clause.txt) |
+| [ColorLuminance.h](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/ColorLuminance.h), complete file; Copyright (C) 2021 Apple Inc. | [color-luminance-bsd-2-clause.txt](color-luminance-bsd-2-clause.txt) |
+| [ColorLuminance.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/ColorLuminance.cpp), complete file; Copyright (C) 2021 Apple Inc. | [color-luminance-bsd-2-clause.txt](color-luminance-bsd-2-clause.txt) |
+
+This reference redistribution adds Markdown headings and provenance labels;
+the original source bodies and legal text are unchanged. It does not ingest,
+compile or link these files into Surgeist. The
+[selected product metric](../../references/SOURCE-EDITIONS.md#contrastcolor-metric-and-bounded-browser-evidence)
+uses this bounded evidence while explicitly distinguishing the local finite-Y
+clamp, white ties and numerical representation from browser behavior.

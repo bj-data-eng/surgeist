@@ -1,6 +1,6 @@
 # Exact source catalog
 
-366 retained source identities: 257 full documents/source witnesses, 95 partial witnesses, and 14 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
+369 retained source identities: 260 full documents/source witnesses, 95 partial witnesses, and 14 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -564,7 +564,25 @@ The [complete spin-event-loop wrapper](html-spin-event-loop--877d6146487f.md#spi
 is an additional bounded representation of the HTML877d identity above, not
 another source snapshot. Its full-original hash identifies the 14,930,614-byte
 HTML document; separate raw-wrapper and normalized conversion-input hashes
-identify the disclosed excerpt forms. The catalog remains 366 identities:
+identify the disclosed excerpt forms. At this 2026-10-12 addition, the catalog remained 366 identities:
 257 full, 95 partial and 14 metadata-only. Historical dated counts and 81 passive
 SVG assets are unchanged. This rendering establishes no event-loop implementation
 or browser lifecycle capability.
+
+## ContrastColor implementation witnesses — 2026-10-13
+
+The [selected contrast policy](SOURCE-EDITIONS.md#contrastcolor-metric-and-bounded-browser-evidence)
+uses the three complete source witnesses below at one immutable WebKit revision.
+Each fenced source body preserves its original notice and matches its full-file
+SHA-256. The combined Markdown SHA-256 is
+`6592a4862701d7056d12f2591c3cdc3151c7acbcd6e22d513afd7824fd4dc045`;
+it is a representation hash, not a fourth source identity. This adds three full
+identities: the current collection is 369 identities, comprising 260 full,
+95 partial and 14 metadata-only records. The dated earlier counts remain
+historical evidence.
+
+| Representation | Original source | Complete original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [CSSContrastColorResolver.cpp](webkit-contrast-color--73aa6c89e2cb--6592a4862701.md#sourcewebcorecssvaluescolorcsscontrastcolorresolvercpp) | [WebKit73aa6c89e2cb](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/values/color/CSSContrastColorResolver.cpp) | 660886c44d4d6b1c6bc6e1dacedf733bf9eb596e0bb9cb123d34c2cffe3830c0 | complete original file and two-clause notice |
+| [ColorLuminance.h](webkit-contrast-color--73aa6c89e2cb--6592a4862701.md#sourcewebcoreplatformgraphicscolorluminanceh) | [WebKit73aa6c89e2cb](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/ColorLuminance.h) | 794f5f1a3edc3241422cc73fcb9d523be1ba613a03a1fcbb2829f465cc00201c | complete original file and two-clause notice |
+| [ColorLuminance.cpp](webkit-contrast-color--73aa6c89e2cb--6592a4862701.md#sourcewebcoreplatformgraphicscolorluminancecpp) | [WebKit73aa6c89e2cb](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/ColorLuminance.cpp) | 915b775c2184892eeb4f4d93c86ca601648083e8709a15ab8c1ab6ad76cee722 | complete original file and two-clause notice |
