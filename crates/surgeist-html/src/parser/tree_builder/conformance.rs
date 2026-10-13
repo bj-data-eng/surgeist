@@ -4061,4 +4061,376 @@ mod comment_diagnostic_corpus {
         assert_eq!(completed.at_stop(), Some(&first));
         completed.release().unwrap();
     }
+
+    // HTML877d preprocessing/comment rules, paired with the unchanged source
+    // selection above. Feed availability is a real cursor operation, never a
+    // prefix request or a tree derived from another parser execution.
+    fn completed_at_cuts<'a>(
+        request: &'a HtmlDocumentParseRequest,
+        cuts: &[usize],
+    ) -> CompletedStandaloneDocument<'a> {
+        let mut entry = super::super::entry::OrdinaryDocumentEntry::owned_progressive(request);
+        let mut driver = Some(match entry.take_driver() {
+            Ok(driver) => driver,
+            Err(error) => {
+                entry.release_failure().unwrap();
+                panic!("progressive initialization: {error:?}");
+            }
+        });
+        let result = (|| {
+            for through in cuts
+                .iter()
+                .copied()
+                .chain(std::iter::once(request.source().len()))
+            {
+                let active = driver.as_mut().unwrap();
+                active.make_available(through)?;
+                let mut waiting = false;
+                for _ in 0..(8 * request.source().len() + 256) {
+                    match active.step()? {
+                        HeadStep::Consumed => {}
+                        HeadStep::NeedInput => {
+                            waiting = true;
+                            break;
+                        }
+                        _ => {
+                            return Err(super::super::StandaloneError::Head(
+                                super::super::head::HeadError::IncompleteCompletion,
+                            ));
+                        }
+                    }
+                }
+                if !waiting {
+                    return Err(super::super::StandaloneError::Head(
+                        super::super::head::HeadError::IncompleteCompletion,
+                    ));
+                }
+                assert!(active.control.stop().is_none());
+                // Even a fully visible unsealed source is not completion.
+                assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
+                assert!(driver.is_some());
+                assert!(driver.as_ref().unwrap().control.stop().is_none());
+            }
+            driver.as_mut().unwrap().seal_input()?;
+            for _ in 0..(8 * request.source().len() + 256) {
+                match driver.as_mut().unwrap().step()? {
+                    HeadStep::Consumed => {}
+                    HeadStep::Complete => {
+                        return StandaloneDocumentDriver::take_completed(&mut driver);
+                    }
+                    _ => {
+                        return Err(super::super::StandaloneError::Head(
+                            super::super::head::HeadError::IncompleteCompletion,
+                        ));
+                    }
+                }
+            }
+            Err(super::super::StandaloneError::Head(
+                super::super::head::HeadError::IncompleteCompletion,
+            ))
+        })();
+        match result {
+            Ok(completed) => {
+                assert!(driver.is_none());
+                completed
+            }
+            Err(error) => {
+                let active = driver.as_mut().unwrap();
+                active.release().unwrap();
+                super::super::tests::assert_released(&active.control);
+                panic!("progressive execution: {error:?}");
+            }
+        }
+    }
+
+    fn check_completed_comment(
+        mut completed: CompletedStandaloneDocument<'_>,
+        request: &HtmlDocumentParseRequest,
+        expected_tree: &Projection,
+        expected_diagnostics: &[ExpectedDiagnostic],
+    ) {
+        let evidence = completed.take_diagnostics().unwrap();
+        let (diagnostics, structure, stopped) = {
+            let mut view = completed.native_view().unwrap();
+            assert_eq!(
+                view.usage()
+                    .resource(HtmlParseResource::SourceUnits)
+                    .current,
+                request.source().len() as u64,
+            );
+            let before_reads = view.usage().work(WorkCategory::InputUnitRead);
+            let diagnostics = compare(
+                view.control(),
+                &evidence,
+                request.source(),
+                expected_diagnostics,
+            );
+            assert_eq!(view.usage().work(WorkCategory::InputUnitRead), before_reads);
+            let mut projection = MeteredProjection::new().unwrap();
+            let structure = projection
+                .build(&mut view)
+                .and_then(|()| projection.compare(expected_tree, &mut view));
+            projection.release(&mut view).unwrap();
+            evidence.release(view.control()).unwrap();
+            assert_eq!(
+                view.usage()
+                    .resource(HtmlParseResource::Diagnostics)
+                    .current,
+                0,
+            );
+            (diagnostics, structure, view.control().stop().is_some())
+        };
+        if stopped {
+            let first = completed.at_stop().unwrap().clone();
+            completed.cleanup_failure().unwrap();
+            zero_storage(completed.after_cleanup().unwrap());
+            assert_eq!(completed.at_stop(), Some(&first));
+            completed.release().unwrap();
+        } else {
+            // Transferred diagnostics are independent of the remaining native
+            // owner. Its existing direct release does not re-freeze evidence.
+            completed.release().unwrap();
+        }
+        // Actual native/diagnostic owners are reclaimed before oracle failure.
+        structure.unwrap();
+        diagnostics.unwrap();
+    }
+
+    #[test]
+    fn comments01_utf8_utf16_every_cut_and_unit_feed_keep_literal_trees_and_typed_diagnostics() {
+        let (_, raw) = DATA
+            .iter()
+            .find(|(name, _)| *name == "comments01.dat")
+            .unwrap();
+        let fixtures = decode(raw).unwrap();
+        assert_eq!(fixtures.len(), 16);
+        assert_eq!(fixtures.iter().map(|f| f.errors.len()).sum::<usize>(), 27);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter_map(|f| f.new_errors.as_ref())
+                .map(Vec::len)
+                .sum::<usize>(),
+            11,
+        );
+        for fixture in fixtures {
+            assert!(fixture.fragment.is_none());
+            assert_eq!(fixture.scripting, FixtureScripting::Both);
+            let tree = parsed_expected(&fixture, HtmlDocumentMode::Quirks).unwrap();
+            for utf16 in [false, true] {
+                let make_request = || {
+                    let source = if utf16 {
+                        HtmlSource::utf16(crate::DocumentString::from(fixture.input))
+                    } else {
+                        HtmlSource::utf8(fixture.input)
+                    };
+                    HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000))
+                };
+                let request = make_request();
+                assert_eq!(
+                    request.source().coordinates(),
+                    if utf16 {
+                        crate::HtmlSourceCoordinates::Utf16CodeUnits
+                    } else {
+                        crate::HtmlSourceCoordinates::Utf8Bytes
+                    },
+                );
+                check_completed_comment(
+                    completed(&request),
+                    &request,
+                    &tree,
+                    selected(fixture.ordinal),
+                );
+                for cut in 0..=request.source().len() {
+                    let request = make_request();
+                    check_completed_comment(
+                        completed_at_cuts(&request, &[cut]),
+                        &request,
+                        &tree,
+                        selected(fixture.ordinal),
+                    );
+                }
+                let request = make_request();
+                let cuts: Vec<_> = (0..=request.source().len()).collect();
+                check_completed_comment(
+                    completed_at_cuts(&request, &cuts),
+                    &request,
+                    &tree,
+                    selected(fixture.ordinal),
+                );
+            }
+        }
+    }
+
+    // HTML877d raw94110–94129,95201–95278. A transitions CommentStart
+    // into Comment before the isolated surrogate is inspected. UTF-16 units
+    // are literal; no scalar conversion can preserve this original source.
+    fn unicode_comment_request() -> HtmlDocumentParseRequest {
+        let mut raw: Vec<_> = "<!doctype html><!--A".encode_utf16().collect();
+        raw.extend([0xd800, 13, 10, 0xd83d, 0xde00]);
+        raw.extend("--!>".encode_utf16());
+        assert_eq!(raw.len(), 29);
+        HtmlDocumentParseRequest::offline(
+            HtmlSource::utf16(crate::DocumentString::from_utf16(raw)),
+            super::super::tests::limits(1_000),
+        )
+    }
+    fn unicode_comment_tree() -> Projection {
+        // The ordinary .dat grammar cannot express an isolated surrogate.
+        // Use its independent structural literal, then replace only the
+        // expected comment payload with the source-derived code-unit literal.
+        let fixture = decode(
+            "#data\nliteral UTF16 supplement\n#errors\n#document\n| <!DOCTYPE html>\n| <!-- placeholder -->\n| <html>\n|   <head>\n|   <body>\n",
+        ).unwrap();
+        let mut tree = parsed_expected(&fixture[0], HtmlDocumentMode::NoQuirks).unwrap();
+        assert!(matches!(tree.nodes[2].kind, Kind::Comment(_)));
+        tree.nodes[2].kind = Kind::Comment(vec![65, 0xd800, 10, 0xd83d, 0xde00]);
+        tree
+    }
+    const UNICODE_COMMENT_DIAGNOSTICS: &[ExpectedDiagnostic] = &[
+        ExpectedDiagnostic {
+            kind: DiagnosticKind::Tokenizer(DiagnosticCode::SurrogateInInputStream),
+            context: DiagnosticContext::Tokenizer {
+                phase: DiagnosticPhase::InputStream,
+                state: State::Comment,
+            },
+            rule: DiagnosticRule {
+                anchor: "parse-error-surrogate-in-input-stream",
+                branch: "surrogate-in-input-stream",
+            },
+            role: DiagnosticLocationRole::InputFrontier,
+            token: None,
+            source: (20, 21),
+        },
+        tokenizer(
+            DiagnosticCode::IncorrectlyClosedComment,
+            State::CommentEndBang,
+            "parse-error-incorrectly-closed-comment",
+            "incorrectly-closed-comment",
+            (28, 29),
+        ),
+    ];
+
+    fn check_unicode_comment_origins(
+        completed: &mut CompletedStandaloneDocument<'_>,
+        source: &HtmlSource,
+    ) {
+        use crate::construction::parser_session::{
+            StringLocation,
+            provenance::{AssociationRelation, NativeDestination},
+        };
+        use crate::parser::tokenizer::token::OriginKind;
+        completed.prepare_native_associations().unwrap();
+        let comment = {
+            let mut view = completed.native_view().unwrap();
+            let root = view.root().unwrap();
+            view.child_at(&root, 1).unwrap().unwrap()
+        };
+        let mut rows = completed.native_associations().unwrap();
+        let mut comment_index = None;
+        for index in 0..rows.len() {
+            if rows.node_for(index, &comment).unwrap() {
+                let (row, _) = rows.row(index).unwrap().unwrap();
+                if let NativeDestination::Node(index) = row.destination {
+                    comment_index = Some(index);
+                }
+            }
+        }
+        let destination = NativeDestination::Field(StringLocation::Comment(comment_index.unwrap()));
+        let expected = [
+            (0, 1, 19, 20, OriginKind::Literal),
+            (1, 2, 20, 21, OriginKind::Literal),
+            (2, 3, 21, 23, OriginKind::Newline),
+            (3, 5, 23, 25, OriginKind::Literal),
+        ];
+        let mut count = 0;
+        for index in 0..rows.len() {
+            let (row, _) = rows.row(index).unwrap().unwrap();
+            if row.destination != destination || row.relation != AssociationRelation::Output {
+                continue;
+            }
+            let &(start, end, source_start, source_end, kind) = expected.get(count).unwrap();
+            assert_eq!((row.start, row.end, row.kind), (start, end, Some(kind)));
+            assert_eq!(
+                row.source.as_ref().unwrap(),
+                &source.range(source_start, source_end).unwrap()
+            );
+            count += 1;
+        }
+        assert_eq!(count, expected.len());
+    }
+
+    #[test]
+    fn comment_utf16_surrogate_crlf_pair_and_end_bang_keep_exact_evidence_across_all_cuts() {
+        let tree = unicode_comment_tree();
+        let request = unicode_comment_request();
+        let mut complete = completed(&request);
+        check_unicode_comment_origins(&mut complete, request.source());
+        check_completed_comment(complete, &request, &tree, UNICODE_COMMENT_DIAGNOSTICS);
+        for cut in 0..=29 {
+            let request = unicode_comment_request();
+            let mut complete = completed_at_cuts(&request, &[cut]);
+            check_unicode_comment_origins(&mut complete, request.source());
+            check_completed_comment(complete, &request, &tree, UNICODE_COMMENT_DIAGNOSTICS);
+        }
+        let request = unicode_comment_request();
+        let cuts: Vec<_> = (0..=29).collect();
+        let mut complete = completed_at_cuts(&request, &cuts);
+        check_unicode_comment_origins(&mut complete, request.source());
+        check_completed_comment(complete, &request, &tree, UNICODE_COMMENT_DIAGNOSTICS);
+    }
+
+    #[test]
+    fn comment_feed_cancel_after_committed_prologue_keeps_first_stop_and_real_cleanup() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("FOO<!-- BAR --!>BAZ"),
+            super::super::tests::limits(1_000),
+        );
+        let mut entry = super::super::entry::OrdinaryDocumentEntry::owned_progressive(&request);
+        let mut driver = Some(entry.take_driver().unwrap());
+        driver.as_mut().unwrap().make_available(3).unwrap();
+        let mut waiting = false;
+        for _ in 0..256 {
+            match driver.as_mut().unwrap().step().unwrap() {
+                HeadStep::Consumed => {}
+                HeadStep::NeedInput => {
+                    waiting = true;
+                    break;
+                }
+                other => panic!("partial comment source: {other:?}"),
+            }
+        }
+        assert!(waiting);
+        assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
+        let active = driver.as_mut().unwrap();
+        let before = active.control.usage().clone();
+        request.cancellation().cancel();
+        assert!(matches!(
+            active.make_available(request.source().len()),
+            Err(super::super::StandaloneError::Stop(ParseStop::Cancelled))
+        ));
+        let first = active.control.first_stop_usage().unwrap().clone();
+        assert_eq!(first, before);
+        assert!(matches!(
+            active.seal_input(),
+            Err(super::super::StandaloneError::Stop(ParseStop::Cancelled))
+        ));
+        assert_eq!(active.control.usage(), &first);
+        assert_eq!(active.control.first_stop_usage(), Some(&first));
+        let mut failed = StandaloneDocumentDriver::take_failed(&mut driver).unwrap();
+        assert!(driver.is_none());
+        let diagnostics = failed.diagnostics().unwrap();
+        assert_eq!(diagnostics.len(), 1);
+        let (record, location) = diagnostics.retained_record(0).unwrap();
+        assert_eq!(record.kind, FOO.kind);
+        assert_eq!(record.context, FOO.context);
+        assert_eq!(record.rule, FOO.rule);
+        assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+        assert_eq!(location.role, FOO.role);
+        assert_eq!(location.token, FOO.token);
+        assert_eq!(location.source, request.source().range(0, 1).unwrap());
+        failed.release().unwrap();
+        zero_storage(failed.retained_usage());
+        assert_eq!(failed.at_stop(), &first);
+    }
 }
