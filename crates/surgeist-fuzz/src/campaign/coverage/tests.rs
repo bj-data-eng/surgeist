@@ -414,10 +414,13 @@ impl ControllerFixture {
         let mut fixture = Fixture::new(2, 8);
         fixture.options.source = source.0.clone();
         fixture.options.tools.git = PathBuf::from("/usr/bin/git");
-        fixture.options.round_ms = 300;
+        // Exercise a real round deadline while admitting interpreter and cat
+        // startup under ordinary concurrent test load. The worker deliberately
+        // stays alive; five seconds is a deadline, not a readiness sleep.
+        fixture.options.round_ms = 5000;
         fixture.options.round_cases = 3;
         fixture.options.case_ms = 10;
-        fixture.options.wall_ms = 5000;
+        fixture.options.wall_ms = 30_000;
         fixture.options.storage_bytes = 4 * 1024 * 1024;
         fixture.options.storage_entries = 8;
         fixture.store = ArtifactStore::open(
@@ -526,7 +529,13 @@ fn deadline_with_partial_next_frame_stops_without_rotating_to_another_round() {
     let context = fixture.context();
     let mut summary = CampaignSummary::new("run");
     run(&context, &mut summary).unwrap();
-    assert_eq!(summary.status, CampaignStatus::ResourceStop, "{summary:?}");
+    assert_eq!(
+        summary.status,
+        CampaignStatus::ResourceStop,
+        "{summary:?}; launch evidence={:?}; checkpoint={:?}",
+        fs::read_to_string(fixture.worker.0.join("controlled-worker.launches")),
+        fixture.checkpoint()
+    );
     assert_eq!(summary.evaluated, 1);
     assert_eq!(fixture.launches(), 1);
     assert_eq!(summary.cleanup, "complete");
