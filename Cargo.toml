@@ -53,6 +53,7 @@ members = [
     "crates/surgeist-cssom",
     "crates/surgeist-dialog",
     "crates/surgeist-generator",
+    "crates/surgeist-fuzz",
     "crates/surgeist-html",
     "crates/surgeist-layout",
     "crates/surgeist-render",
