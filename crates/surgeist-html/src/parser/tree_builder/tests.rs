@@ -14424,3 +14424,152 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
         );
     }
 }
+
+#[test]
+fn ordinary_radio_same_group_keeps_only_later_checked_member_through_eof() {
+    // HTML877d Radio group membership requires the same ordinary tree and form
+    // owner, with equal nonempty name values. Inserting the later checked member
+    // clears only the earlier member's current checkedness, not its attribute.
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><input type=radio name=g checked><input type=radio name=g checked>Z</form>",
+        ),
+        limits(100),
+    );
+    let mut driver = super::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "ordinary Radio must complete before its actual group state can be observed"
+        );
+        return;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let child_count = children.len();
+    let mut namespaces = Vec::new();
+    let mut names = Vec::new();
+    let mut child_counts = Vec::new();
+    let mut attributes = Vec::new();
+    let mut owned_by_form = Vec::new();
+    let mut checkedness = Vec::new();
+    let mut dirty_checkedness = Vec::new();
+    let mut values = Vec::new();
+    for input in &children[..2] {
+        let HtmlNodeKind::Element(element) = document.node(input).unwrap().kind() else {
+            panic!("the Radio tokens must create actual native Elements");
+        };
+        namespaces.push(
+            element
+                .name()
+                .namespace()
+                .uri()
+                .unwrap()
+                .code_units()
+                .to_vec(),
+        );
+        names.push(element.name().local_name().code_units().to_vec());
+        child_counts.push(document.node(input).unwrap().children().count());
+        attributes.push(
+            element
+                .attributes()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute
+                            .name()
+                            .namespace()
+                            .uri()
+                            .map(|uri| uri.code_units().to_vec()),
+                        attribute.name().local_name().code_units().to_vec(),
+                        attribute.value().code_units().to_vec(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        );
+        let owner = frozen.form_association_owner(&mut control, input).unwrap();
+        owned_by_form.push(owner.as_ref() == Some(&form));
+        drop(owner);
+        let state = frozen.input_state(&mut control, input).unwrap();
+        checkedness.push(state.flags.checkedness());
+        dirty_checkedness.push(state.flags.dirty_checkedness());
+        let mut value = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+        frozen
+            .append_input_value(&mut control, input, &mut value)
+            .unwrap();
+        values.push(value.units().to_vec());
+        value.release(&mut control).unwrap();
+    }
+    let HtmlNodeKind::Text(text) = document.node(&children[2]).unwrap().kind() else {
+        panic!("Z must remain a real sibling after both void Radio inputs");
+    };
+    let following_text = text.code_units().to_vec();
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 3);
+    assert_eq!(
+        namespaces,
+        vec![
+            "http://www.w3.org/1999/xhtml"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+            "http://www.w3.org/1999/xhtml"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        ]
+    );
+    assert_eq!(names, vec![vec![105, 110, 112, 117, 116]; 2]);
+    assert_eq!(child_counts, vec![0, 0]);
+    let expected_attributes = vec![
+        (None, vec![116, 121, 112, 101], vec![114, 97, 100, 105, 111]),
+        (None, vec![110, 97, 109, 101], vec![103]),
+        (None, vec![99, 104, 101, 99, 107, 101, 100], vec![]),
+    ];
+    assert_eq!(
+        attributes,
+        vec![expected_attributes.clone(), expected_attributes]
+    );
+    assert_eq!(following_text, vec![90]);
+    assert_eq!(owned_by_form, vec![true, true]);
+    assert_eq!(values, vec![vec![111, 110]; 2]);
+    assert_eq!(dirty_checkedness, vec![false, false]);
+    assert_eq!(checkedness, vec![false, true]);
+}
