@@ -787,10 +787,15 @@ impl ConstructionCapability<'_> {
     ) -> Result<bool, SessionError> {
         self.validate_session(c, session)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        // This sealed producer's ordinary request has no host realm, listener,
-        // task recipient or reentry. Toggle has no intrinsic follow-on callback;
-        // its task/tracker can be eliminated, preserving exclusivity mutations.
-        Ok(matches!(self.profile, ExecutionProfile::Ordinary))
+        // Both real issuers admit only this source/controller/arena's closed
+        // construction producers. A fragment's temporary parser Document and
+        // owned inert/ordinary trees are not its immutable captured target.
+        // Registry definitions requiring reactions refuse before construction;
+        // captures introduce no live nodes, listeners, task recipients or reentry.
+        // Every Details consumer uses canonical attributes/tree/provenance only.
+        // Toggle has no intrinsic follow-on consumer in this closed owner, so
+        // its task/tracker can be eliminated while retaining exclusivity hooks.
+        Ok(true)
     }
     pub(crate) fn validate_session(
         &self,

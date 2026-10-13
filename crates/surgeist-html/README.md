@@ -2476,15 +2476,21 @@ insertion close the given open member when a peer is open; adding open closes
 the other open member. Removing open notifies without closing another member,
 and replacing a present open attribute leaves its state unchanged.
 
-The closed ordinary producer qualifies notification elimination from its actual
-absence of host recipients and reentry. Disabled scripting alone is insufficient.
-Fragments may construct closed/name-only Details; an open transition requiring
-unavailable notification facts refuses before consuming the incoming attribute.
-Native name/open attributes remain authoritative. A private node-bound eligibility
-marker is qualified and skipped during immutable metadata publication. Controlled
-attribute removal retains charged shift/pop/rebind progress and original retired
-source histories; interruption prevents publication and preserves cleanup ownership.
-Live toggle dispatch, tracker state and hosted mutation remain downstream work.
+Ordinary and fragment parsing establish a closed construction domain from the
+actual source, controller, parser Document and session. Its absence of host
+recipients, executable callbacks and reentry permits notification elimination;
+Disabled scripting alone is insufficient. The private eligibility marker is
+bound to the actual owned Details node before attribute effects and is skipped
+during immutable metadata publication. An unproved node still refuses a required
+notification before consuming the incoming attribute.
+
+Native name/open attributes remain authoritative. Template contents and shadow
+contents delimit separate groups; captured host peers are not constructed into
+the owned tree. Actual clones bind their own eligibility and apply the ordered
+attribute and insertion rules. Controlled attribute removal retains charged
+shift/pop/rebind progress and original retired source histories; interruption
+prevents publication and preserves cleanup ownership. Live toggle dispatch,
+tracker state and hosted mutation remain downstream work.
 
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay

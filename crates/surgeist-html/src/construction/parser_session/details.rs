@@ -3,7 +3,7 @@ use super::*;
 
 #[derive(Clone, Copy)]
 pub(super) enum NotificationDomain {
-    ClosedOrdinary,
+    ClosedOwned,
     Unavailable,
 }
 
@@ -41,11 +41,12 @@ impl SessionStorage {
         }
         if matches!(
             self.details_domain(c, node)?,
-            NotificationDomain::ClosedOrdinary
+            NotificationDomain::ClosedOwned
         ) {
-            // The sealed ordinary constructor proves no task loop, listeners,
-            // callbacks, reentry or recipients. The initially null tracker has
-            // no observable queued task in this selected closed specialization.
+            // Issued by a qualified real construction capability and bound to
+            // this actual node, including owned fragment/template/clone trees.
+            // No consumer observes a notification tracker or queued task in
+            // this closed owner; canonical attribute mutations remain required.
             Ok(())
         } else {
             Err(c

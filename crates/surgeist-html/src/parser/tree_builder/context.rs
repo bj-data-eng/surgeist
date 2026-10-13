@@ -3267,41 +3267,7 @@ mod tests {
     }
     #[test]
     fn details_fragment_open_requires_actual_notification_capability_before_take() {
-        let request = request(
-            "<details name=g open>",
-            "div",
-            HtmlScriptingStatus::Disabled,
-        );
-        let mut driver = initialized_driver(&request);
-        let mut failed = false;
-        for _ in 0..128 {
-            if driver.step().is_err() {
-                failed = true;
-                break;
-            }
-        }
-        assert!(failed);
-        assert_eq!(
-            driver.control.stop(),
-            Some(ParseStop::UnsupportedStandaloneState(
-                crate::parser::control::StandaloneUnsupported::DetailsNotification
-            ))
-        );
-        let pending = driver
-            .head
-            .as_ref()
-            .unwrap()
-            .state
-            .as_ref()
-            .unwrap()
-            .pending
-            .as_ref()
-            .unwrap();
-        assert!(
-            matches!(&pending.payload, super::super::prologue::Payload::Tag(Some(tag)) if tag.attributes.len()==2)
-        );
-        driver.release().unwrap();
-        super::super::tests::assert_released(&driver.control);
+        super::owned_fragment_details_effect_tests::unproved_node_refuses_before_take();
     }
     #[test]
     fn radio_fragment_detached_groups_normalize_without_inventing_document_connection() {
@@ -4232,5 +4198,683 @@ mod owned_fragment_details_tests {
             "owned fragment Details did not complete after all fixtures and cleanup: {completed:?}; typed stops: {stopped:?}"
         );
         assert_eq!(observed, expected_snapshots);
+    }
+}
+
+#[cfg(test)]
+mod owned_fragment_details_effect_tests {
+    use super::*;
+    use crate::construction::parser_session::{
+        CreationContext, CreationLocation, NativeView, ParserArenaSession,
+    };
+    use crate::parser::tokenizer::{
+        tests::LexerFixture,
+        token::{Attribute, Event, Tag, TokenKind},
+    };
+    use crate::*;
+
+    fn owner(
+        request: &HtmlFragmentParseRequest,
+    ) -> (ParseControl, ParserArenaSession, ConstructionCapability<'_>) {
+        let mut driver = initialized_driver(request);
+        let stage = driver.head.as_mut().unwrap();
+        // Reuse the existing extraction's real controlled lexer/stack disposal;
+        // the session and source/controller/document-bound issuer survive.
+        stage
+            .prepare_standalone_fixture(&mut driver.control)
+            .unwrap();
+        let (session, capability) = driver.head.take().unwrap().into_standalone_fixture();
+        assert!(driver.failed_evidence.is_none());
+        (driver.control, session, capability)
+    }
+    fn tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> (Tag, HtmlSourceRange) {
+        let Event::Token(event) = lexer.next(c, false).unwrap().unwrap() else {
+            panic!("literal starts with a real tag");
+        };
+        let token = event.into_token(c).unwrap();
+        let TokenKind::Tag(tag) = token.kind else {
+            panic!("actual tag")
+        };
+        (tag, token.source)
+    }
+    fn attribute(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Option<Attribute> {
+        let (mut tag, _) = tag(lexer, c);
+        assert_eq!(tag.attributes.len(), 1);
+        let attribute = tag.attributes.try_pop(c).unwrap();
+        tag.name.release(c).unwrap();
+        tag.attributes.release(c).unwrap();
+        attribute
+    }
+    fn release_attribute(input: &mut Option<Attribute>, c: &mut ParseControl) {
+        if let Some(attribute) = input.take() {
+            attribute.name.release(c).unwrap();
+            attribute.value.release(c).unwrap();
+        }
+    }
+    fn detail(
+        session: &mut ParserArenaSession,
+        c: &mut ParseControl,
+        lexer: &mut LexerFixture<'_>,
+        proof: &ConstructionCapability<'_>,
+        parent: &ParserNode,
+    ) -> ParserNode {
+        let (tag, source) = tag(lexer, c);
+        session
+            .allocate_details_for_creation(
+                c,
+                &mut Some(tag),
+                CreationLocation {
+                    intended_parent: parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &source,
+                proof,
+            )
+            .unwrap()
+    }
+    fn attributes(
+        session: &ParserArenaSession,
+        c: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Vec<(Vec<u16>, Vec<u16>)> {
+        fn units(
+            view: &mut NativeView<'_>,
+            text: crate::construction::parser_session::native_view::NativeString<'_>,
+        ) -> Vec<u16> {
+            (0..text.len())
+                .map(|i| view.unit(&text, i).unwrap().unwrap())
+                .collect()
+        }
+        let mut view = session.native_view(c).unwrap();
+        (0..view.attribute_count(node).unwrap())
+            .map(|i| {
+                let attribute = view.attribute_at(node, i).unwrap().unwrap();
+                assert!(attribute.name.namespace.is_none());
+                (
+                    units(&mut view, attribute.name.local),
+                    units(&mut view, attribute.value),
+                )
+            })
+            .collect()
+    }
+    fn literals(input: &[(&str, &str)]) -> Vec<(Vec<u16>, Vec<u16>)> {
+        input
+            .iter()
+            .map(|(n, v)| (n.encode_utf16().collect(), v.encode_utf16().collect()))
+            .collect()
+    }
+    pub(super) fn unproved_node_refuses_before_take() {
+        let request = tests::request(
+            "<details name=g><i open=new>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let (mut c, mut session, proof) = owner(&request);
+        let parent = session.fragment_output(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let (tag, _) = tag(&mut lexer, &mut c);
+        // A real generic lexical creation did not issue/bind Details eligibility.
+        // Matching local name, inert profile and null registry do not grant it.
+        let node = session
+            .allocate_html_tag_for_creation(
+                &mut c,
+                &mut Some(tag),
+                &parent,
+                None,
+                CreationContext::Ordinary,
+            )
+            .unwrap();
+        let mut input = attribute(&mut lexer, &mut c);
+        let pointer = input
+            .as_ref()
+            .unwrap()
+            .value
+            .value
+            .text()
+            .backing()
+            .as_ptr();
+        let before = attributes(&session, &mut c, &node);
+        assert_eq!(before, literals(&[("name", "g")]));
+        let expected = ParseStop::UnsupportedStandaloneState(
+            crate::parser::control::StandaloneUnsupported::DetailsNotification,
+        );
+        assert_eq!(
+            session.set_details_attribute(&mut c, &node, &mut input, &proof),
+            Err(SessionError::Stop(expected))
+        );
+        assert_eq!(
+            input
+                .as_ref()
+                .unwrap()
+                .value
+                .value
+                .text()
+                .backing()
+                .as_ptr(),
+            pointer
+        );
+        let usage = c.usage().clone();
+        assert_eq!(
+            session.set_details_attribute(&mut c, &node, &mut input, &proof),
+            Err(SessionError::Stop(expected))
+        );
+        assert_eq!(c.usage(), &usage);
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(expected))
+        );
+        release_attribute(&mut input, &mut c);
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
+        assert_eq!(c.stop(), Some(expected));
+    }
+    #[test]
+    fn owned_fragment_details_managed_name_open_and_insertion_use_distinct_rules() {
+        let request = tests::request(
+            "<details name=g open=v><details name=h open=w><details name=g open=z><i name=g><i open=x><i open=y>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let (mut c, mut session, proof) = owner(&request);
+        let parent = session.fragment_output(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let first = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
+        session
+            .insert(&mut c, &parent, &first, None, Some(&proof))
+            .unwrap();
+        let second = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
+        session
+            .insert(&mut c, &parent, &second, Some(&first), Some(&proof))
+            .unwrap();
+        let third = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
+        session
+            .insert(&mut c, &parent, &third, Some(&first), Some(&proof))
+            .unwrap();
+        assert_eq!(
+            attributes(&session, &mut c, &third),
+            literals(&[("name", "g")])
+        );
+        assert_eq!(
+            attributes(&session, &mut c, &first),
+            literals(&[("name", "g"), ("open", "v")])
+        );
+        let mut name = attribute(&mut lexer, &mut c);
+        session
+            .set_details_attribute(&mut c, &second, &mut name, &proof)
+            .unwrap();
+        assert!(name.is_none());
+        assert_eq!(
+            attributes(&session, &mut c, &first),
+            literals(&[("name", "g"), ("open", "v")])
+        );
+        assert_eq!(
+            attributes(&session, &mut c, &second),
+            literals(&[("name", "g")])
+        );
+        let mut open = attribute(&mut lexer, &mut c);
+        session
+            .set_details_attribute(&mut c, &second, &mut open, &proof)
+            .unwrap();
+        assert!(open.is_none());
+        assert_eq!(
+            attributes(&session, &mut c, &first),
+            literals(&[("name", "g")])
+        );
+        assert_eq!(
+            attributes(&session, &mut c, &second),
+            literals(&[("name", "g"), ("open", "x")])
+        );
+        let mut replacement = attribute(&mut lexer, &mut c);
+        session
+            .set_details_attribute(&mut c, &second, &mut replacement, &proof)
+            .unwrap();
+        assert_eq!(
+            attributes(&session, &mut c, &second),
+            literals(&[("name", "g"), ("open", "y")])
+        );
+        session
+            .remove_details_attribute(&mut c, &second, HtmlDetailsAttribute::Open)
+            .unwrap();
+        assert_eq!(
+            attributes(&session, &mut c, &second),
+            literals(&[("name", "g")])
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
+        assert_eq!(c.stop(), None);
+    }
+    #[test]
+    fn owned_fragment_details_aliased_incoming_attribute_refuses_then_real_retry_succeeds() {
+        let request = tests::request(
+            "<details name=g><i open=v>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let (mut c, mut session, proof) = owner(&request);
+        let parent = session.fragment_output(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
+        let mut input = attribute(&mut lexer, &mut c);
+        let alias = input.as_ref().unwrap().value.value.text().clone();
+        let pointer = alias.backing().as_ptr();
+        assert_eq!(
+            session.set_details_attribute(&mut c, &node, &mut input, &proof),
+            Err(SessionError::AliasedPayload)
+        );
+        assert_eq!(
+            input
+                .as_ref()
+                .unwrap()
+                .value
+                .value
+                .text()
+                .backing()
+                .as_ptr(),
+            pointer
+        );
+        assert_eq!(
+            attributes(&session, &mut c, &node),
+            literals(&[("name", "g")])
+        );
+        assert_eq!(c.stop(), None);
+        drop(alias);
+        session
+            .set_details_attribute(&mut c, &node, &mut input, &proof)
+            .unwrap();
+        assert!(input.is_none());
+        assert_eq!(
+            attributes(&session, &mut c, &node),
+            literals(&[("name", "g"), ("open", "v")])
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
+    }
+    #[test]
+    fn owned_fragment_details_foreign_capability_and_cancel_refuse_before_take() {
+        for cancelled in [false, true] {
+            let request = tests::request(
+                "<details name=g><i open=v>",
+                "div",
+                HtmlScriptingStatus::Disabled,
+            );
+            let (mut c, mut session, proof) = owner(&request);
+            let parent = session.fragment_output(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
+            let mut input = attribute(&mut lexer, &mut c);
+            let pointer = input
+                .as_ref()
+                .unwrap()
+                .value
+                .value
+                .text()
+                .backing()
+                .as_ptr();
+            let expected = if cancelled {
+                request.cancellation().cancel();
+                let expected = ParseStop::Cancelled;
+                assert_eq!(
+                    session.set_details_attribute(&mut c, &node, &mut input, &proof),
+                    Err(SessionError::Stop(expected))
+                );
+                expected
+            } else {
+                let foreign_request = tests::request("", "div", HtmlScriptingStatus::Disabled);
+                let (mut foreign, mut other, foreign_proof) = owner(&foreign_request);
+                let unchanged = foreign.usage().clone();
+                let expected =
+                    ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl);
+                assert_eq!(
+                    session.set_details_attribute(&mut c, &node, &mut input, &foreign_proof),
+                    Err(SessionError::Stop(expected))
+                );
+                assert_eq!(foreign.usage(), &unchanged);
+                other.release(&mut foreign).unwrap();
+                super::super::tests::assert_released(&foreign);
+                expected
+            };
+            assert_eq!(
+                input
+                    .as_ref()
+                    .unwrap()
+                    .value
+                    .value
+                    .text()
+                    .backing()
+                    .as_ptr(),
+                pointer
+            );
+            assert_eq!(
+                session.freeze(&mut c).err(),
+                Some(SessionError::Stop(expected))
+            );
+            let usage = c.usage().clone();
+            assert_eq!(
+                session.set_details_attribute(&mut c, &node, &mut input, &proof),
+                Err(SessionError::Stop(expected))
+            );
+            assert_eq!(c.usage(), &usage);
+            release_attribute(&mut input, &mut c);
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::assert_released(&c);
+            assert_eq!(c.stop(), Some(expected));
+        }
+    }
+    #[test]
+    fn owned_fragment_details_foreign_source_refuses_and_preserves_both_actual_owners() {
+        let request = tests::request("<details name=g>", "div", HtmlScriptingStatus::Disabled);
+        let (mut c, mut session, proof) = owner(&request);
+        let parent = session.fragment_output(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
+        let foreign_request = tests::request("<i open=v>", "div", HtmlScriptingStatus::Disabled);
+        let (mut foreign, mut other, _) = owner(&foreign_request);
+        let mut foreign_lexer =
+            LexerFixture::new(foreign_request.source(), State::Data, None, &mut foreign).unwrap();
+        let mut input = attribute(&mut foreign_lexer, &mut foreign);
+        let pointer = input
+            .as_ref()
+            .unwrap()
+            .value
+            .value
+            .text()
+            .backing()
+            .as_ptr();
+        let foreign_usage = foreign.usage().clone();
+        let expected =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignSource);
+        assert_eq!(
+            session.set_details_attribute(&mut c, &node, &mut input, &proof),
+            Err(SessionError::Stop(expected))
+        );
+        assert_eq!(
+            input
+                .as_ref()
+                .unwrap()
+                .value
+                .value
+                .text()
+                .backing()
+                .as_ptr(),
+            pointer
+        );
+        assert_eq!(foreign.usage(), &foreign_usage);
+        let usage = c.usage().clone();
+        assert_eq!(
+            session.set_details_attribute(&mut c, &node, &mut input, &proof),
+            Err(SessionError::Stop(expected))
+        );
+        assert_eq!(c.usage(), &usage);
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(expected))
+        );
+        release_attribute(&mut input, &mut foreign);
+        foreign_lexer.release(&mut foreign).unwrap();
+        other.release(&mut foreign).unwrap();
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::assert_released(&foreign);
+        super::super::tests::assert_released(&c);
+        assert_eq!(c.stop(), Some(expected));
+        assert_eq!(foreign.stop(), None);
+    }
+    #[test]
+    fn owned_fragment_details_managed_slot_exact_and_one_short_retain_cleanup() {
+        for cap in [1, 2] {
+            let base = tests::request(
+                "<details name=g><i open=v>",
+                "div",
+                HtmlScriptingStatus::Disabled,
+            );
+            let request = HtmlFragmentParseRequest::new(
+                base.source().clone(),
+                base.context().clone(),
+                base.limits()
+                    .into_builder()
+                    .managed_attributes(cap)
+                    .finish()
+                    .unwrap(),
+            )
+            .unwrap();
+            let (mut c, mut session, proof) = owner(&request);
+            let parent = session.fragment_output(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
+            let mut input = attribute(&mut lexer, &mut c);
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::ManagedAttributes)
+                    .current,
+                1
+            );
+            let result = session.set_details_attribute(&mut c, &node, &mut input, &proof);
+            if cap == 2 {
+                result.unwrap();
+                assert!(input.is_none());
+                assert_eq!(
+                    attributes(&session, &mut c, &node),
+                    literals(&[("name", "g"), ("open", "v")])
+                );
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedAttributes)
+                        .current,
+                    2
+                );
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::ManagedAttributes,
+                        ..
+                    }))
+                ));
+                let first = c.stop().unwrap();
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+            }
+            release_attribute(&mut input, &mut c);
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::assert_released(&c);
+        }
+    }
+}
+
+#[cfg(test)]
+mod owned_fragment_details_completion_tests {
+    use super::*;
+    use crate::construction::parser_session::context::QualifiedFragmentHost;
+    use crate::*;
+
+    #[test]
+    fn owned_fragment_details_captured_attachment_has_local_members_and_unchanged_capture() {
+        let request = tests::shadow_request(
+            "<template shadowrootmode=open><details name=g open=v></details><details name=g open=w></details></template>",
+            true,
+        );
+        let identity = request.context().capture().identity().clone();
+        let usage = request.context().capture().usage();
+        let target = request.context().context_element().clone();
+        let target_snapshot = format!(
+            "{:?}",
+            request.context().capture().node(target.subject()).unwrap()
+        );
+        for _ in 0..2 {
+            let mut driver = initialized_driver(&request);
+            tests::complete(&mut driver);
+            let session = &driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .before
+                .kernel
+                .session;
+            let effect = session
+                .declarative_shadow(&mut driver.control, 0)
+                .unwrap()
+                .unwrap();
+            let QualifiedFragmentHost::Captured(host) = &effect.host else {
+                panic!("actual captured attachment")
+            };
+            assert_eq!(host, &target);
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            assert_eq!(view.child_count(&effect.contents).unwrap(), 2);
+            let a = view.child_at(&effect.contents, 0).unwrap().unwrap();
+            let b = view.child_at(&effect.contents, 1).unwrap().unwrap();
+            assert!(!view.same_node(&a, &b).unwrap());
+            assert_eq!(view.attribute_count(&a).unwrap(), 2);
+            assert_eq!(view.attribute_count(&b).unwrap(), 1);
+            let open = view.attribute_at(&a, 1).unwrap().unwrap();
+            assert_eq!(
+                (0..open.name.local.len())
+                    .map(|i| view.unit(&open.name.local, i).unwrap().unwrap())
+                    .collect::<Vec<_>>(),
+                vec![111, 112, 101, 110]
+            );
+            assert_eq!(view.unit(&open.value, 0).unwrap(), Some(118));
+            let output = session.fragment_output(&mut driver.control).unwrap();
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            assert_eq!(view.child_count(&output).unwrap(), 0);
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+            assert_eq!(driver.control.stop(), None);
+            assert_eq!(request.context().capture().identity(), &identity);
+            assert_eq!(request.context().capture().usage(), usage);
+            assert_eq!(
+                format!(
+                    "{:?}",
+                    request.context().capture().node(target.subject()).unwrap()
+                ),
+                target_snapshot
+            );
+        }
+    }
+    #[test]
+    fn owned_fragment_details_retirement_preserves_actual_original_ranges_and_frozen_output() {
+        let request = tests::request(
+            "<details name=g open></details><details name=g open></details>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut driver = Some(initialized_driver(&request));
+        tests::complete(driver.as_mut().unwrap());
+        let owner = driver.as_mut().unwrap();
+        let state = owner.head.as_mut().unwrap().state.as_mut().unwrap();
+        let session = &mut state.before.kernel.session;
+        session
+            .prepare_native_associations(&mut owner.control, request.source())
+            .unwrap();
+        let mut retired = Vec::new();
+        {
+            let mut rows = session.native_associations(&mut owner.control).unwrap();
+            let mut group = 0;
+            while let Some(header) = rows.group(group).unwrap() {
+                if header.retirement.is_some() {
+                    let mut value = Some(rows.materialize_group(group).unwrap());
+                    let units = value.as_ref().unwrap().text().code_units().to_vec();
+                    let mut cursor = Some(rows.group_origin_cursor(group).unwrap());
+                    let mut origins = Vec::new();
+                    while let Some(origin) =
+                        rows.next_group_origin(cursor.as_mut().unwrap()).unwrap()
+                    {
+                        assert_eq!(origin.source.source(), request.source().identity());
+                        origins.push((origin.source.start(), origin.source.end()));
+                    }
+                    rows.release_group_origin_cursor(&mut cursor).unwrap();
+                    rows.release_materialized_group(&mut value).unwrap();
+                    retired.push((units, origins));
+                }
+                group += 1;
+            }
+        }
+        assert_eq!(
+            retired,
+            vec![
+                (
+                    vec![111, 112, 101, 110],
+                    vec![(47, 48), (48, 49), (49, 50), (50, 51)]
+                ),
+                (vec![], vec![])
+            ]
+        );
+        let mut completed = ContextFragmentDriver::take_completed(&mut driver).unwrap();
+        assert!(driver.is_none());
+        completed.prepare_native_associations().unwrap();
+        let mut parts = completed.freeze_parts().unwrap();
+        {
+            let fragment = parts.fragment().unwrap();
+            let root = fragment.root();
+            let nodes = root.children().collect::<Vec<_>>();
+            assert_eq!(nodes.len(), 2);
+            let HtmlNodeKind::Element(a) = fragment.node(&nodes[0]).unwrap().kind() else {
+                panic!("first Details")
+            };
+            let HtmlNodeKind::Element(b) = fragment.node(&nodes[1]).unwrap().kind() else {
+                panic!("second Details")
+            };
+            assert_eq!(
+                a.attributes()
+                    .iter()
+                    .map(|a| a.name().local_name().code_units().to_vec())
+                    .collect::<Vec<_>>(),
+                vec![vec![110, 97, 109, 101], vec![111, 112, 101, 110]]
+            );
+            assert_eq!(
+                b.attributes()
+                    .iter()
+                    .map(|a| a.name().local_name().code_units().to_vec())
+                    .collect::<Vec<_>>(),
+                vec![vec![110, 97, 109, 101]]
+            );
+        }
+        parts.release().unwrap();
+        super::super::tests::assert_released(&parts.control);
+    }
+    #[test]
+    fn owned_fragment_details_every_actual_step_cancel_keeps_stop_and_cleanup_owner() {
+        const SOURCE: &str =
+            "<details name=g open></details><details name=g open></details><p>Z</p>";
+        let baseline = tests::request(SOURCE, "div", HtmlScriptingStatus::Disabled);
+        let mut driver = initialized_driver(&baseline);
+        let mut steps = 0;
+        for _ in 0..100 {
+            steps += 1;
+            if driver.step().unwrap() == HeadStep::Complete {
+                break;
+            }
+        }
+        assert!(steps > 4 && steps < 100);
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        for cut in 0..steps {
+            let request = tests::request(SOURCE, "div", HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            for _ in 0..cut {
+                assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+            }
+            request.cancellation().cancel();
+            assert!(driver.step().is_err());
+            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+            let usage = driver.control.usage().clone();
+            assert!(driver.step().is_err());
+            assert_eq!(driver.control.usage(), &usage);
+            assert!(driver.completed_native_view().is_err());
+            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        }
     }
 }

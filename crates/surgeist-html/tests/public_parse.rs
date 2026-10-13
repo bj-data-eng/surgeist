@@ -1450,3 +1450,58 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
         assert_eq!(report.usage(), &usage);
     }
 }
+
+#[test]
+fn owned_fragment_details_publishes_canonical_exclusivity_without_changing_capture() {
+    let literal =
+        "<details name=g open=v></details><details name=g open=w data-tail=z></details><p>Z</p>";
+    let context = fragment_context();
+    let capture = context.capture().identity().clone();
+    let request =
+        HtmlFragmentParseRequest::new(HtmlSource::utf8(literal), context, limits()).unwrap();
+    let cancellation = request.cancellation().clone();
+    let report = request.parse().unwrap();
+    let usage = report.usage().clone();
+    cancellation.cancel();
+    assert_eq!(report.source().as_utf8(), Some(literal));
+    assert_eq!(report.context().unwrap().capture().identity(), &capture);
+    assert!(report.document().is_none());
+    let fragment = report.fragment().unwrap();
+    let nodes = fragment.root().children().collect::<Vec<_>>();
+    assert_eq!(nodes.len(), 3);
+    for (index, expected) in [
+        (0, vec![("name", "g"), ("open", "v")]),
+        (1, vec![("name", "g"), ("data-tail", "z")]),
+    ] {
+        let HtmlNodeKind::Element(element) = fragment.node(&nodes[index]).unwrap().kind() else {
+            panic!("literal Details")
+        };
+        assert_eq!(
+            element.name().local_name(),
+            &DocumentString::from("details")
+        );
+        assert_eq!(
+            element
+                .attributes()
+                .iter()
+                .map(|a| (
+                    a.name().local_name().code_units().to_vec(),
+                    a.value().code_units().to_vec()
+                ))
+                .collect::<Vec<_>>(),
+            expected
+                .into_iter()
+                .map(|(n, v)| (n.encode_utf16().collect(), v.encode_utf16().collect()))
+                .collect::<Vec<(Vec<u16>, Vec<u16>)>>()
+        );
+    }
+    let p = fragment.node(&nodes[2]).unwrap();
+    assert!(
+        matches!(p.kind(), HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))
+    );
+    assert!(
+        matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(), HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
+    );
+    assert_eq!(report.effects().unwrap().len(), 0);
+    assert_eq!(report.usage(), &usage);
+}

@@ -5155,7 +5155,7 @@ impl ParserArenaSession {
                 }
             }
             Some(if closed {
-                details::NotificationDomain::ClosedOrdinary
+                details::NotificationDomain::ClosedOwned
             } else {
                 details::NotificationDomain::Unavailable
             })
