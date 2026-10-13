@@ -17476,3 +17476,645 @@ fn number_input_table_fostering_uses_value_state_and_preserves_form_and_native_d
     assert_eq!(current, [49, 51]);
     assert_eq!(default, [49, 51]);
 }
+
+// HTML877d Range36939-66, constraints38694+/38808+, ordered input
+// initialization34947+/35088+, and the selected #1134 exact finite-number join.
+fn ordinary_range_input_observes_complete(
+    source: HtmlSource,
+    expected_attributes: &[(&str, &[u16])],
+    expected_default: &[u16],
+    expected_current: &[u16],
+    expected_references: &[(usize, usize, usize, usize)],
+) -> super::head::HeadStep {
+    use crate::construction::parser_session::provenance::LexicalRole;
+    use crate::parser::tokenizer::token::OriginKind;
+
+    let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
+    let mut driver = super::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert!(first_stop.is_none());
+        assert!(driver.control.first_stop_usage().is_none());
+        return boundary;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let child_count = children.len();
+    let input = children[0].clone();
+    let input_children = document.node(&input).unwrap().children().count();
+    let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
+        panic!("input must be an actual native element");
+    };
+    let namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let local = element.name().local_name().code_units().to_vec();
+    let attributes: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|attribute| {
+            (
+                attribute
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                attribute.name().local_name().code_units().to_vec(),
+                attribute.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    let HtmlNodeKind::Text(text) = document.node(&children[1]).unwrap().kind() else {
+        panic!("Z must remain an actual sibling after the void input");
+    };
+    let following_text = text.code_units().to_vec();
+    let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+    let owner_is_form = owner.as_ref() == Some(&form);
+    drop(owner);
+    let state = frozen.input_state(&mut control, &input).unwrap();
+    let actual_type = state.flags.kind().input_type();
+    let value_mode = state.flags.kind().value_mode();
+    let selectable = state.flags.kind().is_selectable();
+    let flags = (
+        state.flags.dirty_value(),
+        state.flags.dirty_checkedness(),
+        state.flags.checkedness(),
+        state.flags.indeterminate(),
+        state.flags.user_validity(),
+    );
+    let files_empty = state.selected_files_empty;
+    let cursor = state.cursor;
+    let writeback_absent = frozen
+        .input_writeback_sources(&mut control, &input)
+        .unwrap()
+        .is_none();
+    let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+    frozen
+        .append_input_internal_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let internal = buffer.units().to_vec();
+    buffer.clear(&mut control).unwrap();
+    frozen
+        .append_input_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let current = buffer.units().to_vec();
+    buffer.clear(&mut control).unwrap();
+    frozen
+        .append_input_default_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let default = buffer.units().to_vec();
+    buffer.release(&mut control).unwrap();
+    let (references, source_qualified) = {
+        let evidence = frozen.retained_evidence().unwrap();
+        let (_, parts, _) = evidence.lexical_observations();
+        let source_qualified = !parts.is_empty()
+            && parts
+                .iter()
+                .all(|part| part.source.source() == request.source().identity());
+        let references = parts
+            .iter()
+            .filter(|part| {
+                part.role == LexicalRole::Value && part.kind == Some(OriginKind::CharacterReference)
+            })
+            .map(|part| (part.start, part.end, part.source.start(), part.source.end()))
+            .collect::<Vec<_>>();
+        (references, source_qualified)
+    };
+    drop(input);
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 2);
+    assert_eq!(input_children, 0);
+    assert_eq!(
+        namespace,
+        "http://www.w3.org/1999/xhtml"
+            .encode_utf16()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(local, [105, 110, 112, 117, 116]);
+    assert_eq!(
+        attributes,
+        expected_attributes
+            .iter()
+            .map(|(name, value)| (
+                None,
+                name.encode_utf16().collect::<Vec<_>>(),
+                value.to_vec()
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(following_text, [90]);
+    assert!(owner_is_form && files_empty && writeback_absent && source_qualified);
+    assert_eq!(actual_type, crate::HtmlInputType::Range);
+    assert_eq!(value_mode, crate::HtmlInputValueMode::Value);
+    assert!(!selectable);
+    assert_eq!(cursor, 0);
+    assert_eq!(flags, (false, false, false, false, false));
+    assert_eq!(default, expected_default);
+    assert_eq!(internal, expected_current);
+    assert_eq!(current, expected_current);
+    assert_eq!(references, expected_references);
+    boundary
+}
+
+type RangeInputLiteral<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a str, &'a str);
+
+// Each source drives the actual ordinary constructor and releases all of its
+// owners before any discriminatory Complete assertion. The expected strings
+// below are literal source-rule results, never computed by the Range producer.
+fn ordinary_range_input_literal_matrix(cases: &[RangeInputLiteral<'_>]) {
+    let mut boundaries = Vec::new();
+    for &(attributes, expected_native, default, current) in cases {
+        let raw = format!("<!doctype html><form id=f><input {attributes}>Z</form>");
+        let native_units: Vec<_> = expected_native
+            .iter()
+            .map(|(name, value)| (*name, value.encode_utf16().collect::<Vec<_>>()))
+            .collect();
+        let native: Vec<_> = native_units
+            .iter()
+            .map(|(name, value)| (*name, value.as_slice()))
+            .collect();
+        let default: Vec<_> = default.encode_utf16().collect();
+        let current: Vec<_> = current.encode_utf16().collect();
+        let boundary = ordinary_range_input_observes_complete(
+            HtmlSource::utf8(raw),
+            &native,
+            &default,
+            &current,
+            &[],
+        );
+        boundaries.push((attributes, boundary));
+    }
+    for (attributes, boundary) in boundaries {
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "Range attributes={attributes:?}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_range_input_default_and_invalid_value_use_source_midpoint_without_rewriting_native_default()
+ {
+    // HTML877d36939-66: invalid/empty/absent current gets midpoint(0,100)=50.
+    // The separate defaultValue getter still reflects actual value content.
+    ordinary_range_input_literal_matrix(&[
+        ("type=range", &[("type", "range")], "", "50"),
+        (
+            "type=range value=''",
+            &[("type", "range"), ("value", "")],
+            "",
+            "50",
+        ),
+        (
+            "type=range value=bad",
+            &[("type", "range"), ("value", "bad")],
+            "bad",
+            "50",
+        ),
+        (
+            "type=range value=+1",
+            &[("type", "range"), ("value", "+1")],
+            "+1",
+            "50",
+        ),
+        (
+            "type=range value=1.",
+            &[("type", "range"), ("value", "1.")],
+            "1.",
+            "50",
+        ),
+        (
+            "type=range value=12junk",
+            &[("type", "range"), ("value", "12junk")],
+            "12junk",
+            "50",
+        ),
+        (
+            "type=range value=' 1 '",
+            &[("type", "range"), ("value", " 1 ")],
+            " 1 ",
+            "50",
+        ),
+        (
+            "type=range value=1e+",
+            &[("type", "range"), ("value", "1e+")],
+            "1e+",
+            "50",
+        ),
+    ]);
+}
+
+#[test]
+fn ordinary_range_input_bounds_recover_prefixes_clamp_and_disable_upper_correction_when_reversed() {
+    // Recovery applies to constraints; whole Author grammar applies to current.
+    // max<min changes the default and disables overflow, not underflow.
+    ordinary_range_input_literal_matrix(&[
+        (
+            "type=range min=80 max=20",
+            &[("type", "range"), ("min", "80"), ("max", "20")],
+            "",
+            "80",
+        ),
+        (
+            "type=range min=80 max=20 step=any value=90",
+            &[
+                ("type", "range"),
+                ("min", "80"),
+                ("max", "20"),
+                ("step", "any"),
+                ("value", "90"),
+            ],
+            "90",
+            "90",
+        ),
+        (
+            "type=range min=80 max=20 step=any value=0",
+            &[
+                ("type", "range"),
+                ("min", "80"),
+                ("max", "20"),
+                ("step", "any"),
+                ("value", "0"),
+            ],
+            "0",
+            "80",
+        ),
+        (
+            "type=range min=0 max=100 step=any value=-2",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "any"),
+                ("value", "-2"),
+            ],
+            "-2",
+            "0",
+        ),
+        (
+            "type=range min=0 max=100 step=any value=101",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "any"),
+                ("value", "101"),
+            ],
+            "101",
+            "100",
+        ),
+        (
+            "type=range min='+2junk' max=10 step=any value=1",
+            &[
+                ("type", "range"),
+                ("min", "+2junk"),
+                ("max", "10"),
+                ("step", "any"),
+                ("value", "1"),
+            ],
+            "1",
+            "2",
+        ),
+        (
+            "type=range min='+2junk' max=10 step=any value='+2junk'",
+            &[
+                ("type", "range"),
+                ("min", "+2junk"),
+                ("max", "10"),
+                ("step", "any"),
+                ("value", "+2junk"),
+            ],
+            "+2junk",
+            "6",
+        ),
+        (
+            "type=range min=bad max=1 step=4 value=3",
+            &[
+                ("type", "range"),
+                ("min", "bad"),
+                ("max", "1"),
+                ("step", "4"),
+                ("value", "3"),
+            ],
+            "3",
+            "1",
+        ),
+    ]);
+}
+
+#[test]
+fn ordinary_range_input_step_ties_and_base_precedence_use_actual_content_not_default_minimum() {
+    // min0/base0: 50 is tied between40 and60, so choose60. With unusable
+    // min, usable value content50 becomes the base and50 has no mismatch.
+    ordinary_range_input_literal_matrix(&[
+        (
+            "type=range min=0 max=100 step=20 value=50",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "20"),
+                ("value", "50"),
+            ],
+            "50",
+            "60",
+        ),
+        (
+            "type=range min=0 max=100 step=20 value=bad",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "20"),
+                ("value", "bad"),
+            ],
+            "bad",
+            "60",
+        ),
+        (
+            "type=range max=100 step=20 value=50",
+            &[
+                ("type", "range"),
+                ("max", "100"),
+                ("step", "20"),
+                ("value", "50"),
+            ],
+            "50",
+            "50",
+        ),
+        (
+            "type=range min=bad max=100 step=20 value=50",
+            &[
+                ("type", "range"),
+                ("min", "bad"),
+                ("max", "100"),
+                ("step", "20"),
+                ("value", "50"),
+            ],
+            "50",
+            "50",
+        ),
+        (
+            "type=range min=bad max=100 step=20 value=bad",
+            &[
+                ("type", "range"),
+                ("min", "bad"),
+                ("max", "100"),
+                ("step", "20"),
+                ("value", "bad"),
+            ],
+            "bad",
+            "60",
+        ),
+        (
+            "type=range min=-30 max=10 step=20 value=0",
+            &[
+                ("type", "range"),
+                ("min", "-30"),
+                ("max", "10"),
+                ("step", "20"),
+                ("value", "0"),
+            ],
+            "0",
+            "10",
+        ),
+        (
+            "type=range min=0 max=10 step=4 value=10",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "10"),
+                ("step", "4"),
+                ("value", "10"),
+            ],
+            "10",
+            "8",
+        ),
+        (
+            "type=range min=0 max=100 step=0 value=1.5",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "0"),
+                ("value", "1.5"),
+            ],
+            "1.5",
+            "2",
+        ),
+        (
+            "type=range min=0 max=100 step=' any ' value=1.5",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", " any "),
+                ("value", "1.5"),
+            ],
+            "1.5",
+            "2",
+        ),
+    ]);
+}
+
+#[test]
+fn ordinary_range_input_any_preserves_valid_spelling_and_grammatical_conversion_overflow() {
+    // any is a whole ASCII-insensitive keyword. 1e999 is grammatical; failed
+    // conversion is not invalid syntax, underflow, overflow or step mismatch.
+    ordinary_range_input_literal_matrix(&[
+        (
+            "type=range step=ANY value=.5",
+            &[("type", "range"), ("step", "ANY"), ("value", ".5")],
+            ".5",
+            ".5",
+        ),
+        (
+            "type=range step=any value=1e+2",
+            &[("type", "range"), ("step", "any"), ("value", "1e+2")],
+            "1e+2",
+            "1e+2",
+        ),
+        (
+            "type=range step=any value=-0",
+            &[("type", "range"), ("step", "any"), ("value", "-0")],
+            "-0",
+            "-0",
+        ),
+        (
+            "type=range min=0 max=100 step=any value=1e999",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "any"),
+                ("value", "1e999"),
+            ],
+            "1e999",
+            "1e999",
+        ),
+        (
+            "value=1e999 type=range min=0 max=100 step=any",
+            &[
+                ("value", "1e999"),
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "any"),
+            ],
+            "1e999",
+            "1e999",
+        ),
+    ]);
+}
+
+#[test]
+fn ordinary_range_input_exact_finite_lattice_and_creation_reset_use_final_constraints_in_both_orders()
+ {
+    // Selected #1134 exact-binary64 join: explicit min/base0, step0.1 and
+    // current0.3 choose already-representable0.2. No browser tolerance claim.
+    // Initial prefix corrections do not change value content. The required
+    // fresh-creation reset reloads that default and uses the final constraints
+    // in either order; intermediate causal effects require separate owner tests.
+    ordinary_range_input_literal_matrix(&[
+        (
+            "type=range min=0 max=100 step=0.1 value=0.3",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "0.1"),
+                ("value", "0.3"),
+            ],
+            "0.3",
+            "0.2",
+        ),
+        (
+            "value=0.3 min=0 max=100 step=0.1 type=range",
+            &[
+                ("value", "0.3"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "0.1"),
+                ("type", "range"),
+            ],
+            "0.3",
+            "0.2",
+        ),
+        (
+            "type=range value=0.3 min=0 max=100 step=0.1",
+            &[
+                ("type", "range"),
+                ("value", "0.3"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "0.1"),
+            ],
+            "0.3",
+            "0.2",
+        ),
+        (
+            "type=range value=50 step=20 min=0",
+            &[
+                ("type", "range"),
+                ("value", "50"),
+                ("step", "20"),
+                ("min", "0"),
+            ],
+            "50",
+            "60",
+        ),
+    ]);
+}
+
+#[test]
+fn ordinary_range_input_entity_crlf_stays_native_default_but_generates_midpoint_current_in_both_orders()
+ {
+    let keyword: Vec<_> = "range".encode_utf16().collect();
+    let default = [49, 13, 10, 50];
+    let mut boundaries = Vec::new();
+    for value_first in [false, true] {
+        let attributes = if value_first {
+            "value='1&#13;&#10;2' type=range"
+        } else {
+            "type=range value='1&#13;&#10;2'"
+        };
+        let raw = format!("<!doctype html><form id=f><input {attributes}>Z</form>");
+        let cr = raw.find("&#13;").unwrap();
+        let lf = raw.find("&#10;").unwrap();
+        let native = if value_first {
+            vec![("value", default.as_slice()), ("type", keyword.as_slice())]
+        } else {
+            vec![("type", keyword.as_slice()), ("value", default.as_slice())]
+        };
+        boundaries.push(ordinary_range_input_observes_complete(
+            HtmlSource::utf8(raw),
+            &native,
+            &default,
+            &[53, 48],
+            &[(1, 2, cr, cr + 5), (2, 3, lf, lf + 5)],
+        ));
+    }
+    for boundary in boundaries {
+        assert_eq!(boundary, super::head::HeadStep::Complete);
+    }
+}
+
+#[test]
+fn ordinary_range_input_isolated_utf16_surrogate_stays_native_default_and_generates_midpoint_current()
+ {
+    let mut raw: Vec<_> = "<!doctype html><form id=f><input type=range value='"
+        .encode_utf16()
+        .collect();
+    raw.extend([49, 0xd800, 50]);
+    raw.extend("'>Z</form>".encode_utf16());
+    let keyword: Vec<_> = "range".encode_utf16().collect();
+    let boundary = ordinary_range_input_observes_complete(
+        HtmlSource::utf16(crate::DocumentString::from_utf16(raw)),
+        &[("type", &keyword), ("value", &[49, 0xd800, 50])],
+        &[49, 0xd800, 50],
+        &[53, 48],
+        &[],
+    );
+    assert_eq!(boundary, super::head::HeadStep::Complete);
+}
