@@ -29,6 +29,9 @@ const MAX_INPUT: u64 = 64 * 1024 * 1024;
 fn invalid(detail: impl Into<String>) -> FuzzError {
     FuzzError::new(FuzzErrorKind::Artifact, "fuzz artifact", detail)
 }
+fn resource(detail: impl Into<String>) -> FuzzError {
+    FuzzError::new(FuzzErrorKind::Resource, "fuzz artifact quota", detail)
+}
 fn io_error(error: impl std::error::Error + Send + Sync + 'static) -> FuzzError {
     FuzzError::with_source(
         FuzzErrorKind::Io,
@@ -850,7 +853,7 @@ mod rooted {
                 continue;
             }
             if entries.len() as u64 >= ceiling {
-                return Err(invalid("artifact entry count exceeds quota"));
+                return Err(resource("artifact entry count exceeds quota"));
             }
             entries.push((name.to_owned(), entry.file_type()));
         }
@@ -969,7 +972,7 @@ impl ArtifactStore {
                     return Err(invalid("unexpected artifact bundle or symlink"));
                 }
                 if (report.published.len() + report.partial.len()) as u64 >= self.limits.entries {
-                    return Err(invalid("artifact count exceeds quota"));
+                    return Err(resource("artifact count exceeds quota"));
                 }
                 let bundle = rooted::directory(&dir, &name, false)?;
                 let files = rooted::names(&bundle, 3)?;
@@ -1007,14 +1010,14 @@ impl ArtifactStore {
                     let size =
                         u64::try_from(size).map_err(|_| invalid("negative artifact file size"))?;
                     if size > limit {
-                        return Err(invalid("artifact file exceeds decoding quota"));
+                        return Err(resource("artifact file exceeds decoding quota"));
                     }
                     report.bytes = report
                         .bytes
                         .checked_add(size)
                         .ok_or_else(|| invalid("artifact byte count overflow"))?;
                     if report.bytes > self.limits.bytes {
-                        return Err(invalid("artifact bytes exceed quota"));
+                        return Err(resource("artifact bytes exceed quota"));
                     }
                 }
                 let relative =
@@ -1043,7 +1046,7 @@ impl ArtifactStore {
         if metadata.len() as u64 > self.limits.metadata_bytes
             || input.is_some_and(|i| i.len() as u64 > self.limits.input_bytes)
         {
-            return Err(invalid("publication exceeds per-file byte quota"));
+            return Err(resource("publication exceeds per-file byte quota"));
         }
         let report = self.inventory()?;
         let relative = RelativePath::new(format!("{namespace}/{identity}")).map_err(io_error)?;
@@ -1073,7 +1076,7 @@ impl ArtifactStore {
                 .checked_add(added)
                 .is_none_or(|sum| sum > self.limits.bytes)
         {
-            return Err(invalid(
+            return Err(resource(
                 "artifact quota exhausted; original failures retained",
             ));
         }
@@ -1189,7 +1192,7 @@ impl ArtifactStore {
             return Err(invalid("metadata identity mismatch"));
         }
         if metadata.input_bytes > self.limits.input_bytes {
-            return Err(invalid("input exceeds storage decode quota"));
+            return Err(resource("input exceeds storage decode quota"));
         }
         let input = rooted::read(&bundle, "input.bin", metadata.input_bytes)?;
         let artifact = CaseArtifact::from_parts(metadata, input)?;
