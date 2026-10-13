@@ -683,6 +683,31 @@ mod unix {
         use super::*;
 
         #[test]
+        fn transient_probe_error_followed_by_observed_disappearance_completes_cleanup() {
+            let limits = WorkerLimits::new(
+                0, 1024, 1024, Duration::from_secs(2), Duration::ZERO,
+                Duration::from_millis(100), MemoryPolicy::Unbounded,
+            ).unwrap();
+            let spec = WorkerSpec::new(
+                PathBuf::from("/usr/bin/true"), PathBuf::from("/"), Vec::new(),
+                BTreeMap::new(), Vec::new(), limits,
+            ).unwrap();
+            let mut transient = 0;
+            let outcome = execute_with_probe(&spec, &AtomicBool::new(false), |pid| {
+                match group_exists(pid) {
+                    Ok(false) if transient < 2 => {
+                        transient += 1;
+                        Err(rustix::io::Errno::PERM)
+                    }
+                    value => value,
+                }
+            }).unwrap();
+            assert_eq!(transient, 2);
+            assert_eq!(outcome.cleanup, CleanupStatus::Complete);
+            assert_eq!(outcome.exit, ProcessExit::Success);
+        }
+
+        #[test]
         fn failed_disappearance_probe_is_cleanup_failure_even_after_reaping() {
             let limits = WorkerLimits::new(
                 0,
