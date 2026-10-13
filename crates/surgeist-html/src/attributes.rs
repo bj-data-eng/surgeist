@@ -653,21 +653,18 @@ const INPUT_SOURCE: &str = source!("the-input-element");
 const BUTTON_TYPE_SOURCE: &str = source!("attr-button-type");
 const BUTTON_SOURCE: &str = source!("the-button-element");
 
-#[cfg(test)]
 pub(crate) fn input_type_keyword(index: usize) -> Option<(&'static str, HtmlInputType)> {
     INPUT_TYPE
         .keywords
         .get(index)
         .map(|row| (row.spelling, row.state))
 }
-#[cfg(test)]
 pub(crate) fn input_type_default() -> HtmlInputType {
     INPUT_TYPE
         .missing
         .expect("input type has a missing-value default")
 }
 
-#[cfg(test)]
 pub(crate) fn input_type_invalid_default() -> HtmlInputType {
     INPUT_TYPE
         .invalid
@@ -1471,9 +1468,14 @@ fn ascii_keyword(raw: &DocumentString, keyword: &str) -> bool {
 
 fn ascii_keyword_units(units: &[u16], keyword: &str) -> bool {
     units.len() == keyword.len()
-        && units.iter().zip(keyword.bytes()).all(|(&unit, byte)| {
-            u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte))
-        })
+        && units
+            .iter()
+            .zip(keyword.bytes())
+            .all(|(&unit, byte)| ascii_keyword_unit(unit, byte))
+}
+
+pub(crate) fn ascii_keyword_unit(unit: u16, byte: u8) -> bool {
+    u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte))
 }
 
 /// Finite work envelope for stylesheet membership and fixed context creation.

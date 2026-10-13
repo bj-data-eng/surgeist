@@ -9240,7 +9240,7 @@ fn textarea_native_observation(source: HtmlSource) -> TextareaNativeObservation 
     let mut raw = Vec::new();
     for id in &textareas {
         let state = frozen.textarea_state(&mut c, id).unwrap();
-        assert!(!state.dirty_value && !state.user_validity);
+        assert!(!state.flags.dirty_value() && !state.flags.user_validity());
         raw.push(
             frozen
                 .textarea_raw_value(&mut c, id)
@@ -9717,7 +9717,7 @@ fn textarea_late_form_id_reset_observes_first_element_order_without_changing_raw
             [65]
         );
         let state = frozen.textarea_state(&mut c, textarea).unwrap();
-        assert!(!state.dirty_value && !state.user_validity);
+        assert!(!state.flags.dirty_value() && !state.flags.user_validity());
         frozen.release(&mut c).unwrap();
         assert_released(&c);
     }
@@ -10512,12 +10512,18 @@ fn select_family_native_states_follow_size_multiple_disabled_and_last_selected_r
             let node = document.node(&id).unwrap();
             if let HtmlNodeKind::Element(element) = node.kind() {
                 if element.name().local_name() == &DocumentString::from("select") {
-                    assert!(!frozen.select_state(&mut c, &id).unwrap().user_validity);
+                    assert!(
+                        !frozen
+                            .select_state(&mut c, &id)
+                            .unwrap()
+                            .flags
+                            .user_validity()
+                    );
                     select = Some(id.clone());
                 } else if element.name().local_name() == &DocumentString::from("option") {
                     let state = frozen.option_state(&mut c, &id).unwrap();
-                    selected.push(state.selectedness);
-                    assert!(!state.dirtiness);
+                    selected.push(state.flags.selectedness());
+                    assert!(!state.flags.dirtiness());
                     option_ids.push(id.clone());
                 }
             }
@@ -13490,9 +13496,9 @@ fn ordinary_text_input_selected_types_foster_in_table_keep_form_and_exact_values
             Some(form.clone())
         );
         let state = frozen.input_state(&mut c, &input).unwrap();
-        assert_eq!(state.kind, expected_type);
+        assert_eq!(state.flags.kind().input_type(), expected_type);
         assert_eq!(state.cursor, 0);
-        assert!(state.checkedness && state.selected_files_empty);
+        assert!(state.flags.checkedness() && state.selected_files_empty);
         assert!(!state.value_rewritten_during_creation);
         let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
         frozen

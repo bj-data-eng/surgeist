@@ -608,7 +608,7 @@ impl SessionStorage {
             (
                 "select",
                 SelectMetadata::Select(select::SelectState {
-                    user_validity: false,
+                    flags: crate::HtmlSelectFlags::default(),
                 }),
             ),
             (
@@ -642,8 +642,7 @@ impl SessionStorage {
                     node: None,
                     state: TextareaState {
                         raw,
-                        dirty_value: false,
-                        user_validity: false,
+                        flags: HtmlTextareaFlags::default(),
                     },
                 },
             )?);
@@ -660,13 +659,8 @@ impl SessionStorage {
                     raw,
                     complete: false,
                     state: InputState {
-                        kind: crate::attributes::HtmlInputType::Text,
+                        flags: crate::HtmlInputStringFlags::fresh(),
                         cursor: 0,
-                        dirty_value: false,
-                        dirty_checkedness: false,
-                        checkedness: false,
-                        indeterminate: false,
-                        user_validity: false,
                         selected_files_empty: true,
                         value_rewritten_during_creation: false,
                     },
@@ -823,7 +817,7 @@ impl SessionStorage {
                 .ok_or(SessionError::TextareaMetadataUnavailable)?;
             let retired = state.raw;
             state.raw = raw;
-            state.dirty_value = original.dirty_value;
+            state.flags.clone_dirty_value_from(&original.flags);
             payload_write::<TextareaState>(c, 1)?;
             let RetainedPayload::Textarea { state: stored, .. } = &mut self.payloads.values[slot]
             else {
@@ -839,15 +833,11 @@ impl SessionStorage {
                 self.evidence.as_ref(),
                 c,
                 original_raw,
-                false,
+                crate::HtmlInputSanitization::Preserve,
             )?;
             self.replace_input_raw(c, slot, text)?;
             let mut state = self.read_input_state(c, slot)?;
-            state.kind = original.kind;
-            state.dirty_value = original.dirty_value;
-            state.dirty_checkedness = original.dirty_checkedness;
-            state.checkedness = original.checkedness;
-            state.indeterminate = original.indeterminate;
+            state.flags = state.flags.clone_flags_from(original.flags);
             self.write_input_state(c, slot, state)?;
             payload_write::<bool>(c, 1)?;
             let RetainedPayload::Input { complete, .. } = &mut self.payloads.values[slot] else {

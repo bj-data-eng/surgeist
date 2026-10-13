@@ -384,7 +384,8 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
         !session
             .textarea_state(&mut c, &textarea)
             .unwrap()
-            .dirty_value
+            .flags
+            .dirty_value()
     );
     assert!(
         !session
@@ -468,8 +469,8 @@ fn select_owners_active_and_frozen_facts_are_qualified_and_unavailable_for_wrong
     let target = named(&nodes, "selectedcontent", 0);
     let _: SelectState = session.select_state(&mut c, &select).unwrap();
     let state: OptionState = session.option_state(&mut c, &option).unwrap();
-    assert!(state.selectedness);
-    assert!(!state.dirtiness);
+    assert!(state.flags.selectedness());
+    assert!(!state.flags.dirtiness());
     let _: SelectedcontentState = session.selectedcontent_state(&mut c, &target).unwrap();
     let cached = session
         .option_nearest_select(&mut c, &option)
@@ -802,7 +803,13 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
         if cap == 21 {
             let node = result.unwrap();
             assert!(input.is_none());
-            assert!(!session.select_state(&mut c, &node).unwrap().user_validity);
+            assert!(
+                !session
+                    .select_state(&mut c, &node)
+                    .unwrap()
+                    .flags
+                    .user_validity()
+            );
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)

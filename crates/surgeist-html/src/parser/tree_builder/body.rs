@@ -127,9 +127,7 @@ impl HeadState<'_> {
         Ok(self.input_type(c)? == crate::attributes::HtmlInputType::Hidden)
     }
     pub(super) fn supported_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
-        Ok(crate::construction::parser_session::supported_input_state(
-            self.input_type(c)?,
-        ))
+        Ok(crate::HtmlInputStringKind::try_from(self.input_type(c)?).is_ok())
     }
     pub(super) fn admit_hidden_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         match self.validate_standalone_capability(c) {

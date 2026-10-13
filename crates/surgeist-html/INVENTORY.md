@@ -813,6 +813,17 @@ conformance is certified.
 
 ## Control facts
 
+Shared [input state/rules](src/input.rs) and
+[textarea/select/option flags](src/control_values.rs) provide the HTML-owned
+fixed intrinsic vocabulary consumed by the actual private parser.
+[The overview](README.md#shared-intrinsic-control-rules) explains trigger order,
+bounded recognition/comparison and adapter responsibilities;
+[input tests](tests/input_rules.rs) and [family tests](tests/control_values.rs)
+verify literal local decisions. Strings, selection, form/tree references,
+resource admission and canonical DOM mutation remain with their actual adapters.
+These pure rules do not replace the separately qualified captured observations
+below or establish complete control execution/conformance.
+
 [control.rs](src/semantics/control.rs) supplies Disabledness, current checkedness/
 selectedness, dirty flags, indeterminateness and validation candidacy from actual
 captured state/context. Own readonly/disabled content and actual dynamic state

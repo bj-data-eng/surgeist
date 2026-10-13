@@ -2,22 +2,21 @@
 //! Governing HTML 877d6146487f: select/option/selectedcontent processing.
 
 use super::*;
+use crate::{HtmlOptionFlags, HtmlSelectFlags};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SelectState {
-    pub(crate) user_validity: bool,
+    pub(crate) flags: HtmlSelectFlags,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OptionState {
-    pub(crate) selectedness: bool,
-    pub(crate) dirtiness: bool,
+    pub(crate) flags: HtmlOptionFlags,
     nearest_select: Option<usize>,
 }
 impl OptionState {
     pub(super) fn fresh() -> Self {
         Self {
-            selectedness: false,
-            dirtiness: false,
+            flags: HtmlOptionFlags::default(),
             nearest_select: None,
         }
     }
@@ -40,14 +39,13 @@ pub(super) fn initial_metadata(
         (
             "select",
             Some(SelectMetadata::Select(SelectState {
-                user_validity: false,
+                flags: HtmlSelectFlags::default(),
             })),
         ),
         (
             "option",
             Some(SelectMetadata::Option(OptionState {
-                selectedness: false,
-                dirtiness: false,
+                flags: HtmlOptionFlags::default(),
                 nearest_select: None,
             })),
         ),
@@ -967,7 +965,7 @@ impl SessionStorage {
             let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
                 return Err(SessionError::SelectMetadataUnavailable);
             };
-            if state.selectedness {
+            if state.flags.selectedness() {
                 payload_write::<Option<usize>>(c, 1)?;
                 selected = Some(node);
                 break;
@@ -1000,7 +998,7 @@ impl SessionStorage {
         let (_, SelectMetadata::Option(state)) = self.select_metadata(c, option)? else {
             return Err(SessionError::SelectMetadataUnavailable);
         };
-        if state.selectedness
+        if state.flags.selectedness()
             && let Some(select) = state.nearest_select
         {
             self.update_select(c, select)?;
@@ -1028,7 +1026,7 @@ impl SessionStorage {
                     let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
-                    if removal && (changed || state.selectedness) {
+                    if removal && (changed || state.flags.selectedness()) {
                         let cause = self
                             .evidence
                             .as_ref()
@@ -1120,7 +1118,7 @@ impl SessionStorage {
         let (slot, SelectMetadata::Select(mut state)) = self.select_metadata(c, node)? else {
             return Err(SessionError::SelectMetadataUnavailable);
         };
-        state.user_validity = false;
+        state.flags.reset();
         self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
         self.selectedness_setting(c, node, None)?;
         // Fresh parser-created select has no children at syntax3537 reset.
@@ -1153,8 +1151,8 @@ impl SessionStorage {
             let (slot, SelectMetadata::Option(mut state)) = self.select_metadata(c, node)? else {
                 return Err(SessionError::SelectMetadataUnavailable);
             };
-            if selected && !state.dirtiness {
-                state.selectedness = true;
+            if selected && !state.flags.dirtiness() {
+                state.flags.selected_attribute_changed(true);
                 self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
             }
             if (selected || disabled)
@@ -1310,14 +1308,14 @@ impl SessionStorage {
             let SelectMetadata::Option(state) = metadata else {
                 return Err(SessionError::SelectMetadataUnavailable);
             };
-            if state.selectedness {
+            if state.flags.selectedness() {
                 if let Some(previous) = last {
                     let (slot, SelectMetadata::Option(mut previous_state)) =
                         self.select_metadata(c, previous)?
                     else {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
-                    previous_state.selectedness = false;
+                    previous_state.flags.set_selectedness_for_select(false);
                     self.set_select_metadata(c, slot, SelectMetadata::Option(previous_state))?;
                     payload_write::<bool>(c, 1)?;
                     changed = true;
@@ -1339,7 +1337,7 @@ impl SessionStorage {
             let (slot, SelectMetadata::Option(mut state)) = self.select_metadata(c, first)? else {
                 return Err(SessionError::SelectMetadataUnavailable);
             };
-            state.selectedness = true;
+            state.flags.set_selectedness_for_select(true);
             self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
             payload_write::<bool>(c, 1)?;
             changed = true;

@@ -879,6 +879,45 @@ or excluded ancestry remains missing evidence unless a local fact proves the
 result. The supplement and query share finite validation and session work
 limits, and reports retain its exact producer/configuration revision.
 
+<a id="shared-intrinsic-control-rules"></a>
+
+The [shared input rules](src/input.rs) expose fixed state and source-ordered
+requirements for Hidden, Text, Search, Telephone and Password.
+`HtmlInputStringFlags` retains the actual intrinsic flags; strings, selection
+and form identity remain separately owned. Type/default/checked changes,
+per-control reset and cloning keep their distinct triggers. Keyword recognition
+advances one row, length decision or ASCII unit at a time, using the existing
+22-state table. Exact value comparison advances one UTF-16 pair at a time.
+The adapter admits the reported work before advancing and applies each returned
+effect to its updated actual state before requesting the next effect.
+For every applicable relevant-value change, the actual value-write adapter
+must apply `HtmlInputSelection::clamp` to the current selection/cursor and
+actual new length, using its established empty-selection capability, before
+continuing family effects. Reset/type cursors alone do not complete a live
+operation.
+The native Value setter's final cursor action requires a changed sanitized
+value and an actual cursor after generic clamping; a retained selection does
+not imply that action. These rules own no controller, tree or event queue.
+
+[Textarea, select and option flags](src/control_values.rs) similarly own fixed
+local state and transitions. Textarea child changes consult its dirty flag;
+reset clears dirty/user-validity before replacing raw text; cloning transfers
+dirty state with a separately copied raw value. Option selected-attribute
+changes retain their dirtiness gate, while the adapter still performs the
+required cached-select reset even when selectedness is unchanged. Native selected
+setter flags do not execute that reset themselves. Select reset clears its local
+user-validity before the adapter processes the actual option list.
+
+The private parser stores and consumes these same values. DOM will store its
+canonical current values and identities and apply HTML's requirements within its
+atomic edits. Constructing flags retains supplied intrinsic slot values; it does
+not establish subject identity, mutation history or capture qualification.
+[Input tests](tests/input_rules.rs) and
+[family tests](tests/control_values.rs) cover the pure rules. Parser tests cover
+their actual controlled consumers. Other input families, tree-dependent effects,
+full textarea setters/normalization and runtime events require their respective
+owners; these APIs do not certify a complete parse report or live transaction.
+
 `HtmlControlFacts` retains established current form pointers or explicit
 reset-against-capture evidence, plus independently optional current input, option
 and textarea flags. Form-owner queries preserve parser-established associations
@@ -2118,21 +2157,26 @@ freeze; terminal cleanup performs no useful reset. General setters, nonnull
 overrides, form reset, hosted initialization and public parse completion remain
 separate work.
 
-Hidden input creation appends initial attributes in source order. A value seen
-while the fresh input is still in the Text state loses CR and LF; changing to
-Hidden then writes a nonempty internal value back to the native value attribute.
-Creation resets the resulting native value before canonical form association.
-The ordinary body and table branches use this same owner; table diagnostics
-precede direct insertion, and the body branch preserves frameset eligibility.
+Private input creation supports Hidden, Text, Search, Telephone and Password
+through the [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
+attributes run in source order. A value seen while the fresh input is still in
+Text loses CR and LF; changing to Hidden writes a nonempty internal value back
+to the native value attribute. Type-first Hidden preserves CR and LF instead.
+Text/Search/Telephone/Password strip those units from current value while keeping
+the native default independently observable. Creation completes per-control
+initialization before canonical form association.
 
-Private active and frozen observations distinguish internal and native default
-values and retain the original token and value-attribute ranges for an actual
-creation writeback. Replaced native and raw backing coexist under admission;
-successful replacement releases obsolete backing while retired registry slots
-remain charged until disposal. Stops retain partial owners, refuse publication
-and perform no reset during cleanup. Repeated scans and copies may be quadratic
-and remain charged and polled. Other input states, hosted initialization, general
-value setters and public parse completion remain separate work.
+Active and frozen private observations distinguish current and native default
+values, actual dirty/checkedness/indeterminate/user-validity flags, form owner
+and exact source origins. Cloning preserves the specified current value and
+flags without reconstructing them from attributes. Actual creation writeback
+retains original token and value-attribute histories. Replaced native and raw
+backing coexist under admission; successful replacement releases obsolete backing
+while retired registry slots remain charged until disposal. Stops retain partial
+owners, refuse publication and perform no reset during cleanup. Repeated scans
+and copies may be quadratic and remain charged and polled. Other input families,
+hosted initialization, complete live setter integration and public parse
+completion remain separate work.
 
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
