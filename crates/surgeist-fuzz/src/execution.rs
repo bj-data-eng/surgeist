@@ -228,6 +228,9 @@ pub enum OutputStream {
     Stderr,
 }
 
+/// Bounded synchronous consumer of borrowed process output chunks.
+pub type OutputConsumer<'a, E> = dyn FnMut(OutputStream, &[u8]) -> Result<(), E> + 'a;
+
 /// Supervisor stop reason; a worker exit is classified separately.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProcessStop {
@@ -249,7 +252,8 @@ pub enum ProcessExit {
     Unavailable,
 }
 
-/// Retained prefix plus honest truncation/stream completion evidence.
+/// Retained output plus honest truncation/stream completion evidence.
+/// Buffered execution retains a prefix; streaming execution retains a stderr tail.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapturedOutput {
     pub bytes: Vec<u8>,
@@ -283,14 +287,25 @@ pub struct ProcessOutcome {
     pub sampled_peak_rss_bytes: Option<u64>,
 }
 
-/// Run one worker. Cancellation is polled during pipe transfer and waiting.
-/// The returned input count is transport evidence, not evaluator acknowledgement.
-/// A multi-case engine must establish its own acknowledged case-capture protocol.
-/// The caller can persist `spec.input()` before calling this boundary.
-pub fn execute(
-    spec: &WorkerSpec,
-    cancellation: &AtomicBool,
-) -> Result<ProcessOutcome, ExecutionError> {
+/// The first streaming consumer failure. Further callbacks are disabled.
+#[derive(Debug)]
+pub enum ConsumerFailure<E> {
+    Error(E),
+    /// The consumer panicked. The supervisor caught the unwind and cleaned up.
+    Panicked,
+}
+
+/// Stream totals and consumer failure remain available with cleanup evidence.
+#[derive(Debug)]
+pub struct StreamingOutcome<E> {
+    pub process: ProcessOutcome,
+    pub consumer_failure: Option<ConsumerFailure<E>>,
+    /// Bytes read, including shutdown drain after a consumer failure.
+    pub stdout_bytes: u64,
+    pub stderr_bytes: u64,
+}
+
+fn admit(spec: &WorkerSpec, cancellation: &AtomicBool) -> Result<(), ExecutionError> {
     if !execution_capabilities().supported_host {
         return Err(ExecutionError::UnsupportedHost);
     }
@@ -300,12 +315,47 @@ pub fn execute(
     if cancellation.load(Ordering::Acquire) {
         return Err(ExecutionError::CancelledBeforeSpawn);
     }
+    Ok(())
+}
+
+/// Run one worker. Cancellation is polled during pipe transfer and waiting.
+/// The returned input count is transport evidence, not evaluator acknowledgement.
+/// A multi-case engine must establish its own acknowledged case-capture protocol.
+/// The caller can persist `spec.input()` before calling this boundary.
+pub fn execute(
+    spec: &WorkerSpec,
+    cancellation: &AtomicBool,
+) -> Result<ProcessOutcome, ExecutionError> {
+    admit(spec, cancellation)?;
     #[cfg(unix)]
     {
         unix::execute(spec, cancellation)
     }
     #[cfg(not(unix))]
     {
+        Err(ExecutionError::UnsupportedHost)
+    }
+}
+
+/// Streams borrowed chunks in per-stream order, including shutdown drain.
+/// Callbacks must perform bounded synchronous work. Their first error or panic
+/// stops the worker, disables further callbacks, and retains cleanup evidence.
+/// Stdout is not retained and its lifetime byte quota is not applied. Stderr
+/// retains at most `spec.limits().stderr_bytes()` trailing bytes; dropping old
+/// diagnostics does not stop the worker. Deadlines and cancellation still apply.
+pub fn execute_streaming<E>(
+    spec: &WorkerSpec,
+    cancellation: &AtomicBool,
+    on_output: &mut OutputConsumer<'_, E>,
+) -> Result<StreamingOutcome<E>, ExecutionError> {
+    admit(spec, cancellation)?;
+    #[cfg(unix)]
+    {
+        unix::execute_streaming(spec, cancellation, on_output)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = on_output;
         Err(ExecutionError::UnsupportedHost)
     }
 }
@@ -332,6 +382,50 @@ mod unix {
         ProcessStop::InfrastructureFailure {
             operation,
             detail: error.to_string(),
+        }
+    }
+
+    struct OutputHandler<'a, E> {
+        streaming: bool,
+        consume: &'a mut OutputConsumer<'a, E>,
+        failure: Option<ConsumerFailure<E>>,
+        // An arbitrary panic payload can itself panic when dropped. Keep it
+        // alive until the owned worker has completed bounded cleanup.
+        panic_payload: Option<Box<dyn std::any::Any + Send>>,
+        stdout_bytes: u64,
+        stderr_bytes: u64,
+    }
+    impl<E> OutputHandler<'_, E> {
+        fn accept(&mut self, stream: OutputStream, bytes: &[u8]) -> Option<ProcessStop> {
+            let total = match stream {
+                OutputStream::Stdout => &mut self.stdout_bytes,
+                OutputStream::Stderr => &mut self.stderr_bytes,
+            };
+            let Some(new) = total.checked_add(bytes.len() as u64) else {
+                return Some(ProcessStop::InfrastructureFailure {
+                    operation: "count output",
+                    detail: "stream byte count overflow".into(),
+                });
+            };
+            *total = new;
+            if !self.streaming || self.failure.is_some() {
+                return None;
+            }
+            let failure = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                (self.consume)(stream, bytes)
+            })) {
+                Ok(Ok(())) => return None,
+                Ok(Err(error)) => ConsumerFailure::Error(error),
+                Err(payload) => {
+                    self.panic_payload = Some(payload);
+                    ConsumerFailure::Panicked
+                }
+            };
+            self.failure = Some(failure);
+            Some(ProcessStop::InfrastructureFailure {
+                operation: "consume output",
+                detail: "streaming consumer failed".into(),
+            })
         }
     }
 
@@ -374,7 +468,11 @@ mod unix {
             }
             Ok(())
         }
-        fn transfer(&mut self, spec: &WorkerSpec) -> Option<ProcessStop> {
+        fn transfer<E>(
+            &mut self,
+            spec: &WorkerSpec,
+            handler: &mut OutputHandler<'_, E>,
+        ) -> Option<ProcessStop> {
             if self.written == spec.input.len() {
                 self.stdin.take();
             }
@@ -402,31 +500,38 @@ mod unix {
                     Err(error) => return Some(failed("write stdin", error)),
                 }
             }
-            self.drain(spec)
+            self.drain(spec, handler)
         }
-        fn drain(&mut self, spec: &WorkerSpec) -> Option<ProcessStop> {
+        fn drain<E>(
+            &mut self,
+            spec: &WorkerSpec,
+            handler: &mut OutputHandler<'_, E>,
+        ) -> Option<ProcessStop> {
             // One chunk per stream per iteration preserves deadline/cancellation fairness.
             let stdout = read(
                 &mut self.stdout,
                 &mut self.out,
                 spec.limits.stdout_bytes,
                 OutputStream::Stdout,
+                handler,
             );
             let stderr = read(
                 &mut self.stderr,
                 &mut self.err,
                 spec.limits.stderr_bytes,
                 OutputStream::Stderr,
+                handler,
             );
             stdout.or(stderr)
         }
     }
 
-    fn read<R: Read>(
+    fn read<R: Read, E>(
         pipe: &mut Option<R>,
         capture: &mut CapturedOutput,
         limit: usize,
         stream: OutputStream,
+        handler: &mut OutputHandler<'_, E>,
     ) -> Option<ProcessStop> {
         let reader = pipe.as_mut()?;
         let mut chunk = [0_u8; CHUNK];
@@ -437,6 +542,26 @@ mod unix {
                 None
             }
             Ok(count) => {
+                if handler.streaming {
+                    if stream == OutputStream::Stderr {
+                        let retained = count.min(limit);
+                        let discard = capture
+                            .bytes
+                            .len()
+                            .saturating_add(retained)
+                            .saturating_sub(limit);
+                        if discard > 0 {
+                            capture.bytes.drain(..discard);
+                        }
+                        capture.truncated |= discard > 0 || retained < count;
+                        capture
+                            .bytes
+                            .extend_from_slice(&chunk[count - retained..count]);
+                    } else {
+                        capture.truncated = true;
+                    }
+                    return handler.accept(stream, &chunk[..count]);
+                }
                 let retained = count.min(limit.saturating_sub(capture.bytes.len()));
                 capture.bytes.extend_from_slice(&chunk[..retained]);
                 if retained < count {
@@ -496,9 +621,49 @@ mod unix {
         execute_with_probe(spec, cancellation, group_exists)
     }
 
+    pub(super) fn execute_streaming<E>(
+        spec: &WorkerSpec,
+        cancellation: &AtomicBool,
+        consume: &mut OutputConsumer<'_, E>,
+    ) -> Result<StreamingOutcome<E>, ExecutionError> {
+        let mut handler = OutputHandler {
+            streaming: true,
+            consume,
+            failure: None,
+            panic_payload: None,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+        };
+        let process = supervise(spec, cancellation, &mut handler, group_exists)?;
+        Ok(StreamingOutcome {
+            process,
+            consumer_failure: handler.failure,
+            stdout_bytes: handler.stdout_bytes,
+            stderr_bytes: handler.stderr_bytes,
+        })
+    }
+
     fn execute_with_probe(
         spec: &WorkerSpec,
         cancellation: &AtomicBool,
+        probe_group: impl FnMut(Pid) -> Result<bool, rustix::io::Errno>,
+    ) -> Result<ProcessOutcome, ExecutionError> {
+        let mut consume = |_: OutputStream, _: &[u8]| Ok::<_, std::convert::Infallible>(());
+        let mut handler = OutputHandler {
+            streaming: false,
+            consume: &mut consume,
+            failure: None,
+            panic_payload: None,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+        };
+        supervise(spec, cancellation, &mut handler, probe_group)
+    }
+
+    fn supervise<E>(
+        spec: &WorkerSpec,
+        cancellation: &AtomicBool,
+        handler: &mut OutputHandler<'_, E>,
         mut probe_group: impl FnMut(Pid) -> Result<bool, rustix::io::Errno>,
     ) -> Result<ProcessOutcome, ExecutionError> {
         let start = Instant::now();
@@ -588,7 +753,7 @@ mod unix {
                 if Instant::now() >= deadline {
                     break ProcessStop::Deadline;
                 }
-                if let Some(reason) = pipes.transfer(spec) {
+                if let Some(reason) = pipes.transfer(spec, handler) {
                     break reason;
                 }
                 match child.try_wait() {
@@ -613,8 +778,8 @@ mod unix {
         let mut killed = false;
         let mut probe_error = None;
         loop {
-            if let Some(reason) = pipes.drain(spec)
-                && stop == ProcessStop::Exited
+            if let Some(reason) = pipes.drain(spec, handler)
+                && (stop == ProcessStop::Exited || handler.failure.is_some())
             {
                 stop = reason;
             }
