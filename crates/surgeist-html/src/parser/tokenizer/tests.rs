@@ -2,6 +2,23 @@ use super::*;
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use states::{Raw, State};
 
+/// Install the existing decoded-read hook on the actual driver-owned cursor.
+pub(crate) fn cancel_after_consumed(
+    tokenizer: &mut Tokenizer<'_>,
+    through: usize,
+    cancellation: HtmlParseCancellation,
+    control: &mut ParseControl,
+) -> Result<(), ParseStop> {
+    tokenizer
+        .cursor
+        .cancel_after_consumed(through, cancellation, control)
+}
+
+/// Fixed borrow of the last committed read frontier, including after a stop.
+pub(crate) fn current_scan_range<'a>(tokenizer: &'a Tokenizer<'_>) -> &'a HtmlSourceRange {
+    &tokenizer.current
+}
+
 /// Actual lexer/evidence owners under one admitted controller. This fixture
 /// supplies no token, diagnostic, fee, callback or semantic expectation.
 pub(crate) struct LexerFixture<'a> {

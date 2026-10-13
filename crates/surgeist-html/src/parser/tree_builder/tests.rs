@@ -18467,3 +18467,474 @@ fn afterhead_template_diagnostic_refusal_precedes_temporary_head_and_template_ef
     assert_eq!(driver.control.first_stop_usage(), Some(&at));
     assert_released(&driver.control);
 }
+
+mod complete_hostile_scan {
+    use super::*;
+    use crate::construction::parser_session::{
+        evidence::{
+            DiagnosticContext, DiagnosticEvidenceView, DiagnosticKind, DiagnosticLocationRole,
+            DiagnosticSeverity,
+        },
+        native_view::{NativeKind, NativeView},
+    };
+    use crate::parser::tokenizer::{
+        states::Quote,
+        token::{DiagnosticCode, DiagnosticPhase},
+    };
+
+    #[derive(Clone, Copy)]
+    enum Scan {
+        ClosedValue,
+        UnterminatedValue,
+        Pi,
+        LongPi,
+        Duplicates,
+    }
+
+    fn input(scan: Scan) -> (String, usize) {
+        match scan {
+            Scan::ClosedValue => (
+                format!(
+                    "<!doctype html><p>P</p><div x=\"{}\">Q</div>",
+                    "a".repeat(4096)
+                ),
+                2079,
+            ),
+            Scan::UnterminatedValue => (
+                format!("<!doctype html><p>P</p><div x=\"{}", "a".repeat(4096)),
+                2079,
+            ),
+            Scan::Pi => (
+                format!("<!doctype html><p>P</p><?q {}?>", "b".repeat(512)),
+                283,
+            ),
+            Scan::LongPi => (
+                format!("<!doctype html><p>P</p><?q {}?>", "b".repeat(4096)),
+                2075,
+            ),
+            Scan::Duplicates => {
+                let mut raw = String::from("<!doctype html><p>P</p><div");
+                for index in 0..64 {
+                    raw.push_str(&format!(
+                        " n{index:03}='v{index:03}' N{index:03}='discard{index:03}'"
+                    ));
+                }
+                raw.push_str(">Q</div>");
+                (raw, 996)
+            }
+        }
+    }
+
+    fn diagnostics(
+        view: DiagnosticEvidenceView<'_>,
+        source: &HtmlSource,
+        scan: Scan,
+        stopped: bool,
+    ) {
+        let count = match scan {
+            Scan::Duplicates => {
+                if stopped {
+                    32
+                } else {
+                    64
+                }
+            }
+            Scan::UnterminatedValue if !stopped => 1,
+            _ => 0,
+        };
+        assert_eq!(view.len(), count);
+        for index in 0..count {
+            let (record, location) = view.retained_record(index).unwrap();
+            let duplicate = matches!(scan, Scan::Duplicates);
+            assert_eq!(
+                record.kind,
+                DiagnosticKind::Tokenizer(if duplicate {
+                    DiagnosticCode::DuplicateAttribute
+                } else {
+                    DiagnosticCode::EofInTag
+                })
+            );
+            assert_eq!(
+                record.context,
+                DiagnosticContext::Tokenizer {
+                    phase: DiagnosticPhase::Tokenizer,
+                    state: if duplicate {
+                        State::AttributeName
+                    } else {
+                        State::AttributeValue(Quote::Double)
+                    },
+                }
+            );
+            assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+            assert_eq!(
+                (record.rule.anchor, record.rule.branch),
+                if duplicate {
+                    ("parse-error-duplicate-attribute", "duplicate-attribute")
+                } else {
+                    ("parse-error-eof-in-tag", "eof-in-tag")
+                }
+            );
+            assert_eq!(location.role, DiagnosticLocationRole::InputFrontier);
+            assert_eq!(location.token, None);
+            assert_eq!(location.source.source(), source.identity());
+            assert_eq!(location.source.coordinates(), source.coordinates());
+            // Each literal pair has 30 ASCII units. The second name's '='
+            // is at pair offset 17; EOF has the exact zero-width source end.
+            let expected = if duplicate {
+                (27 + index * 30 + 17, 27 + index * 30 + 18)
+            } else {
+                (source.len(), source.len())
+            };
+            assert_eq!((location.source.start(), location.source.end()), expected);
+        }
+        assert!(view.retained_record(count).is_none());
+    }
+
+    fn element(view: &mut NativeView<'_>, path: &[usize], local: &str) -> ParserNode {
+        let node = progressive_native_node(view, path);
+        let NativeKind::Element(name) = view.kind(&node).unwrap() else {
+            panic!("literal element")
+        };
+        progressive_native_units(
+            view,
+            name.namespace.unwrap(),
+            "http://www.w3.org/1999/xhtml",
+        );
+        assert!(name.prefix.is_none());
+        progressive_native_units(view, name.local, local);
+        node
+    }
+
+    fn native(view: &mut NativeView<'_>, scan: Scan) {
+        let root = view.root().unwrap();
+        assert!(matches!(
+            view.kind(&root).unwrap(),
+            NativeKind::Document(HtmlDocumentMode::NoQuirks)
+        ));
+        assert_eq!(view.child_count(&root).unwrap(), 2);
+        let doctype = progressive_native_node(view, &[0]);
+        let NativeKind::Doctype {
+            name,
+            public_id,
+            system_id,
+        } = view.kind(&doctype).unwrap()
+        else {
+            panic!("literal doctype")
+        };
+        progressive_native_units(view, name, "html");
+        // Canonical DOM creation defaults absent lexical identifiers to the
+        // real empty strings, as in the existing native doctype fixtures.
+        progressive_native_units(view, public_id.unwrap(), "");
+        progressive_native_units(view, system_id.unwrap(), "");
+        let html = element(view, &[1], "html");
+        assert_eq!(view.child_count(&html).unwrap(), 2);
+        let head = element(view, &[1, 0], "head");
+        assert_eq!(view.child_count(&head).unwrap(), 0);
+        let body = element(view, &[1, 1], "body");
+        assert_eq!(
+            view.child_count(&body).unwrap(),
+            if matches!(scan, Scan::UnterminatedValue) {
+                1
+            } else {
+                2
+            }
+        );
+        let p = element(view, &[1, 1, 0], "p");
+        assert_eq!(view.child_count(&p).unwrap(), 1);
+        let text = progressive_native_node(view, &[1, 1, 0, 0]);
+        let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+            panic!("literal P text")
+        };
+        progressive_native_units(view, value, "P");
+        if matches!(scan, Scan::UnterminatedValue) {
+            return;
+        }
+        if matches!(scan, Scan::Pi | Scan::LongPi) {
+            let pi = progressive_native_node(view, &[1, 1, 1]);
+            let NativeKind::ProcessingInstruction { target, data } = view.kind(&pi).unwrap() else {
+                panic!("actual PI, not comment")
+            };
+            progressive_native_units(view, target, "q");
+            progressive_native_units(
+                view,
+                data,
+                &"b".repeat(if matches!(scan, Scan::Pi) { 512 } else { 4096 }),
+            );
+            assert_eq!(view.child_count(&pi).unwrap(), 0);
+            return;
+        }
+        let div = element(view, &[1, 1, 1], "div");
+        let count = if matches!(scan, Scan::Duplicates) {
+            64
+        } else {
+            1
+        };
+        assert_eq!(view.attribute_count(&div).unwrap(), count);
+        for index in 0..count {
+            let attribute = view.attribute_at(&div, index).unwrap().unwrap();
+            assert!(attribute.name.namespace.is_none() && attribute.name.prefix.is_none());
+            if matches!(scan, Scan::Duplicates) {
+                progressive_native_units(view, attribute.name.local, &format!("n{index:03}"));
+                progressive_native_units(view, attribute.value, &format!("v{index:03}"));
+            } else {
+                progressive_native_units(view, attribute.name.local, "x");
+                progressive_native_units(view, attribute.value, &"a".repeat(4096));
+            }
+        }
+        assert!(view.attribute_at(&div, count).unwrap().is_none());
+        assert_eq!(view.child_count(&div).unwrap(), 1);
+        let text = progressive_native_node(view, &[1, 1, 1, 0]);
+        let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+            panic!("literal Q text")
+        };
+        progressive_native_units(view, value, "Q");
+    }
+
+    fn partner(scan: Scan) {
+        let (raw, _) = input(scan);
+        for utf16 in [false, true] {
+            let source = if utf16 {
+                HtmlSource::utf16(DocumentString::from(raw.as_str()))
+            } else {
+                HtmlSource::utf8(raw.clone())
+            };
+            let request = crate::HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+            let mut driver = entry::initialized_driver(&request);
+            let result = (0..1000)
+                .find_map(|_| match driver.step() {
+                    Ok(head::HeadStep::Consumed) => None,
+                    other => Some(other),
+                })
+                .expect("finite literal driver steps");
+            if !matches!(result, Ok(head::HeadStep::Complete)) {
+                let stop = driver.control.stop();
+                let at = driver.control.first_stop_usage().cloned();
+                driver.release().unwrap();
+                assert_released(&driver.control);
+                assert_eq!(driver.control.first_stop_usage(), at.as_ref());
+                panic!("uninstrumented literal must complete: {result:?}, {stop:?}");
+            }
+            let mut slot = Some(driver);
+            let mut completed = StandaloneDocumentDriver::take_completed(&mut slot).unwrap();
+            assert!(slot.is_none());
+            diagnostics(completed.diagnostics().unwrap(), &source, scan, false);
+            native(&mut completed.native_view().unwrap(), scan);
+            let mut parts = completed.freeze_parts().unwrap();
+            parts.release().unwrap();
+            let released = parts.retained_usage();
+            assert_eq!(released.actual_capacity_bytes, 0);
+            for resource in [
+                HtmlParseResource::BufferedUtf16Units,
+                HtmlParseResource::ManagedUtf16Units,
+                HtmlParseResource::ManagedCapacityBytes,
+                HtmlParseResource::Diagnostics,
+                HtmlParseResource::SourceMapEntries,
+            ] {
+                assert_eq!(released.resource(resource).current, 0);
+            }
+        }
+    }
+
+    fn cancelled(scan: Scan) {
+        let (raw, frontier) = input(scan);
+        for utf16 in [false, true] {
+            let source = if utf16 {
+                HtmlSource::utf16(DocumentString::from(raw.as_str()))
+            } else {
+                HtmlSource::utf8(raw.clone())
+            };
+            let request = crate::HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+            let cancellation = request.cancellation().clone();
+            let mut driver = entry::initialized_driver(&request);
+            let before = driver.control.usage().clone();
+            crate::parser::tokenizer::tests::cancel_after_consumed(
+                driver.tokenizer.as_mut().unwrap(),
+                frontier,
+                cancellation.clone(),
+                &mut driver.control,
+            )
+            .unwrap();
+            assert_eq!(
+                driver.control.usage().work(WorkCategory::CopyByte)
+                    - before.work(WorkCategory::CopyByte),
+                std::mem::size_of::<Option<(usize, HtmlParseCancellation)>>() as u64
+            );
+            assert_eq!(
+                driver.control.usage().work(WorkCategory::RecordWrite)
+                    - before.work(WorkCategory::RecordWrite),
+                1
+            );
+            assert!(driver.control.owns_request(&cancellation));
+            if !utf16 && matches!(scan, Scan::ClosedValue) {
+                println!(
+                    "complete scan compiled bytes: InputCursor={} Tokenizer={} Driver={} hook={}",
+                    std::mem::size_of::<crate::parser::input::InputCursor<'_>>(),
+                    std::mem::size_of::<Tokenizer<'_>>(),
+                    std::mem::size_of::<StandaloneDocumentDriver<'_>>(),
+                    std::mem::size_of::<Option<(usize, HtmlParseCancellation)>>()
+                );
+            }
+            let result = (0..1000).find_map(|_| match driver.step() {
+                Ok(head::HeadStep::Consumed) => None,
+                other => Some(other),
+            });
+            assert!(result.unwrap().is_err());
+            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+            assert!(cancellation.is_cancelled());
+            let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+            let range = crate::parser::tokenizer::tests::current_scan_range(
+                state.tokenizer.as_ref().unwrap(),
+            );
+            assert_eq!(range.source(), source.identity());
+            assert_eq!(range.coordinates(), source.coordinates());
+            assert_eq!(range.end(), frontier);
+            assert!(range.end() < source.len());
+            diagnostics(
+                state
+                    .before
+                    .kernel
+                    .session
+                    .observed_evidence()
+                    .diagnostics(),
+                &source,
+                scan,
+                true,
+            );
+            let first = driver.control.first_stop_usage().unwrap().clone();
+            let usage = driver.control.usage().clone();
+            assert_eq!(first, usage);
+            let reads = usage.work(WorkCategory::InputUnitRead);
+            assert!((frontier as u64..20 * source.len() as u64).contains(&reads));
+            assert!(usage.work(WorkCategory::StateStep) > 0);
+            assert!(usage.actual_capacity_bytes > 0);
+            assert!(driver.step().is_err());
+            assert!(driver.make_available(source.len()).is_err());
+            assert!(driver.seal_input().is_err());
+            assert_eq!(driver.control.usage(), &usage);
+            let mut slot = Some(driver);
+            assert!(matches!(
+                StandaloneDocumentDriver::take_completed(&mut slot),
+                Err(StandaloneError::Stop(ParseStop::Cancelled))
+            ));
+            let driver = slot
+                .as_mut()
+                .expect("terminal take cannot publish or consume a partial document");
+            assert_eq!(driver.control.usage(), &usage);
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+            assert_eq!(
+                driver.control.usage().work(WorkCategory::InputUnitRead),
+                reads
+            );
+            assert_eq!(
+                driver
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current,
+                usage.resource(HtmlParseResource::WorkCredits).current
+            );
+            assert_eq!(driver.control.first_stop_usage(), Some(&first));
+            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+            let released = driver.control.usage().clone();
+            assert!(driver.step().is_err());
+            assert_eq!(driver.control.usage(), &released);
+        }
+    }
+
+    // HTML877d quoted-value, EOF-in-tag, PI data and duplicate-attribute
+    // states supply independent literals; both physical source encodings run.
+    #[test]
+    fn closed_value_partner() {
+        partner(Scan::ClosedValue);
+    }
+    #[test]
+    fn unterminated_value_partner() {
+        partner(Scan::UnterminatedValue);
+    }
+    #[test]
+    fn pi_partner() {
+        partner(Scan::Pi);
+    }
+    #[test]
+    fn duplicates_partner() {
+        partner(Scan::Duplicates);
+    }
+    #[test]
+    fn closed_value_cancelled() {
+        cancelled(Scan::ClosedValue);
+    }
+    #[test]
+    fn unterminated_value_cancelled() {
+        cancelled(Scan::UnterminatedValue);
+    }
+    #[test]
+    fn pi_cancelled() {
+        cancelled(Scan::Pi);
+    }
+    #[test]
+    fn long_pi_cancelled() {
+        cancelled(Scan::LongPi);
+    }
+    #[test]
+    fn duplicates_cancelled() {
+        cancelled(Scan::Duplicates);
+    }
+
+    #[test]
+    fn long_pi_has_typed_finite_work_refusal_and_real_cleanup() {
+        let (raw, _) = input(Scan::LongPi);
+        for utf16 in [false, true] {
+            let source = if utf16 {
+                HtmlSource::utf16(DocumentString::from(raw.as_str()))
+            } else {
+                HtmlSource::utf8(raw.clone())
+            };
+            let request = crate::HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+            let mut driver = entry::initialized_driver(&request);
+            let result = (0..1000)
+                .find_map(|_| match driver.step() {
+                    Ok(head::HeadStep::Consumed) => None,
+                    other => Some(other),
+                })
+                .expect("finite literal steps");
+            let stop = driver.control.stop();
+            let first = driver.control.first_stop_usage().cloned();
+            let usage = driver.control.usage().clone();
+            println!(
+                "4K PI utf16={utf16} result={result:?} reads={} inspect={} copy={} capacity={}",
+                usage.work(WorkCategory::InputUnitRead),
+                usage.work(WorkCategory::InspectByte),
+                usage.work(WorkCategory::CopyByte),
+                usage.actual_capacity_bytes
+            );
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(driver.control.first_stop_usage(), first.as_ref());
+            assert_eq!(
+                driver
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current,
+                usage.resource(HtmlParseResource::WorkCredits).current
+            );
+            assert!(result.is_err());
+            let Some(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                limit: 100_000_000,
+                current,
+                requested_delta,
+            }) = stop
+            else {
+                panic!("real typed finite work refusal: {stop:?}")
+            };
+            assert!(current + requested_delta > 100_000_000);
+            assert!(usage.work(WorkCategory::InputUnitRead) > 4096);
+            assert!(!request.cancellation().is_cancelled());
+            assert!(driver.step().is_err());
+            assert_eq!(driver.control.first_stop_usage(), first.as_ref());
+        }
+    }
+}
