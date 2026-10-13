@@ -199,14 +199,9 @@ impl HtmlValueInterpreter {
         if result.attribute.applicability != HtmlAttributeApplicability::Applicable {
             return Ok(result);
         }
-        let has = |keyword| {
-            rel.is_some_and(|rel| {
-                crate::tokens::space_token_slices(rel.value())
-                    .any(|token| ascii_keyword_units(token, keyword))
-            })
-        };
-        let preload = has("preload");
-        let modulepreload = has("modulepreload");
+        let has = |keyword| rel.is_some_and(|rel| crate::rel::contains(rel.value(), keyword));
+        let preload = has(crate::HtmlRelKeyword::Preload);
+        let modulepreload = has(crate::HtmlRelKeyword::ModulePreload);
         let state = result.attribute.intrinsic;
         result.preload_author = if !preload {
             HtmlLinkDestinationContextAuthorState::NotRequired

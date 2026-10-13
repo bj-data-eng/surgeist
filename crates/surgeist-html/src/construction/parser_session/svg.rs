@@ -754,6 +754,7 @@ mod tests {
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
         let imported = HtmlElement {
+            link_flags: None,
             name: QualifiedName::new(Namespace::svg(), None, DocumentString::from("script")),
             attributes: OrderedAttributes::default(),
         };

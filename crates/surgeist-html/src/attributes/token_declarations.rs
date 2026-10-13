@@ -340,30 +340,138 @@ impl HtmlIconSizesReport {
     }
 }
 
+/// Borrowed canonical sizes-token grammar. Dimension ranges retain arbitrary
+/// precision and exact authored UTF-16; callers choose materialization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum IconSizeShape {
+    Scalable,
+    Bitmap {
+        width: std::ops::Range<usize>,
+        height: std::ops::Range<usize>,
+    },
+}
+pub(crate) struct IconSizeCursor<'a> {
+    units: &'a [u16],
+    stage: u8,
+    index: usize,
+    separator: Option<usize>,
+    multiple: bool,
+    result: Option<Result<IconSizeShape, HtmlIconSizeError>>,
+}
+impl<'a> IconSizeCursor<'a> {
+    // Seven bounded grammar actions: phase/range selection, original-unit read,
+    // ASCII classification, error selection, position update, result/transition.
+    // No dimension materialization is hidden behind this borrowed operation.
+    pub(crate) const STEP_WORK: usize = 7;
+    pub(crate) fn new(units: &'a [u16]) -> Self {
+        Self {
+            units,
+            stage: 0,
+            index: 0,
+            separator: None,
+            multiple: false,
+            result: None,
+        }
+    }
+    pub(crate) fn is_complete(&self) -> bool {
+        self.result.is_some()
+    }
+    pub(crate) fn result(&self) -> Option<&Result<IconSizeShape, HtmlIconSizeError>> {
+        self.result.as_ref()
+    }
+    pub(crate) fn step(&mut self) {
+        match self.stage {
+            0 => {
+                if self.units.len() != 3 {
+                    self.stage = 1;
+                    self.index = 0;
+                } else if self.index == 3 {
+                    self.result = Some(Ok(IconSizeShape::Scalable));
+                } else if crate::rel::fold(self.units[self.index]) == u16::from(b"any"[self.index])
+                {
+                    self.index += 1;
+                } else {
+                    self.stage = 1;
+                    self.index = 0;
+                }
+            }
+            1 => {
+                if self.index == self.units.len() {
+                    if self.multiple || self.separator.is_none() {
+                        self.result = Some(Err(HtmlIconSizeError::Separator));
+                    } else {
+                        self.stage = 2;
+                        self.index = 0;
+                    }
+                } else {
+                    let unit = self.units[self.index];
+                    if unit == 120 || unit == 88 {
+                        if self.separator.is_some() {
+                            self.multiple = true;
+                        } else {
+                            self.separator = Some(self.index);
+                        }
+                    }
+                    self.index += 1;
+                }
+            }
+            2 | 3 => {
+                let separator = self.separator.expect("separator phase established");
+                let (start, end) = if self.stage == 2 {
+                    (0, separator)
+                } else {
+                    (separator + 1, self.units.len())
+                };
+                if self.index == 0 {
+                    if start == end {
+                        self.result = Some(Err(HtmlIconSizeError::DimensionDigits));
+                        return;
+                    }
+                    if self.units[start] == 48 {
+                        self.result = Some(Err(HtmlIconSizeError::LeadingZero));
+                        return;
+                    }
+                }
+                if start + self.index == end {
+                    if self.stage == 2 {
+                        self.stage = 3;
+                        self.index = 0;
+                    } else {
+                        self.result = Some(Ok(IconSizeShape::Bitmap {
+                            width: 0..separator,
+                            height: separator + 1..self.units.len(),
+                        }));
+                    }
+                } else if (48..=57).contains(&self.units[start + self.index]) {
+                    self.index += 1;
+                } else {
+                    self.result = Some(Err(HtmlIconSizeError::DimensionDigits));
+                }
+            }
+            _ => unreachable!("closed cursor stages"),
+        }
+    }
+}
 fn icon_size(token: &HtmlSpaceToken) -> Result<HtmlIconSize, HtmlIconSizeError> {
     let units = token.value().code_units();
-    if ascii_keyword_units(units, "any") {
-        return Ok(HtmlIconSize::Scalable);
+    let mut cursor = IconSizeCursor::new(units);
+    while !cursor.is_complete() {
+        cursor.step();
     }
-    let mut separators = units
-        .iter()
-        .enumerate()
-        .filter(|(_, unit)| **unit == u16::from(b'x') || **unit == u16::from(b'X'));
-    let Some((index, _)) = separators.next() else {
-        return Err(HtmlIconSizeError::Separator);
-    };
-    if separators.next().is_some() {
-        return Err(HtmlIconSizeError::Separator);
-    }
-    let dimension = |digits: &[u16]| {
-        if digits.first() == Some(&u16::from(b'0')) {
-            return Err(HtmlIconSizeError::LeadingZero);
+    match cursor.result().expect("complete sizes grammar") {
+        Err(error) => Err(*error),
+        Ok(IconSizeShape::Scalable) => Ok(HtmlIconSize::Scalable),
+        Ok(IconSizeShape::Bitmap { width, height }) => {
+            let dimension = |range: std::ops::Range<usize>| {
+                HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
+                    units[range].to_vec(),
+                ))
+                .expect("canonical positive decimal proof")
+            };
+            HtmlBitmapIconSize::new(dimension(width.clone()), dimension(height.clone()))
+                .map(HtmlIconSize::Bitmap)
         }
-        HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(digits.to_vec()))
-            .map_err(|_| HtmlIconSizeError::DimensionDigits)
-    };
-    HtmlBitmapIconSize::new(dimension(&units[..index])?, dimension(&units[index + 1..])?)
-        .map(HtmlIconSize::Bitmap)
+    }
 }
 
 fn rule(attribute: KnownHtmlAttribute, element: Option<KnownHtmlElement>) -> RuleMetadata {
@@ -692,7 +800,7 @@ fn link_context(
             crate::tokens::space_token_slices(rel.value()).any(|token| {
                 required
                     .iter()
-                    .any(|keyword| ascii_keyword_units(token, keyword))
+                    .any(|keyword| crate::rel::ascii_keyword(token, keyword))
             })
         });
         input.input.context_author = if matches {

@@ -337,10 +337,15 @@ impl Error for HtmlProcessingInstructionError {}
 /// Exact element name and ordered raw attributes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlElement {
+    link_flags: Option<crate::HtmlLinkFlags>,
     name: QualifiedName,
     attributes: OrderedAttributes,
 }
 impl HtmlElement {
+    /// Actual construction flags. Imported records without history return None.
+    pub fn link_flags(&self) -> Option<crate::HtmlLinkFlags> {
+        self.link_flags
+    }
     /// Exact shared qualified name.
     pub fn name(&self) -> &QualifiedName {
         &self.name
@@ -909,7 +914,13 @@ macro_rules! authoring_methods {
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
             self.builder.append(
                 parent,
-                HtmlNodeKind::Element(HtmlElement { name, attributes }),
+                HtmlNodeKind::Element(HtmlElement {
+                    link_flags: (crate::KnownHtmlElement::from_name(&name)
+                        == Some(crate::KnownHtmlElement::Link))
+                    .then(crate::HtmlLinkFlags::fresh),
+                    name,
+                    attributes,
+                }),
             )
         }
         /// Appends exact text, retaining nulls and isolated surrogates.

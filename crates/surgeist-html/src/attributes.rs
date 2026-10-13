@@ -1967,10 +1967,8 @@ impl HtmlValueInterpreter {
         rel: Option<&DocumentString>,
     ) -> Result<HtmlStylesheetLinkAttributeContext, HtmlValueAdmissionError> {
         self.admit_attribute_raw(rel)?;
-        let contains_stylesheet = rel.is_some_and(|raw| {
-            crate::tokens::space_token_slices(raw)
-                .any(|token| ascii_keyword_units(token, "stylesheet"))
-        });
+        let contains_stylesheet =
+            rel.is_some_and(|raw| crate::rel::contains(raw, crate::HtmlRelKeyword::Stylesheet));
         Ok(HtmlStylesheetLinkAttributeContext {
             rel: rel.cloned(),
             contains_stylesheet,
@@ -2201,7 +2199,7 @@ pub use autocomplete::*;
 mod accept;
 pub use accept::*;
 
-mod token_declarations;
+pub(crate) mod token_declarations;
 pub use token_declarations::*;
 
 mod control_length;

@@ -6,6 +6,7 @@ use super::*;
 #[derive(Clone, Copy, Default)]
 struct CloneBindings {
     details: Option<usize>,
+    link: Option<usize>,
     association: Option<usize>,
     select: Option<usize>,
     textarea: Option<usize>,
@@ -380,9 +381,13 @@ impl SessionStorage {
         // installed native backing with a detached/unbound registry location.
         payload_write::<StringLocation>(c, 1 + u64::from(namespace_slot.is_some()))?;
         payload_write::<Option<usize>>(c, 1)?;
+        let link_flags = self
+            .html_local(c, source, "link")?
+            .then(crate::HtmlLinkFlags::fresh);
         let node = self.allocate_prepared_owned(
             c,
             HtmlNodeKind::Element(HtmlElement {
+                link_flags,
                 name: QualifiedName::new(namespace, None, name),
                 attributes,
             }),
@@ -560,6 +565,16 @@ impl SessionStorage {
     ) -> Result<CloneBindings, SessionError> {
         payload_write::<CloneBindings>(c, 1)?;
         let mut result = CloneBindings::default();
+        if self.html_local(c, source, "link")? {
+            payload_write::<Option<usize>>(c, 1)?;
+            result.link = Some(self.retain_clone_metadata(
+                c,
+                RetainedPayload::Link {
+                    node: None,
+                    parser_document: None,
+                },
+            )?);
+        }
         if self.fragment.is_some() {
             let registry = self.lookup_registry_ref(c, source)?;
             let original = self.element_creation_state(c, source)?;
@@ -760,6 +775,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         for slot in [
             bindings.details,
+            bindings.link,
             bindings.association,
             bindings.select,
             bindings.textarea,
@@ -776,6 +792,7 @@ impl SessionStorage {
             payload_write::<Option<usize>>(c, 1)?;
             match &mut self.payloads.values[slot] {
                 RetainedPayload::Details { node: bound, .. }
+                | RetainedPayload::Link { node: bound, .. }
                 | RetainedPayload::LookupRegistry { node: bound, .. }
                 | RetainedPayload::FormAssociation { node: bound, .. }
                 | RetainedPayload::SelectFamily { node: bound, .. }

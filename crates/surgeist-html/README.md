@@ -2695,6 +2695,72 @@ The [select construction owner](src/construction/parser_session/select.rs),
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
 record the consumed boundary.
 
+<a id="link-relationships"></a>
+
+`HtmlValueInterpreter::rel_with_attributes` interprets the pinned standard link
+types for the distinct `link`, `a`, `area` and `form` roles. Its
+[local report](src/rel.rs) retains exact `rel`/`rev` fields, token occurrence
+ranges and duplicate relationships. It separates recognized keywords, role
+applicability, actual relationship effects and author constraints. Token
+recognition does not establish supported browser capabilities or URL grammar.
+
+Captured `HtmlSemanticQuery::LinkRelationships` adds independently qualified
+[relationship facts](src/semantics/link_relationships.rs). Registered extension
+definitions and aliases, supported-token observations, URL grammar, bookmark
+sections, settings and historical link state retain their own producer revisions.
+Unavailable evidence remains Missing or conditional rather than becoming a
+negative observation. Unknown extensions remain available for later definition;
+standard keyword recognition does not authorize an extension alias.
+
+The [native link owner](src/construction/parser_session/link_history.rs) retains
+the actual creating-parser document separately from the current node document.
+Fresh construction and clone start with fresh flags. Removing an existing
+no-namespace `disabled` attribute establishes explicitly-enabled state; absent
+removal and copied attributes do not simulate that transition. Completed metadata
+and captured link history expose the actual retained observations.
+
+`HtmlSemanticRequest::noopener` carries a formed, subject-qualified URL key and
+target through the [noopener operation](src/semantics/link_relationships/noopener.rs).
+It keeps these inputs separate from an ElementTarget override and evaluates the
+source's relationship, target and qualified blob/settings branches. A generic
+Noopener request without its required input stays Missing. URL parsing, live
+navigation, resource loading and CSSOM association remain with consumers.
+
+The separate [document operations](src/semantics/link_relationships/selectors.rs)
+walk ordinary Document children, including descendants under foreign wrappers.
+Hosted template/shadow trees and detached populations do not enter that order.
+`DocumentFeeds` collects HTML link declarations with alternate membership and
+type exactly `application/rss+xml` or `application/atom+xml`. `DefaultFeed`
+selects the first declaration when its formed input supplies qualified host
+applicability. An alternate stylesheet declaration can be a discovery candidate
+while its per-element meaning remains a stylesheet modifier. `FirstManifest`
+selects the first manifest declaration even when its href or downstream resource
+is unusable. Earlier unavailable influencing evidence stays Missing.
+
+`DocumentIcon` first exposes the complete declaration collection, including raw
+attribute presence, canonical Media readback and borrowed arbitrary-precision
+sizes with diagnostics. A formed `HtmlDocumentIconInput` adds qualified resource,
+type/media/sizes suitability and ordered equivalence groups for that actual
+collection. Selection chooses the best group, then the last candidate in actual
+tree order. Influencing unknown suitability remains Missing; definitive canonical
+media mismatch can exclude a candidate independently. No universal suitability
+score or external policy is inferred.
+
+`NextDocumentIcon` consumes the actual previous choice and a qualified
+attempted-use examination that found it inappropriate. It preserves the earlier
+choice, retains accepted rejection history, and selects the next candidate using
+the same ordering. Unavailable examination remains Missing; stale, mismatched or
+reused examinations cannot silently remove a candidate. These operations do not
+fetch feeds, install manifests, decode resources or display icons.
+
+[Local cases](tests/rel_native.rs), [captured cases](tests/semantics_rel.rs) and
+[parse-history cases](tests/rel_parse_history.rs), together with
+[document selector cases](tests/semantics_rel_selectors.rs), describe these boundaries.
+Facts and request formation have finite admission; controlled readback shares
+the original semantic session's work, nested output and scratch cleanup owner.
+Immutable parse-metadata link-history readback separately scans retained payloads
+without allocation; it is ordinary readback, not a charged semantic operation.
+
 <a id="document-base-and-target"></a>
 
 Document base URLs and default targets select their first applicable `base`

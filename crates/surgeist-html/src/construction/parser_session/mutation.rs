@@ -6,6 +6,7 @@ use super::*;
 #[derive(Clone, Copy)]
 pub(super) enum ManagedFamily {
     Base,
+    Link,
     Details,
     Input,
 }
@@ -14,6 +15,7 @@ impl ManagedFamily {
     fn local(self) -> &'static str {
         match self {
             Self::Base => "base",
+            Self::Link => "link",
             Self::Details => "details",
             Self::Input => "input",
         }
@@ -21,6 +23,7 @@ impl ManagedFamily {
     fn boolean(self) -> &'static str {
         match self {
             Self::Base => "target",
+            Self::Link => "disabled",
             Self::Details => "open",
             Self::Input => "checked",
         }
@@ -31,6 +34,7 @@ impl ManagedFamily {
 enum ManagedEffect {
     BaseHref,
     BaseTarget,
+    LinkDisabledRemoved(bool),
     Details(crate::HtmlDetailsAttributeEffect),
     InputName,
     InputType,
@@ -54,6 +58,9 @@ impl SessionStorage {
         Ok(match family {
             ManagedFamily::Base if local == "href" => ManagedEffect::BaseHref,
             ManagedFamily::Base => ManagedEffect::BaseTarget,
+            ManagedFamily::Link => ManagedEffect::LinkDisabledRemoved(
+                local == "disabled" && old.is_some() && new.is_none(),
+            ),
             ManagedFamily::Details => ManagedEffect::Details(crate::details_attribute_effect(
                 &Namespace::none(),
                 if local == "name" {
@@ -105,6 +112,20 @@ impl SessionStorage {
         match effect {
             ManagedEffect::BaseHref => self.base_change(c, node, None, true),
             ManagedEffect::BaseTarget => Ok(()),
+            ManagedEffect::LinkDisabledRemoved(removed) => {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if removed {
+                    payload_write::<crate::HtmlLinkFlags>(c, 1)?;
+                    let HtmlNodeKind::Element(e) = &mut self.records[node].kind else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    let flags = e.link_flags.as_mut().ok_or(SessionError::WrongToken)?;
+                    // This effect is issued only after the actual existing disabled
+                    // field has been removed by this owner.
+                    flags.disabled_removed();
+                }
+                Ok(())
+            }
             ManagedEffect::Details(effect) => self.details_change(c, node, effect),
             ManagedEffect::InputName => self.normalize_radio(c, node, None),
             ManagedEffect::InputType => {
@@ -538,6 +559,10 @@ impl ParserArenaSession {
             && exact_ascii(c, Some(attr.name.value.text()), "href")?
         {
             "href"
+        } else if matches!(family, ManagedFamily::Link)
+            && exact_ascii(c, Some(attr.name.value.text()), "rel")?
+        {
+            "rel"
         } else if exact_ascii(c, Some(attr.name.value.text()), "name")? {
             "name"
         } else if matches!(family, ManagedFamily::Input)

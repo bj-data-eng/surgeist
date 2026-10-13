@@ -53,6 +53,23 @@ impl<'a> PreparedReportStorage<'a> {
                         }
                     }
                 }
+                RetainedPayload::Link {
+                    node,
+                    parser_document,
+                } => {
+                    let node = node.ok_or(SessionError::WrongToken)?;
+                    checked_node(arena, node, c)?;
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    let HtmlNodeKind::Element(element) = &arena.records[node].kind else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    if element.link_flags().is_none() {
+                        return Err(SessionError::WrongToken);
+                    }
+                    if let Some(document) = parser_document {
+                        checked_document(storage, *document, c)?;
+                    }
+                }
                 RetainedPayload::Details { node, .. } => {
                     // Construction eligibility is private, but its bound node
                     // must still belong to this immutable result.
@@ -275,6 +292,7 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
         | RetainedPayload::Template { node, .. }
         | RetainedPayload::SvgScript { node, .. }
         | RetainedPayload::Script { node, .. }
+        | RetainedPayload::Link { node, .. }
         | RetainedPayload::FormAssociation { node, .. }
         | RetainedPayload::Textarea { node, .. }
         | RetainedPayload::Output { node, .. }
@@ -401,6 +419,48 @@ impl<'a> MetadataRef<'a> {
             }
             _ => None,
         }
+    }
+    /// Actual link flags and creating-parser document. The current node document
+    /// is exposed by its separate canonical NodeDocument metadata record.
+    pub fn link_parser_document(&self) -> Option<Option<MetadataDocument<'a>>> {
+        match self.payload {
+            RetainedPayload::Link {
+                parser_document, ..
+            } => Some(parser_document.map(|d| self.document_ref(d))),
+            _ => None,
+        }
+    }
+    pub fn link_flags(&self) -> Option<crate::HtmlLinkFlags> {
+        if !matches!(self.payload, RetainedPayload::Link { .. }) {
+            return None;
+        }
+        match self.node().kind() {
+            HtmlNodeKind::Element(e) => e.link_flags(),
+            _ => None,
+        }
+    }
+    /// Ordinary borrowed readback of actual flags and the current node-document
+    /// join. It scans retained metadata without allocating; it has no separate
+    /// aggregate work/cancellation certificate.
+    pub fn link_history(&self) -> Option<crate::HtmlLinkHistory> {
+        let RetainedPayload::Link {
+            node: Some(node),
+            parser_document,
+        } = self.payload
+        else {
+            return None;
+        };
+        let current = self.storage.payloads.values.iter().find_map(|p| match p {
+            RetainedPayload::NodeDocument {
+                node: Some(owner),
+                document,
+            } if owner == node => Some(*document),
+            _ => None,
+        })?;
+        Some(crate::HtmlLinkHistory::new(
+            self.link_flags()?,
+            *parser_document == Some(current),
+        ))
     }
     pub fn node(&self) -> HtmlNode<'a> {
         HtmlNode {
@@ -657,6 +717,7 @@ mod tests {
             .allocate_element(
                 &mut c,
                 HtmlElement {
+                    link_flags: None,
                     name: QualifiedName::new(Namespace::html(), None, local),
                     attributes: OrderedAttributes::default(),
                 },

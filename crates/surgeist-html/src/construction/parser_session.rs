@@ -44,6 +44,8 @@ mod completion;
 pub(crate) mod context;
 mod details;
 #[cfg(test)]
+mod link_history;
+#[cfg(test)]
 pub(crate) use context::ParserDocumentReference;
 use context::{DocumentRef, FragmentContextStorage};
 pub(crate) mod evidence;
@@ -364,6 +366,10 @@ enum RetainedPayload {
         node: Option<usize>,
         state: SvgScriptState,
     },
+    Link {
+        node: Option<usize>,
+        parser_document: Option<DocumentRef>,
+    },
     Script {
         node: Option<usize>,
         metadata: ScriptMetadata,
@@ -682,6 +688,7 @@ impl PayloadStorage {
                 | RetainedPayload::Input { .. }
                 | RetainedPayload::SelectFamily { .. }
                 | RetainedPayload::Details { .. }
+                | RetainedPayload::Link { .. }
                 | RetainedPayload::Retired => {}
                 RetainedPayload::HistoricalString { origins } => {
                     origins.require_disposal_owner(control)?
@@ -2663,10 +2670,13 @@ impl SessionStorage {
             let attributes = values.clone();
             let count = attributes.len();
             let template = exact_ascii(control, Some(&name), "template")?;
+            let link_flags =
+                exact_ascii(control, Some(&name), "link")?.then(crate::HtmlLinkFlags::fresh);
             control.charge(WorkCategory::RecordWrite, 6)?;
             let node = self.allocate_prepared_owned(
                 control,
                 HtmlNodeKind::Element(HtmlElement {
+                    link_flags,
                     name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
                     attributes,
                 }),
@@ -5495,6 +5505,19 @@ impl ParserArenaSession {
             true,
             &mut prepared,
         )?;
+        let link_slot = if exact_ascii(control, Some(tag.name.value.text()), "link")? {
+            storage.document_slot(control, 0)?;
+            storage.prepare_payload_slot(control)?;
+            payload_write::<(Option<usize>, Option<DocumentRef>)>(control, 1)?;
+            let slot = storage.payloads.values.len();
+            storage.payloads.values.push(RetainedPayload::Link {
+                node: None,
+                parser_document: Some(DocumentRef::Owned(0)),
+            });
+            Some(slot)
+        } else {
+            None
+        };
         let details_slot = if let Some(notification) = details_domain {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
@@ -5666,6 +5689,14 @@ impl ParserArenaSession {
                     prepared,
                 )?
             };
+            if let Some(link) = link_slot {
+                payload_write::<Option<usize>>(control, 1)?;
+                let RetainedPayload::Link { node: bound, .. } = &mut storage.payloads.values[link]
+                else {
+                    unreachable!()
+                };
+                *bound = Some(node.index);
+            }
             if let Some(textarea) = textarea_slot {
                 control.charge(WorkCategory::RecordVisit, 2)?;
                 if !storage.records[node.index].children.is_empty() {
@@ -5746,6 +5777,7 @@ impl ParserArenaSession {
             ),
             Err(_)
                 if slot.is_some()
+                    || link_slot.is_some()
                     || matches!(
                         profile,
                         CreationProfile::Select(..) | CreationProfile::Details(..)
@@ -18390,6 +18422,7 @@ mod tests {
         // Preexisting immutable native input deliberately exercises namespace
         // identity, not parser-created physical storage or foreign token support.
         let native = HtmlElement {
+            link_flags: None,
             name: QualifiedName::new(Namespace::html(), None, "button"),
             attributes: OrderedAttributes::new(vec![Attribute::new(
                 QualifiedName::new(
@@ -19797,6 +19830,7 @@ mod tests {
     }
     fn element(namespace: Namespace, local: &str) -> HtmlElement {
         HtmlElement {
+            link_flags: None,
             name: QualifiedName::new(namespace, None, local),
             attributes: OrderedAttributes::new(Vec::new()).unwrap(),
         }
@@ -23674,6 +23708,7 @@ mod tests {
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         let root = session.root(&mut control).unwrap();
         let payload = HtmlElement {
+            link_flags: None,
             name: QualifiedName::new(
                 Namespace::none(),
                 Some(DocumentString::from("p")),

@@ -83,7 +83,11 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticQuery::ElementTarget => {
                 let target = match &request.operation {
                     SemanticOperation::TargetOverride(value) => Some(value),
-                    SemanticOperation::Query(_) => None,
+                    SemanticOperation::Query(_)
+                    | SemanticOperation::Noopener(_)
+                    | SemanticOperation::DefaultFeed(_)
+                    | SemanticOperation::DocumentIcon(_)
+                    | SemanticOperation::NextDocumentIcon(_) => None,
                 };
                 Ok(HtmlSemanticFact::ElementTarget(
                     self.element_target(node, target)?,

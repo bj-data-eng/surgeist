@@ -459,11 +459,13 @@ pub surgeist_html::HtmlCaptureError::LimitExceeded
 pub surgeist_html::HtmlCaptureError::LimitExceeded::limit: usize
 pub surgeist_html::HtmlCaptureError::LimitExceeded::required: usize
 pub surgeist_html::HtmlCaptureError::LimitExceeded::resource: surgeist_html::HtmlCaptureResource
+pub surgeist_html::HtmlCaptureError::LinkHistoryAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::MissingFact
 pub surgeist_html::HtmlCaptureError::MissingFact::fact: surgeist_html::HtmlCaptureFact
 pub surgeist_html::HtmlCaptureError::MissingFact::subject: core::option::Option<surgeist_html::HtmlCaptureSubjectId>
 pub surgeist_html::HtmlCaptureError::NonceAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::NonceInapplicable
+pub surgeist_html::HtmlCaptureError::NotHtmlLink
 pub surgeist_html::HtmlCaptureError::NotHtmlTemplate
 pub surgeist_html::HtmlCaptureError::ParentAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::ParentChildConflict
@@ -764,6 +766,10 @@ pub surgeist_html::HtmlDecoding::Sync
 impl surgeist_html::HtmlDecoding
 pub fn surgeist_html::HtmlDecoding::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlDecoding::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlDefaultFeedApplicability
+pub surgeist_html::HtmlDefaultFeedApplicability::Applicable
+pub surgeist_html::HtmlDefaultFeedApplicability::Inapplicable
+pub surgeist_html::HtmlDefaultFeedApplicability::Unavailable
 pub enum surgeist_html::HtmlDefiningTermOrigin
 pub surgeist_html::HtmlDefiningTermOrigin::AbbreviationTitle(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlDefiningTermOrigin::DescendantText
@@ -848,6 +854,11 @@ pub surgeist_html::HtmlDocumentFlatTreeRelation::Excluded
 pub surgeist_html::HtmlDocumentFlatTreeRelation::Parent(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlDocumentFlatTreeRelation::Root
 pub surgeist_html::HtmlDocumentFlatTreeRelation::Unavailable
+pub enum surgeist_html::HtmlDocumentIconReadback
+pub surgeist_html::HtmlDocumentIconReadback::Declarations
+pub surgeist_html::HtmlDocumentIconReadback::Declarations::collection: surgeist_html::HtmlDocumentIconCollection
+pub surgeist_html::HtmlDocumentIconReadback::Declarations::selection: surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDocumentIconChoice>>
+pub surgeist_html::HtmlDocumentIconReadback::Selection(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDocumentIconChoice>>)
 pub enum surgeist_html::HtmlDocumentModalBlocking
 pub surgeist_html::HtmlDocumentModalBlocking::BlockedBy(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlDocumentModalBlocking::Unavailable
@@ -1033,9 +1044,22 @@ pub surgeist_html::HtmlHiddenState::NotHidden
 pub enum surgeist_html::HtmlHyperlinkAttributeContext
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithHref
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithoutHref
+pub enum surgeist_html::HtmlIconCloserExamination
+pub surgeist_html::HtmlIconCloserExamination::AttemptedThenInappropriate
+pub surgeist_html::HtmlIconCloserExamination::NotAttempted
+pub surgeist_html::HtmlIconCloserExamination::Unavailable
+pub enum surgeist_html::HtmlIconOrdering
+pub surgeist_html::HtmlIconOrdering::Known(alloc::vec::Vec<alloc::vec::Vec<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlIconOrdering::Unavailable
 pub enum surgeist_html::HtmlIconSize
 pub surgeist_html::HtmlIconSize::Bitmap(surgeist_html::HtmlBitmapIconSize)
 pub surgeist_html::HtmlIconSize::Scalable
+pub enum surgeist_html::HtmlIconSizeDeclaration
+pub surgeist_html::HtmlIconSizeDeclaration::Bitmap
+pub surgeist_html::HtmlIconSizeDeclaration::Bitmap::height: core::ops::range::Range<usize>
+pub surgeist_html::HtmlIconSizeDeclaration::Bitmap::width: core::ops::range::Range<usize>
+pub surgeist_html::HtmlIconSizeDeclaration::Invalid(surgeist_html::HtmlIconSizeError)
+pub surgeist_html::HtmlIconSizeDeclaration::Scalable
 pub enum surgeist_html::HtmlIconSizeError
 pub surgeist_html::HtmlIconSizeError::DimensionDigits
 pub surgeist_html::HtmlIconSizeError::LeadingZero
@@ -1044,6 +1068,24 @@ pub surgeist_html::HtmlIconSizeError::ZeroDimension
 impl core::error::Error for surgeist_html::HtmlIconSizeError
 impl core::fmt::Display for surgeist_html::HtmlIconSizeError
 pub fn surgeist_html::HtmlIconSizeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlIconSizesAuthor
+pub surgeist_html::HtmlIconSizesAuthor::Conforming
+pub surgeist_html::HtmlIconSizesAuthor::Duplicate
+pub surgeist_html::HtmlIconSizesAuthor::Duplicate::duplicate_index: usize
+pub surgeist_html::HtmlIconSizesAuthor::Duplicate::first_index: usize
+pub surgeist_html::HtmlIconSizesAuthor::Invalid
+pub surgeist_html::HtmlIconSizesAuthor::Invalid::reason: surgeist_html::HtmlIconSizeError
+pub surgeist_html::HtmlIconSizesAuthor::Invalid::token_index: usize
+pub surgeist_html::HtmlIconSizesAuthor::NotSpecified
+pub enum surgeist_html::HtmlIconSuitability
+pub surgeist_html::HtmlIconSuitability::Suitable
+pub surgeist_html::HtmlIconSuitability::Unavailable
+pub surgeist_html::HtmlIconSuitability::Unsuitable(surgeist_html::HtmlIconUnsuitableReason)
+pub enum surgeist_html::HtmlIconUnsuitableReason
+pub surgeist_html::HtmlIconUnsuitableReason::MediaDoesNotMatch
+pub surgeist_html::HtmlIconUnsuitableReason::UnsuitableSizes
+pub surgeist_html::HtmlIconUnsuitableReason::UnsupportedType
+pub surgeist_html::HtmlIconUnsuitableReason::UnusableResource
 pub enum surgeist_html::HtmlIdUniqueness
 pub surgeist_html::HtmlIdUniqueness::Duplicate(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlIdUniqueness::Missing(surgeist_html::HtmlSemanticMissing)
@@ -2429,6 +2471,166 @@ pub enum surgeist_html::HtmlRegistryScope
 pub surgeist_html::HtmlRegistryScope::Global
 pub surgeist_html::HtmlRegistryScope::Scoped
 pub surgeist_html::HtmlRegistryScope::Unavailable
+pub enum surgeist_html::HtmlRelAddressAuthor
+pub surgeist_html::HtmlRelAddressAuthor::MissingHrefAndImagesrcset
+pub surgeist_html::HtmlRelAddressAuthor::NotRequired
+pub surgeist_html::HtmlRelAddressAuthor::Satisfied
+pub enum surgeist_html::HtmlRelAlternate
+pub surgeist_html::HtmlRelAlternate::Feed
+pub surgeist_html::HtmlRelAlternate::NotSelected
+pub surgeist_html::HtmlRelAlternate::Representation
+pub surgeist_html::HtmlRelAlternate::StylesheetModifier
+pub enum surgeist_html::HtmlRelAssociation
+pub surgeist_html::HtmlRelAssociation::Article(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlRelAssociation::Page(surgeist_html::HtmlCaptureDocumentId)
+pub surgeist_html::HtmlRelAssociation::ParentAndChildren(core::option::Option<surgeist_html::HtmlCaptureSubjectId>)
+pub surgeist_html::HtmlRelAssociation::Section(surgeist_html::HtmlRelSectionId)
+pub enum surgeist_html::HtmlRelBlobEntry
+pub surgeist_html::HtmlRelBlobEntry::NonNull
+pub surgeist_html::HtmlRelBlobEntry::NonNull::environment_origin: surgeist_html::HtmlRelOriginId
+pub surgeist_html::HtmlRelBlobEntry::Null
+pub surgeist_html::HtmlRelBlobEntry::Unavailable
+pub enum surgeist_html::HtmlRelBodyAllowance
+pub surgeist_html::HtmlRelBodyAllowance::AllKeywordsBodyOk
+pub surgeist_html::HtmlRelBodyAllowance::ContainsNonBodyOkKeyword
+pub surgeist_html::HtmlRelBodyAllowance::Itemprop
+pub surgeist_html::HtmlRelBodyAllowance::NotLink
+pub surgeist_html::HtmlRelBodyAllowance::RelAbsent
+pub enum surgeist_html::HtmlRelEffect
+pub surgeist_html::HtmlRelEffect::Annotation
+pub surgeist_html::HtmlRelEffect::ExternalResource
+pub surgeist_html::HtmlRelEffect::Hyperlink
+pub surgeist_html::HtmlRelEffect::InternalResource
+pub surgeist_html::HtmlRelEffect::StylesheetModifier
+pub enum surgeist_html::HtmlRelExtensionEffect
+pub surgeist_html::HtmlRelExtensionEffect::Annotation
+pub surgeist_html::HtmlRelExtensionEffect::ExternalResource
+pub surgeist_html::HtmlRelExtensionEffect::Hyperlink
+pub surgeist_html::HtmlRelExtensionEffect::InternalResource
+pub surgeist_html::HtmlRelExtensionEffect::NotAllowed
+pub surgeist_html::HtmlRelExtensionEffect::StylesheetModifier
+pub surgeist_html::HtmlRelExtensionEffect::Unavailable
+pub enum surgeist_html::HtmlRelFactsError
+pub surgeist_html::HtmlRelFactsError::ByteLimit
+pub surgeist_html::HtmlRelFactsError::CanonicalMismatch
+pub surgeist_html::HtmlRelFactsError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlRelFactsError::DuplicateDefinition
+pub surgeist_html::HtmlRelFactsError::DuplicateObservation
+pub surgeist_html::HtmlRelFactsError::GrammarContradiction
+pub surgeist_html::HtmlRelFactsError::HostRevisionMismatch
+pub surgeist_html::HtmlRelFactsError::IconMediaContradiction
+pub surgeist_html::HtmlRelFactsError::IconNotAttempted
+pub surgeist_html::HtmlRelFactsError::IconObservationCoverage
+pub surgeist_html::HtmlRelFactsError::IconOrderingInvalid
+pub surgeist_html::HtmlRelFactsError::InvalidEffect
+pub surgeist_html::HtmlRelFactsError::InvalidOccurrence
+pub surgeist_html::HtmlRelFactsError::InvalidRole
+pub surgeist_html::HtmlRelFactsError::InvalidSupportedToken
+pub surgeist_html::HtmlRelFactsError::MissingDefinition
+pub surgeist_html::HtmlRelFactsError::RawMismatch
+pub surgeist_html::HtmlRelFactsError::RecordLimit
+pub surgeist_html::HtmlRelFactsError::RepresentationExhausted
+pub surgeist_html::HtmlRelFactsError::SelectorBindingMismatch
+pub surgeist_html::HtmlRelFactsError::UrlBindingMismatch
+pub surgeist_html::HtmlRelFactsError::UrlRevisionMismatch
+pub surgeist_html::HtmlRelFactsError::WorkLimit
+impl core::error::Error for surgeist_html::HtmlRelFactsError
+impl core::fmt::Display for surgeist_html::HtmlRelFactsError
+pub fn surgeist_html::HtmlRelFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlRelGrammarInput
+pub surgeist_html::HtmlRelGrammarInput::ExtensionOccurrence
+pub surgeist_html::HtmlRelGrammarInput::ExtensionOccurrence::end: usize
+pub surgeist_html::HtmlRelGrammarInput::ExtensionOccurrence::start: usize
+pub surgeist_html::HtmlRelGrammarInput::Href
+pub enum surgeist_html::HtmlRelHrefAuthor
+pub surgeist_html::HtmlRelHrefAuthor::EmptyOrOnlyAsciiSpaces
+pub surgeist_html::HtmlRelHrefAuthor::GrammarUnchecked
+pub surgeist_html::HtmlRelHrefAuthor::NotRequired
+pub enum surgeist_html::HtmlRelKeyword
+pub surgeist_html::HtmlRelKeyword::Alternate
+pub surgeist_html::HtmlRelKeyword::Author
+pub surgeist_html::HtmlRelKeyword::Bookmark
+pub surgeist_html::HtmlRelKeyword::Canonical
+pub surgeist_html::HtmlRelKeyword::DnsPrefetch
+pub surgeist_html::HtmlRelKeyword::Expect
+pub surgeist_html::HtmlRelKeyword::External
+pub surgeist_html::HtmlRelKeyword::Help
+pub surgeist_html::HtmlRelKeyword::Icon
+pub surgeist_html::HtmlRelKeyword::License
+pub surgeist_html::HtmlRelKeyword::Manifest
+pub surgeist_html::HtmlRelKeyword::ModulePreload
+pub surgeist_html::HtmlRelKeyword::Next
+pub surgeist_html::HtmlRelKeyword::NoFollow
+pub surgeist_html::HtmlRelKeyword::NoOpener
+pub surgeist_html::HtmlRelKeyword::NoReferrer
+pub surgeist_html::HtmlRelKeyword::Opener
+pub surgeist_html::HtmlRelKeyword::Pingback
+pub surgeist_html::HtmlRelKeyword::Preconnect
+pub surgeist_html::HtmlRelKeyword::Prefetch
+pub surgeist_html::HtmlRelKeyword::Preload
+pub surgeist_html::HtmlRelKeyword::Prev
+pub surgeist_html::HtmlRelKeyword::PrivacyPolicy
+pub surgeist_html::HtmlRelKeyword::Search
+pub surgeist_html::HtmlRelKeyword::Stylesheet
+pub surgeist_html::HtmlRelKeyword::Tag
+pub surgeist_html::HtmlRelKeyword::TermsOfService
+impl surgeist_html::HtmlRelKeyword
+pub const surgeist_html::HtmlRelKeyword::ALL: &'static [Self]
+pub fn surgeist_html::HtmlRelKeyword::body_ok(self) -> bool
+pub fn surgeist_html::HtmlRelKeyword::effect(self, role: surgeist_html::HtmlRelRole) -> core::option::Option<surgeist_html::HtmlRelEffect>
+pub fn surgeist_html::HtmlRelKeyword::keyword(self) -> &'static str
+pub fn surgeist_html::HtmlRelKeyword::possible_supported_token(self, role: surgeist_html::HtmlRelRole) -> bool
+pub enum surgeist_html::HtmlRelLinks
+pub surgeist_html::HtmlRelLinks::Declared
+pub surgeist_html::HtmlRelLinks::ExtensionEffectsUnchecked
+pub surgeist_html::HtmlRelLinks::ImpliedHyperlink
+pub surgeist_html::HtmlRelLinks::None
+pub enum surgeist_html::HtmlRelMissingFact
+pub surgeist_html::HtmlRelMissingFact::BookmarkSection
+pub surgeist_html::HtmlRelMissingFact::DefaultFeedApplicability
+pub surgeist_html::HtmlRelMissingFact::DocumentElementLanguage
+pub surgeist_html::HtmlRelMissingFact::IconCloserExamination
+pub surgeist_html::HtmlRelMissingFact::IconOrdering
+pub surgeist_html::HtmlRelMissingFact::IconSuitability
+pub surgeist_html::HtmlRelMissingFact::LinkHistory
+pub surgeist_html::HtmlRelMissingFact::NoopenerInput
+pub surgeist_html::HtmlRelMissingFact::Registry
+pub surgeist_html::HtmlRelMissingFact::SupportedTokens
+pub surgeist_html::HtmlRelMissingFact::UrlGrammar
+pub surgeist_html::HtmlRelMissingFact::UrlRecord
+pub enum surgeist_html::HtmlRelOccurrenceSource
+pub surgeist_html::HtmlRelOccurrenceSource::Rel
+pub surgeist_html::HtmlRelOccurrenceSource::Rev
+pub enum surgeist_html::HtmlRelPresenceAuthor
+pub surgeist_html::HtmlRelPresenceAuthor::BothRelAndItemprop
+pub surgeist_html::HtmlRelPresenceAuthor::NeitherRelNorItemprop
+pub surgeist_html::HtmlRelPresenceAuthor::NotRequired
+pub surgeist_html::HtmlRelPresenceAuthor::Satisfied
+pub enum surgeist_html::HtmlRelRegistryStatus
+pub surgeist_html::HtmlRelRegistryStatus::Discontinued
+pub surgeist_html::HtmlRelRegistryStatus::Proposed
+pub surgeist_html::HtmlRelRegistryStatus::Ratified
+pub enum surgeist_html::HtmlRelRole
+pub surgeist_html::HtmlRelRole::Anchor
+pub surgeist_html::HtmlRelRole::Area
+pub surgeist_html::HtmlRelRole::Form
+pub surgeist_html::HtmlRelRole::Link
+pub enum surgeist_html::HtmlRelSpelling
+pub surgeist_html::HtmlRelSpelling::ForbiddenSynonym
+pub surgeist_html::HtmlRelSpelling::HistoricalRev
+pub surgeist_html::HtmlRelSpelling::InvalidShortcut
+pub surgeist_html::HtmlRelSpelling::ShortcutException
+pub surgeist_html::HtmlRelSpelling::Standard
+pub surgeist_html::HtmlRelSpelling::Unknown
+pub enum surgeist_html::HtmlRelTitleAuthor
+pub surgeist_html::HtmlRelTitleAuthor::MissingOrEmpty
+pub surgeist_html::HtmlRelTitleAuthor::NotRequired
+pub surgeist_html::HtmlRelTitleAuthor::Satisfied
+pub enum surgeist_html::HtmlRelTokenApplicability
+pub surgeist_html::HtmlRelTokenApplicability::Allowed
+pub surgeist_html::HtmlRelTokenApplicability::NotAllowed
+pub surgeist_html::HtmlRelTokenApplicability::ShortcutModifier
+pub surgeist_html::HtmlRelTokenApplicability::UncheckedExtension
 pub enum surgeist_html::HtmlSandboxAuthorState
 pub surgeist_html::HtmlSandboxAuthorState::Conforming
 pub surgeist_html::HtmlSandboxAuthorState::Missing
@@ -2558,6 +2760,9 @@ pub surgeist_html::HtmlSemanticContextError::InertHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::InertRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::LinkRelationshipsCaptureMismatch
+pub surgeist_html::HtmlSemanticContextError::LinkRelationshipsHostRevisionMismatch
+pub surgeist_html::HtmlSemanticContextError::LinkRelationshipsRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::MediaCaptureMismatch
 pub surgeist_html::HtmlSemanticContextError::MediaHostRevisionMismatch
 pub surgeist_html::HtmlSemanticContextError::MediaRevisionMismatch
@@ -2594,6 +2799,7 @@ pub surgeist_html::HtmlSemanticFact::CurrentCheckedness(surgeist_html::HtmlSeman
 pub surgeist_html::HtmlSemanticFact::CurrentSelectedness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::DatalistOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
 pub surgeist_html::HtmlSemanticFact::DatalistSuggestionOptions(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionCollection>)
+pub surgeist_html::HtmlSemanticFact::DefaultFeed(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::DescriptionListGroups(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDescriptionListGroups>)
 pub surgeist_html::HtmlSemanticFact::DetailsNameGroup(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDetailsNameGroup>)
 pub surgeist_html::HtmlSemanticFact::DetailsSummary(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
@@ -2603,6 +2809,8 @@ pub surgeist_html::HtmlSemanticFact::DirtyCheckednessFlag(surgeist_html::HtmlSem
 pub surgeist_html::HtmlSemanticFact::DirtyValueFlag(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::Disabledness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::DocumentBaseUrl(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDocumentBaseUrl>)
+pub surgeist_html::HtmlSemanticFact::DocumentFeeds(surgeist_html::HtmlSemanticValue<alloc::vec::Vec<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlSemanticFact::DocumentIcon(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDocumentIconReadback>)
 pub surgeist_html::HtmlSemanticFact::DocumentTitle(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDocumentTitle>)
 pub surgeist_html::HtmlSemanticFact::Editable(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::EditingHost(surgeist_html::HtmlSemanticValue<bool>)
@@ -2610,6 +2818,7 @@ pub surgeist_html::HtmlSemanticFact::ElementTarget(surgeist_html::HtmlSemanticVa
 pub surgeist_html::HtmlSemanticFact::EmbeddedDimensionAuthorConformance(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlEmbeddedDimensionAuthorReadback>)
 pub surgeist_html::HtmlSemanticFact::FieldsetControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FigureCaption(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlSemanticFact::FirstManifest(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::FooterScope(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlFooterScope>)
 pub surgeist_html::HtmlSemanticFact::FormControls(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlListedControlCollection>)
 pub surgeist_html::HtmlSemanticFact::FormDefaultButton(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlDefaultButton>>)
@@ -2634,6 +2843,7 @@ pub surgeist_html::HtmlSemanticFact::LabelFormOwner(surgeist_html::HtmlSemanticV
 pub surgeist_html::HtmlSemanticFact::LabeledControl(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::Language(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlLanguage>)
 pub surgeist_html::HtmlSemanticFact::LegendFormOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
+pub surgeist_html::HtmlSemanticFact::LinkRelationships(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlRelContextReadback>)
 pub surgeist_html::HtmlSemanticFact::ListOrdinal(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlInteger>>)
 pub surgeist_html::HtmlSemanticFact::ListOwner(surgeist_html::HtmlSemanticValue<core::option::Option<surgeist_html::HtmlCaptureSubjectId>>)
 pub surgeist_html::HtmlSemanticFact::ListStartingValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlInteger>)
@@ -2648,7 +2858,9 @@ pub surgeist_html::HtmlSemanticFact::MicrodataAuthor(surgeist_html::HtmlSemantic
 pub surgeist_html::HtmlSemanticFact::MicrodataDocumentAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataDocumentAuthor>)
 pub surgeist_html::HtmlSemanticFact::MicrodataItem(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataItem>)
 pub surgeist_html::HtmlSemanticFact::MicrodataProperty(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataProperty>)
+pub surgeist_html::HtmlSemanticFact::NextDocumentIcon(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlDocumentIconReadback>)
 pub surgeist_html::HtmlSemanticFact::Nonce(surgeist_html::HtmlSemanticValue<surgeist_html::DocumentString>)
+pub surgeist_html::HtmlSemanticFact::Noopener(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionFormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionFormOwner>)
 pub surgeist_html::HtmlSemanticFact::OptionIndex(surgeist_html::HtmlSemanticValue<usize>)
@@ -2705,6 +2917,8 @@ pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded
 pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::limit: usize
 pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::required: usize
 pub surgeist_html::HtmlSemanticFailureKind::LimitExceeded::resource: surgeist_html::HtmlSemanticResource
+pub surgeist_html::HtmlSemanticFailureKind::NoopenerRequestMismatch
+pub surgeist_html::HtmlSemanticFailureKind::RelationshipSelectorRequestMismatch
 pub surgeist_html::HtmlSemanticFailureKind::RepresentationExhausted
 pub enum surgeist_html::HtmlSemanticMissing
 pub surgeist_html::HtmlSemanticMissing::Base
@@ -2727,6 +2941,9 @@ pub surgeist_html::HtmlSemanticMissing::FormAssociation(surgeist_html::HtmlCaptu
 pub surgeist_html::HtmlSemanticMissing::InertAncestry(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::InertNodeFacts(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::LanguageFallback(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::LinkRelationship
+pub surgeist_html::HtmlSemanticMissing::LinkRelationship::fact: surgeist_html::HtmlRelMissingFact
+pub surgeist_html::HtmlSemanticMissing::LinkRelationship::subject: surgeist_html::HtmlCaptureSubjectId
 pub surgeist_html::HtmlSemanticMissing::MediaEnvironment(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::MediaGrammar(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::MicrodataFacts(surgeist_html::HtmlCaptureSubjectId)
@@ -2757,6 +2974,7 @@ pub surgeist_html::HtmlSemanticQuery::CurrentCheckedness
 pub surgeist_html::HtmlSemanticQuery::CurrentSelectedness
 pub surgeist_html::HtmlSemanticQuery::DatalistOptions
 pub surgeist_html::HtmlSemanticQuery::DatalistSuggestionOptions
+pub surgeist_html::HtmlSemanticQuery::DefaultFeed
 pub surgeist_html::HtmlSemanticQuery::DescriptionListGroups
 pub surgeist_html::HtmlSemanticQuery::DetailsNameGroup
 pub surgeist_html::HtmlSemanticQuery::DetailsSummary
@@ -2766,6 +2984,8 @@ pub surgeist_html::HtmlSemanticQuery::DirtyCheckednessFlag
 pub surgeist_html::HtmlSemanticQuery::DirtyValueFlag
 pub surgeist_html::HtmlSemanticQuery::Disabledness
 pub surgeist_html::HtmlSemanticQuery::DocumentBaseUrl
+pub surgeist_html::HtmlSemanticQuery::DocumentFeeds
+pub surgeist_html::HtmlSemanticQuery::DocumentIcon
 pub surgeist_html::HtmlSemanticQuery::DocumentTitle
 pub surgeist_html::HtmlSemanticQuery::Editable
 pub surgeist_html::HtmlSemanticQuery::EditingHost
@@ -2773,6 +2993,7 @@ pub surgeist_html::HtmlSemanticQuery::ElementTarget
 pub surgeist_html::HtmlSemanticQuery::EmbeddedDimensionAuthorConformance
 pub surgeist_html::HtmlSemanticQuery::FieldsetControls
 pub surgeist_html::HtmlSemanticQuery::FigureCaption
+pub surgeist_html::HtmlSemanticQuery::FirstManifest
 pub surgeist_html::HtmlSemanticQuery::FooterScope
 pub surgeist_html::HtmlSemanticQuery::FormControls
 pub surgeist_html::HtmlSemanticQuery::FormDefaultButton
@@ -2797,6 +3018,7 @@ pub surgeist_html::HtmlSemanticQuery::LabelFormOwner
 pub surgeist_html::HtmlSemanticQuery::LabeledControl
 pub surgeist_html::HtmlSemanticQuery::Language
 pub surgeist_html::HtmlSemanticQuery::LegendFormOwner
+pub surgeist_html::HtmlSemanticQuery::LinkRelationships
 pub surgeist_html::HtmlSemanticQuery::ListOrdinal
 pub surgeist_html::HtmlSemanticQuery::ListOwner
 pub surgeist_html::HtmlSemanticQuery::ListStartingValue
@@ -2811,7 +3033,9 @@ pub surgeist_html::HtmlSemanticQuery::MicrodataAuthor
 pub surgeist_html::HtmlSemanticQuery::MicrodataDocumentAuthor
 pub surgeist_html::HtmlSemanticQuery::MicrodataItem
 pub surgeist_html::HtmlSemanticQuery::MicrodataProperty
+pub surgeist_html::HtmlSemanticQuery::NextDocumentIcon
 pub surgeist_html::HtmlSemanticQuery::Nonce
+pub surgeist_html::HtmlSemanticQuery::Noopener
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
 pub surgeist_html::HtmlSemanticQuery::OptionFormOwner
 pub surgeist_html::HtmlSemanticQuery::OptionIndex
@@ -2869,6 +3093,7 @@ pub surgeist_html::HtmlSemanticResource::Work
 pub enum surgeist_html::HtmlSemanticUnsupported
 pub surgeist_html::HtmlSemanticUnsupported::AmbiguousDocumentElement
 pub surgeist_html::HtmlSemanticUnsupported::ForeignNamespace
+pub surgeist_html::HtmlSemanticUnsupported::IconMedia(surgeist_html::HtmlMediaExternalCapability)
 pub enum surgeist_html::HtmlSemanticValue<T>
 pub surgeist_html::HtmlSemanticValue::Inapplicable
 pub surgeist_html::HtmlSemanticValue::Known(T)
@@ -4071,6 +4296,7 @@ pub fn surgeist_html::HtmlCaptureBuilder::establish_document_image_support(&mut 
 pub fn surgeist_html::HtmlCaptureBuilder::establish_document_nonce_environment(&mut self, subject: &surgeist_html::HtmlCaptureBuilderSubject, environment: surgeist_html::HtmlNonceDocumentEnvironment) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_document_template_facts(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, class: surgeist_html::HtmlDocumentClass, role: surgeist_html::HtmlTemplateDocumentRole, cache: surgeist_html::HtmlCaptureTemplateCacheInput) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_element_nonce(&mut self, subject: &surgeist_html::HtmlCaptureBuilderSubject, value: surgeist_html::DocumentString) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::establish_link_history(&mut self, subject: &surgeist_html::HtmlCaptureBuilderSubject, history: surgeist_html::HtmlLinkHistory) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_no_shadow_root(&mut self, element: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_parent(&mut self, child: &surgeist_html::HtmlCaptureBuilderSubject, parent: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_parser_creation_image_support(&mut self, entry_document: &surgeist_html::HtmlCaptureBuilderSubject, support: surgeist_html::HtmlImageSupport) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
@@ -4159,6 +4385,7 @@ pub fn surgeist_html::HtmlCapturedElement::cryptographic_nonce(&self) -> &surgei
 pub fn surgeist_html::HtmlCapturedElement::custom_element_definition(&self) -> &surgeist_html::HtmlCapturedCustomElementDefinition
 pub fn surgeist_html::HtmlCapturedElement::custom_element_state(&self) -> surgeist_html::HtmlCapturedCustomElementState
 pub fn surgeist_html::HtmlCapturedElement::is_value(&self) -> &surgeist_html::HtmlCapturedIsValue
+pub fn surgeist_html::HtmlCapturedElement::link_history(&self) -> core::option::Option<surgeist_html::HtmlLinkHistory>
 pub fn surgeist_html::HtmlCapturedElement::name(&self) -> &surgeist_html::QualifiedName
 pub struct surgeist_html::HtmlCapturedFragment
 impl surgeist_html::HtmlCapturedFragment
@@ -4349,6 +4576,10 @@ pub struct surgeist_html::HtmlDefaultButton
 impl surgeist_html::HtmlDefaultButton
 pub fn surgeist_html::HtmlDefaultButton::form_owner(&self) -> &surgeist_html::HtmlFormOwner
 pub fn surgeist_html::HtmlDefaultButton::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlDefaultFeedInput
+impl surgeist_html::HtmlDefaultFeedInput
+pub fn surgeist_html::HtmlDefaultFeedInput::document(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlDefaultFeedInput::new(capture: &surgeist_html::HtmlCapture, context: &surgeist_html::HtmlSemanticContext, document: surgeist_html::HtmlCaptureSubjectId, applicability: surgeist_html::HtmlDefaultFeedApplicability, limits: surgeist_html::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlRelFactsError>
 pub struct surgeist_html::HtmlDefiningTerm
 impl surgeist_html::HtmlDefiningTerm
 pub fn surgeist_html::HtmlDefiningTerm::origin(&self) -> &surgeist_html::HtmlDefiningTermOrigin
@@ -4427,6 +4658,22 @@ impl surgeist_html::HtmlDocumentDesignModeFact
 pub fn surgeist_html::HtmlDocumentDesignModeFact::document(&self) -> &surgeist_html::HtmlCaptureSubjectId
 pub fn surgeist_html::HtmlDocumentDesignModeFact::new(document: surgeist_html::HtmlCaptureSubjectId, state: surgeist_html::HtmlDesignMode) -> Self
 pub fn surgeist_html::HtmlDocumentDesignModeFact::state(&self) -> surgeist_html::HtmlDesignMode
+pub struct surgeist_html::HtmlDocumentIconChoice
+impl surgeist_html::HtmlDocumentIconChoice
+pub fn surgeist_html::HtmlDocumentIconChoice::declaration(&self) -> &surgeist_html::HtmlIconDeclaration
+pub fn surgeist_html::HtmlDocumentIconChoice::input(&self) -> &surgeist_html::HtmlDocumentIconInput
+pub fn surgeist_html::HtmlDocumentIconChoice::rejected_count(&self) -> usize
+pub fn surgeist_html::HtmlDocumentIconChoice::resource(&self) -> &surgeist_html::HtmlIconResourceKey
+pub struct surgeist_html::HtmlDocumentIconCollection
+impl surgeist_html::HtmlDocumentIconCollection
+pub fn surgeist_html::HtmlDocumentIconCollection::candidates(&self) -> &[surgeist_html::HtmlIconDeclaration]
+pub fn surgeist_html::HtmlDocumentIconCollection::document(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlDocumentIconCollection::media_revision(&self) -> core::option::Option<&surgeist_html::HtmlMediaContextRevision>
+pub struct surgeist_html::HtmlDocumentIconInput
+impl surgeist_html::HtmlDocumentIconInput
+pub fn surgeist_html::HtmlDocumentIconInput::collection(&self) -> &surgeist_html::HtmlDocumentIconCollection
+pub fn surgeist_html::HtmlDocumentIconInput::expected(&self) -> &surgeist_html::HtmlIconExpectedRevisions
+pub fn surgeist_html::HtmlDocumentIconInput::new(capture: &surgeist_html::HtmlCapture, context: &surgeist_html::HtmlSemanticContext, collection: surgeist_html::HtmlDocumentIconCollection, expected: surgeist_html::HtmlIconExpectedRevisions, observations: alloc::vec::Vec<surgeist_html::HtmlIconSuitabilityObservation>, ordering: surgeist_html::HtmlIconOrdering, limits: surgeist_html::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlRelFactsError>
 pub struct surgeist_html::HtmlDocumentLanguageFallback
 impl surgeist_html::HtmlDocumentLanguageFallback
 pub fn surgeist_html::HtmlDocumentLanguageFallback::document(&self) -> &surgeist_html::HtmlCaptureSubjectId
@@ -4484,6 +4731,7 @@ pub fn surgeist_html::HtmlEditabilitySource::revision(self) -> &'static str
 pub struct surgeist_html::HtmlElement
 impl surgeist_html::HtmlElement
 pub fn surgeist_html::HtmlElement::attributes(&self) -> &surgeist_html::OrderedAttributes
+pub fn surgeist_html::HtmlElement::link_flags(&self) -> core::option::Option<surgeist_html::HtmlLinkFlags>
 pub fn surgeist_html::HtmlElement::name(&self) -> &surgeist_html::QualifiedName
 pub struct surgeist_html::HtmlElementReferenceFact
 impl surgeist_html::HtmlElementReferenceFact
@@ -4693,10 +4941,66 @@ pub struct surgeist_html::HtmlHyperlinkReferrerPolicyReadback
 impl surgeist_html::HtmlHyperlinkReferrerPolicyReadback
 pub fn surgeist_html::HtmlHyperlinkReferrerPolicyReadback::attribute_report(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>
 pub fn surgeist_html::HtmlHyperlinkReferrerPolicyReadback::href_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub struct surgeist_html::HtmlIconAttribute
+impl surgeist_html::HtmlIconAttribute
+pub fn surgeist_html::HtmlIconAttribute::ordinal(&self) -> usize
+pub fn surgeist_html::HtmlIconAttribute::raw(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlIconDeclaration
+impl surgeist_html::HtmlIconDeclaration
+pub fn surgeist_html::HtmlIconDeclaration::digits(&self, range: core::ops::range::Range<usize>) -> core::option::Option<&[u16]>
+pub fn surgeist_html::HtmlIconDeclaration::href(&self) -> core::option::Option<&surgeist_html::HtmlIconAttribute>
+pub fn surgeist_html::HtmlIconDeclaration::media(&self) -> core::option::Option<&surgeist_html::HtmlIconAttribute>
+pub fn surgeist_html::HtmlIconDeclaration::media_rules(&self) -> &surgeist_html::HtmlMediaAttributeReadback
+pub fn surgeist_html::HtmlIconDeclaration::rel(&self) -> &surgeist_html::HtmlIconAttribute
+pub fn surgeist_html::HtmlIconDeclaration::size_occurrences(&self) -> &[surgeist_html::HtmlIconSizeOccurrence]
+pub fn surgeist_html::HtmlIconDeclaration::sizes(&self) -> core::option::Option<&surgeist_html::HtmlIconAttribute>
+pub fn surgeist_html::HtmlIconDeclaration::sizes_author(&self) -> &surgeist_html::HtmlIconSizesAuthor
+pub fn surgeist_html::HtmlIconDeclaration::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlIconDeclaration::type_hint(&self) -> core::option::Option<&surgeist_html::HtmlIconAttribute>
+pub struct surgeist_html::HtmlIconExaminationId(_)
+impl surgeist_html::HtmlIconExaminationId
+pub fn surgeist_html::HtmlIconExaminationId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlIconExaminationId
+impl core::cmp::PartialEq for surgeist_html::HtmlIconExaminationId
+pub fn surgeist_html::HtmlIconExaminationId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlIconExaminationObservation
+impl surgeist_html::HtmlIconExaminationObservation
+pub fn surgeist_html::HtmlIconExaminationObservation::identity(&self) -> &surgeist_html::HtmlIconExaminationId
+pub fn surgeist_html::HtmlIconExaminationObservation::new(subject: surgeist_html::HtmlCaptureSubjectId, resource: surgeist_html::HtmlIconResourceKey, identity: surgeist_html::HtmlIconExaminationId, revision: surgeist_html::HtmlRelRevision, outcome: surgeist_html::HtmlIconCloserExamination) -> Self
+pub fn surgeist_html::HtmlIconExaminationObservation::revision(&self) -> &surgeist_html::HtmlRelRevision
+pub struct surgeist_html::HtmlIconExpectedRevisions
+impl surgeist_html::HtmlIconExpectedRevisions
+pub fn surgeist_html::HtmlIconExpectedRevisions::media(&self) -> core::option::Option<&surgeist_html::HtmlMediaContextRevision>
+pub fn surgeist_html::HtmlIconExpectedRevisions::new(presentation: surgeist_html::HtmlIconPresentationId, policy: surgeist_html::HtmlRelRevision, resource: surgeist_html::HtmlRelRevision, media: core::option::Option<surgeist_html::HtmlMediaContextRevision>) -> Self
+pub fn surgeist_html::HtmlIconExpectedRevisions::policy(&self) -> &surgeist_html::HtmlRelRevision
+pub fn surgeist_html::HtmlIconExpectedRevisions::presentation(&self) -> &surgeist_html::HtmlIconPresentationId
+pub fn surgeist_html::HtmlIconExpectedRevisions::resource(&self) -> &surgeist_html::HtmlRelRevision
+pub struct surgeist_html::HtmlIconPresentationId(_)
+impl surgeist_html::HtmlIconPresentationId
+pub fn surgeist_html::HtmlIconPresentationId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlIconPresentationId
+impl core::cmp::PartialEq for surgeist_html::HtmlIconPresentationId
+pub fn surgeist_html::HtmlIconPresentationId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlIconResourceId(_)
+impl surgeist_html::HtmlIconResourceId
+pub fn surgeist_html::HtmlIconResourceId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlIconResourceId
+impl core::cmp::PartialEq for surgeist_html::HtmlIconResourceId
+pub fn surgeist_html::HtmlIconResourceId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlIconResourceKey
+impl surgeist_html::HtmlIconResourceKey
+pub fn surgeist_html::HtmlIconResourceKey::identity(&self) -> &surgeist_html::HtmlIconResourceId
+pub fn surgeist_html::HtmlIconResourceKey::new(identity: surgeist_html::HtmlIconResourceId, revision: surgeist_html::HtmlRelRevision) -> Self
+pub fn surgeist_html::HtmlIconResourceKey::revision(&self) -> &surgeist_html::HtmlRelRevision
 pub struct surgeist_html::HtmlIconSizeKeyword
 impl surgeist_html::HtmlIconSizeKeyword
 pub fn surgeist_html::HtmlIconSizeKeyword::result(&self) -> core::result::Result<&surgeist_html::HtmlIconSize, surgeist_html::HtmlIconSizeError>
 pub fn surgeist_html::HtmlIconSizeKeyword::token_index(&self) -> usize
+pub struct surgeist_html::HtmlIconSizeOccurrence
+impl surgeist_html::HtmlIconSizeOccurrence
+pub fn surgeist_html::HtmlIconSizeOccurrence::code_unit_range(&self) -> core::ops::range::Range<usize>
+pub fn surgeist_html::HtmlIconSizeOccurrence::declaration(&self) -> &surgeist_html::HtmlIconSizeDeclaration
+pub fn surgeist_html::HtmlIconSizeOccurrence::duplicate_of(&self) -> core::option::Option<usize>
 pub struct surgeist_html::HtmlIconSizes
 impl surgeist_html::HtmlIconSizes
 pub fn surgeist_html::HtmlIconSizes::into_attribute(self) -> surgeist_html::Attribute
@@ -4708,6 +5012,13 @@ pub fn surgeist_html::HtmlIconSizesReport::input(&self) -> &surgeist_html::HtmlT
 pub fn surgeist_html::HtmlIconSizesReport::keywords(&self) -> core::option::Option<&[surgeist_html::HtmlIconSizeKeyword]>
 pub fn surgeist_html::HtmlIconSizesReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlIconSizesReport::resource_conformance(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub struct surgeist_html::HtmlIconSuitabilityObservation
+impl surgeist_html::HtmlIconSuitabilityObservation
+pub fn surgeist_html::HtmlIconSuitabilityObservation::new(collection: &surgeist_html::HtmlDocumentIconCollection, subject: surgeist_html::HtmlCaptureSubjectId, resource: surgeist_html::HtmlIconResourceKey, expected: surgeist_html::HtmlIconExpectedRevisions, suitability: surgeist_html::HtmlIconSuitability) -> Self
+pub fn surgeist_html::HtmlIconSuitabilityObservation::resource(&self) -> core::option::Option<&surgeist_html::HtmlIconResourceKey>
+pub fn surgeist_html::HtmlIconSuitabilityObservation::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlIconSuitabilityObservation::suitability(&self) -> surgeist_html::HtmlIconSuitability
+pub fn surgeist_html::HtmlIconSuitabilityObservation::unavailable(collection: &surgeist_html::HtmlDocumentIconCollection, subject: surgeist_html::HtmlCaptureSubjectId, expected: surgeist_html::HtmlIconExpectedRevisions) -> Self
 pub struct surgeist_html::HtmlIdAuthorReport
 impl surgeist_html::HtmlIdAuthorReport
 pub fn surgeist_html::HtmlIdAuthorReport::local(&self) -> &surgeist_html::HtmlAttributeReport<surgeist_html::HtmlSpaceToken>
@@ -5086,6 +5397,16 @@ pub fn surgeist_html::HtmlLinkDestinationReport::preload_processing_source_claus
 pub fn surgeist_html::HtmlLinkDestinationReport::preload_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlLinkDestinationReport::rel_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
 pub fn surgeist_html::HtmlLinkDestinationReport::rel_source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlLinkFlags
+impl surgeist_html::HtmlLinkFlags
+pub fn surgeist_html::HtmlLinkFlags::disabled_attribute_changed(&mut self, namespace: &surgeist_html::Namespace, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>)
+pub fn surgeist_html::HtmlLinkFlags::explicitly_enabled(self) -> bool
+pub fn surgeist_html::HtmlLinkFlags::fresh() -> Self
+pub struct surgeist_html::HtmlLinkHistory
+impl surgeist_html::HtmlLinkHistory
+pub fn surgeist_html::HtmlLinkHistory::created_by_node_document_parser(self) -> bool
+pub fn surgeist_html::HtmlLinkHistory::flags(self) -> surgeist_html::HtmlLinkFlags
+pub fn surgeist_html::HtmlLinkHistory::new(flags: surgeist_html::HtmlLinkFlags, created_by_node_document_parser: bool) -> Self
 pub struct surgeist_html::HtmlLinkMediaRules
 impl surgeist_html::HtmlLinkMediaRules
 pub fn surgeist_html::HtmlLinkMediaRules::external_resource_gate(&self) -> surgeist_html::HtmlExternalResourceMediaGate
@@ -5483,6 +5804,10 @@ pub struct surgeist_html::HtmlNegativeIntegerError
 impl core::error::Error for surgeist_html::HtmlNegativeIntegerError
 impl core::fmt::Display for surgeist_html::HtmlNegativeIntegerError
 pub fn surgeist_html::HtmlNegativeIntegerError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlNextDocumentIconInput
+impl surgeist_html::HtmlNextDocumentIconInput
+pub fn surgeist_html::HtmlNextDocumentIconInput::document(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlNextDocumentIconInput::new(previous: surgeist_html::HtmlDocumentIconChoice, expected_examination: &surgeist_html::HtmlRelRevision, examination: surgeist_html::HtmlIconExaminationObservation, limits: surgeist_html::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlRelFactsError>
 pub struct surgeist_html::HtmlNode<'a>
 impl<'a> surgeist_html::HtmlNode<'a>
 pub fn surgeist_html::HtmlNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::HtmlNodeId> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
@@ -5864,6 +6189,9 @@ pub fn surgeist_html::HtmlParseMetadata<'a>::document_base_facts(&self) -> core:
 pub fn surgeist_html::HtmlParseMetadata<'a>::document_facts(&self) -> core::option::Option<(surgeist_html::HtmlDocumentClass, bool, core::option::Option<surgeist_html::HtmlNode<'a>>)>
 pub fn surgeist_html::HtmlParseMetadata<'a>::document_first_base(&self) -> core::option::Option<core::option::Option<surgeist_html::HtmlNode<'a>>>
 pub fn surgeist_html::HtmlParseMetadata<'a>::input_source(&self) -> core::option::Option<(&'a surgeist_html::HtmlSourceRange, core::option::Option<&'a surgeist_html::HtmlSourceRange>)>
+pub fn surgeist_html::HtmlParseMetadata<'a>::link_flags(&self) -> core::option::Option<surgeist_html::HtmlLinkFlags>
+pub fn surgeist_html::HtmlParseMetadata<'a>::link_history(&self) -> core::option::Option<surgeist_html::HtmlLinkHistory>
+pub fn surgeist_html::HtmlParseMetadata<'a>::link_parser_document(&self) -> core::option::Option<core::option::Option<surgeist_html::HtmlParseMetadataDocument<'a>>>
 pub fn surgeist_html::HtmlParseMetadata<'a>::node(&self) -> surgeist_html::HtmlNode<'a>
 pub fn surgeist_html::HtmlParseMetadata<'a>::node_document(&self) -> core::option::Option<surgeist_html::HtmlParseMetadataDocument<'a>>
 pub fn surgeist_html::HtmlParseMetadata<'a>::option_nearest_select(&self) -> core::option::Option<core::option::Option<surgeist_html::HtmlNode<'a>>>
@@ -6070,6 +6398,186 @@ impl surgeist_html::HtmlProgressNumberReport
 pub fn surgeist_html::HtmlProgressNumberReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
 pub fn surgeist_html::HtmlProgressNumberReport::author(&self) -> surgeist_html::HtmlProgressNumberAuthorState
 pub fn surgeist_html::HtmlProgressNumberReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>>
+pub struct surgeist_html::HtmlRelBookmarkSection
+impl surgeist_html::HtmlRelBookmarkSection
+pub fn surgeist_html::HtmlRelBookmarkSection::new(subject: surgeist_html::HtmlCaptureSubjectId, section: surgeist_html::HtmlRelSectionId) -> Self
+pub struct surgeist_html::HtmlRelContextReadback
+impl surgeist_html::HtmlRelContextReadback
+pub fn surgeist_html::HtmlRelContextReadback::alternate_translation(&self) -> &surgeist_html::HtmlSemanticValue<bool>
+pub fn surgeist_html::HtmlRelContextReadback::extensions(&self) -> &[surgeist_html::HtmlRelExtensionReadback]
+pub fn surgeist_html::HtmlRelContextReadback::href_url_author(&self) -> &surgeist_html::HtmlSemanticValue<bool>
+pub fn surgeist_html::HtmlRelContextReadback::href_url_grammar(&self) -> core::option::Option<bool>
+pub fn surgeist_html::HtmlRelContextReadback::image_source_preload_author(&self) -> &surgeist_html::HtmlSemanticValue<bool>
+pub fn surgeist_html::HtmlRelContextReadback::implicitly_potentially_render_blocking(&self) -> &surgeist_html::HtmlSemanticValue<bool>
+pub fn surgeist_html::HtmlRelContextReadback::link_history(&self) -> &surgeist_html::HtmlSemanticValue<surgeist_html::HtmlLinkHistory>
+pub fn surgeist_html::HtmlRelContextReadback::links(&self) -> surgeist_html::HtmlRelLinks
+pub fn surgeist_html::HtmlRelContextReadback::local(&self) -> &surgeist_html::HtmlRelReport
+pub fn surgeist_html::HtmlRelContextReadback::meanings(&self) -> &[surgeist_html::HtmlRelMeaning]
+pub fn surgeist_html::HtmlRelContextReadback::supported_tokens(&self) -> &surgeist_html::HtmlSemanticValue<alloc::vec::Vec<surgeist_html::HtmlRelKeyword>>
+pub struct surgeist_html::HtmlRelDefinition
+impl surgeist_html::HtmlRelDefinition
+pub fn surgeist_html::HtmlRelDefinition::canonical(&self) -> &surgeist_html::HtmlSpaceToken
+pub fn surgeist_html::HtmlRelDefinition::extension(key: surgeist_html::HtmlRelDefinitionKey, canonical: surgeist_html::HtmlSpaceToken, status: surgeist_html::HtmlRelRegistryStatus, link: surgeist_html::HtmlRelExtensionEffect, anchor_area: surgeist_html::HtmlRelExtensionEffect, form: surgeist_html::HtmlRelExtensionEffect) -> Self
+pub fn surgeist_html::HtmlRelDefinition::key(&self) -> &surgeist_html::HtmlRelDefinitionKey
+pub fn surgeist_html::HtmlRelDefinition::standard(key: surgeist_html::HtmlRelDefinitionKey, keyword: surgeist_html::HtmlRelKeyword, status: surgeist_html::HtmlRelRegistryStatus) -> Self
+pub struct surgeist_html::HtmlRelDefinitionId(_)
+impl surgeist_html::HtmlRelDefinitionId
+pub fn surgeist_html::HtmlRelDefinitionId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlRelDefinitionId
+impl core::cmp::PartialEq for surgeist_html::HtmlRelDefinitionId
+pub fn surgeist_html::HtmlRelDefinitionId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlRelDefinitionKey
+impl surgeist_html::HtmlRelDefinitionKey
+pub fn surgeist_html::HtmlRelDefinitionKey::identity(&self) -> &surgeist_html::HtmlRelDefinitionId
+pub fn surgeist_html::HtmlRelDefinitionKey::new(identity: surgeist_html::HtmlRelDefinitionId, revision: u64) -> Self
+pub fn surgeist_html::HtmlRelDefinitionKey::revision(&self) -> u64
+pub struct surgeist_html::HtmlRelExpectedRevisions
+impl surgeist_html::HtmlRelExpectedRevisions
+pub fn surgeist_html::HtmlRelExpectedRevisions::bookmark_sections(&self) -> core::option::Option<&surgeist_html::HtmlRelRevision>
+pub fn surgeist_html::HtmlRelExpectedRevisions::new() -> Self
+pub fn surgeist_html::HtmlRelExpectedRevisions::registry(&self) -> core::option::Option<&surgeist_html::HtmlRelRevision>
+pub fn surgeist_html::HtmlRelExpectedRevisions::settings(&self) -> core::option::Option<&surgeist_html::HtmlRelRevision>
+pub fn surgeist_html::HtmlRelExpectedRevisions::supported_tokens(&self) -> core::option::Option<&surgeist_html::HtmlRelRevision>
+pub fn surgeist_html::HtmlRelExpectedRevisions::url_grammar(&self) -> core::option::Option<&surgeist_html::HtmlRelRevision>
+pub fn surgeist_html::HtmlRelExpectedRevisions::url_records(&self) -> core::option::Option<&surgeist_html::HtmlRelRevision>
+pub fn surgeist_html::HtmlRelExpectedRevisions::with_bookmark_sections(self, revision: surgeist_html::HtmlRelRevision) -> Self
+pub fn surgeist_html::HtmlRelExpectedRevisions::with_registry(self, revision: surgeist_html::HtmlRelRevision) -> Self
+pub fn surgeist_html::HtmlRelExpectedRevisions::with_settings(self, revision: surgeist_html::HtmlRelRevision) -> Self
+pub fn surgeist_html::HtmlRelExpectedRevisions::with_supported_tokens(self, revision: surgeist_html::HtmlRelRevision) -> Self
+pub fn surgeist_html::HtmlRelExpectedRevisions::with_url_grammar(self, revision: surgeist_html::HtmlRelRevision) -> Self
+pub fn surgeist_html::HtmlRelExpectedRevisions::with_url_records(self, revision: surgeist_html::HtmlRelRevision) -> Self
+pub struct surgeist_html::HtmlRelExtensionReadback
+impl surgeist_html::HtmlRelExtensionReadback
+pub fn surgeist_html::HtmlRelExtensionReadback::absolute_url_grammar(&self) -> core::option::Option<bool>
+pub fn surgeist_html::HtmlRelExtensionReadback::author_conformance(&self) -> &surgeist_html::HtmlSemanticValue<bool>
+pub fn surgeist_html::HtmlRelExtensionReadback::canonical(&self) -> core::option::Option<&surgeist_html::HtmlSpaceToken>
+pub fn surgeist_html::HtmlRelExtensionReadback::definition(&self) -> core::option::Option<&surgeist_html::HtmlRelDefinitionKey>
+pub fn surgeist_html::HtmlRelExtensionReadback::effect(&self) -> surgeist_html::HtmlRelExtensionEffect
+pub fn surgeist_html::HtmlRelExtensionReadback::forbidden_synonym(&self) -> core::option::Option<bool>
+pub fn surgeist_html::HtmlRelExtensionReadback::occurrence(&self) -> usize
+pub fn surgeist_html::HtmlRelExtensionReadback::proven_absent(&self) -> bool
+pub fn surgeist_html::HtmlRelExtensionReadback::registry_status(&self) -> core::option::Option<surgeist_html::HtmlRelRegistryStatus>
+pub fn surgeist_html::HtmlRelExtensionReadback::standard_keyword(&self) -> core::option::Option<surgeist_html::HtmlRelKeyword>
+pub struct surgeist_html::HtmlRelFacts
+impl surgeist_html::HtmlRelFacts
+pub fn surgeist_html::HtmlRelFacts::capture(&self) -> &surgeist_html::HtmlCaptureId
+pub fn surgeist_html::HtmlRelFacts::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlRelFacts::new(capture: &surgeist_html::HtmlCapture, expected_host: &surgeist_html::HtmlHostFactsRevision, input: surgeist_html::HtmlRelFactsInput, limits: surgeist_html::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlRelFactsError>
+pub fn surgeist_html::HtmlRelFacts::revisions(&self) -> &surgeist_html::HtmlRelExpectedRevisions
+pub struct surgeist_html::HtmlRelFactsInput
+impl surgeist_html::HtmlRelFactsInput
+pub fn surgeist_html::HtmlRelFactsInput::new() -> Self
+pub fn surgeist_html::HtmlRelFactsInput::with_bookmark_sections(self, revision: surgeist_html::HtmlRelRevision, records: alloc::vec::Vec<surgeist_html::HtmlRelBookmarkSection>) -> Self
+pub fn surgeist_html::HtmlRelFactsInput::with_registry(self, revision: surgeist_html::HtmlRelRevision, definitions: alloc::vec::Vec<surgeist_html::HtmlRelDefinition>, occurrences: alloc::vec::Vec<surgeist_html::HtmlRelRegistryOccurrence>) -> Self
+pub fn surgeist_html::HtmlRelFactsInput::with_settings(self, revision: surgeist_html::HtmlRelRevision, records: alloc::vec::Vec<surgeist_html::HtmlRelSameSiteObservation>) -> Self
+pub fn surgeist_html::HtmlRelFactsInput::with_supported_tokens(self, revision: surgeist_html::HtmlRelRevision, records: alloc::vec::Vec<surgeist_html::HtmlRelSupportedTokens>) -> Self
+pub fn surgeist_html::HtmlRelFactsInput::with_url_grammar(self, revision: surgeist_html::HtmlRelRevision, records: alloc::vec::Vec<surgeist_html::HtmlRelUrlGrammar>) -> Self
+pub fn surgeist_html::HtmlRelFactsInput::with_url_records(self, revision: surgeist_html::HtmlRelRevision, records: alloc::vec::Vec<surgeist_html::HtmlRelUrlObservation>) -> Self
+pub struct surgeist_html::HtmlRelFactsLimits
+impl surgeist_html::HtmlRelFactsLimits
+pub fn surgeist_html::HtmlRelFactsLimits::bytes(self) -> usize
+pub fn surgeist_html::HtmlRelFactsLimits::new(records: usize, bytes: usize, work: usize) -> Self
+pub fn surgeist_html::HtmlRelFactsLimits::records(self) -> usize
+pub fn surgeist_html::HtmlRelFactsLimits::work(self) -> usize
+pub struct surgeist_html::HtmlRelMeaning
+impl surgeist_html::HtmlRelMeaning
+pub fn surgeist_html::HtmlRelMeaning::association(&self) -> &surgeist_html::HtmlSemanticValue<surgeist_html::HtmlRelAssociation>
+pub fn surgeist_html::HtmlRelMeaning::keyword(&self) -> surgeist_html::HtmlRelKeyword
+pub struct surgeist_html::HtmlRelNoopenerInput
+impl surgeist_html::HtmlRelNoopenerInput
+pub fn surgeist_html::HtmlRelNoopenerInput::new(capture: &surgeist_html::HtmlCapture, expected_host: &surgeist_html::HtmlHostFactsRevision, subject: surgeist_html::HtmlCaptureSubjectId, expected_url: &surgeist_html::HtmlRelRevision, url: surgeist_html::HtmlRelUrlKey, target: surgeist_html::DocumentString, limits: surgeist_html::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlRelFactsError>
+pub fn surgeist_html::HtmlRelNoopenerInput::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub fn surgeist_html::HtmlRelNoopenerInput::target(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlRelNoopenerInput::url(&self) -> &surgeist_html::HtmlRelUrlKey
+pub struct surgeist_html::HtmlRelOccurrence
+impl surgeist_html::HtmlRelOccurrence
+pub fn surgeist_html::HtmlRelOccurrence::applicability(&self) -> surgeist_html::HtmlRelTokenApplicability
+pub fn surgeist_html::HtmlRelOccurrence::code_unit_range(&self) -> core::ops::range::Range<usize>
+pub fn surgeist_html::HtmlRelOccurrence::duplicate_of(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlRelOccurrence::effect(&self) -> core::option::Option<surgeist_html::HtmlRelEffect>
+pub fn surgeist_html::HtmlRelOccurrence::keyword(&self) -> core::option::Option<surgeist_html::HtmlRelKeyword>
+pub fn surgeist_html::HtmlRelOccurrence::source(&self) -> surgeist_html::HtmlRelOccurrenceSource
+pub fn surgeist_html::HtmlRelOccurrence::spelling(&self) -> surgeist_html::HtmlRelSpelling
+pub struct surgeist_html::HtmlRelOriginId(_)
+impl surgeist_html::HtmlRelOriginId
+pub fn surgeist_html::HtmlRelOriginId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlRelOriginId
+impl core::cmp::PartialEq for surgeist_html::HtmlRelOriginId
+pub fn surgeist_html::HtmlRelOriginId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlRelProducerId(_)
+impl surgeist_html::HtmlRelProducerId
+pub fn surgeist_html::HtmlRelProducerId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlRelProducerId
+impl core::cmp::PartialEq for surgeist_html::HtmlRelProducerId
+pub fn surgeist_html::HtmlRelProducerId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlRelRegistryOccurrence
+impl surgeist_html::HtmlRelRegistryOccurrence
+pub fn surgeist_html::HtmlRelRegistryOccurrence::definition(subject: surgeist_html::HtmlCaptureSubjectId, raw: surgeist_html::DocumentString, range: core::ops::range::Range<usize>, key: surgeist_html::HtmlRelDefinitionKey) -> Self
+pub fn surgeist_html::HtmlRelRegistryOccurrence::proven_absent(subject: surgeist_html::HtmlCaptureSubjectId, raw: surgeist_html::DocumentString, range: core::ops::range::Range<usize>) -> Self
+pub fn surgeist_html::HtmlRelRegistryOccurrence::synonym(subject: surgeist_html::HtmlCaptureSubjectId, raw: surgeist_html::DocumentString, range: core::ops::range::Range<usize>, canonical_definition: surgeist_html::HtmlRelDefinitionKey) -> Self
+pub fn surgeist_html::HtmlRelRegistryOccurrence::unavailable(subject: surgeist_html::HtmlCaptureSubjectId, raw: surgeist_html::DocumentString, range: core::ops::range::Range<usize>) -> Self
+pub struct surgeist_html::HtmlRelReport
+impl surgeist_html::HtmlRelReport
+pub fn surgeist_html::HtmlRelReport::address_presence_author(&self) -> surgeist_html::HtmlRelAddressAuthor
+pub fn surgeist_html::HtmlRelReport::alternate(&self) -> surgeist_html::HtmlRelAlternate
+pub fn surgeist_html::HtmlRelReport::alternate_stylesheet_title_author(&self) -> surgeist_html::HtmlRelTitleAuthor
+pub fn surgeist_html::HtmlRelReport::as_destination(&self) -> core::option::Option<surgeist_html::HtmlLinkDestination>
+pub fn surgeist_html::HtmlRelReport::body_allowance(&self) -> surgeist_html::HtmlRelBodyAllowance
+pub fn surgeist_html::HtmlRelReport::href_author(&self) -> surgeist_html::HtmlRelHrefAuthor
+pub fn surgeist_html::HtmlRelReport::href_present(&self) -> bool
+pub fn surgeist_html::HtmlRelReport::image_source_preload_context(&self) -> bool
+pub fn surgeist_html::HtmlRelReport::imagesrcset_present(&self) -> bool
+pub fn surgeist_html::HtmlRelReport::links(&self) -> surgeist_html::HtmlRelLinks
+pub fn surgeist_html::HtmlRelReport::occurrence_units(&self, index: usize) -> core::option::Option<&[u16]>
+pub fn surgeist_html::HtmlRelReport::occurrences(&self) -> &[surgeist_html::HtmlRelOccurrence]
+pub fn surgeist_html::HtmlRelReport::presence_author(&self) -> surgeist_html::HtmlRelPresenceAuthor
+pub fn surgeist_html::HtmlRelReport::rel(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlRelReport::rev(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::HtmlRelReport::role(&self) -> core::option::Option<surgeist_html::HtmlRelRole>
+pub fn surgeist_html::HtmlRelReport::source_clause(&self) -> &'static str
+pub struct surgeist_html::HtmlRelRevision
+impl surgeist_html::HtmlRelRevision
+pub fn surgeist_html::HtmlRelRevision::configuration(&self) -> u64
+pub fn surgeist_html::HtmlRelRevision::new(producer: surgeist_html::HtmlRelProducerId, configuration: u64, revision: u64) -> Self
+pub fn surgeist_html::HtmlRelRevision::producer(&self) -> &surgeist_html::HtmlRelProducerId
+pub fn surgeist_html::HtmlRelRevision::revision(&self) -> u64
+pub struct surgeist_html::HtmlRelSameSiteObservation
+impl surgeist_html::HtmlRelSameSiteObservation
+pub fn surgeist_html::HtmlRelSameSiteObservation::new(subject: surgeist_html::HtmlCaptureSubjectId, url: surgeist_html::HtmlRelUrlKey, settings: surgeist_html::HtmlRelSettingsId, blob_origin: surgeist_html::HtmlRelOriginId, top_level_origin: surgeist_html::HtmlRelOriginId, same_site: bool) -> Self
+pub fn surgeist_html::HtmlRelSameSiteObservation::settings(&self) -> &surgeist_html::HtmlRelSettingsId
+pub fn surgeist_html::HtmlRelSameSiteObservation::top_level_origin(&self) -> &surgeist_html::HtmlRelOriginId
+pub struct surgeist_html::HtmlRelSectionId(_)
+impl surgeist_html::HtmlRelSectionId
+pub fn surgeist_html::HtmlRelSectionId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlRelSectionId
+impl core::cmp::PartialEq for surgeist_html::HtmlRelSectionId
+pub fn surgeist_html::HtmlRelSectionId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlRelSettingsId(_)
+impl surgeist_html::HtmlRelSettingsId
+pub fn surgeist_html::HtmlRelSettingsId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlRelSettingsId
+impl core::cmp::PartialEq for surgeist_html::HtmlRelSettingsId
+pub fn surgeist_html::HtmlRelSettingsId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlRelSupportedTokens
+impl surgeist_html::HtmlRelSupportedTokens
+pub fn surgeist_html::HtmlRelSupportedTokens::new(subject: surgeist_html::HtmlCaptureSubjectId, tokens: alloc::vec::Vec<surgeist_html::HtmlRelKeyword>) -> Self
+pub struct surgeist_html::HtmlRelUrlGrammar
+impl surgeist_html::HtmlRelUrlGrammar
+pub fn surgeist_html::HtmlRelUrlGrammar::new(subject: surgeist_html::HtmlCaptureSubjectId, input: surgeist_html::HtmlRelGrammarInput, raw: surgeist_html::DocumentString, valid: bool) -> Self
+pub struct surgeist_html::HtmlRelUrlId(_)
+impl surgeist_html::HtmlRelUrlId
+pub fn surgeist_html::HtmlRelUrlId::fresh() -> Self
+impl core::cmp::Eq for surgeist_html::HtmlRelUrlId
+impl core::cmp::PartialEq for surgeist_html::HtmlRelUrlId
+pub fn surgeist_html::HtmlRelUrlId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlRelUrlKey
+impl surgeist_html::HtmlRelUrlKey
+pub fn surgeist_html::HtmlRelUrlKey::identity(&self) -> &surgeist_html::HtmlRelUrlId
+pub fn surgeist_html::HtmlRelUrlKey::new(identity: surgeist_html::HtmlRelUrlId, revision: surgeist_html::HtmlRelRevision) -> Self
+pub fn surgeist_html::HtmlRelUrlKey::revision(&self) -> &surgeist_html::HtmlRelRevision
+pub struct surgeist_html::HtmlRelUrlObservation
+impl surgeist_html::HtmlRelUrlObservation
+pub fn surgeist_html::HtmlRelUrlObservation::new(subject: surgeist_html::HtmlCaptureSubjectId, url: surgeist_html::HtmlRelUrlKey, blob: surgeist_html::HtmlRelBlobEntry) -> Self
 pub struct surgeist_html::HtmlSandboxAuthorDiagnostics
 impl surgeist_html::HtmlSandboxAuthorDiagnostics
 pub fn surgeist_html::HtmlSandboxAuthorDiagnostics::duplicate(&self) -> core::option::Option<&surgeist_html::HtmlDuplicateTokenError>
@@ -6197,6 +6705,7 @@ pub fn surgeist_html::HtmlSemanticContextInput::with_global_inheritance(self, ex
 pub fn surgeist_html::HtmlSemanticContextInput::with_image_dimensions(self, expected: surgeist_html::HtmlImageDimensionRevision, facts: core::option::Option<surgeist_html::HtmlImageDimensionFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_inert(self, expected: surgeist_html::HtmlFlatTreeRevision, facts: core::option::Option<surgeist_html::HtmlInertFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_language_direction(self, facts: surgeist_html::HtmlLanguageDirectionFacts) -> Self
+pub fn surgeist_html::HtmlSemanticContextInput::with_link_relationships(self, expected: surgeist_html::HtmlRelExpectedRevisions, facts: core::option::Option<surgeist_html::HtmlRelFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_list_participation(self, expected: surgeist_html::HtmlListParticipationRevision, participation: core::option::Option<surgeist_html::HtmlListParticipation>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_media(self, expected: surgeist_html::HtmlMediaContextRevision, facts: core::option::Option<surgeist_html::HtmlMediaFacts>) -> Self
 pub fn surgeist_html::HtmlSemanticContextInput::with_microdata(self, expected: surgeist_html::HtmlMicrodataRevision, facts: core::option::Option<surgeist_html::HtmlMicrodataFacts>) -> Self
@@ -6232,6 +6741,7 @@ pub fn surgeist_html::HtmlSemanticQualification::host_revision(&self) -> &surgei
 pub fn surgeist_html::HtmlSemanticQualification::image_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlImageDimensionRevision>
 pub fn surgeist_html::HtmlSemanticQualification::inert_revision(&self) -> core::option::Option<&surgeist_html::HtmlFlatTreeRevision>
 pub fn surgeist_html::HtmlSemanticQualification::limits(&self) -> surgeist_html::HtmlSemanticLimits
+pub fn surgeist_html::HtmlSemanticQualification::link_relationship_revisions(&self) -> &surgeist_html::HtmlRelExpectedRevisions
 pub fn surgeist_html::HtmlSemanticQualification::media_revision(&self) -> core::option::Option<&surgeist_html::HtmlMediaContextRevision>
 pub fn surgeist_html::HtmlSemanticQualification::microdata_revision(&self) -> core::option::Option<&surgeist_html::HtmlMicrodataRevision>
 pub fn surgeist_html::HtmlSemanticQualification::natural_dimension_revision(&self) -> core::option::Option<&surgeist_html::HtmlNaturalDimensionRevision>
@@ -6251,8 +6761,13 @@ pub fn surgeist_html::HtmlSemanticReport::source_revision(&self) -> &'static str
 pub fn surgeist_html::HtmlSemanticReport::usage(&self) -> surgeist_html::HtmlSemanticUsage
 pub struct surgeist_html::HtmlSemanticRequest
 impl surgeist_html::HtmlSemanticRequest
+pub fn surgeist_html::HtmlSemanticRequest::default_feed(input: surgeist_html::HtmlDefaultFeedInput) -> Self
+pub fn surgeist_html::HtmlSemanticRequest::document_icon(input: surgeist_html::HtmlDocumentIconInput) -> Self
 pub fn surgeist_html::HtmlSemanticRequest::element_target(subject: surgeist_html::HtmlCaptureSubjectId, target: surgeist_html::DocumentString) -> Self
 pub fn surgeist_html::HtmlSemanticRequest::new(subject: surgeist_html::HtmlCaptureSubjectId, query: surgeist_html::HtmlSemanticQuery) -> Self
+pub fn surgeist_html::HtmlSemanticRequest::next_document_icon(input: surgeist_html::HtmlNextDocumentIconInput) -> Self
+pub fn surgeist_html::HtmlSemanticRequest::noopener(input: surgeist_html::HtmlRelNoopenerInput) -> Self
+pub fn surgeist_html::HtmlSemanticRequest::noopener_input(&self) -> core::option::Option<&surgeist_html::HtmlRelNoopenerInput>
 pub fn surgeist_html::HtmlSemanticRequest::query(&self) -> surgeist_html::HtmlSemanticQuery
 pub fn surgeist_html::HtmlSemanticRequest::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
 pub struct surgeist_html::HtmlSemanticResult
@@ -6821,6 +7336,8 @@ impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_hyperlink(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlHyperlinkAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::referrerpolicy_for_script(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>, context: surgeist_html::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlReferrerPolicy>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::rel_with_attributes(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlRelReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::script_type(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlScriptTypeReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::script_type_with_attributes(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlScriptTypePreparationReport, surgeist_html::HtmlValueAdmissionError>

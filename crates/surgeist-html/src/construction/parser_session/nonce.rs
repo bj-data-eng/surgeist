@@ -888,6 +888,7 @@ mod tests {
             let kind = HtmlNodeKind::Element(HtmlElement {
                 name: QualifiedName::new(Namespace::html(), None, "p"),
                 attributes: OrderedAttributes::default(),
+                link_flags: None,
             });
             let result = session.active_mut().unwrap().prepare_nonce(&mut c, &kind);
             if cap == 3 {

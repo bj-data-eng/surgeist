@@ -136,6 +136,12 @@ struct MediaReadbackData {
     processing: HtmlMediaProcessing,
 }
 impl HtmlMediaAttributeReadback {
+    pub(super) fn owned_backing(&self) -> (usize, usize) {
+        (
+            self.data.capacity(),
+            self.data.capacity() * std::mem::size_of::<MediaReadbackData>(),
+        )
+    }
     pub fn local(&self) -> &HtmlMediaAttributeReport {
         &self.data[0].local
     }

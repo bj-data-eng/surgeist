@@ -1174,6 +1174,7 @@ impl SessionStorage {
             let node = self.allocate_prepared_owned(
                 control,
                 HtmlNodeKind::Element(HtmlElement {
+                    link_flags: None,
                     name: QualifiedName::new(namespace, None, name),
                     attributes,
                 }),

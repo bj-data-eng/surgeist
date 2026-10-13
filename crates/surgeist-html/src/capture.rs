@@ -456,6 +456,8 @@ pub enum HtmlCaptureSubjectKind {
 /// Rejected assembly, lookup or source-derived context admission.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureError {
+    NotHtmlLink,
+    LinkHistoryAlreadyEstablished,
     ForeignBuilder,
     ForeignCapture,
     WrongKind {
@@ -582,10 +584,14 @@ pub struct HtmlCapturedElement {
     shadow: Association,
     custom_context: Option<CustomElementContext>,
     nonce: HtmlCapturedNonce,
+    link_history: Option<crate::HtmlLinkHistory>,
 }
 impl HtmlCapturedElement {
     pub fn cryptographic_nonce(&self) -> &HtmlCapturedNonce {
         &self.nonce
+    }
+    pub fn link_history(&self) -> Option<crate::HtmlLinkHistory> {
+        self.link_history
     }
     pub fn custom_element_state(&self) -> HtmlCapturedCustomElementState {
         self.custom_context
@@ -785,6 +791,30 @@ fn namespace(ns: &Namespace, uri: &str) -> bool {
     ns.uri().is_some_and(|v| exact(v, uri))
 }
 impl HtmlCaptureBuilder {
+    /// Attests actual canonical flags and parser creation relative to this
+    /// immutable capture's node document and host revision. No provenance is
+    /// inferred from attributes or namespace.
+    pub fn establish_link_history(
+        &mut self,
+        subject: &HtmlCaptureBuilderSubject,
+        history: crate::HtmlLinkHistory,
+    ) -> Result<(), HtmlCaptureError> {
+        let index = self.index(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
+            return Err(HtmlCaptureError::NotHtmlLink);
+        };
+        if !html(element.name(), "link") {
+            return Err(HtmlCaptureError::NotHtmlLink);
+        }
+        if element.link_history.is_some() {
+            return Err(HtmlCaptureError::LinkHistoryAlreadyEstablished);
+        }
+        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
+            unreachable!()
+        };
+        element.link_history = Some(history);
+        Ok(())
+    }
     pub fn new(limits: HtmlCaptureLimits, host_revision: HtmlHostFactsRevision) -> Self {
         Self {
             data: CaptureData {
@@ -1156,6 +1186,7 @@ impl HtmlCaptureBuilder {
                 shadow: Association::Unavailable,
                 custom_context: None,
                 nonce: HtmlCapturedNonce::Unavailable,
+                link_history: None,
             }),
             document,
             Parent::Unavailable,

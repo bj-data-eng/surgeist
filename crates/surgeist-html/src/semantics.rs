@@ -70,7 +70,9 @@ mod media_facts;
 pub use media_facts::*;
 mod meta_author;
 pub use meta_author::*;
+mod link_relationships;
 mod meta_pragma;
+pub use link_relationships::*;
 pub use meta_pragma::*;
 mod image_map;
 mod map_name;
@@ -316,6 +318,8 @@ impl HtmlListParticipation {
 pub struct HtmlSemanticContextInput {
     media_revision: Option<HtmlMediaContextRevision>,
     media: Option<HtmlMediaFacts>,
+    rel_revisions: HtmlRelExpectedRevisions,
+    rel_facts: Option<HtmlRelFacts>,
     image_dimension_revision: Option<HtmlImageDimensionRevision>,
     image_dimensions: Option<HtmlImageDimensionFacts>,
     natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
@@ -341,6 +345,8 @@ impl HtmlSemanticContextInput {
         Self {
             media_revision: None,
             media: None,
+            rel_revisions: HtmlRelExpectedRevisions::new(),
+            rel_facts: None,
             natural_dimension_revision: None,
             image_dimension_revision: None,
             image_dimensions: None,
@@ -396,6 +402,15 @@ impl HtmlSemanticContextInput {
     ) -> Self {
         self.media_revision = Some(expected);
         self.media = facts;
+        self
+    }
+    pub fn with_link_relationships(
+        mut self,
+        expected: HtmlRelExpectedRevisions,
+        facts: Option<HtmlRelFacts>,
+    ) -> Self {
+        self.rel_revisions = expected;
+        self.rel_facts = facts;
         self
     }
     pub fn with_natural_dimensions(
@@ -457,6 +472,8 @@ impl HtmlSemanticContextInput {
 pub struct HtmlSemanticContext {
     media_revision: Option<HtmlMediaContextRevision>,
     media: Option<HtmlMediaFacts>,
+    rel_revisions: HtmlRelExpectedRevisions,
+    rel_facts: Option<HtmlRelFacts>,
     image_dimension_revision: Option<HtmlImageDimensionRevision>,
     image_dimensions: Option<HtmlImageDimensionFacts>,
     natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
@@ -491,6 +508,9 @@ pub enum HtmlSemanticContextError {
     BaseCaptureMismatch,
     BaseHostRevisionMismatch,
     BaseRevisionMismatch,
+    LinkRelationshipsCaptureMismatch,
+    LinkRelationshipsHostRevisionMismatch,
+    LinkRelationshipsRevisionMismatch,
     ImageDimensionsCaptureMismatch,
     ImageDimensionsHostRevisionMismatch,
     ImageDimensionsRevisionMismatch,
@@ -558,6 +578,8 @@ impl HtmlSemanticContext {
         let HtmlSemanticContextInput {
             media_revision,
             media,
+            rel_revisions,
+            rel_facts,
             image_dimension_revision,
             mut image_dimensions,
             natural_dimension_revision,
@@ -604,6 +626,17 @@ impl HtmlSemanticContext {
             }
             if base_revision.as_ref() != Some(facts.revision()) {
                 return Err(HtmlSemanticContextError::BaseRevisionMismatch);
+            }
+        }
+        if let Some(facts) = &rel_facts {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::LinkRelationshipsCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::LinkRelationshipsHostRevisionMismatch);
+            }
+            if facts.revisions() != &rel_revisions {
+                return Err(HtmlSemanticContextError::LinkRelationshipsRevisionMismatch);
             }
         }
         if let Some(facts) = &mut image_dimensions {
@@ -727,6 +760,8 @@ impl HtmlSemanticContext {
                 other => HtmlSemanticContextError::ControlsFacts(other),
             })?;
         Ok(Self {
+            rel_revisions,
+            rel_facts,
             identity: HtmlSemanticContextId(Arc::new(())),
             media_revision,
             media,
@@ -938,6 +973,13 @@ pub enum HtmlSemanticQuery {
     ElementTarget,
     FormSubmissionTarget,
     BaseHref,
+    DocumentFeeds,
+    DefaultFeed,
+    FirstManifest,
+    DocumentIcon,
+    NextDocumentIcon,
+    Noopener,
+    LinkRelationships,
     IsAttributeAuthorContext,
     ImageDimensions,
     EmbeddedDimensionAuthorConformance,
@@ -1099,6 +1141,21 @@ impl HtmlSemanticQuery {
             }
             Self::BaseHref => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-base-href"
+            }
+            Self::DocumentFeeds | Self::DefaultFeed => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#rel-alternate"
+            }
+            Self::FirstManifest => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#link-type-manifest"
+            }
+            Self::DocumentIcon | Self::NextDocumentIcon => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#rel-icon"
+            }
+            Self::Noopener => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-noopener"
+            }
+            Self::LinkRelationships => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#linkTypes"
             }
             Self::IsAttributeAuthorContext => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-is"
@@ -1430,8 +1487,47 @@ pub struct HtmlSemanticRequest {
 enum SemanticOperation {
     Query(HtmlSemanticQuery),
     TargetOverride(DocumentString),
+    Noopener(HtmlRelNoopenerInput),
+    DefaultFeed(HtmlDefaultFeedInput),
+    DocumentIcon(HtmlDocumentIconInput),
+    NextDocumentIcon(HtmlNextDocumentIconInput),
 }
 impl HtmlSemanticRequest {
+    pub fn default_feed(input: HtmlDefaultFeedInput) -> Self {
+        Self {
+            subject: input.document().clone(),
+            operation: SemanticOperation::DefaultFeed(input),
+        }
+    }
+    pub fn document_icon(input: HtmlDocumentIconInput) -> Self {
+        Self {
+            subject: input.collection().document().clone(),
+            operation: SemanticOperation::DocumentIcon(input),
+        }
+    }
+    pub fn next_document_icon(input: HtmlNextDocumentIconInput) -> Self {
+        Self {
+            subject: input.document().clone(),
+            operation: SemanticOperation::NextDocumentIcon(input),
+        }
+    }
+
+    pub fn noopener(input: HtmlRelNoopenerInput) -> Self {
+        Self {
+            subject: input.subject().clone(),
+            operation: SemanticOperation::Noopener(input),
+        }
+    }
+    pub fn noopener_input(&self) -> Option<&HtmlRelNoopenerInput> {
+        match &self.operation {
+            SemanticOperation::Noopener(input) => Some(input),
+            SemanticOperation::Query(_)
+            | SemanticOperation::TargetOverride(_)
+            | SemanticOperation::DefaultFeed(_)
+            | SemanticOperation::DocumentIcon(_)
+            | SemanticOperation::NextDocumentIcon(_) => None,
+        }
+    }
     pub fn new(subject: HtmlCaptureSubjectId, query: HtmlSemanticQuery) -> Self {
         Self {
             subject,
@@ -1445,6 +1541,10 @@ impl HtmlSemanticRequest {
         match self.operation {
             SemanticOperation::Query(query) => query,
             SemanticOperation::TargetOverride(_) => HtmlSemanticQuery::ElementTarget,
+            SemanticOperation::Noopener(_) => HtmlSemanticQuery::Noopener,
+            SemanticOperation::DefaultFeed(_) => HtmlSemanticQuery::DefaultFeed,
+            SemanticOperation::DocumentIcon(_) => HtmlSemanticQuery::DocumentIcon,
+            SemanticOperation::NextDocumentIcon(_) => HtmlSemanticQuery::NextDocumentIcon,
         }
     }
     /// A non-null target override, including the empty string.
@@ -1467,6 +1567,10 @@ pub enum HtmlSemanticMissing {
     Base {
         subject: HtmlCaptureSubjectId,
         fact: HtmlBaseMissing,
+    },
+    LinkRelationship {
+        subject: HtmlCaptureSubjectId,
+        fact: HtmlRelMissingFact,
     },
     Parent(HtmlCaptureSubjectId),
     OrderedChildren(HtmlCaptureSubjectId),
@@ -1498,6 +1602,7 @@ pub enum HtmlSemanticMissing {
 /// Source-domain boundaries of an otherwise applicable semantic query.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticUnsupported {
+    IconMedia(HtmlMediaExternalCapability),
     ForeignNamespace,
     /// A document capture has more than one direct Element child.
     AmbiguousDocumentElement,
@@ -1543,6 +1648,13 @@ pub enum HtmlSemanticFact {
     ElementTarget(HtmlSemanticValue<HtmlElementTarget>),
     FormSubmissionTarget(HtmlSemanticValue<HtmlElementTarget>),
     BaseHref(HtmlSemanticValue<HtmlBaseHref>),
+    DocumentFeeds(HtmlSemanticValue<Vec<HtmlCaptureSubjectId>>),
+    DefaultFeed(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    FirstManifest(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
+    DocumentIcon(HtmlSemanticValue<HtmlDocumentIconReadback>),
+    NextDocumentIcon(HtmlSemanticValue<HtmlDocumentIconReadback>),
+    Noopener(HtmlSemanticValue<bool>),
+    LinkRelationships(HtmlSemanticValue<HtmlRelContextReadback>),
     IsAttributeAuthorContext(HtmlSemanticValue<HtmlCustomElementIsAuthorContext>),
     ImageDimensions(HtmlSemanticValue<HtmlImageDimensionReadback>),
     EmbeddedDimensionAuthorConformance(HtmlSemanticValue<HtmlEmbeddedDimensionAuthorReadback>),
@@ -1702,6 +1814,7 @@ impl HtmlDirectionalitySource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticQualification {
     media_revision: Option<HtmlMediaContextRevision>,
+    rel_revisions: HtmlRelExpectedRevisions,
     image_dimension_revision: Option<HtmlImageDimensionRevision>,
     natural_dimension_revision: Option<HtmlNaturalDimensionRevision>,
     capture: HtmlCaptureId,
@@ -1720,6 +1833,9 @@ pub struct HtmlSemanticQualification {
 impl HtmlSemanticQualification {
     pub fn media_revision(&self) -> Option<&HtmlMediaContextRevision> {
         self.media_revision.as_ref()
+    }
+    pub fn link_relationship_revisions(&self) -> &HtmlRelExpectedRevisions {
+        &self.rel_revisions
     }
     pub fn image_dimension_revision(&self) -> Option<&HtmlImageDimensionRevision> {
         self.image_dimension_revision.as_ref()
@@ -1818,6 +1934,8 @@ pub enum HtmlSemanticResource {
 /// Terminal failure returns usage and no requested result prefix.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticFailureKind {
+    RelationshipSelectorRequestMismatch,
+    NoopenerRequestMismatch,
     Cancelled,
     LimitExceeded {
         resource: HtmlSemanticResource,
@@ -1905,6 +2023,7 @@ impl<'a> HtmlSemanticSession<'a> {
             // repeated failures only clone its Arc; they do not allocate.
             qualification: Arc::new(HtmlSemanticQualification {
                 media_revision: context.media_revision.clone(),
+                rel_revisions: context.rel_revisions.clone(),
                 image_dimension_revision: context.image_dimension_revision.clone(),
                 natural_dimension_revision: context.natural_dimension_revision.clone(),
                 capture: capture.identity().clone(),
@@ -2958,236 +3077,808 @@ impl<'a> HtmlSemanticSession<'a> {
         )?;
         for request in requests {
             let node = self.node(&request.subject)?;
-            let fact = match node.kind() {
-                HtmlCapturedNodeKind::Element(element) => {
-                    let foreign = if matches!(
-                        request.query(),
-                        HtmlSemanticQuery::IsAttributeAuthorContext
-                            | HtmlSemanticQuery::MediaAttributeRules
-                            | HtmlSemanticQuery::TemplateForReference
-                            | HtmlSemanticQuery::Nonce
-                    ) {
-                        false
-                    } else {
-                        !self.html_namespace(element)?
-                    };
-                    match request.query() {
-                        HtmlSemanticQuery::MicrodataItem => {
-                            HtmlSemanticFact::MicrodataItem(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
+            let fact = match request.query() {
+                HtmlSemanticQuery::DocumentFeeds => {
+                    HtmlSemanticFact::DocumentFeeds(self.document_relationship_candidates(
+                        &request.subject,
+                        crate::HtmlRelKeyword::Alternate,
+                        false,
+                    )?)
+                }
+                HtmlSemanticQuery::FirstManifest => HtmlSemanticFact::FirstManifest(
+                    self.document_relationship_candidates(
+                        &request.subject,
+                        crate::HtmlRelKeyword::Manifest,
+                        true,
+                    )?
+                    .map(|v| v.into_iter().next()),
+                ),
+                HtmlSemanticQuery::DefaultFeed => {
+                    HtmlSemanticFact::DefaultFeed(self.default_feed(
+                        &request.subject,
+                        match &request.operation {
+                            SemanticOperation::DefaultFeed(input) => Some(input),
+                            _ => None,
+                        },
+                    )?)
+                }
+                HtmlSemanticQuery::DocumentIcon => {
+                    HtmlSemanticFact::DocumentIcon(self.document_icon(
+                        &request.subject,
+                        match &request.operation {
+                            SemanticOperation::DocumentIcon(input) => Some(input),
+                            _ => None,
+                        },
+                    )?)
+                }
+                HtmlSemanticQuery::NextDocumentIcon => {
+                    HtmlSemanticFact::NextDocumentIcon(self.next_document_icon(
+                        &request.subject,
+                        match &request.operation {
+                            SemanticOperation::NextDocumentIcon(input) => Some(input),
+                            _ => None,
+                        },
+                    )?)
+                }
+                _ => match node.kind() {
+                    HtmlCapturedNodeKind::Element(element) => {
+                        let foreign = if matches!(
+                            request.query(),
+                            HtmlSemanticQuery::IsAttributeAuthorContext
+                                | HtmlSemanticQuery::MediaAttributeRules
+                                | HtmlSemanticQuery::TemplateForReference
+                                | HtmlSemanticQuery::Nonce
+                                | HtmlSemanticQuery::LinkRelationships
+                                | HtmlSemanticQuery::Noopener
+                        ) {
+                            false
+                        } else {
+                            !self.html_namespace(element)?
+                        };
+                        match request.query() {
+                            HtmlSemanticQuery::DocumentFeeds
+                            | HtmlSemanticQuery::DefaultFeed
+                            | HtmlSemanticQuery::FirstManifest
+                            | HtmlSemanticQuery::DocumentIcon
+                            | HtmlSemanticQuery::NextDocumentIcon => {
+                                unreachable!("dispatched before node classification")
+                            }
+                            HtmlSemanticQuery::MicrodataItem => {
+                                HtmlSemanticFact::MicrodataItem(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.microdata_item(&request.subject)?
+                                })
+                            }
+                            HtmlSemanticQuery::MicrodataProperty => {
+                                HtmlSemanticFact::MicrodataProperty(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.microdata_property(&request.subject)?
+                                })
+                            }
+                            HtmlSemanticQuery::MicrodataAuthor => {
+                                HtmlSemanticFact::MicrodataAuthor(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.microdata_author(&request.subject)?
+                                })
+                            }
+                            HtmlSemanticQuery::MicrodataDocumentAuthor => {
+                                HtmlSemanticFact::MicrodataDocumentAuthor(
+                                    HtmlSemanticValue::Inapplicable,
                                 )
-                            } else {
-                                self.microdata_item(&request.subject)?
-                            })
+                            }
+                            HtmlSemanticQuery::Nonce => HtmlSemanticFact::Nonce(
+                                self.nonce_readback(&request.subject, element)?,
+                            ),
+                            HtmlSemanticQuery::DocumentBaseUrl
+                            | HtmlSemanticQuery::ElementTarget
+                            | HtmlSemanticQuery::FormSubmissionTarget
+                            | HtmlSemanticQuery::BaseHref => self.base_fact(node, request)?,
+                            HtmlSemanticQuery::Noopener => {
+                                HtmlSemanticFact::Noopener(self.rel_noopener(
+                                    &request.subject,
+                                    element,
+                                    request.noopener_input(),
+                                )?)
+                            }
+                            HtmlSemanticQuery::LinkRelationships => {
+                                HtmlSemanticFact::LinkRelationships(
+                                    self.link_relationships(&request.subject, element)?,
+                                )
+                            }
+                            HtmlSemanticQuery::IsAttributeAuthorContext => {
+                                HtmlSemanticFact::IsAttributeAuthorContext(
+                                    self.is_attribute_author_context(&request.subject, element)?,
+                                )
+                            }
+                            HtmlSemanticQuery::ImageDimensions => {
+                                HtmlSemanticFact::ImageDimensions(if foreign {
+                                    HtmlSemanticValue::Inapplicable
+                                } else {
+                                    self.image_dimensions(&request.subject, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::EmbeddedDimensionAuthorConformance => {
+                                HtmlSemanticFact::EmbeddedDimensionAuthorConformance(
+                                    self.embedded_dimension_author_conformance(
+                                        &request.subject,
+                                        element,
+                                    )?,
+                                )
+                            }
+                            HtmlSemanticQuery::AddressHasForbiddenDescendant => {
+                                HtmlSemanticFact::AddressHasForbiddenDescendant(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.address_has_forbidden_descendant(
+                                        &request.subject,
+                                        element,
+                                    )?
+                                })
+                            }
+                            HtmlSemanticQuery::AnchorText => {
+                                HtmlSemanticFact::AnchorText(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.anchor_text(&request.subject, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::TitleText => {
+                                HtmlSemanticFact::TitleText(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.title_text(&request.subject, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::DocumentTitle => {
+                                HtmlSemanticFact::DocumentTitle(HtmlSemanticValue::Inapplicable)
+                            }
+                            HtmlSemanticQuery::CommandForElement => {
+                                HtmlSemanticFact::CommandForElement(self.associated_element(
+                                    &request.subject,
+                                    HtmlElementReferenceKey::CommandFor,
+                                )?)
+                            }
+                            HtmlSemanticQuery::PopoverTargetAssociatedElement => {
+                                HtmlSemanticFact::PopoverTargetAssociatedElement(
+                                    self.associated_element(
+                                        &request.subject,
+                                        HtmlElementReferenceKey::PopoverTarget,
+                                    )?,
+                                )
+                            }
+                            HtmlSemanticQuery::CommandValidity => {
+                                HtmlSemanticFact::CommandValidity(
+                                    self.command_validity(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::PopoverTargetElement => {
+                                HtmlSemanticFact::PopoverTargetElement(
+                                    self.popover_target_element(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::AdvisoryInformation => {
+                                HtmlSemanticFact::AdvisoryInformation(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.advisory_information(node, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::TemplateForReference => {
+                                HtmlSemanticFact::TemplateForReference(
+                                    self.template_for_reference(&request.subject, element)?,
+                                )
+                            }
+                            HtmlSemanticQuery::DfnDefiningTerm => {
+                                HtmlSemanticFact::DfnDefiningTerm(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.dfn_defining_term(&request.subject, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::Hidden => {
+                                let value = if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    let raw = self.attribute(element, "hidden")?;
+                                    self.admit_intrinsic(element, raw, 2)?;
+                                    let state =
+                                        self.interpreter.hidden(element.name(), raw).map_err(
+                                            |e| self.stop(HtmlSemanticFailureKind::Attribute(e)),
+                                        )?;
+                                    HtmlSemanticValue::Known(
+                                        state.intrinsic().copied().ok_or_else(|| {
+                                            self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                                        })?,
+                                    )
+                                };
+                                HtmlSemanticFact::Hidden(value)
+                            }
+                            HtmlSemanticQuery::Disabledness => {
+                                HtmlSemanticFact::Disabledness(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.disabledness(&request.subject, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::ListOwner => {
+                                HtmlSemanticFact::ListOwner(self.list_owner(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::ListStartingValue => {
+                                HtmlSemanticFact::ListStartingValue(self.starting_value(
+                                    &request.subject,
+                                    element,
+                                    None,
+                                )?)
+                            }
+                            HtmlSemanticQuery::ListOrdinal => {
+                                HtmlSemanticFact::ListOrdinal(self.ordinal(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::TableBodies => {
+                                HtmlSemanticFact::TableBodies(self.table_bodies(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::TableRows => {
+                                HtmlSemanticFact::TableRows(self.table_rows(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::TableSectionRows => {
+                                HtmlSemanticFact::TableSectionRows(
+                                    self.table_section_rows(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::TableRowCells => HtmlSemanticFact::TableRowCells(
+                                self.table_row_cells(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::TableRowIndex => HtmlSemanticFact::TableRowIndex(
+                                self.table_row_index(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::TableSectionRowIndex => {
+                                HtmlSemanticFact::TableSectionRowIndex(
+                                    self.table_section_row_index(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::TableCellIndex => HtmlSemanticFact::TableCellIndex(
+                                self.table_cell_index(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::TableHead => {
+                                HtmlSemanticFact::TableHead(self.table_head(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::TableFoot => {
+                                HtmlSemanticFact::TableFoot(self.table_foot(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::TableCaption => HtmlSemanticFact::TableCaption(
+                                self.table_caption(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::TableModel => {
+                                HtmlSemanticFact::TableModel(self.table_model(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::Language => {
+                                HtmlSemanticFact::Language(self.language(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::Directionality => HtmlSemanticFact::Directionality(
+                                self.directionality(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::Meter => {
+                                HtmlSemanticFact::Meter(self.meter_state(element)?)
+                            }
+                            HtmlSemanticQuery::Progress => {
+                                HtmlSemanticFact::Progress(self.progress_state(element)?)
+                            }
+                            HtmlSemanticQuery::EditingHost => {
+                                HtmlSemanticFact::EditingHost(self.editing_host(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::Editable => {
+                                HtmlSemanticFact::Editable(self.editable(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::OwnAutocapitalizationHint => {
+                                HtmlSemanticFact::OwnAutocapitalizationHint(
+                                    self.own_autocapitalization_hint(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::UsedAutocapitalizationHint => {
+                                HtmlSemanticFact::UsedAutocapitalizationHint(
+                                    self.used_autocapitalization_hint(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::UsedAutocorrectionState => {
+                                HtmlSemanticFact::UsedAutocorrectionState(
+                                    self.used_autocorrection_state(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::ComputedWritingSuggestions => {
+                                HtmlSemanticFact::ComputedWritingSuggestions(
+                                    self.computed_writing_suggestions(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::IsContentEditable => {
+                                HtmlSemanticFact::IsContentEditable(
+                                    self.is_content_editable(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::TranslationMode => {
+                                HtmlSemanticFact::TranslationMode(
+                                    self.translation_mode(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::Spellcheck => {
+                                HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::ImageMapAttribute => {
+                                HtmlSemanticFact::ImageMapAttribute(
+                                    self.image_map_attribute(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::ImageControlsAttribute => {
+                                HtmlSemanticFact::ImageControlsAttribute(
+                                    self.image_controls_attribute(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::StylesheetDisabledAttribute => {
+                                HtmlSemanticFact::StylesheetDisabledAttribute(
+                                    self.stylesheet_disabled_attribute(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute => {
+                                HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(
+                                    self.hyperlink_referrerpolicy_attribute(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::TimeElement => {
+                                HtmlSemanticFact::TimeElement(self.time_element(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::TextareaDefaultValue => {
+                                HtmlSemanticFact::TextareaDefaultValue(self.control_text_readback(
+                                    &request.subject,
+                                    HtmlControlTextOrigin::ChildText,
+                                )?)
+                            }
+                            HtmlSemanticQuery::OutputValue => {
+                                HtmlSemanticFact::OutputValue(self.control_text_readback(
+                                    &request.subject,
+                                    HtmlControlTextOrigin::DescendantText,
+                                )?)
+                            }
+                            HtmlSemanticQuery::OutputDefaultValue => {
+                                HtmlSemanticFact::OutputDefaultValue(self.control_text_readback(
+                                    &request.subject,
+                                    HtmlControlTextOrigin::OutputDefaultOverride,
+                                )?)
+                            }
+                            HtmlSemanticQuery::InputSuggestionsSource => {
+                                HtmlSemanticFact::InputSuggestionsSource(
+                                    self.input_suggestions_source(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::ConstraintValidationCandidate => {
+                                HtmlSemanticFact::ConstraintValidationCandidate(
+                                    self.constraint_validation_candidate(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::TabIndex => {
+                                HtmlSemanticFact::TabIndex(self.tab_index(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::FigureCaption => HtmlSemanticFact::FigureCaption(
+                                self.figure_caption(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::FooterScope => {
+                                HtmlSemanticFact::FooterScope(self.footer_scope(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::DetailsSummary => HtmlSemanticFact::DetailsSummary(
+                                self.details_summary(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::SummaryForParentDetails => {
+                                HtmlSemanticFact::SummaryForParentDetails(
+                                    self.summary_for_parent_details(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::DetailsNameGroup => {
+                                HtmlSemanticFact::DetailsNameGroup(
+                                    self.details_name_group(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::UsemapReference => {
+                                HtmlSemanticFact::UsemapReference(
+                                    self.usemap_reference(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::FormNameAuthor => HtmlSemanticFact::FormNameAuthor(
+                                self.form_name_author(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::MapNameAuthor => HtmlSemanticFact::MapNameAuthor(
+                                self.map_name_author(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::MetaPragmaContent => {
+                                HtmlSemanticFact::MetaPragmaContent(
+                                    self.meta_pragma_content(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::MediaAttributeRules => {
+                                HtmlSemanticFact::MediaAttributeRules(
+                                    self.media_attribute_rules(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::MetaAttributeAuthorStructure => {
+                                HtmlSemanticFact::MetaAttributeAuthorStructure(
+                                    self.meta_attribute_author_structure(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::MetaDescriptionAuthor => {
+                                HtmlSemanticFact::MetaDescriptionAuthor(
+                                    self.meta_description_author(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::IdAuthor => {
+                                HtmlSemanticFact::IdAuthor(self.id_author(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::MapAreas => {
+                                HtmlSemanticFact::MapAreas(self.map_areas(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::DatalistOptions => {
+                                HtmlSemanticFact::DatalistOptions(
+                                    self.datalist_options(&request.subject, false)?,
+                                )
+                            }
+                            HtmlSemanticQuery::DescriptionListGroups => {
+                                HtmlSemanticFact::DescriptionListGroups(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.description_list_groups(node, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::DatalistSuggestionOptions => {
+                                HtmlSemanticFact::DatalistSuggestionOptions(
+                                    self.datalist_options(&request.subject, true)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SelectOptions => HtmlSemanticFact::SelectOptions(
+                                self.select_options(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::SelectedOptions => {
+                                HtmlSemanticFact::SelectedOptions(
+                                    self.selected_options(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SelectSelectedIndex => {
+                                HtmlSemanticFact::SelectSelectedIndex(
+                                    self.select_selected_index(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SubmitterNoValidate => {
+                                HtmlSemanticFact::SubmitterNoValidate(
+                                    self.submitter_no_validate(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::FormDefaultButton => {
+                                HtmlSemanticFact::FormDefaultButton(
+                                    self.form_default_button(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::FormImplicitSubmissionCondition => {
+                                HtmlSemanticFact::FormImplicitSubmissionCondition(
+                                    self.form_implicit_submission_condition(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SubmitterFormMethod => {
+                                HtmlSemanticFact::SubmitterFormMethod(
+                                    self.submitter_form_method(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SubmitterFormEnctype => {
+                                HtmlSemanticFact::SubmitterFormEnctype(
+                                    self.submitter_form_enctype(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::ControlAutocomplete => {
+                                HtmlSemanticFact::ControlAutocomplete(
+                                    self.control_autocomplete(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::OptionIndex => {
+                                HtmlSemanticFact::OptionIndex(self.option_index(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::OptionFormOwner => {
+                                HtmlSemanticFact::OptionFormOwner(
+                                    self.option_form_owner(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::OptionText => {
+                                HtmlSemanticFact::OptionText(self.option_readback(
+                                    &request.subject,
+                                    HtmlOptionReadbackOrigin::DescendantText,
+                                )?)
+                            }
+                            HtmlSemanticQuery::OptionLabel => {
+                                HtmlSemanticFact::OptionLabel(self.option_readback(
+                                    &request.subject,
+                                    HtmlOptionReadbackOrigin::LabelAttribute,
+                                )?)
+                            }
+                            HtmlSemanticQuery::OptionValue => {
+                                HtmlSemanticFact::OptionValue(self.option_readback(
+                                    &request.subject,
+                                    HtmlOptionReadbackOrigin::ValueAttribute,
+                                )?)
+                            }
+                            HtmlSemanticQuery::InputTextValueMissing => {
+                                HtmlSemanticFact::InputTextValueMissing(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.input_text_value_missing(&request.subject, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::TextareaValueMissing => {
+                                HtmlSemanticFact::TextareaValueMissing(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.textarea_value_missing(&request.subject, element)?
+                                })
+                            }
+                            HtmlSemanticQuery::CheckableInputValueMissing => {
+                                HtmlSemanticFact::CheckableInputValueMissing(
+                                    self.checkable_input_value_missing(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SelectValueMissing => {
+                                HtmlSemanticFact::SelectValueMissing(
+                                    self.select_value_missing(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SelectPlaceholderLabelOption => {
+                                HtmlSemanticFact::SelectPlaceholderLabelOption(
+                                    self.select_placeholder_label_option(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::SelectValue => {
+                                HtmlSemanticFact::SelectValue(self.select_value(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::ComputedHeadingLevel => {
+                                HtmlSemanticFact::ComputedHeadingLevel(
+                                    self.computed_heading_level(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::Inertness => {
+                                HtmlSemanticFact::Inertness(self.inertness(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::FormOwner => {
+                                HtmlSemanticFact::FormOwner(self.form_owner(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::LabelFormOwner => HtmlSemanticFact::LabelFormOwner(
+                                self.label_form_owner(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::LegendFormOwner => {
+                                HtmlSemanticFact::LegendFormOwner(
+                                    self.legend_form_owner(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::LabeledControl => HtmlSemanticFact::LabeledControl(
+                                self.labeled_control(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::ControlLabels => HtmlSemanticFact::ControlLabels(
+                                self.control_labels(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::FormControls => HtmlSemanticFact::FormControls(
+                                self.form_controls(&request.subject)?,
+                            ),
+                            HtmlSemanticQuery::FormLength => {
+                                HtmlSemanticFact::FormLength(self.form_length(&request.subject)?)
+                            }
+                            HtmlSemanticQuery::FieldsetControls => {
+                                HtmlSemanticFact::FieldsetControls(
+                                    self.fieldset_controls(&request.subject)?,
+                                )
+                            }
+                            HtmlSemanticQuery::CurrentCheckedness => {
+                                HtmlSemanticFact::CurrentCheckedness(
+                                    self.control_flag(
+                                        &request.subject,
+                                        HtmlControlFlag::Checkedness,
+                                    )?,
+                                )
+                            }
+                            HtmlSemanticQuery::CurrentSelectedness => {
+                                HtmlSemanticFact::CurrentSelectedness(self.control_flag(
+                                    &request.subject,
+                                    HtmlControlFlag::Selectedness,
+                                )?)
+                            }
+                            HtmlSemanticQuery::DirtyValueFlag => HtmlSemanticFact::DirtyValueFlag(
+                                self.control_flag(&request.subject, HtmlControlFlag::DirtyValue)?,
+                            ),
+                            HtmlSemanticQuery::DirtyCheckednessFlag => {
+                                HtmlSemanticFact::DirtyCheckednessFlag(self.control_flag(
+                                    &request.subject,
+                                    HtmlControlFlag::DirtyCheckedness,
+                                )?)
+                            }
+                            HtmlSemanticQuery::OptionDirtiness => {
+                                HtmlSemanticFact::OptionDirtiness(self.control_flag(
+                                    &request.subject,
+                                    HtmlControlFlag::OptionDirtiness,
+                                )?)
+                            }
+                            HtmlSemanticQuery::Indeterminateness => {
+                                HtmlSemanticFact::Indeterminateness(self.control_flag(
+                                    &request.subject,
+                                    HtmlControlFlag::Indeterminateness,
+                                )?)
+                            }
+                        }
+                    }
+                    _ => match request.query() {
+                        HtmlSemanticQuery::DocumentFeeds
+                        | HtmlSemanticQuery::DefaultFeed
+                        | HtmlSemanticQuery::FirstManifest
+                        | HtmlSemanticQuery::DocumentIcon
+                        | HtmlSemanticQuery::NextDocumentIcon => {
+                            unreachable!("dispatched before node classification")
+                        }
+                        HtmlSemanticQuery::MicrodataItem => {
+                            HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::MicrodataProperty => {
-                            HtmlSemanticFact::MicrodataProperty(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.microdata_property(&request.subject)?
-                            })
+                            HtmlSemanticFact::MicrodataProperty(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::MicrodataAuthor => {
-                            HtmlSemanticFact::MicrodataAuthor(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.microdata_author(&request.subject)?
-                            })
+                            HtmlSemanticFact::MicrodataAuthor(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::MicrodataDocumentAuthor => {
                             HtmlSemanticFact::MicrodataDocumentAuthor(
-                                HtmlSemanticValue::Inapplicable,
+                                self.microdata_document_author(&request.subject)?,
                             )
                         }
                         HtmlSemanticQuery::Nonce => {
-                            HtmlSemanticFact::Nonce(self.nonce_readback(&request.subject, element)?)
+                            HtmlSemanticFact::Nonce(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::DocumentBaseUrl
                         | HtmlSemanticQuery::ElementTarget
                         | HtmlSemanticQuery::FormSubmissionTarget
                         | HtmlSemanticQuery::BaseHref => self.base_fact(node, request)?,
+                        HtmlSemanticQuery::Noopener => {
+                            HtmlSemanticFact::Noopener(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::LinkRelationships => {
+                            HtmlSemanticFact::LinkRelationships(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::IsAttributeAuthorContext => {
                             HtmlSemanticFact::IsAttributeAuthorContext(
-                                self.is_attribute_author_context(&request.subject, element)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::ImageDimensions => {
-                            HtmlSemanticFact::ImageDimensions(if foreign {
-                                HtmlSemanticValue::Inapplicable
-                            } else {
-                                self.image_dimensions(&request.subject, element)?
-                            })
+                            HtmlSemanticFact::ImageDimensions(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::EmbeddedDimensionAuthorConformance => {
                             HtmlSemanticFact::EmbeddedDimensionAuthorConformance(
-                                self.embedded_dimension_author_conformance(
-                                    &request.subject,
-                                    element,
-                                )?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::AddressHasForbiddenDescendant => {
-                            HtmlSemanticFact::AddressHasForbiddenDescendant(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
+                            HtmlSemanticFact::AddressHasForbiddenDescendant(
+                                HtmlSemanticValue::Inapplicable,
+                            )
+                        }
+                        HtmlSemanticQuery::AnchorText => {
+                            HtmlSemanticFact::AnchorText(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::TitleText => {
+                            HtmlSemanticFact::TitleText(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::DocumentTitle => HtmlSemanticFact::DocumentTitle(
+                            if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
+                                self.document_title(node)?
                             } else {
-                                self.address_has_forbidden_descendant(&request.subject, element)?
-                            })
-                        }
-                        HtmlSemanticQuery::AnchorText => HtmlSemanticFact::AnchorText(if foreign {
-                            HtmlSemanticValue::Unsupported(
-                                HtmlSemanticUnsupported::ForeignNamespace,
-                            )
-                        } else {
-                            self.anchor_text(&request.subject, element)?
-                        }),
-                        HtmlSemanticQuery::TitleText => HtmlSemanticFact::TitleText(if foreign {
-                            HtmlSemanticValue::Unsupported(
-                                HtmlSemanticUnsupported::ForeignNamespace,
-                            )
-                        } else {
-                            self.title_text(&request.subject, element)?
-                        }),
-                        HtmlSemanticQuery::DocumentTitle => {
-                            HtmlSemanticFact::DocumentTitle(HtmlSemanticValue::Inapplicable)
-                        }
+                                HtmlSemanticValue::Inapplicable
+                            },
+                        ),
                         HtmlSemanticQuery::CommandForElement => {
-                            HtmlSemanticFact::CommandForElement(self.associated_element(
-                                &request.subject,
-                                HtmlElementReferenceKey::CommandFor,
-                            )?)
+                            HtmlSemanticFact::CommandForElement(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::PopoverTargetAssociatedElement => {
                             HtmlSemanticFact::PopoverTargetAssociatedElement(
-                                self.associated_element(
-                                    &request.subject,
-                                    HtmlElementReferenceKey::PopoverTarget,
-                                )?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
-                        HtmlSemanticQuery::CommandValidity => HtmlSemanticFact::CommandValidity(
-                            self.command_validity(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::CommandValidity => {
+                            HtmlSemanticFact::CommandValidity(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::PopoverTargetElement => {
-                            HtmlSemanticFact::PopoverTargetElement(
-                                self.popover_target_element(&request.subject)?,
-                            )
+                            HtmlSemanticFact::PopoverTargetElement(HtmlSemanticValue::Known(None))
                         }
                         HtmlSemanticQuery::AdvisoryInformation => {
-                            HtmlSemanticFact::AdvisoryInformation(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.advisory_information(node, element)?
-                            })
+                            HtmlSemanticFact::AdvisoryInformation(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TemplateForReference => {
-                            HtmlSemanticFact::TemplateForReference(
-                                self.template_for_reference(&request.subject, element)?,
-                            )
+                            HtmlSemanticFact::TemplateForReference(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::DfnDefiningTerm => {
-                            HtmlSemanticFact::DfnDefiningTerm(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.dfn_defining_term(&request.subject, element)?
-                            })
+                            HtmlSemanticFact::DfnDefiningTerm(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::Hidden => {
-                            let value = if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                let raw = self.attribute(element, "hidden")?;
-                                self.admit_intrinsic(element, raw, 2)?;
-                                let state =
-                                    self.interpreter.hidden(element.name(), raw).map_err(|e| {
-                                        self.stop(HtmlSemanticFailureKind::Attribute(e))
-                                    })?;
-                                HtmlSemanticValue::Known(state.intrinsic().copied().ok_or_else(
-                                    || self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable),
-                                )?)
-                            };
-                            HtmlSemanticFact::Hidden(value)
+                            HtmlSemanticFact::Hidden(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::Disabledness => {
-                            HtmlSemanticFact::Disabledness(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.disabledness(&request.subject, element)?
-                            })
+                            HtmlSemanticFact::Disabledness(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::ListOwner => {
-                            HtmlSemanticFact::ListOwner(self.list_owner(&request.subject)?)
+                            HtmlSemanticFact::ListOwner(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::ListStartingValue => {
-                            HtmlSemanticFact::ListStartingValue(self.starting_value(
-                                &request.subject,
-                                element,
-                                None,
-                            )?)
+                            HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::ListOrdinal => {
-                            HtmlSemanticFact::ListOrdinal(self.ordinal(&request.subject)?)
+                            HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TableBodies => {
-                            HtmlSemanticFact::TableBodies(self.table_bodies(&request.subject)?)
+                            HtmlSemanticFact::TableBodies(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TableRows => {
-                            HtmlSemanticFact::TableRows(self.table_rows(&request.subject)?)
+                            HtmlSemanticFact::TableRows(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::TableSectionRows => HtmlSemanticFact::TableSectionRows(
-                            self.table_section_rows(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::TableSectionRows => {
+                            HtmlSemanticFact::TableSectionRows(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::TableRowCells => {
-                            HtmlSemanticFact::TableRowCells(self.table_row_cells(&request.subject)?)
+                            HtmlSemanticFact::TableRowCells(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TableRowIndex => {
-                            HtmlSemanticFact::TableRowIndex(self.table_row_index(&request.subject)?)
+                            HtmlSemanticFact::TableRowIndex(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TableSectionRowIndex => {
-                            HtmlSemanticFact::TableSectionRowIndex(
-                                self.table_section_row_index(&request.subject)?,
-                            )
+                            HtmlSemanticFact::TableSectionRowIndex(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::TableCellIndex => HtmlSemanticFact::TableCellIndex(
-                            self.table_cell_index(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::TableCellIndex => {
+                            HtmlSemanticFact::TableCellIndex(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::TableHead => {
-                            HtmlSemanticFact::TableHead(self.table_head(&request.subject)?)
+                            HtmlSemanticFact::TableHead(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TableFoot => {
-                            HtmlSemanticFact::TableFoot(self.table_foot(&request.subject)?)
+                            HtmlSemanticFact::TableFoot(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TableCaption => {
-                            HtmlSemanticFact::TableCaption(self.table_caption(&request.subject)?)
+                            HtmlSemanticFact::TableCaption(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TableModel => {
-                            HtmlSemanticFact::TableModel(self.table_model(&request.subject)?)
+                            HtmlSemanticFact::TableModel(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::Language => {
                             HtmlSemanticFact::Language(self.language(&request.subject)?)
                         }
                         HtmlSemanticQuery::Directionality => {
-                            HtmlSemanticFact::Directionality(self.directionality(&request.subject)?)
+                            HtmlSemanticFact::Directionality(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::Meter => {
-                            HtmlSemanticFact::Meter(self.meter_state(element)?)
+                            HtmlSemanticFact::Meter(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::Progress => {
-                            HtmlSemanticFact::Progress(self.progress_state(element)?)
+                            HtmlSemanticFact::Progress(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::EditingHost => {
                             HtmlSemanticFact::EditingHost(self.editing_host(&request.subject)?)
@@ -3197,692 +3888,248 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         HtmlSemanticQuery::OwnAutocapitalizationHint => {
                             HtmlSemanticFact::OwnAutocapitalizationHint(
-                                self.own_autocapitalization_hint(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::UsedAutocapitalizationHint => {
                             HtmlSemanticFact::UsedAutocapitalizationHint(
-                                self.used_autocapitalization_hint(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::UsedAutocorrectionState => {
                             HtmlSemanticFact::UsedAutocorrectionState(
-                                self.used_autocorrection_state(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::ComputedWritingSuggestions => {
                             HtmlSemanticFact::ComputedWritingSuggestions(
-                                self.computed_writing_suggestions(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::IsContentEditable => {
-                            HtmlSemanticFact::IsContentEditable(
-                                self.is_content_editable(&request.subject)?,
-                            )
+                            HtmlSemanticFact::IsContentEditable(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::TranslationMode => HtmlSemanticFact::TranslationMode(
-                            self.translation_mode(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::TranslationMode => {
+                            HtmlSemanticFact::TranslationMode(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::Spellcheck => {
-                            HtmlSemanticFact::Spellcheck(self.spellcheck(&request.subject)?)
+                            HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::ImageMapAttribute => {
-                            HtmlSemanticFact::ImageMapAttribute(
-                                self.image_map_attribute(&request.subject)?,
-                            )
+                            HtmlSemanticFact::ImageMapAttribute(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::ImageControlsAttribute => {
                             HtmlSemanticFact::ImageControlsAttribute(
-                                self.image_controls_attribute(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::StylesheetDisabledAttribute => {
                             HtmlSemanticFact::StylesheetDisabledAttribute(
-                                self.stylesheet_disabled_attribute(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute => {
                             HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(
-                                self.hyperlink_referrerpolicy_attribute(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::TimeElement => {
-                            HtmlSemanticFact::TimeElement(self.time_element(&request.subject)?)
+                            HtmlSemanticFact::TimeElement(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TextareaDefaultValue => {
-                            HtmlSemanticFact::TextareaDefaultValue(self.control_text_readback(
-                                &request.subject,
-                                HtmlControlTextOrigin::ChildText,
-                            )?)
+                            HtmlSemanticFact::TextareaDefaultValue(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::OutputValue => {
-                            HtmlSemanticFact::OutputValue(self.control_text_readback(
-                                &request.subject,
-                                HtmlControlTextOrigin::DescendantText,
-                            )?)
+                            HtmlSemanticFact::OutputValue(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::OutputDefaultValue => {
-                            HtmlSemanticFact::OutputDefaultValue(self.control_text_readback(
-                                &request.subject,
-                                HtmlControlTextOrigin::OutputDefaultOverride,
-                            )?)
+                            HtmlSemanticFact::OutputDefaultValue(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::InputSuggestionsSource => {
                             HtmlSemanticFact::InputSuggestionsSource(
-                                self.input_suggestions_source(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::ConstraintValidationCandidate => {
                             HtmlSemanticFact::ConstraintValidationCandidate(
-                                self.constraint_validation_candidate(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::TabIndex => {
-                            HtmlSemanticFact::TabIndex(self.tab_index(&request.subject)?)
+                            HtmlSemanticFact::TabIndex(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::FigureCaption => {
-                            HtmlSemanticFact::FigureCaption(self.figure_caption(&request.subject)?)
+                            HtmlSemanticFact::FigureCaption(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::FooterScope => {
-                            HtmlSemanticFact::FooterScope(self.footer_scope(&request.subject)?)
+                            HtmlSemanticFact::FooterScope(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::DetailsSummary => HtmlSemanticFact::DetailsSummary(
-                            self.details_summary(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::DetailsSummary => {
+                            HtmlSemanticFact::DetailsSummary(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::SummaryForParentDetails => {
                             HtmlSemanticFact::SummaryForParentDetails(
-                                self.summary_for_parent_details(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
-                        HtmlSemanticQuery::DetailsNameGroup => HtmlSemanticFact::DetailsNameGroup(
-                            self.details_name_group(&request.subject)?,
-                        ),
-                        HtmlSemanticQuery::UsemapReference => HtmlSemanticFact::UsemapReference(
-                            self.usemap_reference(&request.subject)?,
-                        ),
-                        HtmlSemanticQuery::FormNameAuthor => HtmlSemanticFact::FormNameAuthor(
-                            self.form_name_author(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::DetailsNameGroup => {
+                            HtmlSemanticFact::DetailsNameGroup(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::UsemapReference => {
+                            HtmlSemanticFact::UsemapReference(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::FormNameAuthor => {
+                            HtmlSemanticFact::FormNameAuthor(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::MapNameAuthor => {
-                            HtmlSemanticFact::MapNameAuthor(self.map_name_author(&request.subject)?)
+                            HtmlSemanticFact::MapNameAuthor(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::MetaPragmaContent => {
-                            HtmlSemanticFact::MetaPragmaContent(
-                                self.meta_pragma_content(&request.subject)?,
-                            )
+                            HtmlSemanticFact::MetaPragmaContent(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::MediaAttributeRules => {
-                            HtmlSemanticFact::MediaAttributeRules(
-                                self.media_attribute_rules(&request.subject)?,
-                            )
+                            HtmlSemanticFact::MediaAttributeRules(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::MetaAttributeAuthorStructure => {
                             HtmlSemanticFact::MetaAttributeAuthorStructure(
-                                self.meta_attribute_author_structure(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::MetaDescriptionAuthor => {
-                            HtmlSemanticFact::MetaDescriptionAuthor(
-                                self.meta_description_author(&request.subject)?,
-                            )
+                            HtmlSemanticFact::MetaDescriptionAuthor(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::IdAuthor => {
-                            HtmlSemanticFact::IdAuthor(self.id_author(&request.subject)?)
+                            HtmlSemanticFact::IdAuthor(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::MapAreas => {
-                            HtmlSemanticFact::MapAreas(self.map_areas(&request.subject)?)
+                            HtmlSemanticFact::MapAreas(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::DatalistOptions => HtmlSemanticFact::DatalistOptions(
-                            self.datalist_options(&request.subject, false)?,
-                        ),
+                        HtmlSemanticQuery::DatalistOptions => {
+                            HtmlSemanticFact::DatalistOptions(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::DescriptionListGroups => {
-                            HtmlSemanticFact::DescriptionListGroups(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.description_list_groups(node, element)?
-                            })
+                            HtmlSemanticFact::DescriptionListGroups(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::DatalistSuggestionOptions => {
                             HtmlSemanticFact::DatalistSuggestionOptions(
-                                self.datalist_options(&request.subject, true)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::SelectOptions => {
-                            HtmlSemanticFact::SelectOptions(self.select_options(&request.subject)?)
+                            HtmlSemanticFact::SelectOptions(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::SelectedOptions => HtmlSemanticFact::SelectedOptions(
-                            self.selected_options(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::SelectedOptions => {
+                            HtmlSemanticFact::SelectedOptions(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::SelectSelectedIndex => {
-                            HtmlSemanticFact::SelectSelectedIndex(
-                                self.select_selected_index(&request.subject)?,
-                            )
+                            HtmlSemanticFact::SelectSelectedIndex(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::SubmitterNoValidate => {
-                            HtmlSemanticFact::SubmitterNoValidate(
-                                self.submitter_no_validate(&request.subject)?,
-                            )
+                            HtmlSemanticFact::SubmitterNoValidate(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::FormDefaultButton => {
-                            HtmlSemanticFact::FormDefaultButton(
-                                self.form_default_button(&request.subject)?,
-                            )
+                            HtmlSemanticFact::FormDefaultButton(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::FormImplicitSubmissionCondition => {
                             HtmlSemanticFact::FormImplicitSubmissionCondition(
-                                self.form_implicit_submission_condition(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::SubmitterFormMethod => {
-                            HtmlSemanticFact::SubmitterFormMethod(
-                                self.submitter_form_method(&request.subject)?,
-                            )
+                            HtmlSemanticFact::SubmitterFormMethod(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::SubmitterFormEnctype => {
-                            HtmlSemanticFact::SubmitterFormEnctype(
-                                self.submitter_form_enctype(&request.subject)?,
-                            )
+                            HtmlSemanticFact::SubmitterFormEnctype(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::ControlAutocomplete => {
-                            HtmlSemanticFact::ControlAutocomplete(
-                                self.control_autocomplete(&request.subject)?,
-                            )
+                            HtmlSemanticFact::ControlAutocomplete(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::OptionIndex => {
-                            HtmlSemanticFact::OptionIndex(self.option_index(&request.subject)?)
+                            HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::OptionFormOwner => HtmlSemanticFact::OptionFormOwner(
-                            self.option_form_owner(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::OptionFormOwner => {
+                            HtmlSemanticFact::OptionFormOwner(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::OptionText => {
-                            HtmlSemanticFact::OptionText(self.option_readback(
-                                &request.subject,
-                                HtmlOptionReadbackOrigin::DescendantText,
-                            )?)
+                            HtmlSemanticFact::OptionText(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::OptionLabel => {
-                            HtmlSemanticFact::OptionLabel(self.option_readback(
-                                &request.subject,
-                                HtmlOptionReadbackOrigin::LabelAttribute,
-                            )?)
+                            HtmlSemanticFact::OptionLabel(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::OptionValue => {
-                            HtmlSemanticFact::OptionValue(self.option_readback(
-                                &request.subject,
-                                HtmlOptionReadbackOrigin::ValueAttribute,
-                            )?)
+                            HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::InputTextValueMissing => {
-                            HtmlSemanticFact::InputTextValueMissing(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.input_text_value_missing(&request.subject, element)?
-                            })
+                            HtmlSemanticFact::InputTextValueMissing(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::TextareaValueMissing => {
-                            HtmlSemanticFact::TextareaValueMissing(if foreign {
-                                HtmlSemanticValue::Unsupported(
-                                    HtmlSemanticUnsupported::ForeignNamespace,
-                                )
-                            } else {
-                                self.textarea_value_missing(&request.subject, element)?
-                            })
+                            HtmlSemanticFact::TextareaValueMissing(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::CheckableInputValueMissing => {
                             HtmlSemanticFact::CheckableInputValueMissing(
-                                self.checkable_input_value_missing(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::SelectValueMissing => {
-                            HtmlSemanticFact::SelectValueMissing(
-                                self.select_value_missing(&request.subject)?,
-                            )
+                            HtmlSemanticFact::SelectValueMissing(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::SelectPlaceholderLabelOption => {
                             HtmlSemanticFact::SelectPlaceholderLabelOption(
-                                self.select_placeholder_label_option(&request.subject)?,
+                                HtmlSemanticValue::Inapplicable,
                             )
                         }
                         HtmlSemanticQuery::SelectValue => {
-                            HtmlSemanticFact::SelectValue(self.select_value(&request.subject)?)
+                            HtmlSemanticFact::SelectValue(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::ComputedHeadingLevel => {
-                            HtmlSemanticFact::ComputedHeadingLevel(
-                                self.computed_heading_level(&request.subject)?,
-                            )
+                            HtmlSemanticFact::ComputedHeadingLevel(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::Inertness => {
                             HtmlSemanticFact::Inertness(self.inertness(&request.subject)?)
                         }
                         HtmlSemanticQuery::FormOwner => {
-                            HtmlSemanticFact::FormOwner(self.form_owner(&request.subject)?)
+                            HtmlSemanticFact::FormOwner(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::LabelFormOwner => HtmlSemanticFact::LabelFormOwner(
-                            self.label_form_owner(&request.subject)?,
-                        ),
-                        HtmlSemanticQuery::LegendFormOwner => HtmlSemanticFact::LegendFormOwner(
-                            self.legend_form_owner(&request.subject)?,
-                        ),
-                        HtmlSemanticQuery::LabeledControl => HtmlSemanticFact::LabeledControl(
-                            self.labeled_control(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::LabelFormOwner => {
+                            HtmlSemanticFact::LabelFormOwner(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::LegendFormOwner => {
+                            HtmlSemanticFact::LegendFormOwner(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::LabeledControl => {
+                            HtmlSemanticFact::LabeledControl(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::ControlLabels => {
-                            HtmlSemanticFact::ControlLabels(self.control_labels(&request.subject)?)
+                            HtmlSemanticFact::ControlLabels(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::FormControls => {
-                            HtmlSemanticFact::FormControls(self.form_controls(&request.subject)?)
+                            HtmlSemanticFact::FormControls(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::FormLength => {
-                            HtmlSemanticFact::FormLength(self.form_length(&request.subject)?)
+                            HtmlSemanticFact::FormLength(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::FieldsetControls => HtmlSemanticFact::FieldsetControls(
-                            self.fieldset_controls(&request.subject)?,
-                        ),
+                        HtmlSemanticQuery::FieldsetControls => {
+                            HtmlSemanticFact::FieldsetControls(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::CurrentCheckedness => {
-                            HtmlSemanticFact::CurrentCheckedness(
-                                self.control_flag(&request.subject, HtmlControlFlag::Checkedness)?,
-                            )
+                            HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::CurrentSelectedness => {
-                            HtmlSemanticFact::CurrentSelectedness(
-                                self.control_flag(&request.subject, HtmlControlFlag::Selectedness)?,
-                            )
+                            HtmlSemanticFact::CurrentSelectedness(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::DirtyValueFlag => HtmlSemanticFact::DirtyValueFlag(
-                            self.control_flag(&request.subject, HtmlControlFlag::DirtyValue)?,
-                        ),
+                        HtmlSemanticQuery::DirtyValueFlag => {
+                            HtmlSemanticFact::DirtyValueFlag(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::DirtyCheckednessFlag => {
-                            HtmlSemanticFact::DirtyCheckednessFlag(self.control_flag(
-                                &request.subject,
-                                HtmlControlFlag::DirtyCheckedness,
-                            )?)
+                            HtmlSemanticFact::DirtyCheckednessFlag(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::OptionDirtiness => HtmlSemanticFact::OptionDirtiness(
-                            self.control_flag(&request.subject, HtmlControlFlag::OptionDirtiness)?,
-                        ),
+                        HtmlSemanticQuery::OptionDirtiness => {
+                            HtmlSemanticFact::OptionDirtiness(HtmlSemanticValue::Inapplicable)
+                        }
                         HtmlSemanticQuery::Indeterminateness => {
-                            HtmlSemanticFact::Indeterminateness(self.control_flag(
-                                &request.subject,
-                                HtmlControlFlag::Indeterminateness,
-                            )?)
+                            HtmlSemanticFact::Indeterminateness(HtmlSemanticValue::Inapplicable)
                         }
-                    }
-                }
-                _ => match request.query() {
-                    HtmlSemanticQuery::MicrodataItem => {
-                        HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MicrodataProperty => {
-                        HtmlSemanticFact::MicrodataProperty(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MicrodataAuthor => {
-                        HtmlSemanticFact::MicrodataAuthor(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MicrodataDocumentAuthor => {
-                        HtmlSemanticFact::MicrodataDocumentAuthor(
-                            self.microdata_document_author(&request.subject)?,
-                        )
-                    }
-                    HtmlSemanticQuery::Nonce => {
-                        HtmlSemanticFact::Nonce(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DocumentBaseUrl
-                    | HtmlSemanticQuery::ElementTarget
-                    | HtmlSemanticQuery::FormSubmissionTarget
-                    | HtmlSemanticQuery::BaseHref => self.base_fact(node, request)?,
-                    HtmlSemanticQuery::IsAttributeAuthorContext => {
-                        HtmlSemanticFact::IsAttributeAuthorContext(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ImageDimensions => {
-                        HtmlSemanticFact::ImageDimensions(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::EmbeddedDimensionAuthorConformance => {
-                        HtmlSemanticFact::EmbeddedDimensionAuthorConformance(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::AddressHasForbiddenDescendant => {
-                        HtmlSemanticFact::AddressHasForbiddenDescendant(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::AnchorText => {
-                        HtmlSemanticFact::AnchorText(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TitleText => {
-                        HtmlSemanticFact::TitleText(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DocumentTitle => HtmlSemanticFact::DocumentTitle(
-                        if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
-                            self.document_title(node)?
-                        } else {
-                            HtmlSemanticValue::Inapplicable
-                        },
-                    ),
-                    HtmlSemanticQuery::CommandForElement => {
-                        HtmlSemanticFact::CommandForElement(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::PopoverTargetAssociatedElement => {
-                        HtmlSemanticFact::PopoverTargetAssociatedElement(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::CommandValidity => {
-                        HtmlSemanticFact::CommandValidity(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::PopoverTargetElement => {
-                        HtmlSemanticFact::PopoverTargetElement(HtmlSemanticValue::Known(None))
-                    }
-                    HtmlSemanticQuery::AdvisoryInformation => {
-                        HtmlSemanticFact::AdvisoryInformation(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TemplateForReference => {
-                        HtmlSemanticFact::TemplateForReference(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DfnDefiningTerm => {
-                        HtmlSemanticFact::DfnDefiningTerm(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Hidden => {
-                        HtmlSemanticFact::Hidden(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Disabledness => {
-                        HtmlSemanticFact::Disabledness(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ListOwner => {
-                        HtmlSemanticFact::ListOwner(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ListStartingValue => {
-                        HtmlSemanticFact::ListStartingValue(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ListOrdinal => {
-                        HtmlSemanticFact::ListOrdinal(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableBodies => {
-                        HtmlSemanticFact::TableBodies(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableRows => {
-                        HtmlSemanticFact::TableRows(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableSectionRows => {
-                        HtmlSemanticFact::TableSectionRows(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableRowCells => {
-                        HtmlSemanticFact::TableRowCells(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableRowIndex => {
-                        HtmlSemanticFact::TableRowIndex(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableSectionRowIndex => {
-                        HtmlSemanticFact::TableSectionRowIndex(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableCellIndex => {
-                        HtmlSemanticFact::TableCellIndex(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableHead => {
-                        HtmlSemanticFact::TableHead(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableFoot => {
-                        HtmlSemanticFact::TableFoot(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableCaption => {
-                        HtmlSemanticFact::TableCaption(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TableModel => {
-                        HtmlSemanticFact::TableModel(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Language => {
-                        HtmlSemanticFact::Language(self.language(&request.subject)?)
-                    }
-                    HtmlSemanticQuery::Directionality => {
-                        HtmlSemanticFact::Directionality(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Meter => {
-                        HtmlSemanticFact::Meter(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Progress => {
-                        HtmlSemanticFact::Progress(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::EditingHost => {
-                        HtmlSemanticFact::EditingHost(self.editing_host(&request.subject)?)
-                    }
-                    HtmlSemanticQuery::Editable => {
-                        HtmlSemanticFact::Editable(self.editable(&request.subject)?)
-                    }
-                    HtmlSemanticQuery::OwnAutocapitalizationHint => {
-                        HtmlSemanticFact::OwnAutocapitalizationHint(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::UsedAutocapitalizationHint => {
-                        HtmlSemanticFact::UsedAutocapitalizationHint(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::UsedAutocorrectionState => {
-                        HtmlSemanticFact::UsedAutocorrectionState(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ComputedWritingSuggestions => {
-                        HtmlSemanticFact::ComputedWritingSuggestions(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::IsContentEditable => {
-                        HtmlSemanticFact::IsContentEditable(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TranslationMode => {
-                        HtmlSemanticFact::TranslationMode(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Spellcheck => {
-                        HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ImageMapAttribute => {
-                        HtmlSemanticFact::ImageMapAttribute(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ImageControlsAttribute => {
-                        HtmlSemanticFact::ImageControlsAttribute(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::StylesheetDisabledAttribute => {
-                        HtmlSemanticFact::StylesheetDisabledAttribute(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::HyperlinkReferrerPolicyAttribute => {
-                        HtmlSemanticFact::HyperlinkReferrerPolicyAttribute(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::TimeElement => {
-                        HtmlSemanticFact::TimeElement(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TextareaDefaultValue => {
-                        HtmlSemanticFact::TextareaDefaultValue(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OutputValue => {
-                        HtmlSemanticFact::OutputValue(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OutputDefaultValue => {
-                        HtmlSemanticFact::OutputDefaultValue(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::InputSuggestionsSource => {
-                        HtmlSemanticFact::InputSuggestionsSource(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ConstraintValidationCandidate => {
-                        HtmlSemanticFact::ConstraintValidationCandidate(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::TabIndex => {
-                        HtmlSemanticFact::TabIndex(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FigureCaption => {
-                        HtmlSemanticFact::FigureCaption(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FooterScope => {
-                        HtmlSemanticFact::FooterScope(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DetailsSummary => {
-                        HtmlSemanticFact::DetailsSummary(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::SummaryForParentDetails => {
-                        HtmlSemanticFact::SummaryForParentDetails(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DetailsNameGroup => {
-                        HtmlSemanticFact::DetailsNameGroup(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::UsemapReference => {
-                        HtmlSemanticFact::UsemapReference(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FormNameAuthor => {
-                        HtmlSemanticFact::FormNameAuthor(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MapNameAuthor => {
-                        HtmlSemanticFact::MapNameAuthor(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MetaPragmaContent => {
-                        HtmlSemanticFact::MetaPragmaContent(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MediaAttributeRules => {
-                        HtmlSemanticFact::MediaAttributeRules(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MetaAttributeAuthorStructure => {
-                        HtmlSemanticFact::MetaAttributeAuthorStructure(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::MetaDescriptionAuthor => {
-                        HtmlSemanticFact::MetaDescriptionAuthor(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::IdAuthor => {
-                        HtmlSemanticFact::IdAuthor(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::MapAreas => {
-                        HtmlSemanticFact::MapAreas(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DatalistOptions => {
-                        HtmlSemanticFact::DatalistOptions(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DescriptionListGroups => {
-                        HtmlSemanticFact::DescriptionListGroups(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DatalistSuggestionOptions => {
-                        HtmlSemanticFact::DatalistSuggestionOptions(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::SelectOptions => {
-                        HtmlSemanticFact::SelectOptions(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::SelectedOptions => {
-                        HtmlSemanticFact::SelectedOptions(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::SelectSelectedIndex => {
-                        HtmlSemanticFact::SelectSelectedIndex(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::SubmitterNoValidate => {
-                        HtmlSemanticFact::SubmitterNoValidate(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FormDefaultButton => {
-                        HtmlSemanticFact::FormDefaultButton(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FormImplicitSubmissionCondition => {
-                        HtmlSemanticFact::FormImplicitSubmissionCondition(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::SubmitterFormMethod => {
-                        HtmlSemanticFact::SubmitterFormMethod(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::SubmitterFormEnctype => {
-                        HtmlSemanticFact::SubmitterFormEnctype(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ControlAutocomplete => {
-                        HtmlSemanticFact::ControlAutocomplete(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OptionIndex => {
-                        HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OptionFormOwner => {
-                        HtmlSemanticFact::OptionFormOwner(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OptionText => {
-                        HtmlSemanticFact::OptionText(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OptionLabel => {
-                        HtmlSemanticFact::OptionLabel(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OptionValue => {
-                        HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::InputTextValueMissing => {
-                        HtmlSemanticFact::InputTextValueMissing(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::TextareaValueMissing => {
-                        HtmlSemanticFact::TextareaValueMissing(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::CheckableInputValueMissing => {
-                        HtmlSemanticFact::CheckableInputValueMissing(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::SelectValueMissing => {
-                        HtmlSemanticFact::SelectValueMissing(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::SelectPlaceholderLabelOption => {
-                        HtmlSemanticFact::SelectPlaceholderLabelOption(
-                            HtmlSemanticValue::Inapplicable,
-                        )
-                    }
-                    HtmlSemanticQuery::SelectValue => {
-                        HtmlSemanticFact::SelectValue(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ComputedHeadingLevel => {
-                        HtmlSemanticFact::ComputedHeadingLevel(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Inertness => {
-                        HtmlSemanticFact::Inertness(self.inertness(&request.subject)?)
-                    }
-                    HtmlSemanticQuery::FormOwner => {
-                        HtmlSemanticFact::FormOwner(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::LabelFormOwner => {
-                        HtmlSemanticFact::LabelFormOwner(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::LegendFormOwner => {
-                        HtmlSemanticFact::LegendFormOwner(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::LabeledControl => {
-                        HtmlSemanticFact::LabeledControl(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::ControlLabels => {
-                        HtmlSemanticFact::ControlLabels(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FormControls => {
-                        HtmlSemanticFact::FormControls(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FormLength => {
-                        HtmlSemanticFact::FormLength(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::FieldsetControls => {
-                        HtmlSemanticFact::FieldsetControls(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::CurrentCheckedness => {
-                        HtmlSemanticFact::CurrentCheckedness(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::CurrentSelectedness => {
-                        HtmlSemanticFact::CurrentSelectedness(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DirtyValueFlag => {
-                        HtmlSemanticFact::DirtyValueFlag(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::DirtyCheckednessFlag => {
-                        HtmlSemanticFact::DirtyCheckednessFlag(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::OptionDirtiness => {
-                        HtmlSemanticFact::OptionDirtiness(HtmlSemanticValue::Inapplicable)
-                    }
-                    HtmlSemanticQuery::Indeterminateness => {
-                        HtmlSemanticFact::Indeterminateness(HtmlSemanticValue::Inapplicable)
-                    }
+                    },
                 },
             };
             self.charge(1)?;
