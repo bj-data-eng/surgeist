@@ -244,19 +244,19 @@ impl ReportStorage {
         }
     }
 }
-pub(crate) struct MetadataCursor<'a> {
+pub struct MetadataCursor<'a> {
     storage: &'a FrozenStorage,
     arena: &'a Arena,
     next: usize,
 }
-pub(crate) enum MetadataStep<'a> {
+pub enum MetadataStep<'a> {
     Record(MetadataRef<'a>),
     Skipped,
     Complete,
 }
 impl<'a> MetadataCursor<'a> {
     /// One actual canonical slot, never a next-match loop or materialization.
-    pub(crate) fn advance(&mut self) -> MetadataStep<'a> {
+    pub fn advance(&mut self) -> MetadataStep<'a> {
         let Some(payload) = self.storage.payloads.values.get(self.next) else {
             return MetadataStep::Complete;
         };
@@ -274,23 +274,23 @@ impl<'a> MetadataCursor<'a> {
 }
 /// Issued only by the qualified report's fixed slot observation. No caller can
 /// supply a raw payload index or mix this lender with another result's arena.
-pub(crate) struct MetadataRef<'a> {
+pub struct MetadataRef<'a> {
     storage: &'a FrozenStorage,
     arena: &'a Arena,
     payload: &'a RetainedPayload,
 }
-pub(crate) enum MetadataDocument<'a> {
+pub enum MetadataDocument<'a> {
     Owned(HtmlNode<'a>),
     Captured(crate::HtmlCapturedNode<'a>),
 }
-pub(crate) struct MetadataTemplate<'a> {
+pub struct MetadataTemplate<'a> {
     pub(crate) contents: HtmlNode<'a>,
     pub(crate) target: Option<HtmlNode<'a>>,
     pub(crate) start: Option<HtmlNode<'a>>,
     pub(crate) end: Option<HtmlNode<'a>>,
 }
 impl<'a> MetadataRef<'a> {
-    pub(crate) fn node(&self) -> HtmlNode<'a> {
+    pub fn node(&self) -> HtmlNode<'a> {
         HtmlNode {
             arena: self.arena,
             index: metadata_node(self.payload).expect("issued metadata node"),
@@ -323,13 +323,13 @@ impl<'a> MetadataRef<'a> {
             ),
         }
     }
-    pub(crate) fn node_document(&self) -> Option<MetadataDocument<'a>> {
+    pub fn node_document(&self) -> Option<MetadataDocument<'a>> {
         match self.payload {
             RetainedPayload::NodeDocument { document, .. } => Some(self.document_ref(*document)),
             _ => None,
         }
     }
-    pub(crate) fn script_documents(
+    pub fn script_documents(
         &self,
     ) -> Option<(Option<MetadataDocument<'a>>, Option<MetadataDocument<'a>>)> {
         match self.payload {
@@ -340,7 +340,7 @@ impl<'a> MetadataRef<'a> {
             _ => None,
         }
     }
-    pub(crate) fn template(&self) -> Option<MetadataTemplate<'a>> {
+    pub fn template(&self) -> Option<MetadataTemplate<'a>> {
         match self.payload {
             RetainedPayload::Template { state, .. } => Some(MetadataTemplate {
                 contents: self.native(state.contents),
@@ -351,9 +351,7 @@ impl<'a> MetadataRef<'a> {
             _ => None,
         }
     }
-    pub(crate) fn creation(
-        &self,
-    ) -> Option<(crate::HtmlCustomElementState, Option<&'a DocumentString>)> {
+    pub fn creation(&self) -> Option<(crate::HtmlCustomElementState, Option<&'a DocumentString>)> {
         match self.payload {
             RetainedPayload::LookupRegistry {
                 creation: Some(state),
@@ -362,7 +360,7 @@ impl<'a> MetadataRef<'a> {
             _ => None,
         }
     }
-    pub(crate) fn input_source(
+    pub fn input_source(
         &self,
     ) -> Option<(
         &'a crate::HtmlSourceRange,
@@ -379,16 +377,13 @@ impl<'a> MetadataRef<'a> {
     }
     /// The complete map is already owned and qualified. This returns exactly
     /// one original canonical pair, with no key lookup or copied map.
-    pub(crate) fn pi_attribute_count(&self) -> Option<usize> {
+    pub fn pi_attribute_count(&self) -> Option<usize> {
         match self.payload {
             RetainedPayload::PiAttributes { values, .. } => Some(values.len()),
             _ => None,
         }
     }
-    pub(crate) fn pi_attribute(
-        &self,
-        index: usize,
-    ) -> Option<(&'a DocumentString, &'a DocumentString)> {
+    pub fn pi_attribute(&self, index: usize) -> Option<(&'a DocumentString, &'a DocumentString)> {
         match self.payload {
             RetainedPayload::PiAttributes { values, .. } => values
                 .as_slice()
@@ -397,7 +392,7 @@ impl<'a> MetadataRef<'a> {
             _ => None,
         }
     }
-    pub(crate) fn shadow(&self) -> Option<(bool, bool, bool)> {
+    pub fn shadow(&self) -> Option<(bool, bool, bool)> {
         match self.payload {
             RetainedPayload::Shadow { state, .. } => Some((
                 state.keep_registry_null,
@@ -407,9 +402,7 @@ impl<'a> MetadataRef<'a> {
             _ => None,
         }
     }
-    pub(crate) fn document_facts(
-        &self,
-    ) -> Option<(crate::HtmlDocumentClass, bool, Option<HtmlNode<'a>>)> {
+    pub fn document_facts(&self) -> Option<(crate::HtmlDocumentClass, bool, Option<HtmlNode<'a>>)> {
         match self.payload {
             RetainedPayload::Document {
                 state: template::DocumentState::Ordinary { inert },
@@ -486,7 +479,7 @@ impl<'a> MetadataRef<'a> {
     }
     /// None is an inapplicable metadata record; Some(None) is an actual
     /// option's null cache. A nonnull node was qualified before publication.
-    pub(crate) fn option_nearest_select(&self) -> Option<Option<HtmlNode<'a>>> {
+    pub fn option_nearest_select(&self) -> Option<Option<HtmlNode<'a>>> {
         self.option().map(|state| {
             state
                 .cached_nearest_select()
@@ -501,6 +494,33 @@ impl<'a> MetadataRef<'a> {
             } => Some(state),
             _ => None,
         }
+    }
+}
+
+impl MetadataTemplate<'_> {
+    pub fn contents(&self) -> HtmlNode<'_> {
+        HtmlNode {
+            arena: self.contents.arena,
+            index: self.contents.index,
+        }
+    }
+    pub fn target(&self) -> Option<HtmlNode<'_>> {
+        self.target.as_ref().map(|n| HtmlNode {
+            arena: n.arena,
+            index: n.index,
+        })
+    }
+    pub fn start(&self) -> Option<HtmlNode<'_>> {
+        self.start.as_ref().map(|n| HtmlNode {
+            arena: n.arena,
+            index: n.index,
+        })
+    }
+    pub fn end(&self) -> Option<HtmlNode<'_>> {
+        self.end.as_ref().map(|n| HtmlNode {
+            arena: n.arena,
+            index: n.index,
+        })
     }
 }
 

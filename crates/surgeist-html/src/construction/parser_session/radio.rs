@@ -185,6 +185,7 @@ impl SessionStorage {
     }
 }
 
+#[cfg(test)]
 impl ParserArenaSession {
     /// Native checked setter: no input/change event, same actual flags and group.
     pub(crate) fn set_input_checked(
@@ -219,11 +220,13 @@ impl ParserArenaSession {
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy)]
 pub(crate) enum InputGroupAttribute {
     Name,
     Checked,
 }
+#[cfg(test)]
 impl ParserArenaSession {
     pub(crate) fn set_input_attribute(
         &mut self,

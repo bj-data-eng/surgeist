@@ -209,7 +209,7 @@ fn ordinary_override_and_stack_pop_preserve_native_tree() {
                     .insert_text(&mut input, None, &mut c, None)
                     .unwrap()
                     .unwrap();
-                assert_eq!(result.offset, offset);
+                assert_eq!(result._offset, offset);
                 assert!(input.is_none());
                 offset += length;
             }
@@ -269,8 +269,8 @@ fn foster_text_uses_actual_table_parent_and_merges_only_preceding_text() {
         .insert_text(&mut b, None, &mut c, None)
         .unwrap()
         .unwrap();
-    same(&kernel, &first.node, &second.node, &mut c);
-    assert_eq!(second.offset, 1);
+    same(&kernel, &first._node, &second._node, &mut c);
+    assert_eq!(second._offset, 1);
     tokenizer.release(&mut c).unwrap();
     let mut frozen = freeze(kernel, &mut c);
     let document = frozen.document().unwrap();
@@ -622,9 +622,9 @@ fn literal_surrogates_and_supplementary_text_survive_real_transfer_and_merge() {
                     .unwrap()
                     .unwrap();
                 if let Some(first) = &first_node {
-                    same(&kernel, &result.node, first, &mut c);
+                    same(&kernel, &result._node, first, &mut c);
                 } else {
-                    first_node = Some(result.node);
+                    first_node = Some(result._node);
                 }
             }
             TokenKind::Eof => break,
@@ -1029,7 +1029,7 @@ fn ignored_document_insertion_still_pushes_created_element_for_following_text() 
         .unwrap();
     let parent = kernel
         .session
-        .parent(&mut c, &inserted.node)
+        .parent(&mut c, &inserted._node)
         .unwrap()
         .unwrap();
     same(&kernel, &parent, &created.node, &mut c);
@@ -11929,7 +11929,7 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
     let (c, session, _) = driver.standalone_parts().unwrap();
     let state: crate::construction::parser_session::TemplateState =
         session.template_state(c, &outer).unwrap();
-    assert!(state.target.is_none() && state.start.is_none() && state.end.is_none());
+    assert!(state.target.is_none() && state._start.is_none() && state.end.is_none());
     let ordinary: crate::construction::parser_session::ParserDocument =
         session.node_document(c, &outer).unwrap();
     let ordinary = ordinary.node(c, session).unwrap();

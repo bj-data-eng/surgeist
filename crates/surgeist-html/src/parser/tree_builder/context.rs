@@ -120,6 +120,10 @@ fn initial_modes(
 }
 
 impl<'source> ContextFragmentDriver<'source> {
+    pub(super) fn stop_for_public_failure(&mut self) {
+        self.control
+            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+    }
     pub(crate) fn take_completed(
         input: &mut Option<Self>,
     ) -> Result<CompletedContextFragment<'source>, FragmentExecutionError> {
@@ -186,6 +190,7 @@ impl<'source> ContextFragmentDriver<'source> {
     /// A qualified fragment root and borrowed canonical view, only after the
     /// real EOF owner has completed. The native view's Document root is P;
     /// this explicit root is F, and never impersonates the captured target.
+    #[cfg(test)]
     pub(crate) fn completed_native_view(
         &mut self,
     ) -> Result<
@@ -270,21 +275,27 @@ pub(crate) struct FailedContextFragment<'source> {
     evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
 }
 impl FailedContextFragment<'_> {
+    #[cfg(test)]
     pub(crate) fn source(&self) -> &crate::HtmlSource {
         self.request.source()
     }
+    #[cfg(test)]
     pub(crate) fn context(&self) -> &crate::HtmlFragmentContext {
         self.request.context()
     }
+    #[cfg(test)]
     pub(crate) fn stop(&self) -> ParseStop {
         self.stop
     }
+    #[cfg(test)]
     pub(crate) fn at_stop(&self) -> &super::super::control::ParseUsage {
         &self.at_stop
     }
+    #[cfg(test)]
     pub(crate) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
         &self.after_cleanup
     }
+    #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
     ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
@@ -292,6 +303,7 @@ impl FailedContextFragment<'_> {
             .as_ref()
             .map(|evidence| evidence.diagnostics())
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
         if let Some(evidence) = self.evidence.take() {
             evidence.release(&mut self.control)?;
@@ -315,6 +327,12 @@ pub(crate) struct FrozenContextFragmentParts {
     after_cleanup: Option<super::super::control::ParseUsage>,
 }
 impl FrozenContextFragmentParts {
+    pub(super) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.control.first_stop_usage()
+    }
+    pub(super) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.after_cleanup.as_ref()
+    }
     pub(super) fn prepare_report_request(
         &mut self,
         request: &crate::request::FragmentRequestParts,
@@ -406,6 +424,7 @@ impl FrozenContextFragmentParts {
         self.final_usage = self.control.usage().clone();
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn fragment(&mut self) -> Result<&crate::HtmlFragment, FragmentExecutionError> {
         self.control.checkpoint()?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -414,6 +433,7 @@ impl FrozenContextFragmentParts {
             .and_then(|arena| arena.fragment())
             .ok_or(FragmentExecutionError::Consumed)
     }
+    #[cfg(test)]
     pub(crate) fn context(&self) -> Result<&crate::HtmlFragmentContext, FragmentExecutionError> {
         Ok(self
             .arena
@@ -426,6 +446,7 @@ impl FrozenContextFragmentParts {
     ) -> (&crate::HtmlSourceId, crate::HtmlSourceCoordinates, usize) {
         (&self.source.0, self.source.1, self.source.2)
     }
+    #[cfg(test)]
     pub(crate) fn final_usage(&self) -> &super::super::control::ParseUsage {
         &self.final_usage
     }
@@ -462,6 +483,7 @@ impl FrozenContextFragmentParts {
         self.after_cleanup = Some(self.control.usage().clone());
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
         if self.control.stop().is_some() {
             self.cleanup_failure()?;
@@ -478,6 +500,11 @@ impl FrozenContextFragmentParts {
 }
 
 impl<'source> CompletedContextFragment<'source> {
+    pub(super) fn stop_for_public_failure(&mut self) {
+        if let Some(d) = &mut self.driver {
+            d.stop_for_public_failure();
+        }
+    }
     pub(crate) fn take_failed(
         &mut self,
     ) -> Result<FailedContextFragment<'source>, FragmentExecutionError> {
@@ -635,6 +662,7 @@ impl<'source> CompletedContextFragment<'source> {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn native_view(
         &mut self,
     ) -> Result<
@@ -649,6 +677,7 @@ impl<'source> CompletedContextFragment<'source> {
             .ok_or(FragmentExecutionError::Consumed)?
             .completed_native_view()
     }
+    #[cfg(test)]
     pub(crate) fn context(&self) -> Result<&crate::HtmlFragmentContext, FragmentExecutionError> {
         Ok(self
             .driver
@@ -657,6 +686,7 @@ impl<'source> CompletedContextFragment<'source> {
             .request
             .context())
     }
+    #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
     ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, FragmentExecutionError>
@@ -674,6 +704,7 @@ impl<'source> CompletedContextFragment<'source> {
             .ok_or(FragmentExecutionError::Consumed)?;
         Ok(state.before.kernel.session.retained_evidence()?)
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
         let driver = self
             .driver
@@ -703,7 +734,8 @@ impl<'source> CompletedContextFragment<'source> {
 
 #[cfg(test)]
 fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextFragmentDriver<'_> {
-    let mut entry = ownership::FragmentEntry::new(request);
+    let mut entry =
+        ownership::FragmentEntry::new(request, super::parse::InitializationTarget::Native);
     match entry.take_driver() {
         Ok(driver) => driver,
         Err(_) => {
@@ -1192,7 +1224,7 @@ mod tests {
                 .session
                 .retained_evidence()
                 .unwrap();
-            if evidence.diagnostics().len() != 0 {
+            if !evidence.diagnostics().is_empty() {
                 break;
             }
         }

@@ -43,6 +43,7 @@ mod foreign;
 mod formatting;
 mod frameset;
 pub(crate) mod head;
+pub(crate) mod parse;
 pub(crate) mod prologue;
 #[cfg(test)]
 mod provenance_scaling_tests;
@@ -54,11 +55,13 @@ mod template;
 #[cfg(test)]
 pub(crate) mod tests;
 
+#[cfg(test)]
+use super::tokenizer::token::Tag;
 use super::{
     control::{
         ControlIdentity, OwnedVec, ParseControl, ParseStop, StandaloneUnsupported, WorkCategory,
     },
-    tokenizer::token::{Tag, Text},
+    tokenizer::token::Text,
 };
 use crate::{
     HtmlParseResource,
@@ -103,6 +106,7 @@ pub(crate) struct AppropriatePlace {
     before: Option<ParserNode>,
 }
 
+#[cfg(test)]
 pub(crate) enum StackPush {
     Push,
     NoPush,
@@ -114,6 +118,7 @@ pub(crate) enum ElementInsertionOutcome {
     Ignored(ElementInsertionIgnored),
 }
 
+#[cfg(test)]
 pub(crate) struct CreatedElement {
     pub(crate) node: ParserNode,
     pub(crate) insertion: ElementInsertionOutcome,
@@ -606,6 +611,7 @@ impl LocationKernel {
     /// Inserts an existing element at the selected location. The pinned step-2
     /// guards return an ignored outcome without detaching or moving the element.
     /// Native topology and association ancestry are inspected by their owner.
+    #[cfg(test)]
     pub(crate) fn insert_element(
         &mut self,
         element: &ParserNode,
@@ -663,6 +669,7 @@ impl LocationKernel {
     /// even when insertion is ignored. The requested stack push follows the
     /// insertion operation in both cases (§13.2.6.1 insert-foreign steps 3–5).
     /// Insertion-mode policy and implicit tags are later.
+    #[cfg(test)]
     pub(crate) fn insert_html_tag(
         &mut self,
         input: &mut Option<Tag>,
@@ -912,11 +919,13 @@ impl<'source> StandaloneDocumentDriver<'source> {
             self.control.stop_unsupported_standalone(reason);
         }
     }
+    #[cfg(test)]
     pub(crate) fn make_available(&mut self, through: usize) -> Result<(), StandaloneError> {
         let result = self.make_available_inner(through);
         self.retain_terminal_failure(&result);
         result
     }
+    #[cfg(test)]
     fn make_available_inner(&mut self, through: usize) -> Result<(), StandaloneError> {
         self.control.require_source(self.source)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -939,11 +948,13 @@ impl<'source> StandaloneDocumentDriver<'source> {
         }
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn seal_input(&mut self) -> Result<(), StandaloneError> {
         let result = self.seal_input_inner();
         self.retain_terminal_failure(&result);
         result
     }
+    #[cfg(test)]
     fn seal_input_inner(&mut self) -> Result<(), StandaloneError> {
         self.control.require_source(self.source)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -1201,6 +1212,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             .into_standalone_fixture();
         Ok((driver.control, session, capability))
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         self.reclaim_parse_owners()?;
         if let Some(evidence) = self.failed_evidence.take() {

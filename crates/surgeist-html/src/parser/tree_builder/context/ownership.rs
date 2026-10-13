@@ -19,7 +19,10 @@ pub(super) struct FragmentEntry<'source> {
     after_cleanup: Option<ParseUsage>,
 }
 impl<'source> FragmentEntry<'source> {
-    pub(super) fn new(request: &'source HtmlFragmentParseRequest) -> Self {
+    pub(super) fn new(
+        request: &'source HtmlFragmentParseRequest,
+        target: super::super::parse::InitializationTarget,
+    ) -> Self {
         // Bootstrap fixed ownership exists before the first source admission.
         let mut entry = Self {
             driver: Some(ContextFragmentDriver {
@@ -35,7 +38,7 @@ impl<'source> FragmentEntry<'source> {
             reason: None,
             after_cleanup: None,
         };
-        if let Err(error) = entry.prepare() {
+        if let Err(error) = entry.prepare(target) {
             entry
                 .driver
                 .as_mut()
@@ -46,11 +49,15 @@ impl<'source> FragmentEntry<'source> {
         }
         entry
     }
-    fn prepare(&mut self) -> Result<(), FragmentExecutionError> {
+    fn prepare(
+        &mut self,
+        target: super::super::parse::InitializationTarget,
+    ) -> Result<(), FragmentExecutionError> {
         let driver = self.driver.as_mut().expect("actual bootstrap owner");
         let request = driver.request;
         let c = &mut driver.control;
         c.admit_source(request.source())?;
+        target.admit(c)?;
         // Actual owning slots, error receiver and terminal transfers. No
         // stopped extraction allocates variable storage or copies source text.
         let (terminal_bytes, terminal_writes) = initialization_transfer_layout();
@@ -226,6 +233,7 @@ impl<'source> FragmentEntry<'source> {
         self.after_cleanup = Some(driver.control.usage().clone());
         Ok(())
     }
+    #[cfg(test)]
     pub(super) fn release_failure(&mut self) -> Result<(), FragmentExecutionError> {
         self.cleanup_failure()?;
         let driver = self.driver.as_mut().expect("retained control");
@@ -249,7 +257,7 @@ impl<'source> FragmentEntry<'source> {
             control: driver.control,
             binding,
             evidence: driver.failed_evidence,
-            reason: self.reason.take(),
+            _reason: self.reason.take(),
         })
     }
 }
@@ -265,6 +273,11 @@ pub(crate) struct FragmentInitializationAttempt<'owner> {
     stopped: &'owner mut Option<StoppedFragmentConstruction>,
 }
 impl FragmentInitializationOwner {
+    pub(in crate::parser::tree_builder) fn original_request(
+        &self,
+    ) -> Option<&HtmlFragmentParseRequest> {
+        self.request.as_ref()
+    }
     pub(crate) fn new(request: HtmlFragmentParseRequest) -> Self {
         Self {
             request: Some(request),
@@ -272,15 +285,30 @@ impl FragmentInitializationOwner {
             begun: false,
         }
     }
+    #[cfg(test)]
     pub(crate) fn begin(
         &mut self,
+    ) -> Result<FragmentInitializationAttempt<'_>, InitializationState> {
+        self.begin_for(super::super::parse::InitializationTarget::Native)
+    }
+    pub(in crate::parser::tree_builder) fn begin_report(
+        &mut self,
+    ) -> Result<FragmentInitializationAttempt<'_>, InitializationState> {
+        self.begin_for(super::super::parse::InitializationTarget::Report)
+    }
+    fn begin_for(
+        &mut self,
+        target: super::super::parse::InitializationTarget,
     ) -> Result<FragmentInitializationAttempt<'_>, InitializationState> {
         if self.begun {
             return Err(InitializationState::Consumed);
         }
         self.begun = true;
         Ok(FragmentInitializationAttempt {
-            entry: FragmentEntry::new(self.request.as_ref().ok_or(InitializationState::Consumed)?),
+            entry: FragmentEntry::new(
+                self.request.as_ref().ok_or(InitializationState::Consumed)?,
+                target,
+            ),
             stopped: &mut self.stopped,
         })
     }
@@ -331,6 +359,7 @@ impl<'owner> FragmentInitializationAttempt<'owner> {
     pub(crate) fn reason(&self) -> Option<&FragmentExecutionError> {
         self.entry.reason()
     }
+    #[cfg(test)]
     pub(crate) fn usage(&self) -> Option<&ParseUsage> {
         self.entry.driver.as_ref().map(|d| d.control.usage())
     }
@@ -410,7 +439,7 @@ pub(crate) struct StoppedFragmentConstruction {
     at_stop: ParseUsage,
     after_cleanup: ParseUsage,
     evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
-    reason: Option<FragmentExecutionError>,
+    _reason: Option<FragmentExecutionError>,
 }
 impl StoppedFragmentConstruction {
     fn qualifies(&self, request: &HtmlFragmentParseRequest) -> bool {
@@ -442,7 +471,7 @@ impl StoppedFragmentConstruction {
             at_stop: failed.at_stop,
             after_cleanup: failed.after_cleanup,
             evidence: failed.evidence,
-            reason: reason.take(),
+            _reason: reason.take(),
         })
     }
 
@@ -471,14 +500,15 @@ impl StoppedFragmentConstruction {
             at_stop,
             after_cleanup: parts.after_cleanup.expect("reclaimed actual arena"),
             evidence: parts.failed_evidence,
-            reason: reason.take(),
+            _reason: reason.take(),
         })
     }
     pub(crate) fn stop(&self) -> ParseStop {
         self.stop
     }
+    #[cfg(test)]
     pub(crate) fn reason(&self) -> Option<&FragmentExecutionError> {
-        self.reason.as_ref()
+        self._reason.as_ref()
     }
     pub(crate) fn source_binding(
         &self,
@@ -499,6 +529,7 @@ impl StoppedFragmentConstruction {
     ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
         self.evidence.as_ref().map(|e| e.diagnostics())
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
         if let Some(evidence) = self.evidence.take() {
             evidence.release(&mut self.control)?;
@@ -511,6 +542,9 @@ pub(crate) struct OwnedFragmentFailure {
     failure: StoppedFragmentConstruction,
 }
 impl OwnedFragmentFailure {
+    pub(in crate::parser::tree_builder) fn original_request(&self) -> &FragmentRequestParts {
+        &self.request
+    }
     fn take(
         request: &mut Option<HtmlFragmentParseRequest>,
         stopped: &mut Option<StoppedFragmentConstruction>,
@@ -541,6 +575,7 @@ impl OwnedFragmentFailure {
     pub(crate) fn stop(&self) -> ParseStop {
         self.failure.stop()
     }
+    #[cfg(test)]
     pub(crate) fn reason(&self) -> Option<&FragmentExecutionError> {
         self.failure.reason()
     }
@@ -558,6 +593,7 @@ impl OwnedFragmentFailure {
     ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
         self.failure.diagnostics()
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
         self.failure.release()
     }
@@ -595,18 +631,23 @@ impl SealedFragmentConstruction {
     pub(crate) fn context(&self) -> &crate::HtmlFragmentContext {
         self.request.context()
     }
+    #[cfg(test)]
     pub(crate) fn requested_scripting_mode(&self) -> HtmlParserScriptingMode {
         self.request.requested_scripting_mode()
     }
+    #[cfg(test)]
     pub(crate) fn effective_scripting_mode(&self) -> HtmlParserScriptingMode {
         self.request.effective_scripting_mode()
     }
+    #[cfg(test)]
     pub(crate) fn allow_declarative_shadow_roots(&self) -> bool {
         self.request.allow_declarative_shadow_roots()
     }
+    #[cfg(test)]
     pub(crate) fn fragment(&self) -> Option<&crate::HtmlFragment> {
         self.parts.arena.as_ref()?.fragment()
     }
+    #[cfg(test)]
     pub(crate) fn evidence(
         &self,
     ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, FragmentExecutionError>
@@ -618,6 +659,7 @@ impl SealedFragmentConstruction {
             .ok_or(FragmentExecutionError::Consumed)?
             .retained_evidence()?)
     }
+    #[cfg(test)]
     pub(crate) fn effects(
         &self,
     ) -> Result<
@@ -631,12 +673,14 @@ impl SealedFragmentConstruction {
             .ok_or(FragmentExecutionError::Consumed)?
             .frozen_fragment_effects()?)
     }
+    #[cfg(test)]
     pub(crate) fn final_usage(&self) -> &ParseUsage {
         &self.parts.final_usage
     }
     pub(crate) fn retained_usage(&self) -> &ParseUsage {
         self.parts.control.usage()
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
         if let Some(arena) = &mut self.parts.arena {
             arena.release(&mut self.parts.control)?;
@@ -756,7 +800,7 @@ mod tests {
         assert_eq!(sealed.source().identity(), &source);
         assert_eq!(sealed.source().as_utf8(), Some(literal));
         assert_eq!(sealed.context().capture().identity(), &capture);
-        assert!(sealed.evidence().unwrap().diagnostics().len() > 0);
+        assert!(!sealed.evidence().unwrap().diagnostics().is_empty());
         {
             let fragment = sealed.fragment().unwrap();
             let children: Vec<_> = fragment.root().children().collect();
@@ -979,7 +1023,7 @@ mod tests {
         assert!(stopped.is_none());
         let mut failure = owner.take_failure().unwrap();
         assert_eq!(failure.stop(), ParseStop::Cancelled);
-        assert!(failure.diagnostics().unwrap().len() > 0);
+        assert!(!failure.diagnostics().unwrap().is_empty());
         assert!(failure.reason().is_some());
         failure.release().unwrap();
         assert_reclaimed(failure.retained_usage());
@@ -1023,7 +1067,7 @@ mod tests {
         let mut failure = owner.take_failure().unwrap();
         assert_eq!(failure.stop(), first);
         assert_eq!(first, ParseStop::Cancelled);
-        assert!(failure.diagnostics().unwrap().len() > 0);
+        assert!(!failure.diagnostics().unwrap().is_empty());
         failure.release().unwrap();
         assert_reclaimed(failure.retained_usage());
     }
@@ -1379,7 +1423,10 @@ mod tests {
     #[test]
     fn ready_driver_transfer_exact_and_one_short_retains_real_stage_without_token_pull() {
         let measured_request = request("<p>A");
-        let mut measured = FragmentEntry::new(&measured_request);
+        let mut measured = FragmentEntry::new(
+            &measured_request,
+            super::super::parse::InitializationTarget::Native,
+        );
         let before = measured
             .driver
             .as_ref()

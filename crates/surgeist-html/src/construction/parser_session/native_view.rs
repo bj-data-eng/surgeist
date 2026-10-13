@@ -11,6 +11,7 @@ pub(crate) struct NativeString<'a> {
     len: usize,
 }
 impl NativeString<'_> {
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.len
     }
@@ -64,6 +65,7 @@ pub(crate) struct NativeView<'a> {
     control: &'a mut ParseControl,
 }
 impl ParserArenaSession {
+    #[cfg(test)]
     pub(crate) fn native_view<'a>(
         &'a self,
         control: &'a mut ParseControl,
@@ -75,15 +77,19 @@ impl ParserArenaSession {
     }
 }
 impl<'a> NativeView<'a> {
+    #[cfg(test)]
     pub(crate) fn control(&mut self) -> &mut ParseControl {
         self.control
     }
+    #[cfg(test)]
     pub(crate) fn usage(&self) -> &crate::parser::control::ParseUsage {
         self.control.usage()
     }
+    #[cfg(test)]
     pub(crate) fn root(&mut self) -> Result<ParserNode, SessionError> {
         self.storage.root(self.control)
     }
+    #[cfg(test)]
     pub(crate) fn same_node(
         &mut self,
         left: &ParserNode,
@@ -91,6 +97,7 @@ impl<'a> NativeView<'a> {
     ) -> Result<bool, SessionError> {
         Ok(self.storage.index(self.control, left)? == self.storage.index(self.control, right)?)
     }
+    #[cfg(test)]
     fn string(&self, value: &'a DocumentString) -> NativeString<'a> {
         NativeString {
             value,
@@ -98,6 +105,7 @@ impl<'a> NativeView<'a> {
             len: value.len(),
         }
     }
+    #[cfg(test)]
     fn name(&self, name: &'a QualifiedName) -> NativeName<'a> {
         NativeName {
             namespace: name.namespace().uri().map(|s| self.string(s)),
@@ -107,6 +115,7 @@ impl<'a> NativeView<'a> {
     }
     /// The kind and fixed native field headers are inspected only after their
     /// admission. Variable contents remain behind individually charged reads.
+    #[cfg(test)]
     pub(crate) fn kind(&mut self, node: &ParserNode) -> Result<NativeKind<'a>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -133,6 +142,7 @@ impl<'a> NativeView<'a> {
             },
         })
     }
+    #[cfg(test)]
     pub(crate) fn unit(
         &mut self,
         value: &NativeString<'_>,
@@ -148,6 +158,7 @@ impl<'a> NativeView<'a> {
             .charge(WorkCategory::InspectByte, mem::size_of::<u16>() as u64)?;
         Ok(Some(value.value.code_units()[index]))
     }
+    #[cfg(test)]
     pub(crate) fn attribute_count(&mut self, node: &ParserNode) -> Result<usize, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -160,6 +171,7 @@ impl<'a> NativeView<'a> {
             _ => Err(SessionError::WrongToken),
         }
     }
+    #[cfg(test)]
     pub(crate) fn attribute_at(
         &mut self,
         node: &ParserNode,
@@ -188,11 +200,13 @@ impl<'a> NativeView<'a> {
             value: self.string(attribute.value()),
         }))
     }
+    #[cfg(test)]
     pub(crate) fn child_count(&mut self, node: &ParserNode) -> Result<usize, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
         Ok(self.storage.records[index].children.len())
     }
+    #[cfg(test)]
     pub(crate) fn child_at(
         &mut self,
         node: &ParserNode,
@@ -207,6 +221,7 @@ impl<'a> NativeView<'a> {
         let child = self.storage.records[index].children[position];
         self.storage.node(self.control, child).map(Some)
     }
+    #[cfg(test)]
     pub(crate) fn parent(&mut self, node: &ParserNode) -> Result<Option<ParserNode>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -215,6 +230,7 @@ impl<'a> NativeView<'a> {
             .map(|parent| self.storage.node(self.control, parent))
             .transpose()
     }
+    #[cfg(test)]
     pub(crate) fn template_contents(
         &mut self,
         node: &ParserNode,
@@ -226,6 +242,7 @@ impl<'a> NativeView<'a> {
             .map(|contents| self.storage.node(self.control, contents))
             .transpose()
     }
+    #[cfg(test)]
     fn association_node(&mut self, node: &HtmlNodeId) -> Result<ParserNode, SessionError> {
         self.storage.require(self.control)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -236,6 +253,7 @@ impl<'a> NativeView<'a> {
         }
         self.storage.node(self.control, node.index)
     }
+    #[cfg(test)]
     pub(crate) fn fragment_owner(
         &mut self,
         node: &ParserNode,
@@ -270,6 +288,7 @@ impl<'a> NativeView<'a> {
             }
         }
     }
+    #[cfg(test)]
     pub(crate) fn shadow(
         &mut self,
         node: &ParserNode,

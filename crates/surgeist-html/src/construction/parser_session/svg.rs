@@ -7,7 +7,7 @@ use super::*;
 const SVG: &str = "http://www.w3.org/2000/svg";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SvgScriptOrigin {
+pub enum SvgScriptOrigin {
     Parser,
     Clone,
 }
@@ -157,6 +157,7 @@ impl SessionStorage {
     }
 }
 impl ParserArenaSession {
+    #[cfg(test)]
     pub(crate) fn svg_script_state(
         &self,
         c: &mut ParseControl,
@@ -213,6 +214,7 @@ impl ParserArenaSession {
         storage.effects.svg_wrapper = None;
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn process_disabled_svg(
         &mut self,
         c: &mut ParseControl,
@@ -226,6 +228,7 @@ impl ParserArenaSession {
     }
 }
 impl FrozenArena {
+    #[cfg(test)]
     pub(crate) fn svg_script_state(
         &self,
         c: &mut ParseControl,

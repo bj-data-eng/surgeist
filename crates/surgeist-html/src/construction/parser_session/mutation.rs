@@ -2,11 +2,13 @@
 //! Family policies remain source-specific; this owner is the single backing edit.
 use super::*;
 
+#[cfg(test)]
 #[derive(Clone, Copy)]
 pub(super) enum ManagedFamily {
     Details,
     Input,
 }
+#[cfg(test)]
 impl ManagedFamily {
     fn local(self) -> &'static str {
         match self {
@@ -21,6 +23,7 @@ impl ManagedFamily {
         }
     }
 }
+#[cfg(test)]
 #[derive(Clone, Copy)]
 enum ManagedEffect {
     Details(crate::HtmlDetailsAttributeEffect),
@@ -29,6 +32,7 @@ enum ManagedEffect {
     InputChecked(Option<crate::HtmlInputCheckedAttributeChange>),
 }
 impl SessionStorage {
+    #[cfg(test)]
     fn managed_effect(
         &self,
         c: &mut ParseControl,
@@ -61,6 +65,7 @@ impl SessionStorage {
             }
         })
     }
+    #[cfg(test)]
     fn preflight_managed_effect(
         &self,
         c: &mut ParseControl,
@@ -75,6 +80,7 @@ impl SessionStorage {
         }
         Ok(())
     }
+    #[cfg(test)]
     fn managed_change(
         &mut self,
         c: &mut ParseControl,
@@ -262,6 +268,7 @@ impl SessionStorage {
     }
 }
 
+#[cfg(test)]
 impl ParserArenaSession {
     pub(super) fn set_managed_attribute(
         &mut self,

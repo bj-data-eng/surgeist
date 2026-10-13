@@ -6,7 +6,9 @@ use super::{
     input::CodePoint,
 };
 use crate::DocumentString;
-use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
+use crate::HtmlParseResource;
+#[cfg(test)]
+use crate::{HtmlParseCancellation, HtmlParseLimits};
 use std::mem::size_of;
 
 pub(crate) struct Utf16Buffer {
@@ -22,6 +24,7 @@ impl Utf16Buffer {
     }
 
     /// Preflight actual destination ownership without copying or mutating units.
+    #[cfg(test)]
     pub(crate) fn require_owner(&mut self, control: &mut ParseControl) -> Result<(), ParseStop> {
         self.units.require_owner(control)
     }

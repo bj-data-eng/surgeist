@@ -277,6 +277,7 @@ impl SessionStorage {
     }
 }
 
+#[cfg(test)]
 impl ParserArenaSession {
     pub(crate) fn set_details_attribute(
         &mut self,

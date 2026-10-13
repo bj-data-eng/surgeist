@@ -209,7 +209,6 @@ pub enum HtmlCapturedTemplateCache {
     Document(HtmlCaptureDocumentId),
     Unavailable,
 }
-#[cfg(test)]
 #[derive(Clone, Copy)]
 pub(crate) enum CapturedTemplateCacheKey {
     Absent,
@@ -1701,7 +1700,6 @@ impl<'a> HtmlCapturedNode<'a> {
         }
     }
     /// Source-defined registry lookup: plain fragments and other nodes return null.
-    #[cfg(test)]
     pub(crate) fn lookup_registry_index(self) -> Option<Option<usize>> {
         let registry = match self.kind() {
             HtmlCapturedNodeKind::Document(document) => document.registry,
@@ -1812,7 +1810,6 @@ impl HtmlCapture {
     // Compact internal keys are issued only after actual capture qualification.
     // The consuming session retains this exact capture for their entire lifetime;
     // these indices never stand in for native node or externally visible IDs.
-    #[cfg(test)]
     pub(crate) fn registry_index(
         &self,
         id: &HtmlCaptureRegistryId,
@@ -1822,7 +1819,6 @@ impl HtmlCapture {
         }
         Ok(id.index)
     }
-    #[cfg(test)]
     pub(crate) fn registry_at(
         &self,
         index: usize,
@@ -1835,7 +1831,6 @@ impl HtmlCapture {
             index,
         })
     }
-    #[cfg(test)]
     pub(crate) fn document_index(
         &self,
         document: &HtmlCaptureDocumentId,
@@ -1843,7 +1838,6 @@ impl HtmlCapture {
         self.require(document.subject(), HtmlCaptureSubjectKind::Document)?;
         Ok(document.0.index)
     }
-    #[cfg(test)]
     pub(crate) fn document_at(
         &self,
         index: usize,
@@ -1864,7 +1858,6 @@ impl HtmlCapture {
             index,
         })
     }
-    #[cfg(test)]
     pub(crate) fn template_cache_index(
         &self,
         index: usize,
@@ -2081,7 +2074,6 @@ impl HtmlCapture {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn shadow_presence(
         &self,
         element: &HtmlCaptureElementId,
@@ -2492,7 +2484,6 @@ pub(crate) enum DefinitionLookupStep {
 impl DefinitionLookupCursor<'_> {
     /// Describes the actual next ready transfer without advancing the cursor.
     /// Only a found definition clones a retained registry handle.
-    #[cfg(test)]
     pub(crate) fn next_clones_registry(&self) -> bool {
         matches!(self.ready, Some(Some(_)))
     }

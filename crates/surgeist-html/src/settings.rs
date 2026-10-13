@@ -81,7 +81,6 @@ pub(crate) const RESOURCES: [HtmlParseResource; RESOURCE_COUNT] = [
 ];
 
 impl HtmlParseResource {
-    #[cfg(test)]
     pub(crate) fn storage(self) -> bool {
         (self as usize) > 0 && (self as usize) < 14
     }
@@ -343,7 +342,6 @@ impl Error for HtmlParseLimitsError {}
 pub struct HtmlParseCancellation(Arc<AtomicBool>);
 impl HtmlParseCancellation {
     /// Request constructors issue this identity freshly; clones retain it.
-    #[cfg(test)]
     pub(crate) fn same_handle(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }

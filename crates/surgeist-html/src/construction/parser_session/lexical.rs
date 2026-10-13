@@ -10,7 +10,7 @@ pub(crate) struct LexicalRef {
     control: ControlIdentity,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum LexicalKind {
+pub enum LexicalKind {
     Markup,
     StartTag,
     EndTag,
@@ -21,7 +21,7 @@ pub(crate) enum LexicalKind {
     Cdata,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum LexicalDisposition {
+pub enum LexicalDisposition {
     Draft,
     Emitted,
     StoredAttribute,
@@ -34,7 +34,7 @@ pub(crate) enum LexicalDisposition {
     Ignored,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum LexicalRole {
+pub enum LexicalRole {
     Name,
     Value,
     PublicIdentifier,
@@ -56,6 +56,14 @@ pub(crate) struct LexicalOccurrence {
     cause: usize,
     data_units: usize,
 }
+impl LexicalOccurrence {
+    pub(crate) fn cause(&self) -> usize {
+        self.cause
+    }
+    pub(crate) fn data_units(&self) -> usize {
+        self.data_units
+    }
+}
 pub(crate) struct LexicalPart {
     pub(crate) occurrence: usize,
     pub(crate) role: LexicalRole,
@@ -65,7 +73,7 @@ pub(crate) struct LexicalPart {
     pub(crate) kind: Option<OriginKind>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum OmissionKind {
+pub enum OmissionKind {
     LeadingWhitespace,
     InitialLf,
     NullInBody,
@@ -81,6 +89,11 @@ pub(crate) struct LexicalOmission {
     pub(crate) kind: OmissionKind,
     pub(crate) rule: ParserRule,
     cause: usize,
+}
+impl LexicalOmission {
+    pub(crate) fn cause(&self) -> usize {
+        self.cause
+    }
 }
 pub(super) struct LexicalStorage {
     pub(super) occurrences: OwnedVec<LexicalOccurrence>,
@@ -156,6 +169,7 @@ impl ParseEvidence {
         self.native.lexical.end = Some(point.clone());
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn lexical_observations(
         &self,
     ) -> (&[LexicalOccurrence], &[LexicalPart], &[LexicalOmission]) {

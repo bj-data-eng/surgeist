@@ -6,10 +6,8 @@ mod lexical;
 #[path = "reverse.rs"]
 pub(crate) mod reverse;
 use crate::parser::{control::Invariant, tokenizer::token::OriginKind};
-pub(crate) use lexical::{
-    LexicalDisposition, LexicalKind, LexicalOccurrence, LexicalPart, LexicalRef, LexicalRole,
-    OmissionKind,
-};
+pub use lexical::{LexicalDisposition, LexicalKind, LexicalRole, OmissionKind};
+pub(crate) use lexical::{LexicalOccurrence, LexicalOmission, LexicalPart, LexicalRef};
 pub(crate) use reverse::{AssociationRelation, AssociationView};
 
 /// Local indices never leave their evidence identity through an unchecked API.
@@ -25,7 +23,7 @@ pub(crate) struct ConstructionCauseRef {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ParserRule {
+pub enum ParserRule {
     Prologue(crate::parser::tree_builder::prologue::PrologueMode),
     Tree(crate::parser::tree_builder::head::InsertionMode),
     Foreign,
@@ -37,7 +35,7 @@ pub(crate) struct ParserTrigger<'a> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConstructionOperation {
+pub enum ConstructionOperation {
     SourceIndependent,
     Request,
     Token,
@@ -386,7 +384,7 @@ pub(crate) enum NativeDestination {
     Cause(usize),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RawFieldKind {
+pub enum RawFieldKind {
     Input,
     Textarea,
 }
@@ -598,6 +596,7 @@ impl ParseEvidence {
         cursor.release(c)?;
         read
     }
+    #[cfg(test)]
     pub(super) fn materialize_group(
         &self,
         c: &mut ParseControl,
@@ -654,6 +653,7 @@ impl ParseEvidence {
         }
         Ok(output.freeze(c)?)
     }
+    #[cfg(test)]
     pub(super) fn release_materialized_group(
         c: &mut ParseControl,
         slot: &mut Option<FrozenUtf16>,
@@ -1801,6 +1801,7 @@ impl ParserArenaSession {
 }
 
 /// Selected authored attribute field in the actual retained container.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeAttributeField {
     Name,
@@ -1809,12 +1810,15 @@ pub(crate) enum NativeAttributeField {
 
 /// Read-only completed evidence with the same execution controller. A failed
 /// projection has no lender: its admitted suffix remains cleanup-only.
+#[cfg(test)]
 pub(crate) struct NativeAssociations<'a> {
     storage: &'a SessionStorage,
     evidence: &'a ParseEvidence,
     control: &'a mut ParseControl,
 }
+#[cfg(test)]
 impl NativeAssociations<'_> {
+    #[cfg(test)]
     pub(crate) fn raw_for(
         &mut self,
         index: usize,
@@ -1831,6 +1835,7 @@ impl NativeAssociations<'_> {
     }
     /// Fixed immutable history header; output expansion is a separate charged
     /// operation on this same controller and evidence issuer.
+    #[cfg(test)]
     pub(crate) fn group(&mut self, index: usize) -> Result<Option<&OriginGroup>, SessionError> {
         self.control.charge(WorkCategory::RecordVisit, 1)?;
         self.control.charge(
@@ -1839,6 +1844,7 @@ impl NativeAssociations<'_> {
         )?;
         Ok(self.evidence.native.groups.as_slice().get(index))
     }
+    #[cfg(test)]
     pub(crate) fn group_origin_cursor(
         &mut self,
         index: usize,
@@ -1846,12 +1852,14 @@ impl NativeAssociations<'_> {
         let reference = self.evidence.group_ref(index, self.control)?;
         GroupOriginCursor::new(self.evidence, &reference, self.control)
     }
+    #[cfg(test)]
     pub(crate) fn next_group_origin(
         &mut self,
         cursor: &mut GroupOriginCursor,
     ) -> Result<Option<TextOrigin>, SessionError> {
         cursor.next(self.evidence, self.control)
     }
+    #[cfg(test)]
     pub(crate) fn release_group_origin_cursor(
         &mut self,
         slot: &mut Option<GroupOriginCursor>,
@@ -1865,17 +1873,20 @@ impl NativeAssociations<'_> {
         drop(slot.take());
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn materialize_group(&mut self, index: usize) -> Result<FrozenUtf16, SessionError> {
         let reference = self.evidence.group_ref(index, self.control)?;
         self.evidence
             .materialize_group(self.control, &self.storage.payloads, &reference)
     }
+    #[cfg(test)]
     pub(crate) fn release_materialized_group(
         &mut self,
         value: &mut Option<FrozenUtf16>,
     ) -> Result<(), SessionError> {
         ParseEvidence::release_materialized_group(self.control, value)
     }
+    #[cfg(test)]
     pub(crate) fn cause_at(
         &mut self,
         index: usize,
@@ -1883,6 +1894,7 @@ impl NativeAssociations<'_> {
         self.control.charge(WorkCategory::RecordVisit, 1)?;
         Ok(self.evidence.native.causes.as_slice().get(index))
     }
+    #[cfg(test)]
     pub(crate) fn node_for(
         &mut self,
         index: usize,
@@ -1894,6 +1906,7 @@ impl NativeAssociations<'_> {
         };
         Ok(matches!(row.destination, NativeDestination::Node(owner) if owner == node))
     }
+    #[cfg(test)]
     pub(crate) fn text_for(
         &mut self,
         index: usize,
@@ -1907,6 +1920,7 @@ impl NativeAssociations<'_> {
             matches!(row.destination, NativeDestination::Field(StringLocation::Text(owner)) if owner == node),
         )
     }
+    #[cfg(test)]
     /// Match an actual retained attribute-container field to its native owner.
     /// Container indices are payload identities, never native node positions.
     pub(crate) fn attribute_for(
@@ -1958,6 +1972,7 @@ impl NativeAssociations<'_> {
         )?;
         Ok(values.as_slice().get(actual_slot).is_some())
     }
+    #[cfg(test)]
     pub(crate) fn cause_reference(
         &mut self,
         index: usize,
@@ -1977,9 +1992,11 @@ impl NativeAssociations<'_> {
         };
         Ok(Some(self.evidence.cause_ref(row.cause, self.control)?))
     }
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.evidence.native.native_rows
     }
+    #[cfg(test)]
     pub(crate) fn row(
         &mut self,
         index: usize,
@@ -2007,6 +2024,7 @@ impl NativeAssociations<'_> {
             .ok_or(SessionError::WrongToken)?;
         Ok(Some((row, cause)))
     }
+    #[cfg(test)]
     pub(crate) fn cause(
         &mut self,
         reference: &ConstructionCauseRef,
@@ -2334,6 +2352,7 @@ impl ParserArenaSession {
         evidence.native.projection_complete = true;
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn native_associations<'a>(
         &'a self,
         c: &'a mut ParseControl,
@@ -2360,7 +2379,7 @@ pub(crate) struct CapturedParserTrigger<'a> {
     role: CapturedCauseRole,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CapturedCauseRole {
+pub enum CapturedCauseRole {
     FragmentBootstrap,
     ContextNamespace,
 }
@@ -2534,6 +2553,7 @@ impl SessionStorage {
         evidence.native.current = Some(index);
         Ok(previous)
     }
+    #[cfg(test)]
     /// Actual private attribute mutation, not a fabricated parser token/rule.
     pub(super) fn begin_attribute_change(
         &mut self,

@@ -12,30 +12,30 @@
 // HTML 877d6146487f15b15bc8dd0e3c625063a37b456a, §13.2.5.72–76.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Escape {
+pub enum Escape {
     Escaped,
     DoubleEscaped,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Identifier {
+pub enum Identifier {
     Public,
     System,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Raw {
+pub enum Raw {
     Rcdata,
     Rawtext,
     Script,
     ScriptEscaped(Escape),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Quote {
+pub enum Quote {
     Unquoted,
     Single,
     Double,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum State {
+pub enum State {
     Data,
     Plaintext,
     TagOpen,

@@ -505,6 +505,7 @@ fn append_scalar(
 }
 
 impl FrozenArena {
+    #[cfg(test)]
     pub(crate) fn processing_instruction_attribute<'a>(
         &'a self,
         c: &mut ParseControl,

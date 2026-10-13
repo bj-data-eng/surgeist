@@ -53,9 +53,16 @@ pub struct HtmlDocumentParseRequest {
     context: DocumentContext,
 }
 impl HtmlDocumentParseRequest {
+    /// Parse the owned decoded source into a complete immutable report.
+    #[expect(
+        clippy::result_large_err,
+        reason = "returns the actual original request, stopped control and cleanup owner without allocating after a stop"
+    )]
+    pub fn parse(self) -> Result<crate::HtmlParseReport, crate::HtmlParseFailure> {
+        crate::parser::tree_builder::parse::document(self)
+    }
     /// Consumes the original configuration after borrowed execution ends.
     /// This move does not clone source backing or imply parse admission.
-    #[cfg(test)]
     pub(crate) fn into_parts(self) -> DocumentRequestParts {
         DocumentRequestParts {
             source: self.source,
@@ -149,14 +156,12 @@ impl HtmlDocumentParseRequest {
 
 /// The request owner keeps source and context together across private report
 /// assembly. Promotion belongs to the eventual complete public parse boundary.
-#[cfg(test)]
 pub(crate) struct DocumentRequestParts {
     source: HtmlSource,
     limits: HtmlParseLimits,
     cancellation: HtmlParseCancellation,
     context: DocumentContext,
 }
-#[cfg(test)]
 impl DocumentRequestParts {
     pub(crate) fn source(&self) -> &HtmlSource {
         &self.source
@@ -169,6 +174,18 @@ impl DocumentRequestParts {
     }
     pub(crate) fn is_offline(&self) -> bool {
         matches!(self.context, DocumentContext::Offline)
+    }
+    pub(crate) fn capture(&self) -> Option<&HtmlCapture> {
+        match &self.context {
+            DocumentContext::Captured { capture, .. } => Some(capture),
+            DocumentContext::Offline => None,
+        }
+    }
+    pub(crate) fn document(&self) -> Option<&HtmlCaptureDocumentId> {
+        match &self.context {
+            DocumentContext::Captured { document, .. } => Some(document),
+            DocumentContext::Offline => None,
+        }
     }
 }
 
@@ -185,9 +202,16 @@ pub struct HtmlFragmentParseRequest {
     allow_declarative_shadow_roots: bool,
 }
 impl HtmlFragmentParseRequest {
+    /// Parse in the actual retained context, returning no partial tree on failure.
+    #[expect(
+        clippy::result_large_err,
+        reason = "returns the actual original request, stopped control and cleanup owner without allocating after a stop"
+    )]
+    pub fn parse(self) -> Result<crate::HtmlParseReport, crate::HtmlParseFailure> {
+        crate::parser::tree_builder::parse::fragment(self)
+    }
     /// Moves the original checked request after borrowed execution has ended.
     /// No source backing, capture, or cancellation authority is reconstructed.
-    #[cfg(test)]
     pub(crate) fn into_parts(self) -> FragmentRequestParts {
         FragmentRequestParts {
             source: self.source,
@@ -265,7 +289,6 @@ impl HtmlFragmentParseRequest {
 }
 
 /// Source-owning private assembly input, not a public parse-success proof.
-#[cfg(test)]
 pub(crate) struct FragmentRequestParts {
     source: HtmlSource,
     limits: HtmlParseLimits,
@@ -275,7 +298,6 @@ pub(crate) struct FragmentRequestParts {
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
 }
-#[cfg(test)]
 impl FragmentRequestParts {
     pub(crate) fn source(&self) -> &HtmlSource {
         &self.source

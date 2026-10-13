@@ -20,7 +20,7 @@ enum ReportContext {
     Fragment(FragmentRequestParts),
 }
 
-pub(crate) struct ImmutableParseReport {
+pub struct ImmutableParseReport {
     context: ReportContext,
     storage: ReportStorage,
     usage: ParseUsage,
@@ -35,6 +35,7 @@ impl ImmutableParseReport {
         sealed.parts.prepare_report_request(&sealed.request)?;
         let state = sealed.parts.document_state();
         let c = &mut sealed.parts.control;
+        crate::construction::parser_session::read::prepare_public_readers(&sealed.parts.arena, c)?;
         let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c)?;
         super::write(
             size_of::<Self>()
@@ -66,6 +67,7 @@ impl ImmutableParseReport {
         let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
         sealed.parts.prepare_report_request(&sealed.request)?;
         let c = &mut sealed.parts.control;
+        crate::construction::parser_session::read::prepare_public_readers(&sealed.parts.arena, c)?;
         let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c)?;
         super::write(
             size_of::<Self>()
@@ -86,64 +88,64 @@ impl ImmutableParseReport {
             usage,
         })
     }
-    pub(crate) fn source(&self) -> &crate::HtmlSource {
+    pub fn source(&self) -> &crate::HtmlSource {
         match &self.context {
             ReportContext::Document { request, .. } => request.source(),
             ReportContext::Fragment(request) => request.source(),
         }
     }
-    pub(crate) fn limits(&self) -> &crate::HtmlParseLimits {
+    pub fn limits(&self) -> &crate::HtmlParseLimits {
         match &self.context {
             ReportContext::Document { request, .. } => request.limits(),
             ReportContext::Fragment(request) => request.limits(),
         }
     }
-    pub(crate) fn document(&self) -> Option<&crate::HtmlDocument> {
+    pub fn document(&self) -> Option<&crate::HtmlDocument> {
         self.storage.history().document()
     }
-    pub(crate) fn fragment(&self) -> Option<&crate::HtmlFragment> {
+    pub fn fragment(&self) -> Option<&crate::HtmlFragment> {
         self.storage.history().fragment()
     }
-    pub(crate) fn context(&self) -> Option<&crate::HtmlFragmentContext> {
+    pub fn context(&self) -> Option<&crate::HtmlFragmentContext> {
         match &self.context {
             ReportContext::Fragment(request) => Some(request.context()),
             _ => None,
         }
     }
-    pub(crate) fn document_state(&self) -> Option<StandaloneDocumentState> {
+    pub fn document_state(&self) -> Option<StandaloneDocumentState> {
         match &self.context {
             ReportContext::Document { state, .. } => Some(*state),
             _ => None,
         }
     }
-    pub(crate) fn requested_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
+    pub fn requested_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
         match &self.context {
             ReportContext::Document { .. } => crate::HtmlParserScriptingMode::Disabled,
             ReportContext::Fragment(request) => request.requested_scripting_mode(),
         }
     }
-    pub(crate) fn effective_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
+    pub fn effective_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
         match &self.context {
             ReportContext::Document { .. } => crate::HtmlParserScriptingMode::Disabled,
             ReportContext::Fragment(request) => request.effective_scripting_mode(),
         }
     }
-    pub(crate) fn allow_declarative_shadow_roots(&self) -> bool {
+    pub fn allow_declarative_shadow_roots(&self) -> bool {
         match &self.context {
             ReportContext::Fragment(request) => request.allow_declarative_shadow_roots(),
             _ => false,
         }
     }
-    pub(crate) fn usage(&self) -> &ParseUsage {
+    pub fn usage(&self) -> &ParseUsage {
         &self.usage
     }
     pub(crate) fn history(&self) -> &crate::construction::parser_session::history::FrozenHistory {
         self.storage.history()
     }
-    pub(crate) fn metadata(&self) -> MetadataCursor<'_> {
+    pub fn metadata(&self) -> MetadataCursor<'_> {
         self.storage.metadata()
     }
-    pub(crate) fn diagnostics(
+    pub fn diagnostics(
         &self,
     ) -> crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_> {
         self.storage
@@ -151,7 +153,7 @@ impl ImmutableParseReport {
             .expect("qualified report evidence")
             .diagnostics()
     }
-    pub(crate) fn effects(
+    pub fn effects(
         &self,
     ) -> Option<crate::construction::parser_session::context::FrozenFragmentEffects<'_>> {
         match &self.context {
@@ -160,6 +162,26 @@ impl ImmutableParseReport {
             }
             _ => None,
         }
+    }
+}
+
+impl ImmutableParseReport {
+    pub fn associations(
+        &self,
+    ) -> crate::construction::parser_session::read::HtmlParseAssociations<'_> {
+        crate::construction::parser_session::read::HtmlParseAssociations::new(self.history())
+    }
+    pub fn history_view(&self) -> crate::construction::parser_session::read::HtmlParseHistory<'_> {
+        crate::construction::parser_session::read::HtmlParseHistory::new(self.history())
+    }
+}
+
+impl std::fmt::Debug for ImmutableParseReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HtmlParseReport")
+            .field("source", self.source().identity())
+            .field("usage", self.usage())
+            .finish()
     }
 }
 
@@ -759,7 +781,7 @@ mod tests {
             crate::HtmlParserScriptingMode::Inert
         );
         cancel.cancel();
-        assert!(report.diagnostics().len() > 0);
+        assert!(!report.diagnostics().is_empty());
         let mut cursor = report.metadata();
         let mut found = false;
         loop {

@@ -14,6 +14,7 @@ pub(crate) struct FrozenHistory {
 }
 
 impl ParserArenaSession {
+    #[cfg(test)]
     pub(crate) fn freeze_history(
         &mut self,
         c: &mut ParseControl,
@@ -196,6 +197,7 @@ impl FrozenHistory {
     }
     /// Prepublication disposal, retaining the actual frozen owner on refusal.
     /// A later public report consumes this owner and the execution controller.
+    #[cfg(test)]
     pub(crate) fn release(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         self.arena.release(c)
     }
@@ -244,7 +246,7 @@ impl<'a> PreparedHistory<'a> {
 /// A group reference is a borrowed, same-evidence qualification, never a payload
 /// slot or a caller assertion about the identity of another report.
 #[derive(Clone, Copy)]
-pub(crate) struct HistoryGroup<'a> {
+pub struct HistoryGroup<'a> {
     evidence: &'a ParseEvidence,
     index: usize,
 }
@@ -254,7 +256,7 @@ pub(crate) struct HistoryView<'a> {
     data: HistoryData<'a>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum HistoryReadError {
+pub enum HistoryReadError {
     ForeignOwner,
     InsufficientScratch { required: usize, supplied: usize },
 }
@@ -265,7 +267,7 @@ pub(crate) struct HistoryHeader<'a> {
     pub(crate) retirement: Option<&'a ConstructionCause>,
     pub(crate) body: HistoryBody<'a>,
 }
-pub(crate) enum HistoryBody<'a> {
+pub enum HistoryBody<'a> {
     Leaf(HistoryLeaf<'a>),
     Alias {
         original: HistoryGroup<'a>,
@@ -278,30 +280,30 @@ pub(crate) enum HistoryBody<'a> {
 }
 /// Exact retained units and original atoms, with an independently accumulated
 /// logical offset. The original range/backing is borrowed, never cloned/rebased.
-pub(crate) struct HistoryLeaf<'a> {
+pub struct HistoryLeaf<'a> {
     units: &'a [u16],
     origins: &'a [TextOrigin],
     offset: usize,
 }
-pub(crate) struct HistoryOrigin<'a> {
+pub struct HistoryOrigin<'a> {
     pub(crate) original: &'a TextOrigin,
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
 impl<'a> HistoryLeaf<'a> {
-    pub(crate) fn units(&self) -> &'a [u16] {
+    pub fn units(&self) -> &'a [u16] {
         self.units
     }
-    pub(crate) fn unit(&self, index: usize) -> Option<u16> {
+    pub fn unit(&self, index: usize) -> Option<u16> {
         self.units.get(index).copied()
     }
-    pub(crate) fn offset(&self) -> usize {
+    pub fn offset(&self) -> usize {
         self.offset
     }
-    pub(crate) fn origins(&self) -> &'a [TextOrigin] {
+    pub fn origins(&self) -> &'a [TextOrigin] {
         self.origins
     }
-    pub(crate) fn origin(&self, index: usize) -> Option<HistoryOrigin<'a>> {
+    pub fn origin(&self, index: usize) -> Option<HistoryOrigin<'a>> {
         let original = self.origins.get(index)?;
         Some(HistoryOrigin {
             original,
@@ -312,6 +314,7 @@ impl<'a> HistoryLeaf<'a> {
 }
 
 impl<'a> HistoryView<'a> {
+    #[cfg(test)]
     pub(crate) fn source(&self) -> &'a crate::HtmlSource {
         self.data.source
     }
@@ -418,25 +421,25 @@ impl<'a> HistoryView<'a> {
 /// Private fields prevent caller-written traversal authority. Scratch may hold
 /// stale frames: only the cursor's initialized prefix is ever read.
 #[derive(Clone, Copy, Default)]
-pub(crate) struct HistoryFrame {
+pub struct HistoryFrame {
     index: usize,
     offset: usize,
 }
-pub(crate) struct HistoryCursor<'a, 's> {
+pub struct HistoryCursor<'a, 's> {
     view: &'s HistoryView<'a>,
     scratch: &'s mut [HistoryFrame],
     length: usize,
     cancellation: Option<&'s crate::HtmlParseCancellation>,
     cancelled: bool,
 }
-pub(crate) enum HistoryStep<'a> {
+pub enum HistoryStep<'a> {
     Progress,
     Leaf(HistoryLeaf<'a>),
     Complete,
     Cancelled,
 }
 impl<'a> HistoryCursor<'a, '_> {
-    pub(crate) fn advance(&mut self) -> HistoryStep<'a> {
+    pub fn advance(&mut self) -> HistoryStep<'a> {
         if self.cancelled
             || self
                 .cancellation
@@ -478,6 +481,28 @@ impl<'a> HistoryCursor<'a, '_> {
                 HistoryStep::Progress
             }
         }
+    }
+}
+
+impl HistoryOrigin<'_> {
+    pub fn original(&self) -> &TextOrigin {
+        self.original
+    }
+    pub fn start(&self) -> usize {
+        self.start
+    }
+    pub fn end(&self) -> usize {
+        self.end
+    }
+}
+impl FrozenHistory {
+    pub(super) fn native_node(&self, index: usize) -> HtmlNode<'_> {
+        let storage = self.arena.storage.as_ref().expect("qualified history");
+        let arena = match &storage.view {
+            FrozenView::Document(v) => &v.arena,
+            FrozenView::Fragment(v) => &v.arena,
+        };
+        HtmlNode { arena, index }
     }
 }
 
@@ -537,7 +562,7 @@ mod tests {
                             .insert_text(&mut c, &root, None, &mut Some(text), None)
                             .unwrap()
                             .unwrap()
-                            .node,
+                            ._node,
                     );
                 }
                 TokenKind::Eof => break,

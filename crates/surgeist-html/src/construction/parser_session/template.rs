@@ -4,6 +4,7 @@
 use super::*;
 
 /// A real Document node qualified by the issuing arena. The index is private.
+#[cfg(test)]
 pub(crate) struct ParserDocument {
     node: ParserNode,
 }
@@ -43,7 +44,7 @@ pub(super) struct TemplateMetadata {
 pub(crate) struct TemplateState {
     pub(crate) contents: ParserNode,
     pub(crate) target: Option<ParserNode>,
-    pub(crate) start: Option<ParserNode>,
+    pub(crate) _start: Option<ParserNode>,
     pub(crate) end: Option<ParserNode>,
 }
 
@@ -551,7 +552,9 @@ impl SessionStorage {
     }
 }
 
+#[cfg(test)]
 impl ParserDocument {
+    #[cfg(test)]
     pub(crate) fn node(
         &self,
         c: &mut ParseControl,
@@ -565,6 +568,7 @@ impl ParserDocument {
 }
 
 impl FrozenArena {
+    #[cfg(test)]
     pub(crate) fn node_document(
         &self,
         c: &mut ParseControl,
@@ -747,6 +751,7 @@ impl ParserArenaSession {
             }
         }
     }
+    #[cfg(test)]
     pub(crate) fn node_document(
         &self,
         c: &mut ParseControl,
@@ -770,7 +775,7 @@ impl ParserArenaSession {
         Ok(TemplateState {
             contents: storage.node(c, state.contents)?,
             target: state.target.map(|n| storage.node(c, n)).transpose()?,
-            start: state.start.map(|n| storage.node(c, n)).transpose()?,
+            _start: state.start.map(|n| storage.node(c, n)).transpose()?,
             end: state.end.map(|n| storage.node(c, n)).transpose()?,
         })
     }

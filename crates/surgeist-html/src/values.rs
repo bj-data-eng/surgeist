@@ -19,7 +19,6 @@ impl DocumentString {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn backing(&self) -> &Arc<Vec<u16>> {
         &self.code_units
     }
@@ -264,7 +263,6 @@ impl OrderedAttributes {
     /// Consumes the actual admitted vector wrapper only after independently
     /// checking expanded names. No hash table, scalar conversion, or second
     /// attribute collection is allocated by this private parser producer.
-    #[cfg(test)]
     pub(crate) fn from_parser_storage(
         attributes: Arc<Vec<Attribute>>,
         control: &mut crate::parser::control::ParseControl,
@@ -296,19 +294,16 @@ impl OrderedAttributes {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn backing(&self) -> &Arc<Vec<Attribute>> {
         &self.attributes
     }
 
     /// Only the controlled construction owner may mutate a uniquely owned
     /// parser backing after proving expanded-name uniqueness and admission.
-    #[cfg(test)]
     pub(crate) fn parser_backing_mut(&mut self) -> &mut Arc<Vec<Attribute>> {
         &mut self.attributes
     }
 
-    #[cfg(test)]
     pub(crate) fn into_parser_storage(self) -> Arc<Vec<Attribute>> {
         self.attributes
     }
@@ -384,19 +379,16 @@ impl fmt::Display for DuplicateAttributeError {
 
 impl Error for DuplicateAttributeError {}
 
-#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParserAttributeError {
     Stop(crate::parser::control::ParseStop),
     Duplicate { first: usize, duplicate: usize },
 }
-#[cfg(test)]
 impl From<crate::parser::control::ParseStop> for ParserAttributeError {
     fn from(stop: crate::parser::control::ParseStop) -> Self {
         Self::Stop(stop)
     }
 }
-#[cfg(test)]
 fn parser_string_equal(
     left: &DocumentString,
     right: &DocumentString,

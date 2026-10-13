@@ -18,7 +18,7 @@ pub(crate) const WORK_QUANTUM: usize = 256;
 /// Each category has weight one; units are physical bytes or individual events.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(usize)]
-pub(crate) enum WorkCategory {
+pub enum WorkCategory {
     InputUnitRead,
     InspectByte,
     CopyByte,
@@ -30,7 +30,7 @@ pub(crate) enum WorkCategory {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Invariant {
+pub enum Invariant {
     ForeignSource,
     NonStorageResource,
     ReleaseUnderflow,
@@ -48,7 +48,7 @@ pub(crate) enum Invariant {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ParseStop {
+pub enum ParseStop {
     Cancelled,
     LimitExceeded {
         resource: HtmlParseResource,
@@ -68,7 +68,7 @@ pub(crate) enum ParseStop {
 }
 /// Actual selected closed-environment execution boundaries, not limit errors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum StandaloneUnsupported {
+pub enum StandaloneUnsupported {
     Provenance,
     ScriptDocument,
     ScriptPause,
@@ -79,13 +79,13 @@ pub(crate) enum StandaloneUnsupported {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ResourceUsage {
+pub struct ResourceUsage {
     pub(crate) current: u64,
     pub(crate) high_water: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ParseUsage {
+pub struct ParseUsage {
     resources: [ResourceUsage; RESOURCE_COUNT],
     work: [u64; WORK_COUNT],
     /// Actual capacities can exceed requested layouts. This is observed after
@@ -96,10 +96,10 @@ pub(crate) struct ParseUsage {
     pub(crate) largest_atomic_layout: u64,
 }
 impl ParseUsage {
-    pub(crate) fn resource(&self, resource: HtmlParseResource) -> ResourceUsage {
+    pub fn resource(&self, resource: HtmlParseResource) -> ResourceUsage {
         self.resources[resource as usize]
     }
-    pub(crate) fn work(&self, category: WorkCategory) -> u64 {
+    pub fn work(&self, category: WorkCategory) -> u64 {
         self.work[category as usize]
     }
 }
@@ -429,6 +429,7 @@ impl ParseControl {
     }
     /// Owned scans/loops must execute only the returned span before calling again.
     /// Allocations are separately precharged indivisible provider submissions.
+    #[cfg(test)]
     pub(crate) fn work_batch(
         &mut self,
         category: WorkCategory,
@@ -1354,6 +1355,7 @@ impl ParseControl {
     }
     /// Qualifies the new historical-materialization output slot before cleanup
     /// takes it. This fixed disposal proof admits no parsing work or storage.
+    #[cfg(test)]
     pub(crate) fn require_materialized_string_disposal(
         &mut self,
         allocation: &DocumentStringAllocation,
@@ -1490,6 +1492,7 @@ pub(crate) struct VectorCapacity<T> {
     element: PhantomData<T>,
 }
 impl<T> VectorCapacity<T> {
+    #[cfg(test)]
     pub(crate) fn capacity(&self) -> usize {
         self.capacity
     }
@@ -1517,6 +1520,7 @@ pub(crate) struct SharedAllocation<T> {
     element: PhantomData<T>,
 }
 impl<T> SharedAllocation<T> {
+    #[cfg(test)]
     pub(crate) fn payload_bytes(&self) -> u64 {
         self.bytes
     }
@@ -1546,12 +1550,15 @@ pub(crate) struct DocumentStringAllocation {
     backing: Option<Weak<Vec<u16>>>,
 }
 impl DocumentStringAllocation {
+    #[cfg(test)]
     pub(crate) fn units(&self) -> u64 {
         self.units
     }
+    #[cfg(test)]
     pub(crate) fn vector_capacity(&self) -> usize {
         self.vector_capacity
     }
+    #[cfg(test)]
     pub(crate) fn wrapper_bytes(&self) -> u64 {
         self.wrapper_bytes
     }
@@ -2019,6 +2026,26 @@ impl<T: Copy> OwnedVec<T> {
             self.vector.extend_from_slice(chunk);
         }
         Ok(())
+    }
+}
+
+impl ResourceUsage {
+    pub fn current(&self) -> u64 {
+        self.current
+    }
+    pub fn high_water(&self) -> u64 {
+        self.high_water
+    }
+}
+impl ParseUsage {
+    pub fn actual_capacity_bytes(&self) -> u64 {
+        self.actual_capacity_bytes
+    }
+    pub fn actual_capacity_high_water(&self) -> u64 {
+        self.actual_capacity_high_water
+    }
+    pub fn largest_atomic_layout(&self) -> u64 {
+        self.largest_atomic_layout
     }
 }
 

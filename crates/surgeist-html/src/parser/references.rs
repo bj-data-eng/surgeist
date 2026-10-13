@@ -16,6 +16,7 @@
 //! are bounded by the longest static name plus one, rather than query length.
 
 use super::control::{ParseControl, ParseStop, WorkCategory};
+#[cfg(test)]
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use std::{cmp::Ordering, mem::size_of};
 
@@ -42,6 +43,7 @@ pub(super) enum NameLookup {
 
 /// A longest complete name found before the query ceased to be a table prefix.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(test)]
 pub(super) struct ReferenceMatch {
     pub(super) consumed: usize,
     pub(super) value: ReferenceValue,
@@ -144,6 +146,7 @@ pub(super) fn lookup_name(
 }
 
 /// Returns exact membership; a proper prefix alone supplies no replacement.
+#[cfg(test)]
 pub(super) fn exact_name(
     query: &[u32],
     control: &mut ParseControl,
@@ -161,6 +164,7 @@ pub(super) fn exact_name(
 /// A later terminal failure returns that failure rather than a shorter saved
 /// match. A successful fallback preserves whether its own spelling had a
 /// semicolon; it does not decide whether an attribute may consume that spelling.
+#[cfg(test)]
 pub(super) fn longest_name(
     query: &[u32],
     control: &mut ParseControl,

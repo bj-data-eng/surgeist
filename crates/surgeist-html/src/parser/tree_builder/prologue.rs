@@ -24,14 +24,14 @@ use crate::{HtmlDocumentMode, HtmlParseResource, HtmlSource, HtmlSourceRange};
 use std::mem::size_of;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PrologueMode {
+pub enum PrologueMode {
     Initial,
     BeforeHtml,
     BeforeHead,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PrologueCondition {
+pub enum PrologueCondition {
     MissingDoctype,
     InvalidDoctype,
     UnexpectedDoctype,
@@ -39,6 +39,7 @@ pub(crate) enum PrologueCondition {
     UnacknowledgedSelfClosing,
 }
 
+#[cfg(test)]
 pub(super) struct PrologueDiagnostic {
     pub(super) condition: PrologueCondition,
     pub(super) mode: PrologueMode,

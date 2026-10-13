@@ -55,16 +55,42 @@ pub(crate) struct OrdinaryDocumentEntry<'source> {
     after_cleanup: Option<ParseUsage>,
 }
 impl<'source> OrdinaryDocumentEntry<'source> {
+    #[cfg(test)]
     pub(crate) fn new(request: &'source HtmlDocumentParseRequest) -> Self {
-        Self::create(request, false, false)
+        Self::create(
+            request,
+            false,
+            super::parse::InitializationTarget::Native,
+            false,
+        )
     }
-    pub(super) fn owned(request: &'source HtmlDocumentParseRequest) -> Self {
-        Self::create(request, true, false)
+    pub(super) fn owned(
+        request: &'source HtmlDocumentParseRequest,
+        target: super::parse::InitializationTarget,
+    ) -> Self {
+        Self::create(
+            request,
+            true,
+            target,
+            #[cfg(test)]
+            false,
+        )
     }
+    #[cfg(test)]
     pub(super) fn owned_progressive(request: &'source HtmlDocumentParseRequest) -> Self {
-        Self::create(request, true, true)
+        Self::create(
+            request,
+            true,
+            super::parse::InitializationTarget::Native,
+            true,
+        )
     }
-    fn create(request: &'source HtmlDocumentParseRequest, owned: bool, progressive: bool) -> Self {
+    fn create(
+        request: &'source HtmlDocumentParseRequest,
+        owned: bool,
+        target: super::parse::InitializationTarget,
+        #[cfg(test)] progressive: bool,
+    ) -> Self {
         let rejection = EntryRejection::for_request(request);
         let mut entry = Self {
             source: request.source(),
@@ -92,7 +118,15 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             failed_evidence: None,
             failure_usage: None,
         });
-        if entry.prepare(owned, progressive).is_err() {
+        if entry
+            .prepare(
+                owned,
+                target,
+                #[cfg(test)]
+                progressive,
+            )
+            .is_err()
+        {
             let driver = entry.driver.as_mut().expect("actual initialization guard");
             // Resource/cancellation failure already owns the first stop. An
             // unexpected nonterminal stage error cannot leave a runnable prefix.
@@ -107,11 +141,17 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         }
         entry
     }
-    fn prepare(&mut self, owned: bool, progressive: bool) -> Result<(), StandaloneError> {
+    fn prepare(
+        &mut self,
+        owned: bool,
+        target: super::parse::InitializationTarget,
+        #[cfg(test)] progressive: bool,
+    ) -> Result<(), StandaloneError> {
         let driver = self.driver.as_mut().expect("actual initialization guard");
         let c = &mut driver.control;
         // Preserve source-admission precedence and use actual compiled layouts.
         c.admit_source(driver.source)?;
+        target.admit(c)?;
         if owned {
             let (bytes, writes) = super::seal::initialization_bootstrap_layout();
             write(bytes, writes, c)?;
@@ -147,11 +187,14 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             crate::parser::control::OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         lexical.require_owner(c)?;
         driver.lexical = Some(lexical);
+        #[cfg(test)]
         let make = if progressive {
             crate::parser::tokenizer::Tokenizer::progressive
         } else {
             crate::parser::tokenizer::Tokenizer::new
         };
+        #[cfg(not(test))]
+        let make = crate::parser::tokenizer::Tokenizer::new;
         driver.tokenizer = Some(make(
             driver.source,
             crate::parser::tokenizer::states::State::Data,
@@ -161,9 +204,11 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         driver.prologue = Some(prologue::DocumentPrologue::new(driver.source, c)?);
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn source(&self) -> &HtmlSource {
         self.source
     }
+    #[cfg(test)]
     pub(crate) fn failure(&self) -> Option<InitializationFailure> {
         match self.phase {
             Phase::Rejected(reason) => Some(InitializationFailure::Rejected(reason)),
@@ -178,15 +223,19 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             Phase::Preparing | Phase::Ready | Phase::Transferred => None,
         }
     }
+    #[cfg(test)]
     pub(crate) fn at_stop(&self) -> Option<&ParseUsage> {
         self.driver.as_ref()?.control.first_stop_usage()
     }
+    #[cfg(test)]
     pub(crate) fn after_cleanup(&self) -> Option<&ParseUsage> {
         self.after_cleanup.as_ref()
     }
+    #[cfg(test)]
     pub(crate) fn retained_usage(&self) -> Option<&ParseUsage> {
         self.driver.as_ref().map(|driver| driver.control.usage())
     }
+    #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
     ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
@@ -274,6 +323,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
     }
     /// Disposal of the retained safe evidence is separate from prefix cleanup.
     /// Snapshots remain return-time observations; work/peaks are not refunded.
+    #[cfg(test)]
     pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
         self.cleanup_failure()?;
         if let Some(driver) = &mut self.driver
@@ -362,6 +412,7 @@ impl StoppedInitialization {
             .as_ref()
             .map(|evidence| evidence.diagnostics())
     }
+    #[cfg(test)]
     pub(super) fn release(&mut self) -> Result<(), StandaloneError> {
         if let Some(evidence) = self.evidence.take() {
             evidence.release(&mut self.control)?;

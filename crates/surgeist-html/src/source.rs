@@ -41,7 +41,6 @@ enum SourceText {
 
 /// A boundary established by the private cursor's actual decoded source span.
 /// Unlike an offset, this carries the source and coordinate-space proof.
-#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConsumedSourceBoundary {
     source: HtmlSourceId,
@@ -49,14 +48,12 @@ pub(crate) struct ConsumedSourceBoundary {
     offset: usize,
 }
 
-#[cfg(test)]
 impl ConsumedSourceBoundary {
     pub(crate) fn offset(&self) -> usize {
         self.offset
     }
 }
 
-#[cfg(test)]
 enum DecodedSourceUnits {
     Utf8 { units: [u8; 4], length: usize },
     Utf16 { units: [u16; 2], length: usize },
@@ -64,14 +61,12 @@ enum DecodedSourceUnits {
 
 /// Fixed native encoding prepared without inspecting source payload. The
 /// cursor admits the exact bounded payload reads before completing this proof.
-#[cfg(test)]
 pub(crate) struct ConsumedBoundaryAdvance {
     start: ConsumedSourceBoundary,
     end: usize,
     units: DecodedSourceUnits,
 }
 
-#[cfg(test)]
 impl ConsumedBoundaryAdvance {
     pub(crate) fn source_reads(&self) -> usize {
         self.end - self.start.offset
@@ -85,7 +80,6 @@ impl ConsumedBoundaryAdvance {
     }
 }
 
-#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ConsumedBoundaryError {
     ForeignSource,
@@ -221,7 +215,6 @@ impl HtmlSource {
     /// Prepares the actual decoded raw scalar's canonical supplied units.
     /// Newline preprocessing must happen after this raw boundary operation.
     /// UTF-16 literal surrogates are retained as one supplied unit.
-    #[cfg(test)]
     pub(crate) fn prepare_consumed_boundary(
         &self,
         start: &ConsumedSourceBoundary,
@@ -272,7 +265,6 @@ impl HtmlSource {
     /// Completes a proof by comparing every prepared unit exactly once. The
     /// cursor must precharge source_reads()/comparison_bytes() before entry.
     /// No source byte/unit at the exclusive end is inspected, even on failure.
-    #[cfg(test)]
     pub(crate) fn complete_consumed_boundary(
         &self,
         advance: ConsumedBoundaryAdvance,
@@ -311,7 +303,6 @@ impl HtmlSource {
 
     /// Builds a range from actual established boundaries, without validating
     /// endpoints through the first byte beyond either consumed span.
-    #[cfg(test)]
     pub(crate) fn range_between_consumed_boundaries(
         &self,
         start: &ConsumedSourceBoundary,
@@ -330,7 +321,6 @@ impl HtmlSource {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn require_consumed_boundary(
         &self,
         boundary: &ConsumedSourceBoundary,

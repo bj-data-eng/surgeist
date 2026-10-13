@@ -283,8 +283,8 @@ fn collect(
                 errors.push(diagnostic.code);
             }
             Event::Preprocessing {
-                record,
-                source: range,
+                _record: record,
+                _source: range,
                 ..
             } => {
                 assert_eq!(range.source(), source.identity());
@@ -977,7 +977,9 @@ fn input_diagnostics_and_reconsume_newline_origins_are_emitted_once() {
                 assert_eq!(diagnostic.phase, token::DiagnosticPhase::InputStream);
                 errors.push(diagnostic.code);
             }
-            Event::Preprocessing { record, .. } => {
+            Event::Preprocessing {
+                _record: record, ..
+            } => {
                 assert_eq!(
                     *record,
                     super::super::input::PreprocessingRecord::Newline { was_crlf: true }

@@ -44,17 +44,27 @@ impl OrdinaryInitializationOwner {
     /// The attempt retains every real borrowed prefix on refusal. It must be
     /// explicitly transferred or cleaned before dropping; no infallible Drop
     /// cleanup is implied. Only this consumer admits its actual fixed carrier.
+    #[cfg(test)]
     pub(crate) fn begin(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
-        self.begin_mode(false)
+        self.begin_for(super::parse::InitializationTarget::Native, false)
     }
+    pub(super) fn begin_report(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        self.begin_for(
+            super::parse::InitializationTarget::Report,
+            #[cfg(test)]
+            false,
+        )
+    }
+    #[cfg(test)]
     pub(crate) fn begin_progressive(
         &mut self,
     ) -> Result<InitializationAttempt<'_>, StandaloneError> {
-        self.begin_mode(true)
+        self.begin_for(super::parse::InitializationTarget::Native, true)
     }
-    fn begin_mode(
+    fn begin_for(
         &mut self,
-        progressive: bool,
+        target: super::parse::InitializationTarget,
+        #[cfg(test)] progressive: bool,
     ) -> Result<InitializationAttempt<'_>, StandaloneError> {
         match self.phase {
             InitializationPhase::Rejected(reason) => return Err(reason.error()),
@@ -64,10 +74,16 @@ impl OrdinaryInitializationOwner {
         let request = self.request.as_ref().ok_or(StandaloneError::Consumed)?;
         self.phase = InitializationPhase::Executing;
         Ok(InitializationAttempt {
-            entry: if progressive {
-                super::entry::OrdinaryDocumentEntry::owned_progressive(request)
-            } else {
-                super::entry::OrdinaryDocumentEntry::owned(request)
+            entry: {
+                #[cfg(test)]
+                let entry = if progressive {
+                    super::entry::OrdinaryDocumentEntry::owned_progressive(request)
+                } else {
+                    super::entry::OrdinaryDocumentEntry::owned(request, target)
+                };
+                #[cfg(not(test))]
+                let entry = super::entry::OrdinaryDocumentEntry::owned(request, target);
+                entry
             },
             request,
             failure: &mut self.failure,
@@ -114,6 +130,7 @@ impl OrdinaryInitializationOwner {
             .as_ref()
             .and_then(|failure| failure.diagnostics())
     }
+    #[cfg(test)]
     pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
         match self.phase {
             InitializationPhase::Rejected(_) => Ok(()),
@@ -145,9 +162,11 @@ pub(crate) struct InitializationAttempt<'request> {
     phase: &'request mut InitializationPhase,
 }
 impl<'request> InitializationAttempt<'request> {
+    #[cfg(test)]
     pub(crate) fn failure(&self) -> Option<super::entry::InitializationFailure> {
         self.entry.failure()
     }
+    #[cfg(test)]
     pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
         self.entry.at_stop()
     }
@@ -244,20 +263,24 @@ impl SealedOrdinaryConstruction {
     pub(crate) fn limits(&self) -> &crate::HtmlParseLimits {
         self.request.limits()
     }
+    #[cfg(test)]
     pub(crate) fn is_offline(&self) -> bool {
         self.request.is_offline()
     }
+    #[cfg(test)]
     pub(crate) fn document(&self) -> Option<&crate::HtmlDocument> {
         self.parts.immutable_document()
     }
     /// Same fixed committed store, with no controller borrow or new admission.
     /// Its native-only publication basis does not certify complete lexical D1.
+    #[cfg(test)]
     pub(crate) fn evidence(
         &self,
     ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
     {
         self.parts.immutable_evidence()
     }
+    #[cfg(test)]
     pub(crate) fn final_usage(&self) -> &crate::parser::control::ParseUsage {
         self.parts.final_usage()
     }
@@ -266,6 +289,7 @@ impl SealedOrdinaryConstruction {
     }
     /// Actual fallible disposal remains explicit. A live borrowed/owned native
     /// alias can refuse disposal; that error never discards the retained owner.
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         self.parts.release_sealed()
     }
@@ -278,6 +302,9 @@ pub(crate) struct OwnedOrdinaryFailure {
     failure: super::end::DetachedStandaloneFailure,
 }
 impl OwnedOrdinaryFailure {
+    pub(super) fn original_request(&self) -> &DocumentRequestParts {
+        &self.request
+    }
     pub(crate) fn take(
         request: &mut Option<HtmlDocumentParseRequest>,
         failure: &mut Option<super::end::DetachedStandaloneFailure>,
@@ -321,6 +348,7 @@ impl OwnedOrdinaryFailure {
     ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
         self.failure.diagnostics()
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         self.failure.release()
     }

@@ -4,6 +4,7 @@
 //! preserve exact UTF-16 code units; live document identity and mutation belong
 //! to the consuming DOM subsystem.
 #![forbid(unsafe_code)]
+#![deny(unfulfilled_lint_expectations)]
 
 mod attributes;
 mod bidi;
@@ -16,7 +17,6 @@ mod details_rules;
 mod input;
 mod interpretation;
 mod numeric;
-#[cfg(test)]
 mod parser;
 mod request;
 mod script_type;
@@ -47,3 +47,84 @@ pub use temporal::*;
 pub use tokens::*;
 pub use values::*;
 pub use vocabulary::*;
+
+pub use construction::parser_session::read::HtmlParseRetiredDestination;
+pub use construction::parser_session::{
+    ConstructionCompletion as HtmlParseCompletion, ConstructionReadiness as HtmlParseReadiness,
+    StandaloneDocumentState as HtmlParseDocumentState,
+};
+pub use parser::control::{
+    Invariant as HtmlParseInvariant, ParseStop as HtmlParseStop, ParseUsage as HtmlParseUsage,
+    ResourceUsage as HtmlParseResourceUsage, StandaloneUnsupported as HtmlParseUnsupportedState,
+    WorkCategory as HtmlParseWorkCategory,
+};
+pub use parser::tree_builder::head::HeadBoundary as HtmlParseConstructionBoundary;
+pub use parser::tree_builder::parse::{
+    HtmlParseEngineCondition, HtmlParseFailure, HtmlParseFailureReason,
+};
+pub use parser::tree_builder::report::ImmutableParseReport as HtmlParseReport;
+
+pub use construction::parser_session::SvgScriptOrigin as HtmlParseSvgScriptOrigin;
+pub use construction::parser_session::context::{
+    FrozenCapturedRegistry as HtmlParseCapturedRegistry, FrozenFragmentEffect as HtmlParseEffect,
+    FrozenFragmentEffects as HtmlParseEffects, FrozenFragmentHost as HtmlParseEffectHost,
+    FrozenFragmentRegistry as HtmlParseRegistry,
+    FrozenFragmentRegistryBinding as HtmlParseRegistryBinding,
+};
+pub use construction::parser_session::evidence::{
+    DiagnosticContext as HtmlParseDiagnosticContext,
+    DiagnosticEvidenceView as HtmlParseDiagnostics, DiagnosticKind as HtmlParseDiagnosticKind,
+    DiagnosticLocation as HtmlParseDiagnosticLocation,
+    DiagnosticLocationRole as HtmlParseDiagnosticLocationRole,
+    DiagnosticRecord as HtmlParseDiagnostic, DiagnosticRule as HtmlParseDiagnosticRule,
+    DiagnosticSeverity as HtmlParseDiagnosticSeverity, DiagnosticToken as HtmlParseTokenFamily,
+};
+pub use construction::parser_session::history::{
+    HistoryBody as HtmlParseHistoryBody, HistoryCursor as HtmlParseHistoryCursor,
+    HistoryFrame as HtmlParseHistoryFrame, HistoryGroup as HtmlParseOriginGroup,
+    HistoryLeaf as HtmlParseHistoryLeaf, HistoryOrigin as HtmlParseHistoryOrigin,
+    HistoryReadError as HtmlParseHistoryError, HistoryStep as HtmlParseHistoryStep,
+};
+pub use construction::parser_session::provenance::reverse::{
+    AssociationRelation as HtmlParseAssociationRelation, ReverseQueryError as HtmlParseReverseError,
+};
+pub use construction::parser_session::provenance::{
+    CapturedCauseRole as HtmlParseCapturedCauseRole,
+    ConstructionOperation as HtmlParseConstructionOperation, ParserRule as HtmlParserRule,
+    RawFieldKind as HtmlParseRawField,
+};
+pub use construction::parser_session::provenance::{
+    LexicalDisposition as HtmlParseLexicalDisposition, LexicalKind as HtmlParseLexicalKind,
+    LexicalRole as HtmlParseLexicalRole, OmissionKind as HtmlParseOmissionKind,
+};
+pub use construction::parser_session::read::{
+    HtmlParseAssociation, HtmlParseAssociations, HtmlParseCapturedCause, HtmlParseCause,
+    HtmlParseDestination, HtmlParseField, HtmlParseHistory, HtmlParseHistoryHeader,
+    HtmlParseLexicalOccurrence, HtmlParseLexicalPart, HtmlParseOmission, HtmlParseReverseCursor,
+    HtmlParseReverseStep, HtmlParseScript,
+};
+pub use construction::parser_session::report::{
+    MetadataCursor as HtmlParseMetadataCursor, MetadataDocument as HtmlParseMetadataDocument,
+    MetadataRef as HtmlParseMetadata, MetadataStep as HtmlParseMetadataStep,
+    MetadataTemplate as HtmlParseTemplate,
+};
+pub use construction::parser_session::{
+    FormAssociationEvidence as HtmlParseFormEvidence, FormAssociationKind as HtmlParseFormKind,
+    OutputDefaultValueOverride as HtmlParseOutputOverride,
+    ScriptReadySteps as HtmlParseScriptReadySteps, ScriptResult as HtmlParseScriptResult,
+    ScriptType as HtmlParseScriptType,
+};
+pub use parser::tokenizer::states::{
+    Escape as HtmlTokenizerEscape, Identifier as HtmlTokenizerIdentifier,
+    Quote as HtmlTokenizerQuote, Raw as HtmlTokenizerRawState, State as HtmlTokenizerState,
+};
+pub use parser::tokenizer::token::{
+    DiagnosticCode as HtmlTokenizerDiagnostic, DiagnosticPhase as HtmlTokenizerDiagnosticPhase,
+    OriginKind as HtmlParseOriginKind, TextOrigin as HtmlParseTextOrigin,
+};
+pub use parser::tree_builder::head::{
+    HeadCondition as HtmlTreeDiagnostic, InsertionMode as HtmlInsertionMode,
+};
+pub use parser::tree_builder::prologue::{
+    PrologueCondition as HtmlPrologueDiagnostic, PrologueMode as HtmlPrologueMode,
+};

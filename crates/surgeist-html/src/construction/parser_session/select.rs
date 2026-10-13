@@ -1446,6 +1446,7 @@ impl ParserArenaSession {
             Ok(()) => Ok(()),
         }
     }
+    #[cfg(test)]
     pub(crate) fn select_state(
         &self,
         c: &mut ParseControl,
@@ -1458,6 +1459,7 @@ impl ParserArenaSession {
             _ => Err(SessionError::SelectMetadataUnavailable),
         }
     }
+    #[cfg(test)]
     pub(crate) fn option_state(
         &self,
         c: &mut ParseControl,
@@ -1470,6 +1472,7 @@ impl ParserArenaSession {
             _ => Err(SessionError::SelectMetadataUnavailable),
         }
     }
+    #[cfg(test)]
     pub(crate) fn selectedcontent_state(
         &self,
         c: &mut ParseControl,
@@ -1482,6 +1485,7 @@ impl ParserArenaSession {
             _ => Err(SessionError::SelectMetadataUnavailable),
         }
     }
+    #[cfg(test)]
     pub(crate) fn option_nearest_select(
         &self,
         c: &mut ParseControl,
@@ -1518,6 +1522,7 @@ fn retained_select_metadata(
 }
 
 impl FrozenArena {
+    #[cfg(test)]
     fn retained_select_state(
         &self,
         c: &mut ParseControl,
@@ -1536,6 +1541,7 @@ impl FrozenArena {
         }
         Ok(retained_select_metadata(&storage.payloads, c, node.index)?.1)
     }
+    #[cfg(test)]
     pub(crate) fn select_state(
         &self,
         c: &mut ParseControl,
@@ -1546,6 +1552,7 @@ impl FrozenArena {
             _ => Err(SessionError::SelectMetadataUnavailable),
         }
     }
+    #[cfg(test)]
     pub(crate) fn option_state(
         &self,
         c: &mut ParseControl,
@@ -1556,6 +1563,7 @@ impl FrozenArena {
             _ => Err(SessionError::SelectMetadataUnavailable),
         }
     }
+    #[cfg(test)]
     pub(crate) fn selectedcontent_state(
         &self,
         c: &mut ParseControl,
@@ -1566,6 +1574,7 @@ impl FrozenArena {
             _ => Err(SessionError::SelectMetadataUnavailable),
         }
     }
+    #[cfg(test)]
     pub(crate) fn option_nearest_select(
         &self,
         c: &mut ParseControl,

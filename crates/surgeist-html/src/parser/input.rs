@@ -3,6 +3,7 @@
 
 use super::control::{ControlIdentity, Invariant, ParseControl, ParseStop, WorkCategory};
 use crate::source::{ConsumedBoundaryAdvance, ConsumedSourceBoundary};
+#[cfg(test)]
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use crate::{HtmlSource, HtmlSourceId, HtmlSourceRange};
 use std::mem::size_of;
@@ -79,6 +80,7 @@ pub(crate) enum AsciiMatch {
 
 enum InputAvailability {
     Complete,
+    #[cfg(test)]
     Progressive {
         through: usize,
         sealed: bool,
@@ -101,7 +103,7 @@ enum RawPoll {
 enum DecodedPoll {
     Ready {
         read: InputRead,
-        boundary: Option<ConsumedSourceBoundary>,
+        _boundary: Option<ConsumedSourceBoundary>,
     },
     NeedInput,
 }
@@ -134,6 +136,7 @@ pub(crate) struct InputCheckpoint {
 /// The progressive marker additionally retains an actual consumed boundary.
 /// Keeping it distinct leaves the existing whole-source marker and its fees
 /// unchanged; neither marker owns availability or a second progress frontier.
+#[cfg(test)]
 pub(crate) struct ProgressiveInputCheckpoint {
     checkpoint: InputCheckpoint,
     boundary: ConsumedSourceBoundary,
@@ -177,6 +180,7 @@ impl<'source> InputCursor<'source> {
 
     /// Owns visibility of one original immutable source. This private producer
     /// does not itself provide tokenizer continuation or parser feeding.
+    #[cfg(test)]
     pub(crate) fn progressive(
         source: &'source HtmlSource,
         control: &mut ParseControl,
@@ -208,6 +212,7 @@ impl<'source> InputCursor<'source> {
 
     /// Advances a contiguous visible prefix; it does not inspect the endpoint.
     /// Already-valid UTF-8 may be made available a byte at a time.
+    #[cfg(test)]
     pub(crate) fn make_available(
         &mut self,
         through: usize,
@@ -233,6 +238,7 @@ impl<'source> InputCursor<'source> {
 
     /// Only full availability can be final. Exhausting an unsealed prefix is
     /// NeedInput, including a prefix containing the whole supplied source.
+    #[cfg(test)]
     pub(crate) fn seal_input(&mut self, control: &mut ParseControl) -> Result<(), ParseStop> {
         control.require_identity(&self.owner)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -275,7 +281,12 @@ impl<'source> InputCursor<'source> {
         } else {
             self.decode_at(self.position, control)?
         };
-        self.commit_read(read, None, control)
+        self.commit_read(
+            read,
+            #[cfg(test)]
+            None,
+            control,
+        )
     }
 
     pub(crate) fn poll_peek(&self, control: &mut ParseControl) -> Result<InputPoll, ParseStop> {
@@ -299,14 +310,24 @@ impl<'source> InputCursor<'source> {
         let decoded = if self.reconsume {
             DecodedPoll::Ready {
                 read: self.saved_current(control)?,
-                boundary: None,
+                _boundary: None,
             }
         } else {
             self.decode_poll_at(self.position, self.boundary(), control)?
         };
         match decoded {
-            DecodedPoll::Ready { read, boundary } => self
-                .commit_read(read, boundary, control)
+            DecodedPoll::Ready {
+                read,
+                #[cfg(test)]
+                    _boundary: boundary,
+                ..
+            } => self
+                .commit_read(
+                    read,
+                    #[cfg(test)]
+                    boundary,
+                    control,
+                )
                 .map(InputPoll::Ready),
             DecodedPoll::NeedInput => Ok(InputPoll::NeedInput),
         }
@@ -315,9 +336,10 @@ impl<'source> InputCursor<'source> {
     fn commit_read(
         &mut self,
         mut read: InputRead,
-        boundary: Option<ConsumedSourceBoundary>,
+        #[cfg(test)] boundary: Option<ConsumedSourceBoundary>,
         control: &mut ParseControl,
     ) -> Result<InputRead, ParseStop> {
+        #[cfg(test)]
         let span = if let Some(end) = boundary.as_ref() {
             control.charge(
                 WorkCategory::CopyByte,
@@ -339,9 +361,11 @@ impl<'source> InputCursor<'source> {
         }
         control.charge(WorkCategory::CopyByte, size_of::<InputRead>() as u64)?;
         control.charge(WorkCategory::RecordWrite, 1)?;
+        #[cfg(test)]
         if span.is_some() {
             control.charge(WorkCategory::RecordWrite, 1)?;
         }
+        #[cfg(test)]
         if let InputAvailability::Progressive {
             boundary: current, ..
         } = &mut self.availability
@@ -349,6 +373,7 @@ impl<'source> InputCursor<'source> {
         {
             *current = boundary;
         }
+        #[cfg(test)]
         if let InputAvailability::Progressive { current_span, .. } = &mut self.availability {
             // A reconsume has no new proof and preserves the saved span.
             if let Some(span) = span {
@@ -383,6 +408,7 @@ impl<'source> InputCursor<'source> {
         Ok(self.checkpoint())
     }
 
+    #[cfg(test)]
     pub(crate) fn mark_progressive(
         &self,
         control: &mut ParseControl,
@@ -433,6 +459,7 @@ impl<'source> InputCursor<'source> {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn rewind_progressive(
         &mut self,
         mark: &ProgressiveInputCheckpoint,
@@ -547,7 +574,7 @@ impl<'source> InputCursor<'source> {
                     DecodedPoll::NeedInput => return Ok(AsciiMatch::NeedInput),
                     DecodedPoll::Ready {
                         read,
-                        boundary: end,
+                        _boundary: end,
                     } => {
                         boundary = end;
                         read
@@ -584,10 +611,15 @@ impl<'source> InputCursor<'source> {
     }
 
     pub(crate) fn is_progressive(&self) -> bool {
-        matches!(self.availability, InputAvailability::Progressive { .. })
+        match self.availability {
+            InputAvailability::Complete => false,
+            #[cfg(test)]
+            InputAvailability::Progressive { .. } => true,
+        }
     }
     fn current_span(&self) -> Option<&(ConsumedSourceBoundary, ConsumedSourceBoundary)> {
         match &self.availability {
+            #[cfg(test)]
             InputAvailability::Progressive { current_span, .. } => current_span.as_ref(),
             InputAvailability::Complete => None,
         }
@@ -670,6 +702,7 @@ impl<'source> InputCursor<'source> {
     fn boundary(&self) -> Option<&ConsumedSourceBoundary> {
         match &self.availability {
             InputAvailability::Complete => None,
+            #[cfg(test)]
             InputAvailability::Progressive { boundary, .. } => Some(boundary),
         }
     }
@@ -761,7 +794,7 @@ impl<'source> InputCursor<'source> {
             }
             return Ok(DecodedPoll::Ready {
                 read: InputRead::Eof(range),
-                boundary: start.cloned(),
+                _boundary: start.cloned(),
             });
         };
         control.charge(WorkCategory::InspectByte, size_of::<CodePoint>() as u64)?;
@@ -800,7 +833,7 @@ impl<'source> InputCursor<'source> {
                 source,
                 preprocessing,
             }),
-            boundary,
+            _boundary: boundary,
         })
     }
 
@@ -885,6 +918,7 @@ impl<'source> InputCursor<'source> {
         control.charge(WorkCategory::RecordVisit, 1)?;
         let (through, sealed) = match self.availability {
             InputAvailability::Complete => (self.source.len(), true),
+            #[cfg(test)]
             InputAvailability::Progressive {
                 through, sealed, ..
             } => (through, sealed),

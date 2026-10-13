@@ -36,7 +36,7 @@ use crate::{
 use std::mem::size_of;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum InsertionMode {
+pub enum InsertionMode {
     BeforeHead,
     InHead,
     InHeadNoscript,
@@ -83,7 +83,7 @@ impl InsertionMode {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum HeadCondition {
+pub enum HeadCondition {
     UnexpectedDoctype,
     UnexpectedEndTag,
     UnexpectedHead,
@@ -104,13 +104,14 @@ pub(crate) enum HeadCondition {
     ForeignNamespaceMismatch,
     NullInForeign,
 }
+#[cfg(test)]
 pub(super) struct HeadDiagnostic {
     pub(super) condition: HeadCondition,
     pub(super) mode: InsertionMode,
     pub(super) source: HtmlSourceRange,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum HeadBoundary {
+pub enum HeadBoundary {
     AfterHead,
     Script,
     Template,
@@ -131,6 +132,7 @@ pub(crate) enum HeadError {
     MissingTokenizer,
     Consumed,
     AlreadyAtBoundary,
+    #[cfg(test)]
     NotAtBoundary,
     TokenizerExhausted,
     InvalidTextToken,
@@ -152,6 +154,7 @@ impl std::fmt::Debug for HeadError {
             Self::MissingTokenizer => f.write_str("MissingTokenizer"),
             Self::Consumed => f.write_str("Consumed"),
             Self::AlreadyAtBoundary => f.write_str("AlreadyAtBoundary"),
+            #[cfg(test)]
             Self::NotAtBoundary => f.write_str("NotAtBoundary"),
             Self::TokenizerExhausted => f.write_str("TokenizerExhausted"),
             Self::InvalidTextToken => f.write_str("InvalidTextToken"),
@@ -288,6 +291,7 @@ pub(super) struct HeadStage<'source> {
 }
 /// Unfinished construction, tokenizer and source evidence for actual subsequent
 /// dispatch. This is not EOF acceptance, a parse result or a complete report.
+#[cfg(test)]
 pub(super) struct HeadContinuation<'source> {
     pub(super) boundary: HeadBoundary,
     pub(super) driver: HeadStage<'source>,
@@ -640,6 +644,7 @@ impl<'source> HeadStage<'source> {
         }
         state.advance(self.source, c)
     }
+    #[cfg(test)]
     pub(super) fn take_continuation(
         &mut self,
         c: &mut ParseControl,
@@ -2005,8 +2010,8 @@ mod event_retention_tests {
 
     fn preprocessing(event: &Event, source: &HtmlSource, start: usize) {
         let Event::Preprocessing {
-            record,
-            source: range,
+            _record: record,
+            _source: range,
             retention,
         } = event
         else {

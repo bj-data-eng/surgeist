@@ -15,13 +15,13 @@ use crate::parser::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DiagnosticKind {
+pub enum DiagnosticKind {
     Tokenizer(DiagnosticCode),
     Prologue(PrologueCondition),
     Tree(HeadCondition),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DiagnosticContext {
+pub enum DiagnosticContext {
     Tokenizer {
         phase: DiagnosticPhase,
         state: State,
@@ -30,16 +30,16 @@ pub(crate) enum DiagnosticContext {
     Tree(InsertionMode),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DiagnosticSeverity {
+pub enum DiagnosticSeverity {
     Recoverable,
 }
 /// Selected HTML anchor plus intentional engine branch within that algorithm.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct DiagnosticRule {
+pub struct DiagnosticRule {
     pub(crate) anchor: &'static str,
     pub(crate) branch: &'static str,
 }
-pub(crate) struct DiagnosticRecord {
+pub struct DiagnosticRecord {
     pub(crate) kind: DiagnosticKind,
     pub(crate) context: DiagnosticContext,
     pub(crate) severity: DiagnosticSeverity,
@@ -47,7 +47,7 @@ pub(crate) struct DiagnosticRecord {
     location: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DiagnosticToken {
+pub enum DiagnosticToken {
     Text,
     Tag,
     Comment,
@@ -56,13 +56,13 @@ pub(crate) enum DiagnosticToken {
     Eof,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DiagnosticLocationRole {
+pub enum DiagnosticLocationRole {
     InputFrontier,
     TokenEnvelope,
     TextOrigin,
     BufferedTableCharacter,
 }
-pub(crate) struct DiagnosticLocation {
+pub struct DiagnosticLocation {
     pub(crate) source: crate::HtmlSourceRange,
     pub(crate) role: DiagnosticLocationRole,
     pub(crate) token: Option<DiagnosticToken>,
@@ -73,7 +73,7 @@ impl std::ops::Deref for DiagnosticLocation {
         &self.source
     }
 }
-pub(crate) struct DiagnosticLocationInput<'a> {
+pub struct DiagnosticLocationInput<'a> {
     pub(crate) source: &'a crate::HtmlSourceRange,
     pub(crate) role: DiagnosticLocationRole,
     pub(crate) token: Option<DiagnosticToken>,
@@ -84,6 +84,7 @@ pub(crate) struct DiagnosticId {
     owner: ControlIdentity,
     evidence: Arc<EvidenceIdentity>,
 }
+#[cfg(test)]
 pub(crate) struct TokenizerDiagnosticView<'a> {
     pub(crate) code: DiagnosticCode,
     pub(crate) phase: DiagnosticPhase,
@@ -102,22 +103,25 @@ pub(crate) struct ParseEvidence {
 /// issuer. No native association, construction cause or source-map draft can
 /// survive this partition as a usable parse result.
 pub(crate) struct FailureDiagnosticEvidence {
-    identity: Arc<EvidenceIdentity>,
-    identity_allocation: Option<SharedAllocation<EvidenceIdentity>>,
+    _identity: Arc<EvidenceIdentity>,
+    _identity_allocation: Option<SharedAllocation<EvidenceIdentity>>,
     records: OwnedVec<DiagnosticRecord>,
     locations: OwnedVec<DiagnosticLocation>,
 }
 /// Fixed borrowed lender of committed diagnostics. It carries no execution authority,
 /// allocation ticket or native storage, and each observation uses constant work.
-pub(crate) struct DiagnosticEvidenceView<'a> {
+pub struct DiagnosticEvidenceView<'a> {
     records: &'a [DiagnosticRecord],
     locations: &'a [DiagnosticLocation],
 }
 impl DiagnosticEvidenceView<'_> {
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.records.len()
     }
-    pub(crate) fn retained_record(
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn retained_record(
         &self,
         index: usize,
     ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
@@ -126,7 +130,7 @@ impl DiagnosticEvidenceView<'_> {
             .map(|record| (record, &self.locations[record.location]))
     }
     #[cfg(test)]
-    pub(crate) fn records_pointer(&self) -> *const DiagnosticRecord {
+    pub fn records_pointer(&self) -> *const DiagnosticRecord {
         self.records.as_ptr()
     }
 }
@@ -138,9 +142,11 @@ impl FailureDiagnosticEvidence {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.records.len()
     }
+    #[cfg(test)]
     pub(crate) fn retained_record(
         &self,
         index: usize,
@@ -154,14 +160,15 @@ impl FailureDiagnosticEvidence {
     pub(crate) fn records_pointer(&self) -> *const DiagnosticRecord {
         self.records.as_slice().as_ptr()
     }
+    #[cfg(test)]
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         self.records.release(c)?;
         self.locations.release(c)?;
-        if let Some(allocation) = self.identity_allocation {
-            c.release_zero_sized_shared(self.identity, allocation)
+        if let Some(allocation) = self._identity_allocation {
+            c.release_zero_sized_shared(self._identity, allocation)
                 .map_err(|error| error.into_parts().0)
         } else {
-            drop(self.identity);
+            drop(self._identity);
             Ok(())
         }
     }
@@ -289,11 +296,13 @@ impl ParseEvidence {
             .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
         Ok((record, location))
     }
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.records.len()
     }
     /// Fixed borrowed observations of already committed, self-contained data.
     /// Used by the stopped private consumer; this does not resume parse work.
+    #[cfg(test)]
     pub(crate) fn retained_record(
         &self,
         index: usize,
@@ -359,8 +368,8 @@ impl ParseEvidence {
         // so each cleanup subtraction is covered by that aggregate proof.
         native.release(c).expect("preflighted native cleanup");
         Ok(Some(FailureDiagnosticEvidence {
-            identity,
-            identity_allocation: Some(identity_allocation),
+            _identity: identity,
+            _identity_allocation: Some(identity_allocation),
             records,
             locations,
         }))
@@ -374,6 +383,7 @@ impl ParseEvidence {
     }
 }
 impl ParserArenaSession {
+    #[cfg(test)]
     pub(crate) fn retained_evidence(&self) -> Result<&ParseEvidence, SessionError> {
         let evidence = self
             .active()?
@@ -428,6 +438,7 @@ impl ParserArenaSession {
         storage.require(c)?;
         storage.evidence.as_mut().ok_or(SessionError::WrongToken)
     }
+    #[cfg(test)]
     pub(crate) fn take_completed_evidence(
         &mut self,
         c: &mut ParseControl,
@@ -455,8 +466,8 @@ impl ParserArenaSession {
         let locations = mem::replace(&mut evidence.locations, locations);
         evidence.diagnostics_taken = true;
         Ok(FailureDiagnosticEvidence {
-            identity,
-            identity_allocation: None,
+            _identity: identity,
+            _identity_allocation: None,
             records,
             locations,
         })
@@ -467,6 +478,40 @@ impl ParserArenaSession {
         c: &mut ParseControl,
     ) -> Result<Option<FailureDiagnosticEvidence>, SessionError> {
         ParseEvidence::partition_failed(&mut self.active_mut()?.evidence, c)
+    }
+}
+
+impl DiagnosticRecord {
+    pub fn kind(&self) -> DiagnosticKind {
+        self.kind
+    }
+    pub fn context(&self) -> DiagnosticContext {
+        self.context
+    }
+    pub fn severity(&self) -> DiagnosticSeverity {
+        self.severity
+    }
+    pub fn rule(&self) -> DiagnosticRule {
+        self.rule
+    }
+}
+impl DiagnosticRule {
+    pub fn anchor(&self) -> &'static str {
+        self.anchor
+    }
+    pub fn branch(&self) -> &'static str {
+        self.branch
+    }
+}
+impl DiagnosticLocation {
+    pub fn source_range(&self) -> &crate::HtmlSourceRange {
+        &self.source
+    }
+    pub fn role(&self) -> DiagnosticLocationRole {
+        self.role
+    }
+    pub fn token(&self) -> Option<DiagnosticToken> {
+        self.token
     }
 }
 

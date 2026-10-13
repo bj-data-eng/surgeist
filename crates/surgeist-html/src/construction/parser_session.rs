@@ -38,31 +38,37 @@ mod clone;
 mod completion;
 pub(crate) mod context;
 mod details;
+#[cfg(test)]
 pub(crate) use context::ParserDocumentReference;
 use context::{DocumentRef, FragmentContextStorage};
 pub(crate) mod evidence;
 use evidence::ParseEvidence;
 mod foreign;
 pub(crate) mod history;
+#[cfg(test)]
 pub(crate) mod native_view;
 mod pi;
 mod radio;
+#[cfg(test)]
 pub(crate) use radio::InputGroupAttribute;
 mod mutation;
 pub(crate) mod provenance;
+pub(crate) mod read;
 pub(crate) mod report;
 use provenance::{FieldCopy, OriginGroupRef};
 mod select;
 mod svg;
 mod template;
-pub(crate) use completion::{
-    ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState,
-};
+pub use completion::{ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState};
 pub(crate) use foreign::ForeignNamespace;
+#[cfg(test)]
 pub(crate) use native_view::NativeView;
 use select::{ConstructionEffects, SelectMetadata};
-pub(crate) use svg::{SvgScriptOrigin, SvgScriptState};
-pub(crate) use template::{CreationContext, CreationLocation, ParserDocument, TemplateState};
+pub use svg::SvgScriptOrigin;
+pub(crate) use svg::SvgScriptState;
+pub(crate) use template::{CreationContext, CreationLocation};
+#[cfg(test)]
+pub(crate) use template::{ParserDocument, TemplateState};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ParserNode {
@@ -122,6 +128,7 @@ impl From<ParseStop> for SessionError {
 
 pub(crate) enum RootKind {
     Document(HtmlDocumentMode),
+    #[cfg(test)]
     Fragment,
 }
 enum ImpliedHtmlName {
@@ -367,7 +374,7 @@ pub(crate) struct TextareaState {
 /// Nonnull setters/general form reset have no producer in this checkpoint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
-pub(crate) enum OutputDefaultValueOverride {
+pub enum OutputDefaultValueOverride {
     Null,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -385,7 +392,7 @@ pub(crate) struct InputState {
 }
 /// Actual parser-created association, distinct from structural owners.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum FormAssociationKind {
+pub enum FormAssociationKind {
     Image,
     Button,
     Fieldset,
@@ -408,7 +415,7 @@ pub(crate) struct FormAssociationState {
     pub(crate) evidence: FormAssociationEvidence,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum FormAssociationEvidence {
+pub enum FormAssociationEvidence {
     Created,
     ParserAssociated,
     Reset,
@@ -465,19 +472,19 @@ pub(crate) struct ScriptMetadata {
     pub(crate) steps_when_result_ready: Option<ScriptReadySteps>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ScriptType {
+pub enum ScriptType {
     Classic,
     Module,
     ImportMap,
     SpeculationRules,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ScriptResult {
+pub enum ScriptResult {
     Uninitialized,
 }
 /// No preparation beyond the Disabled return installs result-ready steps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ScriptReadySteps {}
+pub enum ScriptReadySteps {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DisabledScriptPreparation {
     AlreadyStarted,
@@ -542,8 +549,8 @@ pub(crate) enum StringLocation {
     PiValue(usize, usize),
 }
 pub(crate) struct TextInsertion {
-    pub(crate) node: ParserNode,
-    pub(crate) offset: usize,
+    pub(crate) _node: ParserNode,
+    pub(crate) _offset: usize,
 }
 struct ReleasedStorage {
     arena: Arena,
@@ -995,6 +1002,7 @@ impl SessionStorage {
         };
         let kind = match root {
             RootKind::Document(mode) => HtmlNodeKind::Document(mode),
+            #[cfg(test)]
             RootKind::Fragment => HtmlNodeKind::Fragment,
         };
         let allocated = payload_write::<Option<FormEffects>>(control, 1)
@@ -1068,6 +1076,7 @@ impl SessionStorage {
     }
 
     /// Consumes preexisting immutable payloads, not tokenizer-created backing.
+    #[cfg(test)]
     fn allocate_element(
         &mut self,
         control: &mut ParseControl,
@@ -2570,7 +2579,10 @@ impl SessionStorage {
                 });
                 self.drain_form_effects(control)?;
             }
-            Ok(Some(TextInsertion { node, offset }))
+            Ok(Some(TextInsertion {
+                _node: node,
+                _offset: offset,
+            }))
         } else {
             let units = value.len();
             control.charge(WorkCategory::RecordWrite, 2)?;
@@ -2585,7 +2597,10 @@ impl SessionStorage {
             self.bind_string(ticket, StringLocation::Text(node.index));
             self.usage.utf16_units += units;
             self.insert(control, parent, &node, before, InsertionCause::NonParser)?;
-            Ok(Some(TextInsertion { node, offset: 0 }))
+            Ok(Some(TextInsertion {
+                _node: node,
+                _offset: 0,
+            }))
         }
     }
     fn releasable_string(
@@ -3244,6 +3259,7 @@ impl SessionStorage {
         Ok(())
     }
 
+    #[cfg(test)]
     fn template_contents(
         &self,
         control: &mut ParseControl,
@@ -4820,6 +4836,7 @@ impl ParserArenaSession {
         *bound = Some(node.index);
         Ok(node)
     }
+    #[cfg(test)]
     pub(crate) fn script_metadata(
         &self,
         control: &mut ParseControl,
@@ -4829,6 +4846,7 @@ impl ParserArenaSession {
         let node = storage.index(control, node)?;
         script_metadata(&storage.payloads, control, node).map(|(_, metadata)| metadata)
     }
+    #[cfg(test)]
     pub(crate) fn script_parser_document(
         &self,
         control: &mut ParseControl,
@@ -4839,6 +4857,7 @@ impl ParserArenaSession {
             .map(|index| self.active()?.node(control, index.owned()?))
             .transpose()
     }
+    #[cfg(test)]
     pub(crate) fn script_preparation_document(
         &self,
         control: &mut ParseControl,
@@ -4892,6 +4911,7 @@ impl ParserArenaSession {
     }
     /// Preexisting immutable input only; this does not construct parser foreign
     /// names or admit the input backing physically.
+    #[cfg(test)]
     pub(crate) fn allocate_element(
         &mut self,
         control: &mut ParseControl,
@@ -5439,6 +5459,7 @@ impl ParserArenaSession {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn input_state(
         &self,
         control: &mut ParseControl,
@@ -5451,6 +5472,7 @@ impl ParserArenaSession {
     /// Returns original token/value-attribute ranges only when creation actually
     /// rewrote the native value. A completed no-writeback input returns None;
     /// unavailable/imported/incomplete metadata returns its typed error.
+    #[cfg(test)]
     pub(crate) fn input_writeback_sources<'a>(
         &'a self,
         control: &mut ParseControl,
@@ -5461,6 +5483,7 @@ impl ParserArenaSession {
         let index = storage.index(control, node)?;
         find_input_sources(&storage.payloads, control, index)
     }
+    #[cfg(test)]
     pub(crate) fn append_input_internal_value(
         &self,
         control: &mut ParseControl,
@@ -5477,6 +5500,7 @@ impl ParserArenaSession {
         )?;
         Ok(())
     }
+    #[cfg(test)]
     /// Native input value readback, distinct from internal and default value.
     pub(crate) fn append_input_value(
         &self,
@@ -5498,6 +5522,7 @@ impl ParserArenaSession {
             self.append_input_internal_value(control, node, destination)
         }
     }
+    #[cfg(test)]
     pub(crate) fn append_input_default_value(
         &self,
         control: &mut ParseControl,
@@ -5515,6 +5540,7 @@ impl ParserArenaSession {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn image_form_state(
         &self,
         control: &mut ParseControl,
@@ -5533,6 +5559,7 @@ impl ParserArenaSession {
         }
         Ok(state)
     }
+    #[cfg(test)]
     pub(crate) fn output_state(
         &self,
         control: &mut ParseControl,
@@ -5542,6 +5569,7 @@ impl ParserArenaSession {
         let node = storage.index(control, node)?;
         find_output_state(&storage.payloads, control, node)
     }
+    #[cfg(test)]
     pub(crate) fn append_output_value(
         &self,
         control: &mut ParseControl,
@@ -5552,6 +5580,7 @@ impl ParserArenaSession {
         self.output_state(control, node)?;
         append_descendant_text(&self.active()?.records, control, node.index, destination)
     }
+    #[cfg(test)]
     pub(crate) fn append_output_default_value(
         &self,
         control: &mut ParseControl,
@@ -5562,6 +5591,7 @@ impl ParserArenaSession {
         // no nonnull override/setter producer or guessed stored default.
         self.append_output_value(control, node, destination)
     }
+    #[cfg(test)]
     pub(crate) fn textarea_state(
         &self,
         control: &mut ParseControl,
@@ -5574,6 +5604,7 @@ impl ParserArenaSession {
             .map(|(_, state)| state)
             .ok_or(SessionError::TextareaMetadataUnavailable)
     }
+    #[cfg(test)]
     pub(crate) fn textarea_raw_value<'a>(
         &'a self,
         control: &mut ParseControl,
@@ -5629,6 +5660,7 @@ impl ParserArenaSession {
         }
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn image_form_owner(
         &self,
         control: &mut ParseControl,
@@ -5639,6 +5671,7 @@ impl ParserArenaSession {
             .map(|owner| self.active()?.node(control, owner))
             .transpose()
     }
+    #[cfg(test)]
     pub(crate) fn form_association_state(
         &self,
         control: &mut ParseControl,
@@ -5650,6 +5683,7 @@ impl ParserArenaSession {
             .map(|(_, state)| state)
             .ok_or(SessionError::FormAssociationMetadataUnavailable)
     }
+    #[cfg(test)]
     pub(crate) fn form_association_owner(
         &self,
         control: &mut ParseControl,
@@ -6258,6 +6292,7 @@ impl ParserArenaSession {
     /// Only the actual token-created template path in this checkpoint proves
     /// its insertion target and end marker are initially null. Preexisting
     /// templates carry no such parser creation provenance.
+    #[cfg(test)]
     pub(crate) fn unpatched_template_contents(
         &self,
         control: &mut ParseControl,
@@ -6278,6 +6313,7 @@ impl ParserArenaSession {
         }
         Err(SessionError::TemplateInsertionStateUnavailable)
     }
+    #[cfg(test)]
     pub(crate) fn template_contents(
         &self,
         control: &mut ParseControl,
@@ -6512,6 +6548,7 @@ impl FrozenArena {
         control.cleanup_release(&storage.control, HtmlParseResource::AuxiliaryEntries, 0)?;
         ParseEvidence::partition_failed(&mut storage.evidence, control)
     }
+    #[cfg(test)]
     pub(crate) fn input_state(
         &self,
         control: &mut ParseControl,
@@ -6531,6 +6568,7 @@ impl FrozenArena {
         Ok(find_input_state(&storage.payloads, control, node.index)?.1)
     }
     /// Same conditional availability as the active owner, qualified to this arena.
+    #[cfg(test)]
     pub(crate) fn input_writeback_sources<'a>(
         &'a self,
         control: &mut ParseControl,
@@ -6548,6 +6586,7 @@ impl FrozenArena {
             node.index,
         )
     }
+    #[cfg(test)]
     pub(crate) fn append_input_internal_value(
         &self,
         control: &mut ParseControl,
@@ -6564,6 +6603,7 @@ impl FrozenArena {
         )?;
         Ok(())
     }
+    #[cfg(test)]
     /// Native input value readback, distinct from internal and default value.
     pub(crate) fn append_input_value(
         &self,
@@ -6584,6 +6624,7 @@ impl FrozenArena {
             self.append_input_internal_value(control, node, destination)
         }
     }
+    #[cfg(test)]
     pub(crate) fn append_input_default_value(
         &self,
         control: &mut ParseControl,
@@ -6600,6 +6641,7 @@ impl FrozenArena {
         append_input_content(&arena.records, control, node.index, destination, &[])
     }
 
+    #[cfg(test)]
     pub(crate) fn output_state(
         &self,
         control: &mut ParseControl,
@@ -6618,6 +6660,7 @@ impl FrozenArena {
         }
         find_output_state(&storage.payloads, control, node.index)
     }
+    #[cfg(test)]
     pub(crate) fn append_output_value(
         &self,
         control: &mut ParseControl,
@@ -6633,6 +6676,7 @@ impl FrozenArena {
         };
         append_descendant_text(&arena.records, control, node.index, destination)
     }
+    #[cfg(test)]
     pub(crate) fn append_output_default_value(
         &self,
         control: &mut ParseControl,
@@ -6641,6 +6685,7 @@ impl FrozenArena {
     ) -> Result<(), SessionError> {
         self.append_output_value(control, node, destination)
     }
+    #[cfg(test)]
     pub(crate) fn textarea_state(
         &self,
         control: &mut ParseControl,
@@ -6661,6 +6706,7 @@ impl FrozenArena {
             .map(|(_, state)| state)
             .ok_or(SessionError::TextareaMetadataUnavailable)
     }
+    #[cfg(test)]
     pub(crate) fn textarea_raw_value<'a>(
         &'a self,
         control: &mut ParseControl,
@@ -6670,6 +6716,7 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         textarea_raw(&storage.payloads, control, state.raw)
     }
+    #[cfg(test)]
     pub(crate) fn image_form_state(
         &self,
         control: &mut ParseControl,
@@ -6688,6 +6735,7 @@ impl FrozenArena {
         }
         Ok(state)
     }
+    #[cfg(test)]
     pub(crate) fn image_form_owner(
         &self,
         control: &mut ParseControl,
@@ -6696,6 +6744,7 @@ impl FrozenArena {
         let state = self.image_form_state(control, node)?;
         self.resolve_form_owner(control, state.owner)
     }
+    #[cfg(test)]
     pub(crate) fn form_association_state(
         &self,
         control: &mut ParseControl,
@@ -6716,6 +6765,7 @@ impl FrozenArena {
             .map(|(_, state)| state)
             .ok_or(SessionError::FormAssociationMetadataUnavailable)
     }
+    #[cfg(test)]
     pub(crate) fn form_association_owner(
         &self,
         control: &mut ParseControl,
@@ -6724,6 +6774,7 @@ impl FrozenArena {
         let state = self.form_association_state(control, node)?;
         self.resolve_form_owner(control, state.owner)
     }
+    #[cfg(test)]
     fn resolve_form_owner(
         &self,
         control: &mut ParseControl,
@@ -6748,6 +6799,7 @@ impl FrozenArena {
             index: owner,
         }))
     }
+    #[cfg(test)]
     pub(crate) fn script_metadata(
         &self,
         control: &mut ParseControl,
@@ -7845,6 +7897,7 @@ fn validate_initial_input_origins(
     }
     Ok(())
 }
+#[cfg(test)]
 fn find_input_state(
     payloads: &PayloadStorage,
     control: &mut ParseControl,
@@ -7870,6 +7923,7 @@ fn find_input_state(
     }
     Err(SessionError::InputMetadataUnavailable)
 }
+#[cfg(test)]
 fn find_input_sources<'a>(
     payloads: &'a PayloadStorage,
     control: &mut ParseControl,
@@ -7897,6 +7951,7 @@ fn find_input_sources<'a>(
     }
     Err(SessionError::InputMetadataUnavailable)
 }
+#[cfg(test)]
 fn append_input_content(
     records: &[Record],
     control: &mut ParseControl,
@@ -8209,6 +8264,7 @@ fn next_ordinary_view_after_subtree(
     }
     Err(SessionError::Cycle)
 }
+#[cfg(test)]
 fn find_output_state(
     payloads: &PayloadStorage,
     control: &mut ParseControl,
@@ -8228,6 +8284,7 @@ fn find_output_state(
     }
     Err(SessionError::OutputMetadataUnavailable)
 }
+#[cfg(test)]
 fn append_descendant_text(
     records: &[Record],
     control: &mut ParseControl,
@@ -8396,6 +8453,7 @@ fn script_type_charge(
 }
 // Actual hidden-input comparison and classification share the one borrowed
 // literal matcher. The owning ParseControl admits every step before unit reads.
+#[cfg(test)]
 fn script_match(
     control: &mut ParseControl,
     prefix: &'static [u8],
@@ -8437,6 +8495,7 @@ fn classify_script(
             crate::HtmlScriptKind::SpeculationRules => ScriptType::SpeculationRules,
         }))
 }
+#[cfg(test)]
 fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize, SessionError> {
     control.charge(WorkCategory::RecordVisit, 4)?;
     let units = name
@@ -9084,7 +9143,7 @@ mod tests {
             .insert_text(&mut c, &node, None, &mut a, None)
             .unwrap()
             .unwrap()
-            .node;
+            ._node;
         let first_raw = session.textarea_state(&mut c, &node).unwrap().raw;
         let native = native_text(&session, &text);
         let raw = session
@@ -9177,7 +9236,7 @@ mod tests {
             .insert_text(&mut c, &node, None, &mut a, None)
             .unwrap()
             .unwrap()
-            .node;
+            ._node;
         let mut b = next_text(&mut tokenizer, &mut c);
         session
             .insert_text(&mut c, &node, None, &mut b, None)
@@ -9239,7 +9298,7 @@ mod tests {
                 .insert_text(&mut c, &node, None, &mut a, None)
                 .unwrap()
                 .unwrap()
-                .node;
+                ._node;
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
@@ -9521,7 +9580,7 @@ mod tests {
             .insert_text(&mut c, &left, None, &mut a, None)
             .unwrap()
             .unwrap()
-            .node;
+            ._node;
         let tag = next_fixture_tag(
             &mut tokenizer,
             &mut c,
@@ -20739,7 +20798,7 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(native_text(&session, &inserted.node), [0x61]);
+        assert_eq!(native_text(&session, &inserted._node), [0x61]);
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedUtf16Units)
@@ -20993,7 +21052,7 @@ mod tests {
                 requested_delta: 2,
             }))
         ));
-        assert_eq!(native_text(&session, &a.node), [0x61]);
+        assert_eq!(native_text(&session, &a._node), [0x61]);
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedUtf16Units)
@@ -21134,16 +21193,16 @@ mod tests {
             .insert_text(&mut c, &root, None, &mut first, None)
             .unwrap()
             .unwrap();
-        assert_eq!(first.offset, 0);
+        assert_eq!(first._offset, 0);
         let mut next = Some(owned_text(&mut c, &[0xd83d, 0xde00, 0]));
         let next = session
             .insert_text(&mut c, &root, None, &mut next, None)
             .unwrap()
             .unwrap();
-        assert_eq!(next.node.index, first.node.index);
-        assert_eq!(next.offset, 2);
+        assert_eq!(next._node.index, first._node.index);
+        assert_eq!(next._offset, 2);
         assert_eq!(
-            native_text(&session, &first.node),
+            native_text(&session, &first._node),
             [0xd800, 0x20, 0xd83d, 0xde00, 0]
         );
         assert_eq!(session.active().unwrap().usage.utf16_units, 5);
@@ -21188,11 +21247,11 @@ mod tests {
                 .insert_text(&mut c, &root, None, &mut input, None)
                 .unwrap()
                 .unwrap();
-            assert_eq!(inserted.offset, length - 1);
+            assert_eq!(inserted._offset, length - 1);
             if let Some(old) = &node {
-                assert!(session.same_node(&mut c, old, &inserted.node).unwrap());
+                assert!(session.same_node(&mut c, old, &inserted._node).unwrap());
             }
-            node = Some(inserted.node);
+            node = Some(inserted._node);
             let storage = session.active().unwrap();
             let slot = storage
                 .field_slot(&mut c, StringLocation::Text(node.as_ref().unwrap().index))
@@ -21345,7 +21404,7 @@ mod tests {
                     .insert_text(&mut c, &root, None, &mut text, None)
                     .unwrap()
                     .unwrap()
-                    .node,
+                    ._node,
             );
         }
         lexer.release(&mut c).unwrap();
@@ -22029,7 +22088,7 @@ mod tests {
                         .unwrap()
                         .unwrap(),
                 );
-                assert_eq!(last.as_ref().unwrap().offset, position);
+                assert_eq!(last.as_ref().unwrap()._offset, position);
                 let allowance = if position == 0 { 1 } else { 2 * (position + 1) };
                 assert_eq!(
                     c.usage()
@@ -22038,7 +22097,7 @@ mod tests {
                     allowance as u64
                 );
             }
-            let last = last.map(|inserted| inserted.node);
+            let last = last.map(|inserted| inserted._node);
             if let Some(last) = &last {
                 assert_eq!(native_text(&session, last), vec![120; count]);
             } else {
@@ -22217,8 +22276,8 @@ mod tests {
                     .unwrap()
                     .unwrap();
                 assert!(text.is_none());
-                assert_eq!(inserted.offset, offset);
-                last = Some(inserted.node);
+                assert_eq!(inserted._offset, offset);
+                last = Some(inserted._node);
             }
             assert_eq!(
                 native_text(&session, last.as_ref().unwrap()),
@@ -22351,14 +22410,14 @@ mod tests {
                         .unwrap()
                         .unwrap();
                     assert!(text.is_none());
-                    assert_eq!(inserted.offset, output_length);
+                    assert_eq!(inserted._offset, output_length);
                     output_length += incoming_length;
                     if let Some(node) = &original {
-                        assert_eq!(inserted.node.index, node.index);
+                        assert_eq!(inserted._node.index, node.index);
                     } else {
                         let storage = session.active_mut().unwrap();
                         let slot = storage
-                            .field_slot(&mut c, StringLocation::Text(inserted.node.index))
+                            .field_slot(&mut c, StringLocation::Text(inserted._node.index))
                             .unwrap();
                         let RetainedPayload::String { origins, .. } =
                             &storage.payloads.values[slot]
@@ -22375,7 +22434,7 @@ mod tests {
                                 })
                                 .collect::<Vec<_>>()
                         });
-                        original = Some(inserted.node);
+                        original = Some(inserted._node);
                     }
                 }
                 TokenKind::Eof => break,
@@ -22468,14 +22527,14 @@ mod tests {
             .insert_text(&mut c, &root, Some(&element), &mut b, None)
             .unwrap()
             .unwrap();
-        assert_eq!(a.node.index, b.node.index);
-        assert_eq!(native_text(&session, &a.node), [0x61, 0x62]);
+        assert_eq!(a._node.index, b._node.index);
+        assert_eq!(native_text(&session, &a._node), [0x61, 0x62]);
         let mut after = Some(owned_text(&mut c, &[0x63]));
         let after = session
             .insert_text(&mut c, &root, None, &mut after, None)
             .unwrap()
             .unwrap();
-        assert_ne!(a.node.index, after.node.index);
+        assert_ne!(a._node.index, after._node.index);
         session.release(&mut c).unwrap();
         storage_zero(&c);
         let mut session =
@@ -22539,7 +22598,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let HtmlNodeKind::Text(value) =
-            &session.active().unwrap().records[inserted.node.index].kind
+            &session.active().unwrap().records[inserted._node.index].kind
         else {
             panic!("text")
         };
@@ -22612,7 +22671,7 @@ mod tests {
                 requested_delta: 1
             }))
         ));
-        assert_eq!(native_text(&session, &first.node), [0x61]);
+        assert_eq!(native_text(&session, &first._node), [0x61]);
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedUtf16Units)
@@ -23696,7 +23755,7 @@ mod tests {
                     .unwrap();
                 assert_ne!(inert.index, root.index);
                 assert_eq!(session.active().unwrap().records.len(), 4);
-                assert!(state.target.is_none() && state.start.is_none() && state.end.is_none());
+                assert!(state.target.is_none() && state._start.is_none() && state.end.is_none());
             } else {
                 let Err(SessionError::Stop(first)) = result else {
                     panic!("real node cap")

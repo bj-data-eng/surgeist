@@ -11,8 +11,10 @@
 // d7232d746d3112f08926d169591576bd12fe2fdf. Concrete cursor checkpoints,
 // checked reference queries and source-qualified emissions replace its sink.
 
+#[cfg(test)]
+use super::super::input::ProgressiveInputCheckpoint;
 use super::super::{
-    input::{InputCheckpoint, InputPoll, ProgressiveInputCheckpoint},
+    input::{InputCheckpoint, InputPoll},
     references::{self, NameLookup, ReferenceValue},
 };
 use super::*;
@@ -20,6 +22,7 @@ use token::DiagnosticCode::*;
 
 enum ReferenceMark {
     Complete(InputCheckpoint),
+    #[cfg(test)]
     Progressive(ProgressiveInputCheckpoint),
 }
 #[derive(Clone, Copy)]
@@ -65,11 +68,11 @@ impl ReferenceContinuation {
 }
 impl Tokenizer<'_> {
     fn reference_mark(&self, c: &mut ParseControl) -> Result<ReferenceMark, ParseStop> {
+        #[cfg(test)]
         if self.cursor.is_progressive() {
-            Ok(ReferenceMark::Progressive(self.cursor.mark_progressive(c)?))
-        } else {
-            Ok(ReferenceMark::Complete(self.cursor.mark(c)?))
+            return Ok(ReferenceMark::Progressive(self.cursor.mark_progressive(c)?));
         }
+        Ok(ReferenceMark::Complete(self.cursor.mark(c)?))
     }
     fn reference_rewind(
         &mut self,
@@ -78,6 +81,7 @@ impl Tokenizer<'_> {
     ) -> Result<(), ParseStop> {
         match mark {
             ReferenceMark::Complete(mark) => self.cursor.rewind(mark, c)?,
+            #[cfg(test)]
             ReferenceMark::Progressive(mark) => self.cursor.rewind_progressive(mark, c)?,
         }
         self.sync_proofs(c)

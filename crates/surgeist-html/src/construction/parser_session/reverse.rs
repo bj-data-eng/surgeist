@@ -4,7 +4,7 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AssociationRelation {
+pub enum AssociationRelation {
     Output,
     Creation,
     Original,
@@ -17,7 +17,7 @@ pub(crate) enum AssociationRelation {
     Cause,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ReverseQueryError {
+pub enum ReverseQueryError {
     ForeignSource,
     Coordinates,
     Reversed,
@@ -95,6 +95,18 @@ pub(crate) struct AssociationView<'a> {
     omissions: &'a [lexical::LexicalOmission],
 }
 impl<'a> AssociationView<'a> {
+    pub(crate) fn causes_len(&self) -> usize {
+        self.causes.len()
+    }
+    pub(crate) fn lexical_occurrences_len(&self) -> usize {
+        self.occurrences.len()
+    }
+    pub(crate) fn lexical_parts_len(&self) -> usize {
+        self.parts.len()
+    }
+    pub(crate) fn omissions_len(&self) -> usize {
+        self.omissions.len()
+    }
     pub(crate) fn len(&self) -> usize {
         self.rows.len()
     }

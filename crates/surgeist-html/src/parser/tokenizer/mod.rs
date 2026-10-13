@@ -356,8 +356,16 @@ impl<'source> Tokenizer<'source> {
         last_start: Option<&DocumentString>,
         c: &mut ParseControl,
     ) -> Result<Self, ParseStop> {
-        Self::create(source, state, last_start, false, c)
+        Self::create(
+            source,
+            state,
+            last_start,
+            #[cfg(test)]
+            false,
+            c,
+        )
     }
+    #[cfg(test)]
     pub(crate) fn progressive(
         source: &'source HtmlSource,
         state: State,
@@ -370,15 +378,19 @@ impl<'source> Tokenizer<'source> {
         source: &'source HtmlSource,
         state: State,
         last_start: Option<&DocumentString>,
-        progressive: bool,
+        #[cfg(test)] progressive: bool,
         c: &mut ParseControl,
     ) -> Result<Self, ParseStop> {
         c.require_source(source)?;
+        #[cfg(test)]
         let cursor = if progressive {
             InputCursor::progressive(source, c)?
         } else {
             InputCursor::new(source, c)?
         };
+        #[cfg(not(test))]
+        let cursor = InputCursor::new(source, c)?;
+        #[cfg(test)]
         let proofs = if progressive {
             let pair = cursor.consumed_span(c)?.expect("actual progressive span");
             admit_record_write(size_of::<TokenizerProofs>(), 10, c)?;
@@ -396,6 +408,8 @@ impl<'source> Tokenizer<'source> {
         } else {
             None
         };
+        #[cfg(not(test))]
+        let proofs = None;
         let temporary = DraftText::new(c)?;
         let mut name = Utf16Buffer::new(c)?;
         if let Some(last) = last_start
@@ -405,11 +419,15 @@ impl<'source> Tokenizer<'source> {
             temporary.release(c)?;
             return Err(stop);
         }
-        let range = match if progressive {
+        #[cfg(test)]
+        let range = if progressive {
             cursor.next_anchor(c)
         } else {
             cursor.checked_range(0, 0, c)
-        } {
+        };
+        #[cfg(not(test))]
+        let range = cursor.checked_range(0, 0, c);
+        let range = match range {
             Ok(range) => range,
             Err(stop) => {
                 name.release(c)?;
@@ -490,6 +508,7 @@ impl<'source> Tokenizer<'source> {
         self.pending_len -= 1;
         Ok(TokenizerPull::Event(first.expect("actual queued event")))
     }
+    #[cfg(test)]
     pub(crate) fn make_available(
         &mut self,
         through: usize,
@@ -497,6 +516,7 @@ impl<'source> Tokenizer<'source> {
     ) -> Result<(), ParseStop> {
         self.cursor.make_available(through, c)
     }
+    #[cfg(test)]
     pub(crate) fn seal_input(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
         self.cursor.seal_input(c)
     }
@@ -684,8 +704,8 @@ impl<'source> Tokenizer<'source> {
                         }
                         self.queue(
                             Event::Preprocessing {
-                                record,
-                                source: self.current.clone(),
+                                _record: record,
+                                _source: self.current.clone(),
                                 retention,
                             },
                             c,

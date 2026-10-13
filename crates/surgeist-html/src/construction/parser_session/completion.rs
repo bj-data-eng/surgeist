@@ -5,20 +5,31 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConstructionReadiness {
+pub enum ConstructionReadiness {
     Interactive,
     Complete,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConstructionCompletion {
+pub enum ConstructionCompletion {
     Parsing,
     Complete,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct StandaloneDocumentState {
+pub struct StandaloneDocumentState {
     pub(crate) readiness: ConstructionReadiness,
     pub(crate) ready_for_post_load_tasks: bool,
     pub(crate) completion: ConstructionCompletion,
+}
+impl StandaloneDocumentState {
+    pub fn readiness(&self) -> ConstructionReadiness {
+        self.readiness
+    }
+    pub fn ready_for_post_load_tasks(&self) -> bool {
+        self.ready_for_post_load_tasks
+    }
+    pub fn completion(&self) -> ConstructionCompletion {
+        self.completion
+    }
 }
 impl SessionStorage {
     fn completion_slot(&self, c: &mut ParseControl) -> Result<usize, SessionError> {

@@ -48,6 +48,7 @@ pub(super) struct FragmentContextStorage {
     pub(super) source_entries: u64,
 }
 
+#[cfg(test)]
 pub(crate) enum ParserDocumentReference<N = ParserNode> {
     Owned(N),
     Captured(crate::HtmlCaptureDocumentId),
@@ -68,6 +69,7 @@ pub(super) enum ShadowHostKey {
     Owned(usize),
     Captured(crate::HtmlCaptureElementId),
 }
+#[cfg(test)]
 pub(crate) enum QualifiedFragmentHost<N = ParserNode> {
     Owned(N),
     Captured(crate::HtmlCaptureElementId),
@@ -442,6 +444,7 @@ impl ParserArenaSession {
         *output_cause = copy;
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn fragment_output(&self, c: &mut ParseControl) -> Result<ParserNode, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
@@ -456,6 +459,7 @@ impl ParserArenaSession {
 }
 
 impl ParserArenaSession {
+    #[cfg(test)]
     pub(crate) fn qualified_node_document(
         &self,
         c: &mut ParseControl,
@@ -872,6 +876,7 @@ impl SessionStorage {
 impl ParserArenaSession {
     /// Availability-qualified lookup facts from the actual canonical record.
     /// Captured registry IDs remain qualified by the retained capture.
+    #[cfg(test)]
     pub(crate) fn lookup_registry(
         &self,
         c: &mut ParseControl,
@@ -1489,6 +1494,7 @@ impl SessionStorage {
     }
 }
 
+#[cfg(test)]
 pub(crate) struct DeclarativeShadowState<'a, N = ParserNode> {
     pub(crate) host: QualifiedFragmentHost<N>,
     pub(crate) template: N,
@@ -1518,6 +1524,7 @@ impl SessionStorage {
         }
         Ok(())
     }
+    #[cfg(test)]
     fn qualified_registry(
         &self,
         c: &mut ParseControl,
@@ -1545,6 +1552,7 @@ impl SessionStorage {
     }
 }
 impl ParserArenaSession {
+    #[cfg(test)]
     pub(crate) fn declarative_shadow<'a>(
         &'a self,
         c: &mut ParseControl,
@@ -1795,12 +1803,14 @@ impl SessionStorage {
     }
 }
 
+#[cfg(test)]
 pub(crate) struct TemplateCacheState<N = ParserNode> {
     pub(crate) document: crate::HtmlCaptureDocumentId,
     pub(crate) inert: N,
 }
 
 impl FrozenStorage {
+    #[cfg(test)]
     fn context_arena<'a>(&'a self, c: &mut ParseControl) -> Result<&'a Arena, SessionError> {
         c.require_identity(&self.control)?;
         Ok(match &self.view {
@@ -1808,6 +1818,7 @@ impl FrozenStorage {
             FrozenView::Fragment(fragment) => &fragment.arena,
         })
     }
+    #[cfg(test)]
     fn context_index(
         &self,
         c: &mut ParseControl,
@@ -1821,6 +1832,7 @@ impl FrozenStorage {
         }
         Ok(node.index)
     }
+    #[cfg(test)]
     fn context_node(&self, c: &mut ParseControl, index: usize) -> Result<HtmlNodeId, SessionError> {
         let arena = self.context_arena(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -1834,6 +1846,7 @@ impl FrozenStorage {
             index,
         })
     }
+    #[cfg(test)]
     fn context_registry(
         &self,
         c: &mut ParseControl,
@@ -1862,6 +1875,7 @@ impl FrozenStorage {
     }
 }
 impl FrozenStorage {
+    #[cfg(test)]
     fn context_lookup_registry(
         &self,
         c: &mut ParseControl,
@@ -1887,6 +1901,7 @@ impl FrozenStorage {
 }
 
 impl ParserArenaSession {
+    #[cfg(test)]
     pub(crate) fn element_creation(
         &self,
         c: &mut ParseControl,
@@ -1923,6 +1938,7 @@ impl FrozenArena {
             .context)
     }
 
+    #[cfg(test)]
     pub(crate) fn element_creation(
         &self,
         c: &mut ParseControl,
@@ -1960,6 +1976,7 @@ impl FrozenArena {
     }
 }
 impl FrozenArena {
+    #[cfg(test)]
     pub(crate) fn document_class(
         &self,
         c: &mut ParseControl,
@@ -1990,6 +2007,7 @@ impl FrozenArena {
         }
         Err(SessionError::NodeDocumentUnavailable)
     }
+    #[cfg(test)]
     pub(crate) fn qualified_node_document(
         &self,
         c: &mut ParseControl,
@@ -2038,6 +2056,7 @@ impl FrozenArena {
         }
         Err(SessionError::NodeDocumentUnavailable)
     }
+    #[cfg(test)]
     pub(crate) fn lookup_registry(
         &self,
         c: &mut ParseControl,
@@ -2047,6 +2066,7 @@ impl FrozenArena {
         let index = storage.context_index(c, node)?;
         storage.context_lookup_registry(c, index)
     }
+    #[cfg(test)]
     pub(crate) fn template_cache(
         &self,
         c: &mut ParseControl,
@@ -2086,6 +2106,7 @@ impl FrozenArena {
         }
         Ok(None)
     }
+    #[cfg(test)]
     pub(crate) fn declarative_shadow<'a>(
         &'a self,
         c: &mut ParseControl,
@@ -2148,16 +2169,16 @@ impl FrozenArena {
 pub(crate) fn registry_binding_layout() -> usize {
     mem::size_of::<usize>() + mem::size_of::<RegistryRef>()
 }
-pub(crate) struct FrozenFragmentEffects<'a> {
+pub struct FrozenFragmentEffects<'a> {
     storage: &'a FrozenStorage,
     arena: &'a Arena,
     fragment: &'a FragmentContextStorage,
 }
-pub(crate) enum FrozenFragmentHost<'a> {
+pub enum FrozenFragmentHost<'a> {
     Owned(HtmlNode<'a>),
     Captured(&'a crate::HtmlCaptureElementId),
 }
-pub(crate) enum FrozenFragmentEffect<'a> {
+pub enum FrozenFragmentEffect<'a> {
     TemplateCache {
         document: crate::HtmlCapturedNode<'a>,
         inert: HtmlNode<'a>,
@@ -2173,31 +2194,34 @@ pub(crate) enum FrozenFragmentEffect<'a> {
         source: &'a crate::HtmlSourceRange,
     },
 }
-pub(crate) struct FrozenCapturedRegistry<'a> {
+pub struct FrozenCapturedRegistry<'a> {
     capture: &'a crate::HtmlCapture,
     index: usize,
 }
 impl FrozenCapturedRegistry<'_> {
-    pub(crate) fn is_registry(&self, id: &crate::HtmlCaptureRegistryId) -> bool {
+    pub fn is_registry(&self, id: &crate::HtmlCaptureRegistryId) -> bool {
         self.capture
             .registry_index(id)
             .is_ok_and(|index| index == self.index)
     }
 }
-pub(crate) enum FrozenFragmentRegistry<'a> {
+pub enum FrozenFragmentRegistry<'a> {
     Null,
     Unavailable,
     Captured(FrozenCapturedRegistry<'a>),
 }
-pub(crate) struct FrozenFragmentRegistryBinding<'a> {
+pub struct FrozenFragmentRegistryBinding<'a> {
     pub(crate) node: HtmlNode<'a>,
     pub(crate) registry: FrozenFragmentRegistry<'a>,
 }
 impl<'a> FrozenFragmentEffects<'a> {
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.fragment.effects.len()
     }
-    pub(crate) fn registry_slots(&self) -> usize {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn registry_slots(&self) -> usize {
         self.storage.payloads.values.len()
     }
     fn node(&self, index: usize) -> Result<HtmlNode<'a>, SessionError> {
@@ -2405,6 +2429,27 @@ impl FrozenArena {
             }
         }
         Ok(())
+    }
+}
+
+impl<'a> FrozenFragmentEffects<'a> {
+    pub fn effect(&self, index: usize) -> Option<FrozenFragmentEffect<'a>> {
+        self.get(index).expect("prepublication-qualified effect")
+    }
+    pub fn registry(&self, index: usize) -> Option<FrozenFragmentRegistryBinding<'a>> {
+        self.registry_binding(index)
+            .expect("prepublication-qualified registry")
+    }
+}
+impl FrozenFragmentRegistryBinding<'_> {
+    pub fn node(&self) -> HtmlNode<'_> {
+        HtmlNode {
+            arena: self.node.arena,
+            index: self.node.index,
+        }
+    }
+    pub fn registry(&self) -> &FrozenFragmentRegistry<'_> {
+        &self.registry
     }
 }
 

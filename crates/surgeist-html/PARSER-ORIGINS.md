@@ -5,8 +5,10 @@ The private tokenizer and bounded tree-insertion kernel adapt html5ever 0.40.1 a
 The behavioral authority is the separate
 [pinned HTML edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline),
 `877d6146487f15b15bc8dd0e3c625063a37b456a`. The implementation revision records
-provenance, not a different HTML dialect. This machinery currently compiles only
-for tests. The tree kernel implements adjusted insertion locations, element/text
+provenance, not a different HTML dialect. This internal machinery compiles in
+production behind the
+[decoded-Unicode request/report boundary](README.md#decoded-unicode-parsing).
+The tree kernel implements adjusted insertion locations, element/text
 insertion and stack/scope operations over actual controlled native storage.
 The ordinary-document prologue implements Initial and BeforeHtml and hands off
 an owned BeforeHead continuation. The subsequent owning head-stage driver handles
@@ -31,8 +33,8 @@ use that same driver with real inert-document/contents ownership and PI patching
 Exact SVG scripts now retain separate processed state under the selected
 restricted offline operation, with source-ordered foreign-end and nonparser
 connection handling. The [ordinary EOF completion](#ordinary-eof-completion)
-retains the whole private driver after the selected end operation; public
-report assembly remains unfinished.
+retains the whole internal driver after the selected end operation for the
+source-owning public report assembler.
 
 ## Original source and incorporated files
 
@@ -217,7 +219,7 @@ diagnostics and recovered character runs retain original UTF-16/source evidence;
 recovered tags do not invent lexical origins. Source-defined ignore rows execute,
 while unavailable families preserve the token before effects. Ordinary EOF now
 uses the separately qualified [completion owner](#ordinary-eof-completion),
-without certifying public report publication.
+before the public entry can publish a qualified completed report.
 
 The formatting extension adapts `mod.rs` lines 713–921, 963–1035, 1516–1553
 and 1587–1604, with `rules.rs` lines 730–784, into the private
@@ -318,8 +320,7 @@ reprocessing. New and old raw buffers coexist under actual admission; replaced
 backing is disposed while initialized retired slots remain charged until registry
 disposal. Terminal cleanup performs no useful reset. Repeated raw copies and
 registry scans may be quadratic and remain charged and polled. This checkpoint
-adds no user interaction, API-value normalization, hosted execution or completed
-public parse/report lifecycle.
+adds no user interaction, API-value normalization or hosted execution.
 
 The output extension removes only the existing output Form borders in the
 ordinary body and structural table drivers. It ingests no additional html5ever
@@ -340,7 +341,7 @@ removal branches and charges used by canonical form effects. Terminal stops keep
 partial scratch owned by its caller and prohibit observations/freeze until
 disposal. Repeated scans may be superlinear and stay charged and polled. This
 checkpoint adds no setters, nonnull overrides, general form reset, hosted
-initialization or completed public ingestion/report lifecycle.
+initialization.
 
 The Hidden-input extension adapts the existing `rules.rs` body branch at lines
 815–840 and the table branch at lines 1107–1115. The latter is already within
@@ -362,7 +363,7 @@ obsolete backing is released while initialized registry slots remain charged
 until disposal. A terminal stop retains partial owners and prevents publication;
 cleanup runs no useful reset. Repeated scans and copies may be quadratic and
 remain charged and polled. Other input states, hosted initialization, general
-setters and public parse/report completion remain separate work.
+setters remain separate work.
 
 The Radio extension adds Surgeist-owned shared state rules and admitted peer
 effects in `src/input.rs` and `src/construction/parser_session/radio.rs`.
@@ -410,8 +411,9 @@ disposal, so terminal cleanup can release remaining storage after a stopped
 flush. Actual delegated insertion modes, Text return and foster state survive
 source-ordered reprocessing. Form and image effects reuse their existing owners.
 Unsupported control branches retain the original token before unavailable effects. This checkpoint does not certify complete
-InTable behavior, fragment initialization, public report completion or complete
-parser resource accounting. Ordinary EOF uses the separate
+InTable behavior or complete parser resource accounting. Contextual execution
+and report assembly use their separately qualified owners. Ordinary EOF uses the
+separate
 [completion owner](#ordinary-eof-completion).
 
 The ordinary frameset extension adapts `rules.rs` lines 378–383, 458–475,
@@ -432,8 +434,8 @@ delegates it through ordinary body reconstruction. The shared character-run
 owner preserves mixed-run source ranges and NULL/nonwhitespace diagnostics.
 Noframes uses the existing RAWTEXT handoff and restores its actual caller mode
 at end-tag or EOF. These operations retain one controller, arena and terminal
-cleanup path. They do not supply hosted frame navigation, fragment initialization
-or public report publication. Ordinary EOF completion is owned separately
+cleanup path. They do not supply hosted frame navigation. Ordinary EOF completion
+is owned separately
 [below](#ordinary-eof-completion).
 
 The ordinary select extension adapts the input/hr guards and
@@ -465,10 +467,11 @@ owners without useful resets or cloning. Fragment insertion completes its
 sibling batch before parent children-changed and static post-connection work.
 Actual string binding writes are admitted before clone allocation and committed
 immediately afterward, retaining strict alias validation on stopped prefixes.
-These adaptations remain private and test-compiled. They add no second
-controller, public DOM API, generic moveBefore primitive, captured fragment
-initialization, imported template/shadow cloning, external execution or a public
-report contract. Ordinary EOF now runs its two real checkpoints through the
+These adaptations remain internal production operations. They add no second
+controller, public DOM API, generic moveBefore primitive, imported cloning with
+unavailable template/shadow facts or external execution. Qualified context
+initialization and report publication use their separate owning boundary.
+Ordinary EOF now runs its two real checkpoints through the
 separate [completion owner](#ordinary-eof-completion). Finite admission does not
 establish linear complexity or
 complete allocator/RSS coverage.
@@ -503,11 +506,11 @@ qualified processed state and foreign-end route. No new dependency or external
 execution domain is introduced. All original/adjusted backing, maps,
 qualified clone slots, writes and variable scans are admitted; failures retain
 owned prefixes and refuse useful continuation/freeze. Repeated registry and
-topology scans may be quadratic. This remains private, test-compiled machinery,
-without a complete allocator/RSS or public parse/report claim.
+topology scans may be quadratic. This internal production machinery supplies no
+complete allocator/RSS guarantee.
 
-Remaining insertion modes, context effects and report publication remain
-required engine work. The upstream driver, encoding implementation, serializer,
+Unsupported construction branches and unavailable context effects remain
+explicit refusals. The upstream driver, encoding implementation, serializer,
 XML parser and RcDom are not incorporated here. Research prototypes and their
 measurements do not certify this adapted implementation or supply a public
 parsing contract.
@@ -575,10 +578,10 @@ Freeze refuses pending intrinsic work or unavailable template/document/PI facts
 before transfer. A terminal stop retains its actual effect/task/backing owners
 for disposal without useful continuation. Repeated registry/topology scans and
 copies/moves can be quadratic; finite charged/polled work is not a linearity or
-allocator/RSS guarantee. This remains private, test-compiled fresh ordinary
-construction. Proofless head dispatch still suspends at script/template starts;
-imported template facts, captured context-sensitive fragments, shadow attachment
-and complete public parsing/report lifecycle remain outside it.
+allocator/RSS guarantee. This remains internal fresh ordinary construction.
+Proofless head dispatch still suspends at script/template starts; imported
+unavailable template facts and live shadow attachment remain outside it.
+Qualified contextual execution and completed report assembly are separate owners.
 No new dependency, upstream driver, serializer, Tendril/atom implementation,
 XML document parser or RcDom is incorporated.
 
@@ -630,8 +633,8 @@ payload and does not drain intrinsic tasks. Pending wrapper/effect work blocks
 useful entry and freeze. Actual registry/vector capacities and fixed layouts
 stay charged until disposal; terminal cleanup preserves first stop and performs
 no rescue processing. Scans, clone/adoption walks and moves may be quadratic.
-This private test-compiled checkpoint supplies no complete allocator/RSS,
-linear-work or public parsing/report lifecycle promise. Separate
+This internal production checkpoint supplies no complete allocator/RSS or
+linear-work promise. Separate
 [W3C attribution](../../licenses/w3c/NOTICE.md#html-delegated-svg-script-processing)
 and [crate attribution](NOTICE.md#restricted-svg-script-processing) cover Tiny
 algorithm incorporation; WHATWG terms do not replace those W3C terms.
@@ -662,14 +665,15 @@ Constructor and admitted-producer closure qualify absent external domains;
 no browser event, global queue, timing value or deferred replay record is added.
 
 The completed private owner retains the whole same driver/control/arena,
-diagnostics, lexical events, maps and capacity ownership for later report work.
+diagnostics, lexical events, maps and capacity ownership for report assembly.
 A rejected or interrupted move keeps actual owners available for terminal
 cleanup; cleanup performs no useful readiness progression, canonical pops or
 task draining. Compiled fixed layouts and real vector capacities remain with
 the existing controller. Finite admission does not establish linear complexity
-or complete allocator/RSS coverage. Public document/fragment parsing,
-diagnostic/source-map/report transfer and contextual execution remain unfinished.
-No new public API or complete enclosing parser capability follows.
+or complete allocator/RSS coverage. The
+[public request/report boundary](README.md#decoded-unicode-parsing) consumes these
+owners for supported document/fragment profiles; it does not establish complete
+HTML construction, host lifecycle or enclosing contribution acceptance.
 
 ## Ordered private parse evidence
 
@@ -699,17 +703,37 @@ Actual source/controller qualification, physical capacity retention, sticky
 first stop and explicit disposal remain with the sole parser owner. Completed
 observation borrows or moves the same backing. The private stopped result keeps
 only committed evidence, a borrowed original source, first stop and fixed usage
-snapshots after native/lexical reclamation; it is not the future owning public
-failed report. Cleanup performs no useful continuation or diagnostic emission.
+snapshots after native/lexical reclamation. The public terminal adapter retains
+the original evidence backing with the original request rather than exposing a
+partial tree. Cleanup performs no useful continuation or diagnostic emission.
 Alias refusal leaves retained owners available for a cleanup retry.
 
 Selected literal tests cover delayed chronological emission even when offsets
 go backwards, rule/location identity, the pre/listing self-closing descriptor,
 qualification and admission/cleanup boundaries. They do not certify complete
 diagnostic coverage, corpus error metadata, native-field/output provenance,
-reverse lookup, feed invariance, public report transfer or contextual fragments.
-This private test-compiled implementation adds no public API, new attribution
-material, linear-work or complete allocator/RSS guarantee.
+reverse lookup or feed invariance. Qualified public report/readback and
+contextual execution are described by their own boundary, not certified by these
+selected tests. This Surgeist-owned production store adds no attribution material,
+linear-work or complete allocator/RSS guarantee.
+
+## Public source-owning parser boundary
+
+The [request adapter](src/parser/tree_builder/parse.rs),
+[report assembler](src/parser/tree_builder/report.rs) and
+[public read adapters](src/construction/parser_session/read.rs) are Surgeist-owned.
+Production compilation exposes the existing tokenizer, construction session,
+completion, freeze and evidence owners through synchronous decoded-Unicode
+document/fragment requests. No upstream driver, second parser, decoding library,
+DOM implementation or new language edition is incorporated by this promotion.
+The immutable report moves the original source and completed storage; terminal
+failure retains the original request and safe evidence without a partial tree.
+Public readers borrow fixed metadata, diagnostic and association records and
+qualified history rather than copying a parallel provenance schema. Internal
+helpers remain private; conformance observers, expected-data decoding and feeding
+fixtures remain test-only. The [overview](README.md#decoded-unicode-parsing) records
+supported profiles, explicit limits and exclusions. Original notices, source pins
+and historical incorporation hashes continue to identify their original inputs.
 
 ## Attribution and verification
 
@@ -733,5 +757,6 @@ pisct run --timeout-seconds 180 -- cargo clippy --offline --locked -j 1 -p surge
 ```
 
 These checks exercise the private tokenizer, bounded tree kernel and providers. Full parser
-conformance, tree effects, diagnostics/report publication and complete resource
-accounting remain obligations of the enclosing parser contribution.
+conformance, unsupported tree effects and complete resource accounting remain
+obligations of the enclosing parser contribution. Public report availability is
+described separately from those acceptance limits.

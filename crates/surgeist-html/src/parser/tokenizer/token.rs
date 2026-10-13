@@ -19,7 +19,7 @@ use crate::HtmlParseResource;
 use crate::HtmlSourceRange;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum OriginKind {
+pub enum OriginKind {
     Literal,
     Newline,
     AsciiLowercase,
@@ -27,7 +27,7 @@ pub(crate) enum OriginKind {
     CharacterReference,
     RecoverySyntax,
 }
-pub(crate) struct TextOrigin {
+pub struct TextOrigin {
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) source: HtmlSourceRange,
@@ -200,7 +200,7 @@ impl TokenKind {
 }
 /// Named normative tokenizer conditions, never inferred from inherited prose.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DiagnosticCode {
+pub enum DiagnosticCode {
     SurrogateInInputStream,
     NoncharacterInInputStream,
     ControlCharacterInInputStream,
@@ -340,7 +340,7 @@ impl DiagnosticCode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DiagnosticPhase {
+pub enum DiagnosticPhase {
     InputStream,
     Tokenizer,
 }
@@ -349,8 +349,8 @@ pub(crate) enum Event {
     Diagnostic(crate::construction::parser_session::evidence::DiagnosticId),
     /// First committed cursor traversal only; no replay/lookahead duplication.
     Preprocessing {
-        record: super::super::input::PreprocessingRecord,
-        source: HtmlSourceRange,
+        _record: super::super::input::PreprocessingRecord,
+        _source: HtmlSourceRange,
         retention: OwnedVec<HtmlSourceRange>,
     },
 }
@@ -518,5 +518,20 @@ impl DiagnosticCode {
             Self::NoncharacterCharacterReference => "parse-error-noncharacter-character-reference",
             Self::ControlCharacterReference => "parse-error-control-character-reference",
         }
+    }
+}
+
+impl TextOrigin {
+    pub fn start(&self) -> usize {
+        self.start
+    }
+    pub fn end(&self) -> usize {
+        self.end
+    }
+    pub fn source(&self) -> &HtmlSourceRange {
+        &self.source
+    }
+    pub fn kind(&self) -> OriginKind {
+        self.kind
     }
 }

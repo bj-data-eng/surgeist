@@ -1,10 +1,11 @@
 # surgeist-html
 
-This crate owns the pinned HTML language foundation. Its initial public surface
+This crate owns the pinned HTML language foundation. Its public surface
 provides immutable exact UTF-16 strings, namespace identity, qualified names,
 ordered raw attributes, native immutable document/fragment construction,
 known-name inventories, common intrinsic value operations, bounded immutable
-captures of HTML semantic facts and checked parser request configuration.
+captures of HTML semantic facts, synchronous decoded-Unicode parsing and
+source-owning immutable parse reports with terminal failure evidence.
 The [HTML contribution](https://github.com/bj-data-eng/surgeist/issues/1132)
 tracks the remaining typed vocabulary/value interpretation, parser, semantic
 interpretation, provenance and full parser resource-admission capabilities.
@@ -1265,7 +1266,7 @@ OOM, linear work or complete allocator/RSS bound is promised.
 The [defining clause](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#meta-description)
 and [literal tests](tests/semantics_meta_description.rs) distinguish these
 observations. Media grammar, broader encoding requirements, pragma execution,
-other metadata-name rules, live mutation, search/UI use and public parsing remain
+other metadata-name rules, live mutation and search/UI use remain
 separate. Closed
 Query/Fact additions are intentionally breaking for exhaustive matches.
 
@@ -1413,7 +1414,7 @@ allocator/RSS bound is claimed. The closed Query/Fact/local-error additions are
 intentionally breaking. [Local tests](tests/attributes_form_name.rs) and
 [captured tests](tests/semantics_form_name.rs) cover these observations. Live
 collections, DOM named properties/reflection, submission, full form conformance
-and public parse/report completion remain separate.
+remain separate.
 
 <a id="captured-map-name-author"></a>
 
@@ -1971,6 +1972,145 @@ Constructing a request admits no source and produces no parse result. The caps
 describe logical storage, known allocation layouts and work credits, rather than
 wall-clock time, process memory or allocator headers.
 
+<a id="decoded-unicode-parsing"></a>
+
+## Decoded-Unicode parsing
+
+[`HtmlDocumentParseRequest::parse`](src/request.rs) synchronously consumes an
+offline request and returns `Result<HtmlParseReport, HtmlParseFailure>`.
+[`HtmlFragmentParseRequest::parse`](src/request.rs) uses an actual checked
+`HtmlFragmentContext`, retaining its qualified capture, context/target documents,
+requested/effective scripting mode and declarative-shadow setting. One source
+cursor, tokenizer, construction arena and controller execute each request. The
+[public adapter](src/parser/tree_builder/parse.rs) moves their completed owners
+into the report without reparsing or rebuilding an output tree. The native tree
+is read through the existing `HtmlDocument`/`HtmlFragment` construction API.
+
+The document execution profile is a fresh ordinary document with Disabled
+scripting. Captured-document, hosted, srcdoc and mode-fixed document execution
+remain unsupported even when a request can retain their configuration.
+Fragments use their qualified Inert or Disabled profile; influencing unavailable
+context facts or required custom reactions produce typed failures. Neither entry
+executes JavaScript, fetches resources, attaches a live shadow root or synthesizes
+browser events. Supported input construction covers Text, Search, Telephone,
+Password, Hidden, Checkbox, Radio, Email and URL. The `input` Button state and temporal input states
+remain unsupported. Other unavailable construction branches stop
+explicitly rather than publishing a partial success.
+
+`HtmlSource::utf8` accepts already decoded Unicode in Rust string storage;
+`HtmlSource::utf16` retains exact `DocumentString` units, including isolated
+surrogates. Constructors do not decode bytes or choose an encoding. Reports and
+failures retain the original source identity and UTF-8-byte or UTF-16-unit
+coordinates, independently of preprocessing and recovered native text. Public
+transport streaming, incremental fragment feeding and byte decoding are separate.
+
+All nineteen limits are explicit. This small synchronous document uses finite
+storage, layout and work limits rather than a default or unlimited cap:
+
+```rust
+use surgeist_html::{
+    HtmlDocumentParseRequest, HtmlParseFailureReason, HtmlParseLimits,
+    HtmlParseStop, HtmlSource,
+};
+
+let limits = HtmlParseLimits::builder()
+    .source_units(1_024)
+    .buffered_utf16_units(1_024)
+    .token_attributes(64)
+    .auxiliary_entries(16_384)
+    .managed_nodes(256)
+    .managed_edges(256)
+    .managed_attributes(256)
+    .managed_utf16_units(4_096)
+    .source_map_entries(16_384)
+    .source_map_payload_units(16_384)
+    .diagnostics(256)
+    .diagnostic_payload_units(16_384)
+    .context_effects(256)
+    .open_elements(128)
+    .tree_depth(128)
+    .managed_capacity_bytes(16_777_216)
+    .peak_transient_bytes(33_554_432)
+    .atomic_layout_bytes(1_048_576)
+    .work_credits(10_000_000)
+    .finish()
+    .unwrap();
+let request = HtmlDocumentParseRequest::offline(
+    HtmlSource::utf8("<!doctype html><p>A&amp;B</p>"),
+    limits,
+);
+let source_id = request.source().identity().clone();
+let report = request.parse().unwrap();
+assert_eq!(report.source().identity(), &source_id);
+assert!(report.document().is_some());
+assert!(report.fragment().is_none());
+assert!(report.diagnostics().is_empty());
+
+let cancelled = HtmlDocumentParseRequest::offline(
+    HtmlSource::utf8("<p>x"),
+    report.limits().clone(),
+);
+cancelled.cancellation().cancel();
+let failure = cancelled.parse().unwrap_err();
+assert_eq!(
+    failure.reason(),
+    HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
+);
+assert_eq!(failure.source().as_utf8(), Some("<p>x"));
+```
+
+A checked fragment context is supplied to
+`HtmlFragmentParseRequest::new(source, context, limits)`; `with_options` also
+retains the requested scripting mode and declarative-shadow permission. Context
+selection does not itself parse or admit source. The
+[fragment owner](#private-context-fragments) consults only facts that influence
+the selected construction branch.
+
+Cloned `HtmlParseCancellation` handles share sticky cancellation. Terminal limit,
+unsupported-branch, missing-context and engine failures are distinct from
+recoverable HTML diagnostics. A failure exposes the original source, limits and
+request context, its typed reason, actual first stop and source-admission state,
+and first-stop, after-cleanup and current retained usage. Safe committed
+diagnostics remain available when their owner was initialized; pre-execution
+rejection has no invented usage or diagnostic prefix. No partial tree is exposed.
+A cleanup refusal retains its actual owner in the failure and is reported
+separately; terminal transfer does not allocate a replacement failure container.
+
+The [immutable report](src/parser/tree_builder/report.rs) lends its document or
+fragment, context, document state, effects and final `usage`. Reading does not
+reopen execution or alter that snapshot. Its
+[qualified readers](src/construction/parser_session/read.rs) expose:
+
+- `metadata()` visits one retained registry slot per cursor step, distinguishing
+  records, skipped private slots and completion. Payload getters borrow actual
+  state. `input_email_value_count()` applies only to multiple Email input records:
+  empty multiple Email retains `Some(0)`, whitespace-only retains `Some(1)`;
+  single Email and other kinds return `None`. It reads the produced count without
+  resplitting the joined current value.
+- `diagnostics()` lends committed record/location pairs in emission order,
+  including delayed errors whose source offsets go backwards. Recovery evidence
+  is not an author-conformance certificate.
+- `associations()` lends admitted fixed rows. Each `row(index)` lends its cause
+  and a `destination()`: a current native destination, lexical occurrence with
+  an optional part, omission, lexical end or cause. Current field destinations
+  identify final native fields; a cause's `retired_destination()` preserves
+  historical field identity without claiming that the old field still exists.
+  Its source-qualified reverse query accepts caller-supplied cancellation and
+  visits one row per step, returning Match, Skipped, Complete or Cancelled
+  without history expansion or allocation.
+- `history_view()` lends qualified groups and headers, including their cause
+  and optional retirement cause. Its expansion cursor uses caller-provided
+  scratch. Contributed text intervals are distinct from historical merge prefixes.
+
+These immutable construction results are not a live DOM or a second mutation
+registry. Native/fact builders and caller-owned read scratch retain their separate
+allocation policies. Parser limits measure admitted logical storage, known
+layouts, work and retained capacities, not process RSS, elapsed time or allocator
+preemption. Existing scans, copies and topology walks may be quadratic; finite
+input and budgets do not promise successful completion or universal linearity.
+[Public entry tests](tests/public_parse.rs) exercise this boundary. Internal-owner
+descriptions below retain their existing link anchors.
+
 <a id="private-context-fragments"></a>
 
 The private [ContextFragmentDriver](src/parser/tree_builder/context.rs) executes
@@ -2010,16 +2150,16 @@ partition retains committed diagnostics and first-stop identity while reclaiming
 native/effect storage; disposal resumes no useful work and refunds no cumulative
 work or high-water observations.
 
-These operations remain cfg(test) checkpoints. Public source-owning
-document/fragment parsing and report transfer, complete lexical/D1 all-overlap
-evidence, canonical DOM import and live consequences remain separate work.
+These internal production owners serve the
+[decoded-Unicode fragment entry](#decoded-unicode-parsing) and its completed
+source-owning report. Canonical DOM import and live consequences remain separate.
 Capture constructors do not inherit the parser's physical-allocation or work
 contract. Actual consumer scans, copies, moves and provider layouts use its sole
 finite ledger and cancellation; they may be quadratic and establish no RSS or
 linear-work guarantee.
 
-Private parser mechanics currently compile for tests while engine integration
-continues. Source decoding, UTF-16 buffering, reference lookup, the adapted
+Internal parser mechanics compile in production. Source preprocessing, UTF-16
+buffering, reference lookup, the adapted
 tokenizer and controlled arena mutations share one resource controller. The
 bounded tree kernel now supplies adjusted element/text insertion, foster and
 template locations, source-required ignored-placement guards and exact scope
@@ -2049,9 +2189,9 @@ Prefix cleanup and retained safe-evidence disposal are separate operations;
 reclaimed live storage does not refund work, cumulative fees or high-water
 values. Initialization pulls no tokens: evidence is honestly absent before its
 owner exists, or the actual initialized empty prefix after failure while taking
-a ready driver, rather than fabricated diagnostics. This remains a private
-cfg(test) producer checkpoint. Public source-owning success/failure reports and
-D1 all-overlap source lookup remain separate. Contextual construction uses the
+a ready driver, rather than fabricated diagnostics. This internal producer serves the
+[public success/failure boundary](#decoded-unicode-parsing) without exposing a
+partial tree. Contextual construction uses the
 [private fragment owner](#private-context-fragments), with its own completed and
 frozen transfer.
 
@@ -2092,7 +2232,8 @@ Other resettable control creation retains untouched-token continuations when
 its required machinery is unavailable.
 Source-defined error-and-ignore rows still execute. The fresh ordinary driver
 uses the [private EOF completion](#private-ordinary-eof) described below;
-these private operations produce no public parse report.
+completed construction transfers through the
+[public report boundary](#decoded-unicode-parsing).
 
 Ordinary frameset documents use that same constructor-proved driver. AfterHead
 and eligible InBody entry lead to InFrameset, AfterFrameset and AfterAfterFrameset.
@@ -2123,8 +2264,7 @@ pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
 Association scans are metered and can require quadratic work. Other resettable
-controls, unfinished table rows, hosted parsing and public diagnostic/source-map/
-report transfer remain unfinished. [Contextual fragments](#private-context-fragments)
+controls, unsupported table branches and hosted parsing remain unfinished. [Contextual fragments](#private-context-fragments)
 have their separately qualified private execution owner.
 Ordinary EOF uses the [private completion owner](#private-ordinary-eof).
 
@@ -2159,8 +2299,8 @@ qualification. Old and new raw backing coexist under admission; successful
 replacement releases old backing while retired registry slots stay admitted
 until disposal. Stops refuse publication and cleanup runs no reset. Repeated
 copies and scans may be quadratic; all variable work remains charged and polled.
-User interactions, value setters, API-value normalization, submission wrapping and
-public parse completion remain separate work.
+User interactions, value setters, API-value normalization and submission wrapping
+remain separate work.
 
 Ordinary output parsing now uses the same native insertion and listed form
 association operations. Fresh creation completes its actual empty reset before
@@ -2172,8 +2312,7 @@ They share the canonical ordinary traversal, charge variable visits and copies,
 and admit actual UTF-16 buffer capacity. Text merges and moves need no output
 value cache. Stops preserve any owned partial scratch and refuse observation or
 freeze; terminal cleanup performs no useful reset. General setters, nonnull
-overrides, form reset, hosted initialization and public parse completion remain
-separate work.
+overrides, form reset and hosted initialization remain separate work.
 
 Private input creation supports Hidden, Text, Search, Telephone, Password,
 Checkbox, Radio, Email and URL
@@ -2224,8 +2363,7 @@ backing coexist under admission; successful replacement releases obsolete backin
 while retired registry slots remain charged until disposal. Stops retain partial
 owners, refuse publication and perform no reset during cleanup. Repeated scans
 and copies may be quadratic and remain charged and polled. Other input families,
-hosted initialization, complete live setter integration and public parse
-completion remain separate work.
+hosted initialization and complete live setter integration remain separate work.
 
 Private Details construction applies the [shared attribute-effect rules](src/details_rules.rs)
 during source-ordered attribute creation, cloning and insertion. A nonempty,
@@ -2276,7 +2414,8 @@ continued construction or publication.
 
 This is a structural checkpoint. Other unavailable control creation preserves
 its original token before unsupported effects.
-It does not establish complete InTable behavior or public report publication.
+It does not establish complete InTable behavior. Whole completed construction
+uses the [public report boundary](#decoded-unicode-parsing).
 Contextual parsing uses the [private fragment owner](#private-context-fragments).
 The fresh ordinary
 driver has its separately qualified [EOF completion](#private-ordinary-eof).
@@ -2316,8 +2455,8 @@ this ordinary capability. The [contextual fragment owner](#private-context-fragm
 separately supplies captured initialization and qualified shadow construction.
 Ordinary EOF now
 runs two source-positioned intrinsic checkpoints after canonical end pops,
-through the [private completion owner](#private-ordinary-eof). Public report
-publication remains separate.
+through the [private completion owner](#private-ordinary-eof), before the
+[public report boundary](#decoded-unicode-parsing) can publish immutable storage.
 The [select construction owner](src/construction/parser_session/select.rs),
 [managed clone owner](src/construction/parser_session/clone.rs) and
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
@@ -2369,11 +2508,11 @@ without running useful effects.
 
 The [template state owner](src/construction/parser_session/template.rs),
 [template dispatcher](src/parser/tree_builder/template.rs) and
-[origin record](PARSER-ORIGINS.md#ordinary-template-extension) identify this private,
-test-compiled boundary. The [private fragment owner](#private-context-fragments)
+[origin record](PARSER-ORIGINS.md#ordinary-template-extension) identify this internal
+production boundary. The [private fragment owner](#private-context-fragments)
 separately supplies captured template initialization and qualified declarative
 shadow construction. Imported templates with unavailable patch facts, live DOM
-shadow attachment and public stop-parsing/report publication remain unfinished.
+shadow attachment remain unfinished.
 No public captured
 template-for reference query or live DOM follows. Repeated registry/topology
 scans, comparisons, copies and moves can be quadratic; finite charged/polled work
@@ -2405,8 +2544,8 @@ refuse freeze. Repeated registry/topology scans may be quadratic; no linear-time
 or allocator/RSS guarantee follows. The separately qualified
 [restricted SVG script operation](#private-svg-script) uses the same foreign
 creator and dispatcher. Ordinary EOF uses the separately qualified
-[private completion owner](#private-ordinary-eof); public report publication,
-[contextual fragments](#private-context-fragments) use their qualified construction
+[private completion owner](#private-ordinary-eof).
+[Contextual fragments](#private-context-fragments) use their qualified construction
 facts and effects, while imported templates with unavailable facts remain refused.
 
 <a id="private-svg-script"></a>
@@ -2465,9 +2604,9 @@ retains the coherent prefix and first stop, then releases lexical/native backing
 maps, registry capacities, handles and tickets without rescue processing.
 Repeated scans, subtree walks, copies and moves can be quadratic; finite charged
 and polled work is not linearity, allocator cancellation or an RSS guarantee.
-These operations remain private and test-compiled. Imported/hosted execution,
-live DOM shadow attachment and public diagnostic/source-map/report transfer remain
-separate work. [Captured fragments](#private-context-fragments) have a distinct
+These operations remain internal production mechanisms. Imported/hosted
+execution and live DOM shadow attachment remain separate work. Completed
+construction uses the [public report boundary](#decoded-unicode-parsing). [Captured fragments](#private-context-fragments) have a distinct
 qualified execution profile. Ordinary EOF completion is described below.
 The [origin record](PARSER-ORIGINS.md#restricted-svg-script-extension)
 and [source attribution](NOTICE.md#restricted-svg-script-processing) record the
@@ -2475,7 +2614,7 @@ distinct HTML, Tiny and implementation-provenance terms.
 
 <a id="private-ordinary-eof"></a>
 
-The fresh test-compiled ordinary driver completes the selected private end-of-parsing
+The fresh ordinary driver completes the selected internal end-of-parsing
 operation after the actual final EOF token's insertion-mode recovery. Its
 qualified construction Document starts with source-initial Complete readiness,
 post-load readiness false and parsing unfinished. Initial Complete is not proof
@@ -2504,8 +2643,8 @@ replay intent is synthesized. EOF does not invent an SVG script-end invocation.
 
 Successful private completion retains the whole original driver: the same
 controller, arena, diagnostics, lexical events, source evidence and capacities.
-Its qualified completed owner is neither a second parser nor a public parse
-report. First stop remains sticky through readiness, pops, cloning, checkpoints
+Its qualified completed owner is internal; the public entry consumes it into
+a source-owning report without creating another parser. First stop remains sticky through readiness, pops, cloning, checkpoints
 and owner transfer; failed completion cannot publish a partial success. Terminal
 cleanup releases actual retained storage without useful pops, task execution or
 readiness progression. Actual fixed layouts and vector capacities remain admitted
@@ -2518,7 +2657,7 @@ The completed guard can also freeze its actual session into a private
 `FrozenStandaloneParts` owner. It retains the same immutable arena, diagnostics,
 source identity and compiled usage records while releasing the remaining
 tokenizer, lexical and stack owners. The resulting owner has no source lifetime;
-the eventual public assembler must still move the original source handle.
+the public assembler moves the original source handle with that storage.
 
 A refusal before storage transfer retains the completed driver. A stop after
 transfer retains the frozen arena and remaining execution owners for cleanup.
@@ -2528,11 +2667,12 @@ controller's snapshot captured at first stop, separately from usage after cleanu
 Active and frozen stopped evidence use the same preflighted partition: committed
 diagnostics retain their original backing and tickets, while native association
 storage is reclaimed without post-stop allocation or useful work. Public report
-assembly remains contribution work.
+assembly consumes that qualified storage and the original request atomically.
 
-Public parsed document/fragment results and atomic diagnostic/source-map/report
-transfer remain unimplemented. [Contextual fragments](#private-context-fragments)
-have their separately qualified private EOF return. Ordinary completion does not
+[Public parsed document/fragment reports](#decoded-unicode-parsing) retain
+completed native storage and committed diagnostics, associations and history.
+[Contextual fragments](#private-context-fragments) have their separately qualified
+internal EOF return. Ordinary completion does not
 certify unsupported input families, hosted execution, live DOM shadow attachment,
 full parser accounting or whole HTML contribution completion.
 The [end owner](src/parser/tree_builder/end.rs),
@@ -2541,7 +2681,7 @@ The [end owner](src/parser/tree_builder/end.rs),
 
 <a id="private-ordered-diagnostics"></a>
 
-The test-compiled ordinary driver retains chronological diagnostics in one
+The ordinary driver retains chronological diagnostics in one
 [parse-evidence owner](src/construction/parser_session/evidence.rs), initialized
 in the real construction session before the first tokenizer pull. Tokenizer,
 prologue and tree recovery append to that same owner when their actual error
@@ -2582,17 +2722,18 @@ text merging, replacement, cloning, retirement and replay retain original groups
 and later construction triggers. Its controlled projection reads actual canonical
 bindings and borrows only a complete admitted result. Completed, frozen and failed
 owners lend committed diagnostics through one fixed borrowed record/location view.
-Public all-overlap reverse queries and public successful/failed report transfer
-remain unfinished. The [private fragment owner](#private-context-fragments)
+Public fixed-row associations and all-overlap reverse cursors borrow the
+completed report; terminal failures retain only their safe committed diagnostics. The [private fragment owner](#private-context-fragments)
 retains this committed diagnostic store through its own completion/failure paths. All
-these diagnostic operations are private
-and test-compiled; no public API or complete HTML parser follows.
+these diagnostic operations share one production owner. Their public readbacks
+are described [above](#decoded-unicode-parsing); selected tests do not certify
+complete diagnostic coverage or whole HTML parser conformance.
 The [origin record](PARSER-ORIGINS.md#ordered-private-parse-evidence) distinguishes
 this Surgeist-owned storage and consumer from the adapted parser emitters.
 
 <a id="private-feeding-continuation"></a>
 
-The private, test-compiled ordinary driver can progressively expose an existing
+The internal ordinary driver can progressively expose an existing
 immutable source through the [input cursor](src/parser/input.rs), then explicitly
 seal it. `NeedInput` preserves the actual tokenizer, pending character reference
 and construction owner until more source becomes available. It does not mean EOF
@@ -2666,18 +2807,19 @@ Actual completed-parser observation and its flat consumer vectors share the
 parser's admission, work, cancellation and physical-capacity ledger. Resource
 failure and cancellation tests check sticky first stop, retained-owner integrity
 and consumer-ticket cleanup. This does not establish a linear-work, allocator
-preemption, RSS, full-corpus conformance, public parse-report or whole-parser
+preemption, RSS, full-corpus conformance or whole-parser
 accounting guarantee. The [fixture attribution](NOTICE.md#html5lib-tests-fixtures)
 links the exact bundled MIT license and contributor credits.
 
-Remaining insertion modes and public parse-report publication remain unfinished.
-[Private contextual fragments](#private-context-fragments) retain source-qualified
-construction effects without establishing complete public fragment parsing.
+Unsupported construction and execution profiles remain explicit terminal
+refusals. [Contextual fragments](#private-context-fragments) retain source-qualified
+construction effects through the bounded public entry; this is not complete
+HTML or live DOM support.
 The [parser origin record](PARSER-ORIGINS.md) identifies incorporated source,
 modifications and attribution separately from the normative HTML edition.
 The offline `tools/generate_character_references.py --check`
 verifies every named-reference and C1 data record from the tracked pinned syntax
 capture; optional `--verify-origins` also compares the retained original HTML
 and acquired implementation witnesses. Normal generation needs no ignored
-checkout or network access. These mechanics do not yet provide public parsing
-or a complete parser accounting guarantee.
+checkout or network access. Generated reference data does not establish complete
+parser conformance or a complete parser accounting guarantee.

@@ -262,9 +262,36 @@ impl<'source> StandaloneDocumentDriver<'source> {
         })
     }
 }
-impl CompletedStandaloneDocument<'_> {
+impl<'source> CompletedStandaloneDocument<'source> {
+    pub(super) fn stop_for_public_failure(&mut self) {
+        if let Some(d) = &mut self.driver {
+            d.control
+                .stop_unsupported_standalone(super::StandaloneUnsupported::Provenance);
+        }
+    }
+    pub(super) fn take_public_failure(
+        &mut self,
+    ) -> Result<FailedStandaloneDocument<'source>, StandaloneError> {
+        self.cleanup_failure()?;
+        let driver = self.driver.take().ok_or(StandaloneError::Consumed)?;
+        let stop = driver.control.stop().ok_or(StandaloneError::Consumed)?;
+        let at_stop = driver
+            .control
+            .first_stop_usage()
+            .ok_or(StandaloneError::Consumed)?
+            .clone();
+        Ok(FailedStandaloneDocument {
+            _source: driver.source,
+            after_cleanup: driver.control.usage().clone(),
+            control: driver.control,
+            stop,
+            _at_stop: at_stop,
+            evidence: driver.failed_evidence,
+        })
+    }
     /// Borrows only the proved complete immutable projection. Preparing it is
     /// a separate parse-ledger operation; this lender never resumes that work.
+    #[cfg(test)]
     pub(crate) fn associations(
         &self,
     ) -> Result<crate::construction::parser_session::provenance::AssociationView<'_>, StandaloneError>
@@ -313,6 +340,7 @@ impl CompletedStandaloneDocument<'_> {
             .map_err(HeadError::from)
             .map_err(StandaloneError::from)
     }
+    #[cfg(test)]
     pub(crate) fn native_associations(
         &mut self,
     ) -> Result<
@@ -339,6 +367,7 @@ impl CompletedStandaloneDocument<'_> {
     }
     /// Borrows the actual completed native records and the same control. No
     /// session mutation, fixture extraction, freeze or evidence disposal occurs.
+    #[cfg(test)]
     pub(crate) fn native_view(
         &mut self,
     ) -> Result<crate::construction::parser_session::NativeView<'_>, StandaloneError> {
@@ -360,6 +389,7 @@ impl CompletedStandaloneDocument<'_> {
             .map_err(HeadError::from)
             .map_err(StandaloneError::from)
     }
+    #[cfg(test)]
     pub(crate) fn take_diagnostics(
         &mut self,
     ) -> Result<
@@ -391,6 +421,7 @@ impl CompletedStandaloneDocument<'_> {
     /// Fixed borrowed readback of the actual committed store, in emission order.
     /// The completed owner already qualified the sole source/session. This does
     /// not scan, allocate, mutate or resume execution authority.
+    #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
     ) -> Result<
@@ -428,6 +459,7 @@ impl CompletedStandaloneDocument<'_> {
             .map_err(HeadError::from)
             .map_err(StandaloneError::from)
     }
+    #[cfg(test)]
     pub(crate) fn document_state(&mut self) -> Result<StandaloneDocumentState, StandaloneError> {
         if self.frozen.is_some() {
             return Err(StandaloneError::Consumed);
@@ -450,6 +482,7 @@ impl CompletedStandaloneDocument<'_> {
             .map_err(KernelError::from)
             .map_err(HeadError::from)?)
     }
+    #[cfg(test)]
     pub(crate) fn usage(&self) -> Result<&super::super::control::ParseUsage, StandaloneError> {
         Ok(self
             .driver
@@ -458,9 +491,11 @@ impl CompletedStandaloneDocument<'_> {
             .control
             .usage())
     }
+    #[cfg(test)]
     pub(crate) fn at_stop(&self) -> Option<&super::super::control::ParseUsage> {
         self.driver.as_ref()?.control.first_stop_usage()
     }
+    #[cfg(test)]
     pub(crate) fn after_cleanup(&self) -> Option<&super::super::control::ParseUsage> {
         self.after_cleanup.as_ref()
     }
@@ -499,6 +534,7 @@ impl CompletedStandaloneDocument<'_> {
         self.after_cleanup = Some(driver.control.usage().clone());
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         // Borrowed release preserves the actual owner on alias/admission failure.
@@ -735,9 +771,11 @@ impl FrozenStandaloneParts {
         self.final_usage = self.control.usage().clone();
         Ok(())
     }
+    #[cfg(test)]
     pub(super) fn immutable_document(&self) -> Option<&crate::HtmlDocument> {
         self.arena.as_ref()?.document()
     }
+    #[cfg(test)]
     pub(super) fn immutable_evidence(
         &self,
     ) -> Result<&crate::construction::parser_session::evidence::ParseEvidence, StandaloneError>
@@ -750,6 +788,7 @@ impl FrozenStandaloneParts {
     }
     /// Disposal of an already sealed success never partitions its evidence into
     /// a failed parse. Refusal preserves the same arena/evidence/ticket owner.
+    #[cfg(test)]
     pub(super) fn release_sealed(&mut self) -> Result<(), StandaloneError> {
         let Some(arena) = &mut self.arena else {
             return Ok(());
@@ -768,6 +807,7 @@ impl FrozenStandaloneParts {
             self.source.length,
         )
     }
+    #[cfg(test)]
     pub(crate) fn document(&mut self) -> Result<&crate::HtmlDocument, StandaloneError> {
         self.control.checkpoint()?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
@@ -779,6 +819,7 @@ impl FrozenStandaloneParts {
     pub(crate) fn document_state(&self) -> StandaloneDocumentState {
         self.document_state
     }
+    #[cfg(test)]
     pub(crate) fn final_usage(&self) -> &super::super::control::ParseUsage {
         &self.final_usage
     }
@@ -828,6 +869,7 @@ impl FrozenStandaloneParts {
         self.after_cleanup = Some(self.control.usage().clone());
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         if self.control.stop().is_some() {
             self.cleanup_failure()?;
@@ -847,10 +889,10 @@ impl FrozenStandaloneParts {
 /// token drafts survive successful extraction. Source ownership stays with the
 /// borrowed request; the later consuming public entry must move that handle.
 pub(crate) struct FailedStandaloneDocument<'source> {
-    source: &'source crate::HtmlSource,
+    _source: &'source crate::HtmlSource,
     control: ParseControl,
     stop: ParseStop,
-    at_stop: super::super::control::ParseUsage,
+    _at_stop: super::super::control::ParseUsage,
     after_cleanup: super::super::control::ParseUsage,
     evidence: Option<crate::construction::parser_session::evidence::FailureDiagnosticEvidence>,
 }
@@ -888,6 +930,7 @@ impl DetachedStandaloneFailure {
             .as_ref()
             .map(|evidence| evidence.diagnostics())
     }
+    #[cfg(test)]
     pub(super) fn release(&mut self) -> Result<(), StandaloneError> {
         if let Some(evidence) = self.evidence.take() {
             evidence.release(&mut self.control)?;
@@ -941,11 +984,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
         driver.reclaim_parse_owners()?;
         let driver = input.take().expect("stopped actual owner reclaimed");
         Ok(FailedStandaloneDocument {
-            source: driver.source,
+            _source: driver.source,
             after_cleanup: driver.control.usage().clone(),
             control: driver.control,
             stop,
-            at_stop: driver.failure_usage.expect("prepared fixed snapshot"),
+            _at_stop: driver.failure_usage.expect("prepared fixed snapshot"),
             evidence: driver.failed_evidence,
         })
     }
@@ -967,21 +1010,27 @@ impl FailedStandaloneDocument<'_> {
             evidence: failed.evidence,
         })
     }
+    #[cfg(test)]
     pub(crate) fn source(&self) -> &crate::HtmlSource {
-        self.source
+        self._source
     }
+    #[cfg(test)]
     pub(crate) fn stop(&self) -> ParseStop {
         self.stop
     }
+    #[cfg(test)]
     pub(crate) fn at_stop(&self) -> &super::super::control::ParseUsage {
-        &self.at_stop
+        &self._at_stop
     }
+    #[cfg(test)]
     pub(crate) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
         &self.after_cleanup
     }
+    #[cfg(test)]
     pub(crate) fn retained_usage(&self) -> &super::super::control::ParseUsage {
         self.control.usage()
     }
+    #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
     ) -> Option<crate::construction::parser_session::evidence::DiagnosticEvidenceView<'_>> {
@@ -989,6 +1038,7 @@ impl FailedStandaloneDocument<'_> {
             .as_ref()
             .map(|evidence| evidence.diagnostics())
     }
+    #[cfg(test)]
     pub(crate) fn release(&mut self) -> Result<(), StandaloneError> {
         if let Some(evidence) = self.evidence.take() {
             evidence.release(&mut self.control)?;
