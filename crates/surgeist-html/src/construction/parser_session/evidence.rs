@@ -902,6 +902,273 @@ mod tests {
     }
 
     #[test]
+    fn fifth_diagnostic_pair_fits_capacity_clipped_for_both_actual_vectors() {
+        let source = HtmlSource::utf8("\0\0\0\0\0");
+        let record = mem::size_of::<DiagnosticRecord>() as u64;
+        let location = mem::size_of::<DiagnosticLocation>() as u64;
+        // At four pairs, a sixth Record slot fits by itself. It must not
+        // consume the minimum layout still required by the fifth Location.
+        let capacity = 6 * record + 4 * location;
+        let transient = 4 * (record + location) + 6 * record;
+        for physical in [true, false] {
+            let builder = limits(100).into_builder();
+            let selected = if physical {
+                builder.managed_capacity_bytes(capacity)
+            } else {
+                builder.peak_transient_bytes(transient)
+            }
+            .finish()
+            .unwrap();
+            let (mut c, mut evidence) = owner(&source, selected);
+            for offset in 0..5 {
+                let id = append(&mut evidence, &mut c, &source, offset).unwrap();
+                assert_eq!(id.index, offset);
+                let (actual, source_range) = evidence.get(&mut c, &id).unwrap();
+                assert_eq!(actual.location, offset);
+                assert_eq!(
+                    (source_range.start(), source_range.end()),
+                    (offset, offset + 1)
+                );
+                assert_eq!(
+                    (evidence.len(), evidence.locations.len()),
+                    (offset + 1, offset + 1)
+                );
+            }
+            assert_eq!(c.stop(), None);
+            if physical {
+                assert!(c.usage().actual_capacity_bytes <= capacity);
+            } else {
+                assert!(
+                    c.usage()
+                        .resource(HtmlParseResource::PeakTransientBytes)
+                        .high_water
+                        <= transient
+                );
+            }
+            evidence.release(&mut c).unwrap();
+            assert_released(&c);
+        }
+    }
+
+    #[test]
+    fn fifth_pair_one_short_work_keeps_original_prefix_and_prepared_first_capacity() {
+        let source = HtmlSource::utf8("\0\0\0\0\0");
+        let selected = limits(100);
+        let (mut probe, mut evidence) = owner(&source, selected);
+        for offset in 0..4 {
+            append(&mut evidence, &mut probe, &source, offset).unwrap();
+        }
+        let before = probe
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        append(&mut evidence, &mut probe, &source, 4).unwrap();
+        let cost = probe
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - before;
+        evidence.release(&mut probe).unwrap();
+        assert_released(&probe);
+        for short in [false, true] {
+            let (mut c, mut evidence) = owner(&source, selected);
+            for offset in 0..4 {
+                append(&mut evidence, &mut c, &source, offset).unwrap();
+            }
+            let available = selected.work_credits()
+                - c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(WorkCategory::StateStep, available - cost + u64::from(short))
+                .unwrap();
+            let result = append(&mut evidence, &mut c, &source, 4);
+            if short {
+                assert!(matches!(
+                    result,
+                    Err(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    })
+                ));
+                assert_eq!((evidence.len(), evidence.locations.len()), (4, 4));
+                assert!(evidence.records.capacity() > 4);
+                assert_eq!(evidence.locations.capacity(), 4);
+                let first = c.stop();
+                let snapshot = c.first_stop_usage().unwrap().clone();
+                assert!(append(&mut evidence, &mut c, &source, 4).is_err());
+                assert_eq!(c.stop(), first);
+                assert_eq!(c.first_stop_usage(), Some(&snapshot));
+                let mut slot = Some(evidence);
+                let failed = ParseEvidence::partition_failed(&mut slot, &mut c)
+                    .unwrap()
+                    .unwrap();
+                assert!(slot.is_none());
+                for offset in 0..4 {
+                    let (record, location) = failed.retained_record(offset).unwrap();
+                    assert_eq!(record.location, offset);
+                    assert_eq!((location.start(), location.end()), (offset, offset + 1));
+                }
+                failed.release(&mut c).unwrap();
+                assert_eq!(c.stop(), first);
+                assert_eq!(c.first_stop_usage(), Some(&snapshot));
+            } else {
+                assert!(result.is_ok());
+                assert_eq!((evidence.len(), evidence.locations.len()), (5, 5));
+                evidence.release(&mut c).unwrap();
+            }
+            assert_released(&c);
+        }
+    }
+
+    #[test]
+    fn second_location_one_short_capacity_keeps_the_prepared_record_and_original_prefix() {
+        let source = HtmlSource::utf8("\0\0\0\0\0");
+        let record_bytes = mem::size_of::<DiagnosticRecord>() as u64;
+        let location_bytes = mem::size_of::<DiagnosticLocation>() as u64;
+        for prefix in [0_usize, 4] {
+            let required = (prefix as u64 + 1) * (record_bytes + location_bytes);
+            let selected = limits(100)
+                .into_builder()
+                .managed_capacity_bytes(required - 1)
+                .finish()
+                .unwrap();
+            let (mut c, mut evidence) = owner(&source, selected);
+            for offset in 0..prefix {
+                append(&mut evidence, &mut c, &source, offset).unwrap();
+            }
+            let result = append(&mut evidence, &mut c, &source, prefix);
+            let first_capacity =
+                (prefix as u64 + 1) * record_bytes + prefix as u64 * location_bytes;
+            assert_eq!(
+                result.err(),
+                Some(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::ManagedCapacityBytes,
+                    current: first_capacity,
+                    requested_delta: location_bytes,
+                    limit: required - 1,
+                })
+            );
+            assert_eq!((evidence.len(), evidence.locations.len()), (prefix, prefix));
+            assert_eq!(evidence.records.capacity(), prefix + 1);
+            assert_eq!(evidence.locations.capacity(), prefix);
+            assert_eq!(c.usage().actual_capacity_bytes, first_capacity);
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::Diagnostics).current,
+                prefix as u64
+            );
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::SourceMapEntries)
+                    .current,
+                prefix as u64
+            );
+            let stop = c.stop();
+            let snapshot = c.first_stop_usage().unwrap().clone();
+            for offset in 0..prefix {
+                let (record, location) = evidence.retained_record(offset).unwrap();
+                assert_eq!(record.location, offset);
+                assert_eq!((location.start(), location.end()), (offset, offset + 1));
+            }
+            let mut slot = Some(evidence);
+            let failure = ParseEvidence::partition_failed(&mut slot, &mut c)
+                .unwrap()
+                .unwrap();
+            assert!(slot.is_none());
+            assert_eq!(failure.len(), prefix);
+            failure.release(&mut c).unwrap();
+            assert_released(&c);
+            assert_eq!(c.stop(), stop);
+            assert_eq!(c.first_stop_usage(), Some(&snapshot));
+        }
+    }
+
+    #[test]
+    fn fifth_pair_second_logical_refusal_retains_spare_capacity_but_no_new_pair() {
+        let source = HtmlSource::utf8("\0\0\0\0\0");
+        let selected = limits(100)
+            .into_builder()
+            .source_map_entries(4)
+            .finish()
+            .unwrap();
+        let (mut c, mut evidence) = owner(&source, selected);
+        for offset in 0..4 {
+            append(&mut evidence, &mut c, &source, offset).unwrap();
+        }
+        assert_eq!(
+            append(&mut evidence, &mut c, &source, 4).err(),
+            Some(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::SourceMapEntries,
+                current: 4,
+                requested_delta: 1,
+                limit: 4,
+            })
+        );
+        assert_eq!((evidence.len(), evidence.locations.len()), (4, 4));
+        assert_eq!(evidence.records.capacity(), 8);
+        assert_eq!(evidence.locations.capacity(), 4);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::Diagnostics).current,
+            4
+        );
+        let snapshot = c.first_stop_usage().unwrap().clone();
+        let first = c.stop();
+        evidence.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(c.stop(), first);
+        assert_eq!(c.first_stop_usage(), Some(&snapshot));
+    }
+
+    #[test]
+    fn cancellation_or_foreign_control_before_fifth_pair_preserves_both_actual_buffers() {
+        let source = HtmlSource::utf8("\0\0\0\0\0");
+        for cancel in [true, false] {
+            let cancellation = HtmlParseCancellation::new();
+            let mut c = ParseControl::new(limits(100), cancellation.clone());
+            c.admit_source(&source).unwrap();
+            let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+            for offset in 0..4 {
+                append(&mut evidence, &mut c, &source, offset).unwrap();
+            }
+            let before = c.usage().clone();
+            let mut foreign = ParseControl::new(limits(100), HtmlParseCancellation::new());
+            foreign.admit_source(&source).unwrap();
+            if cancel {
+                cancellation.cancel();
+            }
+            let active = if cancel { &mut c } else { &mut foreign };
+            assert_eq!(
+                append(&mut evidence, active, &source, 4).err(),
+                Some(if cancel {
+                    ParseStop::Cancelled
+                } else {
+                    ParseStop::InternalInvariant(Invariant::ForeignControl)
+                })
+            );
+            assert_eq!((evidence.len(), evidence.locations.len()), (4, 4));
+            assert_eq!(
+                (evidence.records.capacity(), evidence.locations.capacity()),
+                (4, 4)
+            );
+            assert_eq!(c.usage(), &before);
+            for offset in 0..4 {
+                let (record, location) = evidence.retained_record(offset).unwrap();
+                assert_eq!(record.location, offset);
+                assert_eq!((location.start(), location.end()), (offset, offset + 1));
+            }
+            let first = active_stop(&c, &foreign, cancel);
+            evidence.release(&mut c).unwrap();
+            assert_released(&c);
+            assert_released(&foreign);
+            assert_eq!(active_stop(&c, &foreign, cancel), first);
+        }
+        fn active_stop(
+            c: &ParseControl,
+            foreign: &ParseControl,
+            cancel: bool,
+        ) -> Option<ParseStop> {
+            if cancel { c.stop() } else { foreign.stop() }
+        }
+    }
+
+    #[test]
     fn tokenizer_null_comment_diagnostics_retain_bounded_pair_layouts() {
         use super::super::provenance::{LexicalOccurrence, LexicalPart};
         use crate::parser::tokenizer::{

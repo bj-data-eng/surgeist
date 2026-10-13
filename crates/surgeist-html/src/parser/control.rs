@@ -1706,6 +1706,16 @@ impl<T> OwnedVec<T> {
             Ok(plan) => plan,
             Err(reason) => return control.fail(reason),
         };
+        self.prepare_plan(control, additional, copy_bytes, writes, plan)
+    }
+    fn prepare_plan(
+        &mut self,
+        control: &mut ParseControl,
+        additional: usize,
+        copy_bytes: u64,
+        writes: u64,
+        plan: Option<ReservationPlan>,
+    ) -> Result<(), ParseStop> {
         let Ok(units) = u64::try_from(additional) else {
             return control.representation(self.resource);
         };
@@ -1727,6 +1737,67 @@ impl<T> OwnedVec<T> {
             control.reserve(&mut self.vector, plan)?;
         }
         Ok(())
+    }
+    /// Pair-local spare capacity must leave room for the other required slot.
+    /// Only fixed Vec headers are probed here, without latching the other side's
+    /// representation failure or moving its owner/work/logical admission earlier.
+    /// The caller has already admitted the original combined atomic layout.
+    fn prepare_pair_slot<U>(
+        &mut self,
+        other: &OwnedVec<U>,
+        control: &mut ParseControl,
+    ) -> Result<(), ParseStop> {
+        self.require_owner(control)?;
+        control.charge(WorkCategory::RecordVisit, 2)?;
+        let plan = match control.geometric_plan(&self.vector, 1) {
+            Ok(plan) => plan,
+            Err(stop) => return control.fail(stop),
+        };
+        let plan = if let Some(mut plan) = plan {
+            let exact = ReservationPlan::for_vec(&self.vector, 1)
+                .expect("the geometric plan proved this required layout")
+                .expect("the geometric plan requires a reservation");
+            control.charge(WorkCategory::RecordVisit, 2)?;
+            match ReservationPlan::for_vec(&other.vector, 1) {
+                Ok(Some(required)) => {
+                    // After this reserve, the other required reserve must fit
+                    // both retained capacity and old/new transient overlap.
+                    let without_old = control
+                        .usage
+                        .resource(HtmlParseResource::ManagedCapacityBytes)
+                        .current
+                        .checked_sub(plan.old_bytes)
+                        .expect("the geometric plan proved the existing allocation");
+                    let ceiling = control.limits[HtmlParseResource::ManagedCapacityBytes as usize]
+                        .saturating_sub(without_old)
+                        .saturating_sub(required.new_bytes - required.old_bytes)
+                        .min(
+                            control.limits[HtmlParseResource::PeakTransientBytes as usize]
+                                .saturating_sub(without_old)
+                                .saturating_sub(required.new_bytes),
+                        );
+                    let clipped = plan.new_bytes.min(ceiling);
+                    if clipped < exact.new_bytes {
+                        // Keep the first exact preparation and let the second
+                        // required operation report its original concrete refusal.
+                        plan = exact;
+                    } else {
+                        let slots = (clipped / size_of::<T>() as u64) as usize;
+                        plan.additional = slots - self.vector.len();
+                        plan.new_bytes = slots as u64 * size_of::<T>() as u64;
+                    }
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    // Do not fail on the second side before its original turn.
+                    plan = exact;
+                }
+            }
+            Some(plan)
+        } else {
+            None
+        };
+        self.prepare_plan(control, 1, size_of::<T>() as u64, 1, plan)
     }
     /// Reserves only real physical append storage; initialized entries and
     /// their payload copies/writes remain the actual push caller's duty.
@@ -1781,8 +1852,8 @@ impl<T> OwnedVec<T> {
             .checked_add(size_of::<U>())
             .ok_or_else(|| control.fail_invariant(Invariant::CapacityMismatch))?;
         control.admit_atomic_layout(bytes)?;
-        self.prepare(control, 1, size_of::<T>() as u64, 1)?;
-        other.prepare(control, 1, size_of::<U>() as u64, 1)?;
+        self.prepare_pair_slot(other, control)?;
+        other.prepare_pair_slot(self, control)?;
         control.acquire_many(&[(self.resource, 1), (other.resource, 1)])?;
         // No fallible operation follows admission. Record is published last.
         other.vector.push(other_value);
@@ -2227,6 +2298,107 @@ mod tests {
     }
     fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+
+    #[test]
+    fn paired_fixed_layout_refusal_precedes_growth_work_and_logical_slots() {
+        let selected = limits()
+            .into_builder()
+            .atomic_layout_bytes((size_of::<u64>() + size_of::<u32>() - 1) as u64)
+            .work_credits(0)
+            .diagnostics(0)
+            .source_map_entries(0)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
+        let mut records = OwnedVec::new(HtmlParseResource::Diagnostics).unwrap();
+        let mut locations = OwnedVec::new(HtmlParseResource::SourceMapEntries).unwrap();
+        let combined = (size_of::<u64>() + size_of::<u32>()) as u64;
+        assert_eq!(
+            records.try_push_pair(&mut locations, &mut c, 7_u64, 9_u32),
+            Err(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::AtomicLayoutBytes,
+                current: 0,
+                requested_delta: combined,
+                limit: combined - 1,
+            })
+        );
+        assert_eq!((records.len(), locations.len()), (0, 0));
+        assert_eq!((records.capacity(), locations.capacity()), (0, 0));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            0
+        );
+        let snapshot = c.first_stop_usage().unwrap().clone();
+        records.release(&mut c).unwrap();
+        locations.release(&mut c).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.first_stop_usage(), Some(&snapshot));
+    }
+
+    #[test]
+    fn paired_first_work_or_logical_refusal_precedes_foreign_second_owner() {
+        for work in [true, false] {
+            let builder = limits().into_builder();
+            let selected = if work {
+                builder.work_credits(0)
+            } else {
+                builder.diagnostics(0)
+            }
+            .finish()
+            .unwrap();
+            let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
+            let mut foreign = control();
+            let mut records = OwnedVec::new(HtmlParseResource::Diagnostics).unwrap();
+            let mut locations = OwnedVec::new(HtmlParseResource::SourceMapEntries).unwrap();
+            locations.require_owner(&mut foreign).unwrap();
+            let foreign_before = foreign.usage().clone();
+            let result = records.try_push_pair(&mut locations, &mut c, 7_u64, 9_u32);
+            assert!(
+                matches!(result, Err(ParseStop::LimitExceeded { resource, .. })
+                if resource == if work { HtmlParseResource::WorkCredits } else { HtmlParseResource::Diagnostics })
+            );
+            assert_eq!((records.len(), locations.len()), (0, 0));
+            assert_eq!((records.capacity(), locations.capacity()), (0, 0));
+            assert_eq!(foreign.usage(), &foreign_before);
+            assert_eq!(foreign.stop(), None);
+            let first = c.stop();
+            let snapshot = c.first_stop_usage().unwrap().clone();
+            assert!(records.try_push_pair(&mut locations, &mut c, 7, 9).is_err());
+            assert_eq!(c.stop(), first);
+            assert_eq!(c.first_stop_usage(), Some(&snapshot));
+            records.release(&mut c).unwrap();
+            locations.release(&mut foreign).unwrap();
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            assert_eq!(foreign.usage().actual_capacity_bytes, 0);
+        }
+    }
+
+    #[test]
+    fn paired_foreign_second_owner_retains_prepared_first_without_half_commit() {
+        let mut c = control();
+        let mut foreign = control();
+        let mut records = OwnedVec::new(HtmlParseResource::Diagnostics).unwrap();
+        let mut locations = OwnedVec::new(HtmlParseResource::SourceMapEntries).unwrap();
+        locations.require_owner(&mut foreign).unwrap();
+        assert_eq!(
+            records.try_push_pair(&mut locations, &mut c, 7_u64, 9_u32),
+            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+        );
+        assert_eq!((records.len(), locations.len()), (0, 0));
+        assert_eq!(records.capacity(), 1);
+        assert_eq!(locations.capacity(), 0);
+        assert_eq!(c.usage().actual_capacity_bytes, size_of::<u64>() as u64);
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::Diagnostics).current,
+            0
+        );
+        assert_eq!(foreign.stop(), None);
+        let snapshot = c.first_stop_usage().unwrap().clone();
+        records.release(&mut c).unwrap();
+        locations.release(&mut foreign).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.first_stop_usage(), Some(&snapshot));
     }
 
     #[test]
