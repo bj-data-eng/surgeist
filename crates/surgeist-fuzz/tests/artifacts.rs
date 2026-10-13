@@ -1107,3 +1107,35 @@ fn reduction_publication_rejects_wrong_case_links_and_retains_original_on_quota_
             .is_none()
     );
 }
+
+#[test]
+fn publication_waits_for_another_writer_then_preserves_both_cases() {
+    use std::{sync::mpsc, time::Duration};
+    use rustix::fs::{flock, FlockOperation};
+    let directory = Directory::new();
+    let store = ArtifactStore::open(directory.path(), limits()).unwrap();
+    let first = store.publish_failure(&artifact(b"first")).unwrap();
+    let lock = fs::File::open(directory.path().join("publication.lock")).unwrap();
+    flock(&lock, FlockOperation::LockExclusive).unwrap();
+    let (started_tx, started_rx) = mpsc::channel();
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            started_tx.send(()).unwrap();
+            done_tx.send(store.publish_failure(&artifact(b"second"))).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        // Lock contention is the timed behavior: a writer must wait for the
+        // existing publication, not report partial I/O while the lock is held.
+        let early = done_rx.recv_timeout(Duration::from_millis(100));
+        drop(lock);
+        let second = match early {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => done_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+            Err(error) => panic!("writer disconnected: {error}"),
+        }.unwrap();
+        assert_eq!(store.load_failure(&first).unwrap().input(), b"first");
+        assert_eq!(store.load_failure(&second).unwrap().input(), b"second");
+        assert!(store.recovery_report().unwrap().partial.is_empty());
+    });
+}
