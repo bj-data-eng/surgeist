@@ -12,6 +12,7 @@ use std::{error::Error, fmt};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlParseRequestError {
     Capture(HtmlCaptureError),
+    Base(crate::HtmlBaseFactsError),
 }
 impl From<HtmlCaptureError> for HtmlParseRequestError {
     fn from(error: HtmlCaptureError) -> Self {
@@ -22,6 +23,7 @@ impl fmt::Display for HtmlParseRequestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Capture(error) => write!(f, "HTML parse request rejected: {error}"),
+            Self::Base(error) => write!(f, "HTML parse request rejected: {error}"),
         }
     }
 }
@@ -29,6 +31,7 @@ impl Error for HtmlParseRequestError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Capture(error) => Some(error),
+            Self::Base(error) => Some(error),
         }
     }
 }
@@ -66,6 +69,7 @@ pub struct HtmlDocumentParseRequest {
     limits: HtmlParseLimits,
     cancellation: HtmlParseCancellation,
     context: DocumentContext,
+    base_facts: Option<crate::HtmlParseBaseFacts>,
 }
 impl HtmlDocumentParseRequest {
     /// Parse the owned decoded source into a complete immutable report.
@@ -84,6 +88,7 @@ impl HtmlDocumentParseRequest {
             limits: self.limits,
             cancellation: self.cancellation,
             context: self.context,
+            base_facts: self.base_facts,
         }
     }
     /// Selects the no-browsing-context operation: scripting is Disabled and
@@ -94,6 +99,7 @@ impl HtmlDocumentParseRequest {
             limits,
             cancellation: HtmlParseCancellation::new(),
             context: DocumentContext::Offline,
+            base_facts: None,
         }
     }
     /// Selects one document from the supplied immutable capture. Enabled
@@ -131,7 +137,25 @@ impl HtmlDocumentParseRequest {
             limits,
             cancellation: HtmlParseCancellation::new(),
             context: DocumentContext::Captured { capture, document },
+            base_facts: None,
         })
+    }
+    /// Supplies actual ordinary-document URL/encoding/CSP observations. This
+    /// does not change fresh parser initialization into iframe-srcdoc.
+    pub fn with_base_facts(
+        mut self,
+        facts: crate::HtmlParseBaseFacts,
+    ) -> Result<Self, HtmlParseRequestError> {
+        if facts.document().iframe_srcdoc() {
+            return Err(HtmlParseRequestError::Base(
+                crate::HtmlBaseFactsError::ContradictoryObservation,
+            ));
+        }
+        self.base_facts = Some(facts);
+        Ok(self)
+    }
+    pub fn base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
+        self.base_facts.as_ref()
     }
     /// Exact supplied source, including its immutable identity and coordinates.
     pub fn source(&self) -> &HtmlSource {
@@ -180,10 +204,14 @@ pub(crate) struct DocumentRequestParts {
     limits: HtmlParseLimits,
     cancellation: HtmlParseCancellation,
     context: DocumentContext,
+    base_facts: Option<crate::HtmlParseBaseFacts>,
 }
 impl DocumentRequestParts {
     pub(crate) fn image_support(&self) -> crate::HtmlImageSupport {
         self.context.image_support()
+    }
+    pub(crate) fn base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
+        self.base_facts.as_ref()
     }
     pub(crate) fn source(&self) -> &HtmlSource {
         &self.source
@@ -222,6 +250,7 @@ pub struct HtmlFragmentParseRequest {
     requested: HtmlParserScriptingMode,
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
+    base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
 }
 impl HtmlFragmentParseRequest {
     /// Capture/revision-qualified attestation for this entry Document's parser
@@ -258,6 +287,7 @@ impl HtmlFragmentParseRequest {
             requested: self.requested,
             effective: self.effective,
             allow_declarative_shadow_roots: self.allow_declarative_shadow_roots,
+            base_facts: self.base_facts,
         }
     }
     /// Selects Inert mode and disallows declarative shadow roots. A disabled
@@ -293,7 +323,28 @@ impl HtmlFragmentParseRequest {
             requested,
             effective,
             allow_declarative_shadow_roots,
+            base_facts: None,
         })
+    }
+    pub fn with_base_facts(
+        mut self,
+        facts: crate::HtmlCapturedBaseFacts,
+    ) -> Result<Self, HtmlParseRequestError> {
+        if facts.capture() != self.context.capture().identity() {
+            return Err(HtmlParseRequestError::Base(
+                crate::HtmlBaseFactsError::Capture(HtmlCaptureError::ForeignCapture),
+            ));
+        }
+        if facts.host_revision() != self.context.capture().host_facts_revision() {
+            return Err(HtmlParseRequestError::Base(
+                crate::HtmlBaseFactsError::HostRevisionMismatch,
+            ));
+        }
+        self.base_facts = Some(std::sync::Arc::new(facts));
+        Ok(self)
+    }
+    pub fn base_facts(&self) -> Option<&crate::HtmlCapturedBaseFacts> {
+        self.base_facts.as_deref()
     }
     /// Exact supplied source; request construction does not normalize it.
     pub fn source(&self) -> &HtmlSource {
@@ -334,8 +385,12 @@ pub(crate) struct FragmentRequestParts {
     requested: HtmlParserScriptingMode,
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
+    base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
 }
 impl FragmentRequestParts {
+    pub(crate) fn base_facts(&self) -> Option<&crate::HtmlCapturedBaseFacts> {
+        self.base_facts.as_deref()
+    }
     pub(crate) fn source(&self) -> &HtmlSource {
         &self.source
     }

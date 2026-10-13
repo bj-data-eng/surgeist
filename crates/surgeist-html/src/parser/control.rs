@@ -67,6 +67,7 @@ pub enum ParseStop {
     UnsupportedStandaloneState(StandaloneUnsupported),
     /// Reached CSS processing/fact failure, distinct from invalid CSS syntax.
     ColorProcessing(surgeist_css::CssColorOperationError),
+    BaseFacts(crate::HtmlBaseMissing),
 }
 /// Actual selected closed-environment execution boundaries, not limit errors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -252,6 +253,12 @@ impl ParseControl {
             return first;
         }
         self.latch_stop(ParseStop::ColorProcessing(reason))
+    }
+    pub(crate) fn stop_base_facts(&mut self, reason: crate::HtmlBaseMissing) -> ParseStop {
+        if let Err(first) = self.checkpoint() {
+            return first;
+        }
+        self.latch_stop(ParseStop::BaseFacts(reason))
     }
     fn fail<T>(&mut self, reason: ParseStop) -> Result<T, ParseStop> {
         let first = self.latch_stop(reason);

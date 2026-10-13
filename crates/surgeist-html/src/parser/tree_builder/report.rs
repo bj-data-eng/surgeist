@@ -36,7 +36,11 @@ impl ImmutableParseReport {
         let state = sealed.parts.document_state();
         let c = &mut sealed.parts.control;
         crate::construction::parser_session::read::prepare_public_readers(&sealed.parts.arena, c)?;
-        let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c)?;
+        let storage = PreparedReportStorage::prepare(
+            &mut sealed.parts.arena,
+            c,
+            sealed.request.base_facts(),
+        )?;
         super::write(
             size_of::<Self>()
                 + size_of::<Option<SealedOrdinaryConstruction>>()
@@ -68,7 +72,7 @@ impl ImmutableParseReport {
         sealed.parts.prepare_report_request(&sealed.request)?;
         let c = &mut sealed.parts.control;
         crate::construction::parser_session::read::prepare_public_readers(&sealed.parts.arena, c)?;
-        let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c)?;
+        let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None)?;
         super::write(
             size_of::<Self>()
                 + size_of::<Option<SealedFragmentConstruction>>()
@@ -87,6 +91,18 @@ impl ImmutableParseReport {
             storage,
             usage,
         })
+    }
+    pub fn document_base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
+        match &self.context {
+            ReportContext::Document { request, .. } => request.base_facts(),
+            _ => None,
+        }
+    }
+    pub fn captured_base_facts(&self) -> Option<&crate::HtmlCapturedBaseFacts> {
+        match &self.context {
+            ReportContext::Fragment(request) => request.base_facts(),
+            _ => None,
+        }
     }
     pub fn source(&self) -> &crate::HtmlSource {
         match &self.context {

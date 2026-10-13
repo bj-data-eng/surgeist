@@ -54,6 +54,7 @@ impl SessionStorage {
         for payload in &self.payloads.values {
             c.charge(WorkCategory::RecordVisit, 1)?;
             match payload {
+                RetainedPayload::BaseDocument { .. } => self.validate_base_facts(c)?,
                 RetainedPayload::NodeDocument { node, document } => {
                     let node = node.ok_or(SessionError::NodeDocumentUnavailable)?;
                     c.charge(WorkCategory::RecordVisit, 1)?;

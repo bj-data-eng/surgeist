@@ -120,6 +120,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         });
         if entry
             .prepare(
+                request,
                 owned,
                 target,
                 #[cfg(test)]
@@ -143,6 +144,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
     }
     fn prepare(
         &mut self,
+        request: &HtmlDocumentParseRequest,
         owned: bool,
         target: super::parse::InitializationTarget,
         #[cfg(test)] progressive: bool,
@@ -202,6 +204,18 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             c,
         )?);
         driver.prologue = Some(prologue::DocumentPrologue::new(driver.source, c)?);
+        if let Some(facts) = request.base_facts() {
+            driver
+                .prologue
+                .as_mut()
+                .expect("initialized prologue")
+                .kernel
+                .as_mut()
+                .expect("initialized kernel")
+                .session
+                .install_document_base_facts(c, facts)
+                .map_err(|error| StandaloneError::Head(error.into()))?;
+        }
         Ok(())
     }
     #[cfg(test)]

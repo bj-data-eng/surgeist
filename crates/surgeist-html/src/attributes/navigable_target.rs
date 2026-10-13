@@ -162,6 +162,26 @@ impl HtmlNavigableTargetAttribute {
     }
 }
 
+/// One exact unit per action; adapters own their admission and traversal.
+#[derive(Default)]
+pub(crate) struct TargetRecovery {
+    newline: Option<usize>,
+    angle: Option<usize>,
+}
+impl TargetRecovery {
+    pub(crate) fn unit(&mut self, offset: usize, unit: u16) {
+        if matches!(unit, 9 | 10 | 13) && self.newline.is_none() {
+            self.newline = Some(offset);
+        }
+        if unit == 60 && self.angle.is_none() {
+            self.angle = Some(offset);
+        }
+    }
+    pub(crate) fn dangerous(&self) -> Option<(usize, usize)> {
+        self.newline.zip(self.angle)
+    }
+}
+
 fn validate_name(value: &DocumentString) -> Result<(), HtmlNavigableTargetError> {
     let units = value.code_units();
     let Some(&first) = units.first() else {
@@ -170,17 +190,11 @@ fn validate_name(value: &DocumentString) -> Result<(), HtmlNavigableTargetError>
     if first == 0x5F {
         return Err(HtmlNavigableTargetError::ReservedLeadingUnderscore);
     }
-    let mut tab_or_newline = None;
-    let mut less_than = None;
+    let mut recovery = TargetRecovery::default();
     for (offset, &unit) in units.iter().enumerate() {
-        if matches!(unit, 0x09 | 0x0A | 0x0D) && tab_or_newline.is_none() {
-            tab_or_newline = Some(offset);
-        }
-        if unit == 0x3C && less_than.is_none() {
-            less_than = Some(offset);
-        }
-        if let (Some(tab_or_newline_code_unit_offset), Some(less_than_code_unit_offset)) =
-            (tab_or_newline, less_than)
+        recovery.unit(offset, unit);
+        if let Some((tab_or_newline_code_unit_offset, less_than_code_unit_offset)) =
+            recovery.dangerous()
         {
             return Err(HtmlNavigableTargetError::TabOrNewlineWithLessThan {
                 tab_or_newline_code_unit_offset,

@@ -402,6 +402,18 @@ impl SessionStorage {
         };
         *element = Some(node.index);
         self.bind_clone_metadata(c, node.index, bindings)?;
+        if base::is_base(&self.records[source]) {
+            let slot = self.base_slot(c, source)?;
+            c.charge(
+                WorkCategory::CopyByte,
+                mem::size_of::<base::ResponseDomain>() as u64,
+            )?;
+            let RetainedPayload::Base { domain, .. } = &self.payloads.values[slot] else {
+                unreachable!()
+            };
+            let domain = *domain;
+            self.register_base(c, node.index, domain)?;
+        }
         payload_write::<usize>(c, 1)?;
         self.usage.utf16_units += units;
         c.charge(WorkCategory::RecordVisit, 1)?;

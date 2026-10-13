@@ -2244,6 +2244,7 @@ mod map_name;
 pub use form_name::*;
 
 mod navigable_target;
+pub(crate) use navigable_target::TargetRecovery;
 pub use navigable_target::*;
 
 mod textarea_wrap;

@@ -7,6 +7,7 @@
 #![deny(unfulfilled_lint_expectations)]
 
 mod attributes;
+mod base;
 mod bidi;
 mod capture;
 mod color;
@@ -33,6 +34,7 @@ mod values;
 mod vocabulary;
 
 pub use attributes::*;
+pub use base::*;
 pub use capture::*;
 pub use color::*;
 pub use construction::*;
@@ -118,9 +120,9 @@ pub use construction::parser_session::read::{
     HtmlParseColorComputation, HtmlParseRangeComputation, HtmlParseRangeOperand,
 };
 pub use construction::parser_session::report::{
-    MetadataCursor as HtmlParseMetadataCursor, MetadataDocument as HtmlParseMetadataDocument,
-    MetadataRef as HtmlParseMetadata, MetadataStep as HtmlParseMetadataStep,
-    MetadataTemplate as HtmlParseTemplate,
+    MetadataBase as HtmlParseBase, MetadataCursor as HtmlParseMetadataCursor,
+    MetadataDocument as HtmlParseMetadataDocument, MetadataRef as HtmlParseMetadata,
+    MetadataStep as HtmlParseMetadataStep, MetadataTemplate as HtmlParseTemplate,
 };
 pub use construction::parser_session::{
     FormAssociationEvidence as HtmlParseFormEvidence, FormAssociationKind as HtmlParseFormKind,

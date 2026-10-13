@@ -34,6 +34,7 @@ use crate::values::ParserAttributeError;
 use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValueAction};
 use std::{mem, sync::Weak};
 
+mod base;
 mod clone;
 mod input_color;
 mod input_image;
@@ -297,6 +298,16 @@ enum RetainedPayload {
     Nonce {
         node: Option<usize>,
         raw: usize,
+    },
+    BaseDocument {
+        node: usize,
+        facts: crate::HtmlParseBaseFacts,
+        first: Option<usize>,
+    },
+    Base {
+        node: Option<usize>,
+        domain: base::ResponseDomain,
+        frozen: Option<base::FrozenBase>,
     },
     Shadow {
         root: Option<usize>,
@@ -652,7 +663,9 @@ impl PayloadStorage {
                     AttributeStorage::Building { .. } | AttributeStorage::Transferring { .. },
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
-                RetainedPayload::SvgScript { .. }
+                RetainedPayload::BaseDocument { .. }
+                | RetainedPayload::Base { .. }
+                | RetainedPayload::SvgScript { .. }
                 | RetainedPayload::ConstructionCause { .. }
                 | RetainedPayload::Script { .. }
                 | RetainedPayload::NodeDocument { .. }
@@ -2673,6 +2686,7 @@ impl SessionStorage {
             self.usage.attributes += count;
             self.usage.utf16_units += units;
             self.initial_nonce_attributes(control, node.index)?;
+            self.register_base(control, node.index, base::ResponseDomain::Unavailable)?;
             Ok(node)
         })();
         release_token_attributes(attributes, control)?;
@@ -3229,6 +3243,25 @@ impl SessionStorage {
         for position in start..start + count {
             self.initial_nonce_attribute(control, target, position)?;
         }
+        if base::is_base(&self.records[target]) {
+            // Only an actual appended no-namespace href changes the pinned
+            // first-Base href trigger. Other fields share this merge owner.
+            let mut href_changed = false;
+            for position in start..start + count {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                let HtmlNodeKind::Element(element) = &self.records[target].kind else {
+                    unreachable!()
+                };
+                let attribute = &element.attributes().as_slice()[position];
+                if attribute.name().namespace().uri().is_none()
+                    && exact_ascii(control, Some(attribute.name().local_name()), "href")?
+                {
+                    href_changed = true;
+                    break;
+                }
+            }
+            self.base_change(control, target, None, href_changed)?;
+        }
         Ok(())
     }
 
@@ -3731,6 +3764,14 @@ impl SessionStorage {
         let mut listed_explicit = false;
         for slot in 0..self.payloads.values.len() {
             control.charge(WorkCategory::RecordVisit, 1)?;
+            if let RetainedPayload::Base {
+                node: Some(node), ..
+            } = &self.payloads.values[slot]
+                && self.ordinary_descendant(control, *node, root)?
+            {
+                local = true;
+                break;
+            }
             if let RetainedPayload::FormAssociation {
                 node: Some(node),
                 state,
@@ -6602,6 +6643,7 @@ impl ParserArenaSession {
         capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<(), SessionError> {
         capability.validate_session(control, self)?;
+        self.qualify_base_response(control, node, capability)?;
         self.qualify_intrinsic_mutation(control, node, Some(capability))?;
         self.active_mut()?
             .insert(control, parent, node, before, InsertionCause::Parser)

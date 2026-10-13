@@ -2695,6 +2695,48 @@ The [select construction owner](src/construction/parser_session/select.rs),
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
 record the consumed boundary.
 
+<a id="document-base-and-target"></a>
+
+Document base URLs and default targets select their first applicable `base`
+elements independently in ordinary document order. The
+[captured operations](src/semantics/base.rs) expose `DocumentBaseUrl`, `BaseHref`,
+`ElementTarget` and `FormSubmissionTarget`. A first href-bearing base whose frozen
+value is unavailable produces Missing; it does not permit selecting a later base.
+`BaseHref` interprets the current content through its qualified parse observation,
+independently of the historical frozen slot and the CSP decision for freezing.
+
+The [base facts](src/base.rs) retain actual document URL records, character
+encoding, about-base state, URL-parse observations and CSP base permission.
+Capture, host and independently expected producer revisions qualify those facts.
+Fallback follows the source's srcdoc and about:blank branches; known null and
+unavailable about-base are distinct. Historical frozen records retain their own
+revision. Source labels never substitute for a document URL or security origin.
+Formation has its own finite record, UTF-16 and validation-work admission;
+controlled semantic operations use the existing session's work and storage owner.
+
+Target selection preserves an explicit override or an own target, including
+empty, before consulting the first target-bearing base. Form submission uses the
+qualified submitter and form-owner precedence. The shared
+[target recovery](src/attributes/navigable_target.rs) maps a value to `_blank` when
+it contains both `<` and a TAB, LF or CR. It preserves other exact UTF-16 values
+and the raw spelling. It selects a target name; navigation remains with consumers.
+
+The [native base hooks](src/construction/parser_session/base.rs) freeze immediately
+when an element becomes the first href-bearing base or that first element's href
+changes. Unrelated attribute appends preserve its frozen response. Removal,
+reordering, adoption and destination insertion use the actual document and tree;
+clone starts without an inherited frozen value. A frozen assignment precedes its
+required response, and a stopped pending response cannot publish. Completed
+`base_frozen` metadata distinguishes unavailable, registered unfrozen and frozen
+state. The owned parser's response domain excludes external browser recipients;
+it supplies no live navigation, URL parser or CSP enforcement engine.
+
+The [pinned base clauses](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#the-base-element),
+[public base/target cases](tests/base_target.rs), [captured cases](tests/semantics_base.rs)
+and native owner tests describe the independent first selections, fallback,
+missing facts, actual mutation, nonce-only append, original cancellation and
+cleanup boundaries.
+
 <a id="nonce-slot-and-content"></a>
 
 Nonce content attributes and the cryptographic nonce slot are independent.

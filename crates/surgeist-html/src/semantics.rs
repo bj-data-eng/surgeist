@@ -18,7 +18,9 @@
 
 mod microdata;
 pub use microdata::*;
+mod base;
 mod nonce;
+pub use base::*;
 mod table;
 pub use table::*;
 mod language;
@@ -103,8 +105,9 @@ use crate::numeric::{
     try_parse_integer,
 };
 use crate::{
-    Attribute, DocumentString, HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId,
-    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedChildren, HtmlCapturedElement,
+    Attribute, DocumentString, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord,
+    HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId, HtmlCaptureSubjectId,
+    HtmlCapturedBaseFacts, HtmlCapturedChildIds, HtmlCapturedChildren, HtmlCapturedElement,
     HtmlCapturedNode, HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCustomControlAttributeContext,
     HtmlDocumentClass, HtmlHiddenState, HtmlHostFactsRevision, HtmlInteger, HtmlMetaMediaPlacement,
     HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
@@ -330,6 +333,8 @@ pub struct HtmlSemanticContextInput {
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     microdata: Option<HtmlMicrodataFacts>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
+    base_revision: Option<HtmlBaseFactsRevision>,
+    base_facts: Option<HtmlCapturedBaseFacts>,
 }
 impl HtmlSemanticContextInput {
     pub fn new(classifications: Vec<HtmlCustomControlClassification>) -> Self {
@@ -353,6 +358,8 @@ impl HtmlSemanticContextInput {
             microdata: None,
             global_inheritance_revision: None,
             global_inheritance: None,
+            base_revision: None,
+            base_facts: None,
         }
     }
     pub fn with_microdata(
@@ -362,6 +369,15 @@ impl HtmlSemanticContextInput {
     ) -> Self {
         self.microdata_revision = Some(expected);
         self.microdata = facts;
+        self
+    }
+    pub fn with_base_facts(
+        mut self,
+        expected: HtmlBaseFactsRevision,
+        facts: Option<HtmlCapturedBaseFacts>,
+    ) -> Self {
+        self.base_revision = Some(expected);
+        self.base_facts = facts;
         self
     }
     pub fn with_list_participation(
@@ -461,6 +477,8 @@ pub struct HtmlSemanticContext {
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
     microdata: Option<HtmlMicrodataFacts>,
     global_inheritance: Option<HtmlGlobalInheritanceFacts>,
+    base_revision: Option<HtmlBaseFactsRevision>,
+    base_facts: Option<HtmlCapturedBaseFacts>,
     empty_language: DocumentString,
 }
 /// Rejected producer context; no query result is created.
@@ -470,6 +488,9 @@ pub enum HtmlSemanticContextError {
     MediaHostRevisionMismatch,
     MediaRevisionMismatch,
     MicrodataFactsMismatch,
+    BaseCaptureMismatch,
+    BaseHostRevisionMismatch,
+    BaseRevisionMismatch,
     ImageDimensionsCaptureMismatch,
     ImageDimensionsHostRevisionMismatch,
     ImageDimensionsRevisionMismatch,
@@ -554,6 +575,8 @@ impl HtmlSemanticContext {
             microdata,
             global_inheritance_revision,
             global_inheritance,
+            base_revision,
+            base_facts,
         } = input;
         if let Some(facts) = &media {
             if facts.capture() != capture.identity() {
@@ -571,6 +594,17 @@ impl HtmlSemanticContext {
             .is_some_and(|facts| !facts.qualifies(capture, microdata_revision.as_ref()))
         {
             return Err(HtmlSemanticContextError::MicrodataFactsMismatch);
+        }
+        if let Some(facts) = &base_facts {
+            if facts.capture() != capture.identity() {
+                return Err(HtmlSemanticContextError::BaseCaptureMismatch);
+            }
+            if facts.host_revision() != &host_revision {
+                return Err(HtmlSemanticContextError::BaseHostRevisionMismatch);
+            }
+            if base_revision.as_ref() != Some(facts.revision()) {
+                return Err(HtmlSemanticContextError::BaseRevisionMismatch);
+            }
         }
         if let Some(facts) = &mut image_dimensions {
             if facts.capture() != capture.identity() {
@@ -715,6 +749,8 @@ impl HtmlSemanticContext {
             microdata,
             global_inheritance_revision,
             global_inheritance,
+            base_revision,
+            base_facts,
             empty_language: DocumentString::default(),
         })
     }
@@ -768,6 +804,12 @@ impl HtmlSemanticContext {
     }
     pub fn microdata_revision(&self) -> Option<&HtmlMicrodataRevision> {
         self.microdata_revision.as_ref()
+    }
+    pub fn base_revision(&self) -> Option<&HtmlBaseFactsRevision> {
+        self.base_revision.as_ref()
+    }
+    pub fn base_facts(&self) -> Option<&HtmlCapturedBaseFacts> {
+        self.base_facts.as_ref()
     }
     pub fn global_inheritance_revision(&self) -> Option<&HtmlGlobalInheritanceRevision> {
         self.global_inheritance_revision.as_ref()
@@ -892,6 +934,10 @@ pub enum HtmlSemanticQuery {
     MicrodataDocumentAuthor,
     /// Actual cryptographic slot, independent of the current content attribute.
     Nonce,
+    DocumentBaseUrl,
+    ElementTarget,
+    FormSubmissionTarget,
+    BaseHref,
     IsAttributeAuthorContext,
     ImageDimensions,
     EmbeddedDimensionAuthorConformance,
@@ -1044,6 +1090,15 @@ impl HtmlSemanticQuery {
             }
             Self::Nonce => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-noncedelement-nonce"
+            }
+            Self::DocumentBaseUrl => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document-base-url"
+            }
+            Self::ElementTarget | Self::FormSubmissionTarget => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#get-an-element's-target"
+            }
+            Self::BaseHref => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-base-href"
             }
             Self::IsAttributeAuthorContext => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-is"
@@ -1369,17 +1424,35 @@ impl HtmlSemanticQuery {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticRequest {
     subject: HtmlCaptureSubjectId,
-    query: HtmlSemanticQuery,
+    operation: SemanticOperation,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SemanticOperation {
+    Query(HtmlSemanticQuery),
+    TargetOverride(DocumentString),
 }
 impl HtmlSemanticRequest {
     pub fn new(subject: HtmlCaptureSubjectId, query: HtmlSemanticQuery) -> Self {
-        Self { subject, query }
+        Self {
+            subject,
+            operation: SemanticOperation::Query(query),
+        }
     }
     pub fn subject(&self) -> &HtmlCaptureSubjectId {
         &self.subject
     }
     pub fn query(&self) -> HtmlSemanticQuery {
-        self.query
+        match self.operation {
+            SemanticOperation::Query(query) => query,
+            SemanticOperation::TargetOverride(_) => HtmlSemanticQuery::ElementTarget,
+        }
+    }
+    /// A non-null target override, including the empty string.
+    pub fn element_target(subject: HtmlCaptureSubjectId, target: DocumentString) -> Self {
+        Self {
+            subject,
+            operation: SemanticOperation::TargetOverride(target),
+        }
     }
 }
 /// Evidence needed by an implemented query but not established by its producer.
@@ -1391,6 +1464,10 @@ pub enum HtmlSemanticMissing {
     MicrodataTypeCycle(HtmlCaptureSubjectId),
     MicrodataFacts(HtmlCaptureSubjectId),
     NonceSlot(HtmlCaptureSubjectId),
+    Base {
+        subject: HtmlCaptureSubjectId,
+        fact: HtmlBaseMissing,
+    },
     Parent(HtmlCaptureSubjectId),
     OrderedChildren(HtmlCaptureSubjectId),
     CustomControlClassification(HtmlCaptureSubjectId),
@@ -1462,6 +1539,10 @@ pub enum HtmlSemanticFact {
     MicrodataAuthor(HtmlSemanticValue<HtmlMicrodataAuthor>),
     MicrodataDocumentAuthor(HtmlSemanticValue<HtmlMicrodataDocumentAuthor>),
     Nonce(HtmlSemanticValue<DocumentString>),
+    DocumentBaseUrl(HtmlSemanticValue<HtmlDocumentBaseUrl>),
+    ElementTarget(HtmlSemanticValue<HtmlElementTarget>),
+    FormSubmissionTarget(HtmlSemanticValue<HtmlElementTarget>),
+    BaseHref(HtmlSemanticValue<HtmlBaseHref>),
     IsAttributeAuthorContext(HtmlSemanticValue<HtmlCustomElementIsAuthorContext>),
     ImageDimensions(HtmlSemanticValue<HtmlImageDimensionReadback>),
     EmbeddedDimensionAuthorConformance(HtmlSemanticValue<HtmlEmbeddedDimensionAuthorReadback>),
@@ -1633,6 +1714,7 @@ pub struct HtmlSemanticQualification {
     editability_source: HtmlEditabilitySource,
     microdata_revision: Option<HtmlMicrodataRevision>,
     global_inheritance_revision: Option<HtmlGlobalInheritanceRevision>,
+    base_revision: Option<HtmlBaseFactsRevision>,
     inert_revision: Option<HtmlFlatTreeRevision>,
 }
 impl HtmlSemanticQualification {
@@ -1674,6 +1756,9 @@ impl HtmlSemanticQualification {
     }
     pub fn global_inheritance_revision(&self) -> Option<&HtmlGlobalInheritanceRevision> {
         self.global_inheritance_revision.as_ref()
+    }
+    pub fn base_revision(&self) -> Option<&HtmlBaseFactsRevision> {
+        self.base_revision.as_ref()
     }
     pub fn editability_source(&self) -> HtmlEditabilitySource {
         self.editability_source
@@ -1831,6 +1916,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 inert_revision: context.inert_revision.clone(),
                 microdata_revision: context.microdata_revision.clone(),
                 global_inheritance_revision: context.global_inheritance_revision.clone(),
+                base_revision: context.base_revision.clone(),
                 editability_source: HtmlEditabilitySource,
                 directionality_source: HtmlDirectionalitySource {
                     unicode_version: crate::bidi::UCD_VERSION,
@@ -2875,7 +2961,7 @@ impl<'a> HtmlSemanticSession<'a> {
             let fact = match node.kind() {
                 HtmlCapturedNodeKind::Element(element) => {
                     let foreign = if matches!(
-                        request.query,
+                        request.query(),
                         HtmlSemanticQuery::IsAttributeAuthorContext
                             | HtmlSemanticQuery::MediaAttributeRules
                             | HtmlSemanticQuery::TemplateForReference
@@ -2885,7 +2971,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     } else {
                         !self.html_namespace(element)?
                     };
-                    match request.query {
+                    match request.query() {
                         HtmlSemanticQuery::MicrodataItem => {
                             HtmlSemanticFact::MicrodataItem(if foreign {
                                 HtmlSemanticValue::Unsupported(
@@ -2921,6 +3007,10 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::Nonce => {
                             HtmlSemanticFact::Nonce(self.nonce_readback(&request.subject, element)?)
                         }
+                        HtmlSemanticQuery::DocumentBaseUrl
+                        | HtmlSemanticQuery::ElementTarget
+                        | HtmlSemanticQuery::FormSubmissionTarget
+                        | HtmlSemanticQuery::BaseHref => self.base_fact(node, request)?,
                         HtmlSemanticQuery::IsAttributeAuthorContext => {
                             HtmlSemanticFact::IsAttributeAuthorContext(
                                 self.is_attribute_author_context(&request.subject, element)?,
@@ -3422,7 +3512,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                     }
                 }
-                _ => match request.query {
+                _ => match request.query() {
                     HtmlSemanticQuery::MicrodataItem => {
                         HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
                     }
@@ -3440,6 +3530,10 @@ impl<'a> HtmlSemanticSession<'a> {
                     HtmlSemanticQuery::Nonce => {
                         HtmlSemanticFact::Nonce(HtmlSemanticValue::Inapplicable)
                     }
+                    HtmlSemanticQuery::DocumentBaseUrl
+                    | HtmlSemanticQuery::ElementTarget
+                    | HtmlSemanticQuery::FormSubmissionTarget
+                    | HtmlSemanticQuery::BaseHref => self.base_fact(node, request)?,
                     HtmlSemanticQuery::IsAttributeAuthorContext => {
                         HtmlSemanticFact::IsAttributeAuthorContext(HtmlSemanticValue::Inapplicable)
                     }

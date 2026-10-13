@@ -5,6 +5,7 @@ use super::*;
 #[cfg(test)]
 #[derive(Clone, Copy)]
 pub(super) enum ManagedFamily {
+    Base,
     Details,
     Input,
 }
@@ -12,12 +13,14 @@ pub(super) enum ManagedFamily {
 impl ManagedFamily {
     fn local(self) -> &'static str {
         match self {
+            Self::Base => "base",
             Self::Details => "details",
             Self::Input => "input",
         }
     }
     fn boolean(self) -> &'static str {
         match self {
+            Self::Base => "target",
             Self::Details => "open",
             Self::Input => "checked",
         }
@@ -26,6 +29,8 @@ impl ManagedFamily {
 #[cfg(test)]
 #[derive(Clone, Copy)]
 enum ManagedEffect {
+    BaseHref,
+    BaseTarget,
     Details(crate::HtmlDetailsAttributeEffect),
     InputName,
     InputType,
@@ -47,6 +52,8 @@ impl SessionStorage {
         c.charge(WorkCategory::ProviderCall, 1)?;
         payload_write::<ManagedEffect>(c, 1)?;
         Ok(match family {
+            ManagedFamily::Base if local == "href" => ManagedEffect::BaseHref,
+            ManagedFamily::Base => ManagedEffect::BaseTarget,
             ManagedFamily::Details => ManagedEffect::Details(crate::details_attribute_effect(
                 &Namespace::none(),
                 if local == "name" {
@@ -96,6 +103,8 @@ impl SessionStorage {
         effect: ManagedEffect,
     ) -> Result<(), SessionError> {
         match effect {
+            ManagedEffect::BaseHref => self.base_change(c, node, None, true),
+            ManagedEffect::BaseTarget => Ok(()),
             ManagedEffect::Details(effect) => self.details_change(c, node, effect),
             ManagedEffect::InputName => self.normalize_radio(c, node, None),
             ManagedEffect::InputType => {
@@ -497,6 +506,9 @@ impl SessionStorage {
         });
         self.usage.attributes -= 1;
         self.usage.utf16_units -= units;
+        if base::is_base(&self.records[node]) && local == "href" {
+            self.base_change(c, node, None, true)?;
+        }
         Ok(())
     }
 }
@@ -522,7 +534,11 @@ impl ParserArenaSession {
         c.require_source_range(&attr.source)?;
         check_formatting_text(c, &attr.name, &attr.source)?;
         check_formatting_text(c, &attr.value, &attr.source)?;
-        let local = if exact_ascii(c, Some(attr.name.value.text()), "name")? {
+        let local = if matches!(family, ManagedFamily::Base)
+            && exact_ascii(c, Some(attr.name.value.text()), "href")?
+        {
+            "href"
+        } else if exact_ascii(c, Some(attr.name.value.text()), "name")? {
             "name"
         } else if matches!(family, ManagedFamily::Input)
             && exact_ascii(c, Some(attr.name.value.text()), "type")?

@@ -1040,6 +1040,9 @@ impl SessionStorage {
         detached: Option<usize>,
         removal: bool,
     ) -> Result<(), SessionError> {
+        if base::is_base(&self.records[node]) {
+            self.base_change(c, node, detached, false)?;
+        }
         if !removal && self.html_local(c, node, "input")? {
             self.radio_insertion(c, node)?;
         }

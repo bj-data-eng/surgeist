@@ -162,6 +162,28 @@ impl HtmlParseFailure {
             _ => None,
         }
     }
+    /// The original ordinary request's URL facts, including on pre-source failure.
+    pub fn document_base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
+        match &self.storage {
+            FailureStorage::OrdinaryInitialization(o) => {
+                o.request().expect("original request").base_facts()
+            }
+            FailureStorage::Ordinary(o) => o.original_request().base_facts(),
+            FailureStorage::OrdinaryFrozen(o) => o.request.base_facts(),
+            _ => None,
+        }
+    }
+    /// The original fragment request's qualified captured facts.
+    pub fn captured_base_facts(&self) -> Option<&crate::HtmlCapturedBaseFacts> {
+        match &self.storage {
+            FailureStorage::FragmentInitialization(o) => {
+                o.original_request().expect("original request").base_facts()
+            }
+            FailureStorage::Fragment(o) => o.original_request().base_facts(),
+            FailureStorage::FragmentFrozen(o) => o.request.base_facts(),
+            _ => None,
+        }
+    }
     /// The original request option, not a claim that execution occurred.
     pub fn requested_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
         match &self.storage {

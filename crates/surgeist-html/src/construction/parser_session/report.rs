@@ -14,6 +14,7 @@ impl<'a> PreparedReportStorage<'a> {
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,
         c: &mut ParseControl,
+        base_facts: Option<&crate::HtmlParseBaseFacts>,
     ) -> Result<Self, SessionError> {
         let frozen = input.as_ref().ok_or(SessionError::Consumed)?;
         let storage = frozen.storage.as_ref().ok_or(SessionError::Consumed)?;
@@ -30,6 +31,28 @@ impl<'a> PreparedReportStorage<'a> {
                 checked_node(arena, node, c)?;
             }
             match payload {
+                RetainedPayload::BaseDocument { node, facts, first } => {
+                    checked_document(storage, DocumentRef::Owned(*node), c)?;
+                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    if base_facts.is_none_or(|original| !facts.same_owner(original)) {
+                        return Err(SessionError::WrongToken);
+                    }
+                    if let Some(first) = first {
+                        checked_node(arena, *first, c)?;
+                    }
+                }
+                RetainedPayload::Base { node, frozen, .. } => {
+                    let node = node.ok_or(SessionError::WrongToken)?;
+                    if !base::is_base(&arena.records[node]) {
+                        return Err(SessionError::WrongToken);
+                    }
+                    if let Some(frozen) = frozen {
+                        checked_document(storage, DocumentRef::Owned(frozen.document), c)?;
+                        if frozen.response == base::Response::Pending {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
+                }
                 RetainedPayload::Details { node, .. } => {
                     // Construction eligibility is private, but its bound node
                     // must still belong to this immutable result.
@@ -241,8 +264,10 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
         // Details name/open remain canonical native attributes.
         RetainedPayload::Details { .. } => None,
         RetainedPayload::Shadow { root, .. } => *root,
-        RetainedPayload::StandaloneDocumentCompletion { node, .. } => Some(*node),
-        RetainedPayload::Nonce { node, .. }
+        RetainedPayload::StandaloneDocumentCompletion { node, .. }
+        | RetainedPayload::BaseDocument { node, .. } => Some(*node),
+        RetainedPayload::Base { node, .. }
+        | RetainedPayload::Nonce { node, .. }
         | RetainedPayload::LookupRegistry { node, .. }
         | RetainedPayload::PiAttributes { node, .. }
         | RetainedPayload::NodeDocument { node, .. }
@@ -328,7 +353,55 @@ pub struct MetadataTemplate<'a> {
     pub(crate) start: Option<HtmlNode<'a>>,
     pub(crate) end: Option<HtmlNode<'a>>,
 }
+pub struct MetadataBase<'a> {
+    value: &'a crate::HtmlBaseUrlRecord,
+    document: HtmlNode<'a>,
+    revision: &'a crate::HtmlBaseFactsRevision,
+    responded: bool,
+}
+impl<'a> MetadataBase<'a> {
+    pub fn value(&self) -> &'a crate::HtmlBaseUrlRecord {
+        self.value
+    }
+    pub fn document(&self) -> HtmlNode<'a> {
+        self.document
+    }
+    pub fn revision(&self) -> &'a crate::HtmlBaseFactsRevision {
+        self.revision
+    }
+    pub fn responded(&self) -> bool {
+        self.responded
+    }
+}
 impl<'a> MetadataRef<'a> {
+    /// Wrong metadata row is None; a real base with no frozen slot is Some(None).
+    pub fn base_frozen(&self) -> Option<Option<MetadataBase<'a>>> {
+        match self.payload {
+            RetainedPayload::Base { frozen, .. } => {
+                Some(frozen.as_ref().map(|frozen| MetadataBase {
+                    value: &frozen.value,
+                    document: self.native(frozen.document),
+                    revision: frozen.environment.document().revision(),
+                    responded: frozen.response == base::Response::Finished,
+                }))
+            }
+            _ => None,
+        }
+    }
+    pub fn document_base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
+        match self.payload {
+            RetainedPayload::BaseDocument { facts, .. } => Some(facts),
+            _ => None,
+        }
+    }
+    pub fn document_first_base(&self) -> Option<Option<HtmlNode<'a>>> {
+        match self.payload {
+            RetainedPayload::BaseDocument { first, .. } => {
+                Some(first.map(|node| self.native(node)))
+            }
+            _ => None,
+        }
+    }
     pub fn node(&self) -> HtmlNode<'a> {
         HtmlNode {
             arena: self.arena,
