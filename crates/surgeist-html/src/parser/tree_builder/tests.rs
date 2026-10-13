@@ -3724,7 +3724,7 @@ fn tokenizer_next_input_point_uses_actual_reconsume_and_reference_lookahead_posi
 fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short_terminal_admission()
  {
     // Two actual proof checks each read seven qualification facts. The queue
-    // owner reads checkpoint1, readiness6 and empty cursor/length2. Its actual
+    // owner reads checkpoint1, readiness7 (including the Radio phase) and empty cursor/length2. Its actual
     // bool set/clear contributes CopyByte2/RecordWrite2, with StateStep1.
     // One-short fails the final clear write, retaining the flag under first-stop.
     // The same queue now retains/restores its actual triggering cause. Its
@@ -3733,7 +3733,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         crate::construction::parser_session::provenance::ConstructionCauseRef,
     >() as u64
         + std::mem::size_of::<Option<usize>>() as u64;
-    let expected_work = 24 + 1 + (2 + cause_bytes) + 4 + 1;
+    let expected_work = 25 + 1 + (2 + cause_bytes) + 4 + 1;
     for short in [false, true] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<script>x</script>"),
@@ -3756,7 +3756,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let result = proof.checkpoint(c, session);
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            24
+            25
         );
         assert_eq!(
             c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
@@ -6257,14 +6257,14 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = c.usage().clone();
     kernel.replace_stack(1, &replacement, &mut c, None).unwrap();
-    // Kernel readiness1, target index7, at1, pre-removal qualification12,
-    // get_mut1, post-removal qualification12, removed index7, option5 and
-    // textarea5. Each index includes six actual effect-readiness fields. Four
+    // Kernel readiness1, target index8, at1, pre-removal qualification13,
+    // get_mut1, post-removal qualification13, removed index8, option5 and
+    // textarea5. Each index includes seven actual effect-readiness fields including Radio. Four
     // HTML namespace comparisons inspect28 units at three credits each; local
     // p length differs from both option and textarea, so no local units read.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        51
+        55
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -13553,7 +13553,6 @@ fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_b
         "number",
         "range",
         "color",
-        "radio",
         "file",
         "submit",
         "image",
@@ -16047,4 +16046,60 @@ fn progressive_original_cancellation_before_initialization_and_immediately_befor
     driver.release().unwrap();
     assert_released(&driver.control);
     assert_eq!(driver.control.first_stop_usage(), Some(&first));
+}
+
+#[test]
+fn radio_table_delegation_fosters_real_void_inputs_and_preserves_reset_default_on() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><table><input type=radio name=g checked value='A&#13;B'><input type=radio name=g checked></table>Z",
+        ),
+        limits(100),
+    );
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadStep::Complete
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    assert_eq!(
+        outline(document),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "input"),
+            (2, "input"),
+            (2, "table"),
+            (2, "#Z")
+        ])
+    );
+    let html = document.root().children().nth(1).unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let inputs: Vec<_> = document.node(&body).unwrap().children().take(2).collect();
+    assert!(
+        !frozen
+            .input_state(&mut c, &inputs[0])
+            .unwrap()
+            .flags
+            .checkedness()
+    );
+    assert!(
+        frozen
+            .input_state(&mut c, &inputs[1])
+            .unwrap()
+            .flags
+            .checkedness()
+    );
+    let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
+    frozen
+        .append_input_value(&mut c, &inputs[0], &mut value)
+        .unwrap();
+    assert_eq!(value.units(), [65, 13, 66]);
+    value.release(&mut c).unwrap();
+    drop(inputs);
+    drop((body, html));
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
 }

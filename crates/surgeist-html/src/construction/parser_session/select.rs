@@ -165,6 +165,7 @@ enum WorkListKind {
 
 pub(super) struct ConstructionEffects {
     pub(super) form: Option<FormEffects>,
+    pub(super) radio: Option<super::radio::RadioProgress>,
     frames: OwnedVec<EffectFrame>,
     current: Option<EffectFrame>,
     transfer: Option<EffectFrame>,
@@ -180,9 +181,10 @@ struct QueuedTask {
 }
 impl ConstructionEffects {
     pub(super) fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
-        payload_write::<Self>(c, 9)?;
+        payload_write::<Self>(c, 10)?;
         Ok(Self {
             form: None,
+            radio: None,
             frames: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
             current: None,
             transfer: None,
@@ -194,8 +196,9 @@ impl ConstructionEffects {
         })
     }
     pub(super) fn require_idle(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 5)?;
-        if self.svg_wrapper.is_some()
+        c.charge(WorkCategory::RecordVisit, 6)?;
+        if self.radio.is_some()
+            || self.svg_wrapper.is_some()
             || self.current.is_some()
             || self.transfer.is_some()
             || self.frames.len() != 0
@@ -208,8 +211,9 @@ impl ConstructionEffects {
         Ok(())
     }
     pub(super) fn require_freezable(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 8)?;
-        if self.svg_wrapper.is_some()
+        c.charge(WorkCategory::RecordVisit, 9)?;
+        if self.radio.is_some()
+            || self.svg_wrapper.is_some()
             || self.dequeue != self.tasks.len()
             || self.task.is_some()
             || self.checkpoint
@@ -1029,6 +1033,9 @@ impl SessionStorage {
         detached: Option<usize>,
         removal: bool,
     ) -> Result<(), SessionError> {
+        if !removal && self.html_local(c, node, "input")? {
+            self.radio_insertion(c, node)?;
+        }
         if !removal && self.html_local(c, node, "details")? {
             self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseGiven)?;
         } else if self.html_local(c, node, "option")? {

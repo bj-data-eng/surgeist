@@ -364,6 +364,19 @@ cleanup runs no useful reset. Repeated scans and copies may be quadratic and
 remain charged and polled. Other input states, hosted initialization, general
 setters and public parse/report completion remain separate work.
 
+The Radio extension adds Surgeist-owned shared state rules and admitted peer
+effects in `src/input.rs` and `src/construction/parser_session/radio.rs`.
+No additional upstream parser source is ingested. The selected HTML
+[radio-button group clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
+governs exact name/tree/form-owner membership and the five qualifying triggers.
+The existing effect owner retains one fixed traversal phase, including an honest
+partial phase on cancellation or exhaustion. Attribute edits and removal reuse
+`src/construction/parser_session/mutation.rs`, extracted from the existing
+Details owner; provenance retirement and rebinding retain their original
+authority. Captured peers without mutable canonical state and influencing
+captured connection facts remain qualified refusals. This construction adapter
+does not supply DOM identity, live mutations, browser activation or events.
+
 The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
 `mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry
 in the body driver. Its initial adapted SHA-256 is

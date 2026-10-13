@@ -882,10 +882,15 @@ limits, and reports retain its exact producer/configuration revision.
 <a id="shared-intrinsic-control-rules"></a>
 
 The [shared input rules](src/input.rs) expose fixed state and source-ordered
-requirements for Hidden, Text, Search, Telephone, Password and Checkbox.
-Checkbox uses DefaultOn: its native value reads the content attribute, including
+requirements for Hidden, Text, Search, Telephone, Password, Checkbox and Radio.
+Checkbox and Radio use DefaultOn: their native value reads the content attribute, including
 present empty, and returns `on` only when that attribute is absent. This does
 not synthesize an attribute or change the independent internal/default value.
+`HtmlRadioTrigger` identifies checkedness, name, form-owner, type and connected
+insertion changes. The actual adapter normalizes checked peers after applying
+each qualifying trigger to the subject. Group membership requires the same
+ordinary tree and form owner, with an exact nonempty UTF-16 name. These local
+rules do not resolve tree membership or mutate peers themselves.
 `HtmlInputStringFlags` retains the actual intrinsic flags; strings, selection
 and form identity remain separately owned. Type/default/checked changes,
 per-control reset and cloning keep their distinct triggers. Keyword recognition
@@ -916,7 +921,8 @@ canonical current values and identities and apply HTML's requirements within its
 atomic edits. Constructing flags retains supplied intrinsic slot values; it does
 not establish subject identity, mutation history or capture qualification.
 [Input tests](tests/input_rules.rs),
-[Checkbox tests](tests/input_checkbox_rules.rs) and
+[Checkbox tests](tests/input_checkbox_rules.rs),
+[Radio tests](tests/input_radio_rules.rs) and
 [family tests](tests/control_values.rs) cover the pure rules. Parser tests cover
 their actual controlled consumers. Other input families, tree-dependent effects,
 full textarea setters/normalization and runtime events require their respective
@@ -2161,12 +2167,12 @@ freeze; terminal cleanup performs no useful reset. General setters, nonnull
 overrides, form reset, hosted initialization and public parse completion remain
 separate work.
 
-Private input creation supports Hidden, Text, Search, Telephone, Password and Checkbox
+Private input creation supports Hidden, Text, Search, Telephone, Password, Checkbox and Radio
 through the [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
 Text loses CR and LF; changing to Hidden writes a nonempty internal value back
-to the native value attribute. Changing to Checkbox has the same nonempty
-writeback requirement. Type-first Hidden or Checkbox preserves CR and LF instead.
+to the native value attribute. Changing to Checkbox or Radio has the same nonempty
+writeback requirement. Type-first Hidden, Checkbox or Radio preserves CR and LF instead.
 Text/Search/Telephone/Password strip those units from current value while keeping
 the native default independently observable. Creation completes per-control
 initialization before canonical form association. Checkbox current checkedness,
@@ -2174,6 +2180,23 @@ dirty checkedness and indeterminateness remain independent; reset restores
 checked-attribute presence and clears dirty flags while retaining indeterminateness.
 Checkbox cloning preserves the specified current backing and flags, without
 copying form association or applying Radio peer normalization.
+
+Radio construction applies the five [source-defined group triggers](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
+through the existing admitted effect owner. Peer normalization changes only
+current checkedness; dirty flags, default checked presence, indeterminateness
+and user validity remain independent. An actual owner transition through null
+and then its final owner completes both effects in order. Disconnected members
+still form a group, but disconnected insertion does not invent a connected
+trigger. Owned shadow connection uses the actual host chain; an influencing
+captured connection or matching imported peer without mutable canonical state
+returns a typed capability refusal. The fragment label alone causes no refusal.
+Form-owner reset uses that same shadow-including connection proof for checked
+and unchecked controls. Explicit form IDs still resolve in the control's ordinary
+tree, including nonancestor forms; connection does not widen ID lookup or groups.
+Managed name and checked changes share the existing attribute backing/removal
+owner with Details, preserving retirement and reindexed source destinations.
+The selected late type operation supports Checkbox/Radio to Radio; other late
+transitions remain unsupported. These private hooks provide no live DOM API.
 
 Active and frozen private observations distinguish current and native default
 values, actual dirty/checkedness/indeterminate/user-validity flags, form owner

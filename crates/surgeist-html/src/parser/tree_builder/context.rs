@@ -3259,6 +3259,283 @@ mod tests {
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
     }
+    #[test]
+    fn radio_fragment_detached_groups_normalize_without_inventing_document_connection() {
+        let request = request(
+            "<input type=radio name=g checked><input type=radio name=g checked>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut driver = initialized_driver(&request);
+        complete(&mut driver);
+        let session = &mut driver
+            .head
+            .as_mut()
+            .unwrap()
+            .state
+            .as_mut()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        let output = session.fragment_output(&mut driver.control).unwrap();
+        let (a, b) = {
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            (
+                view.child_at(&output, 0).unwrap().unwrap(),
+                view.child_at(&output, 1).unwrap().unwrap(),
+            )
+        };
+        // Both fresh checked flags were set while their roots were singletons;
+        // disconnected insertion is not the becomes-connected trigger.
+        assert!(
+            session
+                .input_state(&mut driver.control, &a)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        assert!(
+            session
+                .input_state(&mut driver.control, &b)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        session
+            .set_input_checked(&mut driver.control, &b, true)
+            .unwrap();
+        assert!(
+            !session
+                .input_state(&mut driver.control, &a)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn radio_captured_shadow_connection_requires_domain_only_for_actual_checked_trigger() {
+        for checked in [false, true] {
+            let source = if checked {
+                "<template shadowrootmode=open><input type=radio name=g checked></template>"
+            } else {
+                "<template shadowrootmode=open><input type=radio name=g></template>"
+            };
+            let request = shadow_request(source, true);
+            let mut driver = initialized_driver(&request);
+            if checked {
+                let error = loop {
+                    match driver.step() {
+                        Ok(HeadStep::Consumed) => {}
+                        Err(error) => break error,
+                        Ok(other) => {
+                            panic!("expected actual captured-domain refusal, got {other:?}")
+                        }
+                    }
+                };
+                assert!(
+                    matches!(
+                        error,
+                        FragmentExecutionError::Head(head::HeadError::Kernel(
+                            KernelError::Session(SessionError::Stop(
+                                ParseStop::UnsupportedStandaloneState(
+                                    crate::parser::control::StandaloneUnsupported::Provenance
+                                )
+                            ))
+                        ))
+                    ),
+                    "{error:?}"
+                );
+                let first = driver.control.stop().unwrap();
+                assert_eq!(
+                    first,
+                    ParseStop::UnsupportedStandaloneState(
+                        crate::parser::control::StandaloneUnsupported::Provenance
+                    )
+                );
+                assert!(driver.step().is_err());
+                assert_eq!(driver.control.stop(), Some(first));
+                assert!(driver.completed_native_view().is_err());
+            } else {
+                complete(&mut driver);
+            }
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+    }
+    #[test]
+    fn radio_owned_shadow_connection_normalizes_only_its_actual_ordinary_tree() {
+        use crate::construction::parser_session::context::QualifiedFragmentHost;
+        let request = shadow_request(
+            "<div><template shadowrootmode=open><input type=radio name=g checked></template></div><input type=radio name=g checked>",
+            true,
+        );
+        let mut driver = initialized_driver(&request);
+        complete(&mut driver);
+        let session = &mut driver
+            .head
+            .as_mut()
+            .unwrap()
+            .state
+            .as_mut()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        let output = session.fragment_output(&mut driver.control).unwrap();
+        let effect = session
+            .declarative_shadow(&mut driver.control, 0)
+            .unwrap()
+            .unwrap();
+        let QualifiedFragmentHost::Owned(host) = effect.host else {
+            panic!("actual owned host")
+        };
+        let contents = effect.contents;
+        let (inner, outer) = {
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            (
+                view.child_at(&contents, 0).unwrap().unwrap(),
+                view.child_at(&output, 1).unwrap().unwrap(),
+            )
+        };
+        assert!(
+            session
+                .input_state(&mut driver.control, &inner)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        assert!(
+            session
+                .input_state(&mut driver.control, &outer)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        // Actual private Document P is retained by this fragment driver. Moving
+        // the owned host beneath P makes its existing shadow-including root P.
+        let document = session.root(&mut driver.control).unwrap();
+        session
+            .insert(&mut driver.control, &document, &host, None, None)
+            .unwrap();
+        session
+            .insert(&mut driver.control, &contents, &outer, None, None)
+            .unwrap();
+        assert!(
+            !session
+                .input_state(&mut driver.control, &inner)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        assert!(
+            session
+                .input_state(&mut driver.control, &outer)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+    #[test]
+    fn radio_dirty_checked_attribute_removal_does_not_trigger_group_normalization() {
+        let request = request(
+            "<input type=radio name=g checked><input type=radio name=g checked>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut driver = initialized_driver(&request);
+        let mut first = None;
+        for _ in 0..128 {
+            assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+            let session = &driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .before
+                .kernel
+                .session;
+            let output = session.fragment_output(&mut driver.control).unwrap();
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            if let Some(node) = view.child_at(&output, 0).unwrap() {
+                first = Some(node);
+                break;
+            }
+        }
+        let first = first.expect("actual first void input before second token");
+        let session = &mut driver
+            .head
+            .as_mut()
+            .unwrap()
+            .state
+            .as_mut()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        session
+            .set_input_checked(&mut driver.control, &first, true)
+            .unwrap();
+        complete(&mut driver);
+        let session = &mut driver
+            .head
+            .as_mut()
+            .unwrap()
+            .state
+            .as_mut()
+            .unwrap()
+            .before
+            .kernel
+            .session;
+        let output = session.fragment_output(&mut driver.control).unwrap();
+        let second = {
+            let mut view = session.native_view(&mut driver.control).unwrap();
+            view.child_at(&output, 1).unwrap().unwrap()
+        };
+        assert!(
+            session
+                .input_state(&mut driver.control, &first)
+                .unwrap()
+                .flags
+                .dirty_checkedness()
+        );
+        assert!(
+            session
+                .input_state(&mut driver.control, &second)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        session
+            .remove_input_attribute(
+                &mut driver.control,
+                &first,
+                crate::construction::parser_session::InputGroupAttribute::Checked,
+            )
+            .unwrap();
+        assert!(
+            session
+                .input_state(&mut driver.control, &first)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        assert!(
+            session
+                .input_state(&mut driver.control, &second)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
 
     #[test]
     fn connected_owned_shadow_checkbox_resolves_nonancestor_explicit_form_in_its_tree() {
@@ -3367,5 +3644,209 @@ mod tests {
             resolved_expected_form,
             "connected owned-shadow Checkbox must resolve sibling form id=f"
         );
+    }
+
+    #[test]
+    fn radio_unchecked_explicit_form_follows_nested_owned_shadow_connection_only() {
+        use crate::construction::parser_session::context::QualifiedFragmentHost;
+        let request = shadow_request(
+            "<form id=f></form><div><template shadowrootmode=open><div><template shadowrootmode=open><form id=f></form></template></div></template></div><input type=radio name=g form=f>",
+            true,
+        );
+        let mut driver = initialized_driver(&request);
+        complete(&mut driver);
+        let (associated, no_light_tree_match, disconnected_null, unchecked) = {
+            let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+            let session = &mut state.before.kernel.session;
+            let document = session.root(&mut driver.control).unwrap();
+            let output = session.fragment_output(&mut driver.control).unwrap();
+            let outer = session
+                .declarative_shadow(&mut driver.control, 0)
+                .unwrap()
+                .unwrap();
+            let inner = session
+                .declarative_shadow(&mut driver.control, 1)
+                .unwrap()
+                .unwrap();
+            let QualifiedFragmentHost::Owned(outer_host) = outer.host else {
+                panic!("actual outer owned host")
+            };
+            let QualifiedFragmentHost::Owned(inner_host) = inner.host else {
+                panic!("actual inner owned host")
+            };
+            let outer_contents = outer.contents;
+            let inner_contents = inner.contents;
+            let (radio, light_form, shadow_form) = {
+                let mut view = session.native_view(&mut driver.control).unwrap();
+                let nested_host = view.child_at(&outer_contents, 0).unwrap().unwrap();
+                assert!(view.same_node(&nested_host, &inner_host).unwrap());
+                (
+                    view.child_at(&output, 2).unwrap().unwrap(),
+                    view.child_at(&output, 0).unwrap().unwrap(),
+                    view.child_at(&inner_contents, 0).unwrap().unwrap(),
+                )
+            };
+            session
+                .insert(
+                    &mut driver.control,
+                    &document,
+                    &outer_host,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            session
+                .insert(
+                    &mut driver.control,
+                    &inner_contents,
+                    &radio,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            let owner = session
+                .form_association_owner(&mut driver.control, &radio)
+                .unwrap()
+                .unwrap();
+            let (associated, no_light_tree_match) = {
+                let mut view = session.native_view(&mut driver.control).unwrap();
+                (
+                    view.same_node(&owner, &shadow_form).unwrap(),
+                    !view.same_node(&owner, &light_form).unwrap(),
+                )
+            };
+            // Actual disconnection then another actual insertion resets ownership.
+            // The ordinary sibling form alone cannot satisfy the connected branch.
+            session
+                .insert(
+                    &mut driver.control,
+                    &output,
+                    &outer_host,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            session
+                .insert(
+                    &mut driver.control,
+                    &output,
+                    &radio,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            session
+                .insert(
+                    &mut driver.control,
+                    &inner_contents,
+                    &radio,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            let disconnected_null = session
+                .form_association_owner(&mut driver.control, &radio)
+                .unwrap()
+                .is_none();
+            let unchecked = !session
+                .input_state(&mut driver.control, &radio)
+                .unwrap()
+                .flags
+                .checkedness();
+            (
+                associated,
+                no_light_tree_match,
+                disconnected_null,
+                unchecked,
+            )
+        };
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), None);
+        assert!(associated && no_light_tree_match && disconnected_null && unchecked);
+    }
+
+    #[test]
+    fn radio_unchecked_explicit_form_requires_influencing_captured_shadow_host() {
+        for kind in ["checkbox", "radio"] {
+            let source =
+                format!("<template shadowrootmode=open><input type={kind} form=f></template>");
+            let request = shadow_request(&source, true);
+            let mut driver = initialized_driver(&request);
+            let mut refused = false;
+            for _ in 0..128 {
+                if driver.step().is_err() {
+                    refused = true;
+                    break;
+                }
+            }
+            let first = driver.control.stop();
+            assert!(driver.step().is_err());
+            assert_eq!(driver.control.stop(), first);
+            assert!(driver.completed_native_view().is_err());
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+            assert!(refused);
+            assert_eq!(
+                first,
+                Some(ParseStop::UnsupportedStandaloneState(
+                    crate::parser::control::StandaloneUnsupported::Provenance
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn radio_shadow_form_insertion_cancel_preserves_first_stop_and_cleanup() {
+        let request = shadow_request(
+            "<div><template shadowrootmode=open><form id=f></form></template></div><input type=radio form=f>",
+            true,
+        );
+        let mut driver = initialized_driver(&request);
+        complete(&mut driver);
+        let result = {
+            let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+            let session = &mut state.before.kernel.session;
+            let document = session.root(&mut driver.control).unwrap();
+            let output = session.fragment_output(&mut driver.control).unwrap();
+            let effect = session
+                .declarative_shadow(&mut driver.control, 0)
+                .unwrap()
+                .unwrap();
+            let crate::construction::parser_session::context::QualifiedFragmentHost::Owned(host) =
+                effect.host
+            else {
+                panic!("actual owned host")
+            };
+            let contents = effect.contents;
+            let radio = {
+                let mut view = session.native_view(&mut driver.control).unwrap();
+                view.child_at(&output, 1).unwrap().unwrap()
+            };
+            session
+                .insert(
+                    &mut driver.control,
+                    &document,
+                    &host,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            request.cancellation().cancel();
+            session.insert(
+                &mut driver.control,
+                &contents,
+                &radio,
+                None,
+                Some(&state.script.as_ref().unwrap().capability),
+            )
+        };
+        assert!(driver.completed_native_view().is_err());
+        let first = driver.control.stop();
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+        assert_eq!(first, Some(ParseStop::Cancelled));
+        assert_eq!(driver.control.stop(), first);
     }
 }

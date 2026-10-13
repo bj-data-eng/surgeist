@@ -2875,7 +2875,8 @@ mod tests {
             let visits = view.usage().work(WorkCategory::RecordVisit);
             let reads = view.usage().work(WorkCategory::InspectByte);
             assert_eq!(view.unit(&text, 0).unwrap(), Some(0xd800));
-            assert_eq!(view.usage().work(WorkCategory::RecordVisit) - visits, 7);
+            // Seven actual readiness reads (including Radio) plus the field lookup.
+            assert_eq!(view.usage().work(WorkCategory::RecordVisit) - visits, 8);
             assert_eq!(view.usage().work(WorkCategory::InspectByte) - reads, 2);
             let reads = view.usage().work(WorkCategory::InspectByte);
             assert_eq!(view.unit(&text, text.len()).unwrap(), None);
@@ -2887,7 +2888,7 @@ mod tests {
             view.control()
                 .charge(
                     WorkCategory::StateStep,
-                    request.limits().work_credits() - used - 8,
+                    request.limits().work_credits() - used - 9,
                 )
                 .unwrap();
             let reads = view.usage().work(WorkCategory::InspectByte);

@@ -21,10 +21,10 @@ fn checkbox_has_exact_default_on_content_fallback_and_no_sanitizer() {
     );
     assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
     assert_eq!(
-        HtmlInputStringKind::try_from(HtmlInputType::Radio)
+        HtmlInputStringKind::try_from(HtmlInputType::File)
             .unwrap_err()
             .input_type(),
-        HtmlInputType::Radio
+        HtmlInputType::File
     );
 }
 

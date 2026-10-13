@@ -46,6 +46,9 @@ mod foreign;
 pub(crate) mod history;
 pub(crate) mod native_view;
 mod pi;
+mod radio;
+pub(crate) use radio::InputGroupAttribute;
+mod mutation;
 pub(crate) mod provenance;
 pub(crate) mod report;
 use provenance::{FieldCopy, OriginGroupRef};
@@ -208,6 +211,8 @@ impl FormattingCreation {
 struct SessionStorage {
     #[cfg(test)]
     cancel_after_details_shift: Option<crate::HtmlParseCancellation>,
+    #[cfg(test)]
+    cancel_after_radio_peer: Option<crate::HtmlParseCancellation>,
     control: ControlIdentity,
     effects: ConstructionEffects,
     evidence: Option<ParseEvidence>,
@@ -957,6 +962,8 @@ impl SessionStorage {
         let mut session = Self {
             #[cfg(test)]
             cancel_after_details_shift: None,
+            #[cfg(test)]
+            cancel_after_radio_peer: None,
             control: control.identity(),
             effects,
             evidence: None,
@@ -1624,6 +1631,12 @@ impl SessionStorage {
         let type_attr = exact_ascii(control, Some(name), "type")?;
         let checked_attr = exact_ascii(control, Some(name), "checked")?;
         let form_attr = exact_ascii(control, Some(name), "form")?;
+        let name_attr = element.attributes().as_slice()[position]
+            .name()
+            .namespace()
+            .uri()
+            .is_none()
+            && exact_ascii(control, Some(name), "name")?;
         let state = self.read_input_state(control, slot)?;
         if value_attr
             && let crate::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(policy) =
@@ -1647,6 +1660,9 @@ impl SessionStorage {
             let mut next = state;
             next.flags = flags;
             self.write_input_state(control, slot, next)?;
+            if flags.radio_normalization_required(crate::HtmlRadioTrigger::Checkedness) {
+                self.normalize_radio(control, node, None)?;
+            }
         }
         if type_attr {
             let HtmlNodeKind::Element(element) = &self.records[node].kind else {
@@ -1709,10 +1725,22 @@ impl SessionStorage {
                         )?;
                         self.replace_input_raw(control, slot, text)?;
                     }
-                    // Rendering/type-change signaling has no host recipient in
+                    if effect == crate::HtmlInputTypeEffect::SignalTypeChange
+                        && next_kind == crate::HtmlInputStringKind::Radio
+                    {
+                        self.normalize_radio(control, node, None)?;
+                    }
+                    // Rendering has no host recipient in
                     // fresh immutable construction. Initial cursor is already0.
                 }
             }
+        }
+        if name_attr
+            && state
+                .flags
+                .radio_normalization_required(crate::HtmlRadioTrigger::Name)
+        {
+            self.normalize_radio(control, node, None)?;
         }
         if form_attr {
             let state = find_form_association_state(&self.payloads, control, node)?
@@ -1861,6 +1889,12 @@ impl SessionStorage {
         self.replace_input_raw(control, slot, text)?;
         state.flags = state.flags.reset_checkedness(checked);
         self.write_input_state(control, slot, state)?;
+        if state
+            .flags
+            .radio_normalization_required(crate::HtmlRadioTrigger::Checkedness)
+        {
+            self.normalize_radio(control, node, None)?;
+        }
         state.selected_files_empty = true;
         self.write_input_state(control, slot, state)?;
         payload_write::<bool>(control, 1)?;
@@ -3501,6 +3535,66 @@ impl SessionStorage {
         ))
     }
 
+    /// DOM3071 connected is a shadow-including root, not ordinary tree membership.
+    /// The virtual removed root applies to every owned host hop as well.
+    fn shadow_including_connected(
+        &self,
+        control: &mut ParseControl,
+        node: usize,
+        detached: Option<usize>,
+    ) -> Result<bool, SessionError> {
+        let mut root = self.ordinary_root(control, node, detached)?;
+        'roots: for _ in 0..self.records.len() {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if matches!(self.records[root].kind, HtmlNodeKind::Document(_)) {
+                return Ok(true);
+            }
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self.records[root].owner {
+                control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+                control.charge(WorkCategory::ProviderCall, 1)?;
+                if !Arc::ptr_eq(&self.identity, &host.identity) {
+                    return Err(SessionError::ForeignNode);
+                }
+                root = self.ordinary_root(control, host.index, detached)?;
+                continue;
+            }
+            // A retained captured attachment is an influencing host, not proof
+            // of disconnection. The adapter cannot invent its connectedness.
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if let Some(fragment) = &self.fragment {
+                for effect in fragment.effects.as_slice() {
+                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    if let context::ContextEffect::AttachShadow {
+                        contents: Some(contents),
+                        host,
+                        ..
+                    } = effect
+                        && *contents == root
+                    {
+                        match host {
+                            context::ShadowHostKey::Owned(host) => {
+                                control.charge(
+                                    WorkCategory::CopyByte,
+                                    mem::size_of::<usize>() as u64,
+                                )?;
+                                root = self.ordinary_root(control, *host, detached)?;
+                                continue 'roots;
+                            }
+                            context::ShadowHostKey::Captured(_) => {
+                                control
+                                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+                                return Err(SessionError::ContextUnavailable);
+                            }
+                        }
+                    }
+                }
+            }
+            return Ok(false);
+        }
+        Err(SessionError::Cycle)
+    }
+
     fn first_id_form(
         &self,
         control: &mut ParseControl,
@@ -3547,9 +3641,13 @@ impl SessionStorage {
         {
             return Ok(());
         }
+        let previous_owner = state.owner;
         state.owner = None;
         set_form_association_state(self, control, slot, state)?;
-        state.owner = if explicit && self.connected(control, node, detached)? {
+        if state.kind == FormAssociationKind::Input && previous_owner.is_some() {
+            self.normalize_radio(control, node, detached)?;
+        }
+        state.owner = if explicit && self.shadow_including_connected(control, node, detached)? {
             let value = self
                 .form_attribute(control, node, "form")?
                 .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
@@ -3559,6 +3657,9 @@ impl SessionStorage {
         };
         if state.owner.is_some() {
             set_form_association_state(self, control, slot, state)?;
+            if state.kind == FormAssociationKind::Input {
+                self.normalize_radio(control, node, detached)?;
+            }
         }
         Ok(())
     }
@@ -4258,6 +4359,8 @@ impl SessionStorage {
             fragment,
             #[cfg(test)]
                 cancel_after_details_shift: _,
+            #[cfg(test)]
+                cancel_after_radio_peer: _,
             #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
@@ -5249,6 +5352,9 @@ impl ParserArenaSession {
                         FormAssociationEvidence::Created
                     };
                 }
+                if reset_before_association && owner.is_some() && input_slot.is_some() {
+                    storage.normalize_radio(control, node.index, None)?;
+                }
             }
             Ok(node)
         })();
@@ -6213,6 +6319,8 @@ impl ParserArenaSession {
             #[cfg(test)]
                 cancel_after_details_shift: _,
             #[cfg(test)]
+                cancel_after_radio_peer: _,
+            #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
                 cancel_after_textarea_reset: _,
@@ -6248,6 +6356,8 @@ impl ParserArenaSession {
                     fragment,
                     #[cfg(test)]
                     cancel_after_details_shift: None,
+                    #[cfg(test)]
+                    cancel_after_radio_peer: None,
                     #[cfg(test)]
                     cancel_after_removal: None,
                     #[cfg(test)]
@@ -8692,7 +8802,7 @@ mod tests {
 
     #[test]
     fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanup() {
-        for remaining in [20, 21] {
+        for remaining in [21, 22] {
             let source = crate::HtmlSource::utf8("<output>A");
             let (mut c, mut session, output, mut lexer) = output_owner(&source, limits());
             let mut text = next_text(&mut lexer, &mut c);
@@ -8703,8 +8813,8 @@ mod tests {
             let mut destination = Utf16Buffer::new(&mut c).unwrap();
             destination.push_unit(81, &mut c).unwrap();
             destination.clear(&mut c).unwrap(); // capacity for1 exists before measured copying.
-            // Getter visits: active readiness+index7, root Document/self-binding2 + Output node-binding1 + Output slot1,
-            // root+child2, Text1, leaf/parent/child-list/sibling4 =18.
+            // Getter visits: active readiness+index8, root Document/self-binding2 + Output node-binding1 + Output slot1,
+            // root+child2, Text1, leaf/parent/child-list/sibling4 =19.
             // Copies are one finite state byte plus one UTF16 unit =3.
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = limits().work_credits();
@@ -8713,12 +8823,12 @@ mod tests {
             let before = c.usage().clone();
             let result = session.append_output_value(&mut c, &output, &mut destination);
             assert_eq!(destination.units(), [65]);
-            if remaining == 21 {
+            if remaining == 22 {
                 result.unwrap();
                 assert_eq!(
                     c.usage().work(WorkCategory::RecordVisit)
                         - before.work(WorkCategory::RecordVisit),
-                    18
+                    19
                 );
                 assert_eq!(
                     c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
@@ -9397,10 +9507,10 @@ mod tests {
     #[test]
     fn template_owned_html_wrapper_pre_registration_stops_reclaim_lexical_fields() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        // require: 6 visits; kind: 1; name owner+alias: 2; lowercase
+        // require: 7 visits (including the retained radio phase); kind: 1; name owner+alias: 2; lowercase
         // template: 16; indexed attribute: 1; its two owner+alias checks: 4;
         // lowercase a: 2. This is the actual borrowed preflight, before take.
-        const PREFLIGHT: u64 = 32;
+        const PREFLIGHT: u64 = 33;
         // The newly owned wrapper reads length (1), eight units (3 each),
         // then root kind (1). Cut each credit before document preparation.
         for wrapper_credit in 0..26 {
@@ -10178,11 +10288,11 @@ mod tests {
     fn formatting_capture_one_short_ordinary_document_qualification_preserves_original_before_take()
     {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        // Readiness first inspects the real form phase plus five intrinsic readiness fields (six visits).
+        // Readiness first inspects the real form phase plus six intrinsic readiness fields including Radio (seven visits).
         // Qualification then admits eligibility/root-kind together (two).
-        // One short leaves only readiness admitted; exactly eight completes
+        // One short leaves only readiness admitted; exactly nine completes
         // qualification but cannot admit the next source-range visit.
-        for remaining in [7, 8] {
+        for remaining in [8, 9] {
             let source = crate::HtmlSource::utf8("<b>");
             let mut c = control();
             c.admit_source(&source).unwrap();
@@ -10209,7 +10319,7 @@ mod tests {
             assert!(input.is_some());
             assert_eq!(
                 c.usage().work(WorkCategory::RecordVisit) - before,
-                if remaining == 8 { 8 } else { 6 }
+                if remaining == 9 { 9 } else { 7 }
             );
             let stop = c.stop();
             discard_formatting_tag(&mut input, &mut c).unwrap();
@@ -11620,6 +11730,713 @@ mod tests {
         }
     }
 
+    fn radio_pair(
+        request: &crate::HtmlDocumentParseRequest,
+    ) -> (
+        ParseControl,
+        ParserArenaSession,
+        ParserNode,
+        ParserNode,
+        ParserNode,
+    ) {
+        let (mut c, mut session, proof, mut lexer, parent, mut input, source) =
+            input_owner(request);
+        let first = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &source,
+                &proof,
+            )
+            .unwrap();
+        session
+            .insert_parser(&mut c, &parent, &first, None, &proof)
+            .unwrap();
+        let (mut second, range) = loop {
+            match lexer.next(&mut c, false).unwrap().unwrap() {
+                crate::parser::tokenizer::token::Event::Token(event) => {
+                    let token = event.into_token(&mut c).unwrap();
+                    if let TokenKind::Tag(tag) = token.kind {
+                        break (Some(tag), token.source);
+                    }
+                    release_token_kind(&mut Some(token.kind), &mut c).unwrap();
+                }
+                event => event.release(&mut c).unwrap(),
+            }
+        };
+        let second = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut second,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &proof,
+            )
+            .unwrap();
+        session
+            .insert_parser(&mut c, &parent, &second, None, &proof)
+            .unwrap();
+        lexer.release(&mut c).unwrap();
+        (c, session, parent, first, second)
+    }
+    #[test]
+    fn radio_exact_group_names_and_ordered_attributes_preserve_checked_defaults() {
+        for (left, right, expected) in [
+            (
+                "type=radio name=g checked",
+                "checked name=g type=radio",
+                [false, true],
+            ),
+            (
+                "checked type=radio name=g",
+                "name=g type=radio checked",
+                [false, true],
+            ),
+            (
+                "type=radio name=g checked",
+                "type=radio name=G checked",
+                [true, true],
+            ),
+            (
+                "type=radio name='' checked",
+                "type=radio name='' checked",
+                [true, true],
+            ),
+            ("type=radio checked", "type=radio checked", [true, true]),
+            (
+                "type=radio name=' g' checked",
+                "type=radio name=g checked",
+                [true, true],
+            ),
+        ] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(format!(
+                    "<html><head></head><input {left}><input {right}>"
+                )),
+                limits(),
+            );
+            let (mut c, mut session, _, a, b) = radio_pair(&request);
+            let states = [
+                session.input_state(&mut c, &a).unwrap(),
+                session.input_state(&mut c, &b).unwrap(),
+            ];
+            assert_eq!(states.map(|s| s.flags.checkedness()), expected);
+            assert!(
+                states
+                    .iter()
+                    .all(|s| !s.flags.dirty_checkedness() && !s.flags.dirty_value())
+            );
+            for node in [&a, &b] {
+                assert!(
+                    session
+                        .active()
+                        .unwrap()
+                        .form_attribute(&mut c, node.index, "checked")
+                        .unwrap()
+                        .is_some()
+                );
+            }
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+    #[test]
+    fn radio_checked_setter_dirties_only_subject_and_does_not_recheck_false_subject() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=g checked><input type=radio name=g checked>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, _, a, b) = radio_pair(&request);
+        session.set_input_checked(&mut c, &a, true).unwrap();
+        assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        let peer = session.input_state(&mut c, &b).unwrap().flags;
+        assert!(!peer.checkedness() && !peer.dirty_checkedness());
+        session.set_input_checked(&mut c, &a, false).unwrap();
+        assert!(!session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        assert!(
+            session
+                .input_state(&mut c, &a)
+                .unwrap()
+                .flags
+                .dirty_checkedness()
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+    #[test]
+    fn radio_clone_propagates_current_dirty_state_then_connection_normalizes_actual_group() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=g checked value=x><input type=radio name=g checked>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, parent, a, b) = radio_pair(&request);
+        session.set_input_checked(&mut c, &a, true).unwrap();
+        let copy = session
+            .active_mut()
+            .unwrap()
+            .clone_node(&mut c, a.index, DocumentRef::Owned(0))
+            .unwrap();
+        let copy = session.active().unwrap().node(&mut c, copy).unwrap();
+        let copied = session.input_state(&mut c, &copy).unwrap().flags;
+        assert!(copied.checkedness() && copied.dirty_checkedness());
+        session.insert(&mut c, &parent, &copy, None, None).unwrap();
+        assert!(!session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        assert!(
+            session
+                .input_state(&mut c, &copy)
+                .unwrap()
+                .flags
+                .checkedness()
+        );
+        assert!(
+            session
+                .input_state(&mut c, &a)
+                .unwrap()
+                .flags
+                .dirty_checkedness()
+        );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+    #[test]
+    fn radio_work_cuts_retain_progress_first_stop_and_reclaim_every_owned_field() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=g checked><input type=radio name=g checked>",
+            ),
+            limits(),
+        );
+        let (mut baseline, mut session, _, a, _) = radio_pair(&request);
+        let before = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        session.set_input_checked(&mut baseline, &a, true).unwrap();
+        let work = baseline
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - before;
+        session.release(&mut baseline).unwrap();
+        storage_zero(&baseline);
+        for short in [0, 1, work / 2] {
+            let (mut c, mut session, _, a, b) = radio_pair(&request);
+            let limit = c.usage().resource(HtmlParseResource::WorkCredits).current + work - short;
+            let remaining = request.limits().work_credits() - limit;
+            c.charge(WorkCategory::StateStep, remaining).unwrap();
+            let result = session.set_input_checked(&mut c, &a, true);
+            if short == 0 {
+                result.unwrap();
+                assert!(session.active().unwrap().payloads.values.iter().any(|p|
+                    matches!(p,RetainedPayload::Input {node:Some(n),state,..} if *n==a.index && state.flags.checkedness())));
+                assert!(session.active().unwrap().effects.radio.is_none());
+                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            } else {
+                assert!(matches!(result, Err(SessionError::Stop(_))));
+                let stop = c.stop();
+                assert!(matches!(session.freeze(&mut c), Err(SessionError::Stop(_))));
+                assert_eq!(c.stop(), stop);
+                assert_eq!(
+                    session.active().unwrap().records[b.index].parent,
+                    session.active().unwrap().records[a.index].parent
+                );
+            }
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+    #[test]
+    fn radio_cancelled_and_foreign_checked_setters_preserve_actual_state_and_owner() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=g checked><input type=radio name=g checked>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, _, a, _) = radio_pair(&request);
+        let before = session.input_state(&mut c, &a).unwrap();
+        let other = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        let foreign = other.root(&mut c).unwrap();
+        assert_eq!(
+            session.set_input_checked(&mut c, &foreign, true),
+            Err(SessionError::ForeignNode)
+        );
+        assert_eq!(session.input_state(&mut c, &a).unwrap(), before);
+        let mut other = other;
+        other.release(&mut c).unwrap();
+        request.cancellation().cancel();
+        assert_eq!(
+            session.set_input_checked(&mut c, &a, true),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        );
+        assert!(session.active().unwrap().payloads.values.iter().any(|p|
+            matches!(p,RetainedPayload::Input {node:Some(n),state,..} if *n==a.index && *state==before)));
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    fn radio_managed_fixture<'a>(
+        request: &'a crate::HtmlDocumentParseRequest,
+    ) -> (
+        ParseControl,
+        ParserArenaSession,
+        crate::parser::tree_builder::ConstructionCapability<'a>,
+        crate::parser::tokenizer::tests::LexerFixture<'a>,
+        ParserNode,
+        ParserNode,
+    ) {
+        let (mut c, mut session, proof, mut lexer, parent, mut input, range) = input_owner(request);
+        let first = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &proof,
+            )
+            .unwrap();
+        session
+            .insert_parser(&mut c, &parent, &first, None, &proof)
+            .unwrap();
+        let (tag, range) = radio_next_tag(&mut lexer, &mut c);
+        let second = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut Some(tag),
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &proof,
+            )
+            .unwrap();
+        session
+            .insert_parser(&mut c, &parent, &second, None, &proof)
+            .unwrap();
+        (c, session, proof, lexer, first, second)
+    }
+    fn radio_next_tag(
+        lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+        c: &mut ParseControl,
+    ) -> (Tag, crate::HtmlSourceRange) {
+        loop {
+            match lexer.next(c, false).unwrap().unwrap() {
+                crate::parser::tokenizer::token::Event::Token(event) => {
+                    let token = event.into_token(c).unwrap();
+                    if let TokenKind::Tag(tag) = token.kind {
+                        return (tag, token.source);
+                    }
+                    release_token_kind(&mut Some(token.kind), c).unwrap();
+                }
+                event => event.release(c).unwrap(),
+            }
+        }
+    }
+    fn radio_next_attribute(
+        lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+        c: &mut ParseControl,
+    ) -> Option<crate::parser::tokenizer::token::Attribute> {
+        let (tag, _) = radio_next_tag(lexer, c);
+        let Tag {
+            name,
+            mut attributes,
+            ..
+        } = tag;
+        name.release(c).unwrap();
+        let attr = attributes.try_pop(c).unwrap();
+        release_token_attributes(attributes, c).unwrap();
+        attr
+    }
+    #[test]
+    fn radio_name_change_uses_actual_managed_fields_and_retirement_then_removal_early_return() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=a checked><input type=radio name=b checked><i name=b>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
+        let mut field = radio_next_attribute(&mut lexer, &mut c);
+        session
+            .set_input_attribute(&mut c, &a, &mut field, &proof)
+            .unwrap();
+        assert!(field.is_none());
+        assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        let storage = session.active().unwrap();
+        assert!(storage.payloads.values.iter().any(|p|matches!(p,
+            RetainedPayload::String {value,location:StringLocation::Detached,origins:Some(group),..}
+            if value.code_units()==[97] && storage.evidence.as_ref().unwrap().require_group(group).unwrap().retirement.is_some())));
+        session
+            .remove_input_attribute(&mut c, &a, radio::InputGroupAttribute::Name)
+            .unwrap();
+        session.set_input_checked(&mut c, &b, true).unwrap();
+        assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+    #[test]
+    fn radio_checked_added_removed_dirty_gate_and_existing_attribute_replacement_are_distinct() {
+        for dirty in [false, true] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(
+                    "<html><head></head><input type=radio name=g><input type=radio name=g checked><i checked=new><i checked=again>",
+                ),
+                limits(),
+            );
+            let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
+            if dirty {
+                session.set_input_checked(&mut c, &a, false).unwrap();
+            }
+            let mut field = radio_next_attribute(&mut lexer, &mut c);
+            session
+                .set_input_attribute(&mut c, &a, &mut field, &proof)
+                .unwrap();
+            assert_eq!(
+                session.input_state(&mut c, &a).unwrap().flags.checkedness(),
+                !dirty
+            );
+            assert_eq!(
+                session.input_state(&mut c, &b).unwrap().flags.checkedness(),
+                dirty
+            );
+            session.set_input_checked(&mut c, &b, true).unwrap();
+            let mut field = radio_next_attribute(&mut lexer, &mut c);
+            session
+                .set_input_attribute(&mut c, &a, &mut field, &proof)
+                .unwrap();
+            // Replacement of present checked is neither Added nor Removed.
+            assert!(!session.input_state(&mut c, &a).unwrap().flags.checkedness());
+            assert!(session.input_state(&mut c, &b).unwrap().flags.checkedness());
+            session
+                .remove_input_attribute(&mut c, &a, radio::InputGroupAttribute::Checked)
+                .unwrap();
+            assert!(!session.input_state(&mut c, &a).unwrap().flags.checkedness());
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+    #[test]
+    fn radio_managed_alias_refusal_preserves_original_then_retry_reclaims_all_owners() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=a checked><input type=radio name=b checked><i name=b>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
+        let mut field = radio_next_attribute(&mut lexer, &mut c);
+        let pointer = field
+            .as_ref()
+            .unwrap()
+            .value
+            .value
+            .text()
+            .backing()
+            .as_ptr();
+        let HtmlNodeKind::Element(e) = &session.active().unwrap().records[a.index].kind else {
+            panic!("input")
+        };
+        let alias = e.attributes().clone();
+        assert_eq!(
+            session.set_input_attribute(&mut c, &a, &mut field, &proof),
+            Err(SessionError::AliasedPayload)
+        );
+        assert_eq!(
+            field
+                .as_ref()
+                .unwrap()
+                .value
+                .value
+                .text()
+                .backing()
+                .as_ptr(),
+            pointer
+        );
+        assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        drop(alias);
+        session
+            .set_input_attribute(&mut c, &a, &mut field, &proof)
+            .unwrap();
+        assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+    #[test]
+    fn radio_actual_owner_change_null_then_final_owner_and_disconnected_setter_use_virtual_tree() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=g checked><input type=radio name=g checked><form>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
+        let root = session.root(&mut c).unwrap();
+        let (tag, _) = radio_next_tag(&mut lexer, &mut c);
+        let form = session.allocate_html_tag(&mut c, &mut Some(tag)).unwrap();
+        session
+            .insert(&mut c, &root, &form, None, Some(&proof))
+            .unwrap();
+        session.set_input_checked(&mut c, &a, true).unwrap();
+        session
+            .insert(&mut c, &form, &a, None, Some(&proof))
+            .unwrap();
+        assert!(
+            session
+                .form_association_owner(&mut c, &a)
+                .unwrap()
+                .is_some()
+        );
+        session.set_input_checked(&mut c, &b, true).unwrap();
+        assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        session
+            .insert(&mut c, &root, &a, None, Some(&proof))
+            .unwrap();
+        assert!(
+            session
+                .form_association_owner(&mut c, &a)
+                .unwrap()
+                .is_none()
+        );
+        assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        // No connectedness requirement belongs to checked-setter group membership.
+        session.remove(&mut c, &form, Some(&proof)).unwrap();
+        session
+            .insert(&mut c, &form, &a, None, Some(&proof))
+            .unwrap();
+        session
+            .insert(&mut c, &form, &b, None, Some(&proof))
+            .unwrap();
+        session.set_input_checked(&mut c, &b, true).unwrap();
+        session.set_input_checked(&mut c, &a, true).unwrap();
+        assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+    #[test]
+    fn radio_committed_peer_cancellation_retains_real_progress_and_canonical_first_stop() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=g checked><input type=radio name=g checked>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, _, a, b) = radio_pair(&request);
+        session.active_mut().unwrap().cancel_after_radio_peer =
+            Some(request.cancellation().clone());
+        assert_eq!(
+            session.set_input_checked(&mut c, &a, true),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let storage = session.active().unwrap();
+        assert!(storage.effects.radio.is_some());
+        let peer = storage
+            .payloads
+            .values
+            .iter()
+            .find_map(|p| match p {
+                RetainedPayload::Input {
+                    node: Some(n),
+                    state,
+                    ..
+                } if *n == b.index => Some(state),
+                _ => None,
+            })
+            .unwrap();
+        assert!(!peer.flags.checkedness());
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let usage = c.usage().resource(HtmlParseResource::WorkCredits);
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), usage);
+    }
+    #[test]
+    fn radio_actual_type_signal_from_checked_checkbox_normalizes_and_same_radio_state_skips_signal()
+    {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=checkbox name=g checked><input type=radio name=g checked><i type=radio><i type=RADIO>",
+            ),
+            limits(),
+        );
+        let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
+        let mut attr = radio_next_attribute(&mut lexer, &mut c);
+        session
+            .set_input_attribute(&mut c, &a, &mut attr, &proof)
+            .unwrap();
+        assert_eq!(
+            session.input_state(&mut c, &a).unwrap().flags.kind(),
+            crate::HtmlInputStringKind::Radio
+        );
+        assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        session.set_input_checked(&mut c, &b, true).unwrap();
+        let mut attr = radio_next_attribute(&mut lexer, &mut c);
+        session
+            .set_input_attribute(&mut c, &a, &mut attr, &proof)
+            .unwrap();
+        assert!(!session.input_state(&mut c, &a).unwrap().flags.checkedness());
+        assert!(session.input_state(&mut c, &b).unwrap().flags.checkedness());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+    #[test]
+    fn radio_matching_imported_peer_requires_actual_canonical_state_but_unrelated_name_does_not() {
+        for name in ["g", "other"] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(
+                    "<html><head></head><input type=radio name=g checked><input type=radio name=other>",
+                ),
+                limits(),
+            );
+            let (mut c, mut session, parent, a, _) = radio_pair(&request);
+            let mut native = html("input");
+            native.attributes = OrderedAttributes::new(vec![
+                Attribute::new(QualifiedName::new(Namespace::none(), None, "type"), "radio"),
+                Attribute::new(QualifiedName::new(Namespace::none(), None, "name"), name),
+            ])
+            .unwrap();
+            let imported = session.allocate_element(&mut c, native).unwrap();
+            session
+                .insert(&mut c, &parent, &imported, None, None)
+                .unwrap();
+            let result = session.set_input_checked(&mut c, &a, true);
+            if name == "g" {
+                assert_eq!(result, Err(SessionError::InputMetadataUnavailable));
+                let stop = c.stop().unwrap();
+                assert_eq!(
+                    stop,
+                    ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+                );
+                assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
+                assert!(session.active().unwrap().effects.radio.is_some());
+            } else {
+                result.unwrap();
+            }
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+    #[test]
+    fn radio_literal_utf16_names_preserve_unpaired_surrogates_and_exact_group_case() {
+        for equal in [false, true] {
+            let mut units = "<html><head></head><input type=radio name='"
+                .encode_utf16()
+                .collect::<Vec<_>>();
+            units.extend([0xd800, 0xd83d, 0xde00]);
+            units.extend("' checked><input type=radio name='".encode_utf16());
+            units.extend([if equal { 0xd800 } else { 0xd801 }, 0xd83d, 0xde00]);
+            units.extend("' checked>".encode_utf16());
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf16(DocumentString::from_utf16(units)),
+                limits(),
+            );
+            let (mut c, mut session, _, a, b) = radio_pair(&request);
+            assert_eq!(
+                session.input_state(&mut c, &a).unwrap().flags.checkedness(),
+                !equal
+            );
+            assert!(session.input_state(&mut c, &b).unwrap().flags.checkedness());
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+    #[test]
+    fn radio_name_setter_work_boundaries_keep_original_or_committed_registry_owner_and_first_stop()
+    {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=radio name=a checked><input type=radio name=b checked><i name=b>",
+            ),
+            limits(),
+        );
+        let (mut base, mut session, proof, mut lexer, a, _) = radio_managed_fixture(&request);
+        let mut attr = radio_next_attribute(&mut lexer, &mut base);
+        let before = base
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        session
+            .set_input_attribute(&mut base, &a, &mut attr, &proof)
+            .unwrap();
+        let work = base
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - before;
+        lexer.release(&mut base).unwrap();
+        session.release(&mut base).unwrap();
+        storage_zero(&base);
+        for admitted in [0, 1, work / 2, work - 1, work] {
+            let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
+            let mut attr = radio_next_attribute(&mut lexer, &mut c);
+            let pointer = attr.as_ref().unwrap().value.value.text().backing().as_ptr();
+            let remaining = request.limits().work_credits()
+                - c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(WorkCategory::StateStep, remaining - admitted)
+                .unwrap();
+            let result = session.set_input_attribute(&mut c, &a, &mut attr, &proof);
+            if admitted == work {
+                result.unwrap();
+                assert!(session.active().unwrap().payloads.values.iter().any(|p|matches!(p,
+                    RetainedPayload::Input {node:Some(n),state,..} if *n==b.index && !state.flags.checkedness())));
+                c.charge(WorkCategory::StateStep, 1).unwrap_err();
+            } else {
+                assert!(matches!(result, Err(SessionError::Stop(_))));
+                let first = c.stop().unwrap();
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+                if let Some(attr) = &attr {
+                    assert_eq!(attr.value.value.text().backing().as_ptr(), pointer);
+                }
+            }
+            if let Some(attr) = attr.take() {
+                attr.name.release(&mut c).unwrap();
+                attr.value.release(&mut c).unwrap();
+            }
+            let first = c.stop();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), first);
+        }
+    }
     fn input_owner<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
     ) -> (
@@ -12952,7 +13769,6 @@ mod tests {
             "number",
             "range",
             "color",
-            "radio",
             "file",
             "submit",
             "image",
@@ -17826,8 +18642,8 @@ mod tests {
             let copies = c.usage().work(WorkCategory::CopyByte);
             let writes = c.usage().work(WorkCategory::RecordWrite);
             assert_eq!(session.document_mode(&mut c), Ok(mode));
-            // Form readiness plus five intrinsic-owner reads + root discriminant, then the mode copy.
-            assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 7);
+            // Form readiness plus six intrinsic-owner reads including Radio + root discriminant, then the mode copy.
+            assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 8);
             assert_eq!(
                 c.usage().work(WorkCategory::CopyByte) - copies,
                 mem::size_of::<HtmlDocumentMode>() as u64
@@ -17895,8 +18711,8 @@ mod tests {
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
-        // Independent getter envelope: seven actual reads and fixed mode copy.
-        let complete = 7 + mem::size_of::<HtmlDocumentMode>() as u64;
+        // Independent getter envelope: eight actual reads (including Radio readiness) and fixed mode copy.
+        let complete = 8 + mem::size_of::<HtmlDocumentMode>() as u64;
         for remaining in [complete, complete - 1] {
             let mut c = control();
             let mut session =
@@ -19486,9 +20302,9 @@ mod tests {
             session.element_insertion_ignored(&mut c, &first, &root),
             Ok(None)
         );
-        // Twelve readiness visits + two checked handles, element kind,
+        // Fourteen readiness visits + two checked handles, element kind,
         // ancestry root and target kind.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 17);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 19);
         session.insert(&mut c, &root, &first, None, None).unwrap();
         let visits = c.usage().work(WorkCategory::RecordVisit);
         assert_eq!(
@@ -19496,7 +20312,7 @@ mod tests {
             Ok(Some(ElementInsertionIgnored::DocumentAlreadyHasElement))
         );
         // The additional real child-index and referenced-kind reads cost two.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 19);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 21);
         assert_eq!(session.active().unwrap().records[0].children, [first.index]);
         assert!(
             session.active().unwrap().records[second.index]
@@ -19540,9 +20356,9 @@ mod tests {
                 ElementInsertionIgnored::HostIncludingInclusiveAncestor
             ))
         );
-        // Twelve readiness visits + two handles + element kind +
+        // Fourteen readiness (two Radio phase reads) visits + two handles + element kind +
         // child/contents/template ancestors.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 18);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 20);
         assert_eq!(c.usage().work(WorkCategory::ProviderCall) - providers, 1);
         assert_eq!(
             session.element_insertion_ignored(&mut c, &template, &template),
@@ -19580,7 +20396,7 @@ mod tests {
         let nodes = c.usage().resource(HtmlParseResource::ManagedNodes);
         let edges = c.usage().resource(HtmlParseResource::ManagedEdges);
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, limits().work_credits() - used - 18)
+        c.charge(WorkCategory::StateStep, limits().work_credits() - used - 20)
             .unwrap();
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         assert!(matches!(
@@ -19593,7 +20409,7 @@ mod tests {
         ));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
-            used + 17
+            used + 19
         );
         assert_eq!(c.usage().resource(HtmlParseResource::ManagedNodes), nodes);
         assert_eq!(c.usage().resource(HtmlParseResource::ManagedEdges), edges);

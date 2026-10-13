@@ -859,6 +859,12 @@ impl SessionStorage {
             let mut state = self.read_input_state(c, slot)?;
             state.flags = state.flags.clone_flags_from(original.flags);
             self.write_input_state(c, slot, state)?;
+            if state
+                .flags
+                .radio_normalization_required(crate::HtmlRadioTrigger::Checkedness)
+            {
+                self.normalize_radio(c, copy, None)?;
+            }
             payload_write::<bool>(c, 1)?;
             let RetainedPayload::Input { complete, .. } = &mut self.payloads.values[slot] else {
                 unreachable!()

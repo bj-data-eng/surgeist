@@ -11,7 +11,7 @@
 
 use crate::{DocumentString, HtmlInputType};
 
-/// The string-backed input states covered by these rules, including Checkbox
+/// The string-backed input states covered by these rules, including Checkbox and Radio
 /// DefaultOn content readback. Selection operations apply only to Value mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputStringKind {
@@ -21,6 +21,7 @@ pub enum HtmlInputStringKind {
     Telephone,
     Password,
     Checkbox,
+    Radio,
 }
 
 /// An actual recognized input state whose rules are outside this family.
@@ -41,6 +42,7 @@ impl TryFrom<HtmlInputType> for HtmlInputStringKind {
             HtmlInputType::Telephone => Self::Telephone,
             HtmlInputType::Password => Self::Password,
             HtmlInputType::Checkbox => Self::Checkbox,
+            HtmlInputType::Radio => Self::Radio,
             other => return Err(HtmlInputStringUnsupportedType(other)),
         })
     }
@@ -54,12 +56,13 @@ impl HtmlInputStringKind {
             Self::Telephone => HtmlInputType::Telephone,
             Self::Password => HtmlInputType::Password,
             Self::Checkbox => HtmlInputType::Checkbox,
+            Self::Radio => HtmlInputType::Radio,
         }
     }
     pub fn value_mode(self) -> HtmlInputValueMode {
         match self {
             Self::Hidden => HtmlInputValueMode::Default,
-            Self::Checkbox => HtmlInputValueMode::DefaultOn,
+            Self::Checkbox | Self::Radio => HtmlInputValueMode::DefaultOn,
             _ => HtmlInputValueMode::Value,
         }
     }
@@ -174,10 +177,30 @@ impl HtmlInputStringFlags {
         Some(self)
     }
     /// HTML checked setter: current checkedness changes and becomes dirty.
-    /// Checkbox has no peer normalization; Radio is outside this family.
+    /// Radio adapters must subsequently apply Checkedness normalization over
+    /// the actual updated group; this method owns no tree or peer state.
     pub fn checked_setter(mut self, checked: bool) -> Self {
         self.checkedness = checked;
         self.dirty_checkedness = true;
+        self
+    }
+    /// Whether the source trigger requires peer normalization in updated state.
+    /// The adapter supplies actual qualified tree, owner and nonempty-name peers.
+    pub fn radio_normalization_required(self, trigger: HtmlRadioTrigger) -> bool {
+        match trigger {
+            HtmlRadioTrigger::Checkedness
+            | HtmlRadioTrigger::Name
+            | HtmlRadioTrigger::FormOwner
+            | HtmlRadioTrigger::Type
+            | HtmlRadioTrigger::Connected => {
+                self.kind == HtmlInputStringKind::Radio && self.checkedness
+            }
+        }
+    }
+    /// Source peer normalization changes only checkedness, never dirty state,
+    /// default checked presence, indeterminateness or user validity.
+    pub fn radio_peer_unchecked(mut self) -> Self {
+        self.checkedness = false;
         self
     }
     /// HTML indeterminate setter changes only the actual indeterminateness.
@@ -778,4 +801,15 @@ mod tests {
         assert_eq!(c.first_stop_usage(), Some(c.usage()));
         assert_eq!(c.usage().actual_capacity_high_water, 0);
     }
+}
+
+/// HTML877d #radio-button-group triggers. These are source operations, not host
+/// events; Connected requires an actual insertion hook and now-connected proof.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlRadioTrigger {
+    Checkedness,
+    Name,
+    FormOwner,
+    Type,
+    Connected,
 }

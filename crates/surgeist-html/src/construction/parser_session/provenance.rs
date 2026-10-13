@@ -2535,7 +2535,7 @@ impl SessionStorage {
         Ok(previous)
     }
     /// Actual private attribute mutation, not a fabricated parser token/rule.
-    pub(super) fn begin_details_change(
+    pub(super) fn begin_attribute_change(
         &mut self,
         c: &mut ParseControl,
         node: usize,
