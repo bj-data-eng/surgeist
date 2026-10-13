@@ -2,11 +2,12 @@
 
 [Surgeist](https://github.com/bj-data-eng/surgeist) is licensed under its own
 [MIT License](LICENSE). This notice records attribution for the repository source
-checkout: the 13 facade production path dependencies in [Cargo.toml](Cargo.toml),
+checkout: facade production path dependencies in [Cargo.toml](Cargo.toml),
 the `surgeist-test` support crate, the shared `surgeist-generator` corpus tooling,
+the `surgeist-fuzz` verification framework,
 and the two direct dependencies of the
 [API generator](https://github.com/bj-data-eng/surgeist/blob/0b0c6338c20f77f9dfe743c47914afaf6b98792d/api/generator/Cargo.toml).
-All 15 crates under `crates/` are source owned in this repository. The
+Crates under `crates/` are source owned in this repository. The
 original consolidation imported the 14 revisions selected by root
 [`e0303b14ccd6a81cf3d092105201daf7797ef6aa`](https://github.com/bj-data-eng/surgeist/tree/e0303b14ccd6a81cf3d092105201daf7797ef6aa/crates)
 and `surgeist-generator`
@@ -420,6 +421,7 @@ transitive binary-release inventory.
 | surgeist-css | [NOTICE.md](crates/surgeist-css/NOTICE.md) |
 | surgeist-cssom | [MIT License](LICENSE); authored in this repository |
 | surgeist-dialog | [LICENSE](crates/surgeist-dialog/LICENSE); no separate notice |
+| surgeist-fuzz | [NOTICE.md](crates/surgeist-fuzz/NOTICE.md) |
 | surgeist-generator | [NOTICE.md](crates/surgeist-generator/NOTICE.md) |
 | surgeist-html | [NOTICE.md](crates/surgeist-html/NOTICE.md) |
 | surgeist-layout | [NOTICE.md](crates/surgeist-layout/NOTICE.md) |

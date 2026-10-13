@@ -1,0 +1,37 @@
+[package]
+name = "surgeist-fuzz"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded fuzz campaigns and reproducible verification for Surgeist."
+readme = "README.md"
+
+[features]
+default = []
+property = ["dep:proptest", "dep:proptest-state-machine"]
+coverage = ["dep:arbitrary"]
+execution = ["dep:ctrlc", "dep:clap"]
+
+[dependencies]
+surgeist-generator = { path = "../surgeist-generator", version = "=0.2.0", default-features = false }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+toml = "=0.9.8"
+proptest = { version = "=1.11.0", default-features = false, features = ["std"], optional = true }
+proptest-state-machine = { version = "=0.8.0", optional = true }
+arbitrary = { version = "=1.5.0", features = ["derive"], optional = true }
+rustix = { version = "=1.1.4", features = ["process", "fs"] }
+ctrlc = { version = "=3.5.0", features = ["termination"], optional = true }
+clap = { version = "=4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"], optional = true }
+
+[[bin]]
+name = "surgeist-fuzz"
+path = "src/bin/surgeist-fuzz.rs"
+required-features = ["execution"]
+
+[[bin]]
+name = "surgeist-fuzz-process-worker"
+path = "tests/fixtures/process_worker.rs"
+required-features = ["execution"]

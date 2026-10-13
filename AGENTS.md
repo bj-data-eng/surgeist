@@ -83,6 +83,7 @@ implemented dependency graph and behavior.
 | `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, and clean-report validation |
 | `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
+| `surgeist-fuzz` | Bounded fuzz engines, generation support, process execution, evidence, replay, reduction and campaign tooling; consumers own cases and expectations |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
 | `surgeist-html` | Pinned HTML language values, typed authoring, immutable construction results, parsing, and intrinsic interpretation |
 | `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |
@@ -105,6 +106,11 @@ implemented dependency graph and behavior.
   The facade is not the mandatory path for cross-crate interactions.
 - `surgeist-test` may depend on production crates for shared verification. The
   facade must not production-depend on it or on corpus-generation tooling.
+- `surgeist-fuzz` is shared verification tooling outside default members and
+  facade dependencies. Crates own their fuzz packages, codecs, semantic
+  properties, seeds and regressions. The framework has no crate-under-test
+  dependency; its controlled author fixture is a separate test workspace.
+  Benchmarking is outside its current scope.
 - `surgeist-generator` owns shared CSS and browser-corpus mechanics; layout owns
   its semantic conversion and corpus adapter. Shared tooling does not absorb
   layout algorithms or application semantics.

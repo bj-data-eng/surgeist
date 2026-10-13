@@ -1,0 +1,30 @@
+schema = 1
+fixtures = ["seeds", "regressions"]
+
+[[targets]]
+id = "surgeist-fixture::bytes"
+owner = "surgeist-fixture"
+binary = "fixture-worker"
+properties = ["surgeist-fixture::byte-count"]
+source_references = ["crates/surgeist-fuzz/tests/fixtures/subject/src/lib.rs#reported_bytes"]
+format = { identity = "surgeist-fixture::bytes", revision = 1 }
+generator_identity = { identity = "surgeist-fixture::bytes", revision = 1 }
+encoding = "raw-bytes"
+limits = { bytes = 4096, nodes = 0, depth = 0, text_units = 0, operations = 0 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
+
+[[targets]]
+id = "surgeist-fixture::structured"
+owner = "surgeist-fixture"
+binary = "fixture-structured-worker"
+properties = ["surgeist-fixture::unit-count", "surgeist-fixture::rejection-atomicity"]
+source_references = ["crates/surgeist-fuzz/tests/fixtures/subject/src/lib.rs#reported_units", "crates/surgeist-fuzz/tests/fixtures/subject/src/lib.rs#use_node"]
+format = { identity = "surgeist-fixture::structured", revision = 1 }
+generator_identity = { identity = "surgeist-fixture::structured", revision = 1 }
+encoding = "structured"
+limits = { bytes = 4096, nodes = 8, depth = 8, text_units = 8, operations = 8 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
