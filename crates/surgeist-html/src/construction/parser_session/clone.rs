@@ -785,6 +785,7 @@ impl SessionStorage {
         container: usize,
         position: usize,
     ) -> Result<(), SessionError> {
+        self.initial_nonce_attribute(c, node, position)?;
         if bindings.details.is_some() {
             self.initial_details_attribute(c, node, position)?;
         }
@@ -838,6 +839,7 @@ impl SessionStorage {
         copy: usize,
         bindings: CloneBindings,
     ) -> Result<(), SessionError> {
+        self.clone_nonce(c, source, copy)?;
         if let Some(slot) = bindings.script {
             let (_, original) = script_metadata(&self.payloads, c, source)?;
             let (_, mut state) = script_metadata(&self.payloads, c, copy)?;

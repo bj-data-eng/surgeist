@@ -278,7 +278,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a107"></a>A107 | name; meta | [attr-meta-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-meta-name); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Metadata](#metadata): captured MetaDescriptionAuthor uses exact ASCII-insensitive description selection and ordinary-Document uniqueness; other metadata-name algorithms remain separate. |
 | <a id="a108"></a>A108 | name; slot | [attr-slot-name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-slot-name); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | Slot name exact string, missing means empty slot name under shadow slotting source; named/manual slot assignment is DOM capture/slot owner, not inferred flattening. |
 | <a id="a109"></a>A109 | nomodule; script | [attr-script-nomodule](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-script-nomodule); [module-script](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#module-script); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Nomodule with actual script kind; execution guard separate. |
-| <a id="a110"></a>A110 | nonce; HTML elements | [attr-nonce](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-nonce); [refsCSP](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#refsCSP); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Nonce](#nonce): content text vs concealed cryptographic internal slot/reset behavior distinct; no public nonce lifecycle producer. |
+| <a id="a110"></a>A110 | nonce; HTML elements | [attr-nonce](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-nonce); [refsCSP](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#refsCSP); [attribute-text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attribute-text) | [Nonce](#nonce): exact content and independent cryptographic slot; native attribute/removal/insertion/clone hooks, captured slot getter and qualified Document observations. CSP parsing/enforcement external. |
 | <a id="a111"></a>A111 | novalidate; form | [attr-fs-novalidate](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fs-novalidate); [form-submission-2](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#form-submission-2); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): Novalidate; submission skips are interpreted through actual submitter context, validation execution external. |
 | <a id="a112"></a>A112 | open; details | [attr-details-open](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-details-open); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): DetailsOpen; private construction applies presence transitions and group exclusivity; live user toggle remains external. |
 | <a id="a113"></a>A113 | open; dialog | [attr-dialog-open](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dialog-open); [boolean-attribute](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#boolean-attribute) | [Boolean presence](#boolean-presence): DialogOpen; connected modal state supplied independently for inertness, no show/close transition. |
@@ -1757,10 +1757,27 @@ activation or live-collection guarantee is added.
 
 ### Nonce
 
-A110: exact text content differs cryptographic nonce internal slot and
-source-required hiding/reset behavior. Construction preserves content; no current
-public nonce lifecycle/internal-slot getter exists. CSP decisions are external;
-HTML slot/content lifecycle cannot be certified by ordinary raw storage.
+A110: [shared decisions](src/nonce.rs) preserve exact UTF-16 and the distinct
+content attribute and cryptographic slot for HTML/SVG/MathML elements. Native
+eligible elements initialize an admitted registered empty slot. The actual
+[construction hooks](src/construction/parser_session/nonce.rs) handle content
+changes/removal, independent slot writes, clone completion and conditioned
+insertion. Hiding uses current browsing-context connection and header-CSP of the
+actual shadow-including root Document; it saves the current slot, empties the
+content attribute and restores the saved value. Standalone construction retains
+content because it has no browsing context. Influencing unavailable context
+refuses; a known false conjunct discharges unrelated gaps.
+
+The [capture owner](src/capture.rs) establishes actual slot and Document facts
+with existing identity/retention admission. Unavailable differs from established
+empty. `HtmlSemanticQuery::Nonce` observes the slot independently of content and
+the content-attribute input cap; completed parse metadata lends its registered
+raw backing/history through `cryptographic_nonce`. Existing control, effects,
+provenance, cleanup and atomic publication remain authoritative. The
+[overview](README.md#nonce-slot-and-content), [local/capture tests](tests/nonce.rs),
+[semantic tests](tests/semantics_nonce.rs) and [public parse tests](tests/public_nonce.rs)
+describe the boundaries. CSP parsing/enforcement and live DOM setters remain
+with their consuming owners; content storage alone does not prove slot state.
 
 ### Pattern
 

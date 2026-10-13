@@ -5,7 +5,8 @@
 
 use crate::custom_names::validate_custom_element_name;
 use crate::{
-    DocumentString, HtmlDoctype, HtmlDocumentMode, HtmlShadowRootProperties, Namespace,
+    DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlDoctype, HtmlDocumentMode,
+    HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment, HtmlShadowRootProperties, Namespace,
     OrderedAttributes, QualifiedName,
 };
 use std::{
@@ -427,6 +428,8 @@ pub enum HtmlCaptureResource {
 /// Required producer fact that has not been established.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureFact {
+    BrowsingContextConnection,
+    HeaderDeliveredCsp,
     Parent,
     FragmentHost,
     ScriptingStatus,
@@ -488,6 +491,8 @@ pub enum HtmlCaptureError {
     CustomElementDefinitionNamespaceMismatch,
     CustomElementSavedIsMismatch,
     DuplicateDefinitionName,
+    NonceAlreadyEstablished,
+    NonceInapplicable,
     LimitExceeded {
         resource: HtmlCaptureResource,
         limit: usize,
@@ -535,8 +540,13 @@ pub struct HtmlCapturedDocument {
     template_role: HtmlTemplateDocumentRole,
     template_cache: Association,
     template_facts_established: bool,
+    nonce_environment: HtmlNonceDocumentEnvironment,
+    nonce_environment_established: bool,
 }
 impl HtmlCapturedDocument {
+    pub fn nonce_environment(&self) -> &HtmlNonceDocumentEnvironment {
+        &self.nonce_environment
+    }
     pub fn mode(&self) -> HtmlDocumentMode {
         self.mode
     }
@@ -571,8 +581,12 @@ pub struct HtmlCapturedElement {
     template: Association,
     shadow: Association,
     custom_context: Option<CustomElementContext>,
+    nonce: HtmlCapturedNonce,
 }
 impl HtmlCapturedElement {
+    pub fn cryptographic_nonce(&self) -> &HtmlCapturedNonce {
+        &self.nonce
+    }
     pub fn custom_element_state(&self) -> HtmlCapturedCustomElementState {
         self.custom_context
             .as_ref()
@@ -942,6 +956,11 @@ impl HtmlCaptureBuilder {
                 template_role: HtmlTemplateDocumentRole::Unavailable,
                 template_cache: Association::Unavailable,
                 template_facts_established: false,
+                nonce_environment: HtmlNonceDocumentEnvironment::new(
+                    HtmlBrowsingContextPresence::Unavailable,
+                    HtmlHeaderDeliveredCsp::Unavailable,
+                ),
+                nonce_environment_established: false,
             }),
             self.data.records.len(),
             Parent::Root,
@@ -1044,6 +1063,49 @@ impl HtmlCaptureBuilder {
         self.data.usage = usage;
         Ok(())
     }
+    /// Establishes the actual slot once, without inferring it from content.
+    pub fn establish_element_nonce(
+        &mut self,
+        subject: &HtmlCaptureBuilderSubject,
+        value: DocumentString,
+    ) -> Result<(), HtmlCaptureError> {
+        let index = self.index(subject)?;
+        self.require(index, HtmlCaptureSubjectKind::Element)?;
+        let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
+            unreachable!()
+        };
+        if !crate::nonce::nonce_element(element.name()) {
+            return Err(HtmlCaptureError::NonceInapplicable);
+        }
+        if !matches!(element.nonce, HtmlCapturedNonce::Unavailable) {
+            return Err(HtmlCaptureError::NonceAlreadyEstablished);
+        }
+        let usage = self.admit(0, 0, 0, value.len(), 0, 0)?;
+        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
+            unreachable!()
+        };
+        element.nonce = HtmlCapturedNonce::Value(value);
+        self.data.usage = usage;
+        Ok(())
+    }
+    /// Supplies independently qualified Document environment facts once.
+    pub fn establish_document_nonce_environment(
+        &mut self,
+        subject: &HtmlCaptureBuilderSubject,
+        environment: HtmlNonceDocumentEnvironment,
+    ) -> Result<(), HtmlCaptureError> {
+        let index = self.index(subject)?;
+        self.require(index, HtmlCaptureSubjectKind::Document)?;
+        let HtmlCapturedNodeKind::Document(document) = &mut self.data.records[index].kind else {
+            unreachable!()
+        };
+        if document.nonce_environment_established {
+            return Err(HtmlCaptureError::NonceAlreadyEstablished);
+        }
+        document.nonce_environment = environment;
+        document.nonce_environment_established = true;
+        Ok(())
+    }
     /// Adds exact element values; unspecified topology and associations stay unavailable.
     pub fn add_element(
         &mut self,
@@ -1093,6 +1155,7 @@ impl HtmlCaptureBuilder {
                 template,
                 shadow: Association::Unavailable,
                 custom_context: None,
+                nonce: HtmlCapturedNonce::Unavailable,
             }),
             document,
             Parent::Unavailable,

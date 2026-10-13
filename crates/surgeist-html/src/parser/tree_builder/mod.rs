@@ -37,6 +37,8 @@ mod body;
 mod conformance;
 mod context;
 #[cfg(test)]
+pub(crate) use context::ContextFragmentDriver;
+#[cfg(test)]
 pub(crate) use context::initialized_driver as initialized_fragment_fixture;
 mod doctype;
 mod end;

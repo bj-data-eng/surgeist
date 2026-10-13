@@ -2695,6 +2695,45 @@ The [select construction owner](src/construction/parser_session/select.rs),
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
 record the consumed boundary.
 
+<a id="nonce-slot-and-content"></a>
+
+Nonce content attributes and the cryptographic nonce slot are independent.
+The [pinned nonce clauses](../../references/html-nonce--877d6146487f.md#attr-nonce)
+apply to HTML, SVG and MathML elements, including custom or unknown local names.
+The shared [nonce decisions](src/nonce.rs) preserve exact UTF-16 without trimming
+or base64 validation. An actual null-namespace nonce attribute change copies its
+new value into the slot; removal clears it. A slot setter changes only the slot,
+and clone completion copies that slot independently of copied content attributes.
+
+Insertion hides nonempty content only when the element is currently connected
+to a browsing context and its actual shadow-including root Document has a
+header-delivered CSP. The [construction owner](src/construction/parser_session/nonce.rs)
+saves the current slot, performs the real empty-content attribute mutation and
+restores the saved slot. This also handles reinsertion and a slot that differs
+from content. Standalone construction has no browsing context and retains the
+content. Known false preconditions discharge unrelated unknown facts; an
+influencing unavailable connection or policy observation causes typed refusal.
+Template contents and node-document membership do not substitute for the actual
+shadow-including root.
+
+Captures establish the actual independent slot through
+`HtmlCaptureBuilder::establish_element_nonce` and Document observations through
+`establish_document_nonce_environment`. Defaults remain unavailable; established
+empty is a real value. `HtmlSemanticQuery::Nonce` reads that slot, returning known
+empty/value, Missing(NonceSlot), or Inapplicable for other roles. This getter does
+not reinterpret content or apply the content-attribute input cap. Completed
+parse metadata exposes the actual registered slot through `cryptographic_nonce`,
+with its existing source/history associations.
+
+The native hooks use canonical registered backing, construction effects,
+provenance and the original admission/cancellation/cleanup owner. The
+[decision/capture tests](tests/nonce.rs), [semantic tests](tests/semantics_nonce.rs)
+and [public parse tests](tests/public_nonce.rs) cover content/slot divergence,
+clone, actual context, shadow insertion and finite refusal. Private tests exercise
+real slot writes and cancellation after saving and empty-content mutation.
+These immutable operations do not parse or enforce CSP or supply a live DOM
+setter; DOM owns its canonical mutation adapter.
+
 <a id="captured-microdata"></a>
 
 The captured `MicrodataItem`, `MicrodataProperty`, `MicrodataAuthor` and

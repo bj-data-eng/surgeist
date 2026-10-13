@@ -772,8 +772,8 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
     // three registry slots plus actual root facts2/html binding1/completion1 =9. Prologue stack coexistence needs10. Select adds
     // Select/form metadata2, name/URI/attrs3, node1, ordered-attribute staging1, reset option snapshot1:
     // completed empty Select exactly18; seventeen stops after take at snapshot.
-    // Actual root/html/select node causes add three permanent registry slots.
-    for cap in [12, 20, 21] {
+    // Actual node causes add three slots; html/select nonce backings add four.
+    for cap in [14, 24, 25] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -800,7 +800,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             &token.source,
             &proof,
         );
-        if cap == 21 {
+        if cap == 25 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(
@@ -814,7 +814,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                21
+                25
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -827,7 +827,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             assert!(
                 matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 12);
+            assert_eq!(input.is_some(), cap == 14);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))

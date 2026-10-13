@@ -8798,7 +8798,7 @@ fn frameset_afterafter_whitespace_reconstruction_stop_retains_exact_original_ran
         // Replayed name origin, its group, replay cause, namespace group and
         // the actual next-rule trigger plus its InBody delegation, both retained
         // before the refused allocation.
-        origin_slots + 6
+        origin_slots + 7
     );
     assert_eq!(state.formatting.len(), 1);
     assert_eq!(state.before.kernel.stack().unwrap().len(), 2);

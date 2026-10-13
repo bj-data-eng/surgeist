@@ -77,6 +77,21 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_select(arena, select, c)?;
                     }
                 }
+                RetainedPayload::Nonce { node, raw } => {
+                    let node = node.ok_or(SessionError::NonceMetadataUnavailable)?;
+                    checked_node(arena, node, c)?;
+                    c.charge(
+                        WorkCategory::InspectByte,
+                        crate::nonce::NONCE_INSPECTION_BOUND as u64,
+                    )?;
+                    let HtmlNodeKind::Element(element) = &arena.records[node].kind else {
+                        return Err(SessionError::NonceMetadataUnavailable);
+                    };
+                    if !crate::nonce::nonce_element(element.name()) {
+                        return Err(SessionError::NonceMetadataUnavailable);
+                    }
+                    checked_raw(storage, *raw, c)?;
+                }
                 RetainedPayload::Textarea { state, .. } => {
                     checked_raw(storage, state.raw, c)?;
                 }
@@ -227,7 +242,8 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
         RetainedPayload::Details { .. } => None,
         RetainedPayload::Shadow { root, .. } => *root,
         RetainedPayload::StandaloneDocumentCompletion { node, .. } => Some(*node),
-        RetainedPayload::LookupRegistry { node, .. }
+        RetainedPayload::Nonce { node, .. }
+        | RetainedPayload::LookupRegistry { node, .. }
         | RetainedPayload::PiAttributes { node, .. }
         | RetainedPayload::NodeDocument { node, .. }
         | RetainedPayload::Document { node, .. }
@@ -317,6 +333,12 @@ impl<'a> MetadataRef<'a> {
         HtmlNode {
             arena: self.arena,
             index: metadata_node(self.payload).expect("issued metadata node"),
+        }
+    }
+    pub(super) fn nonce(&self) -> Option<&'a DocumentString> {
+        match self.payload {
+            RetainedPayload::Nonce { raw, .. } => Some(self.raw(*raw)),
+            _ => None,
         }
     }
     pub(super) fn raw(&self, slot: usize) -> &'a DocumentString {
@@ -619,6 +641,11 @@ mod tests {
                     Err(SessionError::Stop(first))
                 );
                 assert!(frozen.fragment().is_some());
+            }
+            if extra == cost {
+                // Exact qualifier budget is exhausted; latch a real stop so
+                // disposal of the admitted nonce backing uses terminal cleanup.
+                c.charge(WorkCategory::StateStep, 1).unwrap_err();
             }
             let stop = c.stop();
             frozen.release(&mut c).unwrap();

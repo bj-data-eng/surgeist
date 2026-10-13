@@ -369,6 +369,10 @@ pub surgeist_html::HtmlBooleanAuthorContextEvidence::ImageMap(surgeist_html::Htm
 pub surgeist_html::HtmlBooleanAuthorContextEvidence::NotRequired
 pub surgeist_html::HtmlBooleanAuthorContextEvidence::StylesheetLink
 pub surgeist_html::HtmlBooleanAuthorContextEvidence::StylesheetLink::rel: core::option::Option<surgeist_html::Attribute>
+pub enum surgeist_html::HtmlBrowsingContextPresence
+pub surgeist_html::HtmlBrowsingContextPresence::Absent
+pub surgeist_html::HtmlBrowsingContextPresence::Present
+pub surgeist_html::HtmlBrowsingContextPresence::Unavailable
 pub enum surgeist_html::HtmlButtonSubmitterContext
 pub surgeist_html::HtmlButtonSubmitterContext::NotSubmitButton
 pub surgeist_html::HtmlButtonSubmitterContext::SubmitButton
@@ -415,6 +419,8 @@ pub surgeist_html::HtmlCaptureError::LimitExceeded::resource: surgeist_html::Htm
 pub surgeist_html::HtmlCaptureError::MissingFact
 pub surgeist_html::HtmlCaptureError::MissingFact::fact: surgeist_html::HtmlCaptureFact
 pub surgeist_html::HtmlCaptureError::MissingFact::subject: core::option::Option<surgeist_html::HtmlCaptureSubjectId>
+pub surgeist_html::HtmlCaptureError::NonceAlreadyEstablished
+pub surgeist_html::HtmlCaptureError::NonceInapplicable
 pub surgeist_html::HtmlCaptureError::NotHtmlTemplate
 pub surgeist_html::HtmlCaptureError::ParentAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::ParentChildConflict
@@ -433,9 +439,11 @@ impl core::error::Error for surgeist_html::HtmlCaptureError
 impl core::fmt::Display for surgeist_html::HtmlCaptureError
 pub fn surgeist_html::HtmlCaptureError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlCaptureFact
+pub surgeist_html::HtmlCaptureFact::BrowsingContextConnection
 pub surgeist_html::HtmlCaptureFact::Definitions
 pub surgeist_html::HtmlCaptureFact::DocumentClass
 pub surgeist_html::HtmlCaptureFact::FragmentHost
+pub surgeist_html::HtmlCaptureFact::HeaderDeliveredCsp
 pub surgeist_html::HtmlCaptureFact::ImageSupport
 pub surgeist_html::HtmlCaptureFact::IsValue
 pub surgeist_html::HtmlCaptureFact::Parent
@@ -501,6 +509,9 @@ pub surgeist_html::HtmlCapturedNodeKind::Element(surgeist_html::HtmlCapturedElem
 pub surgeist_html::HtmlCapturedNodeKind::Fragment(surgeist_html::HtmlCapturedFragment)
 pub surgeist_html::HtmlCapturedNodeKind::ProcessingInstruction(surgeist_html::HtmlCapturedProcessingInstruction)
 pub surgeist_html::HtmlCapturedNodeKind::Text(surgeist_html::DocumentString)
+pub enum surgeist_html::HtmlCapturedNonce
+pub surgeist_html::HtmlCapturedNonce::Unavailable
+pub surgeist_html::HtmlCapturedNonce::Value(surgeist_html::DocumentString)
 pub enum surgeist_html::HtmlCapturedParent
 pub surgeist_html::HtmlCapturedParent::Root
 pub surgeist_html::HtmlCapturedParent::Subject(surgeist_html::HtmlCaptureSubjectId)
@@ -961,6 +972,10 @@ pub surgeist_html::HtmlHashNameProcessing::EmptyTail
 pub surgeist_html::HtmlHashNameProcessing::Missing
 pub surgeist_html::HtmlHashNameProcessing::Name
 pub surgeist_html::HtmlHashNameProcessing::NoHash
+pub enum surgeist_html::HtmlHeaderDeliveredCsp
+pub surgeist_html::HtmlHeaderDeliveredCsp::Absent
+pub surgeist_html::HtmlHeaderDeliveredCsp::Present
+pub surgeist_html::HtmlHeaderDeliveredCsp::Unavailable
 pub enum surgeist_html::HtmlHidden
 pub surgeist_html::HtmlHidden::Hidden
 pub surgeist_html::HtmlHidden::UntilFound
@@ -1811,6 +1826,21 @@ pub surgeist_html::HtmlNodeKind::Element(surgeist_html::HtmlElement)
 pub surgeist_html::HtmlNodeKind::Fragment
 pub surgeist_html::HtmlNodeKind::ProcessingInstruction(surgeist_html::HtmlProcessingInstruction)
 pub surgeist_html::HtmlNodeKind::Text(surgeist_html::DocumentString)
+pub enum surgeist_html::HtmlNonceAttributeEffect<'a>
+pub surgeist_html::HtmlNonceAttributeEffect::ClearSlot
+pub surgeist_html::HtmlNonceAttributeEffect::CopyValue(&'a surgeist_html::DocumentString)
+pub surgeist_html::HtmlNonceAttributeEffect::Ignore
+pub enum surgeist_html::HtmlNonceConnection
+pub surgeist_html::HtmlNonceConnection::BrowsingContextConnected
+pub surgeist_html::HtmlNonceConnection::NotBrowsingContextConnected
+pub surgeist_html::HtmlNonceConnection::Unavailable
+pub enum surgeist_html::HtmlNonceInsertionEffect
+pub surgeist_html::HtmlNonceInsertionEffect::HideContentPreservingSlot
+pub surgeist_html::HtmlNonceInsertionEffect::KeepContent
+pub surgeist_html::HtmlNonceInsertionEffect::Unavailable(surgeist_html::HtmlNonceMissing)
+pub enum surgeist_html::HtmlNonceMissing
+pub surgeist_html::HtmlNonceMissing::Connection
+pub surgeist_html::HtmlNonceMissing::HeaderDeliveredCsp
 pub enum surgeist_html::HtmlNumericAttributeAuthorState
 pub surgeist_html::HtmlNumericAttributeAuthorState::Conforming
 pub surgeist_html::HtmlNumericAttributeAuthorState::Missing
@@ -2112,6 +2142,7 @@ pub surgeist_html::HtmlParseRangeOperandRole::Step
 pub surgeist_html::HtmlParseRangeOperandRole::ValueContent
 pub enum surgeist_html::HtmlParseRawField
 pub surgeist_html::HtmlParseRawField::Input
+pub surgeist_html::HtmlParseRawField::Nonce
 pub surgeist_html::HtmlParseRawField::Textarea
 pub enum surgeist_html::HtmlParseReadiness
 pub surgeist_html::HtmlParseReadiness::Complete
@@ -2563,6 +2594,7 @@ pub surgeist_html::HtmlSemanticFact::MicrodataAuthor(surgeist_html::HtmlSemantic
 pub surgeist_html::HtmlSemanticFact::MicrodataDocumentAuthor(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataDocumentAuthor>)
 pub surgeist_html::HtmlSemanticFact::MicrodataItem(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataItem>)
 pub surgeist_html::HtmlSemanticFact::MicrodataProperty(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlMicrodataProperty>)
+pub surgeist_html::HtmlSemanticFact::Nonce(surgeist_html::HtmlSemanticValue<surgeist_html::DocumentString>)
 pub surgeist_html::HtmlSemanticFact::OptionDirtiness(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::OptionFormOwner(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlOptionFormOwner>)
 pub surgeist_html::HtmlSemanticFact::OptionIndex(surgeist_html::HtmlSemanticValue<usize>)
@@ -2643,6 +2675,7 @@ pub surgeist_html::HtmlSemanticMissing::MediaGrammar(surgeist_html::HtmlCaptureS
 pub surgeist_html::HtmlSemanticMissing::MicrodataFacts(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::MicrodataTypeCycle(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::ModalBlocking(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlSemanticMissing::NonceSlot(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OrderedChildren(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::OutputDefaultValueOverride(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlSemanticMissing::Parent(surgeist_html::HtmlCaptureSubjectId)
@@ -2717,6 +2750,7 @@ pub surgeist_html::HtmlSemanticQuery::MicrodataAuthor
 pub surgeist_html::HtmlSemanticQuery::MicrodataDocumentAuthor
 pub surgeist_html::HtmlSemanticQuery::MicrodataItem
 pub surgeist_html::HtmlSemanticQuery::MicrodataProperty
+pub surgeist_html::HtmlSemanticQuery::Nonce
 pub surgeist_html::HtmlSemanticQuery::OptionDirtiness
 pub surgeist_html::HtmlSemanticQuery::OptionFormOwner
 pub surgeist_html::HtmlSemanticQuery::OptionIndex
@@ -3914,7 +3948,9 @@ pub fn surgeist_html::HtmlCaptureBuilder::definition_handle(&self, registry: &su
 pub fn surgeist_html::HtmlCaptureBuilder::establish_children(&mut self, parent: &surgeist_html::HtmlCaptureBuilderSubject, children: &[surgeist_html::HtmlCaptureBuilderSubject]) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_custom_element_context(&mut self, subject: &surgeist_html::HtmlCaptureBuilderSubject, state: surgeist_html::HtmlCapturedCustomElementState, definition: surgeist_html::HtmlCaptureDefinitionInput) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_document_image_support(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, support: surgeist_html::HtmlImageSupport) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::establish_document_nonce_environment(&mut self, subject: &surgeist_html::HtmlCaptureBuilderSubject, environment: surgeist_html::HtmlNonceDocumentEnvironment) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_document_template_facts(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, class: surgeist_html::HtmlDocumentClass, role: surgeist_html::HtmlTemplateDocumentRole, cache: surgeist_html::HtmlCaptureTemplateCacheInput) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::establish_element_nonce(&mut self, subject: &surgeist_html::HtmlCaptureBuilderSubject, value: surgeist_html::DocumentString) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_no_shadow_root(&mut self, element: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_parent(&mut self, child: &surgeist_html::HtmlCaptureBuilderSubject, parent: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_parser_creation_image_support(&mut self, entry_document: &surgeist_html::HtmlCaptureBuilderSubject, support: surgeist_html::HtmlImageSupport) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
@@ -3982,12 +4018,14 @@ impl surgeist_html::HtmlCapturedDocument
 pub fn surgeist_html::HtmlCapturedDocument::document_class(&self) -> surgeist_html::HtmlDocumentClass
 pub fn surgeist_html::HtmlCapturedDocument::image_support(&self) -> surgeist_html::HtmlImageSupport
 pub fn surgeist_html::HtmlCapturedDocument::mode(&self) -> surgeist_html::HtmlDocumentMode
+pub fn surgeist_html::HtmlCapturedDocument::nonce_environment(&self) -> &surgeist_html::HtmlNonceDocumentEnvironment
 pub fn surgeist_html::HtmlCapturedDocument::parser_creation_image_support(&self) -> surgeist_html::HtmlImageSupport
 pub fn surgeist_html::HtmlCapturedDocument::scripting(&self) -> surgeist_html::HtmlScriptingStatus
 pub fn surgeist_html::HtmlCapturedDocument::template_role(&self) -> surgeist_html::HtmlTemplateDocumentRole
 pub struct surgeist_html::HtmlCapturedElement
 impl surgeist_html::HtmlCapturedElement
 pub fn surgeist_html::HtmlCapturedElement::attributes(&self) -> &surgeist_html::OrderedAttributes
+pub fn surgeist_html::HtmlCapturedElement::cryptographic_nonce(&self) -> &surgeist_html::HtmlCapturedNonce
 pub fn surgeist_html::HtmlCapturedElement::custom_element_definition(&self) -> &surgeist_html::HtmlCapturedCustomElementDefinition
 pub fn surgeist_html::HtmlCapturedElement::custom_element_state(&self) -> surgeist_html::HtmlCapturedCustomElementState
 pub fn surgeist_html::HtmlCapturedElement::is_value(&self) -> &surgeist_html::HtmlCapturedIsValue
@@ -5365,6 +5403,11 @@ pub struct surgeist_html::HtmlNonPositiveInputStepError
 impl core::error::Error for surgeist_html::HtmlNonPositiveInputStepError
 impl core::fmt::Display for surgeist_html::HtmlNonPositiveInputStepError
 pub fn surgeist_html::HtmlNonPositiveInputStepError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlNonceDocumentEnvironment
+impl surgeist_html::HtmlNonceDocumentEnvironment
+pub fn surgeist_html::HtmlNonceDocumentEnvironment::browsing_context(self) -> surgeist_html::HtmlBrowsingContextPresence
+pub fn surgeist_html::HtmlNonceDocumentEnvironment::header_delivered_csp(self) -> surgeist_html::HtmlHeaderDeliveredCsp
+pub fn surgeist_html::HtmlNonceDocumentEnvironment::new(browsing_context: surgeist_html::HtmlBrowsingContextPresence, header_delivered_csp: surgeist_html::HtmlHeaderDeliveredCsp) -> Self
 pub struct surgeist_html::HtmlNumericAttributeReport<A, T>
 impl<A, T> surgeist_html::HtmlNumericAttributeReport<A, T>
 pub fn surgeist_html::HtmlNumericAttributeReport<A, T>::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
@@ -5667,6 +5710,7 @@ pub fn surgeist_html::HtmlParseMetadata<'a>::script_documents(&self) -> core::op
 pub fn surgeist_html::HtmlParseMetadata<'a>::shadow(&self) -> core::option::Option<(bool, bool, bool)>
 pub fn surgeist_html::HtmlParseMetadata<'a>::template(&self) -> core::option::Option<surgeist_html::HtmlParseTemplate<'a>>
 impl<'a> surgeist_html::HtmlParseMetadata<'a>
+pub fn surgeist_html::HtmlParseMetadata<'a>::cryptographic_nonce(&self) -> core::option::Option<&'a surgeist_html::DocumentString>
 pub fn surgeist_html::HtmlParseMetadata<'a>::form_evidence(&self) -> core::option::Option<surgeist_html::HtmlParseFormEvidence>
 pub fn surgeist_html::HtmlParseMetadata<'a>::form_kind(&self) -> core::option::Option<surgeist_html::HtmlParseFormKind>
 pub fn surgeist_html::HtmlParseMetadata<'a>::form_owner(&self) -> core::option::Option<core::option::Option<surgeist_html::HtmlNode<'a>>>
@@ -6700,3 +6744,5 @@ pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namesp
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>
 pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish
+pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
+pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedName, content: core::option::Option<&surgeist_html::DocumentString>, connection: surgeist_html::HtmlNonceConnection, policy: surgeist_html::HtmlHeaderDeliveredCsp) -> surgeist_html::HtmlNonceInsertionEffect

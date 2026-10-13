@@ -423,8 +423,8 @@ mod tests {
                 // replacement cause, and
                 // the one canonical diagnostic location. Actual lexical
                 // retention adds eight head rows in the standalone owner and
-                // 26 head/lineargradient rows in the independent lexer: 38+34.
-                _ => 72,
+                // 26 head/lineargradient rows in the independent lexer: 38+34, plus two empty nonce groups.
+                _ => 74,
             };
             for cap in [exact - 1, exact] {
                 let builder = super::super::tests::limits().into_builder();
@@ -1197,6 +1197,7 @@ impl SessionStorage {
             *element = Some(node.index);
             self.usage.attributes += count;
             self.usage.utf16_units += units;
+            self.initial_nonce_attributes(control, node.index)?;
             Ok(node)
         })();
         release_token_attributes(attributes, control)?;

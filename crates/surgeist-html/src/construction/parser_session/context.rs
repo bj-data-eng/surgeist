@@ -3074,8 +3074,8 @@ mod tests {
         for (maps, units, resource, success, taken) in [
             (33, 1000, HtmlParseResource::SourceMapEntries, false, false),
             (34, 1000, HtmlParseResource::SourceMapEntries, false, true),
-            (41, 1000, HtmlParseResource::SourceMapEntries, false, true),
-            (42, 1000, HtmlParseResource::SourceMapEntries, true, true),
+            (43, 1000, HtmlParseResource::SourceMapEntries, false, true),
+            (44, 1000, HtmlParseResource::SourceMapEntries, true, true),
             (1000, 34, HtmlParseResource::ManagedUtf16Units, false, false),
             (1000, 35, HtmlParseResource::ManagedUtf16Units, false, true),
             (1000, 70, HtmlParseResource::ManagedUtf16Units, false, true),
@@ -3135,7 +3135,7 @@ mod tests {
             // anchors and the closing end anchor. Thus 29 coexist before creation.
             // Saved is adds three maps, one cause and one group header before
             // take: 34 coexist. Final five fields add ten fixed entries,
-            // giving the old 21 creation entries plus 21 lexical entries=42.
+            // giving the old 21 creation entries plus 21 lexical entries plus an empty nonce group and its independent cause=44.
             // Managed strings: root html+URI=32; saved is=3 BEFORE take;
             // div+URI+is+A&B=36 after take, hence final 71.
             assert_eq!(
@@ -3164,7 +3164,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
                         .current,
-                    42
+                    44
                 );
                 assert_eq!(
                     c.usage()

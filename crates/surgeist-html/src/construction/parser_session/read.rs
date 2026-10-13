@@ -903,6 +903,10 @@ impl<'a> HtmlParseHistory<'a> {
 }
 
 impl<'a> report::MetadataRef<'a> {
+    /// Actual independent cryptographic slot, including initialized empty.
+    pub fn cryptographic_nonce(&self) -> Option<&'a DocumentString> {
+        self.nonce()
+    }
     pub fn input_flags(&self) -> Option<&'a crate::HtmlInputFlags> {
         self.input().map(|(s, _)| &s.flags)
     }

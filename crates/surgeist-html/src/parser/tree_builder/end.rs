@@ -2063,6 +2063,13 @@ mod tests {
                     .kernel
                     .session;
                 match kind {
+                    RawFieldKind::Nonce => assert_eq!(
+                        session
+                            .cryptographic_nonce(&mut driver.control, &node)
+                            .unwrap()
+                            .code_units(),
+                        expected
+                    ),
                     RawFieldKind::Textarea => assert_eq!(
                         session
                             .textarea_raw_value(&mut driver.control, &node)

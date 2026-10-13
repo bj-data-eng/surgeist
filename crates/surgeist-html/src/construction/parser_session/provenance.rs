@@ -544,6 +544,7 @@ pub(crate) enum NativeDestination {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RawFieldKind {
+    Nonce,
     Input,
     Textarea,
 }
@@ -2663,6 +2664,10 @@ impl ParserArenaSession {
         for (payload_slot, payload) in storage.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let raw = match payload {
+                RetainedPayload::Nonce {
+                    node: Some(node),
+                    raw,
+                } => Some((*node, *raw, RawFieldKind::Nonce)),
                 RetainedPayload::Input {
                     node: Some(node),
                     raw,
@@ -3012,7 +3017,6 @@ impl SessionStorage {
         evidence.native.current = Some(index);
         Ok(previous)
     }
-    #[cfg(test)]
     /// Actual private attribute mutation, not a fabricated parser token/rule.
     pub(super) fn begin_attribute_change(
         &mut self,

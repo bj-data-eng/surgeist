@@ -793,7 +793,7 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
             .kind(),
         HtmlParseRangeOperandKind::NotConsulted
     );
-    let mut scratch = [HtmlParseHistoryFrame::default(); 32];
+    let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
     let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
     assert!(
         matches!(cursor.advance(), HtmlParseHistoryStep::Leaf(atom) if atom.units()==[54,48] && atom.origins().is_empty())

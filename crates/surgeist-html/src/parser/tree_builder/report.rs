@@ -288,6 +288,7 @@ mod tests {
         }
         let usage = report.usage().clone();
         let mut counts = [0; 2];
+        let mut nonce_counts = [0; 2];
         let mut cursor = report.metadata();
         loop {
             match cursor.advance() {
@@ -297,12 +298,13 @@ mod tests {
                             // Ordinary creation retains node-document identity;
                             // creation-registry metadata is fragment-specific.
                             // The private Details marker emits no record.
-                            let Some(MetadataDocument::Owned(owner)) = record.node_document()
-                            else {
-                                panic!("canonical ordinary node-document record");
-                            };
-                            assert_eq!(owner.id(), document.root().id());
-                            counts[index] += 1;
+                            if let Some(MetadataDocument::Owned(owner)) = record.node_document() {
+                                assert_eq!(owner.id(), document.root().id());
+                                counts[index] += 1;
+                            } else {
+                                assert_eq!(record.cryptographic_nonce().unwrap().code_units(), &[]);
+                                nonce_counts[index] += 1;
+                            }
                         }
                     }
                 }
@@ -311,6 +313,7 @@ mod tests {
             }
         }
         assert_eq!(counts, [1, 1]);
+        assert_eq!(nonce_counts, [1, 1]);
         assert_eq!(report.usage(), &usage);
         assert_eq!(report.source().as_utf8(), Some(literal));
     }

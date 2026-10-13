@@ -246,6 +246,126 @@ impl SessionStorage {
         )?;
         Ok(())
     }
+    pub(super) fn replace_registered_attribute(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        location: [usize; 2],
+        incoming: Attribute,
+        fields: [usize; 2],
+        unit_counts: [usize; 2],
+    ) -> Result<(), SessionError> {
+        let [container, position] = location;
+        let [name_slot, value_slot] = fields;
+        let [units, old_units] = unit_counts;
+        payload_write::<Option<Attribute>>(c, 1)?;
+        let mut incoming = Some(incoming);
+        let replace = (|| {
+            // Both old original groups retire before the admitted native
+            // swap. Every error drops only this local alias; the actual
+            // registered backing/tickets remain reachable in the owner.
+            for slot in 0..self.payloads.values.len() {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if matches!(&self.payloads.values[slot], RetainedPayload::String { location: StringLocation::AttributeName(o,p) | StringLocation::AttributeValue(o,p) | StringLocation::AttributeNamespace(o,p) | StringLocation::AttributePrefix(o,p), .. } if *o == container && *p == position)
+                {
+                    self.retire_field_group(c, slot)?;
+                }
+            }
+            // All old/new fixed locations and usage are admitted before
+            // the slot swap, so no fallible rebind follows the commit.
+            payload_write::<[StringLocation; 6]>(c, 6)?;
+            payload_write::<usize>(c, 1)?;
+            let Some(updated_units) = self
+                .usage
+                .utf16_units
+                .checked_sub(old_units)
+                .and_then(|old| old.checked_add(units))
+            else {
+                return c
+                    .representation(HtmlParseResource::BufferedUtf16Units)
+                    .map_err(Into::into);
+            };
+            let mut old_slots = [None; 4];
+            for (slot, payload) in self.payloads.values.iter().enumerate() {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if let RetainedPayload::String { location, .. } = payload {
+                    let which = match *location {
+                        StringLocation::AttributeName(o, p) if o == container && p == position => {
+                            Some(0)
+                        }
+                        StringLocation::AttributeValue(o, p) if o == container && p == position => {
+                            Some(1)
+                        }
+                        StringLocation::AttributeNamespace(o, p)
+                            if o == container && p == position =>
+                        {
+                            Some(2)
+                        }
+                        StringLocation::AttributePrefix(o, p)
+                            if o == container && p == position =>
+                        {
+                            Some(3)
+                        }
+                        _ => None,
+                    };
+                    if let Some(which) = which {
+                        payload_write::<Option<usize>>(c, 1)?;
+                        old_slots[which] = Some(slot);
+                    }
+                }
+            }
+            payload_write::<Option<AttributeStorage>>(c, 2)?;
+            payload_write::<OrderedAttributes>(c, 1)?;
+            c.charge(WorkCategory::ProviderCall, 2)?;
+            let RetainedPayload::Attributes(backing) = &mut self.payloads.values[container] else {
+                unreachable!()
+            };
+            let AttributeStorage::Frozen {
+                values,
+                allocation,
+                mut shared,
+                element,
+            } = backing.take().expect("qualified attributes")
+            else {
+                unreachable!()
+            };
+            drop(values);
+            let HtmlNodeKind::Element(record) = &mut self.records[node].kind else {
+                unreachable!()
+            };
+            let result = c.replace_attribute_slot(
+                record.attributes.parser_backing_mut(),
+                &mut shared,
+                &allocation,
+                position,
+                &mut incoming,
+            );
+            *backing = Some(AttributeStorage::Frozen {
+                values: record.attributes.clone(),
+                allocation,
+                shared,
+                element,
+            });
+            let old = result?;
+            for slot in old_slots.into_iter().flatten() {
+                self.bind_string(slot, StringLocation::Detached);
+            }
+            self.bind_string(
+                name_slot,
+                StringLocation::AttributeName(container, position),
+            );
+            self.bind_string(
+                value_slot,
+                StringLocation::AttributeValue(container, position),
+            );
+            self.usage.utf16_units = updated_units;
+            drop(old);
+            Ok::<_, SessionError>(())
+        })();
+        drop(incoming);
+        replace?;
+        Ok(())
+    }
     pub(super) fn remove_managed_field(
         &mut self,
         c: &mut ParseControl,
@@ -497,118 +617,14 @@ impl ParserArenaSession {
             payload_write::<Attribute>(c, 1)?;
             let incoming = Attribute::new(QualifiedName::new(Namespace::none(), None, name), value);
             if let Some(position) = position {
-                payload_write::<Option<Attribute>>(c, 1)?;
-                let mut incoming = Some(incoming);
-                let replace = (|| {
-                    // Both old original groups retire before the admitted native
-                    // swap. Every error drops only this local alias; the actual
-                    // registered backing/tickets remain reachable in the owner.
-                    for slot in 0..storage.payloads.values.len() {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
-                        if matches!(&storage.payloads.values[slot], RetainedPayload::String { location: StringLocation::AttributeName(o,p) | StringLocation::AttributeValue(o,p) | StringLocation::AttributeNamespace(o,p) | StringLocation::AttributePrefix(o,p), .. } if *o == container && *p == position)
-                        {
-                            storage.retire_field_group(c, slot)?;
-                        }
-                    }
-                    // All old/new fixed locations and usage are admitted before
-                    // the slot swap, so no fallible rebind follows the commit.
-                    payload_write::<[StringLocation; 6]>(c, 6)?;
-                    payload_write::<usize>(c, 1)?;
-                    let Some(updated_units) = storage
-                        .usage
-                        .utf16_units
-                        .checked_sub(old_units)
-                        .and_then(|old| old.checked_add(units))
-                    else {
-                        return c
-                            .representation(HtmlParseResource::BufferedUtf16Units)
-                            .map_err(Into::into);
-                    };
-                    let mut old_slots = [None; 4];
-                    for (slot, payload) in storage.payloads.values.iter().enumerate() {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
-                        if let RetainedPayload::String { location, .. } = payload {
-                            let which = match *location {
-                                StringLocation::AttributeName(o, p)
-                                    if o == container && p == position =>
-                                {
-                                    Some(0)
-                                }
-                                StringLocation::AttributeValue(o, p)
-                                    if o == container && p == position =>
-                                {
-                                    Some(1)
-                                }
-                                StringLocation::AttributeNamespace(o, p)
-                                    if o == container && p == position =>
-                                {
-                                    Some(2)
-                                }
-                                StringLocation::AttributePrefix(o, p)
-                                    if o == container && p == position =>
-                                {
-                                    Some(3)
-                                }
-                                _ => None,
-                            };
-                            if let Some(which) = which {
-                                payload_write::<Option<usize>>(c, 1)?;
-                                old_slots[which] = Some(slot);
-                            }
-                        }
-                    }
-                    payload_write::<Option<AttributeStorage>>(c, 2)?;
-                    payload_write::<OrderedAttributes>(c, 1)?;
-                    c.charge(WorkCategory::ProviderCall, 2)?;
-                    let RetainedPayload::Attributes(backing) =
-                        &mut storage.payloads.values[container]
-                    else {
-                        unreachable!()
-                    };
-                    let AttributeStorage::Frozen {
-                        values,
-                        allocation,
-                        mut shared,
-                        element,
-                    } = backing.take().expect("qualified attributes")
-                    else {
-                        unreachable!()
-                    };
-                    drop(values);
-                    let HtmlNodeKind::Element(record) = &mut storage.records[node].kind else {
-                        unreachable!()
-                    };
-                    let result = c.replace_attribute_slot(
-                        record.attributes.parser_backing_mut(),
-                        &mut shared,
-                        &allocation,
-                        position,
-                        &mut incoming,
-                    );
-                    *backing = Some(AttributeStorage::Frozen {
-                        values: record.attributes.clone(),
-                        allocation,
-                        shared,
-                        element,
-                    });
-                    let old = result?;
-                    for slot in old_slots.into_iter().flatten() {
-                        storage.bind_string(slot, StringLocation::Detached);
-                    }
-                    storage.bind_string(
-                        name_slot,
-                        StringLocation::AttributeName(container, position),
-                    );
-                    storage.bind_string(
-                        value_slot,
-                        StringLocation::AttributeValue(container, position),
-                    );
-                    storage.usage.utf16_units = updated_units;
-                    drop(old);
-                    Ok::<_, SessionError>(())
-                })();
-                drop(incoming);
-                replace?;
+                storage.replace_registered_attribute(
+                    c,
+                    node,
+                    [container, position],
+                    incoming,
+                    [name_slot, value_slot],
+                    [units, old_units],
+                )?;
             } else {
                 storage.append_registered_attribute(
                     c,

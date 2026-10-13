@@ -18,6 +18,7 @@
 
 mod microdata;
 pub use microdata::*;
+mod nonce;
 mod table;
 pub use table::*;
 mod language;
@@ -889,6 +890,8 @@ pub enum HtmlSemanticQuery {
     MicrodataProperty,
     MicrodataAuthor,
     MicrodataDocumentAuthor,
+    /// Actual cryptographic slot, independent of the current content attribute.
+    Nonce,
     IsAttributeAuthorContext,
     ImageDimensions,
     EmbeddedDimensionAuthorConformance,
@@ -1038,6 +1041,9 @@ impl HtmlSemanticQuery {
             | Self::MicrodataAuthor
             | Self::MicrodataDocumentAuthor => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#microdata"
+            }
+            Self::Nonce => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-noncedelement-nonce"
             }
             Self::IsAttributeAuthorContext => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-is"
@@ -1384,6 +1390,7 @@ pub enum HtmlSemanticMissing {
     DocumentClass(HtmlCaptureSubjectId),
     MicrodataTypeCycle(HtmlCaptureSubjectId),
     MicrodataFacts(HtmlCaptureSubjectId),
+    NonceSlot(HtmlCaptureSubjectId),
     Parent(HtmlCaptureSubjectId),
     OrderedChildren(HtmlCaptureSubjectId),
     CustomControlClassification(HtmlCaptureSubjectId),
@@ -1454,6 +1461,7 @@ pub enum HtmlSemanticFact {
     MicrodataProperty(HtmlSemanticValue<HtmlMicrodataProperty>),
     MicrodataAuthor(HtmlSemanticValue<HtmlMicrodataAuthor>),
     MicrodataDocumentAuthor(HtmlSemanticValue<HtmlMicrodataDocumentAuthor>),
+    Nonce(HtmlSemanticValue<DocumentString>),
     IsAttributeAuthorContext(HtmlSemanticValue<HtmlCustomElementIsAuthorContext>),
     ImageDimensions(HtmlSemanticValue<HtmlImageDimensionReadback>),
     EmbeddedDimensionAuthorConformance(HtmlSemanticValue<HtmlEmbeddedDimensionAuthorReadback>),
@@ -2871,6 +2879,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::IsAttributeAuthorContext
                             | HtmlSemanticQuery::MediaAttributeRules
                             | HtmlSemanticQuery::TemplateForReference
+                            | HtmlSemanticQuery::Nonce
                     ) {
                         false
                     } else {
@@ -2908,6 +2917,9 @@ impl<'a> HtmlSemanticSession<'a> {
                             HtmlSemanticFact::MicrodataDocumentAuthor(
                                 HtmlSemanticValue::Inapplicable,
                             )
+                        }
+                        HtmlSemanticQuery::Nonce => {
+                            HtmlSemanticFact::Nonce(self.nonce_readback(&request.subject, element)?)
                         }
                         HtmlSemanticQuery::IsAttributeAuthorContext => {
                             HtmlSemanticFact::IsAttributeAuthorContext(
@@ -3424,6 +3436,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticFact::MicrodataDocumentAuthor(
                             self.microdata_document_author(&request.subject)?,
                         )
+                    }
+                    HtmlSemanticQuery::Nonce => {
+                        HtmlSemanticFact::Nonce(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::IsAttributeAuthorContext => {
                         HtmlSemanticFact::IsAttributeAuthorContext(HtmlSemanticValue::Inapplicable)
