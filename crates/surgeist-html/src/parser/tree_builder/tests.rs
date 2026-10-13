@@ -13593,3 +13593,116 @@ fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_b
         assert_released(&driver.control);
     }
 }
+
+#[test]
+fn ordinary_checkbox_keeps_unsanitized_default_and_form_sibling_through_eof() {
+    // HTML877d Checkbox defines no value sanitizer. Create/append/reset/associate
+    // precedes InBody input insertion/immediate pop; the entity-derived CR/LF
+    // therefore remain in this type-first native value attribute.
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><input type=checkbox value='A&#13;B&#10;C' checked>Z</form>",
+        ),
+        limits(100),
+    );
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "ordinary Checkbox must reach EOF completion with its actual native input and sibling"
+        );
+        return;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let input = children[0].clone();
+    let input_children = document.node(&input).unwrap().children().count();
+    let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
+        panic!("the Checkbox token creates a real native Element");
+    };
+    let namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let actual_attributes: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|attribute| {
+            (
+                attribute
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                attribute.name().local_name().code_units().to_vec(),
+                attribute.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+    let owner_is_form = owner.as_ref() == Some(&form);
+    let child_count = children.len();
+    drop(owner);
+    drop(input);
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 2);
+    assert_eq!(input_children, 0);
+    assert_eq!(
+        namespace,
+        "http://www.w3.org/1999/xhtml"
+            .encode_utf16()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        actual_attributes,
+        vec![
+            (
+                None,
+                vec![116, 121, 112, 101],
+                vec![99, 104, 101, 99, 107, 98, 111, 120]
+            ),
+            (None, vec![118, 97, 108, 117, 101], vec![65, 13, 66, 10, 67]),
+            (None, vec![99, 104, 101, 99, 107, 101, 100], vec![]),
+        ]
+    );
+    assert!(owner_is_form);
+}
