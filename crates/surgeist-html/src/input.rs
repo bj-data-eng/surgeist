@@ -36,6 +36,7 @@ pub enum HtmlInputKind {
     Time,
     LocalDateTime,
     Number,
+    Range,
 }
 
 /// An actual recognized input state whose rules are outside this family.
@@ -70,6 +71,7 @@ impl TryFrom<HtmlInputType> for HtmlInputKind {
             HtmlInputType::Time => Self::Time,
             HtmlInputType::LocalDateTime => Self::LocalDateTime,
             HtmlInputType::Number => Self::Number,
+            HtmlInputType::Range => Self::Range,
 
             other => return Err(HtmlInputUnsupportedType(other)),
         })
@@ -98,6 +100,7 @@ impl HtmlInputKind {
             Self::Time => HtmlInputType::Time,
             Self::LocalDateTime => HtmlInputType::LocalDateTime,
             Self::Number => HtmlInputType::Number,
+            Self::Range => HtmlInputType::Range,
         }
     }
     pub fn value_mode(self) -> HtmlInputValueMode {
@@ -127,13 +130,15 @@ impl HtmlInputKind {
             _ => None,
         }
     }
-    pub fn sanitization(self) -> HtmlInputSanitization {
-        if self == Self::Number {
-            return HtmlInputSanitization::Number;
-        } else if let Some(format) = self.temporal_format() {
-            return HtmlInputSanitization::Temporal(format);
+    pub fn sanitization(self) -> HtmlInputValueSanitization {
+        if self == Self::Range {
+            return HtmlInputValueSanitization::Range;
         }
-        if self == Self::Email {
+        let string = if self == Self::Number {
+            HtmlInputSanitization::Number
+        } else if let Some(format) = self.temporal_format() {
+            HtmlInputSanitization::Temporal(format)
+        } else if self == Self::Email {
             HtmlInputSanitization::Email
         } else if self == Self::Url {
             HtmlInputSanitization::StripCrLfAndTrim
@@ -141,7 +146,8 @@ impl HtmlInputKind {
             HtmlInputSanitization::Preserve
         } else {
             HtmlInputSanitization::StripCrLf
-        }
+        };
+        HtmlInputValueSanitization::String(string)
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -203,6 +209,14 @@ impl HtmlInputImageCoordinate {
     pub fn y(self) -> u32 {
         self.y
     }
+}
+/// Complete sanitization requirement. Range needs actual min/max/step/value
+/// content and an exact numeric producer; the borrowed string cursor cannot
+/// supply those facts. Adapters must dispatch the two closed branches.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlInputValueSanitization {
+    String(HtmlInputSanitization),
+    Range,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputSanitization {
@@ -626,7 +640,7 @@ impl HtmlInputFlags {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputValueAttributeEffect {
     KeepCurrent,
-    ReplaceCurrentFromInstalledDefault(HtmlInputSanitization),
+    ReplaceCurrentFromInstalledDefault(HtmlInputValueSanitization),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputCheckedAttributeChange {
@@ -648,7 +662,7 @@ pub enum HtmlInputResetEffect {
     ReplaceCurrentFromDefault,
     SetCheckedFromPresence,
     EmptySelectedFiles,
-    Sanitize(HtmlInputSanitization),
+    Sanitize(HtmlInputValueSanitization),
 }
 pub struct HtmlInputReset {
     initial: HtmlInputFlags,
@@ -682,7 +696,7 @@ pub enum HtmlInputTypeEffect {
     SetCurrentEmptyForFilename,
     SetRendering,
     SignalTypeChange,
-    Sanitize(HtmlInputSanitization),
+    Sanitize(HtmlInputValueSanitization),
     SetInitialCursorAndNoneDirection,
 }
 #[derive(Clone, Copy, Debug)]

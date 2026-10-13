@@ -3725,7 +3725,8 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
  {
     // Two actual proof checks each read eight qualification facts, including
     // the explicit images-disabled construction capability. The queue
-    // owner reads checkpoint1, readiness7 (including the Radio phase) and empty cursor/length2. Its actual
+    // owner reads checkpoint1, readiness8 (form plus the seven effect fields,
+    // including Range and Radio) and empty cursor/length2. Its actual
     // bool set/clear contributes CopyByte2/RecordWrite2, with StateStep1.
     // One-short fails the final clear write, retaining the flag under first-stop.
     // The same queue now retains/restores its actual triggering cause. Its
@@ -3734,7 +3735,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         crate::construction::parser_session::provenance::ConstructionCauseRef,
     >() as u64
         + std::mem::size_of::<Option<usize>>() as u64;
-    let expected_work = 27 + 1 + (2 + cause_bytes) + 4 + 1;
+    let expected_work = 28 + 1 + (2 + cause_bytes) + 4 + 1;
     for short in [false, true] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<script>x</script>"),
@@ -3757,7 +3758,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let result = proof.checkpoint(c, session);
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            27
+            28
         );
         assert_eq!(
             c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
@@ -5026,7 +5027,7 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
     {
         let (name, boundary) = ("input", HeadBoundary::Form);
         let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept type=range>tail")),
+            HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept type=color>tail")),
             limits(100),
         );
         let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
@@ -5049,7 +5050,7 @@ fn body_family_continuations_preserve_real_tokens_before_category_effects() {
         );
         assert_eq!(
             tag.attributes.as_slice()[1].value.value.text(),
-            &DocumentString::from("range")
+            &DocumentString::from("color")
         );
         let node_count = driver
             .control
@@ -6258,14 +6259,15 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = c.usage().clone();
     kernel.replace_stack(1, &replacement, &mut c, None).unwrap();
-    // Kernel readiness1, target index8, at1, pre-removal qualification13,
-    // get_mut1, post-removal qualification13, removed index8, option5 and
-    // textarea5. Each index includes seven actual effect-readiness fields including Radio. Four
+    // Kernel readiness1, target index9, at1, pre-removal qualification14,
+    // get_mut1, post-removal qualification14, removed index9, option5 and
+    // textarea5. Each of the four indices includes the form field plus seven
+    // actual effect-readiness fields, including Range and Radio. Four
     // HTML namespace comparisons inspect28 units at three credits each; local
     // p length differs from both option and textarea, so no local units read.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        55
+        59
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -6909,7 +6911,7 @@ fn ordinary_form_control_and_template_continuations_preserve_pointer_and_origina
         let (name, expected) = ("input", super::head::HeadBoundary::Form);
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(
-                "<!doctype html><form id=f><{name} id=kept type=range>"
+                "<!doctype html><form id=f><{name} id=kept type=color>"
             )),
             limits(100),
         );
@@ -7329,7 +7331,7 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
 #[test]
 fn structural_table_unsupported_creation_retains_original_before_table_effects() {
     {
-        let (tag, boundary) = ("<input type=range>", super::head::HeadBoundary::Form);
+        let (tag, boundary) = ("<input type=color>", super::head::HeadBoundary::Form);
         let source = format!("<!doctype html><table>{tag}");
         let request =
             crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
@@ -10285,7 +10287,7 @@ fn hidden_input_proofless_head_rejects_before_diagnostic_stack_or_creation() {
 #[test]
 fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
     {
-        let markup = "<input type=range>";
+        let markup = "<input type=color>";
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{markup}")),
             limits(100),
@@ -13540,7 +13542,8 @@ fn ordinary_text_input_makes_frameset_not_ok_and_is_void_inside_reconstructed_fo
 
 #[test]
 fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_before_effects() {
-    for kind in ["range", "color"] {
+    {
+        let kind = "color";
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(
                 "<!doctype html><table><input type={kind} value=kept>"
@@ -16324,7 +16327,7 @@ fn ordinary_default_button_input_observes_ordered_values(
         );
         assert_eq!(
             state.flags.kind().sanitization(),
-            crate::HtmlInputSanitization::Preserve
+            crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::Preserve)
         );
         assert!(!state.flags.dirty_value());
         assert!(!state.flags.dirty_checkedness());

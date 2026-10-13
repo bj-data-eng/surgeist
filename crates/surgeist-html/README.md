@@ -885,7 +885,7 @@ limits, and reports retain its exact producer/configuration revision.
 The [shared input rules](src/input.rs) expose fixed state and source-ordered
 requirements for Hidden, Text, Search, Telephone, Password, Checkbox, Radio,
 Email, URL, Submit, Reset, Button, Date, Month, Week, Time, LocalDateTime, Number,
-File and Image.
+File, Image and Range.
 Submit/Reset/Button use Default mode: present value content, including empty,
 is read unchanged; absence supplies empty rather than `on` or a display label.
 They preserve exact UTF-16 and do not support selection.
@@ -920,6 +920,14 @@ in ordinary numeric conversion does not make the string grammatically invalid.
 Invalid whole strings become empty; the sanitizer does not trim whitespace or
 recover a numeric prefix. It does not clamp to min/max or perform optional step
 rounding.
+
+Range uses Value mode without selection. `HtmlInputValueSanitization` separates
+the borrowed String sanitizer from Range, which needs actual min, max, step and
+value content. Range preserves a valid unconstrained spelling when no correction
+is required; its numeric conversion and corrections use the existing exact
+numeric owner. Missing or invalid current content uses the source-selected default: the
+midpoint, or min when max is less than min, followed by bounds and step correction. These intrinsic rules do not
+perform live validation, stepping, rendering or host events.
 
 File uses Filename mode with an established `HtmlInputFileSelection::Empty`,
 separate from its internal value and native value attribute. The native readback
@@ -2027,10 +2035,10 @@ context facts or required custom reactions produce typed failures. Neither entry
 executes JavaScript, fetches resources, attaches a live shadow root or synthesizes
 browser events. Supported input construction covers Text, Search, Telephone,
 Password, Hidden, Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month,
-Week, Time, LocalDateTime, Number, File and Image. Offline Image construction
+Week, Time, LocalDateTime, Number, File, Image and Range. Offline Image construction
 explicitly selects Disabled image support; fragments require qualified creation
 environment evidence when a nonempty `src` makes that policy influential.
-Range and Color input construction remain unsupported. Other unavailable branches stop
+Color input construction remains unsupported. Other unavailable branches stop
 explicitly rather than publishing a partial success.
 
 `HtmlSource::utf8` accepts already decoded Unicode in Rust string storage;
@@ -2356,7 +2364,7 @@ overrides, form reset and hosted initialization remain separate work.
 
 Internal input creation supports Hidden, Text, Search, Telephone, Password,
 Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month, Week, Time,
-LocalDateTime, Number, File and Image through the
+LocalDateTime, Number, File, Image and Range through the
 [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
 Text loses CR and LF; changing from Value mode to Hidden, Submit, Reset or Button
@@ -2411,6 +2419,36 @@ type-first Number checks the complete string without trimming it. Public report
 readers expose the resulting current value, independent native default and
 qualified origins. No parsed current-number scalar, min/max clamping or optional
 step rounding is produced by these hooks.
+
+Range creation, relevant min/max/step changes and final per-control reset use
+the [controlled Range producer](src/construction/parser_session/range.rs) with
+the same controller. Min/max/step constraints use the existing numeric recovery
+owner, while current-value recognition uses the complete author grammar. Actual
+min defaults to 0 and max to 100; step defaults to 1 and accepts `any`. A supplied
+usable min, then value content, then zero selects the step base. Native defaults
+remain independent of corrected current values. Reversed bounds preserve the
+source conditional that disables upper correction.
+
+The selected exact-step interpretation chooses the nearest finite representable
+binary64 point on the exact base-plus-integer-step lattice within the actual
+bounds, with larger-point ties. It neither enumerates that lattice nor substitutes
+original decimal spellings or an epsilon. Consequently, actual binary64 step
+`.1`, base 0 and current `.3` select `.2`; the rounded product `3 * step` is not
+an exact lattice point. This is the selected product interpretation, not a
+browser-parity claim. Unconstrained midpoint conversion uses nearest/even
+rounding separately. Grammar-valid conversion overflow retains its spelling when no known correction
+applies; it is not invalid syntax. Required generated values use the selected
+[ECMAScript decimal serialization](../../references/ecmascript-number-serialization--2026--cd65f2eaa201.md),
+including shortest roundtripping significands and explicit exponent spelling.
+
+The producer admits each fixed request/reply, scalar step and actual copy before
+advancing, retaining scratch and partial owners for terminal cleanup. Generated
+values carry a Range computation cause with the original current group and four
+source-qualified operand roles; they do not fabricate literal origins. Immutable
+cause readers expose branch, bound/step/base origins and borrowed dependency
+groups. Cloning copies the actual current backing and flags without recomputing;
+reset later uses the installed default and actual constraints. These operations
+do not supply live setters, validity, optional stepping or resource execution.
 
 File construction establishes an empty selected-resource fact while retaining
 raw, internal and default values independently. Changing into Filename mode

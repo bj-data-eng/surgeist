@@ -68,6 +68,7 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
                 | HtmlInputType::Number
                 | HtmlInputType::File
                 | HtmlInputType::Image
+                | HtmlInputType::Range
         ) {
             assert_eq!(HtmlInputKind::try_from(state).unwrap().input_type(), state);
         } else {
@@ -102,11 +103,14 @@ fn default_button_states_preserve_units_and_have_no_selection_or_display_fallbac
         assert_eq!(kind.input_type(), state);
         assert_eq!(kind.value_mode(), HtmlInputValueMode::Default);
         assert_eq!(kind.value_mode().readback(&[], None, None), Some(&[][..]));
-        assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
+        assert_eq!(
+            string_policy(kind.sanitization()),
+            HtmlInputSanitization::Preserve
+        );
         assert!(!kind.is_selectable());
         let kept: Vec<_> = units
             .into_iter()
-            .filter(|&u| kind.sanitization().retain_unit(u))
+            .filter(|&u| string_policy(kind.sanitization()).retain_unit(u))
             .collect();
         assert_eq!(kept, units);
         let fresh = HtmlInputFlags::fresh().type_changed(kind);
@@ -117,7 +121,7 @@ fn default_button_states_preserve_units_and_have_no_selection_or_display_fallbac
         assert_eq!(
             fresh.value_attribute_changed(),
             HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
-                HtmlInputSanitization::Preserve
+                HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
             )
         );
         let dirty = HtmlInputFlags::from_retained(kind, true, true, true, true, true);
@@ -147,7 +151,7 @@ fn default_button_states_preserve_units_and_have_no_selection_or_display_fallbac
         assert_eq!(
             reset.next_effect(),
             Some(HtmlInputResetEffect::Sanitize(
-                HtmlInputSanitization::Preserve
+                HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
             ))
         );
         assert_eq!(reset.next_effect(), None);
@@ -172,7 +176,9 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
                 SetContentValueFromCurrent,
                 SetRendering,
                 SignalTypeChange,
-                Sanitize(HtmlInputSanitization::Preserve)
+                Sanitize(HtmlInputValueSanitization::String(
+                    HtmlInputSanitization::Preserve
+                ))
             ]
         );
         assert_eq!(
@@ -180,7 +186,9 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
             [
                 SetRendering,
                 SignalTypeChange,
-                Sanitize(HtmlInputSanitization::Preserve)
+                Sanitize(HtmlInputValueSanitization::String(
+                    HtmlInputSanitization::Preserve
+                ))
             ]
         );
         assert_eq!(
@@ -189,7 +197,9 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
                 SetCurrentFromDefaultAndClearDirty,
                 SetRendering,
                 SignalTypeChange,
-                Sanitize(HtmlInputSanitization::StripCrLf),
+                Sanitize(HtmlInputValueSanitization::String(
+                    HtmlInputSanitization::StripCrLf
+                )),
                 SetInitialCursorAndNoneDirection
             ]
         );
@@ -200,7 +210,9 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
         [
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
 }
@@ -217,7 +229,7 @@ fn five_state_sanitization_filters_only_cr_lf_units() {
     ] {
         let kept: Vec<_> = original
             .into_iter()
-            .filter(|&unit| kind.sanitization().retain_unit(unit))
+            .filter(|&unit| string_policy(kind.sanitization()).retain_unit(unit))
             .collect();
         if kind == HtmlInputKind::Hidden {
             assert_eq!(kind.value_mode(), HtmlInputValueMode::Default);
@@ -236,7 +248,7 @@ fn dirty_value_and_checkedness_gate_real_attribute_triggers_independently() {
     assert_eq!(
         fresh.value_attribute_changed(),
         HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
-            HtmlInputSanitization::StripCrLf
+            HtmlInputValueSanitization::String(HtmlInputSanitization::StripCrLf)
         )
     );
     let HtmlInputValueSetterStart::SetCurrentValue(dirty) = fresh.value_setter_begin() else {
@@ -274,7 +286,7 @@ fn dirty_value_and_checkedness_gate_real_attribute_triggers_independently() {
     assert_eq!(
         hidden.value_attribute_changed(),
         HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
-            HtmlInputSanitization::Preserve
+            HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
         )
     );
 }
@@ -305,7 +317,7 @@ fn reset_orders_flags_default_checked_files_then_sanitization() {
     assert_eq!(
         reset.next_effect(),
         Some(HtmlInputResetEffect::Sanitize(
-            HtmlInputSanitization::StripCrLf
+            HtmlInputValueSanitization::String(HtmlInputSanitization::StripCrLf)
         ))
     );
     assert_eq!(reset.next_effect(), None);
@@ -325,7 +337,9 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
             SetContentValueFromCurrent,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -333,7 +347,9 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
         [
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -342,7 +358,9 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
             SetCurrentFromDefaultAndClearDirty,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::StripCrLf),
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::StripCrLf
+            )),
             SetInitialCursorAndNoneDirection
         ]
     );
@@ -351,7 +369,9 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
         [
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::StripCrLf)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::StripCrLf
+            ))
         ]
     );
     assert!(effects(HtmlInputKind::Text, HtmlInputKind::Text, 3).is_empty());
@@ -477,7 +497,7 @@ fn native_sanitized_equal_value_still_sets_dirty_without_replacing_default_or_cu
     };
     let current: Vec<_> = supplied
         .into_iter()
-        .filter(|&unit| dirty.kind().sanitization().retain_unit(unit))
+        .filter(|&unit| string_policy(dirty.kind().sanitization()).retain_unit(unit))
         .collect();
     assert_eq!(current, old_current);
     assert!(dirty.dirty_value());
@@ -530,7 +550,10 @@ fn selection_range_validation_clamping_and_direction_use_actual_capabilities() {
 fn number_shared_rules_preserve_complete_grammar_without_binary64_conversion() {
     let kind = HtmlInputKind::try_from(HtmlInputType::Number).unwrap();
     assert_eq!(kind.value_mode(), HtmlInputValueMode::Value);
-    assert_eq!(kind.sanitization(), HtmlInputSanitization::Number);
+    assert_eq!(
+        string_policy(kind.sanitization()),
+        HtmlInputSanitization::Number
+    );
     assert!(!kind.is_selectable());
     for (raw, expected) in [
         (".5", ".5"),
@@ -552,7 +575,7 @@ fn number_shared_rules_preserve_complete_grammar_without_binary64_conversion() {
     ] {
         let units = raw.encode_utf16().collect::<Vec<_>>();
         let mut cursor = HtmlInputSanitizationCursor::new(
-            kind.sanitization(),
+            string_policy(kind.sanitization()),
             &units,
             HtmlInputEmailMode::Single,
         );
@@ -575,8 +598,11 @@ fn number_shared_rules_preserve_complete_grammar_without_binary64_conversion() {
         assert!((0..units.len()).all(|i| cursor.replacement_unit(i).is_none()));
     }
     let units = [0x31, 0xd800, 0x32];
-    let mut cursor =
-        HtmlInputSanitizationCursor::new(kind.sanitization(), &units, HtmlInputEmailMode::Multiple);
+    let mut cursor = HtmlInputSanitizationCursor::new(
+        string_policy(kind.sanitization()),
+        &units,
+        HtmlInputEmailMode::Multiple,
+    );
     let mut range = None;
     while cursor.required_work().is_some() {
         range = cursor.advance().or(range);
@@ -633,7 +659,9 @@ fn number_reset_type_and_clone_use_value_mode_without_selection_effects() {
             SetCurrentFromDefaultAndClearDirty,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Number),
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Number
+            )),
         ]
     );
     let mut change = HtmlInputTypeChange::new(number, HtmlInputKind::Text, 3);
@@ -642,8 +670,163 @@ fn number_reset_type_and_clone_use_value_mode_without_selection_effects() {
         [
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::StripCrLf),
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::StripCrLf
+            )),
             SetInitialCursorAndNoneDirection,
         ]
     );
+}
+
+fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
+    match policy {
+        HtmlInputValueSanitization::String(policy) => policy,
+        HtmlInputValueSanitization::Range => {
+            panic!("these literal cases require the string operation")
+        }
+    }
+}
+
+#[test]
+fn range_requests_constraint_sanitization_without_selection_or_string_cursor_bypass() {
+    let kind = HtmlInputKind::try_from(HtmlInputType::Range).unwrap();
+    assert_eq!(kind.sanitization(), HtmlInputValueSanitization::Range);
+    assert_eq!(kind.value_mode(), HtmlInputValueMode::Value);
+    assert!(!kind.is_selectable());
+    let flags = HtmlInputFlags::fresh().type_changed(kind);
+    assert_eq!(
+        flags.value_attribute_changed(),
+        HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
+            HtmlInputValueSanitization::Range
+        ),
+    );
+}
+
+#[test]
+fn range_public_parse_lends_native_default_current_and_qualified_generated_dependencies() {
+    let literal =
+        "<!doctype html><form id=f><input type=range min=0 max=100 step=20 value=50>Z</form>";
+    let limits = HtmlParseLimits::builder()
+        .source_units(100_000)
+        .buffered_utf16_units(100_000)
+        .token_attributes(10_000)
+        .auxiliary_entries(1_000_000)
+        .managed_nodes(100_000)
+        .managed_edges(100_000)
+        .managed_attributes(100_000)
+        .managed_utf16_units(100_000)
+        .source_map_entries(100_000)
+        .source_map_payload_units(100_000)
+        .diagnostics(100_000)
+        .diagnostic_payload_units(100_000)
+        .context_effects(100_000)
+        .open_elements(100)
+        .tree_depth(100_000)
+        .managed_capacity_bytes(100_000_000)
+        .peak_transient_bytes(100_000_000)
+        .atomic_layout_bytes(100_000_000)
+        .work_credits(100_000_000)
+        .finish()
+        .unwrap();
+    let source = HtmlSource::utf8(literal);
+    let identity = source.identity().clone();
+    let report = HtmlDocumentParseRequest::offline(source, limits)
+        .parse()
+        .unwrap();
+    assert_eq!(report.source().identity(), &identity);
+    assert_eq!(report.source().as_utf8(), Some(literal));
+    let document = report.document().unwrap();
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let html_children: Vec<_> = document.node(&html).unwrap().children().collect();
+    let body = document.node(&html_children[1]).unwrap();
+    let form = body.children().next().unwrap();
+    let form_children: Vec<_> = document.node(&form).unwrap().children().collect();
+    assert_eq!(form_children.len(), 2);
+    let input = document.node(&form_children[0]).unwrap();
+    assert!(input.children().next().is_none());
+    let HtmlNodeKind::Element(element) = input.kind() else {
+        panic!("input")
+    };
+    assert_eq!(element.name().local_name(), &DocumentString::from("input"));
+    assert_eq!(
+        element
+            .attributes()
+            .as_slice()
+            .iter()
+            .find(|a| a.name().local_name() == &DocumentString::from("value"))
+            .unwrap()
+            .value(),
+        &DocumentString::from("50")
+    );
+    assert!(
+        matches!(document.node(&form_children[1]).unwrap().kind(), HtmlNodeKind::Text(text) if text==&DocumentString::from("Z"))
+    );
+    let mut metadata = report.metadata();
+    let mut found_current = false;
+    let mut found_owner = false;
+    loop {
+        match metadata.advance() {
+            HtmlParseMetadataStep::Record(record) if record.node().id() == input.id() => {
+                if let Some(flags) = record.input_flags() {
+                    assert_eq!(flags.kind(), HtmlInputKind::Range);
+                    assert!(
+                        !flags.dirty_value() && !flags.dirty_checkedness() && !flags.checkedness()
+                    );
+                    assert_eq!(record.input_raw_value(), Some(&DocumentString::from("60")));
+                    found_current = true;
+                }
+                if let Some(owner) = record.form_owner() {
+                    assert_eq!(owner.unwrap().id(), form);
+                    found_owner = true;
+                }
+            }
+            HtmlParseMetadataStep::Complete => break,
+            _ => {}
+        }
+    }
+    assert!(found_current && found_owner);
+    let history = report.history_view();
+    let rows = report.associations();
+    let mut selected = None;
+    for index in 0..history.len() {
+        let group = history.group(index).unwrap();
+        let header = history.header(group).unwrap();
+        if let Some(computation) = header.cause.range_computation()
+            && computation.branch() == HtmlParseRangeBranch::StepCorrection
+        {
+            selected = Some((group, computation));
+        }
+    }
+    let (group, computation) = selected.expect("50 is equally far from40 and60: source selects60");
+    assert!(!computation.original_is_fresh_empty());
+    assert!(computation.original_group().is_some() && computation.original_cause().is_some());
+    for role in [
+        HtmlParseRangeOperandRole::Minimum,
+        HtmlParseRangeOperandRole::Maximum,
+        HtmlParseRangeOperandRole::Step,
+    ] {
+        let operand = computation.operand(role);
+        assert_eq!(operand.kind(), HtmlParseRangeOperandKind::Finite);
+        assert!(operand.group().is_some() && operand.cause().is_some());
+        assert!(
+            (0..rows.len()).any(|index| rows.row(index).unwrap().relation()
+                == HtmlParseAssociationRelation::RangeDependency(role))
+        );
+    }
+    assert_eq!(
+        computation
+            .operand(HtmlParseRangeOperandRole::ValueContent)
+            .kind(),
+        HtmlParseRangeOperandKind::NotConsulted
+    );
+    let mut scratch = [HtmlParseHistoryFrame::default(); 32];
+    let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
+    assert!(
+        matches!(cursor.advance(), HtmlParseHistoryStep::Leaf(atom) if atom.units()==[54,48] && atom.origins().is_empty())
+    );
+    assert!(matches!(cursor.advance(), HtmlParseHistoryStep::Complete));
 }

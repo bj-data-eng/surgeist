@@ -1188,6 +1188,7 @@ pub surgeist_html::HtmlInputKind::Month
 pub surgeist_html::HtmlInputKind::Number
 pub surgeist_html::HtmlInputKind::Password
 pub surgeist_html::HtmlInputKind::Radio
+pub surgeist_html::HtmlInputKind::Range
 pub surgeist_html::HtmlInputKind::Reset
 pub surgeist_html::HtmlInputKind::Search
 pub surgeist_html::HtmlInputKind::Submit
@@ -1199,7 +1200,7 @@ pub surgeist_html::HtmlInputKind::Week
 impl surgeist_html::HtmlInputKind
 pub fn surgeist_html::HtmlInputKind::input_type(self) -> surgeist_html::HtmlInputType
 pub fn surgeist_html::HtmlInputKind::is_selectable(self) -> bool
-pub fn surgeist_html::HtmlInputKind::sanitization(self) -> surgeist_html::HtmlInputSanitization
+pub fn surgeist_html::HtmlInputKind::sanitization(self) -> surgeist_html::HtmlInputValueSanitization
 pub fn surgeist_html::HtmlInputKind::value_mode(self) -> surgeist_html::HtmlInputValueMode
 impl core::convert::TryFrom<surgeist_html::HtmlInputType> for surgeist_html::HtmlInputKind
 pub type surgeist_html::HtmlInputKind::Error = surgeist_html::HtmlInputUnsupportedType
@@ -1275,7 +1276,7 @@ pub enum surgeist_html::HtmlInputResetEffect
 pub surgeist_html::HtmlInputResetEffect::ClearDirtyAndUserValidity(surgeist_html::HtmlInputFlags)
 pub surgeist_html::HtmlInputResetEffect::EmptySelectedFiles
 pub surgeist_html::HtmlInputResetEffect::ReplaceCurrentFromDefault
-pub surgeist_html::HtmlInputResetEffect::Sanitize(surgeist_html::HtmlInputSanitization)
+pub surgeist_html::HtmlInputResetEffect::Sanitize(surgeist_html::HtmlInputValueSanitization)
 pub surgeist_html::HtmlInputResetEffect::SetCheckedFromPresence
 pub enum surgeist_html::HtmlInputRuleWork
 pub surgeist_html::HtmlInputRuleWork::CompareAsciiUnit
@@ -1340,7 +1341,7 @@ impl core::convert::TryFrom<surgeist_html::HtmlInputType> for surgeist_html::Htm
 pub type surgeist_html::HtmlInputKind::Error = surgeist_html::HtmlInputUnsupportedType
 pub fn surgeist_html::HtmlInputKind::try_from(value: surgeist_html::HtmlInputType) -> core::result::Result<Self, Self::Error>
 pub enum surgeist_html::HtmlInputTypeEffect
-pub surgeist_html::HtmlInputTypeEffect::Sanitize(surgeist_html::HtmlInputSanitization)
+pub surgeist_html::HtmlInputTypeEffect::Sanitize(surgeist_html::HtmlInputValueSanitization)
 pub surgeist_html::HtmlInputTypeEffect::SetContentValueFromCurrent
 pub surgeist_html::HtmlInputTypeEffect::SetCurrentEmptyForFilename
 pub surgeist_html::HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty
@@ -1349,7 +1350,7 @@ pub surgeist_html::HtmlInputTypeEffect::SetRendering
 pub surgeist_html::HtmlInputTypeEffect::SignalTypeChange
 pub enum surgeist_html::HtmlInputValueAttributeEffect
 pub surgeist_html::HtmlInputValueAttributeEffect::KeepCurrent
-pub surgeist_html::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(surgeist_html::HtmlInputSanitization)
+pub surgeist_html::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(surgeist_html::HtmlInputValueSanitization)
 pub enum surgeist_html::HtmlInputValueMode
 pub surgeist_html::HtmlInputValueMode::Default
 pub surgeist_html::HtmlInputValueMode::DefaultOn
@@ -1357,6 +1358,9 @@ pub surgeist_html::HtmlInputValueMode::Filename
 pub surgeist_html::HtmlInputValueMode::Value
 impl surgeist_html::HtmlInputValueMode
 pub fn surgeist_html::HtmlInputValueMode::readback<'a>(self, internal: &'a [u16], content: core::option::Option<&'a [u16]>, files: core::option::Option<surgeist_html::HtmlInputFileSelection>) -> core::option::Option<&'a [u16]>
+pub enum surgeist_html::HtmlInputValueSanitization
+pub surgeist_html::HtmlInputValueSanitization::Range
+pub surgeist_html::HtmlInputValueSanitization::String(surgeist_html::HtmlInputSanitization)
 pub enum surgeist_html::HtmlInputValueSetterFinish
 pub surgeist_html::HtmlInputValueSetterFinish::NoAdditionalEffect
 pub surgeist_html::HtmlInputValueSetterFinish::SetEndCursorUnselectAndNoneDirection
@@ -1760,6 +1764,7 @@ pub surgeist_html::HtmlParseAssociationRelation::LexicalPart
 pub surgeist_html::HtmlParseAssociationRelation::Omission
 pub surgeist_html::HtmlParseAssociationRelation::Original
 pub surgeist_html::HtmlParseAssociationRelation::Output
+pub surgeist_html::HtmlParseAssociationRelation::RangeDependency(surgeist_html::HtmlParseRangeOperandRole)
 pub surgeist_html::HtmlParseAssociationRelation::Trigger
 pub enum surgeist_html::HtmlParseCapturedCauseRole
 pub surgeist_html::HtmlParseCapturedCauseRole::ContextNamespace
@@ -1972,6 +1977,23 @@ pub surgeist_html::HtmlParseOriginKind::NullReplacement
 pub surgeist_html::HtmlParseOriginKind::RecoverySyntax
 #[repr(u8)] pub enum surgeist_html::HtmlParseOutputOverride
 pub surgeist_html::HtmlParseOutputOverride::Null
+pub enum surgeist_html::HtmlParseRangeBranch
+pub surgeist_html::HtmlParseRangeBranch::InvalidDefaultMidpoint
+pub surgeist_html::HtmlParseRangeBranch::InvalidDefaultMinimum
+pub surgeist_html::HtmlParseRangeBranch::Overflow
+pub surgeist_html::HtmlParseRangeBranch::StepCorrection
+pub surgeist_html::HtmlParseRangeBranch::Underflow
+pub enum surgeist_html::HtmlParseRangeOperandKind
+pub surgeist_html::HtmlParseRangeOperandKind::Absent
+pub surgeist_html::HtmlParseRangeOperandKind::Any
+pub surgeist_html::HtmlParseRangeOperandKind::ConversionFailed
+pub surgeist_html::HtmlParseRangeOperandKind::Finite
+pub surgeist_html::HtmlParseRangeOperandKind::NotConsulted
+pub enum surgeist_html::HtmlParseRangeOperandRole
+pub surgeist_html::HtmlParseRangeOperandRole::Maximum
+pub surgeist_html::HtmlParseRangeOperandRole::Minimum
+pub surgeist_html::HtmlParseRangeOperandRole::Step
+pub surgeist_html::HtmlParseRangeOperandRole::ValueContent
 pub enum surgeist_html::HtmlParseRawField
 pub surgeist_html::HtmlParseRawField::Input
 pub surgeist_html::HtmlParseRawField::Textarea
@@ -5074,6 +5096,7 @@ pub fn surgeist_html::HtmlParseCause<'a>::operation(&self) -> surgeist_html::Htm
 pub fn surgeist_html::HtmlParseCause<'a>::original_cause(&self) -> core::option::Option<Self>
 pub fn surgeist_html::HtmlParseCause<'a>::original_group(&self) -> core::option::Option<surgeist_html::HtmlParseOriginGroup<'a>>
 pub fn surgeist_html::HtmlParseCause<'a>::original_node(&self) -> core::option::Option<surgeist_html::HtmlNode<'a>>
+pub fn surgeist_html::HtmlParseCause<'a>::range_computation(&self) -> core::option::Option<surgeist_html::HtmlParseRangeComputation<'a>>
 pub fn surgeist_html::HtmlParseCause<'a>::retired_destination(&self) -> core::option::Option<surgeist_html::HtmlParseRetiredDestination<'a>>
 pub fn surgeist_html::HtmlParseCause<'a>::rule(&self) -> core::option::Option<surgeist_html::HtmlParserRule>
 pub fn surgeist_html::HtmlParseCause<'a>::source(&self) -> core::option::Option<&'a surgeist_html::HtmlSourceRange>
@@ -5274,6 +5297,22 @@ pub fn surgeist_html::HtmlParseOmission<'a>::rule(&self) -> surgeist_html::HtmlP
 pub fn surgeist_html::HtmlParseOmission<'a>::source(&self) -> &'a surgeist_html::HtmlSourceRange
 pub fn surgeist_html::HtmlParseOmission<'a>::start(&self) -> usize
 pub struct surgeist_html::HtmlParseOriginGroup<'a>
+pub struct surgeist_html::HtmlParseRangeComputation<'a>
+impl<'a> surgeist_html::HtmlParseRangeComputation<'a>
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::base_origin(&self) -> core::option::Option<surgeist_html::HtmlInputNumericStepBaseOrigin>
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::branch(&self) -> surgeist_html::HtmlParseRangeBranch
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::maximum_origin(&self) -> core::option::Option<surgeist_html::HtmlInputNumericBoundOrigin>
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::minimum_origin(&self) -> core::option::Option<surgeist_html::HtmlInputNumericBoundOrigin>
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::operand(&self, role: surgeist_html::HtmlParseRangeOperandRole) -> surgeist_html::HtmlParseRangeOperand<'a>
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::original_cause(&self) -> core::option::Option<surgeist_html::HtmlParseCause<'a>>
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::original_group(&self) -> core::option::Option<surgeist_html::HtmlParseOriginGroup<'a>>
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::original_is_fresh_empty(&self) -> bool
+pub fn surgeist_html::HtmlParseRangeComputation<'a>::step_origin(&self) -> core::option::Option<surgeist_html::HtmlInputNumericStepOrigin>
+pub struct surgeist_html::HtmlParseRangeOperand<'a>
+impl<'a> surgeist_html::HtmlParseRangeOperand<'a>
+pub fn surgeist_html::HtmlParseRangeOperand<'a>::cause(&self) -> core::option::Option<surgeist_html::HtmlParseCause<'a>>
+pub fn surgeist_html::HtmlParseRangeOperand<'a>::group(&self) -> core::option::Option<surgeist_html::HtmlParseOriginGroup<'a>>
+pub fn surgeist_html::HtmlParseRangeOperand<'a>::kind(&self) -> surgeist_html::HtmlParseRangeOperandKind
 pub struct surgeist_html::HtmlParseRegistryBinding<'a>
 impl surgeist_html::HtmlParseRegistryBinding<'_>
 pub fn surgeist_html::HtmlParseRegistryBinding<'_>::node(&self) -> surgeist_html::HtmlNode<'_>

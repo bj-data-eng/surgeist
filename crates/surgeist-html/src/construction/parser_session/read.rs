@@ -446,11 +446,103 @@ fn pi_node(history: &FrozenHistory, slot: usize) -> usize {
     };
     *node
 }
+/// Fixed borrowed decisions from the qualified canonical cause owner.
+pub struct HtmlParseRangeComputation<'a> {
+    history: &'a FrozenHistory,
+    value: &'a provenance::RangeComputation,
+}
+pub struct HtmlParseRangeOperand<'a> {
+    history: &'a FrozenHistory,
+    value: provenance::RangeOperand,
+}
+impl<'a> HtmlParseRangeOperand<'a> {
+    pub fn kind(&self) -> provenance::RangeOperandKind {
+        self.value.kind()
+    }
+    pub fn group(&self) -> Option<HistoryGroup<'a>> {
+        self.value.edge().and_then(|edge| {
+            self.history
+                .view()
+                .expect("qualified history")
+                .group(edge.group)
+        })
+    }
+    pub fn cause(&self) -> Option<HtmlParseCause<'a>> {
+        self.value.edge().map(|edge| HtmlParseCause {
+            history: self.history,
+            cause: self
+                .history
+                .associations()
+                .expect("qualified D1")
+                .cause(edge.cause)
+                .expect("qualified Range link"),
+        })
+    }
+}
+impl<'a> HtmlParseRangeComputation<'a> {
+    pub fn branch(&self) -> provenance::RangeBranch {
+        self.value.branch
+    }
+    pub fn original_is_fresh_empty(&self) -> bool {
+        matches!(self.value.original, provenance::RangeOriginal::FreshEmpty)
+    }
+    pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
+        match self.value.original {
+            provenance::RangeOriginal::FreshEmpty => None,
+            provenance::RangeOriginal::Group(edge) => self
+                .history
+                .view()
+                .expect("qualified history")
+                .group(edge.group),
+        }
+    }
+    pub fn original_cause(&self) -> Option<HtmlParseCause<'a>> {
+        match self.value.original {
+            provenance::RangeOriginal::FreshEmpty => None,
+            provenance::RangeOriginal::Group(edge) => Some(HtmlParseCause {
+                history: self.history,
+                cause: self
+                    .history
+                    .associations()
+                    .expect("qualified D1")
+                    .cause(edge.cause)
+                    .expect("qualified Range original"),
+            }),
+        }
+    }
+    pub fn operand(&self, role: provenance::RangeOperandRole) -> HtmlParseRangeOperand<'a> {
+        HtmlParseRangeOperand {
+            history: self.history,
+            value: self.value.operands[role.index()],
+        }
+    }
+    pub fn minimum_origin(&self) -> Option<crate::HtmlInputNumericBoundOrigin> {
+        self.value.minimum
+    }
+    pub fn maximum_origin(&self) -> Option<crate::HtmlInputNumericBoundOrigin> {
+        self.value.maximum
+    }
+    pub fn step_origin(&self) -> Option<crate::HtmlInputNumericStepOrigin> {
+        self.value.step
+    }
+    pub fn base_origin(&self) -> Option<crate::HtmlInputNumericStepBaseOrigin> {
+        self.value.base
+    }
+}
 pub struct HtmlParseCause<'a> {
     history: &'a FrozenHistory,
     cause: &'a ConstructionCause,
 }
 impl<'a> HtmlParseCause<'a> {
+    pub fn range_computation(&self) -> Option<HtmlParseRangeComputation<'a>> {
+        self.cause
+            .range_computation
+            .as_ref()
+            .map(|value| HtmlParseRangeComputation {
+                history: self.history,
+                value,
+            })
+    }
     pub fn operation(&self) -> provenance::ConstructionOperation {
         self.cause.operation
     }

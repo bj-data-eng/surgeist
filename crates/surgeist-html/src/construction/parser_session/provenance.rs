@@ -47,6 +47,103 @@ pub enum ConstructionOperation {
     Captured,
     Lexical,
 }
+
+/// Source-ordered generated Range replacement, not a digit-origin claim.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RangeBranch {
+    InvalidDefaultMidpoint,
+    InvalidDefaultMinimum,
+    Underflow,
+    Overflow,
+    StepCorrection,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RangeOperandRole {
+    Minimum,
+    Maximum,
+    Step,
+    ValueContent,
+}
+impl RangeOperandRole {
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Self::Minimum => 0,
+            Self::Maximum => 1,
+            Self::Step => 2,
+            Self::ValueContent => 3,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RangeOperandKind {
+    NotConsulted,
+    Absent,
+    ConversionFailed,
+    Finite,
+    Any,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RangeEdge {
+    pub(crate) group: usize,
+    pub(crate) cause: usize,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RangeOriginal {
+    FreshEmpty,
+    Group(RangeEdge),
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RangeOperand {
+    NotConsulted,
+    Absent,
+    ConversionFailed(RangeEdge),
+    Finite(RangeEdge),
+    Any(RangeEdge),
+}
+impl RangeOperand {
+    pub(crate) fn kind(self) -> RangeOperandKind {
+        match self {
+            Self::NotConsulted => RangeOperandKind::NotConsulted,
+            Self::Absent => RangeOperandKind::Absent,
+            Self::ConversionFailed(_) => RangeOperandKind::ConversionFailed,
+            Self::Finite(_) => RangeOperandKind::Finite,
+            Self::Any(_) => RangeOperandKind::Any,
+        }
+    }
+    pub(crate) fn edge(self) -> Option<RangeEdge> {
+        match self {
+            Self::ConversionFailed(edge) | Self::Finite(edge) | Self::Any(edge) => Some(edge),
+            Self::NotConsulted | Self::Absent => None,
+        }
+    }
+}
+/// Fixed decisions reside in the actual canonical cause. Bound/default enums
+/// reuse their existing HTML input owner; generated defaults are not raw facts.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RangeComputation {
+    pub(crate) branch: RangeBranch,
+    pub(crate) original: RangeOriginal,
+    pub(crate) operands: [RangeOperand; 4],
+    pub(crate) minimum: Option<crate::HtmlInputNumericBoundOrigin>,
+    pub(crate) maximum: Option<crate::HtmlInputNumericBoundOrigin>,
+    pub(crate) step: Option<crate::HtmlInputNumericStepOrigin>,
+    pub(crate) base: Option<crate::HtmlInputNumericStepBaseOrigin>,
+}
+impl RangeComputation {
+    pub(crate) fn edges(self) -> [Option<RangeEdge>; 5] {
+        [
+            match self.original {
+                RangeOriginal::FreshEmpty => None,
+                RangeOriginal::Group(edge) => Some(edge),
+            },
+            self.operands[0].edge(),
+            self.operands[1].edge(),
+            self.operands[2].edge(),
+            self.operands[3].edge(),
+        ]
+    }
+}
+
 pub(crate) struct ConstructionCause {
     pub(crate) operation: ConstructionOperation,
     pub(crate) source: Option<crate::HtmlSourceRange>,
@@ -60,6 +157,7 @@ pub(crate) struct ConstructionCause {
     pub(crate) original: Option<usize>,
     pub(crate) incoming: Option<usize>,
     pub(crate) trigger: Option<usize>,
+    pub(crate) range_computation: Option<RangeComputation>,
 }
 pub(crate) struct OriginGroup {
     pub(crate) body: GroupBody,
@@ -944,6 +1042,7 @@ impl ParseEvidence {
                 original: Some(original),
                 incoming: None,
                 trigger: self.native.current,
+                range_computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -996,6 +1095,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: None,
+                range_computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -1034,6 +1134,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: self.native.current,
+                range_computation: None,
             },
         )?;
         let result = self.cause_ref(index, c)?;
@@ -1060,6 +1161,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: None,
+                range_computation: None,
             },
         )
     }
@@ -1165,6 +1267,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: None,
+                range_computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -1221,6 +1324,7 @@ impl ParseEvidence {
                 original: Some(old.index),
                 incoming: Some(incoming.index),
                 trigger: self.native.current,
+                range_computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -1424,6 +1528,7 @@ impl SessionStorage {
                 original: None,
                 incoming: None,
                 trigger: evidence.native.current,
+                range_computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -1489,6 +1594,7 @@ impl SessionStorage {
                 original,
                 incoming: Some(incoming.index),
                 trigger: evidence.native.current,
+                range_computation: None,
             },
         )?;
         let index = evidence.native.groups.len();
@@ -1544,6 +1650,7 @@ impl SessionStorage {
                 original: Some(index),
                 incoming: None,
                 trigger: evidence.native.current,
+                range_computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -1644,6 +1751,256 @@ impl FieldCopy {
     }
 }
 impl ParseEvidence {
+    /// Only a real Range computation can account for a nonempty leaf without
+    /// lexical atoms. Empty fresh leaves and complete lexical leaves retain
+    /// their existing meanings; missing atoms alone confer no authority.
+    pub(super) fn qualify_range_copy(
+        &self,
+        c: &mut ParseControl,
+        payloads: &PayloadStorage,
+        group: &OriginGroupRef,
+        value: &[u16],
+    ) -> Result<(), SessionError> {
+        if !self.group_value_equal(c, payloads, value, group)? {
+            return Err(SessionError::WrongToken);
+        }
+        let mut cursor = GroupLeafCursor::new(self, group, c)?;
+        let result = (|| {
+            while let Some(leaf) = cursor.next(self, c)? {
+                if leaf.units == 0 {
+                    continue;
+                }
+                if leaf.length == 0 {
+                    let LeafValue::Payload(slot) = leaf.value else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    let Some(RetainedPayload::String {
+                        origins: Some(original),
+                        ..
+                    }) = payloads.values.get(slot)
+                    else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    let header = self.require_group(original)?;
+                    c.charge(
+                        WorkCategory::InspectByte,
+                        mem::size_of::<OriginGroup>() as u64,
+                    )?;
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    let cause = self
+                        .native
+                        .causes
+                        .as_slice()
+                        .get(header.cause)
+                        .ok_or(SessionError::WrongToken)?;
+                    c.charge(
+                        WorkCategory::InspectByte,
+                        mem::size_of::<ConstructionCause>() as u64,
+                    )?;
+                    let value = cause
+                        .range_computation
+                        .ok_or(SessionError::OriginSplitUnavailable)?;
+                    if cause.operation != ConstructionOperation::Replacement {
+                        return Err(SessionError::WrongToken);
+                    }
+                    validate_range_computation(
+                        c,
+                        value,
+                        self.native.groups.as_slice(),
+                        header.cause,
+                    )?;
+                } else {
+                    let mut covered = 0;
+                    for atom in
+                        &self.native.origins.as_slice()[leaf.start..leaf.start + leaf.length]
+                    {
+                        c.charge(
+                            WorkCategory::InspectByte,
+                            mem::size_of::<TextOrigin>() as u64,
+                        )?;
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.require_source_range(&atom.source)?;
+                        if atom.start != covered || atom.end <= atom.start || atom.end > leaf.units
+                        {
+                            return Err(SessionError::OriginSplitUnavailable);
+                        }
+                        covered = atom.end;
+                    }
+                    if covered != leaf.units {
+                        return Err(SessionError::OriginSplitUnavailable);
+                    }
+                }
+            }
+            Ok(())
+        })();
+        cursor.release(c)?;
+        result
+    }
+}
+impl ParseEvidence {
+    /// The real payload's issued reference is checked before storing fixed
+    /// graph indices. Callers cannot supply an arena slot as an origin proof.
+    pub(super) fn range_edge(
+        &self,
+        c: &mut ParseControl,
+        group: &OriginGroupRef,
+    ) -> Result<RangeEdge, SessionError> {
+        c.require_identity(&group.control)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(
+            WorkCategory::InspectByte,
+            mem::size_of::<OriginGroup>() as u64,
+        )?;
+        let value = self.require_group(group)?;
+        payload_write::<RangeEdge>(c, 1)?;
+        Ok(RangeEdge {
+            group: group.index,
+            cause: value.cause,
+        })
+    }
+    pub(super) fn validate_range_computation(
+        &self,
+        c: &mut ParseControl,
+        value: RangeComputation,
+    ) -> Result<(), SessionError> {
+        validate_range_computation(
+            c,
+            value,
+            self.native.groups.as_slice(),
+            self.native.causes.len(),
+        )
+    }
+}
+pub(super) fn validate_range_computation(
+    c: &mut ParseControl,
+    value: RangeComputation,
+    groups: &[OriginGroup],
+    cause: usize,
+) -> Result<(), SessionError> {
+    c.charge(
+        WorkCategory::InspectByte,
+        mem::size_of::<RangeComputation>() as u64,
+    )?;
+    let step_branch = value.branch == RangeBranch::StepCorrection;
+    if value.minimum.is_none()
+        || value.maximum.is_none()
+        || step_branch != (value.step.is_some() && value.base.is_some())
+        || (!step_branch && (value.step.is_some() || value.base.is_some()))
+    {
+        return Err(SessionError::WrongToken);
+    }
+    if matches!(value.operands[0], RangeOperand::Any(_))
+        || matches!(value.operands[1], RangeOperand::Any(_))
+        || matches!(value.operands[3], RangeOperand::Any(_))
+    {
+        return Err(SessionError::WrongToken);
+    }
+    for edge in value.edges() {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if let Some(edge) = edge {
+            c.charge(
+                WorkCategory::InspectByte,
+                mem::size_of::<OriginGroup>() as u64,
+            )?;
+            if edge.cause >= cause
+                || groups
+                    .get(edge.group)
+                    .is_none_or(|group| group.cause != edge.cause)
+            {
+                return Err(SessionError::WrongToken);
+            }
+        }
+    }
+    Ok(())
+}
+impl SessionStorage {
+    pub(super) fn range_payload_edge(
+        &self,
+        c: &mut ParseControl,
+        slot: usize,
+    ) -> Result<RangeEdge, SessionError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let RetainedPayload::String {
+            origins: Some(group),
+            ..
+        } = self
+            .payloads
+            .values
+            .get(slot)
+            .ok_or(SessionError::WrongToken)?
+        else {
+            return Err(SessionError::WrongToken);
+        };
+        self.evidence
+            .as_ref()
+            .ok_or(SessionError::WrongToken)?
+            .range_edge(c, group)
+    }
+    pub(super) fn prepare_range_group(
+        &mut self,
+        c: &mut ParseControl,
+        units: usize,
+        computation: RangeComputation,
+    ) -> Result<OriginGroupRef, SessionError> {
+        let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
+        evidence.validate_range_computation(c, computation)?;
+        // Every original/role qualification precedes reservation. These are
+        // actual receiver capacities and required logical slots, not a ticket
+        // dropped locally on a denied write.
+        c.check_acquire_many(&[
+            (HtmlParseResource::SourceMapEntries, 2),
+            (HtmlParseResource::AuxiliaryEntries, 1),
+            (HtmlParseResource::ManagedUtf16Units, units as u64),
+        ])?;
+        evidence.native.causes.reserve_geometric(c, 1)?;
+        evidence.native.groups.reserve_geometric(c, 1)?;
+        c.reserve_vector_geometric(&mut self.payloads.values, &mut self.payloads.allocation, 1)?;
+        c.admit_atomic_layout(mem::size_of::<RetainedPayload>())?;
+        let cause = evidence.append_cause(
+            c,
+            ConstructionCause {
+                operation: ConstructionOperation::Replacement,
+                source: None,
+                captured: None,
+                rule: None,
+                family: None,
+                original_cause: None,
+                retired_destination: None,
+                original_node: None,
+                intended_parent: None,
+                original: match computation.original {
+                    RangeOriginal::FreshEmpty => None,
+                    RangeOriginal::Group(edge) => Some(edge.group),
+                },
+                incoming: None,
+                trigger: evidence.native.current,
+                range_computation: Some(computation),
+            },
+        )?;
+        let index = evidence.native.groups.len();
+        let reference = evidence.group_ref(index, c)?;
+        evidence.native.groups.try_push(
+            c,
+            OriginGroup {
+                body: GroupBody::Leaf {
+                    start: evidence.native.origins.len(),
+                    length: 0,
+                    value: if units == 0 {
+                        LeafValue::Empty
+                    } else {
+                        LeafValue::Pending
+                    },
+                },
+                units,
+                cause,
+                retirement: None,
+            },
+        )?;
+        Ok(reference)
+    }
+}
+impl ParseEvidence {
     pub(super) fn current_cause(
         &self,
         c: &mut ParseControl,
@@ -1699,6 +2056,7 @@ impl ParseEvidence {
                 original: Some(original.index),
                 incoming: None,
                 trigger: self.native.current,
+                range_computation: None,
             },
         )
     }
@@ -2434,6 +2792,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: self.native.current,
+                range_computation: None,
             },
         )?;
         let reference = self.cause_ref(index, c)?;
@@ -2549,6 +2908,7 @@ impl SessionStorage {
                 original: None,
                 incoming: None,
                 trigger: evidence.native.current,
+                range_computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -2586,6 +2946,7 @@ impl SessionStorage {
                 original: None,
                 incoming: None,
                 trigger: evidence.native.current,
+                range_computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;

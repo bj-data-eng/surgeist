@@ -7,6 +7,7 @@
 use crate::DocumentString;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod natural_ratio;
+pub(crate) mod range;
 pub use natural_ratio::*;
 
 fn integer_sum_capacity(left_digits: usize, right_digits: usize) -> Option<usize> {
@@ -2440,6 +2441,30 @@ impl<'a> FloatingPointGrammarCursor<'a> {
             }
             Done => {}
         }
+    }
+
+    /// Issued only by the completed shared grammar. The numeric executor owns
+    /// offsets and signs; its adapter retains and qualifies the selected source.
+    pub(crate) fn range_decimal_parts(
+        &self,
+    ) -> Result<range::RangeDecimalParts, NumericParseError> {
+        if !self.is_valid() {
+            return Err(NumericParseError::InvalidSyntax);
+        }
+        Ok(range::RangeDecimalParts {
+            negative: self.negative,
+            integer_start: self.integer_start,
+            integer_end: self.integer_end,
+            fraction_start: self.fraction_start,
+            fraction_end: self.fraction_end,
+            exponent_start: if self.has_exponent {
+                self.exponent_start
+            } else {
+                0
+            },
+            exponent_end: if self.has_exponent { self.position } else { 0 },
+            exponent_negative: self.exponent_negative,
+        })
     }
 
     fn prefix(&self) -> Result<FloatingPointPrefix<'a>, NumericParseError> {

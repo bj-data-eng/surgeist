@@ -235,6 +235,7 @@ impl ParseEvidence {
                     original: None,
                     incoming: None,
                     trigger: None,
+                    range_computation: None,
                 },
             )
             .map_err(|error| match error {

@@ -8,9 +8,15 @@ fn file_and_image_modes_preserve_distinct_resource_and_content_readback() {
     assert_eq!(file.value_mode(), HtmlInputValueMode::Filename);
     assert_eq!(image.value_mode(), HtmlInputValueMode::Default);
     for kind in [file, image] {
-        assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
+        assert_eq!(
+            kind.sanitization(),
+            HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
+        );
+        let HtmlInputValueSanitization::String(sanitization) = kind.sanitization() else {
+            panic!("File and Image use the string sanitizer");
+        };
         assert!(!kind.is_selectable());
-        assert!(raw.into_iter().all(|u| kind.sanitization().retain_unit(u)));
+        assert!(raw.into_iter().all(|u| sanitization.retain_unit(u)));
     }
     assert_eq!(file.value_mode().readback(&raw, Some(&raw), None), None);
     assert_eq!(
@@ -61,7 +67,9 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
             SetCurrentEmptyForFilename,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -70,7 +78,9 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
             SetCurrentEmptyForFilename,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -78,7 +88,9 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
         vec![
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -87,7 +99,9 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
             SetCurrentFromDefaultAndClearDirty,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::StripCrLf),
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::StripCrLf
+            )),
             SetInitialCursorAndNoneDirection
         ]
     );
@@ -134,7 +148,7 @@ fn file_image_reset_and_clone_flags_have_source_defined_independent_roles() {
         assert_eq!(
             cursor.next_effect(),
             Some(HtmlInputResetEffect::Sanitize(
-                HtmlInputSanitization::Preserve
+                HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
             ))
         );
         assert_eq!(cursor.next_effect(), None);

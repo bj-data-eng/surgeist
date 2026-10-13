@@ -1,11 +1,15 @@
+use surgeist_html::HtmlInputValueSanitization;
 use surgeist_html::{
     DocumentString, HtmlInputEmailMode, HtmlInputFlags, HtmlInputKind, HtmlInputSanitizationCursor,
     HtmlInputTemporalFormat, HtmlInputType, HtmlInputValueMode,
 };
 
 fn sanitized(kind: HtmlInputKind, input: &[u16]) -> Vec<u16> {
-    let mut cursor =
-        HtmlInputSanitizationCursor::new(kind.sanitization(), input, HtmlInputEmailMode::Single);
+    let mut cursor = HtmlInputSanitizationCursor::new(
+        string_policy(kind.sanitization()),
+        input,
+        HtmlInputEmailMode::Single,
+    );
     let mut output = Vec::new();
     // The owner guarantees each action is one unit inspection or fixed action.
     // This source-length bound prevents a nonterminating rule test; it is not
@@ -66,7 +70,7 @@ fn temporal_states_are_value_mode_and_independently_nonselectable() {
         assert_eq!(kind.value_mode(), HtmlInputValueMode::Value);
         assert!(!kind.is_selectable());
         assert_eq!(
-            kind.sanitization(),
+            string_policy(kind.sanitization()),
             surgeist_html::HtmlInputSanitization::Temporal(format)
         );
         let flags = HtmlInputFlags::fresh().type_changed(kind);
@@ -183,6 +187,15 @@ fn temporal_empty_null_and_isolated_surrogates_are_not_trimmed_or_repaired() {
     ] {
         for input in [&[][..], &[0][..], &[0xd800][..], &[0xdc00][..], &[0x20][..]] {
             assert!(sanitized(kind, input).is_empty());
+        }
+    }
+}
+
+fn string_policy(policy: HtmlInputValueSanitization) -> surgeist_html::HtmlInputSanitization {
+    match policy {
+        HtmlInputValueSanitization::String(policy) => policy,
+        HtmlInputValueSanitization::Range => {
+            panic!("these literal cases require the string operation")
         }
     }
 }

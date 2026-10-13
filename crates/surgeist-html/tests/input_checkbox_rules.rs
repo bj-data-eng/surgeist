@@ -23,9 +23,12 @@ fn checkbox_has_exact_default_on_content_fallback_and_no_sanitizer() {
     assert!(
         units
             .into_iter()
-            .all(|unit| kind.sanitization().retain_unit(unit))
+            .all(|unit| string_policy(kind.sanitization()).retain_unit(unit))
     );
-    assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
+    assert_eq!(
+        string_policy(kind.sanitization()),
+        HtmlInputSanitization::Preserve
+    );
     assert_eq!(
         HtmlInputKind::try_from(HtmlInputType::Color)
             .unwrap_err()
@@ -45,7 +48,7 @@ fn default_on_setter_changes_content_and_does_not_dirty_current_value() {
     assert_eq!(
         flags.value_attribute_changed(),
         HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
-            HtmlInputSanitization::Preserve
+            HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
         )
     );
     let dirty =
@@ -115,7 +118,7 @@ fn checkbox_reset_clears_only_specified_flags_and_retains_indeterminate() {
     assert_eq!(
         reset.next_effect(),
         Some(HtmlInputResetEffect::Sanitize(
-            HtmlInputSanitization::Preserve
+            HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
         ))
     );
     assert_eq!(reset.next_effect(), None);
@@ -135,7 +138,9 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
             SetContentValueFromCurrent,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -143,7 +148,9 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
         [
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -152,7 +159,9 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
             SetCurrentFromDefaultAndClearDirty,
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::StripCrLf),
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::StripCrLf
+            )),
             SetInitialCursorAndNoneDirection
         ]
     );
@@ -161,7 +170,9 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
         [
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert_eq!(
@@ -169,7 +180,9 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
         [
             SetRendering,
             SignalTypeChange,
-            Sanitize(HtmlInputSanitization::Preserve)
+            Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     assert!(effects(Checkbox, Checkbox, 3).is_empty());
@@ -215,4 +228,13 @@ fn checkbox_value_finish_never_requests_text_cursor_effects() {
         ),
         HtmlInputValueSetterFinish::NoAdditionalEffect
     );
+}
+
+fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
+    match policy {
+        HtmlInputValueSanitization::String(policy) => policy,
+        HtmlInputValueSanitization::Range => {
+            panic!("these literal cases require the string operation")
+        }
+    }
 }

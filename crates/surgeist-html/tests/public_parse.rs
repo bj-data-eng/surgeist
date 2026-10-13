@@ -392,23 +392,33 @@ fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
 
 #[test]
 fn public_failure_keeps_first_stop_snapshot_separate_from_cleanup_and_cancel() {
-    let literal =
-        "<!doctype html><form id=f><input type=hidden value=x><textarea>A&amp;B</textarea></form>";
+    // Document, doctype, html, head, body, p and Text A are seven actual nodes.
+    // The following div must refuse before allocation, after text is retained.
+    let literal = "<!doctype html><p>A</p><div>";
     let request = HtmlDocumentParseRequest::offline(
         HtmlSource::utf8(literal),
-        limits()
-            .into_builder()
-            .work_credits(199_923)
-            .finish()
-            .unwrap(),
+        limits().into_builder().managed_nodes(7).finish().unwrap(),
     );
     let cancel = request.cancellation().clone();
     let failure = request.parse().unwrap_err();
     let first = failure.first_stop().unwrap();
+    assert_eq!(
+        first,
+        HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedNodes,
+            limit: 7,
+            current: 7,
+            requested_delta: 1,
+        }
+    );
     assert_eq!(failure.reason(), HtmlParseFailureReason::Stop(first));
     assert_eq!(failure.source_admitted(), Some(true));
     let at_stop = failure.at_stop().unwrap().clone();
     let after = failure.after_cleanup().unwrap().clone();
+    assert_eq!(
+        at_stop.resource(HtmlParseResource::ManagedNodes).current(),
+        7
+    );
     assert!(
         at_stop
             .resource(HtmlParseResource::ManagedUtf16Units)

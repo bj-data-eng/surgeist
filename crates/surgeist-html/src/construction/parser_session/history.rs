@@ -91,6 +91,12 @@ fn qualify(
         {
             return Err(SessionError::WrongToken);
         }
+        if let Some(range) = cause.range_computation {
+            if cause.operation != provenance::ConstructionOperation::Replacement {
+                return Err(SessionError::WrongToken);
+            }
+            provenance::validate_range_computation(c, range, data.groups, index)?;
+        }
         // Captured qualifications were established by the sealed ingress;
         // captured facts remain nonlexical and do not acquire a source range.
     }
@@ -102,6 +108,14 @@ fn qualify(
                 .is_some_and(|cause| cause >= data.causes.len())
         {
             return Err(SessionError::WrongToken);
+        }
+        if let Some(range) = data.causes[group.cause].range_computation {
+            for edge in range.edges() {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if edge.is_some_and(|edge| edge.group >= index) {
+                    return Err(SessionError::WrongToken);
+                }
+            }
         }
         match group.body {
             GroupBody::Leaf {

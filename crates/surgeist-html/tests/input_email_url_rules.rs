@@ -1,3 +1,4 @@
+use surgeist_html::HtmlInputValueSanitization;
 use surgeist_html::{
     HtmlInputEmailMode, HtmlInputKind, HtmlInputRuleWork, HtmlInputSanitization,
     HtmlInputSanitizationCursor, HtmlInputType, HtmlInputTypeChange, HtmlInputTypeEffect,
@@ -45,12 +46,16 @@ fn single_email_and_url_remove_crlf_then_only_boundary_ascii_whitespace() {
     let raw = [32, 9, 65, 13, 66, 10, 67, 12, 32];
     for kind in [HtmlInputKind::Email, HtmlInputKind::Url] {
         assert_eq!(
-            sanitize(kind.sanitization(), &raw, HtmlInputEmailMode::Single),
+            sanitize(
+                string_policy(kind.sanitization()),
+                &raw,
+                HtmlInputEmailMode::Single
+            ),
             (vec![65, 66, 67], None)
         );
         assert_eq!(
             sanitize(
-                kind.sanitization(),
+                string_policy(kind.sanitization()),
                 &[32, 9, 10, 13, 12],
                 HtmlInputEmailMode::Single
             ),
@@ -58,7 +63,7 @@ fn single_email_and_url_remove_crlf_then_only_boundary_ascii_whitespace() {
         );
         assert_eq!(
             sanitize(
-                kind.sanitization(),
+                string_policy(kind.sanitization()),
                 &[0xa0, 32, 65, 9, 66, 32, 0xa0],
                 HtmlInputEmailMode::Single
             ),
@@ -123,7 +128,9 @@ fn email_to_url_initializes_cursor_while_url_to_email_does_not() {
         vec![
             HtmlInputTypeEffect::SetRendering,
             HtmlInputTypeEffect::SignalTypeChange,
-            HtmlInputTypeEffect::Sanitize(HtmlInputSanitization::StripCrLfAndTrim),
+            HtmlInputTypeEffect::Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::StripCrLfAndTrim
+            )),
             HtmlInputTypeEffect::SetInitialCursorAndNoneDirection,
         ]
     );
@@ -132,7 +139,9 @@ fn email_to_url_initializes_cursor_while_url_to_email_does_not() {
         vec![
             HtmlInputTypeEffect::SetRendering,
             HtmlInputTypeEffect::SignalTypeChange,
-            HtmlInputTypeEffect::Sanitize(HtmlInputSanitization::Email),
+            HtmlInputTypeEffect::Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Email
+            )),
         ]
     );
 }
@@ -154,4 +163,13 @@ fn a_cursor_has_no_final_email_count_before_its_real_completion() {
     assert_eq!(cursor.email_value_count(), Some(2));
     assert_eq!(cursor.advance(), None);
     assert_eq!(cursor.required_work(), None);
+}
+
+fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
+    match policy {
+        HtmlInputValueSanitization::String(policy) => policy,
+        HtmlInputValueSanitization::Range => {
+            panic!("these literal cases require the string operation")
+        }
+    }
 }

@@ -850,13 +850,22 @@ impl SessionStorage {
         }
         if let Some(slot) = bindings.input {
             let (_, original_raw, original) = self.input_clone_slot(c, source)?;
-            let text = copy_input_value(
-                &self.payloads,
-                self.evidence.as_ref(),
-                c,
-                original_raw,
-                crate::HtmlInputSanitization::Preserve,
-            )?;
+            let text = if original.flags.kind() == crate::HtmlInputKind::Range {
+                range::copy_range_input_value(
+                    &self.payloads,
+                    self.evidence.as_ref(),
+                    c,
+                    original_raw,
+                )?
+            } else {
+                copy_input_value(
+                    &self.payloads,
+                    self.evidence.as_ref(),
+                    c,
+                    original_raw,
+                    crate::HtmlInputSanitization::Preserve,
+                )?
+            };
             self.replace_input_raw(c, slot, text)?;
             let mut state = self.read_input_state(c, slot)?;
             state.flags = state.flags.clone_flags_from(original.flags);

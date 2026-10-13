@@ -15,6 +15,7 @@ pub enum AssociationRelation {
     LexicalAnchor,
     Omission,
     Cause,
+    RangeDependency(RangeOperandRole),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReverseQueryError {
@@ -191,7 +192,19 @@ impl SpatialLink {
         let mut hash = self.cause.wrapping_mul(0x9e3779b1);
         for value in [
             self.group.unwrap_or(usize::MAX),
-            self.relation as usize,
+            match self.relation {
+                AssociationRelation::Output => 0,
+                AssociationRelation::Creation => 1,
+                AssociationRelation::Original => 2,
+                AssociationRelation::Incoming => 3,
+                AssociationRelation::Trigger => 4,
+                AssociationRelation::LexicalEnvelope => 5,
+                AssociationRelation::LexicalPart => 6,
+                AssociationRelation::LexicalAnchor => 7,
+                AssociationRelation::Omission => 8,
+                AssociationRelation::Cause => 9,
+                AssociationRelation::RangeDependency(role) => 10 + role.index(),
+            },
             self.start,
             self.end,
             usize::from(self.historical),
@@ -394,6 +407,15 @@ impl ParseEvidence {
                             return Err(SessionError::WrongToken);
                         }
                         has_source |= Self::spatial_reachable(c, &reachable, cause)?;
+                    }
+                }
+                if let Some(range) = cause.range_computation {
+                    validate_range_computation(c, range, self.native.groups.as_slice(), index)?;
+                    for operand in range.operands {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if let Some(edge) = operand.edge() {
+                            has_source |= Self::spatial_reachable(c, &reachable, edge.cause)?;
+                        }
                     }
                 }
                 reachable.try_push(c, has_source)?;
@@ -633,6 +655,27 @@ impl ParseEvidence {
                     cause.original_cause,
                     cause.trigger,
                 );
+                if let Some(range) = cause.range_computation {
+                    payload_write::<RangeComputation>(c, 1)?;
+                    for role in [
+                        RangeOperandRole::Minimum,
+                        RangeOperandRole::Maximum,
+                        RangeOperandRole::Step,
+                        RangeOperandRole::ValueContent,
+                    ] {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if let Some(edge) = range.operands[role.index()].edge() {
+                            self.push_spatial_group(
+                                c,
+                                &mut pending,
+                                link,
+                                (edge.group, AssociationRelation::RangeDependency(role)),
+                                link.start..link.end,
+                                true,
+                            )?;
+                        }
+                    }
+                }
                 let body = if let Some(group) = link.group {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     payload_write::<GroupBody>(c, 1)?;

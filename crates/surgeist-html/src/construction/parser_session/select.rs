@@ -166,6 +166,7 @@ enum WorkListKind {
 pub(super) struct ConstructionEffects {
     pub(super) form: Option<FormEffects>,
     pub(super) radio: Option<super::radio::RadioProgress>,
+    pub(super) range: Option<super::range::RangeStaging>,
     frames: OwnedVec<EffectFrame>,
     current: Option<EffectFrame>,
     transfer: Option<EffectFrame>,
@@ -181,10 +182,11 @@ struct QueuedTask {
 }
 impl ConstructionEffects {
     pub(super) fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
-        payload_write::<Self>(c, 10)?;
+        payload_write::<Self>(c, 11)?;
         Ok(Self {
             form: None,
             radio: None,
+            range: None,
             frames: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
             current: None,
             transfer: None,
@@ -196,8 +198,9 @@ impl ConstructionEffects {
         })
     }
     pub(super) fn require_idle(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 6)?;
-        if self.radio.is_some()
+        c.charge(WorkCategory::RecordVisit, 7)?;
+        if self.range.is_some()
+            || self.radio.is_some()
             || self.svg_wrapper.is_some()
             || self.current.is_some()
             || self.transfer.is_some()
@@ -211,8 +214,9 @@ impl ConstructionEffects {
         Ok(())
     }
     pub(super) fn require_freezable(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 9)?;
-        if self.radio.is_some()
+        c.charge(WorkCategory::RecordVisit, 10)?;
+        if self.range.is_some()
+            || self.radio.is_some()
             || self.svg_wrapper.is_some()
             || self.dequeue != self.tasks.len()
             || self.task.is_some()
@@ -234,6 +238,9 @@ impl ConstructionEffects {
         }
     }
     pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        if let Some(range) = self.range {
+            range.release(c)?;
+        }
         self.frames.release(c)?;
         self.tasks.release(c)
     }

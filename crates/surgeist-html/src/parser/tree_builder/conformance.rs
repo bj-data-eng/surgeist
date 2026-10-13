@@ -2609,11 +2609,11 @@ mod reference_recovery {
                         .unwrap()
                 };
                 // Existing native_associations: require() reads one storage
-                // record + six idle fields, then copies its actual fixed lender
+                // record + seven idle fields (including Range), then copies its actual fixed lender
                 // and writes one record. row(): two record visits, one OwnedVec
                 // disposal-owner visit and one provider-identity check.
                 // No source scan, row expansion or map-copy is included here.
-                let cost = 7 + size_of::<NativeAssociations>() as u64 + 1 + 2 + 1 + 1;
+                let cost = 8 + size_of::<NativeAssociations>() as u64 + 1 + 2 + 1 + 1;
                 let remaining = cost - u64::from(short);
                 let used = control
                     .usage()

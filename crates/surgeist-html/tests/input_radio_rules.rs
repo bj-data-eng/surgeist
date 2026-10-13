@@ -6,12 +6,15 @@ fn radio_canonical_kind_default_on_raw_policy_and_no_selection_are_source_define
     assert_eq!(kind, HtmlInputKind::Radio);
     assert_eq!(kind.input_type(), HtmlInputType::Radio);
     assert_eq!(kind.value_mode(), HtmlInputValueMode::DefaultOn);
-    assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
+    assert_eq!(
+        string_policy(kind.sanitization()),
+        HtmlInputSanitization::Preserve
+    );
     let flags = HtmlInputFlags::fresh().type_changed(kind);
     assert!(matches!(
         flags.value_attribute_changed(),
         HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
-            HtmlInputSanitization::Preserve
+            HtmlInputValueSanitization::String(HtmlInputSanitization::Preserve)
         )
     ));
 }
@@ -57,9 +60,20 @@ fn checkbox_to_radio_type_change_has_real_state_signal_and_preserving_sanitizati
         vec![
             HtmlInputTypeEffect::SetRendering,
             HtmlInputTypeEffect::SignalTypeChange,
-            HtmlInputTypeEffect::Sanitize(HtmlInputSanitization::Preserve)
+            HtmlInputTypeEffect::Sanitize(HtmlInputValueSanitization::String(
+                HtmlInputSanitization::Preserve
+            ))
         ]
     );
     let mut same = HtmlInputTypeChange::new(HtmlInputKind::Radio, HtmlInputKind::Radio, 4);
     assert_eq!(same.next_effect(), None);
+}
+
+fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
+    match policy {
+        HtmlInputValueSanitization::String(policy) => policy,
+        HtmlInputValueSanitization::Range => {
+            panic!("these literal cases require the string operation")
+        }
+    }
 }

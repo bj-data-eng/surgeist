@@ -1447,12 +1447,37 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
             assert!(session.freeze(&mut c).is_err());
             assert_eq!(c.stop(), Some(first));
         }
+        let running_before_cleanup = c.stop().is_none();
         let released = session.release(&mut c);
-        assert!(
-            released.is_ok(),
-            "fragment credit {credit}: {released:?}, first {:?}",
-            c.stop()
-        );
+        if let Err(SessionError::Stop(
+            stop @ ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            },
+        )) = released
+        {
+            // The enlarged fixed Range receiver changes the exact credit at
+            // which useful effects finish. Running alias-preflight cleanup can
+            // now encounter a real one-short boundary before storage.take().
+            assert!(running_before_cleanup && result.is_ok());
+            assert!(session.storage.is_some());
+            assert_eq!(c.stop(), Some(stop));
+            let at_stop = c.first_stop_usage().unwrap().clone();
+            let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            session.release(&mut c).unwrap();
+            assert_eq!(c.stop(), Some(stop));
+            assert_eq!(c.first_stop_usage(), Some(&at_stop));
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::WorkCredits).current,
+                work
+            );
+        } else {
+            assert!(
+                released.is_ok(),
+                "fragment credit {credit}: {released:?}, first {:?}",
+                c.stop()
+            );
+        }
         storage_zero(&c);
         if result.is_ok() {
             break;

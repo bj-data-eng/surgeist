@@ -52,6 +52,7 @@ pub(crate) mod history;
 pub(crate) mod native_view;
 mod pi;
 mod radio;
+mod range;
 #[cfg(test)]
 pub(crate) use radio::InputGroupAttribute;
 mod mutation;
@@ -235,6 +236,13 @@ struct SessionStorage {
     cancel_after_output_reset: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
     cancel_after_input_reset: Option<crate::HtmlParseCancellation>,
+    #[cfg(test)]
+    cancel_after_range_append: Option<(
+        Option<crate::numeric::range::RangeScratchRole>,
+        crate::HtmlParseCancellation,
+    )>,
+    #[cfg(test)]
+    cancel_after_range_ingress: Option<range::RangeIngressCancellation>,
     standalone_ineligibility: Option<StandaloneUnsupported>,
     identity: Arc<Identity>,
     identity_allocation: SharedAllocation<Identity>,
@@ -989,6 +997,10 @@ impl SessionStorage {
             cancel_after_output_reset: None,
             #[cfg(test)]
             cancel_after_input_reset: None,
+            #[cfg(test)]
+            cancel_after_range_append: None,
+            #[cfg(test)]
+            cancel_after_range_ingress: None,
             standalone_ineligibility: None,
             identity,
             identity_allocation,
@@ -1632,8 +1644,11 @@ impl SessionStorage {
         node: usize,
         slot: usize,
         source: usize,
-        policy: crate::HtmlInputSanitization,
+        policy: crate::HtmlInputValueSanitization,
     ) -> Result<(), SessionError> {
+        let crate::HtmlInputValueSanitization::String(policy) = policy else {
+            return self.install_range_input_value(control, node, slot, source);
+        };
         if matches!(
             policy,
             crate::HtmlInputSanitization::Email
@@ -1827,7 +1842,10 @@ impl SessionStorage {
                         self.replace_input_raw(control, slot, field)?;
                     }
                     if let crate::HtmlInputTypeEffect::Sanitize(policy) = effect
-                        && policy != crate::HtmlInputSanitization::Preserve
+                        && policy
+                            != crate::HtmlInputValueSanitization::String(
+                                crate::HtmlInputSanitization::Preserve,
+                            )
                     {
                         let raw = self.input_raw_slot(control, slot)?;
                         self.install_sanitized_input_value(control, node, slot, raw, policy)?;
@@ -1862,8 +1880,22 @@ impl SessionStorage {
                 node,
                 slot,
                 raw,
-                crate::HtmlInputSanitization::Email,
+                crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::Email),
             )?;
+        }
+        if state.flags.kind() == crate::HtmlInputKind::Range {
+            let attribute = match &self.records[node].kind {
+                HtmlNodeKind::Element(element) => &element.attributes().as_slice()[position],
+                _ => unreachable!(),
+            };
+            let relevant = attribute.name().namespace().uri().is_none()
+                && (exact_ascii(control, Some(attribute.name().local_name()), "min")?
+                    || exact_ascii(control, Some(attribute.name().local_name()), "max")?
+                    || exact_ascii(control, Some(attribute.name().local_name()), "step")?);
+            if relevant {
+                let raw = self.input_raw_slot(control, slot)?;
+                self.install_range_input_value(control, node, slot, raw)?;
+            }
         }
         if form_attr {
             let state = find_form_association_state(&self.payloads, control, node)?
@@ -2009,6 +2041,10 @@ impl SessionStorage {
                 original: None,
             };
             self.replace_input_raw(control, slot, field)?;
+            if state.flags.kind() == crate::HtmlInputKind::Range {
+                let raw = self.input_raw_slot(control, slot)?;
+                self.install_range_input_value(control, node, slot, raw)?;
+            }
             if state.flags.kind() == crate::HtmlInputKind::Email {
                 state.email_value_count =
                     if self.form_attribute(control, node, "multiple")?.is_some() {
@@ -4514,6 +4550,10 @@ impl SessionStorage {
                 cancel_after_output_reset: _,
             #[cfg(test)]
                 cancel_after_input_reset: _,
+            #[cfg(test)]
+                cancel_after_range_append: _,
+            #[cfg(test)]
+                cancel_after_range_ingress: _,
             standalone_ineligibility: _,
             identity,
             identity_allocation,
@@ -6495,6 +6535,10 @@ impl ParserArenaSession {
                 cancel_after_output_reset: _,
             #[cfg(test)]
                 cancel_after_input_reset: _,
+            #[cfg(test)]
+                cancel_after_range_append: _,
+            #[cfg(test)]
+                cancel_after_range_ingress: _,
             standalone_ineligibility,
             identity,
             identity_allocation,
@@ -6533,6 +6577,10 @@ impl ParserArenaSession {
                     cancel_after_output_reset: None,
                     #[cfg(test)]
                     cancel_after_input_reset: None,
+                    #[cfg(test)]
+                    cancel_after_range_append: None,
+                    #[cfg(test)]
+                    cancel_after_range_ingress: None,
                     standalone_ineligibility,
                     identity: arena.identity,
                     identity_allocation,
@@ -7924,7 +7972,8 @@ fn validate_initial_input_origins(
     control: &mut ParseControl,
     tag: &Tag,
 ) -> Result<(), SessionError> {
-    let mut policy = crate::HtmlInputSanitization::StripCrLf;
+    let mut policy =
+        crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::StripCrLf);
     for attribute in tag.attributes.as_slice() {
         control.charge(WorkCategory::RecordVisit, 1)?;
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
@@ -7949,7 +7998,9 @@ fn validate_initial_input_origins(
             {
                 return Err(SessionError::OriginSplitUnavailable);
             }
-            if policy != crate::HtmlInputSanitization::Preserve {
+            if let crate::HtmlInputValueSanitization::String(policy) = policy
+                && policy != crate::HtmlInputSanitization::Preserve
+            {
                 let mut omitted = 0;
                 for position in origin.start..origin.end {
                     control.charge(WorkCategory::InspectByte, 2)?;
@@ -9087,7 +9138,7 @@ mod tests {
 
     #[test]
     fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanup() {
-        for remaining in [21, 22] {
+        for remaining in [22, 23] {
             let source = crate::HtmlSource::utf8("<output>A");
             let (mut c, mut session, output, mut lexer) = output_owner(&source, limits());
             let mut text = next_text(&mut lexer, &mut c);
@@ -9098,8 +9149,8 @@ mod tests {
             let mut destination = Utf16Buffer::new(&mut c).unwrap();
             destination.push_unit(81, &mut c).unwrap();
             destination.clear(&mut c).unwrap(); // capacity for1 exists before measured copying.
-            // Getter visits: active readiness+index8, root Document/self-binding2 + Output node-binding1 + Output slot1,
-            // root+child2, Text1, leaf/parent/child-list/sibling4 =19.
+            // Getter visits: active readiness+index9 (including Range), root Document/self-binding2 + Output node-binding1 + Output slot1,
+            // root+child2, Text1, leaf/parent/child-list/sibling4 =20.
             // Copies are one finite state byte plus one UTF16 unit =3.
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = limits().work_credits();
@@ -9108,12 +9159,12 @@ mod tests {
             let before = c.usage().clone();
             let result = session.append_output_value(&mut c, &output, &mut destination);
             assert_eq!(destination.units(), [65]);
-            if remaining == 22 {
+            if remaining == 23 {
                 result.unwrap();
                 assert_eq!(
                     c.usage().work(WorkCategory::RecordVisit)
                         - before.work(WorkCategory::RecordVisit),
-                    19
+                    20
                 );
                 assert_eq!(
                     c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
@@ -9792,10 +9843,10 @@ mod tests {
     #[test]
     fn template_owned_html_wrapper_pre_registration_stops_reclaim_lexical_fields() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        // require: 7 visits (including the retained radio phase); kind: 1; name owner+alias: 2; lowercase
+        // require: 8 visits (including the retained Radio and Range phases); kind: 1; name owner+alias: 2; lowercase
         // template: 16; indexed attribute: 1; its two owner+alias checks: 4;
         // lowercase a: 2. This is the actual borrowed preflight, before take.
-        const PREFLIGHT: u64 = 33;
+        const PREFLIGHT: u64 = 34;
         // The newly owned wrapper reads length (1), eight units (3 each),
         // then root kind (1). Cut each credit before document preparation.
         for wrapper_credit in 0..26 {
@@ -10573,11 +10624,11 @@ mod tests {
     fn formatting_capture_one_short_ordinary_document_qualification_preserves_original_before_take()
     {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        // Readiness first inspects the real form phase plus six intrinsic readiness fields including Radio (seven visits).
+        // Readiness first inspects the real form phase plus seven intrinsic readiness fields including Radio and Range (eight visits).
         // Qualification then admits eligibility/root-kind together (two).
-        // One short leaves only readiness admitted; exactly nine completes
+        // One short leaves only readiness admitted; exactly ten completes
         // qualification but cannot admit the next source-range visit.
-        for remaining in [8, 9] {
+        for remaining in [9, 10] {
             let source = crate::HtmlSource::utf8("<b>");
             let mut c = control();
             c.admit_source(&source).unwrap();
@@ -10604,7 +10655,7 @@ mod tests {
             assert!(input.is_some());
             assert_eq!(
                 c.usage().work(WorkCategory::RecordVisit) - before,
-                if remaining == 9 { 9 } else { 7 }
+                if remaining == 10 { 10 } else { 8 }
             );
             let stop = c.stop();
             discard_formatting_tag(&mut input, &mut c).unwrap();
@@ -14395,7 +14446,8 @@ mod tests {
 
     #[test]
     fn text_input_other_valid_states_refuse_before_any_metadata_or_lexical_take() {
-        for kind in ["range", "color"] {
+        {
+            let kind = "color";
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(format!("<html><head></head><input type={kind} value=x>")),
                 limits(),
@@ -15148,7 +15200,7 @@ mod tests {
             storage_zero(&c);
         }
         let request = crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8("<html><head></head><input type=range>"),
+            crate::HtmlSource::utf8("<html><head></head><input type=color>"),
             limits(),
         );
         let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
@@ -19263,8 +19315,8 @@ mod tests {
             let copies = c.usage().work(WorkCategory::CopyByte);
             let writes = c.usage().work(WorkCategory::RecordWrite);
             assert_eq!(session.document_mode(&mut c), Ok(mode));
-            // Form readiness plus six intrinsic-owner reads including Radio + root discriminant, then the mode copy.
-            assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 8);
+            // Form readiness plus seven intrinsic-owner reads including Radio and Range + root discriminant, then the mode copy.
+            assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 9);
             assert_eq!(
                 c.usage().work(WorkCategory::CopyByte) - copies,
                 mem::size_of::<HtmlDocumentMode>() as u64
@@ -19332,8 +19384,8 @@ mod tests {
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
-        // Independent getter envelope: eight actual reads (including Radio readiness) and fixed mode copy.
-        let complete = 8 + mem::size_of::<HtmlDocumentMode>() as u64;
+        // Independent getter envelope: nine actual reads (including Radio and Range readiness) and fixed mode copy.
+        let complete = 9 + mem::size_of::<HtmlDocumentMode>() as u64;
         for remaining in [complete, complete - 1] {
             let mut c = control();
             let mut session =
@@ -20923,9 +20975,9 @@ mod tests {
             session.element_insertion_ignored(&mut c, &first, &root),
             Ok(None)
         );
-        // Fourteen readiness visits + two checked handles, element kind,
+        // Sixteen readiness (two added Range phase reads) visits + two checked handles, element kind,
         // ancestry root and target kind.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 19);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 21);
         session.insert(&mut c, &root, &first, None, None).unwrap();
         let visits = c.usage().work(WorkCategory::RecordVisit);
         assert_eq!(
@@ -20933,7 +20985,7 @@ mod tests {
             Ok(Some(ElementInsertionIgnored::DocumentAlreadyHasElement))
         );
         // The additional real child-index and referenced-kind reads cost two.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 21);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 23);
         assert_eq!(session.active().unwrap().records[0].children, [first.index]);
         assert!(
             session.active().unwrap().records[second.index]
@@ -20977,9 +21029,9 @@ mod tests {
                 ElementInsertionIgnored::HostIncludingInclusiveAncestor
             ))
         );
-        // Fourteen readiness (two Radio phase reads) visits + two handles + element kind +
+        // Sixteen readiness (two Radio and two Range phase reads) visits + two handles + element kind +
         // child/contents/template ancestors.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 20);
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 22);
         assert_eq!(c.usage().work(WorkCategory::ProviderCall) - providers, 1);
         assert_eq!(
             session.element_insertion_ignored(&mut c, &template, &template),
@@ -21017,7 +21069,7 @@ mod tests {
         let nodes = c.usage().resource(HtmlParseResource::ManagedNodes);
         let edges = c.usage().resource(HtmlParseResource::ManagedEdges);
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, limits().work_credits() - used - 20)
+        c.charge(WorkCategory::StateStep, limits().work_credits() - used - 22)
             .unwrap();
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         assert!(matches!(
@@ -21030,7 +21082,7 @@ mod tests {
         ));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
-            used + 19
+            used + 21
         );
         assert_eq!(c.usage().resource(HtmlParseResource::ManagedNodes), nodes);
         assert_eq!(c.usage().resource(HtmlParseResource::ManagedEdges), edges);
@@ -25603,5 +25655,822 @@ mod tests {
             storage_zero(&c);
             assert_eq!(c.stop(), first);
         }
+    }
+
+    #[test]
+    fn range_input_exact_work_cuts_keep_real_scratch_and_first_stop_cleanup_owned() {
+        for (source, expected) in [
+            (
+                "<html><head></head><input type=range value=50 step=any>",
+                &[53, 48][..],
+            ),
+            (
+                "<html><head></head><input type=range step=any value=.1>",
+                &[46, 49][..],
+            ),
+            (
+                "<html><head></head><input type=range step=any value=0.1234567890123456789>",
+                &[
+                    48, 46, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 49, 50, 51, 52, 53, 54, 55, 56,
+                    57,
+                ][..],
+            ),
+        ] {
+            let selected = limits()
+                .into_builder()
+                .work_credits(u64::MAX)
+                .finish()
+                .unwrap();
+            let request =
+                crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), selected);
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let node = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap();
+            let total = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            let state = session.input_state(&mut c, &node).unwrap();
+            let mut output = Utf16Buffer::new(&mut c).unwrap();
+            session
+                .append_input_internal_value(&mut c, &node, &mut output)
+                .unwrap();
+            let actual = output.units().to_vec();
+            output.release(&mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(actual, expected);
+            assert_eq!(state.flags.kind(), crate::HtmlInputKind::Range);
+            assert!(!state.flags.kind().is_selectable());
+            assert!(!state.flags.dirty_value() && !state.flags.dirty_checkedness());
+            for tail in [0, 1, 1024, 65536, total / 2] {
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(source),
+                    selected
+                        .into_builder()
+                        .work_credits(total - tail)
+                        .finish()
+                        .unwrap(),
+                );
+                let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                    input_owner(&request);
+                let result = session.allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                );
+                if tail == 0 {
+                    assert!(result.is_ok());
+                    assert_eq!(
+                        c.usage().resource(HtmlParseResource::WorkCredits).current,
+                        total
+                    );
+                    assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }))
+                    ));
+                }
+                let first = c.stop().unwrap();
+                let at_stop = c.first_stop_usage().unwrap().clone();
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+                let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+                release_formatting_tag(&mut input, &mut c).unwrap();
+                lexer.release(&mut c).unwrap();
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.usage().actual_capacity_bytes, 0);
+                assert_eq!(c.stop(), Some(first));
+                assert_eq!(c.first_stop_usage(), Some(&at_stop));
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::WorkCredits).current,
+                    work
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn range_input_precancel_alias_and_foreign_refusal_preserve_original_lexical_fields() {
+        for case in 0..3 {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<html><head></head><input type=range value=50>"),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let records = session.active().unwrap().records.len();
+            let payloads = session.active().unwrap().payloads.values.len();
+            let alias = (case == 0).then(|| {
+                input.as_ref().unwrap().attributes.as_slice()[1]
+                    .value
+                    .value
+                    .text()
+                    .clone()
+            });
+            let mut other = None;
+            let target = if case == 1 {
+                let foreign =
+                    ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                        .unwrap();
+                let root = foreign.root(&mut c).unwrap();
+                other = Some(foreign);
+                root
+            } else {
+                parent
+            };
+            if case == 2 {
+                request.cancellation().cancel();
+            }
+            let result = session.allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &target,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            );
+            assert_eq!(
+                result.err(),
+                Some(match case {
+                    0 => SessionError::AliasedPayload,
+                    1 => SessionError::ForeignNode,
+                    _ => SessionError::Stop(ParseStop::Cancelled),
+                })
+            );
+            assert!(input.is_some());
+            assert_eq!(session.active().unwrap().records.len(), records);
+            assert_eq!(session.active().unwrap().payloads.values.len(), payloads);
+            drop(alias);
+            release_formatting_tag(&mut input, &mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            if let Some(mut other) = other {
+                other.release(&mut c).unwrap();
+            }
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn range_generated_history_lenders_keep_role_qualified_inputs_without_digit_origins() {
+        use provenance::{RangeBranch, RangeOperandKind, RangeOperandRole};
+        let source = crate::HtmlSource::utf8(
+            "<!doctype html><input type=range min=0 max=100 step=20 value=50>",
+        );
+        let source_id = source.identity().clone();
+        let report = crate::HtmlDocumentParseRequest::offline(
+            source,
+            limits()
+                .into_builder()
+                .work_credits(u64::MAX)
+                .finish()
+                .unwrap(),
+        )
+        .parse()
+        .unwrap();
+        assert_eq!(report.source().identity(), &source_id);
+        let rows = report.associations();
+        let history = report.history_view();
+        let mut step = None;
+        for index in 0..history.len() {
+            let group = history.group(index).unwrap();
+            let header = history.header(group).unwrap();
+            if let Some(computation) = header.cause.range_computation() {
+                assert!(matches!(header.body, history::HistoryBody::Leaf(_)));
+                if computation.branch() == RangeBranch::StepCorrection {
+                    step = Some((group, computation));
+                }
+            }
+        }
+        let (group, computation) = step.expect("literal 50 with min0 step20 selects60");
+        assert!(!computation.original_is_fresh_empty());
+        assert!(computation.original_group().is_some());
+        assert!(computation.original_cause().is_some());
+        for role in [
+            RangeOperandRole::Minimum,
+            RangeOperandRole::Maximum,
+            RangeOperandRole::Step,
+        ] {
+            let operand = computation.operand(role);
+            assert_eq!(operand.kind(), RangeOperandKind::Finite);
+            assert!(operand.group().is_some() && operand.cause().is_some());
+            assert!((0..rows.len()).any(|i| rows.row(i).unwrap().relation()
+                == provenance::AssociationRelation::RangeDependency(role)));
+        }
+        assert_eq!(
+            computation.operand(RangeOperandRole::ValueContent).kind(),
+            RangeOperandKind::NotConsulted
+        );
+        let mut scratch = [history::HistoryFrame::default(); 32];
+        let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
+        let first = cursor.advance();
+        assert!(
+            matches!(first, history::HistoryStep::Leaf(atom) if atom.origins().is_empty() && atom.units()==[54,48])
+        );
+        assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
+    }
+
+    #[test]
+    fn range_later_minimum_resanitization_retains_generated_original_and_constraint_history() {
+        use provenance::{RangeBranch, RangeOperandKind, RangeOperandRole};
+        // type first produces50; bad again defaults to50. Installing min75
+        // then clamps that real generated current to75. Later max60 disables
+        // upper correction because it is below min, and any disables steps.
+        let report = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<!doctype html><input type=range value=bad min=75 max=60 step=any>",
+            ),
+            limits()
+                .into_builder()
+                .work_credits(u64::MAX)
+                .finish()
+                .unwrap(),
+        )
+        .parse()
+        .unwrap();
+        let history = report.history_view();
+        let mut underflow = None;
+        for index in 0..history.len() {
+            let group = history.group(index).unwrap();
+            let header = history.header(group).unwrap();
+            if let Some(computation) = header.cause.range_computation()
+                && computation.branch() == RangeBranch::Underflow
+            {
+                underflow = Some((group, computation));
+            }
+        }
+        let (group, computation) = underflow.expect("later min75 clamps generated50");
+        assert!(!computation.original_is_fresh_empty());
+        let original = computation.original_group().unwrap();
+        let original_cause = computation.original_cause().unwrap();
+        assert_eq!(
+            original_cause.range_computation().unwrap().branch(),
+            RangeBranch::InvalidDefaultMidpoint
+        );
+        let minimum = computation.operand(RangeOperandRole::Minimum);
+        assert_eq!(minimum.kind(), RangeOperandKind::Finite);
+        assert!(minimum.cause().unwrap().source().is_some());
+        assert_eq!(
+            computation.operand(RangeOperandRole::Maximum).kind(),
+            RangeOperandKind::Absent
+        );
+        let mut frames = [history::HistoryFrame::default(); 32];
+        for (target, expected, origin_free) in [
+            (original, &[53, 48][..], true),
+            (minimum.group().unwrap(), &[55, 53][..], false),
+            (group, &[55, 53][..], true),
+        ] {
+            let mut cursor = history.cursor(target, &mut frames, None).unwrap();
+            let history::HistoryStep::Leaf(atom) = cursor.advance() else {
+                panic!("actual retained leaf")
+            };
+            assert_eq!(atom.units(), expected);
+            assert_eq!(atom.origins().is_empty(), origin_free);
+            assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
+        }
+        let mut minimum_cursor = history
+            .cursor(minimum.group().unwrap(), &mut frames, None)
+            .unwrap();
+        let history::HistoryStep::Leaf(minimum_atom) = minimum_cursor.advance() else {
+            panic!("actual minimum lexical leaf")
+        };
+        let minimum_source = &minimum_atom.origins()[0].source;
+        let associations = report.associations();
+        let mut reverse = associations.reverse(minimum_source, None).unwrap();
+        let mut minimum_match = false;
+        let mut complete = false;
+        for _ in 0..=associations.len() {
+            match reverse.advance() {
+                read::HtmlParseReverseStep::Match(row) => {
+                    if row.relation()
+                        == provenance::AssociationRelation::RangeDependency(
+                            RangeOperandRole::Minimum,
+                        )
+                    {
+                        let source = row.source().unwrap();
+                        assert_eq!(source.source(), minimum_source.source());
+                        assert!(source.start() < minimum_source.end());
+                        assert!(minimum_source.start() < source.end());
+                        assert_eq!((row.start(), row.end()), (0, 2));
+                        minimum_match = true;
+                    }
+                }
+                read::HtmlParseReverseStep::Skipped => {}
+                read::HtmlParseReverseStep::Complete => {
+                    complete = true;
+                    break;
+                }
+                read::HtmlParseReverseStep::Cancelled => panic!("no cancellation supplied"),
+            }
+        }
+        assert!(complete && minimum_match);
+    }
+
+    #[test]
+    fn range_later_maximum_resanitization_keeps_lexical_constraint_and_generated_history() {
+        use provenance::{RangeBranch, RangeOperandKind, RangeOperandRole};
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<!doctype html><input type=range value=75 max=60 step=any>"),
+            limits()
+                .into_builder()
+                .work_credits(u64::MAX)
+                .finish()
+                .unwrap(),
+        );
+        let maximum_source = request.source().range(46, 48).unwrap();
+        let report = request.parse().unwrap();
+        let history = report.history_view();
+        let mut correction = None;
+        for index in 0..history.len() {
+            let group = history.group(index).unwrap();
+            if let Some(computation) = history.header(group).unwrap().cause.range_computation()
+                && computation.branch() == RangeBranch::Overflow
+            {
+                correction = Some((group, computation));
+            }
+        }
+        let (group, computation) = correction.expect("later max60 clamps actual75");
+        let maximum = computation.operand(RangeOperandRole::Maximum);
+        assert_eq!(maximum.kind(), RangeOperandKind::Finite);
+        let mut frames = [history::HistoryFrame::default(); 32];
+        for (target, expected, origin_free) in [
+            // Valid authored75 was preserved, so this original is lexical.
+            (computation.original_group().unwrap(), &[55, 53][..], false),
+            (maximum.group().unwrap(), &[54, 48][..], false),
+            (group, &[54, 48][..], true),
+        ] {
+            let mut cursor = history.cursor(target, &mut frames, None).unwrap();
+            let history::HistoryStep::Leaf(atom) = cursor.advance() else {
+                panic!("actual retained leaf")
+            };
+            assert_eq!(atom.units(), expected);
+            assert_eq!(atom.origins().is_empty(), origin_free);
+            assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
+        }
+        let associations = report.associations();
+        let mut reverse = associations.reverse(&maximum_source, None).unwrap();
+        let mut matched = false;
+        let mut complete = false;
+        for _ in 0..=associations.len() {
+            match reverse.advance() {
+                read::HtmlParseReverseStep::Match(row)
+                    if row.relation()
+                        == provenance::AssociationRelation::RangeDependency(
+                            RangeOperandRole::Maximum,
+                        ) =>
+                {
+                    assert_eq!((row.start(), row.end()), (0, 2));
+                    matched = true;
+                }
+                read::HtmlParseReverseStep::Match(_) | read::HtmlParseReverseStep::Skipped => {}
+                read::HtmlParseReverseStep::Complete => {
+                    complete = true;
+                    break;
+                }
+                read::HtmlParseReverseStep::Cancelled => panic!("no cancellation supplied"),
+            }
+        }
+        assert!(complete && matched);
+    }
+
+    #[test]
+    fn range_actual_first_scratch_append_cancellation_retains_prefix_and_all_tickets() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head></head><input type=range value=50>"),
+            limits(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        // Deterministic scheduling instrumentation cancels only the supplied
+        // request handle after the real first admitted decimal cell append.
+        payload_write::<
+            Option<(
+                Option<crate::numeric::range::RangeScratchRole>,
+                crate::HtmlParseCancellation,
+            )>,
+        >(&mut c, 1)
+        .unwrap();
+        c.charge(WorkCategory::ProviderCall, 1).unwrap();
+        session.active_mut().unwrap().cancel_after_range_append =
+            Some((None, request.cancellation().clone()));
+        let result = session.allocate_input_for_creation(
+            &mut c,
+            &mut input,
+            CreationLocation {
+                intended_parent: &parent,
+                current_form: None,
+                context: CreationContext::Ordinary,
+            },
+            &range,
+            &capability,
+        );
+        assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+        assert!(input.is_none());
+        assert!(
+            session
+                .active()
+                .unwrap()
+                .effects
+                .range
+                .as_ref()
+                .unwrap()
+                .owned_cells()
+                > 0
+        );
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        let at_stop = c.first_stop_usage().unwrap().clone();
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.first_stop_usage(), Some(&at_stop));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+    }
+
+    #[test]
+    fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() {
+        use range::{RangeIngressCancellation, RangeIngressCancellationPoint};
+        for (point, denominator, phase) in [
+            (
+                RangeIngressCancellationPoint::CoefficientFold,
+                1,
+                "phase: Next",
+            ),
+            (
+                RangeIngressCancellationPoint::DecimalPower,
+                10,
+                "phase: Power",
+            ),
+        ] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<html><head></head><input type=range step=any value=.1>"),
+                limits()
+                    .into_builder()
+                    .work_credits(100_000_000)
+                    .finish()
+                    .unwrap(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, source_range) =
+                input_owner(&request);
+            payload_write::<Option<RangeIngressCancellation>>(&mut c, 1).unwrap();
+            c.charge(WorkCategory::ProviderCall, 1).unwrap();
+            session.active_mut().unwrap().cancel_after_range_ingress =
+                Some(RangeIngressCancellation {
+                    point,
+                    scalars_after_fold: 0,
+                    token: request.cancellation().clone(),
+                });
+            let result = session.allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &source_range,
+                &capability,
+            );
+            assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+            assert!(input.is_none());
+            // Terminal fixture inspection of the actual retained producer, not
+            // a manufactured cursor/phase or a public test observation API.
+            let storage = session.active().unwrap();
+            assert!(storage.cancel_after_range_ingress.is_none());
+            let (source, coefficient, right, trial, cursor) = storage
+                .effects
+                .range
+                .as_ref()
+                .unwrap()
+                .ingress_fixture_state();
+            assert_eq!(coefficient, [1]);
+            assert_eq!((right, trial), (0, 0));
+            let RetainedPayload::String { value, .. } = &storage.payloads.values[source] else {
+                panic!("actual source backing");
+            };
+            assert_eq!(value.code_units(), [46, 49]);
+            let cursor = cursor.unwrap();
+            assert!(cursor.result().is_none());
+            // The fixed literal .1 proves the selected small route. Its actual
+            // fold is A=1; its actual second scalar commits B=10 (one power).
+            let state = format!("{cursor:?}");
+            assert!(state.contains("active: Small(") && state.contains(phase));
+            assert!(state.contains("numerator: 1,"));
+            assert!(state.contains(&format!("denominator: {denominator},")));
+            let raw = storage
+                .payloads
+                .values
+                .iter()
+                .find_map(|p| match p {
+                    RetainedPayload::Input { raw, .. } => Some(*raw),
+                    _ => None,
+                })
+                .unwrap();
+            let RetainedPayload::String { value, .. } = &storage.payloads.values[raw] else {
+                panic!("real previous current owner");
+            };
+            assert_eq!(value.code_units(), [53, 48]);
+            let first = c.first_stop_usage().unwrap().clone();
+            let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            assert_eq!(
+                session.input_state(&mut c, &parent).err(),
+                Some(SessionError::Stop(ParseStop::Cancelled))
+            );
+            assert_eq!(
+                session.freeze(&mut c).err(),
+                Some(SessionError::Stop(ParseStop::Cancelled))
+            );
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.first_stop_usage(), Some(&first));
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::WorkCredits).current,
+                work
+            );
+        }
+    }
+
+    #[test]
+    fn range_right_cache_append_cancellation_keeps_actual_partial_lease_owned() {
+        use crate::numeric::range::RangeScratchRole;
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(
+                "<html><head></head><input type=range step=any value=0.10000000000000000000>",
+            ),
+            // Twenty actual coefficient cells take the unchanged exact search,
+            // not SOURCE7s small-decimal route. The ordinary budget admits default50
+            // serialization; the smaller owner fixture stops in that Best phase.
+            limits()
+                .into_builder()
+                .work_credits(100_000_000)
+                .finish()
+                .unwrap(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        // Scheduling only: the original supplied token is cancelled after the
+        // actual Right append has committed. Earlier roles use the normal path.
+        payload_write::<Option<(Option<RangeScratchRole>, crate::HtmlParseCancellation)>>(
+            &mut c, 1,
+        )
+        .unwrap();
+        c.charge(WorkCategory::ProviderCall, 1).unwrap();
+        session.active_mut().unwrap().cancel_after_range_append = Some((
+            Some(RangeScratchRole::Right),
+            request.cancellation().clone(),
+        ));
+        let result = session.allocate_input_for_creation(
+            &mut c,
+            &mut input,
+            CreationLocation {
+                intended_parent: &parent,
+                current_form: None,
+                context: CreationContext::Ordinary,
+            },
+            &range,
+            &capability,
+        );
+        assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+        assert!(input.is_none());
+        let (len, capacity) = session
+            .active()
+            .unwrap()
+            .effects
+            .range
+            .as_ref()
+            .unwrap()
+            .right_cache_extent();
+        assert!(len > 0 && capacity >= len);
+        let first = c.first_stop_usage().unwrap().clone();
+        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        assert_eq!(
+            session.input_state(&mut c, &parent).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        assert_eq!(
+            session.freeze(&mut c).err(),
+            Some(SessionError::Stop(ParseStop::Cancelled))
+        );
+        assert_eq!(c.first_stop_usage(), Some(&first));
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.first_stop_usage(), Some(&first));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            work
+        );
+    }
+
+    #[test]
+    fn range_input_clone_and_reset_preserve_generated_value_original_default_and_distinct_backing()
+    {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head></head><input type=range value=bad checked>"),
+            limits()
+                .into_builder()
+                .work_credits(u64::MAX)
+                .finish()
+                .unwrap(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        let node = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            )
+            .unwrap();
+        let before = session.input_state(&mut c, &node).unwrap();
+        let original_raw =
+            find_input_state(&session.active().unwrap().payloads, &mut c, node.index)
+                .unwrap()
+                .0;
+        let copy_index = session
+            .active_mut()
+            .unwrap()
+            .clone_node(&mut c, node.index, DocumentRef::Owned(0))
+            .unwrap();
+        let copy = session.active().unwrap().node(&mut c, copy_index).unwrap();
+        let copied = session.input_state(&mut c, &copy).unwrap();
+        let copy_raw = find_input_state(&session.active().unwrap().payloads, &mut c, copy.index)
+            .unwrap()
+            .0;
+        let independent = {
+            let storage = session.active().unwrap();
+            let RetainedPayload::String { value: a, .. } = &storage.payloads.values[original_raw]
+            else {
+                unreachable!()
+            };
+            let RetainedPayload::String { value: b, .. } = &storage.payloads.values[copy_raw]
+            else {
+                unreachable!()
+            };
+            !Arc::ptr_eq(a.backing(), b.backing())
+        };
+        let slot = session
+            .active()
+            .unwrap()
+            .payloads
+            .values
+            .iter()
+            .position(|p| matches!(p,RetainedPayload::Input {node:Some(id),..} if *id==copy.index))
+            .unwrap();
+        session
+            .active_mut()
+            .unwrap()
+            .reset_input(&mut c, copy.index, slot)
+            .unwrap();
+        let reset = session.input_state(&mut c, &copy).unwrap();
+        let mut output = Utf16Buffer::new(&mut c).unwrap();
+        session
+            .append_input_internal_value(&mut c, &copy, &mut output)
+            .unwrap();
+        let current = output.units().to_vec();
+        output.clear(&mut c).unwrap();
+        session
+            .append_input_default_value(&mut c, &copy, &mut output)
+            .unwrap();
+        let default = output.units().to_vec();
+        output.release(&mut c).unwrap();
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert!(independent);
+        assert_eq!(before, copied);
+        assert_eq!(current, [53, 48]);
+        assert_eq!(default, [98, 97, 100]);
+        assert_eq!(reset.flags.kind(), crate::HtmlInputKind::Range);
+        assert!(reset.flags.checkedness());
+        assert!(!reset.flags.dirty_value() && !reset.flags.dirty_checkedness());
+    }
+
+    #[test]
+    fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head></head><input type=range value=bad>"),
+            limits()
+                .into_builder()
+                .work_credits(u64::MAX)
+                .finish()
+                .unwrap(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, source) =
+            input_owner(&request);
+        let node = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &source,
+                &capability,
+            )
+            .unwrap();
+        let raw = find_input_state(&session.active().unwrap().payloads, &mut c, node.index)
+            .unwrap()
+            .0;
+        let copied = {
+            let storage = session.active().unwrap();
+            range::copy_range_input_value(&storage.payloads, storage.evidence.as_ref(), &mut c, raw)
+                .unwrap()
+        };
+        assert_eq!(copied.value.text().code_units(), [53, 48]);
+        assert!(copied.origins.as_slice().is_empty());
+        assert!(copied.original.is_some());
+        copied.release(&mut c).unwrap();
+
+        let mut foreign = control();
+        let before = c.usage().clone();
+        let refused = {
+            let storage = session.active().unwrap();
+            range::copy_range_input_value(
+                &storage.payloads,
+                storage.evidence.as_ref(),
+                &mut foreign,
+                raw,
+            )
+        };
+        assert!(matches!(
+            refused,
+            Err(SessionError::Stop(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::ForeignControl
+            )))
+        ));
+        assert_eq!(c.usage(), &before);
+        storage_zero(&foreign);
+
+        // A real source-less implied literal is not a Range computation. Its
+        // empty lexical map cannot authorize an origin-free generated copy.
+        let body = session.allocate_implicit_body(&mut c, None).unwrap();
+        let literal = session.active().unwrap().payloads.values.iter().position(|value|
+            matches!(value, RetainedPayload::String { location: StringLocation::ElementName(id), .. } if *id == body.index)).unwrap();
+        let refused = {
+            let storage = session.active().unwrap();
+            range::copy_range_input_value(
+                &storage.payloads,
+                storage.evidence.as_ref(),
+                &mut c,
+                literal,
+            )
+        };
+        assert!(matches!(
+            refused,
+            Err(SessionError::WrongToken | SessionError::OriginSplitUnavailable)
+        ));
+        assert!(c.stop().is_none());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
     }
 }

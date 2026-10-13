@@ -33,6 +33,19 @@ impl Utf16Buffer {
         self.units.as_slice()
     }
 
+    pub(crate) fn capacity(&self) -> usize {
+        self.units.capacity()
+    }
+
+    /// Physical reservation only; each initialized unit remains a push action.
+    pub(crate) fn reserve_units(
+        &mut self,
+        control: &mut ParseControl,
+        additional: usize,
+    ) -> Result<(), ParseStop> {
+        self.units.reserve_geometric(control, additional)
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.units.len()
     }
@@ -159,6 +172,90 @@ mod tests {
 
     fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+
+    #[test]
+    fn physical_reservation_lends_actual_capacity_without_initializing_units() {
+        let mut c = control();
+        let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+        buffer.reserve_units(&mut c, 4).unwrap();
+        let actual = buffer.capacity();
+        assert!(actual >= 4);
+        assert_eq!(buffer.len(), 0);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            0
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            actual as u64 * 2
+        );
+        buffer.push_unit(0xD800, &mut c).unwrap();
+        assert_eq!(buffer.capacity(), actual);
+        assert_eq!(buffer.units(), [0xD800]);
+        buffer.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            0
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::BufferedUtf16Units)
+                .current,
+            0
+        );
+    }
+
+    #[test]
+    fn physical_reservation_one_short_and_cancellation_preserve_empty_owner_and_first_stop() {
+        // Four required u16 cells need eight physical bytes before any unit is
+        // initialized. Seven is independently one short of that required layout.
+        let caps = limits()
+            .into_builder()
+            .managed_capacity_bytes(7)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+        let stop = buffer.reserve_units(&mut c, 4).unwrap_err();
+        assert!(matches!(
+            stop,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+                ..
+            }
+        ));
+        assert_eq!(buffer.capacity(), 0);
+        assert_eq!(buffer.len(), 0);
+        buffer.release(&mut c).unwrap();
+        assert_eq!(c.stop(), Some(stop));
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            0
+        );
+
+        let token = HtmlParseCancellation::new();
+        let mut c = ParseControl::new(limits(), token.clone());
+        let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+        token.cancel();
+        assert_eq!(buffer.reserve_units(&mut c, 4), Err(ParseStop::Cancelled));
+        assert_eq!(buffer.capacity(), 0);
+        buffer.release(&mut c).unwrap();
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            0
+        );
     }
 
     #[test]
