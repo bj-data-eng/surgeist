@@ -313,3 +313,107 @@ fn isolated_campaigns_capture_replay_reduce_and_compare_two_source_builds() {
         before.input()
     );
 }
+
+#[test]
+#[ignore = "compiles an isolated owner and exercises real sanitizer-guided targets"]
+fn raw_and_structured_coverage_findings_replay_the_materialized_owner_case() {
+    let snapshot = Snapshot::new();
+    for (target, entropy) in [
+        ("surgeist-fixture::bytes", b"BUG!".as_slice()),
+        ("surgeist-fixture::structured", &[8, 0, 0xd8][..]),
+    ] {
+        let input = snapshot.input(entropy);
+        let mut args = snapshot.args("run", target);
+        let cases = args.iter().position(|arg| arg == "--cases").unwrap();
+        args[cases + 1] = "2".into();
+        let case = args.iter().position(|arg| arg == "--case-ms").unwrap();
+        args[case + 1] = "1000".into();
+        args.extend([
+            "--toolchain".into(),
+            "nightly-2026-09-01".into(),
+            "--input".into(),
+            input.as_os_str().to_owned(),
+        ]);
+        let finding = snapshot.invoke(args);
+        assert_eq!(finding.status, CampaignStatus::Finding, "{finding:?}");
+        assert!(finding.evaluated >= 1);
+        assert_eq!(finding.cleanup, "complete");
+        let path = finding.artifacts.iter().find(|p| p.starts_with("failures/")).unwrap();
+        let store = ArtifactStore::open(
+            snapshot.work.join("artifacts"),
+            StorageLimits::new(1024, 64 * 1024 * 1024, 4096, 1024 * 1024).unwrap(),
+        ).unwrap();
+        let artifact = store.load_failure(&RelativePath::new(path).unwrap()).unwrap();
+        if target.ends_with("::bytes") {
+            assert_eq!(artifact.input(), entropy);
+        } else {
+            assert_ne!(artifact.input(), entropy);
+            let canonical: serde_json::Value = serde_json::from_slice(artifact.input()).unwrap();
+            assert_eq!(canonical["text"][0], 0xd800);
+            assert_eq!(canonical["node_count"], 8);
+        }
+        let mut replay = snapshot.args("replay", target);
+        replay.extend([
+            "--toolchain".into(), "nightly-2026-09-01".into(),
+            "--artifact".into(), path.into(),
+        ]);
+        let replayed = snapshot.invoke(replay);
+        assert_eq!(replayed.status, CampaignStatus::Finding, "{replayed:?}");
+        assert_eq!(replayed.evaluated, 1);
+        assert_eq!(replayed.cleanup, "complete");
+        assert_eq!(replayed.detail, "original failure key reproduced");
+        assert_eq!(store.load_failure(&RelativePath::new(path).unwrap()).unwrap().input(), artifact.input());
+    }
+}
+
+#[test]
+#[ignore = "compiles an isolated instrumented owner and checks its exact evaluation limit"]
+fn coverage_initial_corpus_cannot_exceed_the_requested_case_budget() {
+    let snapshot = Snapshot::new();
+    let input = snapshot.input(b"BUG!");
+    let mut args = snapshot.args("run", "surgeist-fixture::bytes");
+    let case = args.iter().position(|arg| arg == "--case-ms").unwrap();
+    args[case + 1] = "1000".into();
+    args.extend([
+        "--toolchain".into(), "nightly-2026-09-01".into(),
+        "--input".into(), input.as_os_str().to_owned(),
+    ]);
+    let summary = snapshot.invoke(args);
+    assert!(summary.evaluated <= 1, "{summary:?}");
+    assert_eq!(summary.status, CampaignStatus::Sufficient, "{summary:?}");
+    assert_eq!(summary.cleanup, "complete");
+}
+
+#[test]
+#[ignore = "compiles an isolated owner and exercises finite process termination"]
+fn incomplete_owner_evaluations_preserve_inputs_without_inventing_property_keys() {
+    let snapshot = Snapshot::new();
+    for (input, status) in [
+        (b"PANIC! exact case".as_slice(), CampaignStatus::Finding),
+        (b"HANG! exact case".as_slice(), CampaignStatus::ResourceStop),
+    ] {
+        let path = snapshot.input(input);
+        let mut args = snapshot.args("check", "surgeist-fixture::bytes");
+        args.extend(["--input".into(), path.as_os_str().to_owned()]);
+        let summary = snapshot.invoke(args);
+        assert_eq!(summary.status, status, "{summary:?}");
+        assert_eq!(summary.evaluated, 0);
+        assert_eq!(summary.cleanup, "complete");
+        assert!(!summary.artifacts.iter().any(|p| p.starts_with("failures/")));
+        let captured = summary.artifacts.iter().find(|p| p.starts_with("captures/")).unwrap();
+        let store = ArtifactStore::open(
+            snapshot.work.join("artifacts"),
+            StorageLimits::new(1024, 64 * 1024 * 1024, 4096, 1024 * 1024).unwrap(),
+        ).unwrap();
+        let original = store.load_capture(&RelativePath::new(captured).unwrap()).unwrap();
+        assert_eq!(original.input(), input);
+        let mut args = snapshot.args("replay", "surgeist-fixture::bytes");
+        args.extend(["--artifact".into(), captured.into()]);
+        let replayed = snapshot.invoke(args);
+        assert_eq!(replayed.status, status, "{replayed:?}");
+        assert_eq!(replayed.evaluated, 0);
+        assert_eq!(replayed.cleanup, "complete");
+        assert!(replayed.artifacts.iter().any(|p| p.starts_with("capture-replays/")));
+        assert_eq!(store.load_capture(&RelativePath::new(captured).unwrap()).unwrap().input(), original.input());
+    }
+}
