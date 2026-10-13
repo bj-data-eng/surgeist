@@ -3256,4 +3256,113 @@ mod tests {
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
     }
+
+    #[test]
+    fn connected_owned_shadow_checkbox_resolves_nonancestor_explicit_form_in_its_tree() {
+        // HTML877d reset-form-owner step4 resolves form= in the ordinary tree
+        // when DOM3071 shadow-including-root proves the element connected.
+        // The form is a preceding sibling, so ancestor fallback cannot satisfy it.
+        let request = shadow_request(
+            "<div><template shadowrootmode=open><form id=f></form></template></div><input type=checkbox form=f>",
+            true,
+        );
+        let mut driver = initialized_driver(&request);
+        complete(&mut driver);
+        let (initially_unassociated, resolved_expected_form, final_reset, final_tree) = {
+            let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+            let session = &mut state.before.kernel.session;
+            let document = session.root(&mut driver.control).unwrap();
+            let output = session.fragment_output(&mut driver.control).unwrap();
+            let effect = session
+                .declarative_shadow(&mut driver.control, 0)
+                .unwrap()
+                .expect("actual declarative shadow attachment");
+            let crate::construction::parser_session::context::QualifiedFragmentHost::Owned(host) =
+                effect.host
+            else {
+                panic!("literal div must issue an owned host")
+            };
+            let contents = effect.contents;
+            let (checkbox, form) = {
+                let mut view = session.native_view(&mut driver.control).unwrap();
+                assert!(matches!(
+                    view.kind(&document).unwrap(),
+                    NativeKind::Document(_)
+                ));
+                let actual_host = view.child_at(&output, 0).unwrap().unwrap();
+                assert!(view.same_node(&host, &actual_host).unwrap());
+                let shadow = view.shadow(&host).unwrap().unwrap();
+                assert!(view.same_node(&contents, &shadow.contents).unwrap());
+                assert_eq!(view.child_count(&contents).unwrap(), 1);
+                (
+                    view.child_at(&output, 1).unwrap().unwrap(),
+                    view.child_at(&contents, 0).unwrap().unwrap(),
+                )
+            };
+            let initially_unassociated = session
+                .form_association_owner(&mut driver.control, &checkbox)
+                .unwrap()
+                .is_none();
+            // This real host now has the actual internal Document as parent.
+            session
+                .insert(
+                    &mut driver.control,
+                    &document,
+                    &host,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            // The same existing Checkbox enters the connected owned shadow tree.
+            session
+                .insert(
+                    &mut driver.control,
+                    &contents,
+                    &checkbox,
+                    None,
+                    Some(&state.script.as_ref().unwrap().capability),
+                )
+                .unwrap();
+            let owner = session
+                .form_association_owner(&mut driver.control, &checkbox)
+                .unwrap();
+            let association = session
+                .form_association_state(&mut driver.control, &checkbox)
+                .unwrap();
+            let final_reset = !association.parser_inserted
+                && association.evidence
+                    == crate::construction::parser_session::FormAssociationEvidence::Reset;
+            let (resolved_expected_form, final_tree) = {
+                let mut view = session.native_view(&mut driver.control).unwrap();
+                let resolved_expected_form = owner
+                    .as_ref()
+                    .map(|owner| view.same_node(owner, &form).unwrap())
+                    .unwrap_or(false);
+                let first = view.child_at(&contents, 0).unwrap().unwrap();
+                let second = view.child_at(&contents, 1).unwrap().unwrap();
+                let final_tree = view.child_count(&contents).unwrap() == 2
+                    && view.same_node(&first, &form).unwrap()
+                    && view.same_node(&second, &checkbox).unwrap();
+                (resolved_expected_form, final_tree)
+            };
+            (
+                initially_unassociated,
+                resolved_expected_form,
+                final_reset,
+                final_tree,
+            )
+        };
+        // Complete both real owner cleanup and zero-storage verification BEFORE
+        // the discriminatory form-owner assertion; no cloned payload observers.
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), None);
+        assert!(initially_unassociated);
+        assert!(final_reset);
+        assert!(final_tree);
+        assert!(
+            resolved_expected_form,
+            "connected owned-shadow Checkbox must resolve sibling form id=f"
+        );
+    }
 }
