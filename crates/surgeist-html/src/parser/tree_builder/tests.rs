@@ -13712,3 +13712,93 @@ fn ordinary_checkbox_keeps_unsanitized_default_and_form_sibling_through_eof() {
     );
     assert!(owner_is_form);
 }
+
+#[test]
+fn ordinary_details_name_group_closes_newly_inserted_open_member() {
+    // HTML877d details insertion steps close the given element when another
+    // open element belongs to its exact nonempty name group in the same tree.
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><details name=g open><summary>A</summary></details><details name=g open><summary>B</summary></details>",
+        ),
+        limits(100),
+    );
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert_eq!(boundary, super::head::HeadStep::Complete);
+        return;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let members: Vec<_> = document.node(&body).unwrap().children().collect();
+    let actual_attributes: Vec<_> = members
+        .iter()
+        .map(|id| {
+            let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                panic!("actual native details element");
+            };
+            element
+                .attributes()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute
+                            .name()
+                            .namespace()
+                            .uri()
+                            .map(|uri| uri.code_units().to_vec()),
+                        attribute.name().local_name().code_units().to_vec(),
+                        attribute.value().code_units().to_vec(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    drop(members);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "details"),
+            (3, "summary"),
+            (4, "#A"),
+            (2, "details"),
+            (3, "summary"),
+            (4, "#B"),
+        ])
+    );
+    assert_eq!(
+        actual_attributes,
+        vec![
+            vec![
+                (None, vec![110, 97, 109, 101], vec![103]),
+                (None, vec![111, 112, 101, 110], vec![]),
+            ],
+            vec![(None, vec![110, 97, 109, 101], vec![103])],
+        ],
+        "insertion must preserve the existing open peer and close the given member"
+    );
+}
