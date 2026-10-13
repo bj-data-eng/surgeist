@@ -25,6 +25,7 @@ pub enum FuzzErrorKind {
     Artifact,
     Process,
     Timeout,
+    Cancelled,
     Resource,
 }
 

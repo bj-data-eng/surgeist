@@ -548,12 +548,22 @@ fn require_success(p: &ProcessOutcome, operation: &str) -> Result<()> {
         )));
     }
     if p.stop != ProcessStop::Exited || p.exit != ProcessExit::Success {
-        return Err(infrastructure(format!(
-            "{operation}: {:?}/{:?}: {}",
-            p.stop,
-            p.exit,
-            String::from_utf8_lossy(&p.stderr.bytes)
-        )));
+        let kind = match p.stop {
+            ProcessStop::Cancelled => FuzzErrorKind::Cancelled,
+            ProcessStop::Deadline => FuzzErrorKind::Timeout,
+            ProcessStop::OutputLimit(_) => FuzzErrorKind::Resource,
+            _ => FuzzErrorKind::Process,
+        };
+        return Err(FuzzError::new(
+            kind,
+            operation,
+            format!(
+                "{:?}/{:?}: {}",
+                p.stop,
+                p.exit,
+                String::from_utf8_lossy(&p.stderr.bytes)
+            ),
+        ));
     }
     Ok(())
 }
@@ -1711,6 +1721,7 @@ fn coverage(context: &CampaignContext<'_>, summary: &mut CampaignSummary) -> Res
 
 fn status_for_error(error: &FuzzError) -> CampaignStatus {
     match error.kind() {
+        FuzzErrorKind::Cancelled => CampaignStatus::Cancelled,
         FuzzErrorKind::Resource | FuzzErrorKind::Timeout => CampaignStatus::ResourceStop,
         FuzzErrorKind::InsufficientCoverage => CampaignStatus::Insufficient,
         FuzzErrorKind::Cli
@@ -2497,11 +2508,8 @@ pub fn main_entry(args: impl IntoIterator<Item = OsString>) -> i32 {
         Err(error) => {
             let mut summary =
                 CampaignSummary::new(args.first().and_then(|a| a.to_str()).unwrap_or("unknown"));
-            summary.status = if cancel.load(Ordering::Acquire) {
-                CampaignStatus::Cancelled
-            } else {
-                status_for_error(&error)
-            };
+            summary.status = status_for_error(&error);
+            summary.cleanup = "not established by command summary; inspect error and run evidence".into();
             summary.detail = error.to_string();
             summary
         }
