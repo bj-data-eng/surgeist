@@ -3882,3 +3882,343 @@ mod tests {
         assert_eq!(driver.control.stop(), first);
     }
 }
+
+#[cfg(test)]
+mod owned_fragment_details_tests {
+    use super::*;
+    use crate::construction::parser_session::native_view::{NativeKind, NativeString, NativeView};
+    use crate::*;
+
+    #[derive(Debug, PartialEq)]
+    struct Detail {
+        attributes: Vec<(Vec<u16>, Vec<u16>)>,
+    }
+    #[derive(Debug, PartialEq)]
+    struct Snapshot {
+        details: Vec<Detail>,
+        texts: Vec<Vec<u16>>,
+        templates: usize,
+        shadows: usize,
+        distinct_details: bool,
+    }
+    struct Case {
+        label: &'static str,
+        source: &'static str,
+        expected: Snapshot,
+    }
+    fn units(value: &str) -> Vec<u16> {
+        value.encode_utf16().collect()
+    }
+    fn detail(attributes: &[(&str, &str)]) -> Detail {
+        Detail {
+            attributes: attributes
+                .iter()
+                .map(|(n, v)| (units(n), units(v)))
+                .collect(),
+        }
+    }
+    fn expected(
+        details: Vec<Detail>,
+        texts: &[&str],
+        templates: usize,
+        shadows: usize,
+    ) -> Snapshot {
+        Snapshot {
+            details,
+            texts: texts.iter().map(|v| units(v)).collect(),
+            templates,
+            shadows,
+            distinct_details: true,
+        }
+    }
+    fn read_units(view: &mut NativeView<'_>, value: NativeString<'_>) -> Vec<u16> {
+        (0..value.len())
+            .map(|i| view.unit(&value, i).unwrap().unwrap())
+            .collect()
+    }
+    fn snapshot(driver: &mut ContextFragmentDriver<'_>) -> Snapshot {
+        let (root, mut view) = driver.completed_native_view().unwrap();
+        let mut result = Snapshot {
+            details: Vec::new(),
+            texts: Vec::new(),
+            templates: 0,
+            shadows: 0,
+            distinct_details: true,
+        };
+        let mut pending = vec![root];
+        let mut detail_nodes = Vec::new();
+        // The fixtures are finite. Read only the actual owned tree and its
+        // template/shadow contents; captured hosts are never copied or traversed.
+        for _ in 0..256 {
+            let Some(node) = pending.pop() else {
+                return result;
+            };
+            match view.kind(&node).unwrap() {
+                NativeKind::Element(name) => {
+                    let local = read_units(&mut view, name.local);
+                    if local == units("details") {
+                        assert_eq!(
+                            read_units(&mut view, name.namespace.unwrap()),
+                            units("http://www.w3.org/1999/xhtml")
+                        );
+                        for previous in &detail_nodes {
+                            result.distinct_details &= !view.same_node(previous, &node).unwrap();
+                        }
+                        detail_nodes.push(node.clone());
+                        let attributes = (0..view.attribute_count(&node).unwrap())
+                            .map(|position| {
+                                let attribute =
+                                    view.attribute_at(&node, position).unwrap().unwrap();
+                                assert!(attribute.name.namespace.is_none());
+                                assert!(attribute.name.prefix.is_none());
+                                (
+                                    read_units(&mut view, attribute.name.local),
+                                    read_units(&mut view, attribute.value),
+                                )
+                            })
+                            .collect();
+                        result.details.push(Detail { attributes });
+                    }
+                }
+                NativeKind::Text(value) => result.texts.push(read_units(&mut view, value)),
+                _ => {}
+            }
+            if let Some(contents) = view.template_contents(&node).unwrap() {
+                result.templates += 1;
+                pending.push(contents);
+            }
+            if let Some(shadow) = view.shadow(&node).unwrap() {
+                result.shadows += 1;
+                assert_eq!(shadow.properties.mode(), HtmlShadowRootMode::Closed);
+                assert!(shadow.properties.clonable());
+                pending.push(shadow.contents);
+            }
+            for position in (0..view.child_count(&node).unwrap()).rev() {
+                pending.push(view.child_at(&node, position).unwrap().unwrap());
+            }
+        }
+        panic!("finite literal owned tree exceeded its observation bound");
+    }
+
+    #[test]
+    fn owned_fragment_details_open_peers_templates_and_real_clones_complete() {
+        // HTML877d Details attribute/insertion hooks: initial open is added
+        // while detached; insertion closes the given second grouped element.
+        // Empty/absent/different names do not group. Templates and shadows
+        // have independent ordinary trees. Actual selectedcontent cloning
+        // retains attributes until insertion into the source's ordinary tree.
+        let cases = [
+            Case {
+                label: "name then open; first peer survives",
+                source: "<details id=a name=g open=v><summary>A</summary></details><details id=b name=g open=w><summary>B</summary></details><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", "g")]),
+                    ],
+                    &["A", "B", "Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "open then name; removal reindexes the later name",
+                source: "<details id=a open=v name=g></details><details id=b open=w name=g></details><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("open", "v"), ("name", "g")]),
+                        detail(&[("id", "b"), ("name", "g")]),
+                    ],
+                    &["Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "empty names do not group",
+                source: "<details id=a name='' open=v></details><details id=b name='' open=w></details><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", ""), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", ""), ("open", "w")]),
+                    ],
+                    &["Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "absent names do not group",
+                source: "<details id=a open=v></details><details id=b open=w></details><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("open", "v")]),
+                        detail(&[("id", "b"), ("open", "w")]),
+                    ],
+                    &["Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "ASCII name values are case sensitive",
+                source: "<details id=a name=g open=v></details><details id=b name=G open=w></details><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", "G"), ("open", "w")]),
+                    ],
+                    &["Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "nonASCII name values are exact",
+                source: "<details id=a name=é open=v></details><details id=b name=É open=w></details><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "é"), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", "É"), ("open", "w")]),
+                    ],
+                    &["Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "duplicate open keeps first value and unrelated spelling",
+                source: "<details id=a name=g open=v open=w x:open=q></details><details id=b name=g open=x></details><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v"), ("x:open", "q")]),
+                        detail(&[("id", "b"), ("name", "g")]),
+                    ],
+                    &["Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "template contents are a separate group tree",
+                source: "<details id=a name=g open=v></details><template><details id=b name=g open=w></details><details id=c name=g open=x></details></template><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", "g"), ("open", "w")]),
+                        detail(&[("id", "c"), ("name", "g")]),
+                    ],
+                    &["Z"],
+                    1,
+                    0,
+                ),
+            },
+            Case {
+                label: "owned shadow contents are a separate group tree",
+                source: "<details id=a name=g open=v></details><div><template shadowrootmode=closed shadowrootclonable shadowrootcustomelementregistry><details id=b name=g open=w></details><details id=c name=g open=x></details></template></div><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", "g"), ("open", "w")]),
+                        detail(&[("id", "c"), ("name", "g")]),
+                    ],
+                    &["Z"],
+                    0,
+                    1,
+                ),
+            },
+            Case {
+                label: "selectedcontent clone closes on actual insertion",
+                source: "<select><button><selectedcontent></selectedcontent></button><option selected><details id=a name=g open=v><summary>A</summary></details></option></select><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "g")]),
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v")]),
+                    ],
+                    &["A", "A", "Z"],
+                    0,
+                    0,
+                ),
+            },
+            Case {
+                label: "selectedcontent clones independent owned shadow groups",
+                source: "<select><button><selectedcontent></selectedcontent></button><option selected><div><template shadowrootmode=closed shadowrootclonable shadowrootcustomelementregistry><details id=a name=g open=v></details><details id=b name=g open=w></details></template></div></option></select><p>Z</p>",
+                expected: expected(
+                    vec![
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", "g")]),
+                        detail(&[("id", "a"), ("name", "g"), ("open", "v")]),
+                        detail(&[("id", "b"), ("name", "g")]),
+                    ],
+                    &["Z"],
+                    0,
+                    2,
+                ),
+            },
+        ];
+        let mut completed = Vec::new();
+        let mut stopped = Vec::new();
+        let mut observed = Vec::new();
+        let mut expected_snapshots = Vec::new();
+        for case in cases {
+            let request = tests::shadow_request(case.source, true);
+            let mut driver = initialized_driver(&request);
+            let mut outcome = None;
+            for _ in 0..20_000 {
+                match driver.step() {
+                    Ok(HeadStep::Consumed) => {}
+                    terminal => {
+                        outcome = Some(terminal);
+                        break;
+                    }
+                }
+            }
+            let outcome = outcome.expect("finite actual fragment reached a terminal result");
+            let complete = matches!(outcome, Ok(HeadStep::Complete));
+            let first = driver.control.stop();
+            if complete {
+                observed.push((case.label, snapshot(&mut driver)));
+            } else {
+                assert!(
+                    matches!(
+                        outcome,
+                        Err(FragmentExecutionError::Head(head::HeadError::Kernel(
+                            KernelError::Session(SessionError::Stop(
+                                ParseStop::UnsupportedStandaloneState(
+                                    StandaloneUnsupported::DetailsNotification
+                                )
+                            ))
+                        )))
+                    ),
+                    "{}: {outcome:?}",
+                    case.label
+                );
+                assert_eq!(
+                    first,
+                    Some(ParseStop::UnsupportedStandaloneState(
+                        StandaloneUnsupported::DetailsNotification
+                    ))
+                );
+                let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+                assert!(matches!(&state.pending.as_ref().unwrap().payload,
+                        super::super::prologue::Payload::Tag(Some(tag))
+                        if tag.attributes.as_slice().iter().any(|a|
+                            a.name.value.text().code_units() == [111, 112, 101, 110])));
+                stopped.push((case.label, first));
+            }
+            // Every stimulus runs and real cleanup succeeds before the grouped
+            // completion assertion. Native snapshots own UTF16 copies only.
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+            assert!(driver.head.is_none());
+            assert_eq!(driver.control.stop(), first);
+            completed.push((case.label, complete));
+            expected_snapshots.push((case.label, case.expected));
+        }
+        assert!(
+            completed.iter().all(|(_, complete)| *complete),
+            "owned fragment Details did not complete after all fixtures and cleanup: {completed:?}; typed stops: {stopped:?}"
+        );
+        assert_eq!(observed, expected_snapshots);
+    }
+}
