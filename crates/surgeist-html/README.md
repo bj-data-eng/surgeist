@@ -2877,6 +2877,21 @@ chronology and all-overlap current-text reverse mapping after cancellation.
 Diagnostic one-short admission, cancellation between real steps and fixed
 completed-map row work boundaries retain the original first stop and reclaimable
 storage cleanup; the cumulative node-admission counter remains unreclaimed.
+
+Selected [processing-instruction recovery and EOF literals](src/parser/tree_builder/conformance.rs)
+check the [five pinned PI states](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md#processing-instruction-open-state)
+through the same completed evidence owner. They distinguish preserved target
+case, skipped data whitespace, literal ampersands and NULL data, question-mark
+fallback, both closing forms, reserved or invalid targets recovered as comments,
+and abandoned drafts with no native PI at EOF. UTF-8 and UTF-16 cases run whole,
+at every two-part cut and one unit at a time; paired and isolated-surrogate data
+and CRLF retain separate original-source and output intervals. Lexical target,
+data, opening/closing syntax, whitespace and EOF anchors remain available with
+all applicable reverse results. A [public witness](tests/public_parse.rs) checks
+chronological recovery records and abandoned-target/data history after parse
+cancellation. This selected evidence does not certify every tokenizer/tree
+condition, XML or template-for-patch effects, or public incremental feeding.
+
 The private ordinary completed owner also prepares native-field associations
 through the [same evidence authority](src/construction/parser_session/provenance.rs):
 text merging, replacement, cloning, retirement and replay retain original groups

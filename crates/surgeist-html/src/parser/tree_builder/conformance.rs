@@ -9,6 +9,802 @@ use crate::{
     HtmlShadowRootProperties, QualifiedName,
 };
 
+mod pi_recovery {
+    use super::reference_recovery::{offset, report};
+    use crate::*;
+
+    #[derive(Clone, Copy)]
+    enum Native {
+        Pi,
+        Comment,
+        None,
+    }
+    struct Case {
+        raw: &'static str,
+        native: Native,
+        target: &'static str,
+        data: &'static str,
+        target_end: usize,
+        data_start: usize,
+        close: Option<usize>,
+        errors: Vec<(HtmlTokenizerDiagnostic, HtmlTokenizerState, usize, usize)>,
+    }
+    fn check_surrogate_data(cuts: Option<&[usize]>) {
+        // UTF16 source positions: A23, D80024, CRLF25..27, pair27..29,
+        // DC0029, delimiter30..32. PI data appends NULL/non-scalars as read;
+        // input-stream surrogate errors are separate from PI target recovery.
+        let mut raw: Vec<_> = "<!doctype html><p>é<?x A".encode_utf16().collect();
+        raw.extend([0xd800, 13, 10, 0xd83d, 0xde42, 0xdc00]);
+        raw.extend("?>Z</p>".encode_utf16());
+        let source = HtmlSource::utf16(DocumentString::from_utf16(raw.clone()));
+        let identity = source.identity().clone();
+        let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
+        let report = report(request, cuts);
+        assert_eq!(report.source().identity(), &identity);
+        assert_eq!(report.source().as_utf16().unwrap().code_units(), raw);
+        let document = report.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let html_children: Vec<_> = document.node(&html).unwrap().children().collect();
+        let body = document.node(&html_children[1]).unwrap();
+        let p = document.node(&body.children().next().unwrap()).unwrap();
+        let children: Vec<_> = p.children().collect();
+        assert_eq!(children.len(), 3);
+        let pi = document.node(&children[1]).unwrap();
+        let HtmlNodeKind::ProcessingInstruction(value) = pi.kind() else {
+            panic!("actual PI")
+        };
+        assert_eq!(value.target(), &DocumentString::from("x"));
+        assert_eq!(
+            value.data().code_units(),
+            [65, 0xd800, 10, 0xd83d, 0xde42, 0xdc00]
+        );
+        let diagnostics = report.diagnostics();
+        assert_eq!(diagnostics.len(), 2);
+        for (index, start) in [24, 29].into_iter().enumerate() {
+            let (record, location) = diagnostics.retained_record(index).unwrap();
+            assert_eq!(
+                record.kind(),
+                HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::SurrogateInInputStream)
+            );
+            assert_eq!(
+                record.context(),
+                HtmlParseDiagnosticContext::Tokenizer {
+                    phase: HtmlTokenizerDiagnosticPhase::InputStream,
+                    state: HtmlTokenizerState::PiData
+                }
+            );
+            assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+            assert_eq!(
+                record.rule().anchor(),
+                "parse-error-surrogate-in-input-stream"
+            );
+            assert_eq!(record.rule().branch(), "surrogate-in-input-stream");
+            assert_eq!(
+                location.role(),
+                HtmlParseDiagnosticLocationRole::InputFrontier
+            );
+            assert_eq!(location.token(), None);
+            assert_eq!(
+                location.source_range(),
+                &report.source().range(start, start + 1).unwrap()
+            );
+        }
+        let expected = vec![
+            (0, 1, 23, 24, HtmlParseOriginKind::Literal),
+            (1, 2, 24, 25, HtmlParseOriginKind::Literal),
+            (2, 3, 25, 27, HtmlParseOriginKind::Newline),
+            (3, 5, 27, 29, HtmlParseOriginKind::Literal),
+            (5, 6, 29, 30, HtmlParseOriginKind::Literal),
+        ];
+        let rows = report.associations();
+        let mut output = Vec::new();
+        let mut lexical = Vec::new();
+        let mut delimiter = false;
+        for index in 0..rows.len() {
+            let row = rows.row(index).unwrap();
+            if row.relation() == HtmlParseAssociationRelation::Output
+                && let HtmlParseDestination::Field {
+                    node,
+                    field: HtmlParseField::ProcessingInstructionData,
+                } = row.destination()
+                && node.id() == pi.id()
+            {
+                let source = row.source().unwrap();
+                assert_eq!(source.source(), &identity);
+                output.push((
+                    row.start(),
+                    row.end(),
+                    source.start(),
+                    source.end(),
+                    row.origin_kind().unwrap(),
+                ));
+            }
+            if let HtmlParseDestination::Lexical {
+                occurrence,
+                part: Some(part),
+            } = row.destination()
+                && occurrence.source() == &report.source().range(19, 32).unwrap()
+            {
+                if part.role() == HtmlParseLexicalRole::Data {
+                    lexical.push((
+                        part.start(),
+                        part.end(),
+                        part.source().start(),
+                        part.source().end(),
+                        part.origin_kind().unwrap(),
+                    ));
+                }
+                if part.role() == HtmlParseLexicalRole::Syntax
+                    && part.source() == &report.source().range(30, 32).unwrap()
+                {
+                    delimiter = true;
+                }
+            }
+        }
+        output.sort_by_key(|a| a.0);
+        lexical.sort_by_key(|a| a.0);
+        assert_eq!(output, expected);
+        assert_eq!(lexical, expected);
+        assert!(delimiter);
+        let query = report.source().range(23, 30).unwrap();
+        let mut cursor = rows.reverse(&query, None).unwrap();
+        let mut reverse = Vec::new();
+        loop {
+            match cursor.advance() {
+                HtmlParseReverseStep::Match(row) => {
+                    if row.relation() == HtmlParseAssociationRelation::Output
+                        && let HtmlParseDestination::Field {
+                            node,
+                            field: HtmlParseField::ProcessingInstructionData,
+                        } = row.destination()
+                        && node.id() == pi.id()
+                    {
+                        let source = row.source().unwrap();
+                        reverse.push((
+                            row.start(),
+                            row.end(),
+                            source.start(),
+                            source.end(),
+                            row.origin_kind().unwrap(),
+                        ));
+                    }
+                }
+                HtmlParseReverseStep::Skipped => {}
+                HtmlParseReverseStep::Complete => break,
+                HtmlParseReverseStep::Cancelled => panic!("no query cancellation"),
+            }
+        }
+        reverse.sort_by_key(|a| a.0);
+        assert_eq!(reverse, expected);
+    }
+    #[test]
+    fn pi_utf16_non_scalars_pair_and_crlf_keep_exact_data_at_every_feed_boundary() {
+        check_surrogate_data(None);
+        for cut in 0..=37 {
+            check_surrogate_data(Some(&[cut]));
+        }
+        check_surrogate_data(Some(&(0..=37).collect::<Vec<_>>()));
+    }
+    fn cases() -> Vec<Case> {
+        use HtmlTokenizerDiagnostic as D;
+        use HtmlTokenizerState as S;
+        // HTML877d §§13.2.5.72–76: independent literal values, frontier
+        // invocations and native omission/recovery, never a complete-run oracle.
+        vec![
+            Case {
+                raw: "<?_X-2 \t a??>",
+                native: Native::Pi,
+                target: "_X-2",
+                data: "a?",
+                target_end: 6,
+                data_start: 9,
+                close: Some(11),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?MiX?>",
+                native: Native::Pi,
+                target: "MiX",
+                data: "",
+                target_end: 5,
+                data_start: 5,
+                close: Some(5),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?x \t\n\u{c}A?>",
+                native: Native::Pi,
+                target: "x",
+                data: "A",
+                target_end: 3,
+                data_start: 7,
+                close: Some(8),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?x a>",
+                native: Native::Pi,
+                target: "x",
+                data: "a",
+                target_end: 3,
+                data_start: 4,
+                close: Some(5),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?x ?? >",
+                native: Native::Pi,
+                target: "x",
+                data: "?? ",
+                target_end: 3,
+                data_start: 4,
+                close: Some(7),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?x &amp;?>",
+                native: Native::Pi,
+                target: "x",
+                data: "&amp;",
+                target_end: 3,
+                data_start: 4,
+                close: Some(9),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?x A\0B?>",
+                native: Native::Pi,
+                target: "x",
+                data: "A\0B",
+                target_end: 3,
+                data_start: 4,
+                close: Some(7),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?x A\r\nB?>",
+                native: Native::Pi,
+                target: "x",
+                data: "A\nB",
+                target_end: 3,
+                data_start: 4,
+                close: Some(8),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?x 😀?>",
+                native: Native::Pi,
+                target: "x",
+                data: "😀",
+                target_end: 3,
+                data_start: 4,
+                close: Some(6),
+                errors: vec![],
+            },
+            Case {
+                raw: "<?xml a?>",
+                native: Native::Comment,
+                target: "xml",
+                data: "?xml a?",
+                target_end: 5,
+                data_start: 1,
+                close: Some(8),
+                errors: vec![(D::DisallowedProcessingInstructionTarget, S::PiTarget, 5, 6)],
+            },
+            Case {
+                raw: "<?XML-stylesheet b>",
+                native: Native::Comment,
+                target: "XML-stylesheet",
+                data: "?XML-stylesheet b",
+                target_end: 16,
+                data_start: 1,
+                close: Some(18),
+                errors: vec![(
+                    D::DisallowedProcessingInstructionTarget,
+                    S::PiTarget,
+                    16,
+                    17,
+                )],
+            },
+            Case {
+                raw: "<?a:b>",
+                native: Native::Comment,
+                target: "a",
+                data: "?a:b",
+                target_end: 3,
+                data_start: 1,
+                close: Some(5),
+                errors: vec![(D::InvalidProcessingInstructionTarget, S::PiTarget, 3, 4)],
+            },
+            Case {
+                raw: "<?1?>",
+                native: Native::Comment,
+                target: "",
+                data: "?1?",
+                target_end: 2,
+                data_start: 1,
+                close: Some(4),
+                errors: vec![(
+                    D::InvalidFirstCharacterOfProcessingInstructionTarget,
+                    S::PiOpen,
+                    2,
+                    3,
+                )],
+            },
+            Case {
+                raw: "<?",
+                native: Native::None,
+                target: "",
+                data: "",
+                target_end: 2,
+                data_start: 2,
+                close: None,
+                errors: vec![(D::EofInProcessingInstruction, S::PiOpen, 2, 2)],
+            },
+            Case {
+                raw: "<?a",
+                native: Native::None,
+                target: "a",
+                data: "",
+                target_end: 3,
+                data_start: 3,
+                close: None,
+                errors: vec![(D::EofInProcessingInstruction, S::PiTarget, 3, 3)],
+            },
+            Case {
+                raw: "<?a ",
+                native: Native::None,
+                target: "a",
+                data: "",
+                target_end: 3,
+                data_start: 4,
+                close: None,
+                // Context is the actual outer engine state at emission. The
+                // pinned AfterPiTarget EOF reconsume selects PiData's error;
+                // the retained rule/branch records that source condition.
+                errors: vec![(D::EofInProcessingInstruction, S::AfterPiTarget, 4, 4)],
+            },
+            Case {
+                raw: "<?a data",
+                native: Native::None,
+                target: "a",
+                data: "data",
+                target_end: 3,
+                data_start: 4,
+                close: None,
+                errors: vec![(D::EofInProcessingInstruction, S::PiData, 8, 8)],
+            },
+            Case {
+                raw: "<?a data?",
+                native: Native::None,
+                target: "a",
+                data: "data",
+                target_end: 3,
+                data_start: 4,
+                close: None,
+                errors: vec![(D::EofInProcessingInstruction, S::PiQuestionable, 9, 9)],
+            },
+        ]
+    }
+    fn labels(code: HtmlTokenizerDiagnostic) -> (&'static str, &'static str) {
+        match code {
+            HtmlTokenizerDiagnostic::DisallowedProcessingInstructionTarget => (
+                "parse-error-disallowed-processing-instruction-target",
+                "disallowed-processing-instruction-target",
+            ),
+            HtmlTokenizerDiagnostic::InvalidProcessingInstructionTarget => (
+                "parse-error-invalid-processing-instruction-target",
+                "invalid-processing-instruction-target",
+            ),
+            HtmlTokenizerDiagnostic::InvalidFirstCharacterOfProcessingInstructionTarget => (
+                "parse-error-invalid-first-character-of-processing-instruction-target",
+                "invalid-first-character-of-processing-instruction-target",
+            ),
+            HtmlTokenizerDiagnostic::EofInProcessingInstruction => (
+                "parse-error-eof-in-processing-instruction",
+                "eof-in-processing-instruction",
+            ),
+            _ => unreachable!("finite literal PI conditions"),
+        }
+    }
+    fn check(case: &Case, utf16: bool, cuts: Option<&[usize]>) {
+        let raw = format!(
+            "<!doctype html><p>é{}{}",
+            case.raw,
+            if matches!(case.native, Native::None) {
+                ""
+            } else {
+                "Z</p>"
+            }
+        );
+        let source = if utf16 {
+            HtmlSource::utf16(DocumentString::from(raw.as_str()))
+        } else {
+            HtmlSource::utf8(raw.clone())
+        };
+        let identity = source.identity().clone();
+        let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
+        let cancellation = request.cancellation().clone();
+        let report = report(request, cuts);
+        let usage = report.usage().clone();
+        cancellation.cancel();
+        assert_eq!(report.source().identity(), &identity);
+        assert_eq!(
+            report
+                .source()
+                .text(&report.source().range(0, report.source().len()).unwrap())
+                .unwrap(),
+            DocumentString::from(raw.as_str())
+        );
+        let coordinate = |units| offset(&raw, 19 + units, utf16);
+        let document = report.document().unwrap();
+        let root: Vec<_> = document.root().children().collect();
+        assert_eq!(root.len(), 2);
+        let html_children: Vec<_> = document.node(&root[1]).unwrap().children().collect();
+        let body = document.node(&html_children[1]).unwrap();
+        let p = document.node(&body.children().next().unwrap()).unwrap();
+        let children: Vec<_> = p.children().collect();
+        let native = if matches!(case.native, Native::None) {
+            assert_eq!(children.len(), 1);
+            None
+        } else {
+            assert_eq!(children.len(), 3);
+            assert!(
+                matches!(document.node(&children[2]).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
+            );
+            let node = document.node(&children[1]).unwrap();
+            match (case.native, node.kind()) {
+                (Native::Pi, HtmlNodeKind::ProcessingInstruction(pi)) => {
+                    assert_eq!(pi.target(), &DocumentString::from(case.target));
+                    assert_eq!(pi.data(), &DocumentString::from(case.data));
+                }
+                (Native::Comment, HtmlNodeKind::Comment(data)) => {
+                    assert_eq!(data, &DocumentString::from(case.data))
+                }
+                _ => panic!("literal PI versus recovered comment: {}", case.raw),
+            }
+            Some(node.id())
+        };
+        assert!(
+            matches!(document.node(&children[0]).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("é"))
+        );
+        let diagnostics = report.diagnostics();
+        assert_eq!(diagnostics.len(), case.errors.len(), "{}", case.raw);
+        for (index, &(code, state, start, end)) in case.errors.iter().enumerate() {
+            let (record, location) = diagnostics.retained_record(index).unwrap();
+            let (anchor, branch) = labels(code);
+            assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+            assert_eq!(
+                record.context(),
+                HtmlParseDiagnosticContext::Tokenizer {
+                    phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                    state
+                }
+            );
+            assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+            assert_eq!(record.rule().anchor(), anchor);
+            assert_eq!(record.rule().branch(), branch);
+            assert_eq!(
+                location.role(),
+                HtmlParseDiagnosticLocationRole::InputFrontier
+            );
+            assert_eq!(location.token(), None);
+            assert_eq!(
+                location.source_range(),
+                &report
+                    .source()
+                    .range(coordinate(start), coordinate(end))
+                    .unwrap()
+            );
+        }
+        let rows = report.associations();
+        let mut output = Vec::new();
+        let mut lexical_target = Vec::new();
+        let mut lexical_data = Vec::new();
+        let mut close = Vec::new();
+        let mut open = Vec::new();
+        let mut whitespace = Vec::new();
+        let mut abandoned = false;
+        let mut end_anchor = false;
+        for index in 0..rows.len() {
+            let row = rows.row(index).unwrap();
+            if let HtmlParseDestination::Field { node, field } = row.destination()
+                && Some(node.id()) == native
+                && row.relation() == HtmlParseAssociationRelation::Output
+                && matches!(
+                    field,
+                    HtmlParseField::ProcessingInstructionTarget
+                        | HtmlParseField::ProcessingInstructionData
+                        | HtmlParseField::Comment
+                )
+            {
+                assert!(row.group().is_some());
+                let Some(source) = row.source() else {
+                    assert_eq!((row.start(), row.end()), (0, 0));
+                    continue;
+                };
+                assert_eq!(source.source(), &identity);
+                assert_eq!(source.coordinates(), report.source().coordinates());
+                output.push((
+                    field,
+                    row.start(),
+                    row.end(),
+                    source.start(),
+                    source.end(),
+                    row.origin_kind(),
+                ));
+            }
+            if let HtmlParseDestination::Lexical { occurrence, part } = row.destination()
+                && occurrence.source().start() == coordinate(0)
+                && let Some(part) = part
+            {
+                let item = (
+                    part.start(),
+                    part.end(),
+                    part.source().start(),
+                    part.source().end(),
+                    part.origin_kind(),
+                );
+                match part.role() {
+                    HtmlParseLexicalRole::Syntax if part.source().end() <= coordinate(2) => {
+                        open.push((part.source().start(), part.source().end()))
+                    }
+                    HtmlParseLexicalRole::Target => lexical_target.push(item),
+                    HtmlParseLexicalRole::Data => lexical_data.push(item),
+                    HtmlParseLexicalRole::Syntax
+                        if part.source().end() == coordinate(case.raw.encode_utf16().count())
+                            && case.close.is_some() =>
+                    {
+                        close.push((part.source().start(), part.source().end()))
+                    }
+                    HtmlParseLexicalRole::Whitespace => {
+                        whitespace.push((part.source().start(), part.source().end()))
+                    }
+                    HtmlParseLexicalRole::EndAnchor if matches!(case.native, Native::None) => {
+                        assert_eq!(
+                            part.source(),
+                            &report
+                                .source()
+                                .range(
+                                    coordinate(case.raw.encode_utf16().count()),
+                                    coordinate(case.raw.encode_utf16().count())
+                                )
+                                .unwrap()
+                        );
+                        assert_eq!((part.start(), part.end()), (0, 0));
+                        end_anchor = true;
+                    }
+                    _ => {}
+                }
+                if matches!(case.native, Native::None) {
+                    assert_eq!(
+                        occurrence.kind(),
+                        HtmlParseLexicalKind::ProcessingInstruction
+                    );
+                    assert_eq!(
+                        occurrence.disposition(),
+                        HtmlParseLexicalDisposition::Abandoned
+                    );
+                    assert_eq!(
+                        occurrence.source(),
+                        &report
+                            .source()
+                            .range(coordinate(0), coordinate(case.raw.encode_utf16().count()))
+                            .unwrap()
+                    );
+                    abandoned = true;
+                }
+            }
+        }
+        let literal_atoms = |value: &str, start: usize| {
+            let mut units = 0;
+            value
+                .chars()
+                .map(|point| {
+                    let end = units + point.len_utf16();
+                    let item = (
+                        units,
+                        end,
+                        coordinate(start + units),
+                        coordinate(start + end),
+                        Some(HtmlParseOriginKind::Literal),
+                    );
+                    units = end;
+                    item
+                })
+                .collect::<Vec<_>>()
+        };
+        let target_expected = literal_atoms(case.target, 2);
+        open.sort();
+        open.dedup();
+        assert_eq!(
+            open,
+            [
+                (coordinate(0), coordinate(1)),
+                (coordinate(1), coordinate(2))
+            ]
+        );
+        lexical_target.sort_by_key(|x| (x.0, x.2));
+        assert_eq!(lexical_target, target_expected, "target {}", case.raw);
+        let data_expected = if matches!(case.native, Native::Pi) && case.data.is_empty() {
+            vec![(
+                0,
+                0,
+                coordinate(case.raw.encode_utf16().count() - 1),
+                coordinate(case.raw.encode_utf16().count() - 1),
+                None,
+            )]
+        } else if case.raw == "<?x A\r\nB?>" {
+            vec![
+                (
+                    0,
+                    1,
+                    coordinate(4),
+                    coordinate(5),
+                    Some(HtmlParseOriginKind::Literal),
+                ),
+                (
+                    1,
+                    2,
+                    coordinate(5),
+                    coordinate(7),
+                    Some(HtmlParseOriginKind::Newline),
+                ),
+                (
+                    2,
+                    3,
+                    coordinate(7),
+                    coordinate(8),
+                    Some(HtmlParseOriginKind::Literal),
+                ),
+            ]
+        } else {
+            literal_atoms(case.data, case.data_start)
+        };
+        lexical_data.sort_by_key(|x| (x.0, x.2));
+        assert_eq!(lexical_data, data_expected, "data {}", case.raw);
+        if let Some(close_start) = case.close {
+            close.sort();
+            close.dedup();
+            assert_eq!(
+                close,
+                [(
+                    coordinate(close_start),
+                    coordinate(case.raw.encode_utf16().count())
+                )]
+            );
+        } else {
+            assert!(close.is_empty());
+            assert!(abandoned && end_anchor);
+        }
+        if matches!(case.native, Native::Pi) && case.data_start > case.target_end {
+            assert_eq!(
+                whitespace,
+                (case.target_end..case.data_start)
+                    .map(|p| (coordinate(p), coordinate(p + 1)))
+                    .collect::<Vec<_>>()
+            );
+        }
+        let mut expected_output = Vec::new();
+        if matches!(case.native, Native::Pi) {
+            expected_output.extend(target_expected.into_iter().map(|a| {
+                (
+                    HtmlParseField::ProcessingInstructionTarget,
+                    a.0,
+                    a.1,
+                    a.2,
+                    a.3,
+                    a.4,
+                )
+            }));
+            expected_output.extend(data_expected.into_iter().filter(|a| a.0 != a.1).map(|a| {
+                (
+                    HtmlParseField::ProcessingInstructionData,
+                    a.0,
+                    a.1,
+                    a.2,
+                    a.3,
+                    a.4,
+                )
+            }));
+        } else if matches!(case.native, Native::Comment) {
+            expected_output.extend(
+                data_expected
+                    .into_iter()
+                    .map(|a| (HtmlParseField::Comment, a.0, a.1, a.2, a.3, a.4)),
+            );
+        }
+        output.sort_by_key(|x| (format!("{:?}", x.0), x.1, x.3));
+        expected_output.sort_by_key(|x| (format!("{:?}", x.0), x.1, x.3));
+        assert_eq!(output, expected_output, "output {}", case.raw);
+        let query = report
+            .source()
+            .range(coordinate(0), coordinate(case.raw.encode_utf16().count()))
+            .unwrap();
+        let mut reverse = rows.reverse(&query, None).unwrap();
+        let mut reversed = Vec::new();
+        loop {
+            match reverse.advance() {
+                HtmlParseReverseStep::Match(row)
+                    if row.relation() == HtmlParseAssociationRelation::Output =>
+                {
+                    if let HtmlParseDestination::Field { node, field } = row.destination()
+                        && Some(node.id()) == native
+                        && matches!(
+                            field,
+                            HtmlParseField::ProcessingInstructionTarget
+                                | HtmlParseField::ProcessingInstructionData
+                                | HtmlParseField::Comment
+                        )
+                    {
+                        let Some(source) = row.source() else {
+                            assert_eq!((row.start(), row.end()), (0, 0));
+                            continue;
+                        };
+                        reversed.push((
+                            field,
+                            row.start(),
+                            row.end(),
+                            source.start(),
+                            source.end(),
+                            row.origin_kind(),
+                        ));
+                    }
+                }
+                HtmlParseReverseStep::Match(_) | HtmlParseReverseStep::Skipped => {}
+                HtmlParseReverseStep::Complete => break,
+                HtmlParseReverseStep::Cancelled => {
+                    panic!("completed report doesn't borrow parse cancellation")
+                }
+            }
+        }
+        reversed.sort_by_key(|x| (format!("{:?}", x.0), x.1, x.3));
+        assert_eq!(
+            reversed, expected_output,
+            "all reverse outputs {}",
+            case.raw
+        );
+        assert_eq!(report.usage(), &usage);
+    }
+    #[test]
+    fn pi_recovery_and_eof_keep_literal_native_records_and_original_field_delimiters() {
+        for case in cases() {
+            for utf16 in [false, true] {
+                check(&case, utf16, None);
+            }
+        }
+    }
+    #[test]
+    fn pi_recovery_every_cut_and_unit_feed_keeps_independent_chronology_and_source_atoms() {
+        for case in cases() {
+            for utf16 in [false, true] {
+                let raw = format!(
+                    "<!doctype html><p>é{}{}",
+                    case.raw,
+                    if matches!(case.native, Native::None) {
+                        ""
+                    } else {
+                        "Z</p>"
+                    }
+                );
+                let len = if utf16 {
+                    raw.encode_utf16().count()
+                } else {
+                    raw.len()
+                };
+                for cut in 0..=len {
+                    check(&case, utf16, Some(&[cut]));
+                }
+                check(&case, utf16, Some(&(0..=len).collect::<Vec<_>>()));
+            }
+        }
+    }
+}
+
 const MAX_FIXTURE_BYTES: usize = 100_000;
 const MAX_PROJECTED_NODES: usize = 10_000;
 
@@ -1987,7 +2783,7 @@ mod reference_recovery {
             _ => unreachable!("finite independent reference fixture"),
         }
     }
-    fn offset(raw: &str, units: usize, utf16: bool) -> usize {
+    pub(super) fn offset(raw: &str, units: usize, utf16: bool) -> usize {
         if utf16 {
             return units;
         }
@@ -2001,7 +2797,10 @@ mod reference_recovery {
         assert_eq!(consumed, units);
         raw.len()
     }
-    fn report(request: HtmlDocumentParseRequest, cuts: Option<&[usize]>) -> ImmutableParseReport {
+    pub(super) fn report(
+        request: HtmlDocumentParseRequest,
+        cuts: Option<&[usize]>,
+    ) -> ImmutableParseReport {
         let parts = {
             let mut output = match cuts {
                 Some(cuts) => completed_at_cuts(&request, cuts),

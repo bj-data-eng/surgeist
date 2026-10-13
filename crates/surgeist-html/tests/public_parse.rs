@@ -1716,3 +1716,203 @@ fn owned_fragment_details_publishes_canonical_exclusivity_without_changing_captu
     assert_eq!(report.effects().unwrap().len(), 0);
     assert_eq!(report.usage(), &usage);
 }
+
+#[test]
+fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
+    // HTML877d §§13.2.5.72–76. Relative UTF16 frontiers after the prologue:
+    // invalid first21, colon27, reserved-target separator35, EOF54.
+    // é adds one UTF8 byte, while data "&amp;" in other PI witnesses stays
+    // literal rather than invoking character-reference processing.
+    let literal = "<!doctype html><p>é<?1?><?a:b><?xml d?><?x unfinished?";
+    for utf16 in [false, true] {
+        let source = if utf16 {
+            HtmlSource::utf16(DocumentString::from(literal))
+        } else {
+            HtmlSource::utf8(literal)
+        };
+        let identity = source.identity().clone();
+        let request = HtmlDocumentParseRequest::offline(source, limits());
+        let cancellation = request.cancellation().clone();
+        let report = request.parse().unwrap();
+        let usage = report.usage().clone();
+        cancellation.cancel();
+        assert_eq!(report.source().identity(), &identity);
+        let offset = |units| units + usize::from(!utf16);
+        let document = report.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let html_children: Vec<_> = document.node(&html).unwrap().children().collect();
+        let body = document.node(&html_children[1]).unwrap();
+        let p = document.node(&body.children().next().unwrap()).unwrap();
+        let children: Vec<_> = p.children().collect();
+        assert_eq!(children.len(), 4);
+        assert!(
+            matches!(document.node(&children[0]).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("é"))
+        );
+        for (node, expected) in children[1..].iter().zip(["?1?", "?a:b", "?xml d?"]) {
+            assert!(
+                matches!(document.node(node).unwrap().kind(),HtmlNodeKind::Comment(t) if t==&DocumentString::from(expected))
+            );
+        }
+        let expected = [
+            (
+                HtmlTokenizerDiagnostic::InvalidFirstCharacterOfProcessingInstructionTarget,
+                HtmlTokenizerState::PiOpen,
+                "parse-error-invalid-first-character-of-processing-instruction-target",
+                "invalid-first-character-of-processing-instruction-target",
+                21,
+                22,
+            ),
+            (
+                HtmlTokenizerDiagnostic::InvalidProcessingInstructionTarget,
+                HtmlTokenizerState::PiTarget,
+                "parse-error-invalid-processing-instruction-target",
+                "invalid-processing-instruction-target",
+                27,
+                28,
+            ),
+            (
+                HtmlTokenizerDiagnostic::DisallowedProcessingInstructionTarget,
+                HtmlTokenizerState::PiTarget,
+                "parse-error-disallowed-processing-instruction-target",
+                "disallowed-processing-instruction-target",
+                35,
+                36,
+            ),
+            (
+                HtmlTokenizerDiagnostic::EofInProcessingInstruction,
+                HtmlTokenizerState::PiQuestionable,
+                "parse-error-eof-in-processing-instruction",
+                "eof-in-processing-instruction",
+                54,
+                54,
+            ),
+        ];
+        let diagnostics = report.diagnostics();
+        assert_eq!(diagnostics.len(), expected.len());
+        for (index, (code, state, anchor, branch, start, end)) in expected.into_iter().enumerate() {
+            let (record, location) = diagnostics.retained_record(index).unwrap();
+            assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+            assert_eq!(
+                record.context(),
+                HtmlParseDiagnosticContext::Tokenizer {
+                    phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                    state
+                }
+            );
+            assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+            assert_eq!(record.rule().anchor(), anchor);
+            assert_eq!(record.rule().branch(), branch);
+            assert_eq!(
+                location.role(),
+                HtmlParseDiagnosticLocationRole::InputFrontier
+            );
+            assert_eq!(location.token(), None);
+            assert_eq!(
+                location.source_range(),
+                &report.source().range(offset(start), offset(end)).unwrap()
+            );
+        }
+        let rows = report.associations();
+        let mut target = false;
+        let mut data = Vec::new();
+        let mut end = false;
+        for index in 0..rows.len() {
+            let row = rows.row(index).unwrap();
+            if let HtmlParseDestination::Lexical {
+                occurrence,
+                part: Some(part),
+            } = row.destination()
+                && occurrence.source() == &report.source().range(offset(39), offset(54)).unwrap()
+            {
+                assert_eq!(
+                    occurrence.kind(),
+                    HtmlParseLexicalKind::ProcessingInstruction
+                );
+                assert_eq!(
+                    occurrence.disposition(),
+                    HtmlParseLexicalDisposition::Abandoned
+                );
+                match part.role() {
+                    HtmlParseLexicalRole::Target => {
+                        assert_eq!(
+                            part.source(),
+                            &report.source().range(offset(41), offset(42)).unwrap()
+                        );
+                        assert_eq!((part.start(), part.end()), (0, 1));
+                        assert_eq!(part.origin_kind(), Some(HtmlParseOriginKind::Literal));
+                        target = true;
+                    }
+                    HtmlParseLexicalRole::Data => {
+                        assert_eq!(part.origin_kind(), Some(HtmlParseOriginKind::Literal));
+                        data.push((
+                            part.start(),
+                            part.end(),
+                            part.source().start(),
+                            part.source().end(),
+                        ));
+                    }
+                    HtmlParseLexicalRole::EndAnchor => {
+                        assert_eq!(
+                            part.source(),
+                            &report.source().range(offset(54), offset(54)).unwrap()
+                        );
+                        assert_eq!((part.start(), part.end()), (0, 0));
+                        end = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(target && end);
+        data.sort();
+        assert_eq!(
+            data,
+            (0..10)
+                .map(|i| (i, i + 1, offset(43 + i), offset(44 + i)))
+                .collect::<Vec<_>>()
+        );
+        let eof = report.source().range(offset(54), offset(54)).unwrap();
+        let mut reverse = rows.reverse(&eof, None).unwrap();
+        let mut reverse_anchor = false;
+        loop {
+            match reverse.advance() {
+                HtmlParseReverseStep::Match(row) => {
+                    if let HtmlParseDestination::Lexical {
+                        occurrence,
+                        part: Some(part),
+                    } = row.destination()
+                        && occurrence.source()
+                            == &report.source().range(offset(39), offset(54)).unwrap()
+                        && part.role() == HtmlParseLexicalRole::EndAnchor
+                    {
+                        reverse_anchor = true;
+                        assert_eq!(part.source(), &eof);
+                        assert_eq!(
+                            occurrence.disposition(),
+                            HtmlParseLexicalDisposition::Abandoned
+                        );
+                    }
+                    assert!(!matches!(
+                        row.destination(),
+                        HtmlParseDestination::Field {
+                            field: HtmlParseField::ProcessingInstructionTarget
+                                | HtmlParseField::ProcessingInstructionData,
+                            ..
+                        }
+                    ));
+                }
+                HtmlParseReverseStep::Skipped => {}
+                HtmlParseReverseStep::Complete => break,
+                HtmlParseReverseStep::Cancelled => {
+                    panic!("completed immutable evidence has no parse cancellation lease")
+                }
+            }
+        }
+        assert!(reverse_anchor);
+        assert_eq!(report.usage(), &usage);
+    }
+}
