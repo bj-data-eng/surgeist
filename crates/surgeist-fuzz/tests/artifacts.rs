@@ -314,6 +314,31 @@ fn replay_rejects_fixture_and_codec_mismatches_even_for_comparison() {
 }
 
 #[test]
+fn persisted_run_retains_distinct_terminal_outcomes_in_roundtrip_and_report() {
+    let record = RunRecord::new(RunRecordSpec {
+        schema: 1,
+        target: descriptor(),
+        build: build('a'),
+        config: config(),
+        counts: ExecutionCounts::new(0, 1),
+        checked_properties: vec![],
+        exclusions: vec![],
+        failures: vec![],
+        cleanup: "complete".into(),
+    })
+    .unwrap();
+    let original = serde_json::to_value(record).unwrap();
+    for outcome in ["cancelled", "resource-stop", "insufficient"] {
+        let mut json = original.clone();
+        json["outcome"] = outcome.into();
+        let loaded: RunRecord = serde_json::from_value(json)
+            .expect("persisted terminal observation must retain the declared outcome");
+        assert_eq!(serde_json::to_value(&loaded).unwrap()["outcome"], outcome);
+        assert!(loaded.readable_report().contains(&format!("Outcome: {outcome}\n")));
+    }
+}
+
+#[test]
 fn run_observation_validates_counts_and_reports_unavailable_evidence() {
     let record = RunRecord::new(RunRecordSpec {
         schema: 1,
