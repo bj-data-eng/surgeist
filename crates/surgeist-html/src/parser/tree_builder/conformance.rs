@@ -6479,4 +6479,235 @@ mod comment_diagnostic_corpus {
             );
         }
     }
+
+    mod table_recovery_diagnostics {
+        use super::*;
+        use crate::parser::tree_builder::head::{HeadCondition, InsertionMode};
+
+        // HTML877d Initial 96374–79; InBody EOF 96880–95; InTable
+        // 97595–97702; InTableText 97720–47; InColumnGroup 97788–97836;
+        // InTableBody 97841–97888. Historical corpus #errors labels are
+        // retained metadata, not these chronological diagnostic oracles.
+        const fn tree(
+            kind: HeadCondition,
+            mode: InsertionMode,
+            rule: (&'static str, &'static str),
+            role: DiagnosticLocationRole,
+            token: DiagnosticToken,
+            source: (usize, usize),
+        ) -> ExpectedDiagnostic {
+            ExpectedDiagnostic {
+                kind: DiagnosticKind::Tree(kind),
+                context: DiagnosticContext::Tree(mode),
+                rule: DiagnosticRule {
+                    anchor: rule.0,
+                    branch: rule.1,
+                },
+                role,
+                token: Some(token),
+                source,
+            }
+        }
+        const fn eof(mode: InsertionMode, position: usize) -> ExpectedDiagnostic {
+            tree(
+                HeadCondition::UnexpectedOpenElement,
+                mode,
+                (
+                    "parsing-main-inbody",
+                    "body-end-or-eof/disallowed-open-element",
+                ),
+                DiagnosticLocationRole::TokenEnvelope,
+                DiagnosticToken::Eof,
+                (position, position),
+            )
+        }
+        const fn forbidden_end(source: (usize, usize)) -> ExpectedDiagnostic {
+            tree(
+                HeadCondition::UnexpectedTableToken,
+                InsertionMode::InTable,
+                ("parsing-main-intable", "disallowed-end-tag"),
+                DiagnosticLocationRole::TokenEnvelope,
+                DiagnosticToken::Tag,
+                source,
+            )
+        }
+        const fn cell(source: (usize, usize)) -> ExpectedDiagnostic {
+            tree(
+                HeadCondition::UnexpectedTableToken,
+                InsertionMode::InTableBody,
+                ("parsing-main-intbody", "cell-start/implied-row"),
+                DiagnosticLocationRole::TokenEnvelope,
+                DiagnosticToken::Tag,
+                source,
+            )
+        }
+        const fn nonwhite(source: (usize, usize)) -> ExpectedDiagnostic {
+            tree(
+                HeadCondition::NonWhitespaceInTable,
+                InsertionMode::InTableText,
+                (
+                    "parsing-main-intabletext",
+                    "pending-characters/non-whitespace",
+                ),
+                DiagnosticLocationRole::BufferedTableCharacter,
+                DiagnosticToken::Text,
+                source,
+            )
+        }
+        const fn fostered(source: (usize, usize)) -> ExpectedDiagnostic {
+            tree(
+                HeadCondition::UnexpectedTableToken,
+                InsertionMode::InTableText,
+                ("parsing-main-intable", "anything-else/pending-character"),
+                DiagnosticLocationRole::BufferedTableCharacter,
+                DiagnosticToken::Text,
+                source,
+            )
+        }
+        fn selected(ordinal: usize) -> &'static [ExpectedDiagnostic] {
+            match ordinal {
+                1 => {
+                    const {
+                        &[
+                            missing((0, 7), DiagnosticToken::Tag),
+                            cell((7, 11)),
+                            eof(InsertionMode::InCell, 11),
+                        ]
+                    }
+                }
+                4 => {
+                    const {
+                        &[
+                            missing((0, 7), DiagnosticToken::Tag),
+                            forbidden_end((17, 24)),
+                            nonwhite((24, 25)),
+                            fostered((24, 25)),
+                            fostered((25, 26)),
+                            fostered((26, 27)),
+                            eof(InsertionMode::InTable, 27),
+                        ]
+                    }
+                }
+                6 => {
+                    const {
+                        &[
+                            missing((0, 7), DiagnosticToken::Tag),
+                            forbidden_end((7, 14)),
+                            forbidden_end((14, 24)),
+                            forbidden_end((24, 30)),
+                            forbidden_end((30, 41)),
+                            forbidden_end((41, 48)),
+                            forbidden_end((48, 56)),
+                            forbidden_end((56, 61)),
+                            forbidden_end((61, 69)),
+                            forbidden_end((69, 74)),
+                            forbidden_end((74, 82)),
+                            forbidden_end((82, 87)),
+                            cell((87, 91)),
+                            eof(InsertionMode::InCell, 91),
+                        ]
+                    }
+                }
+                19 => {
+                    const {
+                        &[
+                            missing((0, 7), DiagnosticToken::Tag),
+                            nonwhite((7, 8)),
+                            fostered((7, 8)),
+                            tree(
+                                HeadCondition::UnexpectedDoctype,
+                                InsertionMode::InTable,
+                                ("parsing-main-intable", "doctype/ignore"),
+                                DiagnosticLocationRole::TokenEnvelope,
+                                DiagnosticToken::Doctype,
+                                (8, 23),
+                            ),
+                            eof(InsertionMode::InTable, 23),
+                        ]
+                    }
+                }
+                _ => unreachable!("four source-selected table diagnostic cases"),
+            }
+        }
+        fn check_cases(progressive: bool) {
+            let (_, raw) = DATA
+                .iter()
+                .find(|(name, _)| *name == "tables01.dat")
+                .unwrap();
+            let fixtures = decode(raw).unwrap();
+            assert_eq!(fixtures.len(), 19);
+            for (ordinal, input) in [
+                (1, "<table><th>"),
+                (4, "<table><colgroup></html>foo"),
+                (
+                    6,
+                    "<table></body></caption></col></colgroup></html></tbody></td></tfoot></th></thead></tr><td>",
+                ),
+                (19, "<table>a<!doctype html>"),
+            ] {
+                let fixture = &fixtures[ordinal - 1];
+                assert_eq!(fixture.input, input);
+                assert!(fixture.fragment.is_none());
+                assert_eq!(fixture.scripting, FixtureScripting::Both);
+                let expected_tree = parsed_expected(fixture, HtmlDocumentMode::Quirks).unwrap();
+                for utf16 in [false, true] {
+                    let make_request = || {
+                        HtmlDocumentParseRequest::offline(
+                            if utf16 {
+                                HtmlSource::utf16(crate::DocumentString::from(input))
+                            } else {
+                                HtmlSource::utf8(input)
+                            },
+                            super::super::super::tests::limits(1_000),
+                        )
+                    };
+                    let request = make_request();
+                    // ASCII fixture range integers independently represent
+                    // both byte offsets and UTF-16 code-unit offsets.
+                    assert_eq!(request.source().len(), input.len());
+                    assert_eq!(
+                        request.source().coordinates(),
+                        if utf16 {
+                            crate::HtmlSourceCoordinates::Utf16CodeUnits
+                        } else {
+                            crate::HtmlSourceCoordinates::Utf8Bytes
+                        }
+                    );
+                    if progressive {
+                        for cut in 0..=input.len() {
+                            let request = make_request();
+                            check_completed_comment(
+                                completed_at_cuts(&request, &[cut]),
+                                &request,
+                                &expected_tree,
+                                selected(ordinal),
+                            );
+                        }
+                        let cuts: Vec<_> = (0..=input.len()).collect();
+                        check_completed_comment(
+                            completed_at_cuts(&request, &cuts),
+                            &request,
+                            &expected_tree,
+                            selected(ordinal),
+                        );
+                    } else {
+                        check_completed_comment(
+                            completed(&request),
+                            &request,
+                            &expected_tree,
+                            selected(ordinal),
+                        );
+                    }
+                }
+            }
+        }
+        #[test]
+        fn table_recovery_literal_diagnostics_complete_utf8_utf16() {
+            check_cases(false);
+        }
+        #[test]
+        fn table_recovery_literal_diagnostics_every_cut_and_unit_feed() {
+            check_cases(true);
+        }
+    }
 }
