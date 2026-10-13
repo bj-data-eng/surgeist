@@ -802,17 +802,30 @@ fn keyframes_constructors_preserve_authored_empty_and_duplicate_states() {
 fn import_layer_name_rejects_empty_components() {
     assert!(CssLayerName::try_new(["theme"]).is_some());
     assert!(CssLayerName::try_new(["theme", "components"]).is_some());
+    assert!(CssLayerName::try_new(Vec::<String>::new()).is_none());
     assert!(CssLayerName::try_new([""]).is_none());
     assert!(CssLayerName::try_new(["theme", ""]).is_none());
-    assert!(CssLayerName::try_new(["theme", " \t\n "]).is_none());
+    assert!(CssLayerName::try_new(["theme", "a\0b"]).is_none());
 }
 
 #[test]
-fn import_layer_name_rejects_non_identifier_components() {
-    assert!(CssLayerName::try_new(["theme components"]).is_none());
-    assert!(CssLayerName::try_new(["theme.components"]).is_none());
-    assert!(CssLayerName::try_new(["theme;"]).is_none());
-    assert!(CssLayerName::try_new(["1theme"]).is_none());
+fn import_layer_name_preserves_decoded_identifier_components() {
+    // Constructors receive decoded identifier values. Their authored spelling
+    // escapes punctuation, whitespace and an initial digit into one identifier.
+    for (component, spelling) in [
+        ("theme components", r"theme\ components"),
+        ("theme.components", r"theme\.components"),
+        ("theme;", r"theme\;"),
+        ("1theme", r"\31 theme"),
+        (" \t\n ", r"\ \9 \a \ "),
+    ] {
+        let name = CssLayerName::try_new(["outer", component]).unwrap();
+        assert_eq!(name.components(), &["outer", component]);
+        assert_eq!(
+            name.serialize_specified().unwrap(),
+            format!("outer.{spelling}")
+        );
+    }
 }
 
 #[test]
