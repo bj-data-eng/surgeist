@@ -26473,4 +26473,99 @@ mod tests {
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
+
+    #[test]
+    fn range_absent_default_to_image_creates_actual_value_attribute_before_default_mode() {
+        // HTML877d #input-type-change: Value -> Default with nonempty current
+        // sets the content value to current. Range absent value has midpoint50;
+        // Image uses Default mode. No mutable host or fabricated lexical input.
+        let literal = "<html><head></head><input type=range><i type=image>";
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(literal),
+            limits()
+                .into_builder()
+                .work_credits(100_000_000)
+                .finish()
+                .unwrap(),
+        );
+        let (mut c, mut session, capability, mut lexer, parent, mut input, source) =
+            input_owner(&request);
+        let node = session
+            .allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &source,
+                &capability,
+            )
+            .unwrap();
+        assert!(input.is_none());
+        assert!(
+            session
+                .active()
+                .unwrap()
+                .form_attribute(&mut c, node.index, "value")
+                .unwrap()
+                .is_none()
+        );
+        let mut value = Utf16Buffer::new(&mut c).unwrap();
+        session
+            .append_input_internal_value(&mut c, &node, &mut value)
+            .unwrap();
+        assert_eq!(value.units(), [53, 48]);
+        value.clear(&mut c).unwrap();
+        let mut attribute = radio_next_attribute(&mut lexer, &mut c);
+        let changed = session.set_input_attribute(&mut c, &node, &mut attribute, &capability);
+        let observed = if changed.is_ok() {
+            assert!(attribute.is_none());
+            let state = session.input_state(&mut c, &node).unwrap();
+            let native = session
+                .active()
+                .unwrap()
+                .form_attribute(&mut c, node.index, "value")
+                .unwrap()
+                .unwrap()
+                .code_units()
+                .to_vec();
+            session
+                .append_input_internal_value(&mut c, &node, &mut value)
+                .unwrap();
+            let current = value.units().to_vec();
+            value.clear(&mut c).unwrap();
+            session
+                .append_input_default_value(&mut c, &node, &mut value)
+                .unwrap();
+            Some((state.flags.kind(), native, current, value.units().to_vec()))
+        } else {
+            None
+        };
+        let first = c.stop();
+        if let Some(attribute) = attribute.take() {
+            attribute.name.release(&mut c).unwrap();
+            attribute.value.release(&mut c).unwrap();
+        }
+        value.release(&mut c).unwrap();
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.stop(), first);
+        assert!(
+            changed.is_ok(),
+            "required Range50 -> Image content writeback failed after actual cleanup: {changed:?}"
+        );
+        assert_eq!(
+            observed,
+            Some((
+                crate::HtmlInputKind::Image,
+                vec![53, 48],
+                vec![53, 48],
+                vec![53, 48]
+            ))
+        );
+    }
 }
