@@ -36,3 +36,9 @@ name = "fixture-structured-worker"
 path = "src/bin/structured.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "fixture-streaming-worker"
+path = "src/bin/streaming.rs"
+test = false
+doc = false

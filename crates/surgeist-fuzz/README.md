@@ -151,7 +151,7 @@ reduction. `--attempts` bounds ordinary confirmation replays, while the shared
 wall deadline bounds the complete operation and descendant cleanup remains
 separately bounded.
 
-`minimize --corpus /absolute/prior/run/entropy-corpus` asks the recorded engine
+`minimize --corpus /absolute/path/to/retained-entropy` asks the recorded engine
 to reduce coverage inputs. It copies the originals, writes a separate proposed
 corpus and records the process outcome in `proposal.json`. A successful proposal
 can be supplied to `run --restart-corpus`; failure artifacts and the original
@@ -178,8 +178,12 @@ unavailable and reported as such. Input/structure admission, duration, output
 and storage limits are enforced at their stated boundaries; they are not a
 hard whole-process memory ceiling.
 
-Coverage protocol output has a finite quota. A campaign stopped by that quota
-is a resource stop, not a successful verification. Source coverage reports
+Coverage observations stream through a length-prefixed strict JSON decoder.
+The decoder retains one bounded frame and the exact current canonical case;
+successful evaluations contribute aggregate counts and checked properties.
+They do not create one immutable canonical corpus artifact per evaluation.
+Engine stderr retains a bounded diagnostic tail and reports truncation. Buffered
+tool and replay calls keep their finite output quotas. Source coverage reports
 additionally require compiler LLVM tools; sanitizer-guided feedback does not.
 
 ## Run a finite campaign
@@ -244,11 +248,80 @@ The shared supervisor separately enforces the exact campaign wall deadline.
 required hard limits are rejected. The engine's RSS guard is coarse and is not
 OS memory enforcement. No RSS sample is fabricated.
 
-`--storage-bytes` and `--storage-entries` bound the immutable artifact store and
-each engine corpus separately; build products are outside those evidence quotas.
-Protocol output has a separate bounded allowance. A stopped or failed publication
+`--storage-bytes` and `--storage-entries` bound the immutable artifact store.
+`--session-bytes` and `--session-entries` separately bound mutable coverage
+session data, including active and retained engine entropy inputs, diagnostic
+tails, progress checkpoints and temporary replacement space. Admission accounts
+for the input ceiling and round attempt ceiling before starting the engine.
+Configurations unable to admit a round and required exact evidence are rejected.
+Build products are outside these evidence quotas. A stopped or failed publication
 cannot be reported as successfully retained evidence. Preserve originals when
 making space; never replace a failure archive with a minimized coverage corpus.
+
+## Run continuous coverage
+
+Use `run --continuous` to run finite engine rounds within one logical campaign:
+
+```sh
+target/debug/surgeist-fuzz run --source "$fuzz_source" --work "$fuzz_work" \
+  --target surgeist-example::bytes --toolchain nightly-2026-09-01 \
+  --memory-policy unbounded --continuous --case-ms 1000 \
+  --round-cases 1000 --round-ms 30000 --retained-entries 64 \
+  --session-bytes 268435456 --session-entries 4096 --log-bytes 65536 \
+  --progress-ms 1000 --cancel-file /absolute/path/to/cancel-request
+```
+
+Continuous mode stops on cancellation, a finding, a resource limit or an
+infrastructure failure. It accepts one worker and conflicts with explicit
+`--cases` or `--wall-ms`. Other commands reject continuous mode. Finite `run`
+retains its defaults of 100 total cases and a 30,000 ms campaign wall limit;
+`check`, replay, reduction and finite parallel workers retain their existing
+roles. Both finite and continuous coverage use the same streaming and retention
+machinery.
+
+All of the following controls must be positive:
+
+| Control | Default | Meaning |
+| --- | --- | --- |
+| `--round-cases` | 1000 | Owner attempts admitted in one engine round |
+| `--round-ms` | 30000 | Engine round wall deadline in milliseconds |
+| `--retained-entries` | 64 | Maximum retained engine entropy inputs |
+| `--session-bytes` | 268435456 | Mutable session file byte budget |
+| `--session-entries` | 4096 | Mutable session entry budget |
+| `--log-bytes` | 65536 | Retained engine diagnostic tail bytes |
+| `--progress-ms` | 1000 | Minimum periodic checkpoint interval in milliseconds |
+
+`--round-cases` must be at least three to admit engine startup, a retained seed
+and a mutation. Session admission may lower the effective round and retention
+limits to fit the simultaneous storage envelope; the checkpoint reports the
+effective limits. The per-case deadline must fit the round deadline.
+
+The source and build identity are pinned once, checked between rounds and reused.
+After each engine has completed process cleanup, the campaign selects a bounded
+entropy corpus for the next round. Selection is deterministic and favors smaller
+inputs; the progress checkpoint discloses dropped entries and bytes. A capped
+corpus can lose coverage diversity. Restarting the engine over retained entropy
+is a fresh engine run and does not preserve its in-memory coverage state.
+
+The summary's run directory contains `session-state/progress.json`. This
+replaceable checkpoint records mode, completed rounds, aggregate evaluated and
+generation-rejected counts, checked properties, source/build identity, round
+budgets, retention/drop facts, elapsed engine campaign time and terminal status.
+It is replaced periodically and at round completion or termination. The
+checkpoint size and the number of session directories do not grow with the
+number of rounds. Interrupted replacement remains recovery material rather than
+confirmed progress; it does not promise resumable engine state.
+
+Findings and incomplete-case captures remain immutable exact evidence. A
+terminal run record is published once for the logical campaign. That record
+describes the final bounded round, including in finite campaigns spanning several
+rounds; the checkpoint and command summary carry the campaign's aggregate counts.
+A round deadline permits another round only after clean protocol completion
+with no pending case. Malformed or
+truncated output, missing capture, failed cleanup and evidence quota exhaustion
+remain explicit stop outcomes.
+
+## Replay campaign evidence
 
 The summary links an immutable artifact such as `failures/<identity>`. Reuse its
 source, target, toolchain, and feature selection for exact replay and reduction:
@@ -274,8 +347,9 @@ SIGINT/SIGTERM cancel a running command. Alternatively, supply
 `--cancel-file /absolute/path/to/not-yet-existing-file` and create that file when
 you want cancellation. The command awaits owned process cleanup. A cleanup
 failure remains visible even if a property finding was observed.
-`run --restart-corpus /absolute/prior/run/entropy-corpus` starts a new recorded
-run using a compatible prior corpus and its build metadata. It does not restore
+Use a corpus path from the command summary's `corpora` list with
+`run --restart-corpus /absolute/path/to/retained-entropy`. This starts a new
+recorded run using a compatible prior corpus and its build metadata. It does not restore
 the engine's in-memory state.
 
 Promote a regression manually after inspecting its independent property and
@@ -299,6 +373,17 @@ cargo test --offline --locked -j 1 -p surgeist-fuzz --all-features
 cargo clippy --offline --locked -j 1 -p surgeist-fuzz --all-targets --all-features -- -F unsafe-code -D warnings
 cargo test --offline --locked -j 1 -p surgeist-fuzz --features execution --test campaign -- --ignored
 ```
+
+The ignored workflow tests build isolated committed fixture checkouts and
+exercise real instrumented targets. The streaming control generates exactly
+1,024 zero bytes per case: its 20,000-evaluation finite test exceeds the former
+16 MiB output ceiling by canonical payload alone, checks exact aggregate counts
+and bounded retained state, and verifies that successful cases are not archived.
+The continuous control awaits a fresh checkpoint with at least three completed
+rounds before requesting cancellation, then checks cleanup, terminal evidence,
+restart provenance and a source change after an observed round. These are
+functional acceptance tests, not benchmarks; build/setup time is separate from
+recorded campaign elapsed time.
 
 See [crate guidance](AGENTS.md) for focused checks and the [notice](NOTICE.md)
 for this source distribution's direct dependency attribution.
