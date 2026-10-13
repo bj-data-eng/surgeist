@@ -30,6 +30,8 @@ enum ManagedEffect {
     InputName,
     InputType,
     InputSource,
+    InputColor,
+    InputValue,
     InputChecked(Option<crate::HtmlInputCheckedAttributeChange>),
 }
 impl SessionStorage {
@@ -58,6 +60,10 @@ impl SessionStorage {
             ManagedFamily::Input if local == "type" => ManagedEffect::InputType,
             ManagedFamily::Input if local == "src" => ManagedEffect::InputSource,
             ManagedFamily::Input if local == "name" => ManagedEffect::InputName,
+            ManagedFamily::Input if matches!(local, "alpha" | "colorspace") => {
+                ManagedEffect::InputColor
+            }
+            ManagedFamily::Input if local == "value" => ManagedEffect::InputValue,
             ManagedFamily::Input => {
                 ManagedEffect::InputChecked(match (old.is_some(), new.is_some()) {
                     (false, true) => Some(crate::HtmlInputCheckedAttributeChange::Added),
@@ -93,7 +99,7 @@ impl SessionStorage {
             ManagedEffect::Details(effect) => self.details_change(c, node, effect),
             ManagedEffect::InputName => self.normalize_radio(c, node, None),
             ManagedEffect::InputType => {
-                let (slot, _) = self
+                let (slot, state) = self
                     .radio_input(c, node)?
                     .ok_or(SessionError::InputMetadataUnavailable)?;
                 let (association, _) = find_form_association_state(&self.payloads, c, node)?
@@ -112,20 +118,41 @@ impl SessionStorage {
                         break;
                     }
                 }
-                self.initial_input_attribute(
-                    c,
-                    node,
-                    slot,
-                    association,
-                    container,
-                    position.ok_or(SessionError::AttributeStorageUnavailable)?,
-                )
+                match position {
+                    Some(position) => self.initial_input_attribute(
+                        c,
+                        node,
+                        slot,
+                        association,
+                        (container, position),
+                        InputAttributeInitialization::Installed,
+                    ),
+                    None => self.change_input_type(
+                        c,
+                        node,
+                        slot,
+                        container,
+                        state,
+                        crate::HtmlInputType::Text,
+                    ),
+                }
+            }
+            ManagedEffect::InputColor | ManagedEffect::InputValue => {
+                let (slot, state) = self
+                    .radio_input(c, node)?
+                    .ok_or(SessionError::InputMetadataUnavailable)?;
+                if state.flags.input_type() == crate::HtmlInputType::Color
+                    && (!matches!(effect, ManagedEffect::InputValue) || !state.flags.dirty_value())
+                {
+                    self.update_input_color(c, node, slot)?;
+                }
+                Ok(())
             }
             ManagedEffect::InputSource => {
                 let (slot, state) = self
                     .radio_input(c, node)?
                     .ok_or(SessionError::InputMetadataUnavailable)?;
-                if state.flags.kind() == crate::HtmlInputKind::Image {
+                if state.flags.input_type() == crate::HtmlInputType::Image {
                     self.image_source_changed(c, node, slot)?;
                 }
                 Ok(())
@@ -143,6 +170,81 @@ impl SessionStorage {
                 self.normalize_radio(c, node, None)
             }
         }
+    }
+
+    // Actual one-attribute stage shared by lexical and generated writeback.
+    // Preserve the original admission, transfer and native commit order.
+    pub(super) fn append_registered_attribute(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        container: usize,
+        incoming: Attribute,
+        fields: [usize; 2],
+        units: usize,
+    ) -> Result<(), SessionError> {
+        let [name_slot, value_slot] = fields;
+        let (values, allocation) = c.new_vector()?;
+        if let Err(error) = self.prepare_payload_slot(c) {
+            release_vector(c, values, allocation)?;
+            drop(incoming);
+            return Err(error);
+        }
+        let stage = self.payloads.values.len();
+        self.payloads.values.push(RetainedPayload::Attributes(Some(
+            AttributeStorage::Building {
+                values,
+                allocation,
+                original_len: 1,
+                reversed_pairs: 0,
+            },
+        )));
+        let prepared = (|| {
+            let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                values,
+                allocation,
+                ..
+            })) = &mut self.payloads.values[stage]
+            else {
+                unreachable!()
+            };
+            c.reserve_vector(values, allocation, 1)?;
+            payload_write::<Attribute>(c, 1)?;
+            payload_write::<[StringLocation; 2]>(c, 2)?;
+            c.acquire(HtmlParseResource::ManagedAttributes, 1)?;
+            Ok::<_, SessionError>(())
+        })();
+        if let Err(error) = prepared {
+            drop(incoming);
+            return Err(error);
+        }
+        let RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. })) =
+            &mut self.payloads.values[stage]
+        else {
+            unreachable!()
+        };
+        values.push(incoming);
+        self.bind_string(name_slot, StringLocation::AttributeName(stage, 0));
+        self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0));
+        self.edit_attributes(c, node, container, stage, 1, false)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let HtmlNodeKind::Element(record) = &self.records[node].kind else {
+            unreachable!()
+        };
+        let start = record.attributes().len();
+        self.begin_attribute_transfer(c, stage, container, start)?;
+        self.finish_attribute_merge(
+            c,
+            PreparedAttributeMerge {
+                target: node,
+                container,
+                stage,
+                start,
+                count: 1,
+                units,
+            },
+        )?;
+        Ok(())
     }
     pub(super) fn remove_managed_field(
         &mut self,
@@ -310,6 +412,18 @@ impl ParserArenaSession {
             && exact_ascii(c, Some(attr.name.value.text()), "src")?
         {
             "src"
+        } else if matches!(family, ManagedFamily::Input)
+            && exact_ascii(c, Some(attr.name.value.text()), "alpha")?
+        {
+            "alpha"
+        } else if matches!(family, ManagedFamily::Input)
+            && exact_ascii(c, Some(attr.name.value.text()), "colorspace")?
+        {
+            "colorspace"
+        } else if matches!(family, ManagedFamily::Input)
+            && exact_ascii(c, Some(attr.name.value.text()), "value")?
+        {
+            "value"
         } else if exact_ascii(c, Some(attr.name.value.text()), family.boolean())? {
             family.boolean()
         } else {
@@ -320,20 +434,26 @@ impl ParserArenaSession {
             if local == "type" {
                 let next = input_type_state(c, attr.value.value.text())?;
                 let file_image = matches!(
-                    state.flags.kind(),
-                    crate::HtmlInputKind::File | crate::HtmlInputKind::Image
+                    state.flags.input_type(),
+                    crate::HtmlInputType::File | crate::HtmlInputType::Image
                 ) || matches!(
                     next,
                     crate::HtmlInputType::File | crate::HtmlInputType::Image
                 );
                 let radio = next == crate::HtmlInputType::Radio
                     && matches!(
-                        state.flags.kind(),
-                        crate::HtmlInputKind::Radio | crate::HtmlInputKind::Checkbox
+                        state.flags.input_type(),
+                        crate::HtmlInputType::Radio | crate::HtmlInputType::Checkbox
                     );
-                if !(radio || file_image && crate::HtmlInputKind::try_from(next).is_ok()) {
+                let color = state.flags.input_type() == crate::HtmlInputType::Color
+                    || next == crate::HtmlInputType::Color;
+                if !(radio || file_image || color) {
                     return Err(SessionError::WrongToken);
                 }
+            } else if matches!(local, "value" | "alpha" | "colorspace")
+                && state.flags.input_type() != crate::HtmlInputType::Color
+            {
+                return Err(SessionError::WrongToken);
             }
         }
         let container = storage.element_attribute_container(c, node)?;
@@ -490,69 +610,13 @@ impl ParserArenaSession {
                 drop(incoming);
                 replace?;
             } else {
-                let (values, allocation) = c.new_vector()?;
-                if let Err(error) = storage.prepare_payload_slot(c) {
-                    release_vector(c, values, allocation)?;
-                    drop(incoming);
-                    return Err(error);
-                }
-                let stage = storage.payloads.values.len();
-                storage
-                    .payloads
-                    .values
-                    .push(RetainedPayload::Attributes(Some(
-                        AttributeStorage::Building {
-                            values,
-                            allocation,
-                            original_len: 1,
-                            reversed_pairs: 0,
-                        },
-                    )));
-                let prepared = (|| {
-                    let RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        ..
-                    })) = &mut storage.payloads.values[stage]
-                    else {
-                        unreachable!()
-                    };
-                    c.reserve_vector(values, allocation, 1)?;
-                    payload_write::<Attribute>(c, 1)?;
-                    payload_write::<[StringLocation; 2]>(c, 2)?;
-                    c.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-                    Ok::<_, SessionError>(())
-                })();
-                if let Err(error) = prepared {
-                    drop(incoming);
-                    return Err(error);
-                }
-                let RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                    values, ..
-                })) = &mut storage.payloads.values[stage]
-                else {
-                    unreachable!()
-                };
-                values.push(incoming);
-                storage.bind_string(name_slot, StringLocation::AttributeName(stage, 0));
-                storage.bind_string(value_slot, StringLocation::AttributeValue(stage, 0));
-                storage.edit_attributes(c, node, container, stage, 1, false)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                let HtmlNodeKind::Element(record) = &storage.records[node].kind else {
-                    unreachable!()
-                };
-                let start = record.attributes().len();
-                storage.begin_attribute_transfer(c, stage, container, start)?;
-                storage.finish_attribute_merge(
+                storage.append_registered_attribute(
                     c,
-                    PreparedAttributeMerge {
-                        target: node,
-                        container,
-                        stage,
-                        start,
-                        count: 1,
-                        units,
-                    },
+                    node,
+                    container,
+                    incoming,
+                    [name_slot, value_slot],
+                    units,
                 )?;
             }
             storage.managed_change(c, node, effect)?;

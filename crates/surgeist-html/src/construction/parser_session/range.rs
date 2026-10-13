@@ -235,21 +235,6 @@ fn integrity(c: &mut ParseControl) -> SessionError {
     c.fail_invariant(crate::parser::control::Invariant::CapacityMismatch)
         .into()
 }
-fn range_raw<'a>(
-    payloads: &'a PayloadStorage,
-    c: &mut ParseControl,
-    slot: usize,
-) -> Result<&'a DocumentString, SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
-    let Some(RetainedPayload::String {
-        value, allocation, ..
-    }) = payloads.values.get(slot)
-    else {
-        return Err(SessionError::InputMetadataUnavailable);
-    };
-    c.require_document_string(allocation, value)?;
-    Ok(value)
-}
 impl SessionStorage {
     fn range_stage(&mut self, c: &mut ParseControl) -> Result<&mut RangeStaging, SessionError> {
         c.require_identity(&self.control)?;
@@ -295,7 +280,7 @@ impl SessionStorage {
                     let source = stage.source;
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     c.charge(WorkCategory::InspectByte, 2)?;
-                    let unit = range_raw(&self.payloads, c, source)?
+                    let unit = admitted_input_string(&self.payloads, c, source)?
                         .code_units()
                         .get(index)
                         .copied()
@@ -472,7 +457,7 @@ impl SessionStorage {
                         let coefficient = &stage.buffers[RangeScratchRole::Coefficient.index()];
                         coefficient.require_disposal_owner(c)?;
                         let one_cell = coefficient.len() == 1;
-                        let raw = range_raw(&self.payloads, c, source)?;
+                        let raw = admitted_input_string(&self.payloads, c, source)?;
                         let dot_one = if raw.len() == 2 {
                             c.charge(WorkCategory::InspectByte, 4)?;
                             raw.code_units() == [46, 49]
@@ -536,7 +521,7 @@ impl SessionStorage {
         mode: FloatingPointParseMode,
     ) -> Result<(bool, Option<u64>), SessionError> {
         let parts = {
-            let raw = range_raw(&self.payloads, c, source)?;
+            let raw = admitted_input_string(&self.payloads, c, source)?;
             c.admit_atomic_layout(mem::size_of::<FloatingPointGrammarCursor<'_>>())?;
             payload_write::<FloatingPointGrammarCursor<'_>>(c, 1)?;
             let mut grammar = FloatingPointGrammarCursor::new(raw.code_units(), mode);
@@ -557,7 +542,7 @@ impl SessionStorage {
             payload_write::<crate::numeric::range::RangeDecimalParts>(c, 1)?;
             grammar.range_decimal_parts().map_err(|_| integrity(c))?
         };
-        let source_len = range_raw(&self.payloads, c, source)?.len();
+        let source_len = admitted_input_string(&self.payloads, c, source)?.len();
         let stage = self.range_stage(c)?;
         stage.scratch_empty(c)?;
         let headers = stage.headers(c)?;
@@ -637,7 +622,7 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         let previous = self.input_raw_slot(c, slot)?;
         let state = self.read_input_state(c, slot)?;
-        if state.flags.kind() != crate::HtmlInputKind::Range {
+        if state.flags.input_type() != crate::HtmlInputType::Range {
             return Err(SessionError::InputMetadataUnavailable);
         }
         self.range_payload_edge(c, source)?;
@@ -683,7 +668,7 @@ impl SessionStorage {
         let fresh_empty = !*complete
             && !state.flags.dirty_value()
             && source == current
-            && range_raw(&self.payloads, c, source)?.is_empty();
+            && admitted_input_string(&self.payloads, c, source)?.is_empty();
         let mut original = if fresh_empty {
             RangeOriginal::FreshEmpty
         } else {
@@ -799,7 +784,7 @@ impl SessionStorage {
         let step = if let Some(step_slot) = step_slot {
             let edge = self.range_payload_edge(c, step_slot)?;
             let any = {
-                let raw = range_raw(&self.payloads, c, step_slot)?;
+                let raw = admitted_input_string(&self.payloads, c, step_slot)?;
                 let expected = crate::attributes::INPUT_STEP_ANY.as_bytes();
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let mut any = raw.len() == expected.len();
@@ -895,7 +880,12 @@ impl SessionStorage {
             }
         }
         if !replaced {
-            let field = copy_range_input_value(&self.payloads, self.evidence.as_ref(), c, source)?;
+            let field = provenance::copy_generated_input_value(
+                &self.payloads,
+                self.evidence.as_ref(),
+                c,
+                source,
+            )?;
             self.replace_input_raw(c, slot, field)?;
         }
         Ok(())
@@ -962,61 +952,5 @@ impl SessionStorage {
             self.dispose_aggregate_string(c, previous)?;
         }
         Ok(())
-    }
-}
-
-// Range-generated digits have an actual value/group, and deliberately no
-// lexical digit origins. Copy that complete field, retaining exactly the
-// atoms actually present instead of requiring invented lexical coverage.
-pub(super) fn copy_range_input_value(
-    payloads: &PayloadStorage,
-    evidence: Option<&ParseEvidence>,
-    c: &mut ParseControl,
-    slot: usize,
-) -> Result<FieldCopy, SessionError> {
-    let value = range_raw(payloads, c, slot)?;
-    let RetainedPayload::String {
-        origins: Some(group),
-        ..
-    } = &payloads.values[slot]
-    else {
-        return Err(SessionError::WrongToken);
-    };
-    let evidence = evidence.ok_or(SessionError::WrongToken)?;
-    evidence.qualify_range_copy(c, payloads, group, value.code_units())?;
-    let mut buffer = Utf16Buffer::new(c)?;
-    let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
-    let result = (|| {
-        buffer.extend_units(value.code_units(), c)?;
-        let mut cursor = provenance::GroupOriginCursor::new(evidence, group, c)?;
-        let read = (|| {
-            while let Some(origin) = cursor.next(evidence, c)? {
-                c.require_source_range(&origin.source)?;
-                origins.try_push(c, origin)?;
-            }
-            Ok::<_, SessionError>(())
-        })();
-        cursor.release(c)?;
-        read?;
-        evidence.copy_group_reference(c, group)
-    })();
-    let original = match result {
-        Ok(group) => group,
-        Err(error) => {
-            buffer.release(c)?;
-            origins.release(c)?;
-            return Err(error);
-        }
-    };
-    match buffer.freeze(c) {
-        Ok(value) => Ok(FieldCopy {
-            value,
-            origins,
-            original: Some(original),
-        }),
-        Err(error) => {
-            origins.release(c)?;
-            Err(error.into())
-        }
     }
 }

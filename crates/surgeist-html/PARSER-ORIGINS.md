@@ -28,8 +28,9 @@ null-default and current observations read actual ordinary descendant text.
 Ordinary select/option/optgroup/selectedcontent creation and source-ordered
 selection, cloning and intrinsic checkpoint effects now use that driver.
 Submit/Reset/Button Default-mode and five strict temporal input states use the
-same canonical input owner. Other resettable control creation and unsupported
-table rows retain explicit unfinished continuations. Fresh ordinary templates
+same canonical input owner. Current control coverage and typed capability limits
+are described in the [crate overview](README.md#decoded-unicode-parsing);
+the extension sections below record their source adaptations. Fresh ordinary templates
 use that same driver with real inert-document/contents ownership and PI patching.
 Exact SVG scripts now retain separate processed state under the selected
 restricted offline operation, with source-ordered foreign-end and nonparser
@@ -207,8 +208,9 @@ derives from lines 1555–1585. The implied-end, heading and special-element lis
 derive from `tag_sets.rs` lines 70–71, 76, 78–86 and 89–109. The selected HTML
 edition governs `rb`/`rtc` implied ends and EOF membership, `search`, obsolete
 `keygen` void recovery, exact foreign-name predicates and removal of `isindex`.
-Other resettable control creation and unsupported table branches,
-foreign creation remain unfinished boundaries. Frameset transitions are extended below.
+At this ordinary-body adaptation checkpoint, other resettable control creation,
+table branches and foreign creation remained unfinished. The subsequent
+extension sections record their implementation. Frameset transitions are extended below.
 
 The sole fresh driver consumes its actual AfterHead handoff and retains current
 and return insertion modes, the stored head identity, frameset eligibility and

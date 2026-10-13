@@ -882,10 +882,12 @@ limits, and reports retain its exact producer/configuration revision.
 
 <a id="shared-intrinsic-control-rules"></a>
 
-The [shared input rules](src/input.rs) expose fixed state and source-ordered
-requirements for Hidden, Text, Search, Telephone, Password, Checkbox, Radio,
-Email, URL, Submit, Reset, Button, Date, Month, Week, Time, LocalDateTime, Number,
-File, Image and Range.
+The [shared input rules](src/input.rs) use `HtmlInputType` as the canonical
+22-state identity for attribute interpretation, `HtmlInputFlags::input_type()`
+and parser metadata. They expose fixed state and source-ordered requirements
+for Hidden, Text, Search, Telephone, Password, Checkbox, Radio, Email, URL,
+Submit, Reset, Button, Date, Month, Week, Time, LocalDateTime, Number, File,
+Image, Range and Color.
 Submit/Reset/Button use Default mode: present value content, including empty,
 is read unchanged; absence supplies empty rather than `on` or a display label.
 They preserve exact UTF-16 and do not support selection.
@@ -922,12 +924,18 @@ recover a numeric prefix. It does not clamp to min/max or perform optional step
 rounding.
 
 Range uses Value mode without selection. `HtmlInputValueSanitization` separates
-the borrowed String sanitizer from Range, which needs actual min, max, step and
-value content. Range preserves a valid unconstrained spelling when no correction
-is required; its numeric conversion and corrections use the existing exact
+the borrowed String sanitizer from the controlled Range and Color producers.
+Range needs actual min, max, step and value content. Range preserves a valid
+unconstrained spelling when no correction is required; its numeric conversion and corrections use the existing exact
 numeric owner. Missing or invalid current content uses the source-selected default: the
 midpoint, or min when max is less than min, followed by bounds and step correction. These intrinsic rules do not
 perform live validation, stepping, rendering or host events.
+
+Color uses Value mode without selection. Its fixed intrinsic effects select
+alpha handling, colorspace conversion, limited-sRGB quantization and serialization;
+the [controlled Color adapter](#controlled-color-input) applies these effects
+through the shared CSS producer. These rules do not own a style context or
+interactive color well.
 
 File uses Filename mode with an established `HtmlInputFileSelection::Empty`,
 separate from its internal value and native value attribute. The native readback
@@ -2035,11 +2043,12 @@ context facts or required custom reactions produce typed failures. Neither entry
 executes JavaScript, fetches resources, attaches a live shadow root or synthesizes
 browser events. Supported input construction covers Text, Search, Telephone,
 Password, Hidden, Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month,
-Week, Time, LocalDateTime, Number, File, Image and Range. Offline Image construction
+Week, Time, LocalDateTime, Number, File, Image, Range and Color. Offline Image construction
 explicitly selects Disabled image support; fragments require qualified creation
 environment evidence when a nonempty `src` makes that policy influential.
-Color input construction remains unsupported. Other unavailable branches stop
-explicitly rather than publishing a partial success.
+Color construction applies the selected CSS operations; influential missing CSS
+facts and processing failures remain typed stops rather than guessed colors.
+Other unavailable branches stop explicitly rather than publishing a partial success.
 
 `HtmlSource::utf8` accepts already decoded Unicode in Rust string storage;
 `HtmlSource::utf16` retains exact `DocumentString` units, including isolated
@@ -2127,7 +2136,8 @@ reopen execution or alter that snapshot. Its
 
 - `metadata()` visits one retained registry slot per cursor step, distinguishing
   records, skipped private slots and completion. Payload getters borrow actual
-  state. `input_email_value_count()` applies only to multiple Email input records:
+  state. `HtmlInputFlags::input_type()` identifies the canonical input state.
+  `input_email_value_count()` applies only to multiple Email input records:
   empty multiple Email retains `Some(0)`, whitespace-only retains `Some(1)`;
   single Email and other kinds return `None`. It reads the produced count without
   resplitting the joined current value.
@@ -2364,7 +2374,7 @@ overrides, form reset and hosted initialization remain separate work.
 
 Internal input creation supports Hidden, Text, Search, Telephone, Password,
 Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month, Week, Time,
-LocalDateTime, Number, File, Image and Range through the
+LocalDateTime, Number, File, Image, Range and Color through the
 [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
 Text loses CR and LF; changing from Value mode to Hidden, Submit, Reset or Button
@@ -2449,6 +2459,43 @@ cause readers expose branch, bound/step/base origins and borrowed dependency
 groups. Cloning copies the actual current backing and flags without recomputing;
 reset later uses the installed default and actual constraints. These operations
 do not supply live setters, validity, optional stepping or resource execution.
+
+<a id="controlled-color-input"></a>
+
+Color construction uses the [controlled Color adapter](src/construction/parser_session/input_color.rs)
+and the direct `surgeist-css` dependency under HTML's original parse controller.
+CSS grammar, used-color conversion and serialization remain CSS-owned; the
+[Source Editions](../../references/SOURCE-EDITIONS.md) retain their selected
+language baselines. The adapter admits source reads, work, actual scratch banks
+and final UTF-16 output before each effect, preserving canonical first-stop and
+terminal cleanup.
+
+A clean Color input updates from its installed value attribute; a dirty input
+updates from its current internal value. The native default stays independent:
+`value=red` retains `red` while current value becomes `#ff0000`. Actual
+no-namespace `alpha` presence permits alpha; its absence forces opaque alpha.
+The authoritative colorspace recognizer selects Limited sRGB for missing or
+invalid content and Display P3 for its exact ASCII-case-insensitive keyword,
+without trimming. Limited sRGB uses source-required eight-bit rounding;
+alpha-absent output uses HTML-compatible serialization, while alpha-present
+output uses `color(srgb ...)`. Display P3 uses `color(display-p3 ...)`.
+Source-ordered attribute/type changes run the shared intrinsic effects, reset
+clears dirty value before updating from the installed default, and cloning
+copies the actual current backing and flags without rerunning CSS.
+
+Only standard color invalidity selects opaque black. Missing influential palette,
+profile, scheme, device or context facts, unsupported operations and numerical
+failures remain typed `HtmlParseStop::ColorProcessing` outcomes; resource and
+cancellation stops retain their own categories. No palette, light scheme or host
+color is inferred. Generated native values carry a Color computation cause with
+the original value group or absence, alpha/colorspace operand groups, selected
+standard failure and qualified CSS fact-policy identity.
+`HtmlParseCause::color_computation()` lends those decisions; generated units
+do not invent literal or character-reference source atoms.
+[Public Color tests](tests/color_input_construction.rs) cover distinct defaults,
+current values, source-ordered alpha/colorspace decisions and typed unavailability.
+These construction operations do not supply style resolution, a live DOM,
+interactive wells, live setters or browser events.
 
 File construction establishes an empty selected-resource fact while retaining
 raw, internal and default values independently. Changing into Filename mode

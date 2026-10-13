@@ -192,14 +192,20 @@ authored; they do not change this project's own license.
 
 ## Dependencies
 
-This notice covers the 16 registry packages in this crate’s default-feature
+This notice covers the 19 registry packages in this crate’s default-feature
 normal and build dependency graph. They are external Cargo dependencies, not
-vendored source. The direct cssparser dependency supplies only its safe named-color
-lookup; HTML does not invoke CSS tokenization or a Surgeist CSS parser. The
-license texts below reuse the exact retained copies in the CSS crate. These
-links identify legal material, not a production dependency on surgeist-css.
+vendored source. The direct cssparser dependency supplies safe named-color
+lookup. The repository-owned surgeist-css dependency supplies controlled color
+parsing, conversion and serialization for HTML Color input construction.
+The license texts below reuse the exact retained copies in the CSS crate.
 The graph is not an inventory of every downstream binary; linker behavior and
 resolution determine a consumer’s contents. License alternatives remain intact.
+
+This product depends on `cfg-if` 1.0.4 through surgeist-css stylesheet decoding,
+distributed by Alex Crichton:
+
+* License: [MIT](../surgeist-css/licenses/cfg-if/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/cfg-if/LICENSE-APACHE)
+* Homepage: [cfg-if](https://github.com/rust-lang/cfg-if)
 
 This product depends on `cssparser` 0.37.0 for named-color lookup, with `cssparser-macros` 0.7.0 for procedural macros, distributed by Simon Sapin:
 
@@ -217,6 +223,13 @@ distributed by Xidorn Quan:
 
 * License: [MPL-2.0](../surgeist-css/licenses/dtoa-short/LICENSE)
 * Homepage: [dtoa-short](https://github.com/upsuper/dtoa-short)
+
+This product depends on `encoding_rs` 0.8.35 through surgeist-css stylesheet byte
+decoding, copyright Mozilla Foundation, authored by Henri Sivonen. Its included
+WHATWG Encoding Standard data carries the additional BSD license:
+
+* License: ([Apache-2.0](../surgeist-css/licenses/encoding-rs/LICENSE-APACHE) OR [MIT](../surgeist-css/licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](../surgeist-css/licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](../surgeist-css/licenses/encoding-rs/COPYRIGHT)
+* Homepage: [encoding_rs](https://github.com/hsivonen/encoding_rs)
 
 This product depends on `fastrand` 2.4.1 for PHF macro generation at build time,
 distributed by Stjepan Glavina:
@@ -274,6 +287,13 @@ distributed by David Tolnay, with Unicode data from Unicode, Inc.:
 
 * License: ([MIT](../surgeist-css/licenses/unicode-ident/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/unicode-ident/LICENSE-APACHE)) AND [Unicode-3.0](../surgeist-css/licenses/unicode-ident/LICENSE-UNICODE)
 * Homepage: [unicode-ident](https://github.com/dtolnay/unicode-ident)
+
+This product depends on `unicode-segmentation` 1.13.3 through surgeist-css
+authored text-alignment string validation. Its package lists kwantam and Manish
+Goregaokar as authors; the included MIT text credits the Rust Project Developers:
+
+* License: [MIT](../surgeist-css/licenses/unicode-segmentation/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/unicode-segmentation/LICENSE-APACHE); [upstream copyright and declaration](../surgeist-css/licenses/unicode-segmentation/COPYRIGHT)
+* Homepage: [unicode-segmentation](https://github.com/unicode-rs/unicode-segmentation)
 
 ## Ordinary-template and PI grammar incorporation
 

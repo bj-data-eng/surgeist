@@ -46,7 +46,7 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                     checked_raw(storage, *raw, c)?;
                     c.charge(WorkCategory::RecordVisit, 2)?;
-                    if state.flags.kind() == crate::HtmlInputKind::File
+                    if state.flags.input_type() == crate::HtmlInputType::File
                         && !state.selected_files_empty
                     {
                         return Err(SessionError::InputMetadataUnavailable);
@@ -58,7 +58,7 @@ impl<'a> PreparedReportStorage<'a> {
                     {
                         checked_raw(storage, source, c)?;
                     }
-                    if state.flags.kind() == crate::HtmlInputKind::Image
+                    if state.flags.input_type() == crate::HtmlInputType::Image
                         && matches!(state.image, input_image::ImageState::NeverEntered)
                     {
                         return Err(SessionError::InputMetadataUnavailable);

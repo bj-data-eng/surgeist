@@ -91,11 +91,11 @@ fn qualify(
         {
             return Err(SessionError::WrongToken);
         }
-        if let Some(range) = cause.range_computation {
+        if let Some(range) = cause.computation {
             if cause.operation != provenance::ConstructionOperation::Replacement {
                 return Err(SessionError::WrongToken);
             }
-            provenance::validate_range_computation(c, range, data.groups, index)?;
+            provenance::validate_input_computation(c, range, data.groups, index)?;
         }
         // Captured qualifications were established by the sealed ingress;
         // captured facts remain nonlexical and do not acquire a source range.
@@ -109,7 +109,7 @@ fn qualify(
         {
             return Err(SessionError::WrongToken);
         }
-        if let Some(range) = data.causes[group.cause].range_computation {
+        if let Some(range) = data.causes[group.cause].computation {
             for edge in range.edges() {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if edge.is_some_and(|edge| edge.group >= index) {

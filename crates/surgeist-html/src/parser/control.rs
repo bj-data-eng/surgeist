@@ -65,6 +65,8 @@ pub enum ParseStop {
     },
     InternalInvariant(Invariant),
     UnsupportedStandaloneState(StandaloneUnsupported),
+    /// Reached CSS processing/fact failure, distinct from invalid CSS syntax.
+    ColorProcessing(surgeist_css::CssColorOperationError),
 }
 /// Actual selected closed-environment execution boundaries, not limit errors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -241,6 +243,15 @@ impl ParseControl {
             return first;
         }
         self.latch_stop(ParseStop::UnsupportedStandaloneState(reason))
+    }
+    pub(crate) fn stop_color_processing(
+        &mut self,
+        reason: surgeist_css::CssColorOperationError,
+    ) -> ParseStop {
+        if let Err(first) = self.checkpoint() {
+            return first;
+        }
+        self.latch_stop(ParseStop::ColorProcessing(reason))
     }
     fn fail<T>(&mut self, reason: ParseStop) -> Result<T, ParseStop> {
         let first = self.latch_stop(reason);

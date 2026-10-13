@@ -533,15 +533,67 @@ pub struct HtmlParseCause<'a> {
     history: &'a FrozenHistory,
     cause: &'a ConstructionCause,
 }
+/// Borrowed decisions and dependency groups from an admitted Color update.
+/// The environment identity denotes the parser's unavailable CSS fact policy,
+/// not a host palette/profile certificate. Generated units have no lexical atoms.
+pub struct HtmlParseColorComputation<'a> {
+    history: &'a FrozenHistory,
+    value: &'a provenance::ColorComputation,
+}
+impl<'a> HtmlParseColorComputation<'a> {
+    pub fn source(&self) -> provenance::ColorValueSource {
+        self.value.source
+    }
+    pub fn colorspace(&self) -> crate::HtmlInputColorSpace {
+        self.value.space
+    }
+    pub fn alpha_present(&self) -> bool {
+        self.value.operands[0].is_some()
+    }
+    pub fn standard_failure(&self) -> Option<surgeist_css::CssColorStandardFailure> {
+        self.value.standard_failure
+    }
+    pub fn environment(&self) -> surgeist_css::CssColorFactIdentity {
+        self.value.environment
+    }
+    pub fn value(&self) -> surgeist_css::CssUsedColor {
+        self.value.value
+    }
+    pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
+        self.value.original.and_then(|edge| {
+            self.history
+                .view()
+                .expect("qualified history")
+                .group(edge.group)
+        })
+    }
+    pub fn operand_group(&self, role: provenance::ColorOperandRole) -> Option<HistoryGroup<'a>> {
+        self.value.operands[role.index()].and_then(|edge| {
+            self.history
+                .view()
+                .expect("qualified history")
+                .group(edge.group)
+        })
+    }
+}
 impl<'a> HtmlParseCause<'a> {
-    pub fn range_computation(&self) -> Option<HtmlParseRangeComputation<'a>> {
-        self.cause
-            .range_computation
-            .as_ref()
-            .map(|value| HtmlParseRangeComputation {
+    pub fn color_computation(&self) -> Option<HtmlParseColorComputation<'a>> {
+        match self.cause.computation.as_ref()? {
+            provenance::InputValueComputation::Color(value) => Some(HtmlParseColorComputation {
                 history: self.history,
                 value,
-            })
+            }),
+            provenance::InputValueComputation::Range(_) => None,
+        }
+    }
+    pub fn range_computation(&self) -> Option<HtmlParseRangeComputation<'a>> {
+        match self.cause.computation.as_ref()? {
+            provenance::InputValueComputation::Range(value) => Some(HtmlParseRangeComputation {
+                history: self.history,
+                value,
+            }),
+            provenance::InputValueComputation::Color(_) => None,
+        }
     }
     pub fn operation(&self) -> provenance::ConstructionOperation {
         self.cause.operation
@@ -866,7 +918,7 @@ impl<'a> report::MetadataRef<'a> {
     /// Established actual File resources. Other input states have no File view.
     pub fn input_file_selection(&self) -> Option<crate::HtmlInputFileSelection> {
         self.input().and_then(|(state, _)| {
-            (state.flags.kind() == crate::HtmlInputKind::File && state.selected_files_empty)
+            (state.flags.input_type() == crate::HtmlInputType::File && state.selected_files_empty)
                 .then_some(crate::HtmlInputFileSelection::Empty)
         })
     }
@@ -874,7 +926,7 @@ impl<'a> report::MetadataRef<'a> {
     pub fn input_image_coordinate(&self) -> Option<crate::HtmlInputImageCoordinate> {
         self.input().and_then(|(state, _)| match state.image {
             input_image::ImageState::Last { coordinate, .. }
-                if state.flags.kind() == crate::HtmlInputKind::Image =>
+                if state.flags.input_type() == crate::HtmlInputType::Image =>
             {
                 Some(coordinate)
             }

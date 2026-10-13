@@ -10,3 +10,4 @@ readme = "README.md"
 
 [dependencies]
 cssparser = "=0.37.0"
+surgeist-css = { path = "../surgeist-css" }

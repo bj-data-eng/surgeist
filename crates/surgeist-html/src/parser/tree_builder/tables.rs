@@ -13,7 +13,7 @@
 // diagnostic order and source reprocessing. Other input/resettable controls, templates,
 // fragments and SVG script remain actual pre-effect continuations.
 
-use super::head::{HeadBoundary, HeadCondition, HeadError, HeadState, HeadStep, InsertionMode};
+use super::head::{HeadCondition, HeadError, HeadState, HeadStep, InsertionMode};
 use super::prologue::Payload;
 use super::{KernelError, Scope, copy_node, write};
 use crate::{
@@ -251,32 +251,21 @@ impl HeadState<'_> {
         }
         Ok(Some(self.finish(c)?))
     }
-    /// Unsupported delegated creation is retained before table diagnostics,
-    /// foster flag writes or any body-row effects.
-    fn table_delegate_boundary(
-        &mut self,
-        c: &mut ParseControl,
-    ) -> Result<Option<HeadStep>, HeadError> {
-        if let Some((TagKind::Start, _)) = self.kind(c)? {
-            for (names, boundary) in [(&["input"][..], HeadBoundary::Form)] {
-                if self.token_in(names, c)?.is_some() {
-                    if boundary == HeadBoundary::Form && self.supported_input(c)? {
-                        continue;
-                    }
-                    return Ok(Some(self.stop_at(boundary, c)?));
-                }
-            }
+    /// Preserve the actual input-state recognition before delegated body work.
+    fn classify_delegated_input(&self, c: &mut ParseControl) -> Result<(), HeadError> {
+        if let Some((TagKind::Start, _)) = self.kind(c)?
+            && self.token_in(&["input"], c)?.is_some()
+        {
+            self.input_type(c)?;
         }
-        Ok(None)
+        Ok(())
     }
     fn delegate_body(
         &mut self,
         source: &HtmlSource,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
-        if let Some(step) = self.table_delegate_boundary(c)? {
-            return Ok(Some(step));
-        }
+        self.classify_delegated_input(c)?;
         self.body_rules(InsertionMode::InBody, source, c)
     }
     fn foster_body(
@@ -284,9 +273,7 @@ impl HeadState<'_> {
         source: &HtmlSource,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
-        if let Some(step) = self.table_delegate_boundary(c)? {
-            return Ok(Some(step));
-        }
+        self.classify_delegated_input(c)?;
         self.table_error(
             crate::construction::parser_session::evidence::DiagnosticRule {
                 anchor: "parsing-main-intable",
@@ -1132,9 +1119,7 @@ impl HeadState<'_> {
                 return Ok(Some(self.head_delegation(false, close, c)?));
             }
             if self.token_in(&["input"], c)?.is_some() {
-                if !self.supported_input(c)? {
-                    return Ok(Some(self.stop_at(HeadBoundary::Form, c)?));
-                }
+                self.input_type(c)?;
                 if !self.hidden_input(c)? {
                     return self.foster_body(source, c);
                 }

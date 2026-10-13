@@ -3,8 +3,8 @@ use surgeist_html::*;
 #[test]
 fn file_and_image_modes_preserve_distinct_resource_and_content_readback() {
     let raw = [0x0d, 0x0a, 0xd800, 88];
-    let file = HtmlInputKind::try_from(HtmlInputType::File).unwrap();
-    let image = HtmlInputKind::try_from(HtmlInputType::Image).unwrap();
+    let file = HtmlInputType::File;
+    let image = HtmlInputType::Image;
     assert_eq!(file.value_mode(), HtmlInputValueMode::Filename);
     assert_eq!(image.value_mode(), HtmlInputValueMode::Default);
     for kind in [file, image] {
@@ -48,13 +48,13 @@ fn filename_setter_rejects_nonempty_before_resource_mutation_and_empty_clears() 
         );
     }
     assert_eq!(
-        HtmlInputFlags::from_retained(HtmlInputKind::File, false, false, false, false, false)
+        HtmlInputFlags::from_retained(HtmlInputType::File, false, false, false, false, false)
             .value_setter_begin(),
         HtmlInputValueSetterStart::SetFilename
     );
 }
 
-fn effects(previous: HtmlInputKind, next: HtmlInputKind) -> Vec<HtmlInputTypeEffect> {
+fn effects(previous: HtmlInputType, next: HtmlInputType) -> Vec<HtmlInputTypeEffect> {
     let mut cursor = HtmlInputTypeChange::new(previous, next, 3);
     std::iter::from_fn(|| cursor.next_effect()).collect()
 }
@@ -62,7 +62,7 @@ fn effects(previous: HtmlInputKind, next: HtmlInputKind) -> Vec<HtmlInputTypeEff
 fn filename_transition_never_writes_internal_value_to_content_and_return_installs_default() {
     use HtmlInputTypeEffect::*;
     assert_eq!(
-        effects(HtmlInputKind::Text, HtmlInputKind::File),
+        effects(HtmlInputType::Text, HtmlInputType::File),
         vec![
             SetCurrentEmptyForFilename,
             SetRendering,
@@ -73,7 +73,7 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
         ]
     );
     assert_eq!(
-        effects(HtmlInputKind::Image, HtmlInputKind::File),
+        effects(HtmlInputType::Image, HtmlInputType::File),
         vec![
             SetCurrentEmptyForFilename,
             SetRendering,
@@ -84,7 +84,7 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
         ]
     );
     assert_eq!(
-        effects(HtmlInputKind::File, HtmlInputKind::Image),
+        effects(HtmlInputType::File, HtmlInputType::Image),
         vec![
             SetRendering,
             SignalTypeChange,
@@ -94,7 +94,7 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
         ]
     );
     assert_eq!(
-        effects(HtmlInputKind::File, HtmlInputKind::Text),
+        effects(HtmlInputType::File, HtmlInputType::Text),
         vec![
             SetCurrentFromDefaultAndClearDirty,
             SetRendering,
@@ -105,15 +105,15 @@ fn filename_transition_never_writes_internal_value_to_content_and_return_install
             SetInitialCursorAndNoneDirection
         ]
     );
-    assert!(effects(HtmlInputKind::File, HtmlInputKind::File).is_empty());
+    assert!(effects(HtmlInputType::File, HtmlInputType::File).is_empty());
 }
 
 #[test]
 fn file_image_reset_and_clone_flags_have_source_defined_independent_roles() {
-    for kind in [HtmlInputKind::File, HtmlInputKind::Image] {
+    for kind in [HtmlInputType::File, HtmlInputType::Image] {
         let original = HtmlInputFlags::from_retained(kind, true, true, true, true, true);
         let reset = original.reset_begin().reset_checkedness(false);
-        assert_eq!(reset.kind(), kind);
+        assert_eq!(reset.input_type(), kind);
         assert!(!reset.dirty_value());
         assert!(!reset.dirty_checkedness());
         assert!(!reset.user_validity());
@@ -122,7 +122,7 @@ fn file_image_reset_and_clone_flags_have_source_defined_independent_roles() {
         let clone = HtmlInputFlags::fresh()
             .type_changed(kind)
             .clone_flags_from(original);
-        assert_eq!(clone.kind(), kind);
+        assert_eq!(clone.input_type(), kind);
         assert!(clone.dirty_value());
         assert!(clone.dirty_checkedness());
         assert!(clone.checkedness());

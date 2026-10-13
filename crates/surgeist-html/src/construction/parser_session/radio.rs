@@ -93,7 +93,7 @@ impl SessionStorage {
                 if peer != progress.subject && self.html_local(c, peer, "input")? {
                     let actual = self.radio_input(c, peer)?;
                     if let Some((slot, mut state)) = actual {
-                        if state.flags.kind() == crate::HtmlInputKind::Radio
+                        if state.flags.input_type() == crate::HtmlInputType::Radio
                             && let Some(peer_name) = self.form_attribute(c, peer, "name")?
                         {
                             let subject_name = self

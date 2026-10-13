@@ -21,7 +21,7 @@
 use super::{
     KernelError, Scope, copy_node,
     formatting::FORMATTING,
-    head::{HeadBoundary, HeadCondition, HeadError, HeadState, HeadStep, InsertionMode},
+    head::{HeadCondition, HeadError, HeadState, HeadStep, InsertionMode},
     prologue::Payload,
     tag_sets::{self, NodeSet},
     write,
@@ -125,9 +125,6 @@ impl HeadState<'_> {
     }
     pub(super) fn hidden_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
         Ok(self.input_type(c)? == crate::attributes::HtmlInputType::Hidden)
-    }
-    pub(super) fn supported_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
-        Ok(crate::HtmlInputKind::try_from(self.input_type(c)?).is_ok())
     }
     pub(super) fn admit_hidden_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         match self.validate_standalone_capability(c) {
@@ -508,23 +505,17 @@ impl HeadState<'_> {
         )?;
         self.finish(c)
     }
-    fn excluded(
-        &self,
-        kind: TagKind,
-        c: &mut ParseControl,
-    ) -> Result<Option<HeadBoundary>, HeadError> {
+    fn classify_body_input(&self, kind: TagKind, c: &mut ParseControl) -> Result<(), HeadError> {
         if kind == TagKind::End {
-            return Ok(None);
+            return Ok(());
         }
-        for (names, boundary) in [(&["input"][..], HeadBoundary::Form)] {
-            if self.token_in(names, c)?.is_some() {
-                if boundary == HeadBoundary::Form && self.supported_input(c)? {
-                    continue;
-                }
-                return Ok(Some(boundary));
-            }
+        if self.token_in(&["input"], c)?.is_some() {
+            // Preserve actual classification work/ordering. All 22 language
+            // states now have intrinsic construction adapters; reached facts
+            // and operation failures are checked by their actual owners.
+            self.input_type(c)?;
         }
-        Ok(None)
+        Ok(())
     }
     pub(super) fn body_rules(
         &mut self,
@@ -759,9 +750,7 @@ impl HeadState<'_> {
             )?;
             return Ok(Some(self.discard(c)?));
         }
-        if let Some(boundary) = self.excluded(kind.ok_or(HeadError::MissingInput)?.0, c)? {
-            return Ok(Some(self.stop_at(boundary, c)?));
-        }
+        self.classify_body_input(kind.ok_or(HeadError::MissingInput)?.0, c)?;
         let Some((kind, close)) = kind else {
             return Err(HeadError::MissingInput);
         };

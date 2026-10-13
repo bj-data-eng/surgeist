@@ -94,12 +94,13 @@ pub use construction::parser_session::provenance::{
     RawFieldKind as HtmlParseRawField,
 };
 pub use construction::parser_session::provenance::{
-    LexicalDisposition as HtmlParseLexicalDisposition, LexicalKind as HtmlParseLexicalKind,
-    LexicalRole as HtmlParseLexicalRole, OmissionKind as HtmlParseOmissionKind,
-};
-pub use construction::parser_session::provenance::{
+    ColorOperandRole as HtmlParseColorOperandRole, ColorValueSource as HtmlParseColorValueSource,
     RangeBranch as HtmlParseRangeBranch, RangeOperandKind as HtmlParseRangeOperandKind,
     RangeOperandRole as HtmlParseRangeOperandRole,
+};
+pub use construction::parser_session::provenance::{
+    LexicalDisposition as HtmlParseLexicalDisposition, LexicalKind as HtmlParseLexicalKind,
+    LexicalRole as HtmlParseLexicalRole, OmissionKind as HtmlParseOmissionKind,
 };
 pub use construction::parser_session::read::{
     HtmlParseAssociation, HtmlParseAssociations, HtmlParseCapturedCause, HtmlParseCause,
@@ -107,7 +108,9 @@ pub use construction::parser_session::read::{
     HtmlParseLexicalOccurrence, HtmlParseLexicalPart, HtmlParseOmission, HtmlParseReverseCursor,
     HtmlParseReverseStep, HtmlParseScript,
 };
-pub use construction::parser_session::read::{HtmlParseRangeComputation, HtmlParseRangeOperand};
+pub use construction::parser_session::read::{
+    HtmlParseColorComputation, HtmlParseRangeComputation, HtmlParseRangeOperand,
+};
 pub use construction::parser_session::report::{
     MetadataCursor as HtmlParseMetadataCursor, MetadataDocument as HtmlParseMetadataDocument,
     MetadataRef as HtmlParseMetadata, MetadataStep as HtmlParseMetadataStep,

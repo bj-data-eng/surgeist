@@ -530,7 +530,7 @@ mod tests {
                 MetadataStep::Record(record) => {
                     if let Some((state, raw)) = record.input() {
                         assert_eq!(
-                            state.flags.kind().input_type(),
+                            state.flags.input_type(),
                             crate::attributes::HtmlInputType::Text
                         );
                         assert!(!state.flags.dirty_value());

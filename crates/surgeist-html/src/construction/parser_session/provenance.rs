@@ -144,6 +144,67 @@ impl RangeComputation {
     }
 }
 
+/// The actual source selected by the Color update algorithm. A missing
+/// installed default is distinct from an installed empty string.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ColorValueSource {
+    MissingInstalledValue,
+    InstalledValue,
+    CurrentValue,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ColorOperandRole {
+    Alpha,
+    Colorspace,
+}
+impl ColorOperandRole {
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Self::Alpha => 0,
+            Self::Colorspace => 1,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ColorComputation {
+    pub(crate) source: ColorValueSource,
+    pub(crate) original: Option<RangeEdge>,
+    pub(crate) operands: [Option<RangeEdge>; 2],
+    pub(crate) space: crate::HtmlInputColorSpace,
+    pub(crate) standard_failure: Option<surgeist_css::CssColorStandardFailure>,
+    pub(crate) environment: surgeist_css::CssColorFactIdentity,
+    pub(crate) value: surgeist_css::CssUsedColor,
+}
+/// Only one actual generated-value operation can own a replacement cause.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum InputValueComputation {
+    Range(RangeComputation),
+    Color(ColorComputation),
+}
+impl InputValueComputation {
+    pub(crate) fn original(self) -> Option<RangeEdge> {
+        match self {
+            Self::Range(value) => match value.original {
+                RangeOriginal::FreshEmpty => None,
+                RangeOriginal::Group(edge) => Some(edge),
+            },
+            Self::Color(value) => value.original,
+        }
+    }
+    pub(crate) fn edges(self) -> [Option<RangeEdge>; 5] {
+        match self {
+            Self::Range(value) => value.edges(),
+            Self::Color(value) => [
+                value.original,
+                value.operands[0],
+                value.operands[1],
+                None,
+                None,
+            ],
+        }
+    }
+}
+
 pub(crate) struct ConstructionCause {
     pub(crate) operation: ConstructionOperation,
     pub(crate) source: Option<crate::HtmlSourceRange>,
@@ -157,7 +218,7 @@ pub(crate) struct ConstructionCause {
     pub(crate) original: Option<usize>,
     pub(crate) incoming: Option<usize>,
     pub(crate) trigger: Option<usize>,
-    pub(crate) range_computation: Option<RangeComputation>,
+    pub(crate) computation: Option<InputValueComputation>,
 }
 pub(crate) struct OriginGroup {
     pub(crate) body: GroupBody,
@@ -1042,7 +1103,7 @@ impl ParseEvidence {
                 original: Some(original),
                 incoming: None,
                 trigger: self.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -1095,7 +1156,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: None,
-                range_computation: None,
+                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -1134,7 +1195,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: self.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         let result = self.cause_ref(index, c)?;
@@ -1161,7 +1222,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: None,
-                range_computation: None,
+                computation: None,
             },
         )
     }
@@ -1267,7 +1328,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: None,
-                range_computation: None,
+                computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -1324,7 +1385,7 @@ impl ParseEvidence {
                 original: Some(old.index),
                 incoming: Some(incoming.index),
                 trigger: self.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -1528,7 +1589,7 @@ impl SessionStorage {
                 original: None,
                 incoming: None,
                 trigger: evidence.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -1594,7 +1655,7 @@ impl SessionStorage {
                 original,
                 incoming: Some(incoming.index),
                 trigger: evidence.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         let index = evidence.native.groups.len();
@@ -1650,7 +1711,7 @@ impl SessionStorage {
                 original: Some(index),
                 incoming: None,
                 trigger: evidence.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -1751,10 +1812,10 @@ impl FieldCopy {
     }
 }
 impl ParseEvidence {
-    /// Only a real Range computation can account for a nonempty leaf without
+    /// Only a real input computation can account for a nonempty leaf without
     /// lexical atoms. Empty fresh leaves and complete lexical leaves retain
     /// their existing meanings; missing atoms alone confer no authority.
-    pub(super) fn qualify_range_copy(
+    pub(super) fn qualify_generated_copy(
         &self,
         c: &mut ParseControl,
         payloads: &PayloadStorage,
@@ -1799,12 +1860,12 @@ impl ParseEvidence {
                         mem::size_of::<ConstructionCause>() as u64,
                     )?;
                     let value = cause
-                        .range_computation
+                        .computation
                         .ok_or(SessionError::OriginSplitUnavailable)?;
                     if cause.operation != ConstructionOperation::Replacement {
                         return Err(SessionError::WrongToken);
                     }
-                    validate_range_computation(
+                    validate_input_computation(
                         c,
                         value,
                         self.native.groups.as_slice(),
@@ -1859,18 +1920,6 @@ impl ParseEvidence {
             cause: value.cause,
         })
     }
-    pub(super) fn validate_range_computation(
-        &self,
-        c: &mut ParseControl,
-        value: RangeComputation,
-    ) -> Result<(), SessionError> {
-        validate_range_computation(
-            c,
-            value,
-            self.native.groups.as_slice(),
-            self.native.causes.len(),
-        )
-    }
 }
 pub(super) fn validate_range_computation(
     c: &mut ParseControl,
@@ -1914,6 +1963,44 @@ pub(super) fn validate_range_computation(
     }
     Ok(())
 }
+pub(super) fn validate_input_computation(
+    c: &mut ParseControl,
+    value: InputValueComputation,
+    groups: &[OriginGroup],
+    cause: usize,
+) -> Result<(), SessionError> {
+    match value {
+        InputValueComputation::Range(range) => validate_range_computation(c, range, groups, cause),
+        InputValueComputation::Color(color) => {
+            c.charge(
+                WorkCategory::InspectByte,
+                mem::size_of::<ColorComputation>() as u64,
+            )?;
+            if (color.source == ColorValueSource::MissingInstalledValue) != color.original.is_none()
+                || color.environment != super::input_color::environment_identity()
+            {
+                return Err(SessionError::WrongToken);
+            }
+            for edge in [color.original, color.operands[0], color.operands[1]] {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if let Some(edge) = edge {
+                    c.charge(
+                        WorkCategory::InspectByte,
+                        mem::size_of::<OriginGroup>() as u64,
+                    )?;
+                    if edge.cause >= cause
+                        || groups
+                            .get(edge.group)
+                            .is_none_or(|group| group.cause != edge.cause)
+                    {
+                        return Err(SessionError::WrongToken);
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+}
 impl SessionStorage {
     pub(super) fn range_payload_edge(
         &self,
@@ -1943,8 +2030,21 @@ impl SessionStorage {
         units: usize,
         computation: RangeComputation,
     ) -> Result<OriginGroupRef, SessionError> {
+        self.prepare_input_group(c, units, InputValueComputation::Range(computation))
+    }
+    pub(super) fn prepare_input_group(
+        &mut self,
+        c: &mut ParseControl,
+        units: usize,
+        computation: InputValueComputation,
+    ) -> Result<OriginGroupRef, SessionError> {
         let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
-        evidence.validate_range_computation(c, computation)?;
+        validate_input_computation(
+            c,
+            computation,
+            evidence.native.groups.as_slice(),
+            evidence.native.causes.len(),
+        )?;
         // Every original/role qualification precedes reservation. These are
         // actual receiver capacities and required logical slots, not a ticket
         // dropped locally on a denied write.
@@ -1969,13 +2069,10 @@ impl SessionStorage {
                 retired_destination: None,
                 original_node: None,
                 intended_parent: None,
-                original: match computation.original {
-                    RangeOriginal::FreshEmpty => None,
-                    RangeOriginal::Group(edge) => Some(edge.group),
-                },
+                original: computation.original().map(|edge| edge.group),
                 incoming: None,
                 trigger: evidence.native.current,
-                range_computation: Some(computation),
+                computation: Some(computation),
             },
         )?;
         let index = evidence.native.groups.len();
@@ -2056,7 +2153,7 @@ impl ParseEvidence {
                 original: Some(original.index),
                 incoming: None,
                 trigger: self.native.current,
-                range_computation: None,
+                computation: None,
             },
         )
     }
@@ -2792,7 +2889,7 @@ impl ParseEvidence {
                 original: None,
                 incoming: None,
                 trigger: self.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         let reference = self.cause_ref(index, c)?;
@@ -2908,7 +3005,7 @@ impl SessionStorage {
                 original: None,
                 incoming: None,
                 trigger: evidence.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -2946,7 +3043,7 @@ impl SessionStorage {
                 original: None,
                 incoming: None,
                 trigger: evidence.native.current,
-                range_computation: None,
+                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -3360,5 +3457,61 @@ mod merge_cleanup_tests {
             before.resource(HtmlParseResource::WorkCredits)
         );
         crate::parser::tree_builder::tests::assert_released(&c);
+    }
+}
+
+// Generated input digits have an actual value/group, and deliberately no
+// lexical digit origins. Copy that complete field, retaining exactly the
+// atoms actually present instead of requiring invented lexical coverage.
+pub(super) fn copy_generated_input_value(
+    payloads: &PayloadStorage,
+    evidence: Option<&ParseEvidence>,
+    c: &mut ParseControl,
+    slot: usize,
+) -> Result<FieldCopy, SessionError> {
+    let value = admitted_input_string(payloads, c, slot)?;
+    let RetainedPayload::String {
+        origins: Some(group),
+        ..
+    } = &payloads.values[slot]
+    else {
+        return Err(SessionError::WrongToken);
+    };
+    let evidence = evidence.ok_or(SessionError::WrongToken)?;
+    evidence.qualify_generated_copy(c, payloads, group, value.code_units())?;
+    let mut buffer = Utf16Buffer::new(c)?;
+    let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
+    let result = (|| {
+        buffer.extend_units(value.code_units(), c)?;
+        let mut cursor = provenance::GroupOriginCursor::new(evidence, group, c)?;
+        let read = (|| {
+            while let Some(origin) = cursor.next(evidence, c)? {
+                c.require_source_range(&origin.source)?;
+                origins.try_push(c, origin)?;
+            }
+            Ok::<_, SessionError>(())
+        })();
+        cursor.release(c)?;
+        read?;
+        evidence.copy_group_reference(c, group)
+    })();
+    let original = match result {
+        Ok(group) => group,
+        Err(error) => {
+            buffer.release(c)?;
+            origins.release(c)?;
+            return Err(error);
+        }
+    };
+    match buffer.freeze(c) {
+        Ok(value) => Ok(FieldCopy {
+            value,
+            origins,
+            original: Some(original),
+        }),
+        Err(error) => {
+            origins.release(c)?;
+            Err(error.into())
+        }
     }
 }

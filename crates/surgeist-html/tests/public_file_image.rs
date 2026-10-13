@@ -97,7 +97,7 @@ fn filename_is_empty_with_exact_raw_and_current_default_fields_and_real_form_own
                 HtmlParseMetadataStep::Record(record) => {
                     if let Some(flags) = record.input_flags() {
                         found = true;
-                        assert_eq!(flags.kind(), HtmlInputKind::File);
+                        assert_eq!(flags.input_type(), HtmlInputType::File);
                         assert_eq!(
                             record.input_raw_value().unwrap().code_units(),
                             DocumentString::from(raw).code_units()
@@ -107,7 +107,7 @@ fn filename_is_empty_with_exact_raw_and_current_default_fields_and_real_form_own
                             Some(HtmlInputFileSelection::Empty)
                         );
                         assert_eq!(
-                            flags.kind().value_mode().readback(
+                            flags.input_type().value_mode().readback(
                                 record.input_raw_value().unwrap().code_units(),
                                 None,
                                 record.input_file_selection(),
@@ -154,7 +154,7 @@ fn image_initial_coordinates_and_source_are_exact_and_getter_uses_actual_content
                 HtmlParseMetadataStep::Record(record) => {
                     if let Some(flags) = record.input_flags() {
                         found = true;
-                        assert_eq!(flags.kind(), HtmlInputKind::Image);
+                        assert_eq!(flags.input_type(), HtmlInputType::Image);
                         let coordinate = record.input_image_coordinate().unwrap();
                         assert_eq!((coordinate.x(), coordinate.y()), (0, 0));
                         assert_eq!(record.input_file_selection(), None);
@@ -169,7 +169,7 @@ fn image_initial_coordinates_and_source_are_exact_and_getter_uses_actual_content
                                 && a.name().local_name().code_units() == [118, 97, 108, 117, 101]
                         });
                         assert_eq!(
-                            flags.kind().value_mode().readback(
+                            flags.input_type().value_mode().readback(
                                 record.input_raw_value().unwrap().code_units(),
                                 content.map(|a| a.value().code_units()),
                                 record.input_file_selection(),
@@ -454,51 +454,51 @@ fn native_value_modes_use_explicit_content_and_fixed_qualified_metadata_lenders(
     let cases = [
         (
             "type=text value='A&#13;B'",
-            HtmlInputKind::Text,
+            HtmlInputType::Text,
             &[65u16, 66][..],
             Some(&[65u16, 13, 66][..]),
             &[65u16, 66][..],
         ),
-        ("type=hidden", HtmlInputKind::Hidden, &[], None, &[]),
+        ("type=hidden", HtmlInputType::Hidden, &[], None, &[]),
         (
             "type=hidden value=''",
-            HtmlInputKind::Hidden,
+            HtmlInputType::Hidden,
             &[],
             Some(&[]),
             &[],
         ),
         (
             "type=checkbox",
-            HtmlInputKind::Checkbox,
+            HtmlInputType::Checkbox,
             &[],
             None,
             &[111, 110],
         ),
         (
             "type=checkbox value=''",
-            HtmlInputKind::Checkbox,
+            HtmlInputType::Checkbox,
             &[],
             Some(&[]),
             &[],
         ),
         (
             "type=file value=Q",
-            HtmlInputKind::File,
+            HtmlInputType::File,
             &[81],
             Some(&[81]),
             &[],
         ),
-        ("type=image", HtmlInputKind::Image, &[], None, &[]),
+        ("type=image", HtmlInputType::Image, &[], None, &[]),
         (
             "type=image value=''",
-            HtmlInputKind::Image,
+            HtmlInputType::Image,
             &[],
             Some(&[]),
             &[],
         ),
         (
             "type=image value='A&#13;B'",
-            HtmlInputKind::Image,
+            HtmlInputType::Image,
             &[65, 13, 66],
             Some(&[65, 13, 66]),
             &[65, 13, 66],
@@ -517,7 +517,7 @@ fn native_value_modes_use_explicit_content_and_fixed_qualified_metadata_lenders(
                         continue;
                     };
                     inputs += 1;
-                    assert_eq!(flags.kind(), kind);
+                    assert_eq!(flags.input_type(), kind);
                     let raw = record.input_raw_value().unwrap();
                     assert_eq!(raw.code_units(), internal);
                     let node = record.node();
@@ -539,7 +539,7 @@ fn native_value_modes_use_explicit_content_and_fixed_qualified_metadata_lenders(
                     let files = record.input_file_selection();
                     assert_eq!(
                         files,
-                        (kind == HtmlInputKind::File).then_some(HtmlInputFileSelection::Empty)
+                        (kind == HtmlInputType::File).then_some(HtmlInputFileSelection::Empty)
                     );
                     // Value and Filename consult no content evidence at all.
                     let consulted = match kind.value_mode() {

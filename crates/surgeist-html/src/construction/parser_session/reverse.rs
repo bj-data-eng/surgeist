@@ -16,6 +16,7 @@ pub enum AssociationRelation {
     Omission,
     Cause,
     RangeDependency(RangeOperandRole),
+    ColorDependency(ColorOperandRole),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReverseQueryError {
@@ -204,6 +205,7 @@ impl SpatialLink {
                 AssociationRelation::Omission => 8,
                 AssociationRelation::Cause => 9,
                 AssociationRelation::RangeDependency(role) => 10 + role.index(),
+                AssociationRelation::ColorDependency(role) => 14 + role.index(),
             },
             self.start,
             self.end,
@@ -409,11 +411,24 @@ impl ParseEvidence {
                         has_source |= Self::spatial_reachable(c, &reachable, cause)?;
                     }
                 }
-                if let Some(range) = cause.range_computation {
-                    validate_range_computation(c, range, self.native.groups.as_slice(), index)?;
-                    for operand in range.operands {
+                if let Some(computation) = cause.computation {
+                    validate_input_computation(
+                        c,
+                        computation,
+                        self.native.groups.as_slice(),
+                        index,
+                    )?;
+                    let operands = match computation {
+                        InputValueComputation::Range(range) => {
+                            range.operands.map(RangeOperand::edge)
+                        }
+                        InputValueComputation::Color(color) => {
+                            [color.operands[0], color.operands[1], None, None]
+                        }
+                    };
+                    for edge in operands {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        if let Some(edge) = operand.edge() {
+                        if let Some(edge) = edge {
                             has_source |= Self::spatial_reachable(c, &reachable, edge.cause)?;
                         }
                     }
@@ -655,7 +670,7 @@ impl ParseEvidence {
                     cause.original_cause,
                     cause.trigger,
                 );
-                if let Some(range) = cause.range_computation {
+                if let Some(InputValueComputation::Range(range)) = cause.computation {
                     payload_write::<RangeComputation>(c, 1)?;
                     for role in [
                         RangeOperandRole::Minimum,
@@ -670,6 +685,22 @@ impl ParseEvidence {
                                 &mut pending,
                                 link,
                                 (edge.group, AssociationRelation::RangeDependency(role)),
+                                link.start..link.end,
+                                true,
+                            )?;
+                        }
+                    }
+                }
+                if let Some(InputValueComputation::Color(color)) = cause.computation {
+                    payload_write::<ColorComputation>(c, 1)?;
+                    for role in [ColorOperandRole::Alpha, ColorOperandRole::Colorspace] {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if let Some(edge) = color.operands[role.index()] {
+                            self.push_spatial_group(
+                                c,
+                                &mut pending,
+                                link,
+                                (edge.group, AssociationRelation::ColorDependency(role)),
                                 link.start..link.end,
                                 true,
                             )?;

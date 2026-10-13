@@ -649,7 +649,15 @@ impl SessionStorage {
             )?);
         }
         if self.html_local(c, source, "input")? {
-            self.input_clone_slot(c, source)?;
+            let (_, _, original) = self.input_clone_slot(c, source)?;
+            // This incomplete clone is already qualified as the actual Color
+            // source. Keep fresh dirty flags; copy current and source flags only
+            // at completion, independently of its copied native default.
+            let flags = if original.flags.input_type() == crate::HtmlInputType::Color {
+                crate::HtmlInputFlags::fresh().type_changed(crate::HtmlInputType::Color)
+            } else {
+                crate::HtmlInputFlags::fresh()
+            };
             let empty = literal_string(c, b"")?;
             let raw = self.register_raw(c, empty)?;
             payload_write::<Option<usize>>(c, 1)?;
@@ -660,7 +668,7 @@ impl SessionStorage {
                     raw,
                     complete: false,
                     state: InputState {
-                        flags: crate::HtmlInputFlags::fresh(),
+                        flags,
                         cursor: 0,
                         selected_files_empty: true,
                         value_rewritten_during_creation: false,
@@ -781,6 +789,13 @@ impl SessionStorage {
             self.initial_details_attribute(c, node, position)?;
         }
         if let Some(input) = bindings.input {
+            let initialization = if self.read_input_state(c, input)?.flags.input_type()
+                == crate::HtmlInputType::Color
+            {
+                InputAttributeInitialization::ClonedColor
+            } else {
+                InputAttributeInitialization::Installed
+            };
             self.initial_input_attribute(
                 c,
                 node,
@@ -788,8 +803,8 @@ impl SessionStorage {
                 bindings
                     .association
                     .ok_or(SessionError::FormAssociationMetadataUnavailable)?,
-                container,
-                position,
+                (container, position),
+                initialization,
             )?;
         }
         if bindings.select.is_some() || self.html_local(c, node, "optgroup")? {
@@ -850,21 +865,18 @@ impl SessionStorage {
         }
         if let Some(slot) = bindings.input {
             let (_, original_raw, original) = self.input_clone_slot(c, source)?;
-            let text = if original.flags.kind() == crate::HtmlInputKind::Range {
-                range::copy_range_input_value(
+            let text = if matches!(
+                original.flags.input_type(),
+                crate::HtmlInputType::Range | crate::HtmlInputType::Color
+            ) {
+                provenance::copy_generated_input_value(
                     &self.payloads,
                     self.evidence.as_ref(),
                     c,
                     original_raw,
                 )?
             } else {
-                copy_input_value(
-                    &self.payloads,
-                    self.evidence.as_ref(),
-                    c,
-                    original_raw,
-                    crate::HtmlInputSanitization::Preserve,
-                )?
+                copy_preserved_input_value(&self.payloads, self.evidence.as_ref(), c, original_raw)?
             };
             self.replace_input_raw(c, slot, text)?;
             let mut state = self.read_input_state(c, slot)?;

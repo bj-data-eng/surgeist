@@ -195,7 +195,7 @@ pub(super) fn append_native_input_value(
     };
     let mut content = None;
     if matches!(
-        state.flags.kind().value_mode(),
+        state.flags.input_type().value_mode(),
         crate::HtmlInputValueMode::Default | crate::HtmlInputValueMode::DefaultOn
     ) {
         for attribute in element.attributes().as_slice() {
@@ -213,7 +213,7 @@ pub(super) fn append_native_input_value(
         .then_some(crate::HtmlInputFileSelection::Empty);
     let units = state
         .flags
-        .kind()
+        .input_type()
         .value_mode()
         .readback(internal, content, files)
         .ok_or(SessionError::InputMetadataUnavailable)?;
@@ -322,8 +322,12 @@ mod tests {
             );
         }
         assert_eq!(
-            session.input_state(&mut c, &node).unwrap().flags.kind(),
-            crate::HtmlInputKind::Image
+            session
+                .input_state(&mut c, &node)
+                .unwrap()
+                .flags
+                .input_type(),
+            crate::HtmlInputType::Image
         );
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
@@ -345,7 +349,7 @@ mod tests {
             .unwrap()
             .unwrap();
         state.flags = crate::HtmlInputFlags::from_retained(
-            state.flags.kind(),
+            state.flags.input_type(),
             true,
             false,
             false,
@@ -397,7 +401,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
             state.flags = crate::HtmlInputFlags::from_retained(
-                state.flags.kind(),
+                state.flags.input_type(),
                 true,
                 true,
                 false,

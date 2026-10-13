@@ -2,9 +2,9 @@ use surgeist_html::*;
 
 #[test]
 fn radio_canonical_kind_default_on_raw_policy_and_no_selection_are_source_defined() {
-    let kind = HtmlInputKind::try_from(HtmlInputType::Radio).unwrap();
-    assert_eq!(kind, HtmlInputKind::Radio);
-    assert_eq!(kind.input_type(), HtmlInputType::Radio);
+    let kind = HtmlInputType::Radio;
+    assert_eq!(kind, HtmlInputType::Radio);
+    assert_eq!(kind, HtmlInputType::Radio);
     assert_eq!(kind.value_mode(), HtmlInputValueMode::DefaultOn);
     assert_eq!(
         string_policy(kind.sanitization()),
@@ -28,19 +28,19 @@ fn radio_five_trigger_requirements_depend_on_actual_radio_current_checkedness() 
         HtmlRadioTrigger::Connected,
     ] {
         for kind in [
-            HtmlInputKind::Radio,
-            HtmlInputKind::Checkbox,
-            HtmlInputKind::Text,
+            HtmlInputType::Radio,
+            HtmlInputType::Checkbox,
+            HtmlInputType::Text,
         ] {
             for checked in [false, true] {
                 let flags = HtmlInputFlags::from_retained(kind, true, true, checked, true, true);
                 assert_eq!(
                     flags.radio_normalization_required(trigger),
-                    kind == HtmlInputKind::Radio && checked
+                    kind == HtmlInputType::Radio && checked
                 );
                 let peer = flags.radio_peer_unchecked();
                 assert!(!peer.checkedness());
-                assert_eq!(peer.kind(), kind);
+                assert_eq!(peer.input_type(), kind);
                 assert_eq!(peer.dirty_checkedness(), flags.dirty_checkedness());
                 assert_eq!(peer.dirty_value(), flags.dirty_value());
                 assert_eq!(peer.indeterminate(), flags.indeterminate());
@@ -50,7 +50,7 @@ fn radio_five_trigger_requirements_depend_on_actual_radio_current_checkedness() 
 }
 #[test]
 fn checkbox_to_radio_type_change_has_real_state_signal_and_preserving_sanitization() {
-    let mut change = HtmlInputTypeChange::new(HtmlInputKind::Checkbox, HtmlInputKind::Radio, 4);
+    let mut change = HtmlInputTypeChange::new(HtmlInputType::Checkbox, HtmlInputType::Radio, 4);
     let mut effects = Vec::new();
     while let Some(effect) = change.next_effect() {
         effects.push(effect);
@@ -65,14 +65,14 @@ fn checkbox_to_radio_type_change_has_real_state_signal_and_preserving_sanitizati
             ))
         ]
     );
-    let mut same = HtmlInputTypeChange::new(HtmlInputKind::Radio, HtmlInputKind::Radio, 4);
+    let mut same = HtmlInputTypeChange::new(HtmlInputType::Radio, HtmlInputType::Radio, 4);
     assert_eq!(same.next_effect(), None);
 }
 
 fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
     match policy {
         HtmlInputValueSanitization::String(policy) => policy,
-        HtmlInputValueSanitization::Range => {
+        HtmlInputValueSanitization::Range | HtmlInputValueSanitization::Color => {
             panic!("these literal cases require the string operation")
         }
     }

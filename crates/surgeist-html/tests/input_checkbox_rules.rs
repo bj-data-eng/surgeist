@@ -3,9 +3,9 @@ use surgeist_html::*;
 // HTML877d Checkbox/default-on, common reset/type-change/clone/checked rules.
 #[test]
 fn checkbox_has_exact_default_on_content_fallback_and_no_sanitizer() {
-    let kind = HtmlInputKind::try_from(HtmlInputType::Checkbox).unwrap();
-    assert_eq!(kind, HtmlInputKind::Checkbox);
-    assert_eq!(kind.input_type(), HtmlInputType::Checkbox);
+    let kind = HtmlInputType::Checkbox;
+    assert_eq!(kind, HtmlInputType::Checkbox);
+    assert_eq!(kind, HtmlInputType::Checkbox);
     assert_eq!(kind.value_mode(), HtmlInputValueMode::DefaultOn);
     assert_eq!(
         kind.value_mode().readback(&[], None, None),
@@ -30,16 +30,14 @@ fn checkbox_has_exact_default_on_content_fallback_and_no_sanitizer() {
         HtmlInputSanitization::Preserve
     );
     assert_eq!(
-        HtmlInputKind::try_from(HtmlInputType::Color)
-            .unwrap_err()
-            .input_type(),
-        HtmlInputType::Color
+        HtmlInputType::Color.sanitization(),
+        HtmlInputValueSanitization::Color
     );
 }
 
 #[test]
 fn default_on_setter_changes_content_and_does_not_dirty_current_value() {
-    let flags = HtmlInputFlags::fresh().type_changed(HtmlInputKind::Checkbox);
+    let flags = HtmlInputFlags::fresh().type_changed(HtmlInputType::Checkbox);
     assert_eq!(
         flags.value_setter_begin(),
         HtmlInputValueSetterStart::SetContentValue
@@ -52,7 +50,7 @@ fn default_on_setter_changes_content_and_does_not_dirty_current_value() {
         )
     );
     let dirty =
-        HtmlInputFlags::from_retained(HtmlInputKind::Checkbox, true, false, false, false, false);
+        HtmlInputFlags::from_retained(HtmlInputType::Checkbox, true, false, false, false, false);
     assert_eq!(
         dirty.value_attribute_changed(),
         HtmlInputValueAttributeEffect::KeepCurrent
@@ -61,7 +59,7 @@ fn default_on_setter_changes_content_and_does_not_dirty_current_value() {
 
 #[test]
 fn checked_setter_is_dirty_and_indeterminate_is_independent() {
-    let initial = HtmlInputFlags::fresh().type_changed(HtmlInputKind::Checkbox);
+    let initial = HtmlInputFlags::fresh().type_changed(HtmlInputType::Checkbox);
     let checked = initial
         .checked_attribute_changed(HtmlInputCheckedAttributeChange::Added)
         .unwrap();
@@ -94,7 +92,7 @@ fn checked_setter_is_dirty_and_indeterminate_is_independent() {
 #[test]
 fn checkbox_reset_clears_only_specified_flags_and_retains_indeterminate() {
     let initial =
-        HtmlInputFlags::from_retained(HtmlInputKind::Checkbox, true, true, true, true, true);
+        HtmlInputFlags::from_retained(HtmlInputType::Checkbox, true, true, true, true, true);
     let mut reset = HtmlInputReset::new(initial);
     let Some(HtmlInputResetEffect::ClearDirtyAndUserValidity(next)) = reset.next_effect() else {
         panic!("first flags");
@@ -124,13 +122,13 @@ fn checkbox_reset_clears_only_specified_flags_and_retains_indeterminate() {
     assert_eq!(reset.next_effect(), None);
 }
 
-fn effects(old: HtmlInputKind, new: HtmlInputKind, len: usize) -> Vec<HtmlInputTypeEffect> {
+fn effects(old: HtmlInputType, new: HtmlInputType, len: usize) -> Vec<HtmlInputTypeEffect> {
     let mut cursor = HtmlInputTypeChange::new(old, new, len);
     std::iter::from_fn(|| cursor.next_effect()).collect()
 }
 #[test]
 fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
-    use HtmlInputKind::{Checkbox, Hidden, Text};
+    use HtmlInputType::{Checkbox, Hidden, Text};
     use HtmlInputTypeEffect::*;
     assert_eq!(
         effects(Text, Checkbox, 3),
@@ -200,10 +198,10 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
 #[test]
 fn checkbox_cloning_copies_four_flags_without_user_validity_or_kind_overwrite() {
     let original =
-        HtmlInputFlags::from_retained(HtmlInputKind::Checkbox, true, true, true, true, true);
-    let destination = HtmlInputFlags::fresh().type_changed(HtmlInputKind::Checkbox);
+        HtmlInputFlags::from_retained(HtmlInputType::Checkbox, true, true, true, true, true);
+    let destination = HtmlInputFlags::fresh().type_changed(HtmlInputType::Checkbox);
     let copy = destination.clone_flags_from(original);
-    assert_eq!(copy.kind(), HtmlInputKind::Checkbox);
+    assert_eq!(copy.input_type(), HtmlInputType::Checkbox);
     assert!(
         copy.dirty_value()
             && copy.dirty_checkedness()
@@ -222,7 +220,7 @@ fn checkbox_value_finish_never_requests_text_cursor_effects() {
     }
     assert_eq!(
         input_value_setter_finish(
-            HtmlInputKind::Checkbox,
+            HtmlInputType::Checkbox,
             comparison.result().unwrap(),
             HtmlInputSelection::cursor(0)
         ),
@@ -233,7 +231,7 @@ fn checkbox_value_finish_never_requests_text_cursor_effects() {
 fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
     match policy {
         HtmlInputValueSanitization::String(policy) => policy,
-        HtmlInputValueSanitization::Range => {
+        HtmlInputValueSanitization::Range | HtmlInputValueSanitization::Color => {
             panic!("these literal cases require the string operation")
         }
     }

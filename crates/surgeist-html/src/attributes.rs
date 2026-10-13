@@ -659,6 +659,17 @@ pub(crate) fn input_type_keyword(index: usize) -> Option<(&'static str, HtmlInpu
         .get(index)
         .map(|row| (row.spelling, row.state))
 }
+pub(crate) fn input_colorspace_keyword(
+    index: usize,
+) -> Option<(&'static str, HtmlInputColorSpace)> {
+    input_colorspace::colorspace_keyword(index)
+}
+pub(crate) fn input_colorspace_default() -> HtmlInputColorSpace {
+    input_colorspace::colorspace_default()
+}
+pub(crate) fn input_colorspace_invalid_default() -> HtmlInputColorSpace {
+    input_colorspace::colorspace_invalid_default()
+}
 pub(crate) fn input_type_default() -> HtmlInputType {
     INPUT_TYPE
         .missing

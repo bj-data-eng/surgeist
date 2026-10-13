@@ -472,7 +472,7 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
                 }
                 if let Some(flags) = record.input_flags() {
                     input = true;
-                    assert_eq!(flags.kind(), HtmlInputKind::Hidden);
+                    assert_eq!(flags.input_type(), HtmlInputType::Hidden);
                     assert!(!flags.dirty_value());
                     assert_eq!(record.input_raw_value(), Some(&DocumentString::from("x")));
                     assert!(record.form_owner().is_none());
@@ -922,14 +922,20 @@ fn retained_source_and_capture_aliases_do_not_alias_terminal_parser_backing() {
         }
     }
     let document_source = HtmlSource::utf16(DocumentString::from(
-        "<!doctype html><p>A&amp;B<input type=color>",
+        "<!doctype html><p>A&amp;B<input type=color value=currentcolor>",
     ));
     let failure = HtmlDocumentParseRequest::offline(document_source.clone(), limits())
         .parse()
         .unwrap_err();
     assert!(matches!(
         failure.reason(),
-        HtmlParseFailureReason::UnsupportedConstruction(_)
+        HtmlParseFailureReason::Stop(HtmlParseStop::ColorProcessing(
+            surgeist_css::CssColorOperationError::Unavailable(
+                surgeist_css::CssColorUnavailable::Palette(
+                    surgeist_css::CssSystemColor::CanvasText,
+                )
+            ),
+        ))
     ));
     assert_eq!(failure.cleanup_error(), None);
     assert_eq!(failure.source().identity(), document_source.identity());
@@ -1419,7 +1425,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
                     if let Some(flags) = record.input_flags() {
                         found += 1;
                         assert_eq!(record.node().id(), *input_id);
-                        assert_eq!(flags.kind(), HtmlInputKind::Email);
+                        assert_eq!(flags.input_type(), HtmlInputType::Email);
                         assert!(!flags.dirty_value());
                         assert_eq!(
                             record.input_raw_value(),
@@ -1523,8 +1529,8 @@ fn button_default_value_preserves_ordered_content_and_retained_raw_after_cancel(
                     if let Some(flags) = record.input_flags() {
                         inputs += 1;
                         assert_eq!(record.node().id(), input.id());
-                        assert_eq!(flags.kind(), HtmlInputKind::Button);
-                        assert_eq!(flags.kind().value_mode(), HtmlInputValueMode::Default);
+                        assert_eq!(flags.input_type(), HtmlInputType::Button);
+                        assert_eq!(flags.input_type().value_mode(), HtmlInputValueMode::Default);
                         assert!(!flags.dirty_value());
                         assert_eq!(
                             record.input_raw_value(),
@@ -1593,8 +1599,8 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
                     if let Some(flags) = record.input_flags() {
                         inputs += 1;
                         assert_eq!(record.node().id(), input.id());
-                        assert_eq!(flags.kind(), HtmlInputKind::LocalDateTime);
-                        assert_eq!(flags.kind().value_mode(), HtmlInputValueMode::Value);
+                        assert_eq!(flags.input_type(), HtmlInputType::LocalDateTime);
+                        assert_eq!(flags.input_type().value_mode(), HtmlInputValueMode::Value);
                         assert!(!flags.dirty_value());
                         assert_eq!(
                             record.input_raw_value(),

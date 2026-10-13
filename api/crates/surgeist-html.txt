@@ -1149,6 +1149,11 @@ pub fn surgeist_html::HtmlInertFactError::fmt(&self, f: &mut core::fmt::Formatte
 pub enum surgeist_html::HtmlInputCheckedAttributeChange
 pub surgeist_html::HtmlInputCheckedAttributeChange::Added
 pub surgeist_html::HtmlInputCheckedAttributeChange::Removed
+pub enum surgeist_html::HtmlInputColorEffect
+pub surgeist_html::HtmlInputColorEffect::ColorFunction
+pub surgeist_html::HtmlInputColorEffect::Convert(surgeist_html::HtmlInputColorSpace)
+pub surgeist_html::HtmlInputColorEffect::ForceOpaqueAlpha
+pub surgeist_html::HtmlInputColorEffect::QuantizeSrgb
 pub enum surgeist_html::HtmlInputColorSpace
 pub surgeist_html::HtmlInputColorSpace::DisplayP3
 pub surgeist_html::HtmlInputColorSpace::LimitedSrgb
@@ -1175,36 +1180,6 @@ pub surgeist_html::HtmlInputImageAvailability::NotAvailable
 pub enum surgeist_html::HtmlInputImageSource<'a>
 pub surgeist_html::HtmlInputImageSource::Absent
 pub surgeist_html::HtmlInputImageSource::Present(&'a surgeist_html::DocumentString)
-pub enum surgeist_html::HtmlInputKind
-pub surgeist_html::HtmlInputKind::Button
-pub surgeist_html::HtmlInputKind::Checkbox
-pub surgeist_html::HtmlInputKind::Date
-pub surgeist_html::HtmlInputKind::Email
-pub surgeist_html::HtmlInputKind::File
-pub surgeist_html::HtmlInputKind::Hidden
-pub surgeist_html::HtmlInputKind::Image
-pub surgeist_html::HtmlInputKind::LocalDateTime
-pub surgeist_html::HtmlInputKind::Month
-pub surgeist_html::HtmlInputKind::Number
-pub surgeist_html::HtmlInputKind::Password
-pub surgeist_html::HtmlInputKind::Radio
-pub surgeist_html::HtmlInputKind::Range
-pub surgeist_html::HtmlInputKind::Reset
-pub surgeist_html::HtmlInputKind::Search
-pub surgeist_html::HtmlInputKind::Submit
-pub surgeist_html::HtmlInputKind::Telephone
-pub surgeist_html::HtmlInputKind::Text
-pub surgeist_html::HtmlInputKind::Time
-pub surgeist_html::HtmlInputKind::Url
-pub surgeist_html::HtmlInputKind::Week
-impl surgeist_html::HtmlInputKind
-pub fn surgeist_html::HtmlInputKind::input_type(self) -> surgeist_html::HtmlInputType
-pub fn surgeist_html::HtmlInputKind::is_selectable(self) -> bool
-pub fn surgeist_html::HtmlInputKind::sanitization(self) -> surgeist_html::HtmlInputValueSanitization
-pub fn surgeist_html::HtmlInputKind::value_mode(self) -> surgeist_html::HtmlInputValueMode
-impl core::convert::TryFrom<surgeist_html::HtmlInputType> for surgeist_html::HtmlInputKind
-pub type surgeist_html::HtmlInputKind::Error = surgeist_html::HtmlInputUnsupportedType
-pub fn surgeist_html::HtmlInputKind::try_from(value: surgeist_html::HtmlInputType) -> core::result::Result<Self, Self::Error>
 pub enum surgeist_html::HtmlInputMode
 pub surgeist_html::HtmlInputMode::Decimal
 pub surgeist_html::HtmlInputMode::Email
@@ -1337,9 +1312,10 @@ pub surgeist_html::HtmlInputType::Week
 impl surgeist_html::HtmlInputType
 pub fn surgeist_html::HtmlInputType::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputType::into_attribute(self) -> surgeist_html::Attribute
-impl core::convert::TryFrom<surgeist_html::HtmlInputType> for surgeist_html::HtmlInputKind
-pub type surgeist_html::HtmlInputKind::Error = surgeist_html::HtmlInputUnsupportedType
-pub fn surgeist_html::HtmlInputKind::try_from(value: surgeist_html::HtmlInputType) -> core::result::Result<Self, Self::Error>
+impl surgeist_html::HtmlInputType
+pub fn surgeist_html::HtmlInputType::is_selectable(self) -> bool
+pub fn surgeist_html::HtmlInputType::sanitization(self) -> surgeist_html::HtmlInputValueSanitization
+pub fn surgeist_html::HtmlInputType::value_mode(self) -> surgeist_html::HtmlInputValueMode
 pub enum surgeist_html::HtmlInputTypeEffect
 pub surgeist_html::HtmlInputTypeEffect::Sanitize(surgeist_html::HtmlInputValueSanitization)
 pub surgeist_html::HtmlInputTypeEffect::SetContentValueFromCurrent
@@ -1359,6 +1335,7 @@ pub surgeist_html::HtmlInputValueMode::Value
 impl surgeist_html::HtmlInputValueMode
 pub fn surgeist_html::HtmlInputValueMode::readback<'a>(self, internal: &'a [u16], content: core::option::Option<&'a [u16]>, files: core::option::Option<surgeist_html::HtmlInputFileSelection>) -> core::option::Option<&'a [u16]>
 pub enum surgeist_html::HtmlInputValueSanitization
+pub surgeist_html::HtmlInputValueSanitization::Color
 pub surgeist_html::HtmlInputValueSanitization::Range
 pub surgeist_html::HtmlInputValueSanitization::String(surgeist_html::HtmlInputSanitization)
 pub enum surgeist_html::HtmlInputValueSetterFinish
@@ -1756,6 +1733,7 @@ pub surgeist_html::HtmlOutputDefaultValueOverride::Unavailable
 pub surgeist_html::HtmlOutputDefaultValueOverride::Value(surgeist_html::DocumentString)
 pub enum surgeist_html::HtmlParseAssociationRelation
 pub surgeist_html::HtmlParseAssociationRelation::Cause
+pub surgeist_html::HtmlParseAssociationRelation::ColorDependency(surgeist_html::HtmlParseColorOperandRole)
 pub surgeist_html::HtmlParseAssociationRelation::Creation
 pub surgeist_html::HtmlParseAssociationRelation::Incoming
 pub surgeist_html::HtmlParseAssociationRelation::LexicalAnchor
@@ -1769,6 +1747,13 @@ pub surgeist_html::HtmlParseAssociationRelation::Trigger
 pub enum surgeist_html::HtmlParseCapturedCauseRole
 pub surgeist_html::HtmlParseCapturedCauseRole::ContextNamespace
 pub surgeist_html::HtmlParseCapturedCauseRole::FragmentBootstrap
+pub enum surgeist_html::HtmlParseColorOperandRole
+pub surgeist_html::HtmlParseColorOperandRole::Alpha
+pub surgeist_html::HtmlParseColorOperandRole::Colorspace
+pub enum surgeist_html::HtmlParseColorValueSource
+pub surgeist_html::HtmlParseColorValueSource::CurrentValue
+pub surgeist_html::HtmlParseColorValueSource::InstalledValue
+pub surgeist_html::HtmlParseColorValueSource::MissingInstalledValue
 pub enum surgeist_html::HtmlParseCompletion
 pub surgeist_html::HtmlParseCompletion::Complete
 pub surgeist_html::HtmlParseCompletion::Parsing
@@ -2063,6 +2048,7 @@ pub surgeist_html::HtmlParseStop::AllocationFailed
 pub surgeist_html::HtmlParseStop::AllocationFailed::layout_bytes: u64
 pub surgeist_html::HtmlParseStop::AllocationFailed::resource: surgeist_html::HtmlParseResource
 pub surgeist_html::HtmlParseStop::Cancelled
+pub surgeist_html::HtmlParseStop::ColorProcessing(surgeist_css::color::bounded::CssColorOperationError)
 pub surgeist_html::HtmlParseStop::InternalInvariant(surgeist_html::HtmlParseInvariant)
 pub surgeist_html::HtmlParseStop::LimitExceeded
 pub surgeist_html::HtmlParseStop::LimitExceeded::current: u64
@@ -4435,6 +4421,17 @@ pub fn surgeist_html::HtmlInertNodeFact::connected(&self) -> core::option::Optio
 pub fn surgeist_html::HtmlInertNodeFact::new(subject: surgeist_html::HtmlCaptureSubjectId, connected: core::option::Option<bool>, relation: surgeist_html::HtmlDocumentFlatTreeRelation) -> Self
 pub fn surgeist_html::HtmlInertNodeFact::relation(&self) -> &surgeist_html::HtmlDocumentFlatTreeRelation
 pub fn surgeist_html::HtmlInertNodeFact::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
+pub struct surgeist_html::HtmlInputColorSerialization
+impl surgeist_html::HtmlInputColorSerialization
+pub fn surgeist_html::HtmlInputColorSerialization::html_compatible(&self) -> bool
+pub fn surgeist_html::HtmlInputColorSerialization::new(alpha: bool, space: surgeist_html::HtmlInputColorSpace) -> Self
+pub fn surgeist_html::HtmlInputColorSerialization::next_effect(&mut self) -> core::option::Option<surgeist_html::HtmlInputColorEffect>
+pub struct surgeist_html::HtmlInputColorSpaceCursor<'a>
+impl<'a> surgeist_html::HtmlInputColorSpaceCursor<'a>
+pub fn surgeist_html::HtmlInputColorSpaceCursor<'a>::advance(&mut self)
+pub fn surgeist_html::HtmlInputColorSpaceCursor<'a>::new(value: core::option::Option<&'a surgeist_html::DocumentString>) -> Self
+pub fn surgeist_html::HtmlInputColorSpaceCursor<'a>::required_work(&self) -> core::option::Option<surgeist_html::HtmlInputRuleWork>
+pub fn surgeist_html::HtmlInputColorSpaceCursor<'a>::result(&self) -> core::option::Option<surgeist_html::HtmlInputColorSpace>
 pub struct surgeist_html::HtmlInputControlState
 impl surgeist_html::HtmlInputControlState
 pub fn surgeist_html::HtmlInputControlState::checkedness(&self) -> core::option::Option<bool>
@@ -4453,15 +4450,15 @@ pub fn surgeist_html::HtmlInputFlags::clone_flags_from(self, original: Self) -> 
 pub fn surgeist_html::HtmlInputFlags::dirty_checkedness(self) -> bool
 pub fn surgeist_html::HtmlInputFlags::dirty_value(self) -> bool
 pub fn surgeist_html::HtmlInputFlags::fresh() -> Self
-pub fn surgeist_html::HtmlInputFlags::from_retained(kind: surgeist_html::HtmlInputKind, dirty_value: bool, dirty_checkedness: bool, checkedness: bool, indeterminate: bool, user_validity: bool) -> Self
+pub fn surgeist_html::HtmlInputFlags::from_retained(kind: surgeist_html::HtmlInputType, dirty_value: bool, dirty_checkedness: bool, checkedness: bool, indeterminate: bool, user_validity: bool) -> Self
 pub fn surgeist_html::HtmlInputFlags::indeterminate(self) -> bool
 pub fn surgeist_html::HtmlInputFlags::indeterminate_setter(self, indeterminate: bool) -> Self
-pub fn surgeist_html::HtmlInputFlags::kind(self) -> surgeist_html::HtmlInputKind
+pub fn surgeist_html::HtmlInputFlags::input_type(self) -> surgeist_html::HtmlInputType
 pub fn surgeist_html::HtmlInputFlags::radio_normalization_required(self, trigger: surgeist_html::HtmlRadioTrigger) -> bool
 pub fn surgeist_html::HtmlInputFlags::radio_peer_unchecked(self) -> Self
 pub fn surgeist_html::HtmlInputFlags::reset_begin(self) -> Self
 pub fn surgeist_html::HtmlInputFlags::reset_checkedness(self, actual_checked_presence: bool) -> Self
-pub fn surgeist_html::HtmlInputFlags::type_changed(self, next: surgeist_html::HtmlInputKind) -> Self
+pub fn surgeist_html::HtmlInputFlags::type_changed(self, next: surgeist_html::HtmlInputType) -> Self
 pub fn surgeist_html::HtmlInputFlags::type_default_installed(self) -> Self
 pub fn surgeist_html::HtmlInputFlags::user_validity(self) -> bool
 pub fn surgeist_html::HtmlInputFlags::value_attribute_changed(self) -> surgeist_html::HtmlInputValueAttributeEffect
@@ -4627,7 +4624,7 @@ impl core::fmt::Display for surgeist_html::HtmlInputTemporalStepError
 pub fn surgeist_html::HtmlInputTemporalStepError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlInputTypeChange
 impl surgeist_html::HtmlInputTypeChange
-pub fn surgeist_html::HtmlInputTypeChange::new(previous: surgeist_html::HtmlInputKind, next: surgeist_html::HtmlInputKind, current_value_len: usize) -> Self
+pub fn surgeist_html::HtmlInputTypeChange::new(previous: surgeist_html::HtmlInputType, next: surgeist_html::HtmlInputType, current_value_len: usize) -> Self
 pub fn surgeist_html::HtmlInputTypeChange::next_effect(&mut self) -> core::option::Option<surgeist_html::HtmlInputTypeEffect>
 pub struct surgeist_html::HtmlInputTypeCursor<'a>
 impl<'a> surgeist_html::HtmlInputTypeCursor<'a>
@@ -4635,9 +4632,6 @@ pub fn surgeist_html::HtmlInputTypeCursor<'a>::advance(&mut self)
 pub fn surgeist_html::HtmlInputTypeCursor<'a>::new(value: core::option::Option<&'a surgeist_html::DocumentString>) -> Self
 pub fn surgeist_html::HtmlInputTypeCursor<'a>::required_work(&self) -> core::option::Option<surgeist_html::HtmlInputRuleWork>
 pub fn surgeist_html::HtmlInputTypeCursor<'a>::result(&self) -> core::option::Option<surgeist_html::HtmlInputType>
-pub struct surgeist_html::HtmlInputUnsupportedType(_)
-impl surgeist_html::HtmlInputUnsupportedType
-pub fn surgeist_html::HtmlInputUnsupportedType::input_type(self) -> surgeist_html::HtmlInputType
 pub struct surgeist_html::HtmlInputValueComparison
 impl surgeist_html::HtmlInputValueComparison
 pub fn surgeist_html::HtmlInputValueComparison::is_equal(self) -> bool
@@ -5090,6 +5084,7 @@ pub fn surgeist_html::HtmlParseCapturedRegistry<'_>::is_registry(&self, id: &sur
 pub struct surgeist_html::HtmlParseCause<'a>
 impl<'a> surgeist_html::HtmlParseCause<'a>
 pub fn surgeist_html::HtmlParseCause<'a>::captured(&self) -> core::option::Option<surgeist_html::HtmlParseCapturedCause<'a>>
+pub fn surgeist_html::HtmlParseCause<'a>::color_computation(&self) -> core::option::Option<surgeist_html::HtmlParseColorComputation<'a>>
 pub fn surgeist_html::HtmlParseCause<'a>::incoming_group(&self) -> core::option::Option<surgeist_html::HtmlParseOriginGroup<'a>>
 pub fn surgeist_html::HtmlParseCause<'a>::intended_parent(&self) -> core::option::Option<surgeist_html::HtmlNode<'a>>
 pub fn surgeist_html::HtmlParseCause<'a>::operation(&self) -> surgeist_html::HtmlParseConstructionOperation
@@ -5102,6 +5097,16 @@ pub fn surgeist_html::HtmlParseCause<'a>::rule(&self) -> core::option::Option<su
 pub fn surgeist_html::HtmlParseCause<'a>::source(&self) -> core::option::Option<&'a surgeist_html::HtmlSourceRange>
 pub fn surgeist_html::HtmlParseCause<'a>::token(&self) -> core::option::Option<surgeist_html::HtmlParseTokenFamily>
 pub fn surgeist_html::HtmlParseCause<'a>::trigger(&self) -> core::option::Option<Self>
+pub struct surgeist_html::HtmlParseColorComputation<'a>
+impl<'a> surgeist_html::HtmlParseColorComputation<'a>
+pub fn surgeist_html::HtmlParseColorComputation<'a>::alpha_present(&self) -> bool
+pub fn surgeist_html::HtmlParseColorComputation<'a>::colorspace(&self) -> surgeist_html::HtmlInputColorSpace
+pub fn surgeist_html::HtmlParseColorComputation<'a>::environment(&self) -> surgeist_css::color::facts::CssColorFactIdentity
+pub fn surgeist_html::HtmlParseColorComputation<'a>::operand_group(&self, role: surgeist_html::HtmlParseColorOperandRole) -> core::option::Option<surgeist_html::HtmlParseOriginGroup<'a>>
+pub fn surgeist_html::HtmlParseColorComputation<'a>::original_group(&self) -> core::option::Option<surgeist_html::HtmlParseOriginGroup<'a>>
+pub fn surgeist_html::HtmlParseColorComputation<'a>::source(&self) -> surgeist_html::HtmlParseColorValueSource
+pub fn surgeist_html::HtmlParseColorComputation<'a>::standard_failure(&self) -> core::option::Option<surgeist_css::color::bounded::CssColorStandardFailure>
+pub fn surgeist_html::HtmlParseColorComputation<'a>::value(&self) -> surgeist_css::color::used::CssUsedColor
 pub struct surgeist_html::HtmlParseDiagnostic
 impl surgeist_html::HtmlParseDiagnostic
 pub fn surgeist_html::HtmlParseDiagnostic::context(&self) -> surgeist_html::HtmlParseDiagnosticContext
@@ -6275,4 +6280,4 @@ pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::Attribut
 pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>
-pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputKind, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish
+pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish

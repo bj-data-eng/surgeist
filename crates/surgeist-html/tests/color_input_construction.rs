@@ -76,8 +76,8 @@ fn color_input_preserves_red_default_and_publishes_sanitized_current_with_form_s
                 }
                 if let Some(flags) = record.input_flags() {
                     inputs += 1;
-                    assert_eq!(flags.kind().input_type(), HtmlInputType::Color);
-                    assert_eq!(flags.kind().value_mode(), HtmlInputValueMode::Value);
+                    assert_eq!(flags.input_type(), HtmlInputType::Color);
+                    assert_eq!(flags.input_type().value_mode(), HtmlInputValueMode::Value);
                     assert!(!flags.dirty_value());
                     assert!(!flags.dirty_checkedness());
                     assert!(!flags.checkedness());
@@ -124,4 +124,362 @@ fn limits() -> HtmlParseLimits {
         .work_credits(100_000_000)
         .finish()
         .unwrap()
+}
+
+#[test]
+fn color_currentcolor_without_palette_is_unavailable_and_reclaims_partial_construction() {
+    let source = HtmlSource::utf8("<!doctype html><p>A&amp;B<input type=color value=currentcolor>");
+    let failure = HtmlDocumentParseRequest::offline(source.clone(), limits())
+        .parse()
+        .unwrap_err();
+    assert_eq!(
+        failure.reason(),
+        HtmlParseFailureReason::Stop(HtmlParseStop::ColorProcessing(
+            surgeist_css::CssColorOperationError::Unavailable(
+                surgeist_css::CssColorUnavailable::Palette(
+                    surgeist_css::CssSystemColor::CanvasText
+                )
+            )
+        ))
+    );
+    assert_eq!(failure.cleanup_error(), None);
+    assert_eq!(failure.source().identity(), source.identity());
+    for resource in [
+        HtmlParseResource::ManagedUtf16Units,
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::OpenElements,
+    ] {
+        assert_eq!(
+            failure
+                .retained_usage()
+                .unwrap()
+                .resource(resource)
+                .current(),
+            0
+        );
+    }
+}
+
+#[test]
+fn color_independent_literals_preserve_defaults_and_source_ordered_alpha_colorspace() {
+    // HTML877d updates each installed relevant attribute from the clean default,
+    // then resets. Thus attribute ordering does not destroy authored alpha.
+    // sRGB 0.5 * 255 is 127.5: source rounding toward +infinity yields 128.
+    for (attributes, expected_default, expected_current) in [
+        ("type=color", None, "#000000"),
+        ("type=color value=''", Some(""), "#000000"),
+        ("type=color value=garbage", Some("garbage"), "#000000"),
+        (
+            "type=color value='hsl(120 100% 25%)'",
+            Some("hsl(120 100% 25%)"),
+            "#008000",
+        ),
+        (
+            "type=color value='hwb(240 0% 0%)'",
+            Some("hwb(240 0% 0%)"),
+            "#0000ff",
+        ),
+        (
+            "type=color value='rgb(50% 0% 100%)'",
+            Some("rgb(50% 0% 100%)"),
+            "#8000ff",
+        ),
+        (
+            "type=color value='rgb(255 0 0 / .5)'",
+            Some("rgb(255 0 0 / .5)"),
+            "#ff0000",
+        ),
+        (
+            "type=color alpha value='rgb(255 0 0 / .5)'",
+            Some("rgb(255 0 0 / .5)"),
+            "color(srgb 1 0 0 / 0.5)",
+        ),
+        (
+            "value='rgb(255 0 0 / .5)' type=color alpha",
+            Some("rgb(255 0 0 / .5)"),
+            "color(srgb 1 0 0 / 0.5)",
+        ),
+        (
+            "type=color alpha value=red",
+            Some("red"),
+            "color(srgb 1 0 0)",
+        ),
+        (
+            "type=color colorspace=display-p3 value='color(display-p3 1 0 0 / .5)'",
+            Some("color(display-p3 1 0 0 / .5)"),
+            "color(display-p3 1 0 0)",
+        ),
+        (
+            "value='color(display-p3 1 0 0 / .5)' alpha colorspace=DISPLAY-P3 type=color",
+            Some("color(display-p3 1 0 0 / .5)"),
+            "color(display-p3 1 0 0 / 0.5)",
+        ),
+        (
+            "type=color colorspace=' display-p3' value=red",
+            Some("red"),
+            "#ff0000",
+        ),
+        (
+            "type=color colorspace=unknown value=red",
+            Some("red"),
+            "#ff0000",
+        ),
+        (
+            "type=color value=' rgb(255 0 0) '",
+            Some(" rgb(255 0 0) "),
+            "#ff0000",
+        ),
+    ] {
+        let literal = format!("<!doctype html><input {attributes}>Z");
+        assert!(attributes.len() < 96);
+        assert!(expected_default.is_none_or(|value| value.encode_utf16().count() < 64));
+        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), matrix_limits())
+            .parse()
+            .unwrap_or_else(|error| panic!("{attributes}: {error:?}"));
+        let document = report.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let input = document.node(&body).unwrap().children().next().unwrap();
+        let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
+            panic!("native Color input");
+        };
+        let default = element
+            .attributes()
+            .iter()
+            .find(|a| a.name().local_name() == &DocumentString::from("value"))
+            .map(Attribute::value);
+        assert_eq!(
+            default,
+            expected_default.map(DocumentString::from).as_ref(),
+            "{attributes}"
+        );
+        let mut metadata = report.metadata();
+        let mut count = 0;
+        loop {
+            match metadata.advance() {
+                HtmlParseMetadataStep::Record(record) if record.node().id() == input => {
+                    if let Some(flags) = record.input_flags() {
+                        count += 1;
+                        assert_eq!(flags.input_type(), HtmlInputType::Color);
+                        assert!(!flags.dirty_value());
+                        assert!(!flags.input_type().is_selectable());
+                        assert_eq!(
+                            record.input_raw_value(),
+                            Some(&DocumentString::from(expected_current)),
+                            "{attributes}"
+                        );
+                        assert_eq!(record.input_creation_writeback(), Some(false));
+                    }
+                }
+                HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
+            }
+        }
+        assert_eq!(count, 1);
+    }
+}
+
+#[test]
+fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_values() {
+    let literal =
+        "<!doctype html><input type=color value='r&#101;d' alpha colorspace=limited-srgb>Z";
+    let units: Vec<u16> = literal.encode_utf16().collect();
+    let source = HtmlSource::utf16(DocumentString::from_utf16(units.clone()));
+    let report = HtmlDocumentParseRequest::offline(source.clone(), matrix_limits())
+        .parse()
+        .unwrap();
+    assert_eq!(
+        report.source().as_utf16().map(DocumentString::code_units),
+        Some(units.as_slice())
+    );
+    let mut metadata = report.metadata();
+    let mut inputs = 0;
+    loop {
+        match metadata.advance() {
+            HtmlParseMetadataStep::Record(row) if row.input_flags().is_some() => {
+                inputs += 1;
+                assert_eq!(
+                    row.input_flags().unwrap().input_type(),
+                    HtmlInputType::Color
+                );
+                assert_eq!(
+                    row.input_raw_value(),
+                    Some(&DocumentString::from("color(srgb 1 0 0)"))
+                );
+            }
+            HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => {}
+            HtmlParseMetadataStep::Complete => break,
+        }
+    }
+    assert_eq!(inputs, 1);
+    let history = report.history_view();
+    let mut found = false;
+    for index in 0..history.len() {
+        let header = history.header(history.group(index).unwrap()).unwrap();
+        let Some(color) = header.cause.color_computation() else {
+            continue;
+        };
+        if !color.alpha_present() {
+            continue;
+        }
+        found = true;
+        assert_eq!(color.source(), HtmlParseColorValueSource::InstalledValue);
+        assert_eq!(color.colorspace(), HtmlInputColorSpace::LimitedSrgb);
+        assert_eq!(color.standard_failure(), None);
+        assert_eq!(color.value().srgb_bytes(), Some([255, 0, 0]));
+        assert!(
+            color
+                .operand_group(HtmlParseColorOperandRole::Alpha)
+                .is_some()
+        );
+        let original = color.original_group().unwrap();
+        let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
+        let mut cursor = history.cursor(original, &mut scratch, None).unwrap();
+        let mut text = Vec::new();
+        loop {
+            match cursor.advance() {
+                HtmlParseHistoryStep::Leaf(leaf) => text.extend_from_slice(leaf.units()),
+                HtmlParseHistoryStep::Progress => {}
+                HtmlParseHistoryStep::Complete => break,
+                HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+            }
+        }
+        assert_eq!(text, [114, 101, 100]);
+    }
+    assert!(found);
+}
+
+// A distinct conservative verification envelope for the short literal matrix;
+// this does not alter the published red fixture's 100M admission or product
+// defaults. All arithmetic is checked before the first matrix execution.
+// CSS bounded_decimal: at most64 searches,17 seed digits,1075 multiplications,
+// and1100 scratch digits. Each cell is a separate read/write, with carry and
+// fixed kernels. Four components, five source-required updates, and the
+// corresponding finite serialization bound are accounted independently. The
+// factor16 bounds fixed grammar/evaluation/slot handoffs around these requests;
+// reserve/copy allowance is included in per-action compiled slot/layout cost.
+fn matrix_limits() -> HtmlParseLimits {
+    use surgeist_css::{
+        CssColorOperation, CssColorSerialization, CssColorSlot, CssColorTransformation,
+    };
+    let register = [
+        CssColorOperation::register_bytes(),
+        CssColorSerialization::register_bytes(),
+        CssColorTransformation::register_bytes(),
+    ]
+    .into_iter()
+    .max()
+    .unwrap() as u64;
+    let guard = [
+        CssColorOperation::action_bytes(),
+        CssColorSerialization::action_bytes(),
+        CssColorTransformation::action_bytes(),
+    ]
+    .into_iter()
+    .max()
+    .unwrap() as u64;
+    let cost = register
+        .checked_mul(2)
+        .unwrap()
+        .checked_add(guard)
+        .unwrap()
+        .checked_add(
+            (std::mem::size_of::<CssColorSlot<'_>>() as u64)
+                .checked_mul(16)
+                .unwrap(),
+        )
+        .unwrap()
+        .checked_add(4096)
+        .unwrap();
+    let boundary = 1075_u64
+        .checked_mul(2 * 1100 + 4)
+        .unwrap()
+        .checked_add(4 * 1100 + 2 * 17 + 8)
+        .unwrap();
+    let ingress = 4_u64
+        .checked_mul(64)
+        .unwrap()
+        .checked_mul(boundary)
+        .unwrap();
+    let formatting = 8_u64.checked_mul(1075).unwrap().checked_mul(1100).unwrap();
+    let actions = 5_u64
+        .checked_mul(
+            ingress
+                .checked_add(formatting)
+                .unwrap()
+                .checked_add(4096)
+                .unwrap(),
+        )
+        .unwrap()
+        .checked_mul(16)
+        .unwrap();
+    let credits = actions
+        .checked_mul(cost)
+        .unwrap()
+        .checked_add(100_000_000)
+        .unwrap();
+    limits()
+        .into_builder()
+        .work_credits(credits)
+        .finish()
+        .unwrap()
+}
+
+#[test]
+fn color_serialization_intrinsic_decisions_have_source_order_and_total_type_identity() {
+    for (alpha, space, effects, html_compatible) in [
+        (
+            false,
+            HtmlInputColorSpace::LimitedSrgb,
+            vec![
+                HtmlInputColorEffect::ForceOpaqueAlpha,
+                HtmlInputColorEffect::Convert(HtmlInputColorSpace::LimitedSrgb),
+                HtmlInputColorEffect::QuantizeSrgb,
+            ],
+            true,
+        ),
+        (
+            true,
+            HtmlInputColorSpace::LimitedSrgb,
+            vec![
+                HtmlInputColorEffect::Convert(HtmlInputColorSpace::LimitedSrgb),
+                HtmlInputColorEffect::QuantizeSrgb,
+                HtmlInputColorEffect::ColorFunction,
+            ],
+            false,
+        ),
+        (
+            false,
+            HtmlInputColorSpace::DisplayP3,
+            vec![
+                HtmlInputColorEffect::ForceOpaqueAlpha,
+                HtmlInputColorEffect::Convert(HtmlInputColorSpace::DisplayP3),
+            ],
+            false,
+        ),
+        (
+            true,
+            HtmlInputColorSpace::DisplayP3,
+            vec![HtmlInputColorEffect::Convert(
+                HtmlInputColorSpace::DisplayP3,
+            )],
+            false,
+        ),
+    ] {
+        let mut sequence = HtmlInputColorSerialization::new(alpha, space);
+        let actual: Vec<_> = std::iter::from_fn(|| sequence.next_effect()).collect();
+        assert_eq!(actual, effects);
+        assert_eq!(sequence.html_compatible(), html_compatible);
+        assert_eq!(sequence.next_effect(), None);
+    }
+    assert_eq!(HtmlInputType::Color.value_mode(), HtmlInputValueMode::Value);
+    assert_eq!(
+        HtmlInputType::Color.sanitization(),
+        HtmlInputValueSanitization::Color
+    );
+    assert!(!HtmlInputType::Color.is_selectable());
 }

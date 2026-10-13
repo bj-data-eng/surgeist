@@ -38,6 +38,23 @@ enum_rule!(INPUT_COLORSPACE, HtmlInputColorSpace, Colorspace,
     ["limited-srgb" => ("limited-srgb", HtmlInputColorSpace::LimitedSrgb),
      "display-p3" => ("display-p3", HtmlInputColorSpace::DisplayP3)]);
 
+pub(super) fn colorspace_keyword(index: usize) -> Option<(&'static str, HtmlInputColorSpace)> {
+    INPUT_COLORSPACE
+        .keywords
+        .get(index)
+        .map(|row| (row.spelling, row.state))
+}
+pub(super) fn colorspace_invalid_default() -> HtmlInputColorSpace {
+    INPUT_COLORSPACE
+        .invalid
+        .expect("source-defined colorspace invalid default")
+}
+pub(super) fn colorspace_default() -> HtmlInputColorSpace {
+    INPUT_COLORSPACE
+        .missing
+        .expect("source-defined colorspace default")
+}
+
 impl HtmlValueInterpreter {
     /// Interprets local colorspace content through the shared enumeration owner.
     /// Missing/invalid select LimitedSrgb while recognition and author spelling

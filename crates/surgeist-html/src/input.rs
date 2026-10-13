@@ -11,98 +11,7 @@
 
 use crate::{DocumentString, HtmlInputType};
 
-/// The input states covered by these intrinsic rules, including Filename and
-/// Default/DefaultOn native content readback. Value mode alone
-/// does not imply selection support or an activation/rendering capability.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlInputKind {
-    File,
-    Image,
-    Hidden,
-    Text,
-    Search,
-    Telephone,
-    Password,
-    Checkbox,
-    Radio,
-    Email,
-    Url,
-    Submit,
-    Reset,
-    Button,
-    Date,
-    Month,
-    Week,
-    Time,
-    LocalDateTime,
-    Number,
-    Range,
-}
-
-/// An actual recognized input state whose rules are outside this family.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlInputUnsupportedType(HtmlInputType);
-impl HtmlInputUnsupportedType {
-    pub fn input_type(self) -> HtmlInputType {
-        self.0
-    }
-}
-impl TryFrom<HtmlInputType> for HtmlInputKind {
-    type Error = HtmlInputUnsupportedType;
-    fn try_from(value: HtmlInputType) -> Result<Self, Self::Error> {
-        Ok(match value {
-            HtmlInputType::File => Self::File,
-            HtmlInputType::Image => Self::Image,
-            HtmlInputType::Hidden => Self::Hidden,
-            HtmlInputType::Text => Self::Text,
-            HtmlInputType::Search => Self::Search,
-            HtmlInputType::Telephone => Self::Telephone,
-            HtmlInputType::Password => Self::Password,
-            HtmlInputType::Checkbox => Self::Checkbox,
-            HtmlInputType::Radio => Self::Radio,
-            HtmlInputType::Email => Self::Email,
-            HtmlInputType::Url => Self::Url,
-            HtmlInputType::Submit => Self::Submit,
-            HtmlInputType::Reset => Self::Reset,
-            HtmlInputType::Button => Self::Button,
-            HtmlInputType::Date => Self::Date,
-            HtmlInputType::Month => Self::Month,
-            HtmlInputType::Week => Self::Week,
-            HtmlInputType::Time => Self::Time,
-            HtmlInputType::LocalDateTime => Self::LocalDateTime,
-            HtmlInputType::Number => Self::Number,
-            HtmlInputType::Range => Self::Range,
-
-            other => return Err(HtmlInputUnsupportedType(other)),
-        })
-    }
-}
-impl HtmlInputKind {
-    pub fn input_type(self) -> HtmlInputType {
-        match self {
-            Self::File => HtmlInputType::File,
-            Self::Image => HtmlInputType::Image,
-            Self::Hidden => HtmlInputType::Hidden,
-            Self::Text => HtmlInputType::Text,
-            Self::Search => HtmlInputType::Search,
-            Self::Telephone => HtmlInputType::Telephone,
-            Self::Password => HtmlInputType::Password,
-            Self::Checkbox => HtmlInputType::Checkbox,
-            Self::Radio => HtmlInputType::Radio,
-            Self::Email => HtmlInputType::Email,
-            Self::Url => HtmlInputType::Url,
-            Self::Submit => HtmlInputType::Submit,
-            Self::Reset => HtmlInputType::Reset,
-            Self::Button => HtmlInputType::Button,
-            Self::Date => HtmlInputType::Date,
-            Self::Month => HtmlInputType::Month,
-            Self::Week => HtmlInputType::Week,
-            Self::Time => HtmlInputType::Time,
-            Self::LocalDateTime => HtmlInputType::LocalDateTime,
-            Self::Number => HtmlInputType::Number,
-            Self::Range => HtmlInputType::Range,
-        }
-    }
+impl HtmlInputType {
     pub fn value_mode(self) -> HtmlInputValueMode {
         match self {
             Self::Hidden | Self::Submit | Self::Reset | Self::Button | Self::Image => {
@@ -133,6 +42,9 @@ impl HtmlInputKind {
     pub fn sanitization(self) -> HtmlInputValueSanitization {
         if self == Self::Range {
             return HtmlInputValueSanitization::Range;
+        }
+        if self == Self::Color {
+            return HtmlInputValueSanitization::Color;
         }
         let string = if self == Self::Number {
             HtmlInputSanitization::Number
@@ -212,11 +124,59 @@ impl HtmlInputImageCoordinate {
 }
 /// Complete sanitization requirement. Range needs actual min/max/step/value
 /// content and an exact numeric producer; the borrowed string cursor cannot
-/// supply those facts. Adapters must dispatch the two closed branches.
+/// supply those facts. Color requires the actual dirty/default source,
+/// alpha/colorspace attributes and the CSS used-color operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputValueSanitization {
     String(HtmlInputSanitization),
     Range,
+    Color,
+}
+/// Ordered intrinsic Color serialization steps. CSS owns each conversion,
+/// numerical operation and spelling; this cursor owns only HTML's sequence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlInputColorEffect {
+    ForceOpaqueAlpha,
+    Convert(crate::HtmlInputColorSpace),
+    QuantizeSrgb,
+    ColorFunction,
+}
+pub struct HtmlInputColorSerialization {
+    alpha: bool,
+    space: crate::HtmlInputColorSpace,
+    step: u8,
+}
+impl HtmlInputColorSerialization {
+    pub fn new(alpha: bool, space: crate::HtmlInputColorSpace) -> Self {
+        Self {
+            alpha,
+            space,
+            step: 0,
+        }
+    }
+    /// The caller admits one fixed rule step before this operation. No color
+    /// channel, string, tree or environmental fact is inspected here.
+    pub fn next_effect(&mut self) -> Option<HtmlInputColorEffect> {
+        if self.step == 0 && self.alpha {
+            self.step = 1;
+        }
+        let step = self.step;
+        self.step = self.step.saturating_add(1);
+        match step {
+            0 => Some(HtmlInputColorEffect::ForceOpaqueAlpha),
+            1 => Some(HtmlInputColorEffect::Convert(self.space)),
+            2 if self.space == crate::HtmlInputColorSpace::LimitedSrgb => {
+                Some(HtmlInputColorEffect::QuantizeSrgb)
+            }
+            3 if self.space == crate::HtmlInputColorSpace::LimitedSrgb && self.alpha => {
+                Some(HtmlInputColorEffect::ColorFunction)
+            }
+            _ => None,
+        }
+    }
+    pub fn html_compatible(&self) -> bool {
+        !self.alpha && self.space == crate::HtmlInputColorSpace::LimitedSrgb
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputSanitization {
@@ -492,7 +452,7 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
 /// Strings, selection, form identity and resource availability are separate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputFlags {
-    kind: HtmlInputKind,
+    kind: HtmlInputType,
     dirty_value: bool,
     dirty_checkedness: bool,
     checkedness: bool,
@@ -502,12 +462,12 @@ pub struct HtmlInputFlags {
 impl HtmlInputFlags {
     /// Blank creation starts in missing-type Text before ordered attributes.
     pub fn fresh() -> Self {
-        Self::from_retained(HtmlInputKind::Text, false, false, false, false, false)
+        Self::from_retained(HtmlInputType::Text, false, false, false, false, false)
     }
     /// Preserve actual retained facts without rerunning creation/reset.
     /// This does not qualify a source, identity, or availability of other fields.
     pub fn from_retained(
-        kind: HtmlInputKind,
+        kind: HtmlInputType,
         dirty_value: bool,
         dirty_checkedness: bool,
         checkedness: bool,
@@ -523,7 +483,7 @@ impl HtmlInputFlags {
             user_validity,
         }
     }
-    pub fn kind(self) -> HtmlInputKind {
+    pub fn input_type(self) -> HtmlInputType {
         self.kind
     }
     pub fn dirty_value(self) -> bool {
@@ -576,7 +536,7 @@ impl HtmlInputFlags {
             | HtmlRadioTrigger::Name
             | HtmlRadioTrigger::FormOwner
             | HtmlRadioTrigger::Type
-            | HtmlRadioTrigger::Connected => self.kind == HtmlInputKind::Radio && self.checkedness,
+            | HtmlRadioTrigger::Connected => self.kind == HtmlInputType::Radio && self.checkedness,
         }
     }
     /// Source peer normalization changes only checkedness, never dirty state,
@@ -603,7 +563,7 @@ impl HtmlInputFlags {
     }
     /// Actual state transition only. Attribute spelling changes within one state
     /// do not invoke HTML's type-change algorithm.
-    pub fn type_changed(mut self, next: HtmlInputKind) -> Self {
+    pub fn type_changed(mut self, next: HtmlInputType) -> Self {
         self.kind = next;
         self
     }
@@ -701,13 +661,13 @@ pub enum HtmlInputTypeEffect {
 }
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlInputTypeChange {
-    previous: HtmlInputKind,
-    next: HtmlInputKind,
+    previous: HtmlInputType,
+    next: HtmlInputType,
     nonempty: bool,
     stage: u8,
 }
 impl HtmlInputTypeChange {
-    pub fn new(previous: HtmlInputKind, next: HtmlInputKind, current_value_len: usize) -> Self {
+    pub fn new(previous: HtmlInputType, next: HtmlInputType, current_value_len: usize) -> Self {
         Self {
             previous,
             next,
@@ -838,6 +798,83 @@ impl<'a> HtmlInputTypeCursor<'a> {
     }
     pub fn result(&self) -> Option<HtmlInputType> {
         if let TypeStep::Done(state) = self.step {
+            Some(state)
+        } else {
+            None
+        }
+    }
+}
+
+enum ColorSpaceStep {
+    Row,
+    Length(&'static str, crate::HtmlInputColorSpace),
+    Unit(&'static str, crate::HtmlInputColorSpace, usize),
+    Done(crate::HtmlInputColorSpace),
+}
+/// Borrowed recognizer over the authoritative attributes-owned colorspace rows.
+/// No trimming, allocation, copied keyword table or whole-string advance.
+pub struct HtmlInputColorSpaceCursor<'a> {
+    value: Option<&'a DocumentString>,
+    row: usize,
+    step: ColorSpaceStep,
+}
+impl<'a> HtmlInputColorSpaceCursor<'a> {
+    pub fn new(value: Option<&'a DocumentString>) -> Self {
+        Self {
+            value,
+            row: 0,
+            step: ColorSpaceStep::Row,
+        }
+    }
+    pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
+        match self.step {
+            ColorSpaceStep::Done(_) => None,
+            ColorSpaceStep::Unit(..) => Some(HtmlInputRuleWork::CompareAsciiUnit),
+            _ => Some(HtmlInputRuleWork::ReadField),
+        }
+    }
+    /// At most one row lookup, length decision or UTF-16/ASCII comparison.
+    /// The caller admits required_work before calling this method.
+    pub fn advance(&mut self) {
+        self.step = match self.step {
+            ColorSpaceStep::Row => {
+                if self.value.is_none() {
+                    ColorSpaceStep::Done(crate::attributes::input_colorspace_default())
+                } else if let Some((keyword, state)) =
+                    crate::attributes::input_colorspace_keyword(self.row)
+                {
+                    self.row += 1;
+                    ColorSpaceStep::Length(keyword, state)
+                } else {
+                    ColorSpaceStep::Done(crate::attributes::input_colorspace_invalid_default())
+                }
+            }
+            ColorSpaceStep::Length(keyword, state) => {
+                if self.value.expect("present row").len() != keyword.len() {
+                    ColorSpaceStep::Row
+                } else if keyword.is_empty() {
+                    ColorSpaceStep::Done(state)
+                } else {
+                    ColorSpaceStep::Unit(keyword, state, 0)
+                }
+            }
+            ColorSpaceStep::Unit(keyword, state, position) => {
+                if !crate::attributes::ascii_keyword_unit(
+                    self.value.expect("present row").code_units()[position],
+                    keyword.as_bytes()[position],
+                ) {
+                    ColorSpaceStep::Row
+                } else if position + 1 == keyword.len() {
+                    ColorSpaceStep::Done(state)
+                } else {
+                    ColorSpaceStep::Unit(keyword, state, position + 1)
+                }
+            }
+            ColorSpaceStep::Done(state) => ColorSpaceStep::Done(state),
+        };
+    }
+    pub fn result(&self) -> Option<crate::HtmlInputColorSpace> {
+        if let ColorSpaceStep::Done(state) = self.step {
             Some(state)
         } else {
             None
@@ -1023,7 +1060,7 @@ pub enum HtmlInputValueSetterFinish {
     SetEndCursorUnselectAndNoneDirection,
 }
 pub fn input_value_setter_finish(
-    kind: HtmlInputKind,
+    kind: HtmlInputType,
     comparison: HtmlInputValueComparison,
     post_clamp: HtmlInputSelection,
 ) -> HtmlInputValueSetterFinish {

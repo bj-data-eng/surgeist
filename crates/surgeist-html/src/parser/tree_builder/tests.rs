@@ -5021,59 +5021,97 @@ fn body_after_modes_place_comments_and_pi_under_html_then_document() {
     assert_released(&c);
 }
 
-#[test]
-fn body_family_continuations_preserve_real_tokens_before_category_effects() {
-    use super::head::HeadBoundary;
-    {
-        let (name, boundary) = ("input", HeadBoundary::Form);
-        let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8(format!("<body><p>x<{name} data-x=kept type=color>tail")),
-            limits(100),
-        );
-        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-        assert_eq!(
-            standalone_boundary(&mut driver),
-            super::head::HeadStep::Boundary(boundary),
-            "{name}"
-        );
-        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
-        let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload
-        else {
-            panic!("retained actual family tag");
-        };
-        assert_eq!(tag.name.value.text(), &DocumentString::from(name));
-        assert_eq!(tag.attributes.len(), 2);
-        assert_eq!(
-            tag.attributes.as_slice()[0].value.value.text(),
-            &DocumentString::from("kept")
-        );
-        assert_eq!(
-            tag.attributes.as_slice()[1].value.value.text(),
-            &DocumentString::from("color")
-        );
-        let node_count = driver
+// HTML877d Color creation consumes the original tag after allocating the
+// native input. Reached unavailable CanvasText does not certify completion or
+// association, and it never becomes the standard-invalid black fallback.
+fn assert_color_palette_refusal(
+    literal: &str,
+    mode: super::head::InsertionMode,
+    stack: usize,
+    nodes: u64,
+    form_pointer: bool,
+    foster: bool,
+) {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits(100));
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    for _ in 0..1_000 {
+        match driver.step() {
+            Ok(super::head::HeadStep::Consumed) => {}
+            Err(_) => break,
+            Ok(other) => panic!("expected reached Color fact refusal, got {other:?}"),
+        }
+    }
+    let first = ParseStop::ColorProcessing(surgeist_css::CssColorOperationError::Unavailable(
+        surgeist_css::CssColorUnavailable::Palette(surgeist_css::CssSystemColor::CanvasText),
+    ));
+    assert_eq!(driver.control.stop(), Some(first));
+    assert_eq!(
+        driver.control.stopped_source_binding().unwrap().unwrap().0,
+        *request.source().identity()
+    );
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.mode, mode);
+    assert_eq!(state.current_form.is_some(), form_pointer);
+    assert_eq!(state.before.kernel.stack().unwrap().len(), stack);
+    assert_eq!(state.before.kernel.foster_parenting, foster);
+    assert!(matches!(
+        state.pending.as_ref().unwrap().payload,
+        Payload::Tag(None)
+    ));
+    assert_eq!(
+        driver
             .control
             .usage()
             .resource(HtmlParseResource::ManagedNodes)
-            .current;
-        assert!(driver.step().is_err());
+            .current,
+        nodes
+    );
+    if foster {
+        let diagnostics = state.diagnostics();
+        assert_eq!(diagnostics.len(), 1);
         assert_eq!(
-            driver
-                .control
-                .usage()
-                .resource(HtmlParseResource::ManagedNodes)
-                .current,
-            node_count
+            diagnostics[0].condition,
+            super::head::HeadCondition::UnexpectedTableToken
         );
-        let mut retained = Some(driver);
-        assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
-        let driver = retained
-            .as_mut()
-            .expect("failed extraction retains the sole owner");
-        driver.release().unwrap();
-        assert_released(&driver.control);
+        assert_eq!(diagnostics[0].mode, super::head::InsertionMode::InTable);
     }
+    let work = driver
+        .control
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
+    request.cancellation().cancel();
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.stop(), Some(first));
+    assert_eq!(
+        driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current,
+        work
+    );
+    let mut retained = Some(driver);
+    assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
+    let driver = retained
+        .as_mut()
+        .expect("failed extraction retains the real owner");
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(first));
+}
+
+#[test]
+fn body_color_fact_refusal_preserves_prefix_and_consumed_creation() {
+    // Document/html/head/body/p/Text(x)/input: seven actual records.
+    assert_color_palette_refusal(
+        "<body><p>x<input data-x=kept type=color value=currentcolor>tail",
+        super::head::InsertionMode::InBody,
+        3,
+        7,
+        false,
+        false,
+    );
 }
 
 #[test]
@@ -6906,49 +6944,16 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
 }
 
 #[test]
-fn ordinary_form_control_and_template_continuations_preserve_pointer_and_original_token() {
-    {
-        let (name, expected) = ("input", super::head::HeadBoundary::Form);
-        let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8(format!(
-                "<!doctype html><form id=f><{name} id=kept type=color>"
-            )),
-            limits(100),
-        );
-        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-        assert_eq!(
-            standalone_boundary(&mut driver),
-            super::head::HeadStep::Boundary(expected),
-            "{name}"
-        );
-        {
-            let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-            assert!(state.current_form.is_some());
-            assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
-            assert_eq!(
-                driver
-                    .control
-                    .usage()
-                    .resource(HtmlParseResource::ManagedNodes)
-                    .current,
-                6
-            );
-            let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-                panic!("unadmitted control retains the actual tag")
-            };
-            assert_eq!(tag.kind, TagKind::Start);
-            assert_eq!(
-                tag.name.value.text().code_units(),
-                &name.encode_utf16().collect::<Vec<_>>()
-            );
-            assert_eq!(
-                tag.attributes.as_slice()[0].value.value.text().code_units(),
-                &"kept".encode_utf16().collect::<Vec<_>>()
-            );
-        }
-        driver.release().unwrap();
-        assert_released(&driver.control);
-    }
+fn ordinary_form_color_fact_refusal_retains_actual_form_pointer() {
+    // Document/doctype/html/head/body/form/input: seven actual records.
+    assert_color_palette_refusal(
+        "<!doctype html><form id=f><input id=kept type=color value=currentcolor>",
+        super::head::InsertionMode::InBody,
+        3,
+        7,
+        true,
+        false,
+    );
 }
 
 // Governing HTML877d syntax4630–4638,5110–5114,5322–5498:
@@ -7329,28 +7334,17 @@ fn structural_table_head_delegation_retains_actual_script_and_style_return_mode(
 }
 
 #[test]
-fn structural_table_unsupported_creation_retains_original_before_table_effects() {
-    {
-        let (tag, boundary) = ("<input type=color>", super::head::HeadBoundary::Form);
-        let source = format!("<!doctype html><table>{tag}");
-        let request =
-            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
-        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-        assert_eq!(
-            standalone_boundary(&mut driver),
-            super::head::HeadStep::Boundary(boundary)
-        );
-        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert_eq!(state.mode, super::head::InsertionMode::InTable);
-        assert!(!state.before.kernel.foster_parenting);
-        assert_eq!(state.diagnostics().len(), 0);
-        assert!(matches!(
-            state.pending.as_ref().unwrap().payload,
-            Payload::Tag(Some(_))
-        ));
-        driver.release().unwrap();
-        assert_released(&driver.control);
-    }
+fn structural_table_color_fact_refusal_preserves_reached_foster_effect() {
+    // Document/doctype/html/head/body/table/input: seven actual records.
+    // The Color refusal follows the InTable diagnostic and foster=true write.
+    assert_color_palette_refusal(
+        "<!doctype html><table><input type=color value=currentcolor>",
+        super::head::InsertionMode::InTable,
+        3,
+        7,
+        false,
+        true,
+    );
 }
 
 #[test]
@@ -10285,27 +10279,16 @@ fn hidden_input_proofless_head_rejects_before_diagnostic_stack_or_creation() {
     assert_released(&c);
 }
 #[test]
-fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
-    {
-        let markup = "<input type=color>";
-        let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8(format!("<!doctype html>{markup}")),
-            limits(100),
-        );
-        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-        let boundary = standalone_boundary(&mut driver);
-        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert!(matches!(
-            state.pending.as_ref().unwrap().payload,
-            Payload::Tag(Some(_))
-        ));
-        driver.release().unwrap();
-        assert_released(&driver.control);
-        assert_eq!(
-            boundary,
-            super::head::HeadStep::Boundary(super::head::HeadBoundary::Form)
-        );
-    }
+fn nonhidden_color_reached_fact_refusal_retains_partial_creation() {
+    // Document/doctype/html/head/body/input: six actual records.
+    assert_color_palette_refusal(
+        "<!doctype html><input type=color value=currentcolor>",
+        super::head::InsertionMode::InBody,
+        2,
+        6,
+        false,
+        false,
+    );
 }
 
 #[test]
@@ -13488,7 +13471,7 @@ fn ordinary_text_input_selected_types_foster_in_table_keep_form_and_exact_values
             Some(form.clone())
         );
         let state = frozen.input_state(&mut c, &input).unwrap();
-        assert_eq!(state.flags.kind().input_type(), expected_type);
+        assert_eq!(state.flags.input_type(), expected_type);
         assert_eq!(state.cursor, 0);
         assert!(state.flags.checkedness() && state.selected_files_empty);
         assert!(!state.value_rewritten_during_creation);
@@ -13541,38 +13524,15 @@ fn ordinary_text_input_makes_frameset_not_ok_and_is_void_inside_reconstructed_fo
 }
 
 #[test]
-fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_before_effects() {
-    {
-        let kind = "color";
-        let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8(format!(
-                "<!doctype html><table><input type={kind} value=kept>"
-            )),
-            limits(100),
-        );
-        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-        assert_eq!(
-            standalone_boundary(&mut driver),
-            super::head::HeadStep::Boundary(super::head::HeadBoundary::Form)
-        );
-        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert_eq!(state.mode, super::head::InsertionMode::InTable);
-        assert!(!state.before.kernel.foster_parenting);
-        let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-            panic!("actual original tag retained")
-        };
-        assert_eq!(
-            tag.attributes.as_slice()[0].value.value.text().code_units(),
-            kind.encode_utf16().collect::<Vec<_>>()
-        );
-        assert_eq!(
-            tag.attributes.as_slice()[1].value.value.text().code_units(),
-            [107, 101, 112, 116]
-        );
-        assert!(driver.control.stop().is_none());
-        driver.release().unwrap();
-        assert_released(&driver.control);
-    }
+fn ordinary_color_fact_refusal_retains_native_default_after_table_dispatch() {
+    assert_color_palette_refusal(
+        "<!doctype html><table><input type=color value=currentcolor>",
+        super::head::InsertionMode::InTable,
+        3,
+        7,
+        false,
+        true,
+    );
 }
 
 #[test]
@@ -13730,7 +13690,7 @@ fn ordinary_checkbox_same_name_preserves_both_checked_and_external_explicit_form
             Some(form.clone())
         );
         let state = frozen.input_state(&mut c, input).unwrap();
-        assert_eq!(state.flags.kind(), crate::HtmlInputKind::Checkbox);
+        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Checkbox);
         assert_eq!(state.flags.checkedness(), input != &outside);
         assert!(
             !state.flags.dirty_checkedness()
@@ -13786,7 +13746,7 @@ fn ordinary_checkbox_actual_work_and_storage_boundaries_stop_once_and_release_ev
         usage.resource(R::ManagedCapacityBytes).high_water,
         usage.resource(R::AuxiliaryEntries).high_water,
         usage.resource(R::SourceMapEntries).high_water,
-        std::mem::size_of::<crate::HtmlInputKind>(),
+        std::mem::size_of::<crate::HtmlInputType>(),
         std::mem::size_of::<crate::HtmlInputFlags>()
     );
     for resource in [
@@ -13900,7 +13860,7 @@ fn ordinary_checkbox_fostered_void_node_retains_current_form_and_unsanitized_val
         Some(form)
     );
     let state = frozen.input_state(&mut c, &input).unwrap();
-    assert_eq!(state.flags.kind(), crate::HtmlInputKind::Checkbox);
+    assert_eq!(state.flags.input_type(), crate::HtmlInputType::Checkbox);
     assert!(state.flags.checkedness());
     assert!(!state.flags.dirty_checkedness() && !state.value_rewritten_during_creation);
     let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
@@ -14629,8 +14589,8 @@ fn ordinary_input_sanitizer_observes_completed_value(
     let owner_is_form = owner.as_ref() == Some(&form);
     drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
-    let actual_type = state.flags.kind().input_type();
-    let mode_of_value = state.flags.kind().value_mode();
+    let actual_type = state.flags.input_type();
+    let mode_of_value = state.flags.input_type().value_mode();
     let flags = (
         state.flags.dirty_value(),
         state.flags.dirty_checkedness(),
@@ -16143,8 +16103,8 @@ fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current(
         assert_eq!(control.stop(), None);
         assert!(owned);
         assert_eq!(state.email_value_count, Some(count), "{value:?}");
-        assert_eq!(state.flags.kind(), crate::HtmlInputKind::Email);
-        assert!(!state.flags.kind().is_selectable());
+        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Email);
+        assert!(!state.flags.input_type().is_selectable());
         assert!(!state.flags.dirty_value());
         assert_eq!(current, expected.encode_utf16().collect::<Vec<_>>());
         assert_eq!(default, value.encode_utf16().collect::<Vec<_>>());
@@ -16320,13 +16280,13 @@ fn ordinary_default_button_input_observes_ordered_values(
     assert_eq!(following_text, vec![90]);
     assert!(original_source);
     for state in states {
-        assert_eq!(state.flags.kind().input_type(), expected_type);
+        assert_eq!(state.flags.input_type(), expected_type);
         assert_eq!(
-            state.flags.kind().value_mode(),
+            state.flags.input_type().value_mode(),
             crate::HtmlInputValueMode::Default
         );
         assert_eq!(
-            state.flags.kind().sanitization(),
+            state.flags.input_type().sanitization(),
             crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::Preserve)
         );
         assert!(!state.flags.dirty_value());
@@ -16441,9 +16401,9 @@ fn ordinary_temporal_input_observes_completed_value(
     let owner_is_form = owner.as_ref() == Some(&form);
     drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
-    let actual_type = state.flags.kind().input_type();
-    let mode_of_value = state.flags.kind().value_mode();
-    let selectable = state.flags.kind().is_selectable();
+    let actual_type = state.flags.input_type();
+    let mode_of_value = state.flags.input_type().value_mode();
+    let selectable = state.flags.input_type().is_selectable();
     let flags = (
         state.flags.dirty_value(),
         state.flags.dirty_checkedness(),
@@ -16687,9 +16647,9 @@ fn ordinary_temporal_input_local_datetime_normalizes_separator_and_shortest_time
 #[test]
 fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_values_and_owner() {
     for (keyword, kind) in [
-        ("button", crate::HtmlInputKind::Button),
-        ("reset", crate::HtmlInputKind::Reset),
-        ("submit", crate::HtmlInputKind::Submit),
+        ("button", crate::HtmlInputType::Button),
+        ("reset", crate::HtmlInputType::Reset),
+        ("submit", crate::HtmlInputType::Submit),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(
@@ -16754,7 +16714,7 @@ fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_value
         );
         assert_eq!(child_count, 3);
         assert_eq!(input_children, 0);
-        assert_eq!(state.flags.kind(), kind);
+        assert_eq!(state.flags.input_type(), kind);
         assert_eq!(value, [65, 13, 66, 10, 67]);
         assert!(owns);
         assert_eq!(following_text, [90]);
@@ -16834,9 +16794,9 @@ fn ordinary_number_input_observes_complete(
     let owner_is_form = owner.as_ref() == Some(&form);
     drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
-    let actual_type = state.flags.kind().input_type();
-    let value_mode = state.flags.kind().value_mode();
-    let selectable = state.flags.kind().is_selectable();
+    let actual_type = state.flags.input_type();
+    let value_mode = state.flags.input_type().value_mode();
+    let selectable = state.flags.input_type().is_selectable();
     let flags = (
         state.flags.dirty_value(),
         state.flags.dirty_checkedness(),
@@ -17173,7 +17133,7 @@ fn ordinary_file_image_input_observes_completed_state(
         .unwrap()
         .kind;
     let state = frozen.input_state(&mut control, &input).unwrap();
-    let actual_type = state.flags.kind().input_type();
+    let actual_type = state.flags.input_type();
     let flags = (
         state.flags.dirty_value(),
         state.flags.dirty_checkedness(),
@@ -17469,11 +17429,8 @@ fn number_input_table_fostering_uses_value_state_and_preserves_form_and_native_d
         ])
     );
     assert_eq!(owner, Some(form));
-    assert_eq!(
-        state.flags.kind().input_type(),
-        crate::HtmlInputType::Number
-    );
-    assert!(!state.flags.kind().is_selectable());
+    assert_eq!(state.flags.input_type(), crate::HtmlInputType::Number);
+    assert!(!state.flags.input_type().is_selectable());
     assert!(!state.flags.dirty_value() && !state.flags.dirty_checkedness());
     assert!(state.flags.checkedness() && state.selected_files_empty);
     assert!(!state.value_rewritten_during_creation);
@@ -17557,9 +17514,9 @@ fn ordinary_range_input_observes_complete(
     let owner_is_form = owner.as_ref() == Some(&form);
     drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
-    let actual_type = state.flags.kind().input_type();
-    let value_mode = state.flags.kind().value_mode();
-    let selectable = state.flags.kind().is_selectable();
+    let actual_type = state.flags.input_type();
+    let value_mode = state.flags.input_type().value_mode();
+    let selectable = state.flags.input_type().is_selectable();
     let flags = (
         state.flags.dirty_value(),
         state.flags.dirty_checkedness(),
