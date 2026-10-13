@@ -69,6 +69,7 @@ impl DraftText {
             WorkCategory::CopyByte,
             std::mem::size_of::<HtmlSourceRange>() as u64,
         )?;
+        self.origins.reserve_geometric(c, 1)?;
         self.origins.try_push(
             c,
             TextOrigin {

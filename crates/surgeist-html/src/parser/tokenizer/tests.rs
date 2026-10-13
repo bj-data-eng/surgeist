@@ -3117,3 +3117,210 @@ fn long_comment_origin_storage_submits_bounded_layouts_with_exact_literal_mappin
         );
     }
 }
+
+#[test]
+fn draft_text_origin_growth_clips_and_keeps_post_value_one_short_failure() {
+    let source = HtmlSource::utf8("abc");
+    let bytes = size_of::<token::TextOrigin>() as u64;
+    // The actual third UTF-16 unit retains six bytes. Origins grow from two
+    // slots to exactly three when four cannot fit. Replacement retains both
+    // old and new layouts: 6 + (2 + 3) * bytes at the successful peak.
+    for short in [false, true] {
+        let caps = limits()
+            .into_builder()
+            .managed_capacity_bytes(6 + 3 * bytes - u64::from(short))
+            .peak_transient_bytes(6 + 5 * bytes)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut draft = DraftText::new(&mut c).unwrap();
+        for i in 0..2 {
+            draft
+                .push(
+                    97 + i as u32,
+                    &source.range(i, i + 1).unwrap(),
+                    OriginKind::Literal,
+                    &mut c,
+                )
+                .unwrap();
+        }
+        assert_eq!(draft.origins.capacity(), 2);
+        let third = source.range(2, 3).unwrap();
+        let result = draft.push(99, &third, OriginKind::Literal, &mut c);
+        assert_eq!(draft.value.units(), &[97, 98, 99]);
+        if short {
+            let stop = result.unwrap_err();
+            assert!(matches!(
+                stop,
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::ManagedCapacityBytes,
+                    ..
+                }
+            ));
+            assert_eq!((draft.origins.len(), draft.origins.capacity()), (2, 2));
+            assert_eq!(c.usage().actual_capacity_bytes, 6 + 2 * bytes);
+            let before = c.usage().clone();
+            assert_eq!(
+                draft.push(99, &third, OriginKind::Literal, &mut c),
+                Err(stop)
+            );
+            assert_eq!(c.usage(), &before);
+            assert_eq!(draft.value.units(), &[97, 98, 99]);
+        } else {
+            assert_eq!(result, Ok(()));
+            assert_eq!((draft.origins.len(), draft.origins.capacity()), (3, 3));
+            assert_eq!(c.usage().actual_capacity_bytes, 6 + 3 * bytes);
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::PeakTransientBytes)
+                    .high_water,
+                6 + 5 * bytes
+            );
+        }
+        for (i, origin) in draft.origins.as_slice().iter().enumerate() {
+            assert_eq!((origin.start, origin.end), (i, i + 1));
+            assert_eq!((origin.source.start(), origin.source.end()), (i, i + 1));
+            assert_eq!(origin.source.source(), source.identity());
+            assert_eq!(origin.kind, OriginKind::Literal);
+        }
+        let snapshot = c.first_stop_usage().cloned();
+        let before = c.usage().clone();
+        draft.release(&mut c).unwrap();
+        assert_storage_released(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.first_stop_usage(), snapshot.as_ref());
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
+        assert_eq!(
+            c.usage().actual_capacity_high_water,
+            before.actual_capacity_high_water
+        );
+    }
+}
+
+#[test]
+fn draft_text_origin_logical_denial_retains_reserved_capacity_and_partial_value() {
+    let source = HtmlSource::utf8("abc");
+    let caps = limits()
+        .into_builder()
+        .source_map_entries(2)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut draft = DraftText::new(&mut c).unwrap();
+    for i in 0..2 {
+        draft
+            .push(
+                97 + i as u32,
+                &source.range(i, i + 1).unwrap(),
+                OriginKind::Literal,
+                &mut c,
+            )
+            .unwrap();
+    }
+    let stop = draft
+        .push(
+            99,
+            &source.range(2, 3).unwrap(),
+            OriginKind::Literal,
+            &mut c,
+        )
+        .unwrap_err();
+    assert!(matches!(
+        stop,
+        ParseStop::LimitExceeded {
+            resource: HtmlParseResource::SourceMapEntries,
+            ..
+        }
+    ));
+    assert_eq!(draft.value.units(), &[97, 98, 99]);
+    assert_eq!((draft.origins.len(), draft.origins.capacity()), (2, 4));
+    assert_eq!(
+        c.usage().actual_capacity_bytes,
+        6 + 4 * size_of::<token::TextOrigin>() as u64
+    );
+    assert_eq!(
+        c.usage()
+            .resource(HtmlParseResource::SourceMapEntries)
+            .current,
+        2
+    );
+    let snapshot = c.first_stop_usage().unwrap().clone();
+    draft.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.usage().actual_capacity_bytes, 0);
+    assert_eq!(c.first_stop_usage(), Some(&snapshot));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits),
+        snapshot.resource(HtmlParseResource::WorkCredits)
+    );
+}
+
+#[test]
+fn draft_text_origin_foreign_and_cancelled_push_preserve_exact_owned_prefix() {
+    let source = HtmlSource::utf8("ab");
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(), cancellation.clone());
+    c.admit_source(&source).unwrap();
+    let mut draft = DraftText::new(&mut c).unwrap();
+    draft
+        .push(
+            97,
+            &source.range(0, 1).unwrap(),
+            OriginKind::Literal,
+            &mut c,
+        )
+        .unwrap();
+    let before = c.usage().clone();
+    let mut foreign = ParseControl::new(limits(), HtmlParseCancellation::new());
+    assert_eq!(
+        draft.push(
+            98,
+            &source.range(1, 2).unwrap(),
+            OriginKind::Literal,
+            &mut foreign
+        ),
+        Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+    );
+    assert_eq!(c.usage(), &before);
+    assert_eq!(draft.value.units(), &[97]);
+    assert_eq!((draft.origins.len(), draft.origins.capacity()), (1, 1));
+    assert_eq!(
+        draft.origins.as_slice()[0].source,
+        source.range(0, 1).unwrap()
+    );
+    // The original controller can still commit its exact second unit/map.
+    draft
+        .push(
+            98,
+            &source.range(1, 2).unwrap(),
+            OriginKind::Literal,
+            &mut c,
+        )
+        .unwrap();
+    cancellation.cancel();
+    assert_eq!(
+        draft.push(
+            98,
+            &source.range(1, 2).unwrap(),
+            OriginKind::Literal,
+            &mut c
+        ),
+        Err(ParseStop::Cancelled)
+    );
+    assert_eq!(draft.value.units(), &[97, 98]);
+    assert_eq!((draft.origins.len(), draft.origins.capacity()), (2, 2));
+    let snapshot = c.first_stop_usage().unwrap().clone();
+    draft.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.usage().actual_capacity_bytes, 0);
+    assert_eq!(c.first_stop_usage(), Some(&snapshot));
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits),
+        snapshot.resource(HtmlParseResource::WorkCredits)
+    );
+}
