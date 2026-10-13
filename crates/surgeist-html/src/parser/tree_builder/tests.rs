@@ -16374,3 +16374,321 @@ fn ordinary_default_button_input_submit_preserves_order_and_empty_default_throug
         &[115, 117, 98, 109, 105, 116],
     );
 }
+
+fn ordinary_temporal_input_observes_completed_value(
+    raw: &str,
+    expected_type: crate::HtmlInputType,
+    expected_default: &[u16],
+    expected_current: &[u16],
+    expected_keyword: &str,
+    expected_reference_origins: &[(usize, usize, usize, usize)],
+) -> super::head::HeadStep {
+    use crate::construction::parser_session::provenance::LexicalRole;
+    use crate::parser::tokenizer::token::OriginKind;
+
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let source = request.source();
+    let mut driver = super::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert!(first_stop.is_none());
+        assert!(driver.control.first_stop_usage().is_none());
+        return boundary;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let child_count = children.len();
+    let input = children[0].clone();
+    let input_children = document.node(&input).unwrap().children().count();
+    let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
+        panic!("the actual input token must create a native Element");
+    };
+    let namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let local_name = element.name().local_name().code_units().to_vec();
+    let actual_attributes: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|attribute| {
+            (
+                attribute
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                attribute.name().local_name().code_units().to_vec(),
+                attribute.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    let HtmlNodeKind::Text(text) = document.node(&children[1]).unwrap().kind() else {
+        panic!("Z remains an actual sibling after the void input");
+    };
+    let following_text = text.code_units().to_vec();
+    let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+    let owner_is_form = owner.as_ref() == Some(&form);
+    drop(owner);
+    let state = frozen.input_state(&mut control, &input).unwrap();
+    let actual_type = state.flags.kind().input_type();
+    let mode_of_value = state.flags.kind().value_mode();
+    let selectable = state.flags.kind().is_selectable();
+    let flags = (
+        state.flags.dirty_value(),
+        state.flags.dirty_checkedness(),
+        state.flags.checkedness(),
+        state.flags.indeterminate(),
+        state.flags.user_validity(),
+    );
+    let writeback_absent = frozen
+        .input_writeback_sources(&mut control, &input)
+        .unwrap()
+        .is_none();
+    let mut value = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+    frozen
+        .append_input_internal_value(&mut control, &input, &mut value)
+        .unwrap();
+    let internal_value = value.units().to_vec();
+    value.clear(&mut control).unwrap();
+    frozen
+        .append_input_value(&mut control, &input, &mut value)
+        .unwrap();
+    let current_value = value.units().to_vec();
+    value.clear(&mut control).unwrap();
+    frozen
+        .append_input_default_value(&mut control, &input, &mut value)
+        .unwrap();
+    let default_value = value.units().to_vec();
+    value.release(&mut control).unwrap();
+    let (reference_origins, original_source) = {
+        let evidence = frozen.retained_evidence().unwrap();
+        let (_, parts, _) = evidence.lexical_observations();
+        let references: Vec<_> = parts
+            .iter()
+            .filter(|part| {
+                part.role == LexicalRole::Value && part.kind == Some(OriginKind::CharacterReference)
+            })
+            .collect();
+        let original_source = references
+            .iter()
+            .all(|part| part.source.source() == source.identity());
+        (
+            references
+                .iter()
+                .map(|part| (part.start, part.end, part.source.start(), part.source.end()))
+                .collect::<Vec<_>>(),
+            original_source,
+        )
+    };
+    drop(input);
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 2);
+    assert_eq!(input_children, 0);
+    assert_eq!(
+        namespace,
+        "http://www.w3.org/1999/xhtml"
+            .encode_utf16()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(local_name, vec![105, 110, 112, 117, 116]);
+    let mut expected_attributes = vec![(
+        None,
+        vec![116, 121, 112, 101],
+        expected_keyword.encode_utf16().collect::<Vec<_>>(),
+    )];
+    expected_attributes.push((
+        None,
+        vec![118, 97, 108, 117, 101],
+        expected_default.to_vec(),
+    ));
+    assert_eq!(actual_attributes, expected_attributes);
+    assert_eq!(following_text, vec![90]);
+    assert!(owner_is_form && writeback_absent && original_source);
+    assert_eq!(actual_type, expected_type);
+    assert_eq!(mode_of_value, crate::HtmlInputValueMode::Value);
+    assert_eq!(flags, (false, false, false, false, false));
+    assert!(!selectable);
+    assert_eq!(default_value, expected_default);
+    assert_eq!(reference_origins, expected_reference_origins);
+    assert_eq!(internal_value, expected_current);
+    assert_eq!(current_value, expected_current);
+    boundary
+}
+
+// HTML877d strict input sanitizers, rather than common microsyntax recovery:
+// Date35975–77, Month36146–48, Week36300–02, Time36451–53,
+// LocalDateTime36607–09. Each attempted form is released before the
+// completion oracle. A Boundary(Form) leaves later native/value assertions
+// unexecuted; the full matrix still exercises and cleans up every fixture.
+type TemporalInputLiteral<'a> = (
+    &'a str,
+    &'a str,
+    &'a str,
+    &'a [(usize, usize, usize, usize)],
+);
+
+fn ordinary_temporal_input_literal_matrix(
+    keyword: &str,
+    input_type: crate::HtmlInputType,
+    cases: &[TemporalInputLiteral<'_>],
+) {
+    let mut boundaries = Vec::new();
+    for &(authored, native_default, current, reference_origins) in cases {
+        let raw =
+            format!("<!doctype html><form id=f><input type={keyword} value='{authored}'>Z</form>");
+        let boundary = ordinary_temporal_input_observes_completed_value(
+            &raw,
+            input_type,
+            &native_default.encode_utf16().collect::<Vec<_>>(),
+            &current.encode_utf16().collect::<Vec<_>>(),
+            keyword,
+            reference_origins,
+        );
+        boundaries.push((authored, boundary));
+    }
+    for (authored, boundary) in boundaries {
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "{keyword} value={authored:?} must complete before its sanitized state is observed"
+        );
+    }
+}
+
+#[test]
+fn ordinary_temporal_input_date_uses_strict_gregorian_validity_and_keeps_year_spelling() {
+    ordinary_temporal_input_literal_matrix(
+        "date",
+        crate::HtmlInputType::Date,
+        &[
+            ("2024-02-29", "2024-02-29", "2024-02-29", &[]),
+            ("2023-02-29", "2023-02-29", "", &[]),
+            ("002024-02-29", "002024-02-29", "002024-02-29", &[]),
+            (
+                "10000000000000000000000000000000000000000000400-02-29",
+                "10000000000000000000000000000000000000000000400-02-29",
+                "10000000000000000000000000000000000000000000400-02-29",
+                &[],
+            ),
+            ("0000-01-01", "0000-01-01", "", &[]),
+        ],
+    );
+}
+
+#[test]
+fn ordinary_temporal_input_month_preserves_valid_values_and_empties_invalid_months() {
+    ordinary_temporal_input_literal_matrix(
+        "month",
+        crate::HtmlInputType::Month,
+        &[
+            ("2024-12", "2024-12", "2024-12", &[]),
+            ("2024-13", "2024-13", "", &[]),
+            ("", "", "", &[]),
+        ],
+    );
+}
+
+#[test]
+fn ordinary_temporal_input_week_checks_year_specific_week53_and_uppercase_w() {
+    ordinary_temporal_input_literal_matrix(
+        "week",
+        crate::HtmlInputType::Week,
+        &[
+            ("2020-W53", "2020-W53", "2020-W53", &[]),
+            ("2021-W53", "2021-W53", "", &[]),
+            ("2020-w53", "2020-w53", "", &[]),
+            ("2020-W00", "2020-W00", "", &[]),
+        ],
+    );
+}
+
+#[test]
+fn ordinary_temporal_input_time_requires_strict_fraction_precision_without_normalizing() {
+    ordinary_temporal_input_literal_matrix(
+        "time",
+        crate::HtmlInputType::Time,
+        &[
+            ("12:34:00.000", "12:34:00.000", "12:34:00.000", &[]),
+            ("12:34:56.123", "12:34:56.123", "12:34:56.123", &[]),
+            ("12:34:56.1234", "12:34:56.1234", "", &[]),
+            ("24:00", "24:00", "", &[]),
+            ("23:59:60", "23:59:60", "", &[]),
+        ],
+    );
+}
+
+#[test]
+fn ordinary_temporal_input_local_datetime_normalizes_separator_and_shortest_time_only() {
+    ordinary_temporal_input_literal_matrix(
+        "datetime-local",
+        crate::HtmlInputType::LocalDateTime,
+        &[
+            (
+                "2024-02-29 12:34:00.000",
+                "2024-02-29 12:34:00.000",
+                "2024-02-29T12:34",
+                &[],
+            ),
+            (
+                "2024-02-29&#32;12:34:00.000",
+                "2024-02-29 12:34:00.000",
+                "2024-02-29T12:34",
+                &[(10, 11, 70, 75)],
+            ),
+            (
+                "002024-02-29T12:34:01.120",
+                "002024-02-29T12:34:01.120",
+                "002024-02-29T12:34:01.12",
+                &[],
+            ),
+            (
+                "2024-02-29T12:34:00.001",
+                "2024-02-29T12:34:00.001",
+                "2024-02-29T12:34:00.001",
+                &[],
+            ),
+            ("2024-02-29t12:34", "2024-02-29t12:34", "", &[]),
+            ("2024-02-29T12:34Z", "2024-02-29T12:34Z", "", &[]),
+        ],
+    );
+}
