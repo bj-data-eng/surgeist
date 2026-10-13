@@ -2860,6 +2860,55 @@ pub fn main_entry(args: impl IntoIterator<Item = OsString>) -> i32 {
 mod tests {
     use super::*;
 
+    fn keyed_reduction_call() -> (WorkerCall, TargetDescriptor) {
+        let mut manifest: crate::registry::FuzzManifest = toml::from_str(include_str!(
+            "../tests/fixtures/subject/fuzz/fuzz.toml"
+        )).unwrap();
+        let target = manifest.targets.remove(0);
+        let outcome = CaseOutcome::failure(
+            crate::FailureKey::new(target.properties()[0].clone(), crate::FailureClass::PropertyViolation, None).unwrap(),
+            "controlled keyed response",
+        ).unwrap();
+        let call = WorkerCall {
+            responses: vec![
+                WorkerResponse::Captured { canonical: b"BUG!".to_vec() },
+                WorkerResponse::Evaluated { outcome, counts: ExecutionCounts::new(1, 0) },
+            ],
+            process: ProcessOutcome {
+                stop: ProcessStop::Exited, exit: ProcessExit::Success,
+                stdout: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
+                stderr: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
+                input_bytes_written: 0, duration: Duration::ZERO,
+                cleanup: CleanupStatus::Complete, process_group: 1, sampled_peak_rss_bytes: None,
+            },
+        };
+        (call, target)
+    }
+
+    #[test]
+    fn keyed_response_cannot_confirm_after_failed_cleanup_or_abnormal_exit() {
+        let (mut call, target) = keyed_reduction_call();
+        assert!(reduction_evaluation(&call, b"BUG!", &target, 0).unwrap().outcome.failure_key().is_some());
+        call.process.cleanup = CleanupStatus::Failed {
+            child_reaped: true, group_gone: false, errors: vec!["unobserved group disappearance".into()],
+        };
+        assert!(reduction_evaluation(&call, b"BUG!", &target, 0).is_err());
+        call.process.cleanup = CleanupStatus::Complete;
+        call.process.exit = ProcessExit::Nonzero(1);
+        assert!(reduction_evaluation(&call, b"BUG!", &target, 0).is_err());
+    }
+
+    #[test]
+    fn keyed_response_cannot_confirm_after_an_operational_stop() {
+        let (mut call, target) = keyed_reduction_call();
+        for stop in [ProcessStop::Cancelled, ProcessStop::Deadline,
+            ProcessStop::OutputLimit(execution::OutputStream::Stdout)] {
+            call.process.stop = stop;
+            let replay = reduction_evaluation(&call, b"BUG!", &target, 0).unwrap();
+            assert!(replay.outcome.failure_key().is_none());
+        }
+    }
+
     #[test]
     fn tool_stops_preserve_resource_and_cancellation_categories() {
         for (stop, expected) in [
