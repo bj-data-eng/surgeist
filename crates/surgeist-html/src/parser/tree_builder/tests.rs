@@ -14573,3 +14573,253 @@ fn ordinary_radio_same_group_keeps_only_later_checked_member_through_eof() {
     assert_eq!(dirty_checkedness, vec![false, false]);
     assert_eq!(checkedness, vec![false, true]);
 }
+
+fn ordinary_input_sanitizer_observes_completed_value(
+    raw: &'static str,
+    expected_type: crate::HtmlInputType,
+    expected_default: &[u16],
+    expected_current: &[u16],
+    expected_multiple: bool,
+    expected_reference_origins: &[(usize, usize, usize, usize)],
+) {
+    use crate::construction::parser_session::provenance::LexicalRole;
+    use crate::parser::tokenizer::token::OriginKind;
+
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let source = request.source();
+    let mut driver = super::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "ordinary Email/URL must complete before actual sanitized state is observed"
+        );
+        return;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let child_count = children.len();
+    let input = children[0].clone();
+    let input_children = document.node(&input).unwrap().children().count();
+    let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
+        panic!("the actual input token must create a native Element");
+    };
+    let namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let local_name = element.name().local_name().code_units().to_vec();
+    let actual_attributes: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|attribute| {
+            (
+                attribute
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                attribute.name().local_name().code_units().to_vec(),
+                attribute.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    let HtmlNodeKind::Text(text) = document.node(&children[1]).unwrap().kind() else {
+        panic!("Z remains an actual sibling after the void input");
+    };
+    let following_text = text.code_units().to_vec();
+    let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+    let owner_is_form = owner.as_ref() == Some(&form);
+    drop(owner);
+    let state = frozen.input_state(&mut control, &input).unwrap();
+    let actual_type = state.flags.kind().input_type();
+    let mode_of_value = state.flags.kind().value_mode();
+    let flags = (
+        state.flags.dirty_value(),
+        state.flags.dirty_checkedness(),
+        state.flags.checkedness(),
+        state.flags.indeterminate(),
+        state.flags.user_validity(),
+    );
+    let writeback_absent = frozen
+        .input_writeback_sources(&mut control, &input)
+        .unwrap()
+        .is_none();
+    let mut value = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+    frozen
+        .append_input_internal_value(&mut control, &input, &mut value)
+        .unwrap();
+    let internal_value = value.units().to_vec();
+    value.clear(&mut control).unwrap();
+    frozen
+        .append_input_value(&mut control, &input, &mut value)
+        .unwrap();
+    let current_value = value.units().to_vec();
+    value.clear(&mut control).unwrap();
+    frozen
+        .append_input_default_value(&mut control, &input, &mut value)
+        .unwrap();
+    let default_value = value.units().to_vec();
+    value.release(&mut control).unwrap();
+    let (reference_origins, original_source) = {
+        let evidence = frozen.retained_evidence().unwrap();
+        let (_, parts, _) = evidence.lexical_observations();
+        let references: Vec<_> = parts
+            .iter()
+            .filter(|part| {
+                part.role == LexicalRole::Value && part.kind == Some(OriginKind::CharacterReference)
+            })
+            .collect();
+        let original_source = references
+            .iter()
+            .all(|part| part.source.source() == source.identity());
+        (
+            references
+                .iter()
+                .map(|part| (part.start, part.end, part.source.start(), part.source.end()))
+                .collect::<Vec<_>>(),
+            original_source,
+        )
+    };
+    drop(input);
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 2);
+    assert_eq!(input_children, 0);
+    assert_eq!(
+        namespace,
+        "http://www.w3.org/1999/xhtml"
+            .encode_utf16()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(local_name, vec![105, 110, 112, 117, 116]);
+    let type_units = match expected_type {
+        crate::HtmlInputType::Url => vec![117, 114, 108],
+        crate::HtmlInputType::Email => vec![101, 109, 97, 105, 108],
+        _ => panic!("the literal sanitizer fixtures use only URL or Email"),
+    };
+    let mut expected_attributes = vec![(None, vec![116, 121, 112, 101], type_units)];
+    if expected_multiple {
+        // Presence selects multiple even though its authored spelling is false.
+        expected_attributes.push((
+            None,
+            vec![109, 117, 108, 116, 105, 112, 108, 101],
+            vec![102, 97, 108, 115, 101],
+        ));
+    }
+    expected_attributes.push((
+        None,
+        vec![118, 97, 108, 117, 101],
+        expected_default.to_vec(),
+    ));
+    assert_eq!(actual_attributes, expected_attributes);
+    assert_eq!(following_text, vec![90]);
+    assert!(owner_is_form && writeback_absent && original_source);
+    assert_eq!(actual_type, expected_type);
+    assert_eq!(mode_of_value, crate::HtmlInputValueMode::Value);
+    assert_eq!(flags, (false, false, false, false, false));
+    assert_eq!(default_value, expected_default);
+    assert_eq!(reference_origins, expected_reference_origins);
+    assert_eq!(internal_value, expected_current);
+    assert_eq!(current_value, expected_current);
+}
+
+#[test]
+fn ordinary_url_strips_newlines_then_boundary_ascii_whitespace_through_eof() {
+    // HTML877d #url-state-(type=url): newline removal precedes ASCII trim.
+    ordinary_input_sanitizer_observes_completed_value(
+        "<!doctype html><form id=f><input type=url value=' &#9;https://e.test/a&#13;b&#10;c&#12; '>Z</form>",
+        crate::HtmlInputType::Url,
+        &[
+            32, 9, 104, 116, 116, 112, 115, 58, 47, 47, 101, 46, 116, 101, 115, 116, 47, 97, 13,
+            98, 10, 99, 12, 32,
+        ],
+        &[
+            104, 116, 116, 112, 115, 58, 47, 47, 101, 46, 116, 101, 115, 116, 47, 97, 98, 99,
+        ],
+        false,
+        &[
+            (1, 2, 50, 54),
+            (18, 19, 70, 75),
+            (20, 21, 76, 81),
+            (22, 23, 82, 87),
+        ],
+    );
+}
+
+#[test]
+fn ordinary_email_single_strips_newlines_then_boundary_ascii_whitespace_through_eof() {
+    // HTML877d #email-state-(type=email), when multiple is absent.
+    ordinary_input_sanitizer_observes_completed_value(
+        "<!doctype html><form id=f><input type=email value=' &#9;a&#13;@b.test&#10;&#12; '>Z</form>",
+        crate::HtmlInputType::Email,
+        &[32, 9, 97, 13, 64, 98, 46, 116, 101, 115, 116, 10, 12, 32],
+        &[97, 64, 98, 46, 116, 101, 115, 116],
+        false,
+        &[
+            (1, 2, 52, 56),
+            (3, 4, 57, 62),
+            (11, 12, 69, 74),
+            (12, 13, 74, 79),
+        ],
+    );
+}
+
+#[test]
+fn ordinary_email_multiple_trims_tokens_but_preserves_internal_newline_through_eof() {
+    // HTML877d multiple branch trims tokens and joins with commas; no global
+    // newline stripping is specified. The two actual values are a\n@b.test
+    // and c@d.test; the invalid address's internal LF is still retained.
+    ordinary_input_sanitizer_observes_completed_value(
+        "<!doctype html><form id=f><input type=email multiple=false value=' a&#10;@b.test , &#9;c@d.test '>Z</form>",
+        crate::HtmlInputType::Email,
+        &[
+            32, 97, 10, 64, 98, 46, 116, 101, 115, 116, 32, 44, 32, 9, 99, 64, 100, 46, 116, 101,
+            115, 116, 32,
+        ],
+        &[
+            97, 10, 64, 98, 46, 116, 101, 115, 116, 44, 99, 64, 100, 46, 116, 101, 115, 116,
+        ],
+        true,
+        &[(2, 3, 68, 73), (13, 14, 83, 87)],
+    );
+}
