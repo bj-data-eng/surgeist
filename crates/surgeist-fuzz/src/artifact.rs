@@ -870,7 +870,25 @@ mod rooted {
         {
             return Err(invalid("publication lock is not a regular file"));
         }
-        fs::flock(&fd, FlockOperation::NonBlockingLockExclusive).map_err(io_error)?;
+        // Publication is serialized across store handles and processes. A
+        // bounded wait admits concurrent workers without masking a stuck writer.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match fs::flock(&fd, FlockOperation::NonBlockingLockExclusive) {
+                Ok(()) => break,
+                Err(rustix::io::Errno::WOULDBLOCK) => {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(FuzzError::new(
+                            FuzzErrorKind::Resource,
+                            "artifact publication",
+                            "publication lock remained busy for five seconds; no write started",
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(error) => return Err(io_error(error)),
+            }
+        }
         Ok(fd)
     }
     pub(super) fn marker(fd: &OwnedFd) -> Result<bool> {
