@@ -2519,3 +2519,37 @@ pub fn main_entry(args: impl IntoIterator<Item = OsString>) -> i32 {
     );
     summary.status.exit_code()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_stops_preserve_resource_and_cancellation_categories() {
+        for (stop, expected) in [
+            (ProcessStop::Cancelled, CampaignStatus::Cancelled),
+            (ProcessStop::Deadline, CampaignStatus::ResourceStop),
+            (ProcessStop::OutputLimit(execution::OutputStream::Stdout), CampaignStatus::ResourceStop),
+        ] {
+            let outcome = ProcessOutcome {
+                stop,
+                exit: ProcessExit::Signal(15),
+                stdout: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
+                stderr: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
+                input_bytes_written: 0,
+                duration: Duration::from_millis(1),
+                cleanup: CleanupStatus::Complete,
+                process_group: 1,
+                sampled_peak_rss_bytes: None,
+            };
+            let error = require_success(&outcome, "controlled tool").unwrap_err();
+            assert_eq!(status_for_error(&error), expected, "{error}");
+            let incomplete = ProcessOutcome {
+                cleanup: CleanupStatus::Failed { child_reaped: true, group_gone: false, errors: vec!["query unavailable".into()] },
+                ..outcome
+            };
+            let error = require_success(&incomplete, "controlled tool").unwrap_err();
+            assert_eq!(status_for_error(&error), CampaignStatus::InfrastructureFailure);
+        }
+    }
+}
