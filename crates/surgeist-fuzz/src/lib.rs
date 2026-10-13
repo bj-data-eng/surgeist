@@ -20,6 +20,8 @@ pub mod engine_minimization;
 #[cfg(feature = "execution")]
 pub mod execution;
 pub mod reduction;
+#[cfg(all(feature = "execution", unix))]
+mod retention;
 pub mod worker;
 
 pub use contract::*;
