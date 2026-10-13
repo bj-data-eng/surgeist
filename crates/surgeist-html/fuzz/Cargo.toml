@@ -1,0 +1,37 @@
+[package]
+name = "surgeist-html-fuzz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[package.metadata.surgeist-fuzz]
+descriptor = "fuzz.toml"
+
+[features]
+default = []
+property = ["surgeist-fuzz/property", "dep:proptest"]
+coverage = ["surgeist-fuzz/coverage", "dep:libfuzzer-sys"]
+
+[dependencies]
+surgeist-html = { path = ".." }
+surgeist-fuzz = { path = "../../surgeist-fuzz" }
+toml = "=0.9.8"
+proptest = { version = "=1.11.0", default-features = false, features = ["std"], optional = true }
+libfuzzer-sys = { version = "=0.4.13", optional = true }
+
+[[bin]]
+name = "html-document-worker"
+path = "src/bin/document.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "html-fragment-worker"
+path = "src/bin/fragment.rs"
+test = false
+doc = false

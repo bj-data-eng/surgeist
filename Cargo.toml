@@ -55,6 +55,7 @@ members = [
     "crates/surgeist-generator",
     "crates/surgeist-fuzz",
     "crates/surgeist-html",
+    "crates/surgeist-html/fuzz",
     "crates/surgeist-layout",
     "crates/surgeist-render",
     "crates/surgeist-retained",

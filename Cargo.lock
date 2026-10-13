@@ -2043,6 +2043,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "libfuzzer-sys"
+version = "0.4.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9fd2f41a1cba099f79a0b6b6c35656cf7c03351a7bae8ff0f28f25270f929d2"
+dependencies = [
+ "arbitrary",
+ "cc",
+]
+
+[[package]]
 name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3842,6 +3852,17 @@ name = "surgeist-html"
 version = "0.1.0"
 dependencies = [
  "cssparser",
+]
+
+[[package]]
+name = "surgeist-html-fuzz"
+version = "0.1.0"
+dependencies = [
+ "libfuzzer-sys",
+ "proptest",
+ "surgeist-fuzz",
+ "surgeist-html",
+ "toml",
 ]
 
 [[package]]
