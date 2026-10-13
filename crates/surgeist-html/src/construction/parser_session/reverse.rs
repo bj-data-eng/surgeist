@@ -541,7 +541,7 @@ mod tests {
         }
     }
     #[test]
-    fn lineage_keeps_equal_cause_distinct_groups_and_each_current_output_interval() {
+    fn lineage_keeps_shared_cause_groups_at_their_contributed_intervals() {
         // Real issuer/group/merge producers, not fabricated association rows.
         // All three leaves deliberately share one source-bearing token cause.
         let source = crate::HtmlSource::utf8("ABC");
@@ -617,37 +617,40 @@ mod tests {
             })
             .collect::<Vec<_>>();
         incoming.sort_unstable();
-        assert_eq!(
-            incoming,
-            vec![
-                (0, 1, b.index),
-                (0, 1, third.index),
-                (1, 2, b.index),
-                (1, 2, third.index),
-                (2, 3, b.index),
-                (2, 3, third.index)
-            ]
-        );
-        for interval in [(0, 1), (1, 2), (2, 3)] {
-            assert_eq!(
-                rows.iter()
-                    .filter(|row| row.destination == destination
-                        && (row.start, row.end) == interval
-                        && row.cause == cause.index
-                        && row.group == Some(a.index)
-                        && row.relation == AssociationRelation::Original)
-                    .count(),
-                1
+        let original: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                row.destination == destination
+                    && row.cause == cause.index
+                    && row.group == Some(a.index)
+                    && row.relation == AssociationRelation::Original
+            })
+            .map(|row| (row.start, row.end))
+            .collect();
+        let triggers: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                row.destination == destination
+                    && row.cause == cause.index
+                    && row.group.is_none()
+                    && row.relation == AssociationRelation::Trigger
+            })
+            .map(|row| (row.start, row.end))
+            .collect();
+        // Fixed history is retained independently of current interval coverage.
+        assert_eq!(evidence.native.groups.len(), 5);
+        assert_eq!(evidence.native.causes.len(), 4);
+        for (group, left, right, offset) in [(&ab, &a, &b, 1), (&abc, &ab, &third, 2)] {
+            let header = evidence.require_group(group).unwrap();
+            assert!(
+                matches!(header.body, GroupBody::Concat { original, incoming, offset: actual }
+                if original == left.index && incoming == right.index && actual == offset)
             );
+            let fixed = &evidence.native.causes.as_slice()[header.cause];
+            assert_eq!(fixed.operation, ConstructionOperation::Merge);
             assert_eq!(
-                rows.iter()
-                    .filter(|row| row.destination == destination
-                        && (row.start, row.end) == interval
-                        && row.cause == cause.index
-                        && row.group.is_none()
-                        && row.relation == AssociationRelation::Trigger)
-                    .count(),
-                1
+                (fixed.original, fixed.incoming, fixed.trigger),
+                (Some(left.index), Some(right.index), Some(cause.index))
             );
         }
         // A point query observes every retained Incoming link independently;
@@ -671,11 +674,27 @@ mod tests {
                 _ => panic!("one advance must consume exactly one existing row"),
             }
         }
-        assert_eq!(matched_incoming, 6);
         assert!(matches!(cursor.advance(), ReverseStep::Complete));
+        let (b_index, c_index) = (b.index, third.index);
         drop((cause, a, b, third, ab, abc));
         evidence.release(&mut c).unwrap();
         crate::parser::tree_builder::tests::assert_released(&c);
+        // Architecture-selected spatial applicability. All owning disposal and
+        // fixed-history checks precede the intended old-model discrimination.
+        assert_eq!(incoming, vec![(1, 2, b_index), (2, 3, c_index)]);
+        assert_eq!(original, vec![(0, 1)]);
+        // The shared semantic trigger may normalize adjacent coverage, but it
+        // cannot retroactively affect A. This is coverage, not a direct map.
+        for point in 0..3 {
+            assert_eq!(
+                triggers
+                    .iter()
+                    .filter(|(a, b)| *a <= point && point < *b)
+                    .count(),
+                usize::from(point != 0)
+            );
+        }
+        assert_eq!(matched_incoming, 2);
     }
     fn two_current_destinations(c: &mut ParseControl, source: &crate::HtmlSource) -> ParseEvidence {
         c.admit_source(source).unwrap();

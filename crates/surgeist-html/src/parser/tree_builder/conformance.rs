@@ -3226,4 +3226,248 @@ mod whole_source_comparisons {
             }
         }
     }
+
+    #[test]
+    fn completed_reference_lineage_uses_contributed_extents_not_atom_times_history() {
+        use crate::construction::parser_session::provenance::{ConstructionOperation, GroupBody};
+        // Five actual Text insertions per literal repetition, but six exact
+        // direct origin atoms: the last entity has two output atoms in one leaf.
+        // Data lineage has one qualified contribution per insertion. Each of
+        // the subsequent insertions has one explicit semantic merge trigger.
+        // Token predecessor links remain fixed history, not field coverage.
+        let mut observations = Vec::new();
+        for n in [1usize, 8, 32] {
+            let literal = references(n, true);
+            let SealObservation {
+                mut owner,
+                positions,
+                phases,
+            } = sealed(&literal, false, true, None);
+            assert_eq!(owner.source().as_utf16().unwrap().code_units(), literal.raw);
+            assert_eq!(
+                owner
+                    .retained_usage()
+                    .resource(HtmlParseResource::SourceUnits)
+                    .current,
+                literal.raw.len() as u64
+            );
+            assert_eq!(owner.document().unwrap().mode(), HtmlDocumentMode::NoQuirks);
+            let evidence = owner.evidence().unwrap();
+            assert_eq!(evidence.diagnostics().len(), 0);
+            let view = evidence.associations().unwrap();
+            let mut origins = Vec::new();
+            let mut lineage = Vec::new();
+            let mut root = None;
+            let mut anchors = 0;
+            let mut cause_rows = Vec::new();
+            for i in 0..view.len() {
+                let row = view.row(i).unwrap();
+                if row.relation == AssociationRelation::Cause {
+                    assert!(row.destination == NativeDestination::Cause(row.cause));
+                    assert!(row.group.is_none());
+                    assert_eq!((row.start, row.end), (0, 0));
+                    cause_rows.push(row.cause);
+                }
+                if row.destination == NativeDestination::LexicalEnd {
+                    anchors += 1;
+                    let range = row.source.as_ref().unwrap();
+                    check_range(
+                        owner.source(),
+                        range,
+                        (literal.raw.len(), literal.raw.len()),
+                    );
+                }
+                let NativeDestination::Field(StringLocation::Text(node)) = row.destination else {
+                    continue;
+                };
+                // Actual Node-row resolution performed by the same-owner
+                // completed lender, not a session-index == tree-ordinal guess.
+                assert!(positions.contains(&(false, node, 6)));
+                let range = row.source.as_ref().unwrap();
+                check_range(owner.source(), range, (range.start(), range.end()));
+                if row.relation == AssociationRelation::Output {
+                    let group = row.group.unwrap();
+                    assert!(root.is_none_or(|previous| previous == group));
+                    root = Some(group);
+                    origins.push(Origin {
+                        node: 6,
+                        output: (row.start, row.end),
+                        source: (range.start(), range.end()),
+                        kind: row.kind.unwrap(),
+                    });
+                } else {
+                    lineage.push((
+                        row.relation,
+                        row.start,
+                        row.end,
+                        (range.start(), range.end()),
+                        row.group,
+                        row.cause,
+                    ));
+                }
+            }
+            assert_eq!(origins, literal.origins);
+            assert_eq!(origins.len(), 6 * n);
+            assert_eq!(anchors, 1);
+            // Every real fixed cause survives once, including source-less
+            // merge/retirement and contextual Token predecessor links.
+            let mut causes = 0;
+            while let Some(cause) = view.cause(causes) {
+                if let Some(source) = &cause.source {
+                    check_range(owner.source(), source, (source.start(), source.end()));
+                }
+                if cause.operation == ConstructionOperation::Token {
+                    assert!(cause.trigger.is_some());
+                }
+                causes += 1;
+            }
+            assert_eq!(cause_rows, (0..causes).collect::<Vec<_>>());
+            let mut leaves = Vec::new();
+            let mut merged = 0;
+            let mut index = root.unwrap();
+            loop {
+                let group = view.group(index).unwrap();
+                let cause = view.cause(group.cause).unwrap();
+                match group.body {
+                    GroupBody::Concat {
+                        original,
+                        incoming,
+                        offset,
+                    } => {
+                        assert_eq!(cause.operation, ConstructionOperation::Merge);
+                        assert!(cause.source.is_none());
+                        assert_eq!(
+                            (cause.original, cause.incoming),
+                            (Some(original), Some(incoming))
+                        );
+                        let left = view.group(original).unwrap();
+                        let right = view.group(incoming).unwrap();
+                        assert_eq!(left.units, offset);
+                        assert_eq!(offset + right.units, group.units);
+                        assert!(original < index && incoming < index);
+                        assert!(matches!(right.body, GroupBody::Leaf { .. }));
+                        let leaf_cause = view.cause(right.cause).unwrap();
+                        assert_eq!(leaf_cause.operation, ConstructionOperation::Token);
+                        assert_eq!(cause.trigger, Some(right.cause));
+                        let range = leaf_cause.source.as_ref().unwrap();
+                        leaves.push((
+                            incoming,
+                            right.cause,
+                            offset,
+                            offset + right.units,
+                            (range.start(), range.end()),
+                        ));
+                        let retired = view.cause(left.retirement.unwrap()).unwrap();
+                        assert_eq!(retired.operation, ConstructionOperation::Retirement);
+                        assert_eq!(retired.original, Some(original));
+                        merged += 1;
+                        index = original;
+                    }
+                    GroupBody::Leaf { .. } => {
+                        assert_eq!(cause.operation, ConstructionOperation::Token);
+                        let range = cause.source.as_ref().unwrap();
+                        leaves.push((
+                            index,
+                            group.cause,
+                            0,
+                            group.units,
+                            (range.start(), range.end()),
+                        ));
+                        break;
+                    }
+                    GroupBody::Alias { .. } => panic!("literal append has no semantic copy/reset"),
+                }
+            }
+            leaves.reverse();
+            assert_eq!(leaves.len(), 5 * n);
+            assert_eq!(merged, 5 * n - 1);
+            let expected_leaf_extents: Vec<_> = (0..n)
+                .flat_map(|i| {
+                    let source = PREFIX.len() + 3 + 32 * i;
+                    let output = 7 * i;
+                    [
+                        ((output, output + 1), (source, source + 1)),
+                        ((output + 1, output + 2), (source + 1, source + 3)),
+                        ((output + 2, output + 3), (source + 3, source + 8)),
+                        ((output + 3, output + 5), (source + 8, source + 17)),
+                        ((output + 5, output + 7), (source + 17, source + 32)),
+                    ]
+                })
+                .collect();
+            assert_eq!(
+                leaves
+                    .iter()
+                    .map(|(_, _, a, b, source)| ((*a, *b), *source))
+                    .collect::<Vec<_>>(),
+                expected_leaf_extents
+            );
+            let actual_usage = owner.retained_usage().clone();
+            let association_phase = phases
+                .iter()
+                .find(|(name, _, _)| *name == "associations")
+                .unwrap();
+            let complete_phase = phases
+                .iter()
+                .find(|(name, _, _)| *name == "complete")
+                .unwrap();
+            eprintln!(
+                "reference spatial oracle N={n} direct={} leaves={} merges={} field-lineage={} complete-rows={} association-delta={:?} capacity={}/{}",
+                origins.len(),
+                leaves.len(),
+                merged,
+                lineage.len(),
+                view.len(),
+                WORK.map(
+                    |category| association_phase.1.work(category) - complete_phase.1.work(category)
+                ),
+                actual_usage.actual_capacity_bytes,
+                actual_usage.actual_capacity_high_water
+            );
+            // No borrowed handle/backing escapes. Release this same observed
+            // owner before asserting the intentionally missing applicability.
+            owner.release().unwrap();
+            super::super::tests::assert_released(&owner.parts.control);
+            eprintln!("reference spatial oracle N={n} actual owning cleanup zero");
+            observations.push((n, leaves, lineage));
+        }
+        for (n, leaves, lineage) in observations {
+            let expected_data: Vec<_> = leaves
+                .iter()
+                .enumerate()
+                .map(|(i, (group, cause, a, b, source))| {
+                    (
+                        if i == 0 {
+                            AssociationRelation::Original
+                        } else {
+                            AssociationRelation::Incoming
+                        },
+                        *a,
+                        *b,
+                        *source,
+                        Some(*group),
+                        *cause,
+                    )
+                })
+                .collect();
+            let expected_triggers: Vec<_> = leaves
+                .iter()
+                .skip(1)
+                .map(|(_, cause, a, b, source)| {
+                    (AssociationRelation::Trigger, *a, *b, *source, None, *cause)
+                })
+                .collect();
+            assert_eq!(
+                lineage.len(),
+                10 * n - 1,
+                "five contributed leaf relations plus all actual merge triggers, not atom × ancestor closure"
+            );
+            for expected in expected_data.iter().chain(&expected_triggers) {
+                assert_eq!(
+                    lineage.iter().filter(|row| *row == expected).count(),
+                    1,
+                    "each qualified source/cause/role/group applies at its literal contributed interval"
+                );
+            }
+        }
+    }
 }
