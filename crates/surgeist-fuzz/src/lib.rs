@@ -14,6 +14,8 @@ pub use artifact::*;
 pub mod campaign;
 pub mod engine;
 #[cfg(feature = "execution")]
+pub mod engine_minimization;
+#[cfg(feature = "execution")]
 pub mod execution;
 pub mod reduction;
 pub mod worker;

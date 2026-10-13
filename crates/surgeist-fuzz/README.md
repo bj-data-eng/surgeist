@@ -104,7 +104,9 @@ metadata quotas. Handle-relative no-follow operations reject path escapes and
 symlinks. Evidence bundles are immutable; the commit marker is published last.
 Interrupted bundles are reported as partial recovery material and cannot be
 loaded as complete evidence. A duplicate is accepted only if its bytes and
-metadata match. Do not use generated corpus directories as crash archives.
+metadata match. Concurrent writers wait up to five seconds for the publication
+lock; persistent contention reports a resource stop before writing. Do not use
+generated corpus directories as crash archives.
 
 Exact replay requires the recorded build identity. Comparing with a changed
 build is an explicit operation that writes a separate comparison record and
@@ -129,6 +131,26 @@ Campaigns use isolated replays through the common process executor;
 `reduce_direct` is only an in-process convenience and cannot interrupt a hung
 owner call. An unqualified panic/crash key cannot prove the same bug and is
 unsupported for semantic reduction.
+
+For a raw case captured from a coverage build, `minimize --engine-proposal`
+first asks that recorded engine for a smaller candidate, then verifies it through
+ordinary owner replay. This requires a dated nightly and a whole-second
+`--case-ms`. It also verifies that passing the raw canonical bytes back through
+owner generation yields exactly those bytes. Structured cases use owner
+candidates instead. Engine proposal output is recorded separately from replay
+observations and consumes the same total output and wall budgets. `--cases`
+bounds attempts per engine process; the engine can launch child processes during
+reduction. `--attempts` bounds ordinary confirmation replays, while the shared
+wall deadline bounds the complete operation and descendant cleanup remains
+separately bounded.
+
+`minimize --corpus /absolute/prior/run/entropy-corpus` asks the recorded engine
+to reduce coverage inputs. It copies the originals, writes a separate proposed
+corpus and records the process outcome in `proposal.json`. A successful proposal
+can be supplied to `run --restart-corpus`; failure artifacts and the original
+corpus remain unchanged. The corpus and raw proposal modes are mutually
+exclusive. Both use explicit storage bounds and the selected coarse engine
+memory guard, without claiming an OS memory limit.
 
 Tooling probes confirmed that `cargo-fuzz tmin` can switch to an unrelated
 panic and `cmin` can remove crashing corpus seeds. Their exit status alone is

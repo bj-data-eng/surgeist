@@ -750,7 +750,7 @@ pub struct RecoveryReport {
 // Roots are explicitly caller-owned mutable campaign directories. Checked-in
 // owner seeds stay outside this namespace and are never minimized or overwritten.
 #[cfg(unix)]
-mod rooted {
+pub(crate) mod rooted {
     use super::*;
     use rustix::fd::OwnedFd;
     use rustix::fs::{self, AtFlags, Dir, FileType, FlockOperation, Mode, OFlags};
@@ -770,7 +770,7 @@ mod rooted {
         )
         .map_err(io_error)
     }
-    pub(super) fn root(path: &Path) -> Result<OwnedFd> {
+    pub(crate) fn root(path: &Path) -> Result<OwnedFd> {
         let mut fd = fs::open(
             "/",
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
@@ -1976,6 +1976,7 @@ pub struct ReductionRecord {
     status: crate::reduction::ReductionStatus,
     replay_count: u64,
     candidate_count: u64,
+    proposal_output_bytes: u64,
     output_bytes: u64,
     original_confirmed: bool,
     final_confirmed: bool,
@@ -2005,6 +2006,7 @@ struct ReductionRecordSpec {
     status: crate::reduction::ReductionStatus,
     replay_count: u64,
     candidate_count: u64,
+    proposal_output_bytes: u64,
     output_bytes: u64,
     original_confirmed: bool,
     final_confirmed: bool,
@@ -2031,6 +2033,7 @@ impl TryFrom<ReductionRecordSpec> for ReductionRecord {
             status: s.status,
             replay_count: s.replay_count,
             candidate_count: s.candidate_count,
+            proposal_output_bytes: s.proposal_output_bytes,
             output_bytes: s.output_bytes,
             original_confirmed: s.original_confirmed,
             final_confirmed: s.final_confirmed,
@@ -2070,7 +2073,9 @@ impl ReductionRecord {
             || self
                 .observations
                 .iter()
-                .fold(0_u64, |sum, o| sum.saturating_add(o.output_bytes))
+                .fold(self.proposal_output_bytes, |sum, o| {
+                    sum.saturating_add(o.output_bytes)
+                })
                 != self.output_bytes
             || self.status == ReductionStatus::Complete
                 && (!self.original_confirmed || !self.final_confirmed)
@@ -2298,6 +2303,7 @@ impl ArtifactStore {
             status: report.status(),
             replay_count: report.replay_count(),
             candidate_count: report.candidate_count(),
+            proposal_output_bytes: report.proposal_output_bytes(),
             output_bytes: report.output_bytes(),
             original_confirmed: report.original_confirmed(),
             final_confirmed: report.final_confirmed(),

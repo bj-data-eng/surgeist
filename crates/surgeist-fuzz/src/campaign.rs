@@ -69,6 +69,7 @@ pub struct CampaignSummary {
     pub builds: Vec<BuildIdentity>,
     pub runs: Vec<String>,
     pub artifacts: Vec<String>,
+    pub corpora: Vec<String>,
     pub evaluated: u64,
     pub generation_rejected: u64,
     pub memory_policy: String,
@@ -86,6 +87,7 @@ impl CampaignSummary {
             builds: Vec::new(),
             runs: Vec::new(),
             artifacts: Vec::new(),
+            corpora: Vec::new(),
             evaluated: 0,
             generation_rejected: 0,
             memory_policy: "no worker started".into(),
@@ -197,6 +199,12 @@ struct Options {
     /// Immutable failure or capture artifact path for replay/minimize.
     #[arg(long)]
     artifact: Option<String>,
+    /// Minimize a prior run's entropy corpus, preserving its original inputs.
+    #[arg(long, conflicts_with_all = ["artifact", "engine_proposal", "input", "regressions"])]
+    corpus: Option<PathBuf>,
+    /// Ask the instrumented engine for a raw-input proposal before owner reduction.
+    #[arg(long)]
+    engine_proposal: bool,
     /// Canonical case file for check, or entropy seed for run.
     #[arg(long, conflicts_with = "regressions")]
     input: Option<PathBuf>,
@@ -326,6 +334,9 @@ impl Options {
                 "comparison is an explicit replay operation; minimize requires an exact build",
             ));
         }
+        if (o.corpus.is_some() || o.engine_proposal) && o.command != "minimize" {
+            return Err(invalid("corpus and engine proposals require minimize"));
+        }
         if o.wall_ms > 86_400_000
             || o.case_ms > 600_000
             || o.build_ms > 3_600_000
@@ -335,7 +346,9 @@ impl Options {
         {
             return Err(invalid("budget exceeds local backend limits"));
         }
-        if o.command == "run" && !o.case_ms.is_multiple_of(1000) {
+        if (o.command == "run" || o.corpus.is_some() || o.engine_proposal)
+            && !o.case_ms.is_multiple_of(1000)
+        {
             return Err(invalid(
                 "coverage case deadlines must be exact multiples of 1000 milliseconds",
             ));
@@ -345,7 +358,9 @@ impl Options {
                 "regression directories require check with one worker",
             ));
         }
-        if o.command == "run" && !dated_nightly(&o.toolchain) {
+        if (o.command == "run" || o.corpus.is_some() || o.engine_proposal)
+            && !dated_nightly(&o.toolchain)
+        {
             return Err(invalid(
                 "coverage requires an explicit installed nightly date",
             ));
@@ -387,6 +402,20 @@ impl Options {
         }
         if let Some(restart) = &o.restart {
             o.restart = Some(restart.canonicalize().map_err(io_error)?);
+        }
+        if let Some(corpus) = &o.corpus {
+            let absolute = if corpus.is_absolute() {
+                corpus.clone()
+            } else {
+                std::env::current_dir().map_err(io_error)?.join(corpus)
+            };
+            let canonical = absolute.canonicalize().map_err(io_error)?;
+            if absolute != canonical || !canonical.is_dir() {
+                return Err(invalid(
+                    "corpus must be an ordinary directory without symlink traversal",
+                ));
+            }
+            o.corpus = Some(canonical);
         }
         if let Some(path) = &o.cancel_file {
             o.cancel_file = Some(absolute_future(path)?);
@@ -722,7 +751,9 @@ fn preflight(o: &Options, cancel: &AtomicBool) -> Result<Preflight> {
             .find_map(|l| l.strip_prefix("host: "))
             .ok_or_else(|| infrastructure("rustc omitted host"))?
             .into();
-        if o.command == "run" && !compiler.contains("nightly") {
+        if (o.command == "run" || o.corpus.is_some() || o.engine_proposal)
+            && !compiler.contains("nightly")
+        {
             return Err(invalid("coverage compiler is not nightly"));
         }
         let target = &selected[0];
@@ -756,11 +787,10 @@ fn preflight(o: &Options, cancel: &AtomicBool) -> Result<Preflight> {
                     .find(|p| p["name"].as_str() == Some(target.package()))
             })
             .ok_or_else(|| infrastructure("missing selected package"))?;
-        for f in o
-            .features
-            .iter()
-            .chain((o.command == "run").then_some(&o.coverage_feature))
-        {
+        for f in o.features.iter().chain(
+            (o.command == "run" || o.corpus.is_some() || o.engine_proposal)
+                .then_some(&o.coverage_feature),
+        ) {
             if package["features"].get(f).is_none() {
                 return Err(invalid(format!("unknown feature {f}")));
             }
@@ -770,8 +800,28 @@ fn preflight(o: &Options, cancel: &AtomicBool) -> Result<Preflight> {
         {
             return Err(invalid("input exceeds ceiling"));
         }
-        if matches!(o.command.as_str(), "replay" | "minimize") && o.artifact.is_none() {
+        if matches!(o.command.as_str(), "replay" | "minimize")
+            && o.artifact.is_none()
+            && o.corpus.is_none()
+        {
             return Err(invalid("--artifact required"));
+        }
+        if o.engine_proposal && target.descriptor().encoding() != crate::InputEncoding::RawBytes {
+            return Err(invalid(
+                "engine proposals require a raw-byte target; structured cases use owner candidates",
+            ));
+        }
+        if let Some(corpus) = &o.corpus {
+            directory_usage(corpus, o.storage_entries, o.storage_bytes)?;
+            let prior = read_corpus_basis(corpus)?;
+            if prior.schema != 1
+                || prior.target != *target.descriptor()
+                || prior.build.source() != source.as_ref().expect("validated source")
+            {
+                return Err(invalid(
+                    "corpus source or target differs from the selected basis",
+                ));
+            }
         }
         StorageLimits::new(
             o.storage_entries,
@@ -1496,6 +1546,157 @@ struct CorpusBasis {
     build: BuildIdentity,
     encoding: String,
 }
+fn read_corpus_basis(corpus: &Path) -> Result<CorpusBasis> {
+    let metadata = corpus
+        .parent()
+        .ok_or_else(|| invalid("corpus has no run directory"))?
+        .join("corpus-basis.json");
+    serde_json::from_slice(&read_bounded(&metadata, FRAME.into())?)
+        .map_err(|error| invalid(error.to_string()))
+}
+
+fn proposal_controller(
+    context: &CampaignContext<'_>,
+    executable: &Path,
+    directory: &Path,
+    budget: crate::reduction::ReplayBudget,
+) -> Result<crate::engine_minimization::EngineMinimizer> {
+    let options = context.options;
+    let output = usize::try_from((budget.output_bytes / 2).max(1).min(TOOL_OUTPUT as u64))
+        .map_err(|_| invalid("proposal output ceiling exceeds address space"))?;
+    let worker = execution::WorkerLimits::new(
+        0,
+        output,
+        output,
+        budget.remaining_time,
+        Duration::from_millis(100),
+        Duration::from_secs(3),
+        MemoryPolicy::Unbounded,
+    )
+    .map_err(|error| infrastructure(error.to_string()))?;
+    let limits = crate::engine_minimization::ProposalLimits::new(
+        options.cases,
+        options.storage_entries,
+        options.input_bytes,
+        options.storage_bytes,
+    )?
+    .with_case_timeout(Duration::from_millis(options.case_ms))?
+    .with_engine_memory_bytes(options.memory_bytes)?;
+    crate::engine_minimization::EngineMinimizer::new(
+        executable.to_owned(),
+        directory.to_owned(),
+        worker,
+        limits,
+    )
+}
+
+fn record_proposal(
+    context: &CampaignContext<'_>,
+    proposal: &crate::engine_minimization::EngineProposal,
+    kind: &str,
+) -> Result<()> {
+    #[derive(Serialize)]
+    struct Record<'a> {
+        schema: u32,
+        kind: &'a str,
+        target: &'a TargetDescriptor,
+        build: &'a BuildIdentity,
+        config: &'a RunConfig,
+        originals: Vec<&'a Sha256Digest>,
+        proposed: Vec<&'a Sha256Digest>,
+        process: ProcessEvidence,
+        readback_error: Option<&'a str>,
+    }
+    let record = Record {
+        schema: 1,
+        kind,
+        target: context.target,
+        build: context.build,
+        config: context.config,
+        originals: proposal
+            .originals()
+            .iter()
+            .map(|input| input.digest())
+            .collect(),
+        proposed: proposal
+            .proposed()
+            .iter()
+            .map(|input| input.digest())
+            .collect(),
+        process: ProcessEvidence::from_outcome(proposal.process())?,
+        readback_error: proposal.readback_error(),
+    };
+    let bytes =
+        serde_json::to_vec_pretty(&record).map_err(|error| infrastructure(error.to_string()))?;
+    if bytes.len() as u64 > context.options.storage_bytes.min(FRAME.into()) {
+        return Err(FuzzError::new(
+            FuzzErrorKind::Resource,
+            "proposal record",
+            "metadata exceeds selected quota",
+        ));
+    }
+    write_new(&proposal.directory().join("proposal.json"), &bytes)
+}
+
+fn minimize_corpus(
+    context: &CampaignContext<'_>,
+    source: &Path,
+    summary: &mut CampaignSummary,
+) -> Result<()> {
+    let prior = read_corpus_basis(source)?;
+    if prior.schema != 1
+        || prior.target != *context.target
+        || prior.build != *context.build
+        || prior.encoding != "engine entropy, not canonical codec bytes"
+    {
+        return Err(invalid(
+            "corpus requires its exact recorded target, build and encoding",
+        ));
+    }
+    let run = next_run(context.cwd)?;
+    summary.runs.push(run.to_string_lossy().into_owned());
+    let controller = proposal_controller(
+        context,
+        context.executable,
+        &run,
+        crate::reduction::ReplayBudget {
+            remaining_time: Duration::from_millis(context.options.wall_ms),
+            output_bytes: context.options.storage_bytes.min(TOOL_OUTPUT as u64),
+        },
+    )?;
+    let proposal = controller.coverage_corpus_proposal(source, context.cancellation)?;
+    record_proposal(context, &proposal, "coverage-corpus")?;
+    summary.cleanup = cleanup_label(&proposal.process().cleanup);
+    summary.status = classify_process(proposal.process());
+    if summary.status == CampaignStatus::Finding || proposal.readback_error().is_some() {
+        summary.status = CampaignStatus::InfrastructureFailure;
+    }
+    if summary.status == CampaignStatus::Sufficient {
+        if proposal.proposed().is_empty() {
+            summary.status = CampaignStatus::Empty;
+        } else {
+            write_new(
+                &proposal.directory().join("corpus-basis.json"),
+                &serde_json::to_vec_pretty(&prior)
+                    .map_err(|error| infrastructure(error.to_string()))?,
+            )?;
+            summary.corpora.push(
+                proposal
+                    .directory()
+                    .join("proposed")
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+    }
+    summary.detail = format!(
+        "coverage corpus proposal: {} original inputs, {} retained; source corpus and failure evidence preserved; output {}",
+        proposal.originals().len(),
+        proposal.proposed().len(),
+        proposal.directory().join("proposed").display()
+    );
+    Ok(())
+}
 fn directory_usage(path: &Path, max_entries: u64, max_bytes: u64) -> Result<(u64, u64)> {
     let mut entries = 0_u64;
     let mut bytes = 0_u64;
@@ -1535,6 +1736,7 @@ fn coverage(context: &CampaignContext<'_>, summary: &mut CampaignSummary) -> Res
     } = *context;
     let corpus = cwd.join("entropy-corpus");
     fs::create_dir(&corpus).map_err(io_error)?;
+    summary.corpora.push(corpus.to_string_lossy().into_owned());
     let basis = CorpusBasis {
         schema: 1,
         target: target.clone(),
@@ -1587,7 +1789,10 @@ fn coverage(context: &CampaignContext<'_>, summary: &mut CampaignSummary) -> Res
     fs::create_dir(&engine_artifacts).map_err(io_error)?;
     let rss_mb = o.memory_bytes.div_ceil(1024 * 1024);
     let mut env = BTreeMap::new();
-    env.insert("SURGEIST_FUZZ_CASE_LIMIT".into(), o.cases.to_string().into());
+    env.insert(
+        "SURGEIST_FUZZ_CASE_LIMIT".into(),
+        o.cases.to_string().into(),
+    );
     env.insert(
         "ASAN_OPTIONS".into(),
         "abort_on_error=1:detect_leaks=0".into(),
@@ -1735,7 +1940,11 @@ fn status_for_error(error: &FuzzError) -> CampaignStatus {
     }
 }
 
-fn replay_or_minimize(context: &CampaignContext<'_>, summary: &mut CampaignSummary) -> Result<()> {
+fn replay_or_minimize(
+    context: &CampaignContext<'_>,
+    engine: Option<&Path>,
+    summary: &mut CampaignSummary,
+) -> Result<()> {
     let CampaignContext {
         options,
         target,
@@ -1864,12 +2073,99 @@ fn replay_or_minimize(context: &CampaignContext<'_>, summary: &mut CampaignSumma
         .outcome()
         .failure_key()
         .ok_or_else(|| invalid("failure artifact lacks key"))?;
-    let report = crate::reduction::reduce_with(
+    let report = crate::reduction::reduce_with_proposals(
         &remote,
         original.input(),
         expected,
         limits,
         cancellation,
+        |budget| {
+            if !options.engine_proposal {
+                return Ok((Vec::new(), 0, None));
+            }
+            let engine = engine
+                .ok_or_else(|| invalid("engine proposal requires the recorded coverage build"))?;
+            let generated = worker_call(
+                executable,
+                &run,
+                &WorkerRequest::Generate {
+                    entropy: original.input().to_vec(),
+                },
+                budget.remaining_time.min(remote.case_deadline),
+                remote.max_output,
+                cancellation,
+            )?;
+            require_success(&generated.process, "proposal original generation")?;
+            if generated.responses
+                != vec![WorkerResponse::Generated {
+                    canonical: original.input().to_vec(),
+                }]
+            {
+                return Err(invalid(
+                    "canonical input is not an equivalent engine recipe; use owner reduction",
+                ));
+            }
+            let overhead = generated.process.stdout.bytes.len() as u64
+                + generated.process.stderr.bytes.len() as u64;
+            let remaining = remote.deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() || overhead >= budget.output_bytes {
+                return Ok((
+                    Vec::new(),
+                    overhead,
+                    Some(if remaining.is_zero() {
+                        crate::reduction::ReductionStatus::TimeLimit
+                    } else {
+                        crate::reduction::ReductionStatus::OutputLimit
+                    }),
+                ));
+            }
+            let controller = proposal_controller(
+                context,
+                engine,
+                &run,
+                crate::reduction::ReplayBudget {
+                    remaining_time: remaining,
+                    output_bytes: budget.output_bytes - overhead,
+                },
+            )?;
+            let proposal = controller.failure_proposal(original.input(), cancellation)?;
+            record_proposal(context, &proposal, "raw-input")?;
+            let output = overhead
+                + proposal.process().stdout.bytes.len() as u64
+                + proposal.process().stderr.bytes.len() as u64;
+            if proposal.process().cleanup != CleanupStatus::Complete {
+                return Err(infrastructure(
+                    "engine proposal cleanup incomplete; inspect proposal.json",
+                ));
+            }
+            if proposal.readback_error().is_some() {
+                return Err(infrastructure(
+                    "engine proposal readback failed; inspect proposal.json",
+                ));
+            }
+            use crate::reduction::ReductionStatus;
+            let proposal_stop = match proposal.process().stop {
+                ProcessStop::Cancelled => Some(ReductionStatus::Cancelled),
+                ProcessStop::Deadline => Some(ReductionStatus::TimeLimit),
+                ProcessStop::OutputLimit(_) => Some(ReductionStatus::OutputLimit),
+                ProcessStop::Exited if proposal.process().exit == ProcessExit::Success => None,
+                _ => {
+                    return Err(infrastructure(format!(
+                        "engine proposal failed: {:?}/{:?}; inspect {}",
+                        proposal.process().stop,
+                        proposal.process().exit,
+                        proposal.directory().join("proposal.json").display(),
+                    )));
+                }
+            };
+            let mut candidates = Vec::new();
+            // Proposals remain subject to repeated ordinary owner evaluation and
+            // the selected failure key in the shared reduction session.
+            for input in proposal.proposed() {
+                candidates.push(input.bytes().to_vec());
+            }
+            Ok((candidates, output, proposal_stop))
+        },
         |input, budget| {
             let discovery = remote.pending_output.replace(0);
             if discovery >= budget.output_bytes {
@@ -2141,6 +2437,8 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
     let work = create_work(options)?;
     let (ordinary, mut identity) = build(options, &preflight, target, &work, false, cancellation)?;
     let coverage_needed = options.command == "run"
+        || options.corpus.is_some()
+        || options.engine_proposal
         || (matches!(options.command.as_str(), "replay" | "minimize")
             && origin_requires_coverage(options, &work)?);
     let coverage_build = if coverage_needed {
@@ -2158,6 +2456,24 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
     summary.memory_policy = "explicit unbounded OS memory; RSS sampling unavailable".into();
     let artifact_store = store(options, &work)?;
     let config = run_config(options)?;
+    if let Some(corpus) = &options.corpus {
+        minimize_corpus(
+            &CampaignContext {
+                options,
+                target: target.descriptor(),
+                executable: coverage_build.as_deref().expect("coverage build"),
+                cwd: &work,
+                build: &identity,
+                config: &config,
+                store: &artifact_store,
+                cancellation,
+                regression_files: None,
+            },
+            corpus,
+            &mut summary,
+        )?;
+        return Ok(summary);
+    }
     if matches!(options.command.as_str(), "replay" | "minimize") {
         replay_or_minimize(
             &CampaignContext {
@@ -2171,6 +2487,7 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
                 cancellation,
                 regression_files: None,
             },
+            coverage_build.as_deref(),
             &mut summary,
         )?;
         return Ok(summary);
@@ -2425,6 +2742,7 @@ fn run_parallel(
             .checked_add(result.generation_rejected)
             .ok_or_else(|| infrastructure("count overflow"))?;
         summary.artifacts.extend(result.artifacts);
+        summary.corpora.extend(result.corpora);
         if result.status != CampaignStatus::Sufficient {
             summary.status = combine_status(summary.status, result.status);
         }
@@ -2509,7 +2827,8 @@ pub fn main_entry(args: impl IntoIterator<Item = OsString>) -> i32 {
             let mut summary =
                 CampaignSummary::new(args.first().and_then(|a| a.to_str()).unwrap_or("unknown"));
             summary.status = status_for_error(&error);
-            summary.cleanup = "not established by command summary; inspect error and run evidence".into();
+            summary.cleanup =
+                "not established by command summary; inspect error and run evidence".into();
             summary.detail = error.to_string();
             summary
         }
@@ -2537,13 +2856,24 @@ mod tests {
         for (stop, expected) in [
             (ProcessStop::Cancelled, CampaignStatus::Cancelled),
             (ProcessStop::Deadline, CampaignStatus::ResourceStop),
-            (ProcessStop::OutputLimit(execution::OutputStream::Stdout), CampaignStatus::ResourceStop),
+            (
+                ProcessStop::OutputLimit(execution::OutputStream::Stdout),
+                CampaignStatus::ResourceStop,
+            ),
         ] {
             let outcome = ProcessOutcome {
                 stop,
                 exit: ProcessExit::Signal(15),
-                stdout: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
-                stderr: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
+                stdout: execution::CapturedOutput {
+                    bytes: Vec::new(),
+                    truncated: false,
+                    eof: true,
+                },
+                stderr: execution::CapturedOutput {
+                    bytes: Vec::new(),
+                    truncated: false,
+                    eof: true,
+                },
                 input_bytes_written: 0,
                 duration: Duration::from_millis(1),
                 cleanup: CleanupStatus::Complete,
@@ -2553,11 +2883,18 @@ mod tests {
             let error = require_success(&outcome, "controlled tool").unwrap_err();
             assert_eq!(status_for_error(&error), expected, "{error}");
             let incomplete = ProcessOutcome {
-                cleanup: CleanupStatus::Failed { child_reaped: true, group_gone: false, errors: vec!["query unavailable".into()] },
+                cleanup: CleanupStatus::Failed {
+                    child_reaped: true,
+                    group_gone: false,
+                    errors: vec!["query unavailable".into()],
+                },
                 ..outcome
             };
             let error = require_success(&incomplete, "controlled tool").unwrap_err();
-            assert_eq!(status_for_error(&error), CampaignStatus::InfrastructureFailure);
+            assert_eq!(
+                status_for_error(&error),
+                CampaignStatus::InfrastructureFailure
+            );
         }
     }
 }

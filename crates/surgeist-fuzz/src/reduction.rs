@@ -138,6 +138,7 @@ pub struct ReductionReport {
     status: ReductionStatus,
     replay_count: u64,
     candidate_count: u64,
+    proposal_output_bytes: u64,
     output_bytes: u64,
     original_confirmed: bool,
     final_confirmed: bool,
@@ -178,6 +179,11 @@ impl ReductionReport {
     #[must_use]
     pub const fn candidate_count(&self) -> u64 {
         self.candidate_count
+    }
+    /// Output from candidate proposal tools, separate from owner replay observations.
+    #[must_use]
+    pub const fn proposal_output_bytes(&self) -> u64 {
+        self.proposal_output_bytes
     }
     #[must_use]
     pub const fn output_bytes(&self) -> u64 {
@@ -361,6 +367,33 @@ where
     T: CaseTarget,
     E: FnMut(&[u8], ReplayBudget) -> Result<ReductionEvaluation>,
 {
+    reduce_with_proposals(
+        target,
+        original,
+        expected,
+        limits,
+        cancellation,
+        |_| Ok((Vec::new(), 0, None)),
+        evaluate,
+    )
+}
+
+/// Proposals are generated only after the original has been confirmed. Their
+/// time and output consume the same reduction session budget as owner replay.
+pub(crate) fn reduce_with_proposals<T, P, E>(
+    target: &T,
+    original: &[u8],
+    expected: &FailureKey,
+    limits: ReductionLimits,
+    cancellation: &AtomicBool,
+    mut proposals: P,
+    evaluate: E,
+) -> Result<ReductionReport>
+where
+    T: CaseTarget,
+    P: FnMut(ReplayBudget) -> Result<(Vec<Vec<u8>>, u64, Option<ReductionStatus>)>,
+    E: FnMut(&[u8], ReplayBudget) -> Result<ReductionEvaluation>,
+{
     target.descriptor().validate_outcome(&CaseOutcome::failure(
         expected.clone(),
         "selected reduction failure",
@@ -387,6 +420,7 @@ where
             status: ReductionStatus::Complete,
             replay_count: 0,
             candidate_count: 0,
+            proposal_output_bytes: 0,
             output_bytes: 0,
             original_confirmed: false,
             final_confirmed: false,
@@ -409,9 +443,32 @@ where
     if !session.active() {
         return Ok(session.report);
     }
-    match target.descriptor().encoding() {
-        InputEncoding::RawBytes => reduce_bytes(&mut session)?,
-        InputEncoding::Structured => reduce_structured(&mut session)?,
+    if session.search_stop().is_none() {
+        let (inputs, output_bytes, proposal_stop) = proposals(ReplayBudget {
+            remaining_time: session
+                .limits
+                .max_duration
+                .saturating_sub(session.start.elapsed()),
+            output_bytes: session.limits.max_output_bytes - session.report.output_bytes,
+        })?;
+        session.report.proposal_output_bytes = output_bytes;
+        session.report.output_bytes = session.report.output_bytes.saturating_add(output_bytes);
+        if let Some(status) = session.stop().or(proposal_stop) {
+            session.report.status = status;
+            return Ok(session.report);
+        }
+        for input in inputs {
+            session.candidate(input)?;
+            if !session.active() {
+                break;
+            }
+        }
+    }
+    if session.active() {
+        match target.descriptor().encoding() {
+            InputEncoding::RawBytes => reduce_bytes(&mut session)?,
+            InputEncoding::Structured => reduce_structured(&mut session)?,
+        }
     }
     if !session.active()
         && !matches!(

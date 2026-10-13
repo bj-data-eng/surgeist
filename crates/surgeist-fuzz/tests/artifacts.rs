@@ -1056,6 +1056,18 @@ fn reduction_publication_preserves_links_actual_budgets_and_confirmed_chain() {
         &fs::read(reference.join(directory.path()).join("metadata.json")).unwrap(),
     )
     .unwrap();
+    assert_eq!(metadata["proposal_output_bytes"], 0);
+    let mut proposal_metadata = metadata.clone();
+    proposal_metadata["proposal_output_bytes"] = 128.into();
+    assert!(serde_json::from_value::<ReductionRecord>(proposal_metadata.clone()).is_err());
+    proposal_metadata["output_bytes"] = (metadata["output_bytes"].as_u64().unwrap() + 128).into();
+    assert!(serde_json::from_value::<ReductionRecord>(proposal_metadata).is_ok());
+    let mut missing_proposal_count = metadata.clone();
+    missing_proposal_count
+        .as_object_mut()
+        .unwrap()
+        .remove("proposal_output_bytes");
+    assert!(serde_json::from_value::<ReductionRecord>(missing_proposal_count).is_err());
     assert!(metadata.get("original_input").is_none());
     assert!(metadata.get("best_input").is_none());
     let mut malformed = metadata.clone();
@@ -1110,8 +1122,8 @@ fn reduction_publication_rejects_wrong_case_links_and_retains_original_on_quota_
 
 #[test]
 fn publication_waits_for_another_writer_then_preserves_both_cases() {
+    use rustix::fs::{FlockOperation, flock};
     use std::{sync::mpsc, time::Duration};
-    use rustix::fs::{flock, FlockOperation};
     let directory = Directory::new();
     let store = ArtifactStore::open(directory.path(), limits()).unwrap();
     let first = store.publish_failure(&artifact(b"first")).unwrap();
@@ -1122,7 +1134,9 @@ fn publication_waits_for_another_writer_then_preserves_both_cases() {
     std::thread::scope(|scope| {
         scope.spawn(|| {
             started_tx.send(()).unwrap();
-            done_tx.send(store.publish_failure(&artifact(b"second"))).unwrap();
+            done_tx
+                .send(store.publish_failure(&artifact(b"second")))
+                .unwrap();
         });
         started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         // Lock contention is the timed behavior: a writer must wait for the
@@ -1131,9 +1145,12 @@ fn publication_waits_for_another_writer_then_preserves_both_cases() {
         drop(lock);
         let second = match early {
             Ok(result) => result,
-            Err(mpsc::RecvTimeoutError::Timeout) => done_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                done_rx.recv_timeout(Duration::from_secs(5)).unwrap()
+            }
             Err(error) => panic!("writer disconnected: {error}"),
-        }.unwrap();
+        }
+        .unwrap();
         assert_eq!(store.load_failure(&first).unwrap().input(), b"first");
         assert_eq!(store.load_failure(&second).unwrap().input(), b"second");
         assert!(store.recovery_report().unwrap().partial.is_empty());

@@ -81,7 +81,10 @@ fn discovers_owner_local_declared_target_without_building() {
     let registry = f.discover(&f.metadata()).unwrap();
     let entry = registry.get(target().id()).unwrap();
     assert_eq!(entry.package(), "surgeist-example-fuzz");
-    assert_eq!(entry.fixtures(), [f.root.join("owner/fuzz/seeds").canonicalize().unwrap()]);
+    assert_eq!(
+        entry.fixtures(),
+        [f.root.join("owner/fuzz/seeds").canonicalize().unwrap()]
+    );
     assert!(!f.root.join("target").exists());
 }
 #[test]

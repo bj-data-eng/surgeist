@@ -112,7 +112,14 @@ impl Snapshot {
 }
 impl Drop for Snapshot {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
+        if std::thread::panicking() {
+            eprintln!(
+                "failed campaign evidence retained at {}",
+                self.root.display()
+            );
+        } else {
+            let _ = fs::remove_dir_all(&self.root);
+        }
     }
 }
 fn copy_dir(from: &Path, to: &Path) {
@@ -319,7 +326,7 @@ fn isolated_campaigns_capture_replay_reduce_and_compare_two_source_builds() {
 fn raw_and_structured_coverage_findings_replay_the_materialized_owner_case() {
     let snapshot = Snapshot::new();
     for (target, entropy) in [
-        ("surgeist-fixture::bytes", b"BUG!".as_slice()),
+        ("surgeist-fixture::bytes", b"padding BUG! after".as_slice()),
         ("surgeist-fixture::structured", &[8, 0, 0xd8][..]),
     ] {
         let input = snapshot.input(entropy);
@@ -338,12 +345,19 @@ fn raw_and_structured_coverage_findings_replay_the_materialized_owner_case() {
         assert_eq!(finding.status, CampaignStatus::Finding, "{finding:?}");
         assert!(finding.evaluated >= 1);
         assert_eq!(finding.cleanup, "complete");
-        let path = finding.artifacts.iter().find(|p| p.starts_with("failures/")).unwrap();
+        let path = finding
+            .artifacts
+            .iter()
+            .find(|p| p.starts_with("failures/"))
+            .unwrap();
         let store = ArtifactStore::open(
             snapshot.work.join("artifacts"),
             StorageLimits::new(1024, 64 * 1024 * 1024, 4096, 1024 * 1024).unwrap(),
-        ).unwrap();
-        let artifact = store.load_failure(&RelativePath::new(path).unwrap()).unwrap();
+        )
+        .unwrap();
+        let artifact = store
+            .load_failure(&RelativePath::new(path).unwrap())
+            .unwrap();
         if target.ends_with("::bytes") {
             assert_eq!(artifact.input(), entropy);
         } else {
@@ -354,15 +368,125 @@ fn raw_and_structured_coverage_findings_replay_the_materialized_owner_case() {
         }
         let mut replay = snapshot.args("replay", target);
         replay.extend([
-            "--toolchain".into(), "nightly-2026-09-01".into(),
-            "--artifact".into(), path.into(),
+            "--toolchain".into(),
+            "nightly-2026-09-01".into(),
+            "--artifact".into(),
+            path.into(),
         ]);
         let replayed = snapshot.invoke(replay);
         assert_eq!(replayed.status, CampaignStatus::Finding, "{replayed:?}");
         assert_eq!(replayed.evaluated, 1);
         assert_eq!(replayed.cleanup, "complete");
         assert_eq!(replayed.detail, "original failure key reproduced");
-        assert_eq!(store.load_failure(&RelativePath::new(path).unwrap()).unwrap().input(), artifact.input());
+        assert_eq!(
+            store
+                .load_failure(&RelativePath::new(path).unwrap())
+                .unwrap()
+                .input(),
+            artifact.input()
+        );
+        if target.ends_with("::bytes") {
+            let mut minimize = snapshot.args("minimize", target);
+            let case = minimize.iter().position(|arg| arg == "--case-ms").unwrap();
+            minimize[case + 1] = "1000".into();
+            let cases = minimize.iter().position(|arg| arg == "--cases").unwrap();
+            minimize[cases + 1] = "100".into();
+            minimize.extend([
+                "--toolchain".into(),
+                "nightly-2026-09-01".into(),
+                "--artifact".into(),
+                path.into(),
+                "--engine-proposal".into(),
+            ]);
+            let reduced = snapshot.invoke(minimize);
+            assert!(
+                matches!(
+                    reduced.status,
+                    CampaignStatus::Finding | CampaignStatus::ResourceStop
+                ),
+                "{reduced:?}"
+            );
+            assert!(
+                reduced
+                    .artifacts
+                    .iter()
+                    .filter(|p| p.starts_with("failures/"))
+                    .any(|p| store
+                        .load_failure(&RelativePath::new(p).unwrap())
+                        .unwrap()
+                        .input()
+                        == b"BUG!")
+            );
+            let safe = snapshot.input(&[0]);
+            let mut run = snapshot.args("run", target);
+            let case = run.iter().position(|arg| arg == "--case-ms").unwrap();
+            run[case + 1] = "1000".into();
+            let cases = run.iter().position(|arg| arg == "--cases").unwrap();
+            run[cases + 1] = "8".into();
+            run.extend([
+                "--toolchain".into(),
+                "nightly-2026-09-01".into(),
+                "--input".into(),
+                safe.into_os_string(),
+            ]);
+            let safe_run = snapshot.invoke(run);
+            assert_eq!(safe_run.status, CampaignStatus::Sufficient, "{safe_run:?}");
+            let source_corpus = PathBuf::from(&safe_run.corpora[0]);
+            let originals: BTreeMap<_, _> = fs::read_dir(&source_corpus)
+                .unwrap()
+                .map(|entry| {
+                    let entry = entry.unwrap();
+                    (entry.file_name(), fs::read(entry.path()).unwrap())
+                })
+                .collect();
+            let mut minimize = snapshot.args("minimize", target);
+            let case = minimize.iter().position(|arg| arg == "--case-ms").unwrap();
+            minimize[case + 1] = "1000".into();
+            let cases = minimize.iter().position(|arg| arg == "--cases").unwrap();
+            minimize[cases + 1] = "100".into();
+            minimize.extend([
+                "--toolchain".into(),
+                "nightly-2026-09-01".into(),
+                "--corpus".into(),
+                source_corpus.as_os_str().to_owned(),
+            ]);
+            let reduced_corpus = snapshot.invoke(minimize);
+            assert_eq!(
+                reduced_corpus.status,
+                CampaignStatus::Sufficient,
+                "{reduced_corpus:?}"
+            );
+            assert_eq!(reduced_corpus.corpora.len(), 1);
+            let mut restart = snapshot.args("run", target);
+            let case = restart.iter().position(|arg| arg == "--case-ms").unwrap();
+            restart[case + 1] = "1000".into();
+            let cases = restart.iter().position(|arg| arg == "--cases").unwrap();
+            restart[cases + 1] = "8".into();
+            restart.extend([
+                "--toolchain".into(),
+                "nightly-2026-09-01".into(),
+                "--restart-corpus".into(),
+                reduced_corpus.corpora[0].clone().into(),
+            ]);
+            let restarted = snapshot.invoke(restart);
+            assert_eq!(
+                restarted.status,
+                CampaignStatus::Sufficient,
+                "{restarted:?}"
+            );
+            assert_ne!(restarted.corpora, reduced_corpus.corpora);
+            assert!(restarted.evaluated > 0 && restarted.evaluated <= 8);
+            for (name, bytes) in originals {
+                assert_eq!(fs::read(source_corpus.join(name)).unwrap(), bytes);
+            }
+            assert_eq!(
+                store
+                    .load_failure(&RelativePath::new(path).unwrap())
+                    .unwrap()
+                    .input(),
+                entropy
+            );
+        }
     }
 }
 
@@ -375,8 +499,10 @@ fn coverage_initial_corpus_cannot_exceed_the_requested_case_budget() {
     let case = args.iter().position(|arg| arg == "--case-ms").unwrap();
     args[case + 1] = "1000".into();
     args.extend([
-        "--toolchain".into(), "nightly-2026-09-01".into(),
-        "--input".into(), input.as_os_str().to_owned(),
+        "--toolchain".into(),
+        "nightly-2026-09-01".into(),
+        "--input".into(),
+        input.as_os_str().to_owned(),
     ]);
     let summary = snapshot.invoke(args);
     assert!(summary.evaluated <= 1, "{summary:?}");
@@ -400,12 +526,19 @@ fn incomplete_owner_evaluations_preserve_inputs_without_inventing_property_keys(
         assert_eq!(summary.evaluated, 0);
         assert_eq!(summary.cleanup, "complete");
         assert!(!summary.artifacts.iter().any(|p| p.starts_with("failures/")));
-        let captured = summary.artifacts.iter().find(|p| p.starts_with("captures/")).unwrap();
+        let captured = summary
+            .artifacts
+            .iter()
+            .find(|p| p.starts_with("captures/"))
+            .unwrap();
         let store = ArtifactStore::open(
             snapshot.work.join("artifacts"),
             StorageLimits::new(1024, 64 * 1024 * 1024, 4096, 1024 * 1024).unwrap(),
-        ).unwrap();
-        let original = store.load_capture(&RelativePath::new(captured).unwrap()).unwrap();
+        )
+        .unwrap();
+        let original = store
+            .load_capture(&RelativePath::new(captured).unwrap())
+            .unwrap();
         assert_eq!(original.input(), input);
         let mut args = snapshot.args("replay", "surgeist-fixture::bytes");
         args.extend(["--artifact".into(), captured.into()]);
@@ -413,7 +546,119 @@ fn incomplete_owner_evaluations_preserve_inputs_without_inventing_property_keys(
         assert_eq!(replayed.status, status, "{replayed:?}");
         assert_eq!(replayed.evaluated, 0);
         assert_eq!(replayed.cleanup, "complete");
-        assert!(replayed.artifacts.iter().any(|p| p.starts_with("capture-replays/")));
-        assert_eq!(store.load_capture(&RelativePath::new(captured).unwrap()).unwrap().input(), original.input());
+        assert!(
+            replayed
+                .artifacts
+                .iter()
+                .any(|p| p.starts_with("capture-replays/"))
+        );
+        assert_eq!(
+            store
+                .load_capture(&RelativePath::new(captured).unwrap())
+                .unwrap()
+                .input(),
+            original.input()
+        );
     }
+}
+
+#[test]
+#[ignore = "builds an isolated owner and verifies command selection and publication limits"]
+fn regression_selection_parallel_counts_and_preflight_limits_are_observable() {
+    let snapshot = Snapshot::new();
+    let fixture = snapshot
+        .source
+        .join("crates/surgeist-fuzz/tests/fixtures/subject/fuzz/regressions");
+    let empty = fixture.join("empty");
+    let selected = fixture.join("selected");
+    fs::create_dir(&empty).unwrap();
+    fs::create_dir(&selected).unwrap();
+    for (name, bytes) in [
+        ("a.case", b"ordinary".as_slice()),
+        ("b.case", b"BUG!".as_slice()),
+        ("c.case", b"ALT!".as_slice()),
+    ] {
+        fs::write(selected.join(name), bytes).unwrap();
+    }
+    tool("git", &snapshot.source, &["add", "."]);
+    tool(
+        "git",
+        &snapshot.source,
+        &[
+            "commit",
+            "-q",
+            "-m",
+            "test(fuzz): record explicit regression selection",
+        ],
+    );
+    let mut args = snapshot.args("check", "surgeist-fixture::bytes");
+    args.extend(["--regressions".into(), empty.into_os_string()]);
+    let result = snapshot.invoke(args);
+    assert_eq!(result.status, CampaignStatus::Empty);
+    assert_eq!(result.evaluated, 0);
+    assert!(!snapshot.work.exists());
+    let mut args = snapshot.args("check", "surgeist-fixture::bytes");
+    args.extend([
+        "--cargo".into(),
+        snapshot.root.join("missing-cargo").into_os_string(),
+    ]);
+    assert!(run_cli(&args, &AtomicBool::new(false)).is_err());
+    assert!(!snapshot.work.exists());
+    fs::write(snapshot.source.join("uncommitted.txt"), b"dirty source").unwrap();
+    assert!(
+        run_cli(
+            &snapshot.args("check", "surgeist-fixture::bytes"),
+            &AtomicBool::new(false)
+        )
+        .is_err()
+    );
+    assert!(!snapshot.work.exists());
+    fs::remove_file(snapshot.source.join("uncommitted.txt")).unwrap();
+    let mut args = snapshot.args("check", "surgeist-fixture::bytes");
+    let cases = args.iter().position(|arg| arg == "--cases").unwrap();
+    args[cases + 1] = "3".into();
+    args.extend(["--regressions".into(), selected.into_os_string()]);
+    let result = snapshot.invoke(args);
+    assert_eq!(result.status, CampaignStatus::Finding, "{result:?}");
+    assert_eq!(result.evaluated, 3);
+    assert_eq!(
+        result
+            .artifacts
+            .iter()
+            .filter(|p| p.starts_with("failures/"))
+            .count(),
+        2
+    );
+    let pass = snapshot.input(b"ordinary");
+    let mut args = snapshot.args("check", "surgeist-fixture::bytes");
+    let cases = args.iter().position(|arg| arg == "--cases").unwrap();
+    args[cases + 1] = "4".into();
+    args.extend([
+        "--workers".into(),
+        "2".into(),
+        "--input".into(),
+        pass.into_os_string(),
+    ]);
+    let result = snapshot.invoke(args);
+    assert_eq!(result.status, CampaignStatus::Sufficient, "{result:?}");
+    assert_eq!(result.evaluated, 4);
+    assert_eq!(result.cleanup, "complete");
+    let cancelled = run_cli(
+        &snapshot.args("check", "surgeist-fixture::bytes"),
+        &AtomicBool::new(true),
+    )
+    .unwrap();
+    assert_eq!(cancelled.status, CampaignStatus::Cancelled);
+    let input = snapshot.input(b"new BUG! finding");
+    let mut args = snapshot.args("check", "surgeist-fixture::bytes");
+    args.extend([
+        "--input".into(),
+        input.into_os_string(),
+        "--storage-entries".into(),
+        "1".into(),
+    ]);
+    assert_eq!(
+        run_cli(&args, &AtomicBool::new(false)).unwrap_err().kind(),
+        surgeist_fuzz::FuzzErrorKind::Resource
+    );
 }

@@ -412,6 +412,7 @@ pub fn surgeist_fuzz::reduction::ReductionReport::observations(&self) -> &[surge
 pub const fn surgeist_fuzz::reduction::ReductionReport::original_confirmed(&self) -> bool
 pub fn surgeist_fuzz::reduction::ReductionReport::original_input(&self) -> &[u8]
 pub const fn surgeist_fuzz::reduction::ReductionReport::output_bytes(&self) -> u64
+pub const fn surgeist_fuzz::reduction::ReductionReport::proposal_output_bytes(&self) -> u64
 pub const fn surgeist_fuzz::reduction::ReductionReport::replay_count(&self) -> u64
 pub const fn surgeist_fuzz::reduction::ReductionReport::status(&self) -> surgeist_fuzz::reduction::ReductionStatus
 pub struct surgeist_fuzz::reduction::ReductionStep
@@ -523,6 +524,7 @@ pub surgeist_fuzz::FailureClass::Resource
 pub surgeist_fuzz::FailureClass::Timeout
 #[non_exhaustive] pub enum surgeist_fuzz::FuzzErrorKind
 pub surgeist_fuzz::FuzzErrorKind::Artifact
+pub surgeist_fuzz::FuzzErrorKind::Cancelled
 pub surgeist_fuzz::FuzzErrorKind::Cli
 pub surgeist_fuzz::FuzzErrorKind::Codec
 pub surgeist_fuzz::FuzzErrorKind::Harness
