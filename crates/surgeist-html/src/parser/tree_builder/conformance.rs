@@ -728,10 +728,23 @@ impl MeteredProjection {
         })
     }
     fn build(&mut self, view: &mut NativeView<'_>) -> Result<(), AdapterError> {
+        self.build_from_root(None, view)
+    }
+    // The fragment lender returns the actual output root separately from its
+    // internal parser Document. Ordinary root acquisition stays in the same
+    // position after the two existing consumer-vector constructors.
+    fn build_from_root(
+        &mut self,
+        output: Option<ParserNode>,
+        view: &mut NativeView<'_>,
+    ) -> Result<(), AdapterError> {
         let mut ids = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let mut pending = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let outcome = (|| {
-            let root = view.root()?;
+            let root = match output {
+                Some(root) => root,
+                None => view.root()?,
+            };
             pending.try_push(
                 view.control(),
                 Pending {
@@ -4432,5 +4445,362 @@ mod comment_diagnostic_corpus {
         failed.release().unwrap();
         zero_storage(failed.retained_usage());
         assert_eq!(failed.at_stop(), &first);
+    }
+
+    // Template corpus selection is separate from the ordinary comment consumer.
+    // Raw f994590f fixtures remain unchanged; HTML877d governs disagreements.
+    mod template_corpus {
+        use super::*;
+        use crate::*;
+
+        fn fixtures() -> Vec<Fixture<'static>> {
+            let (_, raw) = DATA
+                .iter()
+                .find(|(name, _)| *name == "template.dat")
+                .unwrap();
+            let fixtures = decode(raw).unwrap();
+            assert_eq!(fixtures.len(), 112);
+            assert_eq!(fixtures.iter().filter(|f| f.fragment.is_some()).count(), 1);
+            fixtures
+        }
+
+        fn mode(ordinal: usize) -> HtmlDocumentMode {
+            // Valid literal HTML doctypes, not observed parser modes.
+            if matches!(ordinal, 107 | 110..=112) {
+                HtmlDocumentMode::NoQuirks
+            } else {
+                HtmlDocumentMode::Quirks
+            }
+        }
+
+        fn source(input: &str, utf16: bool) -> HtmlSource {
+            if utf16 {
+                HtmlSource::utf16(DocumentString::from(input))
+            } else {
+                HtmlSource::utf8(input)
+            }
+        }
+
+        #[test]
+        fn all_retained_ordinary_templates_match_independent_trees_in_both_encodings() {
+            let mut failures = Vec::new();
+            for fixture in fixtures().iter().filter(|f| f.fragment.is_none()) {
+                assert_eq!(fixture.scripting, FixtureScripting::Both);
+                let expected = parsed_expected(fixture, mode(fixture.ordinal)).unwrap();
+                for utf16 in [false, true] {
+                    let request = HtmlDocumentParseRequest::offline(
+                        source(fixture.input, utf16),
+                        super::super::super::tests::limits(1_000),
+                    );
+                    // check reclaims its actual owner before returning mismatch.
+                    if let Err(error) = check(&request, &expected) {
+                        failures.push(format!(
+                            "template/{}, utf16={utf16}: {error}",
+                            fixture.ordinal
+                        ));
+                    }
+                }
+            }
+            assert!(failures.is_empty(), "{}", failures.join("\n"));
+        }
+
+        fn template_request(input: &str, utf16: bool) -> HtmlFragmentParseRequest {
+            let mut builder = HtmlCaptureBuilder::new(
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                HtmlHostFactsRevision::fresh(),
+            );
+            let document = builder
+                .add_document(
+                    HtmlDocumentMode::NoQuirks,
+                    HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder
+                .establish_document_template_facts(
+                    &document,
+                    HtmlDocumentClass::Html,
+                    HtmlTemplateDocumentRole::Ordinary,
+                    HtmlCaptureTemplateCacheInput::Absent,
+                )
+                .unwrap();
+            let template = builder
+                .add_element(
+                    &document,
+                    QualifiedName::new(Namespace::html(), None, "template"),
+                    OrderedAttributes::default(),
+                    HtmlCapturedIsValue::Absent,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder.establish_root(&template).unwrap();
+            let capture = builder.finish().unwrap();
+            let context =
+                HtmlFragmentContext::element(&capture, &capture.subject_id(&template).unwrap())
+                    .unwrap();
+            HtmlFragmentParseRequest::new(
+                source(input, utf16),
+                context,
+                super::super::super::tests::limits(1_000),
+            )
+            .unwrap()
+        }
+
+        fn check_fragment(
+            request: HtmlFragmentParseRequest,
+            expected: &Projection,
+        ) -> Result<(), String> {
+            check_fragment_observation(request, expected, None, false)
+        }
+
+        fn check_fragment_observation(
+            request: HtmlFragmentParseRequest,
+            expected: &Projection,
+            remaining_work: Option<u64>,
+            cancel_before_projection: bool,
+        ) -> Result<(), String> {
+            use crate::parser::tree_builder::context::{
+                ContextFragmentDriver, ownership::FragmentInitializationOwner,
+            };
+            let cancellation = request.cancellation().clone();
+            let work_limit = request.limits().work_credits();
+            let mut owner = FragmentInitializationOwner::new(request);
+            let mut attempt = owner.begin().unwrap();
+            let mut driver = Some(match attempt.take_driver() {
+                Ok(driver) => driver,
+                Err(error) => {
+                    let reason = format!("{error:?}: {:?}", attempt.reason());
+                    attempt.retain_failure().unwrap();
+                    let mut failed = owner.take_failure().unwrap();
+                    failed.release().unwrap();
+                    return Err(reason);
+                }
+            });
+            let parsed = (|| {
+                loop {
+                    match driver
+                        .as_mut()
+                        .unwrap()
+                        .step()
+                        .map_err(|e| format!("{e:?}"))?
+                    {
+                        HeadStep::Consumed => {}
+                        HeadStep::Complete => break,
+                        other => return Err(format!("fragment did not complete: {other:?}")),
+                    }
+                }
+                ContextFragmentDriver::take_completed(&mut driver).map_err(|e| format!("{e:?}"))
+            })();
+            let mut completed = match parsed {
+                Ok(completed) => completed,
+                Err(error) => {
+                    driver.as_mut().unwrap().release().unwrap();
+                    return Err(error);
+                }
+            };
+            let result = (|| {
+                let (root, mut view) = completed.native_view().map_err(|e| format!("{e:?}"))?;
+                let before = view.usage().clone();
+                if let Some(remaining) = remaining_work {
+                    let left = work_limit
+                        - view
+                            .usage()
+                            .resource(HtmlParseResource::WorkCredits)
+                            .current;
+                    view.control()
+                        .charge(WorkCategory::StateStep, left - remaining)
+                        .unwrap();
+                }
+                if cancel_before_projection {
+                    cancellation.cancel();
+                }
+                let mut projection = MeteredProjection::new().unwrap();
+                let result = projection
+                    .build_from_root(Some(root), &mut view)
+                    .and_then(|()| projection.compare(expected, &mut view));
+                if remaining_work.is_some() {
+                    assert!(matches!(
+                        result,
+                        Err(AdapterError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }))
+                    ));
+                }
+                if cancel_before_projection {
+                    assert!(matches!(
+                        result,
+                        Err(AdapterError::Stop(ParseStop::Cancelled))
+                    ));
+                }
+                let first = view.control().first_stop_usage().cloned();
+                projection.release(&mut view).unwrap();
+                assert_eq!(view.control().first_stop_usage(), first.as_ref());
+                // Consumer buffers return to the actual retained-owner baseline.
+                for resource in [
+                    HtmlParseResource::AuxiliaryEntries,
+                    HtmlParseResource::BufferedUtf16Units,
+                    HtmlParseResource::ManagedCapacityBytes,
+                ] {
+                    assert_eq!(
+                        view.usage().resource(resource).current,
+                        before.resource(resource).current
+                    );
+                }
+                result.map_err(|e| format!("{e}"))
+            })();
+            completed.release().unwrap();
+            result
+        }
+
+        #[test]
+        fn retained_template_context_fragment_matches_actual_output_and_content_owner() {
+            let fixture = &fixtures()[108];
+            assert_eq!(fixture.ordinal, 109);
+            assert_eq!(fixture.fragment, Some("template"));
+            let expected = parsed_expected(fixture, HtmlDocumentMode::NoQuirks).unwrap();
+            for utf16 in [false, true] {
+                check_fragment(template_request(fixture.input, utf16), &expected).unwrap();
+            }
+        }
+
+        fn check_completed_tree(
+            mut completed: CompletedStandaloneDocument<'_>,
+            expected: &Projection,
+        ) -> Result<(), AdapterError> {
+            let result = {
+                let mut view = completed.native_view().unwrap();
+                let mut projection = MeteredProjection::new().unwrap();
+                let result = projection
+                    .build(&mut view)
+                    .and_then(|()| projection.compare(expected, &mut view));
+                projection.release(&mut view).unwrap();
+                result
+            };
+            completed.release().unwrap();
+            result
+        }
+
+        #[test]
+        fn template_transitions_every_cut_and_unit_feed_match_independent_trees() {
+            let fixtures = fixtures();
+            for ordinal in [81, 94, 100, 108, 110, 111, 112] {
+                let fixture = &fixtures[ordinal - 1];
+                let expected = parsed_expected(fixture, mode(ordinal)).unwrap();
+                for utf16 in [false, true] {
+                    let request = HtmlDocumentParseRequest::offline(
+                        source(fixture.input, utf16),
+                        super::super::super::tests::limits(1_000),
+                    );
+                    for cut in 0..=request.source().len() {
+                        check_completed_tree(completed_at_cuts(&request, &[cut]), &expected)
+                            .unwrap_or_else(|e| {
+                                panic!("template/{ordinal}, utf16={utf16}, cut={cut}: {e}")
+                            });
+                    }
+                    let cuts: Vec<_> = (0..=request.source().len()).collect();
+                    check_completed_tree(completed_at_cuts(&request, &cuts), &expected).unwrap();
+                }
+            }
+        }
+
+        #[test]
+        fn nested_template_eof_diagnostics_retain_two_distinct_source_invocations() {
+            use crate::parser::tree_builder::head::{HeadCondition, InsertionMode};
+            // HTML877d Initial anything-else; InTemplate raw98077–98095.
+            // Two template nodes are actually on the stack. EOF is reprocessed
+            // after each distinct pop/clear-marker/pop-mode/reset invocation.
+            let eof = ExpectedDiagnostic {
+                kind: DiagnosticKind::Tree(HeadCondition::UnexpectedOpenElement),
+                context: DiagnosticContext::Tree(InsertionMode::InTemplate),
+                rule: DiagnosticRule {
+                    anchor: "parsing-main-intemplate",
+                    branch: "template-eof/template-open",
+                },
+                role: DiagnosticLocationRole::TokenEnvelope,
+                token: Some(DiagnosticToken::Eof),
+                source: (20, 20),
+            };
+            let expected_diagnostics = [missing((0, 10), DiagnosticToken::Tag), eof, eof];
+            let fixture = &fixtures()[80];
+            assert_eq!(fixture.input, "<template><template>");
+            let tree = parsed_expected(fixture, HtmlDocumentMode::Quirks).unwrap();
+            for utf16 in [false, true] {
+                let request = HtmlDocumentParseRequest::offline(
+                    source(fixture.input, utf16),
+                    super::super::super::tests::limits(1_000),
+                );
+                check_completed_comment(
+                    completed(&request),
+                    &request,
+                    &tree,
+                    &expected_diagnostics,
+                );
+                let cuts: Vec<_> = (0..=request.source().len()).collect();
+                check_completed_comment(
+                    completed_at_cuts(&request, &cuts),
+                    &request,
+                    &tree,
+                    &expected_diagnostics,
+                );
+            }
+        }
+
+        #[test]
+        fn fragment_expected_root_and_template_owner_mismatches_are_not_promoted() {
+            let fixture = &fixtures()[108];
+            let mut wrong_root = parsed_expected(fixture, HtmlDocumentMode::NoQuirks).unwrap();
+            wrong_root.nodes[0].kind = Kind::Document(HtmlDocumentMode::NoQuirks);
+            assert!(check_fragment(template_request(fixture.input, false), &wrong_root).is_err());
+            let mut wrong_owner = parsed_expected(fixture, HtmlDocumentMode::NoQuirks).unwrap();
+            assert_eq!(wrong_owner.nodes[2].owner, Some(Owner::Template(1)));
+            wrong_owner.nodes[2].owner = None;
+            assert!(check_fragment(template_request(fixture.input, true), &wrong_owner).is_err());
+        }
+
+        #[test]
+        fn closed_nested_template_in_template_context_has_no_synthetic_eof_diagnostic() {
+            // HTML877d raw99276–99279 seeds InTemplate without pushing the
+            // context element. The closed nested template leaves no open
+            // template; raw98078–98079 stops parsing without an EOF error.
+            let fixture = &fixtures()[108];
+            for utf16 in [false, true] {
+                let request = template_request(fixture.input, utf16);
+                let source_id = request.source().identity().clone();
+                let target = request.context().target().clone();
+                let report = request.parse().unwrap();
+                assert_eq!(report.source().identity(), &source_id);
+                assert_eq!(report.context().unwrap().target(), &target);
+                assert!(report.document().is_none());
+                assert!(report.fragment().is_some());
+                assert_eq!(report.diagnostics().len(), 0);
+            }
+        }
+
+        #[test]
+        fn actual_fragment_projection_work_refusal_and_cancellation_reclaim_consumer_tickets() {
+            let fixture = &fixtures()[108];
+            let expected = parsed_expected(fixture, HtmlDocumentMode::NoQuirks).unwrap();
+            // Same real completion/root lender, then denied observation. No
+            // parser limit/fee adjustment or fake context evidence is involved.
+            assert!(
+                check_fragment_observation(
+                    template_request(fixture.input, false),
+                    &expected,
+                    Some(1),
+                    false,
+                )
+                .is_err()
+            );
+            assert!(
+                check_fragment_observation(
+                    template_request(fixture.input, true),
+                    &expected,
+                    None,
+                    true,
+                )
+                .is_err()
+            );
+        }
     }
 }
