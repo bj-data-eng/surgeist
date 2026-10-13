@@ -1806,6 +1806,878 @@ mod tests {
 }
 
 #[cfg(test)]
+mod reference_recovery {
+    use super::comment_diagnostic_corpus::{completed, completed_at_cuts, completed_driver};
+    use crate::parser::tree_builder::{
+        report::ImmutableParseReport, seal::SealedOrdinaryConstruction,
+    };
+    use crate::*;
+
+    type Atom = (usize, usize, usize, usize, HtmlParseOriginKind);
+    struct Reference {
+        raw: &'static str,
+        value: &'static str,
+        atoms: Vec<Atom>,
+        errors: Vec<(HtmlTokenizerDiagnostic, usize, usize)>,
+    }
+    fn literal(raw: &'static str) -> Vec<Atom> {
+        let mut offset = 0;
+        raw.chars()
+            .map(|point| {
+                let end = offset + point.len_utf16();
+                let atom = (offset, end, offset, end, HtmlParseOriginKind::Literal);
+                offset = end;
+                atom
+            })
+            .collect()
+    }
+    fn references() -> Vec<Reference> {
+        use HtmlParseOriginKind::{CharacterReference as R, Literal as L, Newline as N};
+        use HtmlTokenizerDiagnostic as D;
+        // HTML877d §13.2.5.77–84. These are literal language outcomes, not
+        // observations from a complete parse used as a feeding oracle.
+        vec![
+            Reference {
+                raw: "&#0;",
+                value: "�",
+                atoms: vec![(0, 1, 0, 4, R)],
+                errors: vec![(D::NullCharacterReference, 0, 4)],
+            },
+            Reference {
+                raw: "&#x0;",
+                value: "�",
+                atoms: vec![(0, 1, 0, 5, R)],
+                errors: vec![(D::NullCharacterReference, 0, 5)],
+            },
+            Reference {
+                raw: "&#xD800;",
+                value: "�",
+                atoms: vec![(0, 1, 0, 8, R)],
+                errors: vec![(D::SurrogateCharacterReference, 0, 8)],
+            },
+            Reference {
+                raw: "&#1114112;",
+                value: "�",
+                atoms: vec![(0, 1, 0, 10, R)],
+                errors: vec![(D::CharacterReferenceOutsideUnicodeRange, 0, 10)],
+            },
+            Reference {
+                raw: "&#x80;",
+                value: "€",
+                atoms: vec![(0, 1, 0, 6, R)],
+                errors: vec![(D::ControlCharacterReference, 0, 6)],
+            },
+            Reference {
+                raw: "&#x81;",
+                value: "\u{81}",
+                atoms: vec![(0, 1, 0, 6, R)],
+                errors: vec![(D::ControlCharacterReference, 0, 6)],
+            },
+            Reference {
+                raw: "&#xFDD0;",
+                value: "\u{fdd0}",
+                atoms: vec![(0, 1, 0, 8, R)],
+                errors: vec![(D::NoncharacterCharacterReference, 0, 8)],
+            },
+            Reference {
+                raw: "&#13;",
+                value: "\r",
+                atoms: vec![(0, 1, 0, 5, R)],
+                errors: vec![(D::ControlCharacterReference, 0, 5)],
+            },
+            Reference {
+                raw: "\r\n&#13;",
+                value: "\n\r",
+                atoms: vec![(0, 1, 0, 2, N), (1, 2, 2, 7, R)],
+                errors: vec![(D::ControlCharacterReference, 2, 7)],
+            },
+            Reference {
+                raw: "&#0x",
+                value: "�x",
+                atoms: vec![(0, 1, 0, 3, R), (1, 2, 3, 4, L)],
+                errors: vec![
+                    (D::MissingSemicolonAfterCharacterReference, 0, 3),
+                    (D::NullCharacterReference, 0, 3),
+                ],
+            },
+            Reference {
+                raw: "&#65z",
+                value: "Az",
+                atoms: vec![(0, 1, 0, 4, R), (1, 2, 4, 5, L)],
+                errors: vec![(D::MissingSemicolonAfterCharacterReference, 0, 4)],
+            },
+            Reference {
+                raw: "&#;",
+                value: "&#;",
+                atoms: literal("&#;"),
+                errors: vec![(D::AbsenceOfDigitsInNumericCharacterReference, 0, 2)],
+            },
+            Reference {
+                raw: "&#x;",
+                value: "&#x;",
+                atoms: literal("&#x;"),
+                errors: vec![(D::AbsenceOfDigitsInNumericCharacterReference, 0, 3)],
+            },
+            Reference {
+                raw: "&unknown;",
+                value: "&unknown;",
+                atoms: literal("&unknown;"),
+                errors: vec![(D::UnknownNamedCharacterReference, 8, 9)],
+            },
+            Reference {
+                raw: "&notit;",
+                value: "¬it;",
+                atoms: vec![
+                    (0, 1, 0, 4, R),
+                    (1, 2, 4, 5, L),
+                    (2, 3, 5, 6, L),
+                    (3, 4, 6, 7, L),
+                ],
+                errors: vec![(D::MissingSemicolonAfterCharacterReference, 0, 4)],
+            },
+            Reference {
+                raw: "&#128512;",
+                value: "😀",
+                atoms: vec![(0, 2, 0, 9, R)],
+                errors: vec![],
+            },
+            Reference {
+                raw: "&NotEqualTilde;",
+                value: "≂\u{338}",
+                atoms: vec![(0, 1, 0, 15, R), (1, 2, 0, 15, R)],
+                errors: vec![],
+            },
+        ]
+    }
+    fn labels(code: HtmlTokenizerDiagnostic) -> (&'static str, &'static str) {
+        use HtmlTokenizerDiagnostic as D;
+        match code {
+            D::NullCharacterReference => (
+                "parse-error-null-character-reference",
+                "null-character-reference",
+            ),
+            D::SurrogateCharacterReference => (
+                "parse-error-surrogate-character-reference",
+                "surrogate-character-reference",
+            ),
+            D::CharacterReferenceOutsideUnicodeRange => (
+                "parse-error-character-reference-outside-unicode-range",
+                "character-reference-outside-unicode-range",
+            ),
+            D::ControlCharacterReference => (
+                "parse-error-control-character-reference",
+                "control-character-reference",
+            ),
+            D::NoncharacterCharacterReference => (
+                "parse-error-noncharacter-character-reference",
+                "noncharacter-character-reference",
+            ),
+            D::MissingSemicolonAfterCharacterReference => (
+                "parse-error-missing-semicolon-after-character-reference",
+                "missing-semicolon-after-character-reference",
+            ),
+            D::AbsenceOfDigitsInNumericCharacterReference => (
+                "parse-error-absence-of-digits-in-numeric-character-reference",
+                "absence-of-digits-in-numeric-character-reference",
+            ),
+            D::UnknownNamedCharacterReference => (
+                "parse-error-unknown-named-character-reference",
+                "unknown-named-character-reference",
+            ),
+            _ => unreachable!("finite independent reference fixture"),
+        }
+    }
+    fn offset(raw: &str, units: usize, utf16: bool) -> usize {
+        if utf16 {
+            return units;
+        }
+        let mut consumed = 0;
+        for (byte, point) in raw.char_indices() {
+            if consumed == units {
+                return byte;
+            }
+            consumed += point.len_utf16();
+        }
+        assert_eq!(consumed, units);
+        raw.len()
+    }
+    fn report(request: HtmlDocumentParseRequest, cuts: Option<&[usize]>) -> ImmutableParseReport {
+        let parts = {
+            let mut output = match cuts {
+                Some(cuts) => completed_at_cuts(&request, cuts),
+                None => completed(&request),
+            };
+            output.prepare_native_associations().unwrap();
+            output.freeze_parts().unwrap()
+        };
+        let mut owner =
+            Some(SealedOrdinaryConstruction::take(&mut Some(request), &mut Some(parts)).unwrap());
+        ImmutableParseReport::take_document(&mut owner).unwrap()
+    }
+    fn check(reference: &Reference, utf16: bool, cuts: Option<&[usize]>) {
+        let raw = format!("<!doctype html><p>é{}</p>", reference.raw);
+        let source = if utf16 {
+            HtmlSource::utf16(DocumentString::from(raw.as_str()))
+        } else {
+            HtmlSource::utf8(raw.clone())
+        };
+        let identity = source.identity().clone();
+        let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
+        let cancel = request.cancellation().clone();
+        let report = report(request, cuts);
+        let usage = report.usage().clone();
+        cancel.cancel();
+        assert_eq!(report.source().identity(), &identity);
+        assert_eq!(
+            usage.resource(HtmlParseResource::SourceUnits).current,
+            report.source().len() as u64
+        );
+        let document = report.document().unwrap();
+        assert_eq!(document.mode(), HtmlDocumentMode::NoQuirks);
+        let root: Vec<_> = document.root().children().collect();
+        assert_eq!(root.len(), 2);
+        assert!(matches!(
+            document.node(&root[0]).unwrap().kind(),
+            HtmlNodeKind::Doctype(_)
+        ));
+        let html = document.node(&root[1]).unwrap();
+        let children: Vec<_> = html.children().collect();
+        assert_eq!(children.len(), 2);
+        assert_eq!(document.node(&children[0]).unwrap().children().count(), 0);
+        let body = document.node(&children[1]).unwrap();
+        assert_eq!(body.children().count(), 1);
+        let p = document.node(&body.children().next().unwrap()).unwrap();
+        assert!(
+            matches!(p.kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p") && e.attributes().is_empty())
+        );
+        assert_eq!(p.children().count(), 1);
+        let text = document.node(&p.children().next().unwrap()).unwrap();
+        assert!(
+            matches!(text.kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from(format!("é{}",reference.value)))
+        );
+        let diagnostics = report.diagnostics();
+        assert_eq!(
+            diagnostics.len(),
+            reference.errors.len(),
+            "{}",
+            reference.raw
+        );
+        for (index, &(code, start, end)) in reference.errors.iter().enumerate() {
+            let (record, location) = diagnostics.retained_record(index).unwrap();
+            let (anchor, branch) = labels(code);
+            assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+            assert_eq!(
+                record.context(),
+                HtmlParseDiagnosticContext::Tokenizer {
+                    phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                    state: HtmlTokenizerState::Data
+                }
+            );
+            assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+            assert_eq!(record.rule().anchor(), anchor);
+            assert_eq!(record.rule().branch(), branch);
+            assert_eq!(
+                location.role(),
+                HtmlParseDiagnosticLocationRole::InputFrontier
+            );
+            assert_eq!(location.token(), None);
+            assert_eq!(
+                location.source_range(),
+                &report
+                    .source()
+                    .range(
+                        offset(&raw, 19 + start, utf16),
+                        offset(&raw, 19 + end, utf16)
+                    )
+                    .unwrap()
+            );
+        }
+        let mut expected = vec![(
+            0,
+            1,
+            offset(&raw, 18, utf16),
+            offset(&raw, 19, utf16),
+            HtmlParseOriginKind::Literal,
+        )];
+        expected.extend(reference.atoms.iter().map(|&(a, b, c, d, kind)| {
+            (
+                1 + a,
+                1 + b,
+                offset(&raw, 19 + c, utf16),
+                offset(&raw, 19 + d, utf16),
+                kind,
+            )
+        }));
+        let associations = report.associations();
+        let mut actual = Vec::new();
+        for i in 0..associations.len() {
+            let row = associations.row(i).unwrap();
+            if row.relation() != HtmlParseAssociationRelation::Output {
+                continue;
+            }
+            if let HtmlParseDestination::Field {
+                node,
+                field: HtmlParseField::Text,
+            } = row.destination()
+            {
+                assert_eq!(node.id(), text.id());
+                let range = row.source().unwrap();
+                assert_eq!(range.source(), &identity);
+                assert_eq!(range.coordinates(), report.source().coordinates());
+                actual.push((
+                    row.start(),
+                    row.end(),
+                    range.start(),
+                    range.end(),
+                    row.origin_kind().unwrap(),
+                ));
+                assert!(row.group().is_some());
+            }
+        }
+        actual.sort_by_key(|a| (a.0, a.2, a.1));
+        expected.sort_by_key(|a| (a.0, a.2, a.1));
+        assert_eq!(actual, expected, "{}", reference.raw);
+        let query = report
+            .source()
+            .range(
+                offset(&raw, 19, utf16),
+                offset(&raw, 19 + reference.raw.encode_utf16().count(), utf16),
+            )
+            .unwrap();
+        let mut reverse = associations.reverse(&query, None).unwrap();
+        let mut reversed = Vec::new();
+        loop {
+            match reverse.advance() {
+                HtmlParseReverseStep::Match(row) => {
+                    if row.relation() == HtmlParseAssociationRelation::Output
+                        && let HtmlParseDestination::Field {
+                            node,
+                            field: HtmlParseField::Text,
+                        } = row.destination()
+                    {
+                        assert_eq!(node.id(), text.id());
+                        let r = row.source().unwrap();
+                        reversed.push((
+                            row.start(),
+                            row.end(),
+                            r.start(),
+                            r.end(),
+                            row.origin_kind().unwrap(),
+                        ));
+                    }
+                }
+                HtmlParseReverseStep::Skipped => {}
+                HtmlParseReverseStep::Complete => break,
+                HtmlParseReverseStep::Cancelled => {
+                    panic!("query did not borrow parse cancellation")
+                }
+            }
+        }
+        reversed.sort_by_key(|a| (a.0, a.2, a.1));
+        expected.retain(|a| a.2 < query.end() && query.start() < a.3);
+        assert_eq!(reversed, expected);
+        assert_eq!(report.usage(), &usage);
+    }
+    #[test]
+    fn reference_recovery_keeps_literal_typed_records_and_exact_utf8_utf16_output_spans() {
+        for reference in references() {
+            for utf16 in [false, true] {
+                check(&reference, utf16, None);
+            }
+        }
+    }
+    #[test]
+    fn reference_recovery_every_cut_and_unit_feed_uses_independent_records_and_output_atoms() {
+        for reference in references() {
+            for utf16 in [false, true] {
+                let raw = format!("<!doctype html><p>é{}</p>", reference.raw);
+                let length = if utf16 {
+                    raw.encode_utf16().count()
+                } else {
+                    raw.len()
+                };
+                for cut in 0..=length {
+                    check(&reference, utf16, Some(&[cut]));
+                }
+                check(&reference, utf16, Some(&(0..=length).collect::<Vec<_>>()));
+            }
+        }
+    }
+
+    #[test]
+    fn attribute_reference_exception_keeps_literal_quotes_and_two_output_value_atoms_at_every_cut()
+    {
+        use HtmlParseOriginKind::{CharacterReference as R, Literal as L};
+        let raw = "<!doctype html><p x='é&notit; &amp= &amp; &NotEqualTilde;' y='&#0'>Z</p>";
+        // The ambiguous-ampersand exception keeps notit/amp= literally in an
+        // attribute. A semicolon-ended amp and the two-code-point reference
+        // expand; the final numeric reference diagnoses missing ';' then NULL.
+        let mut x_atoms = literal("é&notit; &amp= ");
+        x_atoms.extend([
+            (15, 16, 15, 20, R),
+            (16, 17, 20, 21, L),
+            (17, 18, 21, 36, R),
+            (18, 19, 21, 36, R),
+        ]);
+        for utf16 in [false, true] {
+            let length = if utf16 {
+                raw.encode_utf16().count()
+            } else {
+                raw.len()
+            };
+            let partitions: Vec<Option<Vec<usize>>> = std::iter::once(None)
+                .chain((0..=length).map(|cut| Some(vec![cut])))
+                .chain(std::iter::once(Some((0..=length).collect())))
+                .collect();
+            for cuts in partitions {
+                let source = if utf16 {
+                    HtmlSource::utf16(DocumentString::from(raw))
+                } else {
+                    HtmlSource::utf8(raw)
+                };
+                let request =
+                    HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
+                let identity = request.source().identity().clone();
+                let cancel = request.cancellation().clone();
+                let output = report(request, cuts.as_deref());
+                let usage = output.usage().clone();
+                cancel.cancel();
+                let document = output.document().unwrap();
+                let html = document
+                    .node(&document.root().children().nth(1).unwrap())
+                    .unwrap();
+                let body = document.node(&html.children().nth(1).unwrap()).unwrap();
+                let p = document.node(&body.children().next().unwrap()).unwrap();
+                let HtmlNodeKind::Element(element) = p.kind() else {
+                    panic!("literal p")
+                };
+                let attrs = element.attributes().as_slice();
+                assert_eq!(attrs.len(), 2);
+                assert_eq!(attrs[0].name().local_name(), &DocumentString::from("x"));
+                assert_eq!(
+                    attrs[0].value(),
+                    &DocumentString::from("é&notit; &amp= & ≂\u{338}")
+                );
+                assert_eq!(attrs[1].name().local_name(), &DocumentString::from("y"));
+                assert_eq!(attrs[1].value(), &DocumentString::from("�"));
+                assert_eq!(p.children().count(), 1);
+                assert!(
+                    matches!(document.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
+                );
+                let diagnostics = output.diagnostics();
+                assert_eq!(diagnostics.len(), 2);
+                for (i, code) in [
+                    HtmlTokenizerDiagnostic::MissingSemicolonAfterCharacterReference,
+                    HtmlTokenizerDiagnostic::NullCharacterReference,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let (record, location) = diagnostics.retained_record(i).unwrap();
+                    let (anchor, branch) = labels(code);
+                    assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+                    assert_eq!(
+                        record.context(),
+                        HtmlParseDiagnosticContext::Tokenizer {
+                            phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                            state: HtmlTokenizerState::AttributeValue(HtmlTokenizerQuote::Single)
+                        }
+                    );
+                    assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+                    assert_eq!(record.rule().anchor(), anchor);
+                    assert_eq!(record.rule().branch(), branch);
+                    assert_eq!(
+                        location.role(),
+                        HtmlParseDiagnosticLocationRole::InputFrontier
+                    );
+                    assert_eq!(location.token(), None);
+                    assert_eq!(
+                        location.source_range(),
+                        &output
+                            .source()
+                            .range(offset(raw, 62, utf16), offset(raw, 65, utf16))
+                            .unwrap()
+                    );
+                }
+                let associations = output.associations();
+                let mut values = [Vec::new(), Vec::new()];
+                let mut quotes = Vec::new();
+                let mut lexical_attrs = Vec::new();
+                for i in 0..associations.len() {
+                    let row = associations.row(i).unwrap();
+                    match row.destination() {
+                        HtmlParseDestination::Field {
+                            node,
+                            field: HtmlParseField::AttributeValue(slot),
+                        } if row.relation() == HtmlParseAssociationRelation::Output => {
+                            assert_eq!(node.id(), p.id());
+                            let r = row.source().unwrap();
+                            assert_eq!(r.source(), &identity);
+                            values[slot].push((
+                                row.start(),
+                                row.end(),
+                                r.start(),
+                                r.end(),
+                                row.origin_kind().unwrap(),
+                            ));
+                        }
+                        HtmlParseDestination::Lexical {
+                            occurrence,
+                            part: None,
+                        } if occurrence.kind() == HtmlParseLexicalKind::Attribute => {
+                            assert_eq!(
+                                occurrence.disposition(),
+                                HtmlParseLexicalDisposition::StoredAttribute
+                            );
+                            lexical_attrs
+                                .push((occurrence.source().start(), occurrence.source().end()));
+                        }
+                        HtmlParseDestination::Lexical {
+                            part: Some(part), ..
+                        } if matches!(
+                            part.role(),
+                            HtmlParseLexicalRole::OpeningQuote(_)
+                                | HtmlParseLexicalRole::ClosingQuote(_)
+                        ) =>
+                        {
+                            quotes.push((part.role(), part.source().start(), part.source().end()));
+                        }
+                        _ => {}
+                    }
+                }
+                values[0].sort_by_key(|a| (a.0, a.2));
+                values[1].sort_by_key(|a| (a.0, a.2));
+                let expected: Vec<_> = x_atoms
+                    .iter()
+                    .map(|&(a, b, c, d, k)| {
+                        (
+                            a,
+                            b,
+                            offset(raw, 21 + c, utf16),
+                            offset(raw, 21 + d, utf16),
+                            k,
+                        )
+                    })
+                    .collect();
+                assert_eq!(values[0], expected);
+                assert_eq!(
+                    values[1],
+                    [(0, 1, offset(raw, 62, utf16), offset(raw, 65, utf16), R)]
+                );
+                assert_eq!(
+                    lexical_attrs,
+                    [
+                        (offset(raw, 18, utf16), offset(raw, 58, utf16)),
+                        (offset(raw, 59, utf16), offset(raw, 66, utf16))
+                    ]
+                );
+                assert_eq!(
+                    quotes,
+                    [
+                        (
+                            HtmlParseLexicalRole::OpeningQuote(HtmlTokenizerQuote::Single),
+                            offset(raw, 20, utf16),
+                            offset(raw, 21, utf16)
+                        ),
+                        (
+                            HtmlParseLexicalRole::ClosingQuote(HtmlTokenizerQuote::Single),
+                            offset(raw, 57, utf16),
+                            offset(raw, 58, utf16)
+                        ),
+                        (
+                            HtmlParseLexicalRole::OpeningQuote(HtmlTokenizerQuote::Single),
+                            offset(raw, 61, utf16),
+                            offset(raw, 62, utf16)
+                        ),
+                        (
+                            HtmlParseLexicalRole::ClosingQuote(HtmlTokenizerQuote::Single),
+                            offset(raw, 65, utf16),
+                            offset(raw, 66, utf16)
+                        )
+                    ]
+                );
+                assert_eq!(output.usage(), &usage);
+            }
+        }
+    }
+    #[test]
+    fn reference_diagnostic_one_short_and_between_step_cancel_keep_exact_committed_prefix() {
+        use crate::parser::control::{ParseStop, WorkCategory};
+        use crate::parser::tree_builder::{
+            StandaloneDocumentDriver, head::HeadStep, seal::OrdinaryInitializationOwner,
+        };
+        for cancel_prefix in [false, true] {
+            let raw = if cancel_prefix {
+                "<!doctype html><p>é&#0;A&#xD800;</p>"
+            } else {
+                "<!doctype html><p>é&#0x</p>"
+            };
+            for utf16 in [false, true] {
+                let source = if utf16 {
+                    HtmlSource::utf16(DocumentString::from(raw))
+                } else {
+                    HtmlSource::utf8(raw)
+                };
+                let request = HtmlDocumentParseRequest::offline(
+                    source,
+                    super::super::tests::limits(1_000)
+                        .into_builder()
+                        .diagnostics(if cancel_prefix { 2 } else { 1 })
+                        .finish()
+                        .unwrap(),
+                );
+                let identity = request.source().identity().clone();
+                let cancellation = request.cancellation().clone();
+                let mut owner = OrdinaryInitializationOwner::new(request);
+                {
+                    let mut attempt = owner.begin().unwrap();
+                    let mut driver = Some(attempt.take_driver().unwrap());
+                    let mut stopped = false;
+                    let mut prefix_committed = false;
+                    for _ in 0..8 * raw.len() + 256 {
+                        match driver.as_mut().unwrap().step() {
+                            Ok(HeadStep::Consumed) => {
+                                if cancel_prefix
+                                    && let Some((_, session, _)) =
+                                        driver.as_mut().unwrap().standalone_parts()
+                                    && session.retained_evidence().unwrap().diagnostics().len() == 1
+                                {
+                                    assert!(!prefix_committed);
+                                    prefix_committed = true;
+                                    cancellation.cancel();
+                                }
+                            }
+                            Err(_) => {
+                                stopped = true;
+                                break;
+                            }
+                            other => panic!("expected recovery-prefix stop: {other:?}"),
+                        }
+                    }
+                    assert!(stopped);
+                    assert_eq!(prefix_committed, cancel_prefix);
+                    let control = &driver.as_ref().unwrap().control;
+                    let stop = control.stop().unwrap();
+                    if cancel_prefix {
+                        assert_eq!(stop, ParseStop::Cancelled);
+                    } else {
+                        assert!(matches!(
+                            stop,
+                            ParseStop::LimitExceeded {
+                                resource: HtmlParseResource::Diagnostics,
+                                requested_delta: 1,
+                                ..
+                            }
+                        ));
+                    }
+                    let first = control.first_stop_usage().unwrap().clone();
+                    assert_eq!(first.resource(HtmlParseResource::Diagnostics).current, 1);
+                    assert!(first.work(WorkCategory::InputUnitRead) > 0);
+                    assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
+                    assert!(driver.is_some());
+                    let mut failed = StandaloneDocumentDriver::take_failed(&mut driver).unwrap();
+                    assert!(driver.is_none());
+                    assert_eq!(failed.stop(), stop);
+                    assert_eq!(failed.at_stop(), &first);
+                    assert_eq!(failed.source().identity(), &identity);
+                    let diagnostics = failed.diagnostics().unwrap();
+                    assert_eq!(diagnostics.len(), 1);
+                    let (record, location) = diagnostics.retained_record(0).unwrap();
+                    let code = if cancel_prefix {
+                        HtmlTokenizerDiagnostic::NullCharacterReference
+                    } else {
+                        HtmlTokenizerDiagnostic::MissingSemicolonAfterCharacterReference
+                    };
+                    let (anchor, branch) = labels(code);
+                    assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+                    assert_eq!(
+                        record.context(),
+                        HtmlParseDiagnosticContext::Tokenizer {
+                            phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                            state: HtmlTokenizerState::Data,
+                        }
+                    );
+                    assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+                    assert_eq!(record.rule().anchor(), anchor);
+                    assert_eq!(record.rule().branch(), branch);
+                    assert_eq!(
+                        location.role(),
+                        HtmlParseDiagnosticLocationRole::InputFrontier
+                    );
+                    assert_eq!(location.token(), None);
+                    assert_eq!(
+                        location.source_range(),
+                        &failed
+                            .source()
+                            .range(
+                                offset(raw, 19, utf16),
+                                offset(raw, if cancel_prefix { 23 } else { 22 }, utf16),
+                            )
+                            .unwrap()
+                    );
+                    failed.release().unwrap();
+                    for resource in [
+                        HtmlParseResource::ManagedEdges,
+                        HtmlParseResource::ManagedAttributes,
+                        HtmlParseResource::ManagedUtf16Units,
+                        HtmlParseResource::SourceMapEntries,
+                        HtmlParseResource::SourceMapPayloadUnits,
+                        HtmlParseResource::Diagnostics,
+                        HtmlParseResource::DiagnosticPayloadUnits,
+                        HtmlParseResource::AuxiliaryEntries,
+                        HtmlParseResource::BufferedUtf16Units,
+                        HtmlParseResource::TokenAttributes,
+                        HtmlParseResource::OpenElements,
+                        HtmlParseResource::ContextEffects,
+                        HtmlParseResource::ManagedCapacityBytes,
+                        HtmlParseResource::PeakTransientBytes,
+                    ] {
+                        assert_eq!(
+                            failed.retained_usage().resource(resource).current,
+                            0,
+                            "{resource:?}"
+                        );
+                    }
+                    assert_eq!(failed.at_stop(), &first);
+                    assert_eq!(failed.stop(), stop);
+                    // ManagedNodes is cumulative creation admission, not
+                    // reclaimable storage (release rejects this resource).
+                    assert_eq!(
+                        failed
+                            .retained_usage()
+                            .resource(HtmlParseResource::ManagedNodes),
+                        first.resource(HtmlParseResource::ManagedNodes)
+                    );
+                }
+                assert_eq!(owner.take_request().unwrap().source().identity(), &identity);
+            }
+        }
+        // Exactly two diagnostics are admitted by the same ordinary request
+        // contract; their independently expected order is checked above and
+        // by the complete UTF-8/UTF-16 literal test.
+        for utf16 in [false, true] {
+            let reference = references().into_iter().find(|r| r.raw == "&#0x").unwrap();
+            let raw = "<!doctype html><p>é&#0x</p>";
+            let source = if utf16 {
+                HtmlSource::utf16(DocumentString::from(raw))
+            } else {
+                HtmlSource::utf8(raw)
+            };
+            let request = HtmlDocumentParseRequest::offline(
+                source,
+                super::super::tests::limits(1_000)
+                    .into_builder()
+                    .diagnostics(2)
+                    .finish()
+                    .unwrap(),
+            );
+            let output = report(request, None);
+            assert_eq!(output.diagnostics().len(), reference.errors.len());
+        }
+    }
+
+    #[test]
+    fn completed_reference_map_row_exact_and_one_short_work_keep_original_owner_and_first_stop() {
+        use crate::construction::parser_session::{
+            SessionError, StringLocation,
+            provenance::{NativeAssociations, NativeDestination},
+        };
+        use crate::parser::control::{ParseStop, WorkCategory};
+        for short in [false, true] {
+            let request = HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8("<!doctype html><p>é&#0x</p>"),
+                super::super::tests::limits(1_000),
+            );
+            let mut driver = completed_driver(&request);
+            let first = {
+                let (control, session, _) = driver.standalone_parts().unwrap();
+                session
+                    .prepare_native_associations(control, request.source())
+                    .unwrap();
+                let index = {
+                    let mut rows = session.native_associations(control).unwrap();
+                    (0..rows.len())
+                        .find(|&i| {
+                            let row = rows.row(i).unwrap().unwrap().0;
+                            matches!(
+                                row.destination,
+                                NativeDestination::Field(StringLocation::Text(_))
+                            ) && row.kind == Some(HtmlParseOriginKind::CharacterReference)
+                                && row.start == 1
+                                && row.end == 2
+                        })
+                        .unwrap()
+                };
+                // Existing native_associations: require() reads one storage
+                // record + six idle fields, then copies its actual fixed lender
+                // and writes one record. row(): two record visits, one OwnedVec
+                // disposal-owner visit and one provider-identity check.
+                // No source scan, row expansion or map-copy is included here.
+                let cost = 7 + size_of::<NativeAssociations>() as u64 + 1 + 2 + 1 + 1;
+                let remaining = cost - u64::from(short);
+                let used = control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current;
+                control
+                    .charge(
+                        WorkCategory::StateStep,
+                        request.limits().work_credits() - used - remaining,
+                    )
+                    .unwrap();
+                let before = control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current;
+                let reads = control.usage().work(WorkCategory::InputUnitRead);
+                {
+                    let mut rows = session.native_associations(control).unwrap();
+                    let result = rows.row(index);
+                    if short {
+                        assert!(matches!(
+                            result,
+                            Err(SessionError::Stop(ParseStop::LimitExceeded {
+                                resource: HtmlParseResource::WorkCredits,
+                                requested_delta: 1,
+                                ..
+                            }))
+                        ));
+                    } else {
+                        let row = result.unwrap().unwrap().0;
+                        assert_eq!((row.start, row.end), (1, 2));
+                        assert_eq!(row.kind, Some(HtmlParseOriginKind::CharacterReference));
+                        assert_eq!(
+                            row.source.as_ref(),
+                            Some(&request.source().range(20, 23).unwrap())
+                        );
+                    }
+                }
+                assert_eq!(control.usage().work(WorkCategory::InputUnitRead), reads);
+                assert_eq!(
+                    control
+                        .usage()
+                        .resource(HtmlParseResource::WorkCredits)
+                        .current
+                        - before,
+                    cost - u64::from(short)
+                );
+                if !short {
+                    request.cancellation().cancel();
+                    assert!(session.native_associations(control).is_err());
+                    assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+                }
+                let first = control.first_stop_usage().unwrap().clone();
+                assert_eq!(control.first_stop_usage(), Some(&first));
+                first
+            };
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+            assert_eq!(driver.control.first_stop_usage(), Some(&first));
+        }
+    }
+}
+
+#[cfg(test)]
 mod whole_source_comparisons {
     use super::*;
     use crate::construction::parser_session::{
@@ -3774,7 +4646,9 @@ mod comment_diagnostic_corpus {
         }
         Ok(())
     }
-    fn completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'_> {
+    pub(super) fn completed_driver(
+        request: &HtmlDocumentParseRequest,
+    ) -> StandaloneDocumentDriver<'_> {
         let mut entry = super::super::entry::OrdinaryDocumentEntry::new(request);
         let mut driver = Some(entry.take_driver().unwrap());
         loop {
@@ -3784,7 +4658,10 @@ mod comment_diagnostic_corpus {
                 other => panic!("ordinary whole-source fixture did not complete: {other:?}"),
             }
         }
-        StandaloneDocumentDriver::take_completed(&mut driver).unwrap()
+        driver.unwrap()
+    }
+    pub(super) fn completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'_> {
+        StandaloneDocumentDriver::take_completed(&mut Some(completed_driver(request))).unwrap()
     }
     #[test]
     fn all_comments01_disabled_cases_match_selected_typed_diagnostics_and_native_trees() {
@@ -4078,7 +4955,7 @@ mod comment_diagnostic_corpus {
     // HTML877d preprocessing/comment rules, paired with the unchanged source
     // selection above. Feed availability is a real cursor operation, never a
     // prefix request or a tree derived from another parser execution.
-    fn completed_at_cuts<'a>(
+    pub(super) fn completed_at_cuts<'a>(
         request: &'a HtmlDocumentParseRequest,
         cuts: &[usize],
     ) -> CompletedStandaloneDocument<'a> {

@@ -1,5 +1,206 @@
 use surgeist_html::*;
 
+#[test]
+fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_coordinates() {
+    // HTML877d numeric-end and named-reference rules: missing ';' precedes
+    // NULL replacement, C1 0x80 maps to EURO, and NotEqualTilde emits two
+    // code points with the same authored interval. é separates UTF-8 bytes
+    // from UTF-16 coordinates. These literals are not another parse's output.
+    let raw = "<!doctype html><p>é&#0x&#x80;&NotEqualTilde;</p>";
+    for utf16 in [false, true] {
+        let at = |units: usize| {
+            if utf16 || units <= 18 {
+                units
+            } else {
+                units + 1
+            }
+        };
+        let source = if utf16 {
+            HtmlSource::utf16(DocumentString::from(raw))
+        } else {
+            HtmlSource::utf8(raw)
+        };
+        let request = HtmlDocumentParseRequest::offline(source, limits());
+        let identity = request.source().identity().clone();
+        let cancellation = request.cancellation().clone();
+        let report = request.parse().unwrap();
+        let usage = report.usage().clone();
+        cancellation.cancel();
+        assert_eq!(report.source().identity(), &identity);
+        assert_eq!(
+            report.source().coordinates(),
+            if utf16 {
+                HtmlSourceCoordinates::Utf16CodeUnits
+            } else {
+                HtmlSourceCoordinates::Utf8Bytes
+            }
+        );
+        if utf16 {
+            assert_eq!(
+                report.source().as_utf16().unwrap().code_units(),
+                raw.encode_utf16().collect::<Vec<_>>()
+            );
+        } else {
+            assert_eq!(report.source().as_utf8(), Some(raw));
+        }
+        let document = report.document().unwrap();
+        assert_eq!(document.mode(), HtmlDocumentMode::NoQuirks);
+        let roots: Vec<_> = document.root().children().collect();
+        assert_eq!(roots.len(), 2);
+        assert!(matches!(
+            document.node(&roots[0]).unwrap().kind(),
+            HtmlNodeKind::Doctype(_)
+        ));
+        let html = document.node(&roots[1]).unwrap();
+        let branches: Vec<_> = html.children().collect();
+        assert_eq!(branches.len(), 2);
+        let head = document.node(&branches[0]).unwrap();
+        assert_eq!(head.children().count(), 0);
+        let body = document.node(&branches[1]).unwrap();
+        assert_eq!(body.children().count(), 1);
+        let p = document.node(&body.children().next().unwrap()).unwrap();
+        let HtmlNodeKind::Element(element) = p.kind() else {
+            panic!("literal p")
+        };
+        assert_eq!(element.name().local_name(), &DocumentString::from("p"));
+        assert!(element.attributes().is_empty());
+        assert_eq!(p.children().count(), 1);
+        let text_id = p.children().next().unwrap();
+        let HtmlNodeKind::Text(text) = document.node(&text_id).unwrap().kind() else {
+            panic!("literal text")
+        };
+        assert_eq!(
+            text.code_units(),
+            &[0xE9, 0xFFFD, 0x78, 0x20AC, 0x2242, 0x338]
+        );
+        let expected_errors = [
+            (
+                HtmlTokenizerDiagnostic::MissingSemicolonAfterCharacterReference,
+                "parse-error-missing-semicolon-after-character-reference",
+                "missing-semicolon-after-character-reference",
+                19,
+                22,
+            ),
+            (
+                HtmlTokenizerDiagnostic::NullCharacterReference,
+                "parse-error-null-character-reference",
+                "null-character-reference",
+                19,
+                22,
+            ),
+            (
+                HtmlTokenizerDiagnostic::ControlCharacterReference,
+                "parse-error-control-character-reference",
+                "control-character-reference",
+                23,
+                29,
+            ),
+        ];
+        let diagnostics = report.diagnostics();
+        assert_eq!(diagnostics.len(), expected_errors.len());
+        for (i, (code, anchor, branch, start, end)) in expected_errors.into_iter().enumerate() {
+            let (record, location) = diagnostics.retained_record(i).unwrap();
+            assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+            assert_eq!(
+                record.context(),
+                HtmlParseDiagnosticContext::Tokenizer {
+                    phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                    state: HtmlTokenizerState::Data,
+                }
+            );
+            assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+            assert_eq!(record.rule().anchor(), anchor);
+            assert_eq!(record.rule().branch(), branch);
+            assert_eq!(
+                location.role(),
+                HtmlParseDiagnosticLocationRole::InputFrontier
+            );
+            assert_eq!(location.token(), None);
+            assert_eq!(
+                location.source_range(),
+                &report.source().range(at(start), at(end)).unwrap()
+            );
+            assert_eq!(location.source_range().source(), &identity);
+        }
+        use HtmlParseOriginKind::{CharacterReference as R, Literal as L};
+        let expected = [
+            (0, 1, 18, 19, L),
+            (1, 2, 19, 22, R),
+            (2, 3, 22, 23, L),
+            (3, 4, 23, 29, R),
+            (4, 5, 29, 44, R),
+            (5, 6, 29, 44, R),
+        ]
+        .map(|(a, b, c, d, k)| (a, b, at(c), at(d), k));
+        let associations = report.associations();
+        let mut actual = Vec::new();
+        for i in 0..associations.len() {
+            let row = associations.row(i).unwrap();
+            if row.relation() == HtmlParseAssociationRelation::Output
+                && let HtmlParseDestination::Field {
+                    node,
+                    field: HtmlParseField::Text,
+                } = row.destination()
+            {
+                assert_eq!(node.id(), text_id);
+                let source = row.source().unwrap();
+                assert_eq!(source.source(), &identity);
+                actual.push((
+                    row.start(),
+                    row.end(),
+                    source.start(),
+                    source.end(),
+                    row.origin_kind().unwrap(),
+                ));
+                assert!(row.group().is_some());
+            }
+        }
+        actual.sort_by_key(|r| (r.0, r.2));
+        assert_eq!(actual, expected);
+        // The two distinct output units overlap one input interval. Reverse
+        // traversal may also report lexical/cause/history rows; qualify this
+        // literal comparison specifically to the current text Output relation.
+        let range = report.source().range(at(29), at(44)).unwrap();
+        let mut cursor = associations.reverse(&range, None).unwrap();
+        let mut reverse = Vec::new();
+        let mut complete = false;
+        for _ in 0..=associations.len() {
+            match cursor.advance() {
+                HtmlParseReverseStep::Match(row) => {
+                    if row.relation() == HtmlParseAssociationRelation::Output
+                        && let HtmlParseDestination::Field {
+                            node,
+                            field: HtmlParseField::Text,
+                        } = row.destination()
+                    {
+                        assert_eq!(node.id(), text_id);
+                        let source = row.source().unwrap();
+                        reverse.push((
+                            row.start(),
+                            row.end(),
+                            source.start(),
+                            source.end(),
+                            row.origin_kind().unwrap(),
+                        ));
+                    }
+                }
+                HtmlParseReverseStep::Skipped => {}
+                HtmlParseReverseStep::Complete => {
+                    complete = true;
+                    break;
+                }
+                HtmlParseReverseStep::Cancelled => {
+                    panic!("original cancellation cannot revoke immutable read")
+                }
+            }
+        }
+        assert!(complete, "one flat row per action must reach completion");
+        reverse.sort_by_key(|r| r.0);
+        assert_eq!(reverse, expected[4..]);
+        assert_eq!(report.usage(), &usage);
+    }
+}
+
 fn limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)

@@ -2827,6 +2827,18 @@ backward source offsets and the distinct pre/listing self-closing rule label;
 they do not establish every diagnostic condition or corpus error conformance.
 Selected comments and nested-template cases below have source-qualified typed
 diagnostic expectations; the remaining corpus error metadata is unverified.
+Selected [character-reference recovery literals](src/parser/tree_builder/conformance.rs)
+check decimal and hexadecimal NULL, invalid scalars, C1/control and noncharacter
+diagnostics, semicolon-error ordering, failed numeric rewind, unknown names and
+the attribute exception. Both UTF-8 and UTF-16 inputs run whole, at every two-part
+cut and unit at a time against independent typed records and output intervals.
+Supplementary and two-code-point replacements retain exact overlapping source
+maps; attribute literals also check retained lexical quotes. A
+[public reader witness](tests/public_parse.rs) checks the same source identities,
+chronology and all-overlap current-text reverse mapping after cancellation.
+Diagnostic one-short admission, cancellation between real steps and fixed
+completed-map row work boundaries retain the original first stop and reclaimable
+storage cleanup; the cumulative node-admission counter remains unreclaimed.
 The private ordinary completed owner also prepares native-field associations
 through the [same evidence authority](src/construction/parser_session/provenance.rs):
 text merging, replacement, cloning, retirement and replay retain original groups
