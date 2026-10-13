@@ -2929,6 +2929,10 @@ provide a public streaming API, transport buffers or fragment feeding.
 
 <a id="private-conformance-observation"></a>
 
+The [selected conformance coverage matrix](docs/conformance-coverage.md) connects
+defining clauses, actual contexts and independent expectations to their tests,
+with corpus selections, capability exclusions and measurement qualifications.
+
 The test-compiled [completed native observer](src/construction/parser_session/native_view.rs)
 lends the whole successfully completed ordinary owner described above. It borrows
 qualified native records and UTF-16 units through the same controller; it does
