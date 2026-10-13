@@ -1765,3 +1765,1465 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod whole_source_comparisons {
+    use super::*;
+    use crate::construction::parser_session::{
+        StringLocation,
+        evidence::{
+            DiagnosticContext, DiagnosticKind, DiagnosticLocation, DiagnosticLocationRole,
+            DiagnosticRecord, DiagnosticSeverity, DiagnosticToken,
+        },
+        provenance::{
+            AssociationRelation, LexicalDisposition, LexicalKind, LexicalOccurrence, LexicalPart,
+            NativeAssociation, NativeAttributeField, NativeDestination,
+        },
+        report::MetadataStep,
+    };
+    use crate::parser::{
+        control::ParseUsage,
+        tokenizer::{
+            states::State,
+            token::{DiagnosticCode, DiagnosticPhase, OriginKind, TextOrigin},
+        },
+        tree_builder::{
+            StandaloneDocumentDriver,
+            head::HeadStep,
+            report::ImmutableParseReport,
+            seal::{OrdinaryInitializationOwner, SealedOrdinaryConstruction},
+        },
+    };
+    use crate::{DocumentString, HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
+    use std::time::{Duration, Instant};
+
+    const PREFIX: &str = "<!doctype html><html><head></head><body>";
+    const SUFFIX: &str = "</body></html>";
+    const WORK: [WorkCategory; 8] = [
+        WorkCategory::InputUnitRead,
+        WorkCategory::InspectByte,
+        WorkCategory::CopyByte,
+        WorkCategory::StateStep,
+        WorkCategory::RecordVisit,
+        WorkCategory::RecordWrite,
+        WorkCategory::ReserveByte,
+        WorkCategory::ProviderCall,
+    ];
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct Origin {
+        node: usize,
+        output: (usize, usize),
+        source: (usize, usize),
+        kind: OriginKind,
+    }
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct Error {
+        kind: DiagnosticKind,
+        context: DiagnosticContext,
+        role: DiagnosticLocationRole,
+        token: Option<DiagnosticToken>,
+        anchor: &'static str,
+        branch: &'static str,
+        source: (usize, usize),
+    }
+    struct Literal {
+        label: &'static str,
+        raw: Vec<u16>,
+        expected: Projection,
+        origins: Vec<Origin>,
+        errors: Vec<Error>,
+        attributes: Vec<((usize, usize), LexicalDisposition)>,
+    }
+    struct Observation {
+        projection: Projection,
+        phases: Vec<(&'static str, ParseUsage, Duration)>,
+    }
+    fn append(p: &mut Projection, parent: usize, kind: Kind) -> usize {
+        let index = p.nodes.len();
+        p.nodes.push(Node {
+            kind,
+            parent: Some(parent),
+            children: Vec::new(),
+            template: None,
+            shadow: None,
+            owner: None,
+        });
+        p.nodes[parent].children.push(index);
+        index
+    }
+    fn element(local: &str, attrs: Vec<Attr>) -> Kind {
+        Kind::Element(
+            Name {
+                namespace: Some(units("http://www.w3.org/1999/xhtml")),
+                prefix: None,
+                local: units(local),
+            },
+            attrs,
+        )
+    }
+    fn document() -> Projection {
+        let mut p = Projection {
+            nodes: vec![Node {
+                kind: Kind::Document(HtmlDocumentMode::NoQuirks),
+                parent: None,
+                children: Vec::new(),
+                template: None,
+                shadow: None,
+                owner: None,
+            }],
+        };
+        append(
+            &mut p,
+            0,
+            Kind::Doctype {
+                name: units("html"),
+                public: Some(Vec::new()),
+                system: Some(Vec::new()),
+            },
+        );
+        append(&mut p, 0, element("html", Vec::new()));
+        append(&mut p, 2, element("head", Vec::new()));
+        append(&mut p, 2, element("body", Vec::new()));
+        p
+    }
+    fn literal(
+        label: &'static str,
+        body: Vec<u16>,
+        expected: Projection,
+        origins: Vec<Origin>,
+        errors: Vec<Error>,
+        attributes: Vec<((usize, usize), LexicalDisposition)>,
+    ) -> Literal {
+        let mut raw = units(PREFIX);
+        raw.extend(body);
+        raw.extend(units(SUFFIX));
+        Literal {
+            label,
+            raw,
+            expected,
+            origins,
+            errors,
+            attributes,
+        }
+    }
+    fn plain(n: usize) -> Literal {
+        let payload = units(&"Aé😀".repeat(n));
+        let mut expected = document();
+        let p = append(&mut expected, 4, element("p", Vec::new()));
+        if !payload.is_empty() {
+            append(&mut expected, p, Kind::Text(payload.clone()));
+        }
+        let mut origins = Vec::new();
+        for i in 0..n {
+            for (a, b) in [(0, 1), (1, 2), (2, 4)] {
+                origins.push(Origin {
+                    node: 6,
+                    output: (4 * i + a, 4 * i + b),
+                    source: (PREFIX.len() + 3 + 4 * i + a, PREFIX.len() + 3 + 4 * i + b),
+                    kind: OriginKind::Literal,
+                });
+            }
+        }
+        let mut body = units("<p>");
+        body.extend(payload);
+        body.extend(units("</p>"));
+        literal("plain", body, expected, origins, Vec::new(), Vec::new())
+    }
+    fn references(n: usize, crlf: bool) -> Literal {
+        let spelling = if crlf {
+            "A\r\n&amp;&#128512;&NotEqualTilde;"
+        } else {
+            "A\n&amp;&#128512;&NotEqualTilde;"
+        };
+        let mut expected = document();
+        let p = append(&mut expected, 4, element("p", Vec::new()));
+        if n != 0 {
+            append(
+                &mut expected,
+                p,
+                Kind::Text([65, 10, 38, 0xd83d, 0xde00, 0x2242, 0x338].repeat(n)),
+            );
+        }
+        let mut origins = Vec::new();
+        let newline = if crlf { 2 } else { 1 };
+        for i in 0..n {
+            let s = PREFIX.len() + 3 + i * spelling.len();
+            let o = 7 * i;
+            for (out, src, kind) in [
+                ((o, o + 1), (s, s + 1), OriginKind::Literal),
+                (
+                    (o + 1, o + 2),
+                    (s + 1, s + 1 + newline),
+                    if crlf {
+                        OriginKind::Newline
+                    } else {
+                        OriginKind::Literal
+                    },
+                ),
+                (
+                    (o + 2, o + 3),
+                    (s + 1 + newline, s + 6 + newline),
+                    OriginKind::CharacterReference,
+                ),
+                (
+                    (o + 3, o + 5),
+                    (s + 6 + newline, s + 15 + newline),
+                    OriginKind::CharacterReference,
+                ),
+                (
+                    (o + 5, o + 6),
+                    (s + 15 + newline, s + 30 + newline),
+                    OriginKind::CharacterReference,
+                ),
+                (
+                    (o + 6, o + 7),
+                    (s + 15 + newline, s + 30 + newline),
+                    OriginKind::CharacterReference,
+                ),
+            ] {
+                origins.push(Origin {
+                    node: 6,
+                    output: out,
+                    source: src,
+                    kind,
+                });
+            }
+        }
+        literal(
+            if crlf {
+                "CRLF-references"
+            } else {
+                "LF-references"
+            },
+            units(&format!("<p>{}</p>", spelling.repeat(n))),
+            expected,
+            origins,
+            Vec::new(),
+            Vec::new(),
+        )
+    }
+    fn attributes(n: usize) -> Literal {
+        let mut body = String::from("<p");
+        let mut attrs = Vec::new();
+        let mut errors = Vec::new();
+        let mut spans = Vec::new();
+        for duplicate in [false, true] {
+            for i in 0..n {
+                let name = format!("sharedprefix{i:04}");
+                let spelling = if duplicate {
+                    name.to_ascii_uppercase()
+                } else {
+                    name.clone()
+                };
+                let value = if duplicate { "discard" } else { "first" };
+                body.push(' ');
+                let start = PREFIX.len() + body.len();
+                body.push_str(&format!("{spelling}='{value}'"));
+                spans.push((
+                    (start, PREFIX.len() + body.len()),
+                    if duplicate {
+                        LexicalDisposition::DuplicateAttribute
+                    } else {
+                        LexicalDisposition::StoredAttribute
+                    },
+                ));
+                if duplicate {
+                    errors.push(Error {
+                        kind: DiagnosticKind::Tokenizer(DiagnosticCode::DuplicateAttribute),
+                        context: DiagnosticContext::Tokenizer {
+                            phase: DiagnosticPhase::Tokenizer,
+                            state: State::AttributeName,
+                        },
+                        role: DiagnosticLocationRole::InputFrontier,
+                        token: None,
+                        anchor: "parse-error-duplicate-attribute",
+                        branch: "duplicate-attribute",
+                        source: (start + name.len(), start + name.len() + 1),
+                    });
+                } else {
+                    attrs.push(Attr {
+                        name: Name {
+                            namespace: None,
+                            prefix: None,
+                            local: units(&name),
+                        },
+                        value: units(value),
+                    });
+                }
+            }
+        }
+        body.push_str("></p>");
+        let mut expected = document();
+        append(&mut expected, 4, element("p", attrs));
+        literal(
+            "attributes",
+            units(&body),
+            expected,
+            Vec::new(),
+            errors,
+            spans,
+        )
+    }
+    fn siblings(n: usize) -> Literal {
+        let mut expected = document();
+        let mut origins = Vec::new();
+        for i in 0..n {
+            let p = append(&mut expected, 4, element("p", Vec::new()));
+            append(&mut expected, p, Kind::Text(vec![88]));
+            let s = PREFIX.len() + 8 * i + 3;
+            origins.push(Origin {
+                node: 6 + 2 * i,
+                output: (0, 1),
+                source: (s, s + 1),
+                kind: OriginKind::Literal,
+            });
+        }
+        literal(
+            "siblings",
+            units(&"<p>X</p>".repeat(n)),
+            expected,
+            origins,
+            Vec::new(),
+            Vec::new(),
+        )
+    }
+
+    // Pre-observation fixture envelope, not a parser default or a success promise.
+    // K bounds original units + expected records. Each scalar/attribute can own
+    // token, lexical, cause, history and final rows; 512K leaves room for these
+    // simultaneous owners and the metered observer. Its node/edge comparison is
+    // quadratic, so the work envelope includes K² and compiled record bytes.
+    fn limits(l: &Literal, source_len: usize) -> HtmlParseLimits {
+        let k = (l.raw.len() + l.expected.nodes.len() + l.errors.len() + l.attributes.len() + 64)
+            as u64;
+        let layout = (size_of::<NativeAssociation>()
+            + size_of::<TextOrigin>()
+            + size_of::<LexicalOccurrence>()
+            + size_of::<LexicalPart>()
+            + size_of::<DiagnosticRecord>()
+            + size_of::<DiagnosticLocation>()
+            + size_of::<MeteredNode>()
+            + size_of::<MeteredAttr>()
+            + size_of::<Edge>()
+            + size_of::<Pending>()
+            + size_of::<[usize; 64]>()) as u64;
+        let capacity = 128 * k * layout;
+        HtmlParseLimits::builder()
+            .source_units(source_len as u64)
+            .buffered_utf16_units(256 * k)
+            .token_attributes(64 * k)
+            .auxiliary_entries(512 * k)
+            .managed_nodes(64 * k)
+            .managed_edges(64 * k)
+            .managed_attributes(64 * k)
+            .managed_utf16_units(256 * k)
+            .source_map_entries(512 * k)
+            .source_map_payload_units(256 * k)
+            .diagnostics(64 * k)
+            .diagnostic_payload_units(256 * k)
+            .context_effects(0)
+            .open_elements(64)
+            .tree_depth(64)
+            .managed_capacity_bytes(capacity)
+            .peak_transient_bytes(2 * capacity)
+            .atomic_layout_bytes(capacity)
+            .work_credits(512 * k * k * layout)
+            .finish()
+            .unwrap()
+    }
+    fn source(l: &Literal, utf8: bool) -> HtmlSource {
+        if utf8 {
+            HtmlSource::utf8(String::from_utf16(&l.raw).expect("scalar-only UTF8 family"))
+        } else {
+            HtmlSource::utf16(DocumentString::from_utf16(l.raw.clone()))
+        }
+    }
+    fn offset(l: &Literal, utf8: bool, position: usize) -> usize {
+        if utf8 {
+            String::from_utf16(&l.raw[..position])
+                .expect("scalar boundary")
+                .len()
+        } else {
+            position
+        }
+    }
+    fn check_range(source: &HtmlSource, range: &crate::HtmlSourceRange, expected: (usize, usize)) {
+        assert_eq!(range, &source.range(expected.0, expected.1).unwrap());
+    }
+    fn same_origins(actual: &[Origin], expected: &[Origin]) -> bool {
+        let mut actual = actual.to_vec();
+        let mut expected = expected.to_vec();
+        actual.sort_by_key(|o| (o.node, o.source, o.output));
+        expected.sort_by_key(|o| (o.node, o.source, o.output));
+        actual == expected
+    }
+    fn same_fields(actual: &[(usize, u8, Origin)], expected: &[(usize, u8, Origin)]) -> bool {
+        let mut actual = actual.to_vec();
+        let mut expected = expected.to_vec();
+        actual.sort_by_key(|(slot, field, o)| (o.node, *slot, *field, o.source, o.output));
+        expected.sort_by_key(|(slot, field, o)| (o.node, *slot, *field, o.source, o.output));
+        actual == expected
+    }
+    #[test]
+    fn field_oracle_rejects_sibling_and_equal_attribute_destination_swaps() {
+        let literal = siblings(2);
+        let expected = literal.origins;
+        assert_eq!(expected.iter().map(|o| o.node).collect::<Vec<_>>(), [6, 8]);
+        assert!(same_origins(&expected, &expected));
+        let mut swapped = expected.clone();
+        swapped[0].node = 8;
+        swapped[1].node = 6;
+        assert_eq!(
+            swapped
+                .iter()
+                .map(|o| (o.output, o.source, o.kind))
+                .collect::<Vec<_>>(),
+            expected
+                .iter()
+                .map(|o| (o.output, o.source, o.kind))
+                .collect::<Vec<_>>()
+        );
+        assert!(!same_origins(&swapped, &expected));
+
+        let literal = attributes(2);
+        let Kind::Element(_, values) = &literal.expected.nodes[5].kind else {
+            unreachable!()
+        };
+        assert_eq!(values[0].value, units("first"));
+        assert_eq!(values[1].value, units("first"));
+        let starts: Vec<_> = literal
+            .attributes
+            .iter()
+            .filter(|(_, disposition)| *disposition == LexicalDisposition::StoredAttribute)
+            .map(|(span, _)| span.0)
+            .collect();
+        let expected: Vec<_> = values
+            .iter()
+            .enumerate()
+            .map(|(slot, value)| {
+                let start = starts[slot] + value.name.local.len() + 2;
+                (
+                    slot,
+                    2,
+                    Origin {
+                        node: 5,
+                        output: (0, 1),
+                        source: (start, start + 1),
+                        kind: OriginKind::Literal,
+                    },
+                )
+            })
+            .collect();
+        assert!(same_fields(&expected, &expected));
+        let mut swapped = expected.clone();
+        swapped[0].0 = 1;
+        swapped[1].0 = 0;
+        assert_eq!(
+            swapped
+                .iter()
+                .map(|(_, field, o)| (*field, o.output, o.source, o.kind))
+                .collect::<Vec<_>>(),
+            expected
+                .iter()
+                .map(|(_, field, o)| (*field, o.output, o.source, o.kind))
+                .collect::<Vec<_>>()
+        );
+        assert!(!same_fields(&swapped, &expected));
+    }
+    fn evidence(
+        l: &Literal,
+        utf8: bool,
+        report: &ImmutableParseReport,
+        positions: &[(bool, usize, usize)],
+    ) {
+        let source = report.source();
+        let diagnostics = report.diagnostics();
+        assert_eq!(diagnostics.len(), l.errors.len());
+        for (i, expected) in l.errors.iter().enumerate() {
+            let (record, location) = diagnostics.retained_record(i).unwrap();
+            assert_eq!(record.kind, expected.kind);
+            assert_eq!(record.context, expected.context);
+            assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+            assert_eq!(location.role, expected.role);
+            assert_eq!(location.token, expected.token);
+            assert_eq!(record.rule.anchor, expected.anchor);
+            assert_eq!(record.rule.branch, expected.branch);
+            check_range(
+                source,
+                &location.source,
+                (
+                    offset(l, utf8, expected.source.0),
+                    offset(l, utf8, expected.source.1),
+                ),
+            );
+        }
+        let associations = report.history().associations().unwrap();
+        let position = |attribute, owner| {
+            positions
+                .iter()
+                .find(|(is_attribute, actual, _)| *is_attribute == attribute && *actual == owner)
+                .expect("field owner has a same-owner qualified structural position")
+                .2
+        };
+        let mut origins = Vec::new();
+        let mut attributes = Vec::new();
+        let mut pi = Vec::new();
+        let mut eof = 0;
+        for i in 0..associations.len() {
+            let row = associations.row(i).unwrap();
+            if let Some(range) = &row.source {
+                check_range(source, range, (range.start(), range.end()));
+            }
+            if row.relation == AssociationRelation::Output
+                && matches!(
+                    row.destination,
+                    NativeDestination::Field(StringLocation::Text(_))
+                )
+            {
+                assert!(row.group.is_some());
+                let range = row
+                    .source
+                    .as_ref()
+                    .expect("all selected text is source-bearing");
+                origins.push(Origin {
+                    node: match row.destination {
+                        NativeDestination::Field(StringLocation::Text(owner)) => {
+                            position(false, owner)
+                        }
+                        _ => unreachable!(),
+                    },
+                    output: (row.start, row.end),
+                    source: (range.start(), range.end()),
+                    kind: row.kind.expect("selected output origin"),
+                });
+            }
+            if row.relation == AssociationRelation::Output {
+                let field = match row.destination {
+                    NativeDestination::Field(StringLocation::AttributeName(owner, slot)) => {
+                        Some((position(true, owner), slot, 1, &mut attributes))
+                    }
+                    NativeDestination::Field(StringLocation::AttributeValue(owner, slot)) => {
+                        Some((position(true, owner), slot, 2, &mut attributes))
+                    }
+                    NativeDestination::Field(StringLocation::ProcessingInstructionTarget(
+                        owner,
+                    )) => Some((position(false, owner), 0, 1, &mut pi)),
+                    NativeDestination::Field(StringLocation::ProcessingInstructionData(owner)) => {
+                        Some((position(false, owner), 0, 2, &mut pi))
+                    }
+                    _ => None,
+                };
+                if let Some((node, slot, field, rows)) = field {
+                    assert!(row.group.is_some());
+                    let range = row.source.as_ref().expect("selected authored field origin");
+                    rows.push((
+                        slot,
+                        field,
+                        Origin {
+                            node,
+                            output: (row.start, row.end),
+                            source: (range.start(), range.end()),
+                            kind: row.kind.unwrap(),
+                        },
+                    ));
+                }
+            }
+            if row.destination == NativeDestination::LexicalEnd {
+                check_range(
+                    source,
+                    row.source.as_ref().unwrap(),
+                    (source.len(), source.len()),
+                );
+                eof += 1;
+            }
+        }
+        let expected: Vec<_> = l
+            .origins
+            .iter()
+            .map(|origin| Origin {
+                node: origin.node,
+                output: origin.output,
+                source: (
+                    offset(l, utf8, origin.source.0),
+                    offset(l, utf8, origin.source.1),
+                ),
+                kind: origin.kind,
+            })
+            .collect();
+        assert!(
+            same_origins(&origins, &expected),
+            "qualified text origins: {origins:?} vs {expected:?}"
+        );
+        assert_eq!(eof, 1);
+        let mut actual = Vec::new();
+        let mut i = 0;
+        while let Some(occurrence) = associations.lexical_occurrence(i) {
+            assert_ne!(occurrence.disposition, LexicalDisposition::Draft);
+            check_range(
+                source,
+                &occurrence.source,
+                (occurrence.source.start(), occurrence.source.end()),
+            );
+            if occurrence.kind == LexicalKind::Attribute {
+                actual.push((
+                    (occurrence.source.start(), occurrence.source.end()),
+                    occurrence.disposition,
+                ));
+            }
+            i += 1;
+        }
+        let expected: Vec<_> = l
+            .attributes
+            .iter()
+            .map(|(span, d)| ((offset(l, utf8, span.0), offset(l, utf8, span.1)), *d))
+            .collect();
+        assert_eq!(actual, expected);
+        let authored: Vec<_> = l
+            .expected
+            .nodes
+            .iter()
+            .enumerate()
+            .flat_map(|(node, record)| match &record.kind {
+                Kind::Element(_, attrs) => attrs
+                    .iter()
+                    .enumerate()
+                    .map(move |(slot, attr)| (node, slot, attr))
+                    .collect::<Vec<_>>(),
+                _ => Vec::new(),
+            })
+            .collect();
+        let stored: Vec<_> = l
+            .attributes
+            .iter()
+            .filter(|(_, disposition)| *disposition == LexicalDisposition::StoredAttribute)
+            .collect();
+        assert_eq!(authored.len(), stored.len());
+        let mut expected_attributes = Vec::new();
+        for ((node, slot, attribute), (span, _)) in authored.into_iter().zip(stored) {
+            for (field, raw_start, length) in [
+                (1, span.0, attribute.name.local.len()),
+                (
+                    2,
+                    span.0 + attribute.name.local.len() + 2,
+                    attribute.value.len(),
+                ),
+            ] {
+                for i in 0..length {
+                    expected_attributes.push((
+                        slot,
+                        field,
+                        Origin {
+                            node,
+                            output: (i, i + 1),
+                            source: (
+                                offset(l, utf8, raw_start + i),
+                                offset(l, utf8, raw_start + i + 1),
+                            ),
+                            kind: OriginKind::Literal,
+                        },
+                    ));
+                }
+            }
+        }
+        assert!(
+            same_fields(&attributes, &expected_attributes),
+            "qualified attribute origins: {attributes:?} vs {expected_attributes:?}"
+        );
+        let mut expected_pi = Vec::new();
+        for (node, _) in l
+            .expected
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, record)| matches!(record.kind, Kind::Pi { .. }))
+        {
+            let start = usize::from(l.raw[0] == 0xfeff);
+            for (field, raw_start, length) in [(1, start + 2, 6), (2, start + 9, 4)] {
+                for i in 0..length {
+                    expected_pi.push((
+                        0,
+                        field,
+                        Origin {
+                            node,
+                            output: (i, i + 1),
+                            source: (
+                                offset(l, utf8, raw_start + i),
+                                offset(l, utf8, raw_start + i + 1),
+                            ),
+                            kind: OriginKind::Literal,
+                        },
+                    ));
+                }
+            }
+        }
+        pi.sort_by_key(|(slot, field, o)| (o.node, *slot, *field, o.source, o.output));
+        expected_pi.sort_by_key(|(slot, field, o)| (o.node, *slot, *field, o.source, o.output));
+        assert_eq!(pi, expected_pi);
+        eprintln!(
+            "{} published-evidence utf8={utf8} d1-rows={} lexical-occurrences={i} diagnostics={} expected-nodes={} native-text-origins={}",
+            l.label,
+            associations.len(),
+            diagnostics.len(),
+            l.expected.nodes.len(),
+            l.origins.len()
+        );
+        let document = report.document().unwrap();
+        let mut metadata = report.metadata();
+        let mut created = Vec::new();
+        loop {
+            match metadata.advance() {
+                MetadataStep::Complete => break,
+                MetadataStep::Skipped => {}
+                MetadataStep::Record(record) => {
+                    assert!(document.node(&record.node().id()).is_ok());
+                    // Ordinary creation intentionally has no captured-registry
+                    // creation metadata; absence is not a fabricated state.
+                    assert!(record.creation().is_none());
+                    if let Some(
+                        crate::construction::parser_session::report::MetadataDocument::Owned(owner),
+                    ) = record.node_document()
+                    {
+                        assert_eq!(owner.id(), document.root().id());
+                        let node = record.node();
+                        if let HtmlNodeKind::Element(element) = node.kind() {
+                            created.push(element.name().local_name().code_units().to_vec());
+                        }
+                    }
+                }
+            }
+        }
+        let expected: Vec<_> = l
+            .expected
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.kind {
+                Kind::Element(name, _) => Some(name.local.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(created, expected);
+    }
+    /// Bind actual storage owners through the existing checked Node-row lender.
+    /// The returned scalar pairs are test-owned observations, like phase snapshots;
+    /// traversal handles/scratch and every lender lookup use the original control.
+    fn destination_positions(
+        completed: &mut super::super::end::CompletedStandaloneDocument<'_>,
+    ) -> Vec<(bool, usize, usize)> {
+        let mut ids = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        let mut pending = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        {
+            let mut view = completed.native_view().unwrap();
+            let root = view.root().unwrap();
+            pending.try_push(view.control(), root).unwrap();
+            while let Some(node) = pending.try_pop(view.control()).unwrap() {
+                assert!(view.template_contents(&node).unwrap().is_none());
+                assert!(view.shadow(&node).unwrap().is_none());
+                let count = view.child_count(&node).unwrap();
+                for i in (0..count).rev() {
+                    let child = view.child_at(&node, i).unwrap().unwrap();
+                    pending.try_push(view.control(), child).unwrap();
+                }
+                ids.try_push(view.control(), node).unwrap();
+            }
+            pending.release(view.control()).unwrap();
+        }
+        let mut positions = Vec::new();
+        for position in 0..ids.len() {
+            let node = {
+                let mut view = completed.native_view().unwrap();
+                id_at(&mut ids, position, view.control()).unwrap()
+            };
+            let mut rows = completed.native_associations().unwrap();
+            for i in 0..rows.len() {
+                let destination = rows.row(i).unwrap().unwrap().0.destination;
+                let matched = match destination {
+                    NativeDestination::Node(owner) if rows.node_for(i, &node).unwrap() => {
+                        Some((false, owner))
+                    }
+                    NativeDestination::Field(StringLocation::AttributeName(container, slot))
+                        if rows
+                            .attribute_for(i, &node, slot, NativeAttributeField::Name)
+                            .unwrap() =>
+                    {
+                        Some((true, container))
+                    }
+                    NativeDestination::Field(StringLocation::AttributeValue(container, slot))
+                        if rows
+                            .attribute_for(i, &node, slot, NativeAttributeField::Value)
+                            .unwrap() =>
+                    {
+                        Some((true, container))
+                    }
+                    _ => None,
+                };
+                if let Some((attribute, owner)) = matched
+                    && !positions.contains(&(attribute, owner, position))
+                {
+                    assert!(!positions.iter().any(|(prior_attribute, previous, _)| {
+                        *prior_attribute == attribute && *previous == owner
+                    }));
+                    positions.push((attribute, owner, position));
+                }
+            }
+        }
+        let mut view = completed.native_view().unwrap();
+        ids.release(view.control()).unwrap();
+        positions
+    }
+    struct SealObservation {
+        owner: SealedOrdinaryConstruction,
+        phases: Vec<(&'static str, ParseUsage, Duration)>,
+        positions: Vec<(bool, usize, usize)>,
+    }
+    fn sealed(
+        l: &Literal,
+        utf8: bool,
+        observe: bool,
+        override_work: Option<u64>,
+    ) -> SealObservation {
+        let source = source(l, utf8);
+        let mut caps = limits(l, source.len());
+        if let Some(work) = override_work {
+            caps = caps.into_builder().work_credits(work).finish().unwrap();
+        }
+        let mut owner =
+            OrdinaryInitializationOwner::new(HtmlDocumentParseRequest::offline(source, caps));
+        let mut phases = Vec::new();
+        let positions;
+        let mut clock = Instant::now();
+        let parts = {
+            let mut attempt = owner.begin().unwrap();
+            let mut driver = Some(attempt.take_driver().unwrap());
+            phases.push((
+                "initialization",
+                driver.as_ref().unwrap().usage().clone(),
+                clock.elapsed(),
+            ));
+            clock = Instant::now();
+            loop {
+                match driver.as_mut().unwrap().step().unwrap() {
+                    HeadStep::Consumed => {}
+                    HeadStep::Complete => break,
+                    HeadStep::Boundary(b) => panic!("unexpected ordinary boundary {b:?}"),
+                }
+            }
+            phases.push((
+                "complete",
+                driver.as_ref().unwrap().usage().clone(),
+                clock.elapsed(),
+            ));
+            clock = Instant::now();
+            let mut completed = StandaloneDocumentDriver::take_completed(&mut driver).unwrap();
+            completed.prepare_native_associations().unwrap();
+            phases.push((
+                "associations",
+                completed.usage().unwrap().clone(),
+                clock.elapsed(),
+            ));
+            clock = Instant::now();
+            if observe {
+                let mut view = completed.native_view().unwrap();
+                let mut p = MeteredProjection::new().unwrap();
+                p.build(&mut view).unwrap();
+                phases.push(("native-observer", view.usage().clone(), clock.elapsed()));
+                clock = Instant::now();
+                let compared = p.compare(&l.expected, &mut view);
+                p.release(&mut view).unwrap();
+                compared.unwrap();
+                phases.push(("expected-comparison", view.usage().clone(), clock.elapsed()));
+                clock = Instant::now();
+            }
+            positions = destination_positions(&mut completed);
+            phases.push((
+                "destination-mapping",
+                completed.usage().unwrap().clone(),
+                clock.elapsed(),
+            ));
+            clock = Instant::now();
+            let parts = completed.freeze_parts().unwrap();
+            phases.push(("frozen", parts.final_usage().clone(), clock.elapsed()));
+            clock = Instant::now();
+            parts
+        };
+        let sealed = SealedOrdinaryConstruction::take(
+            &mut Some(owner.take_request().unwrap()),
+            &mut Some(parts),
+        )
+        .unwrap();
+        phases.push(("sealed", sealed.retained_usage().clone(), clock.elapsed()));
+        SealObservation {
+            owner: sealed,
+            phases,
+            positions,
+        }
+    }
+    fn run(l: &Literal, utf8: bool) -> Observation {
+        let SealObservation {
+            owner,
+            mut phases,
+            positions,
+        } = sealed(l, utf8, true, None);
+        let mut input = Some(owner);
+        let original = input.as_ref().unwrap().source().identity().clone();
+        let clock = Instant::now();
+        let cancelled_after_publication = input.as_ref().unwrap().request.cancellation().clone();
+        let report = ImmutableParseReport::take_document(&mut input).unwrap();
+        assert!(input.is_none());
+        phases.push(("report", report.usage().clone(), clock.elapsed()));
+        assert_eq!(report.source().identity(), &original);
+        if utf8 {
+            assert_eq!(
+                report.source().coordinates(),
+                crate::HtmlSourceCoordinates::Utf8Bytes
+            );
+            assert_eq!(
+                report.source().as_utf8().unwrap(),
+                String::from_utf16(&l.raw).unwrap()
+            );
+        } else {
+            assert_eq!(
+                report.source().coordinates(),
+                crate::HtmlSourceCoordinates::Utf16CodeUnits
+            );
+            assert_eq!(report.source().as_utf16().unwrap().code_units(), l.raw);
+        }
+        assert_eq!(report.limits().source_units(), report.source().len() as u64);
+        assert_eq!(
+            report
+                .usage()
+                .resource(HtmlParseResource::SourceUnits)
+                .current,
+            report.source().len() as u64
+        );
+        assert!(report.fragment().is_none());
+        assert!(report.context().is_none());
+        assert!(report.effects().is_none());
+        assert_eq!(
+            report.requested_scripting_mode(),
+            crate::HtmlParserScriptingMode::Disabled
+        );
+        assert_eq!(
+            report.effective_scripting_mode(),
+            crate::HtmlParserScriptingMode::Disabled
+        );
+        assert!(!report.allow_declarative_shadow_roots());
+        let state = report.document_state().unwrap();
+        assert_eq!(
+            state.readiness,
+            crate::construction::parser_session::ConstructionReadiness::Complete
+        );
+        assert_eq!(
+            state.completion,
+            crate::construction::parser_session::ConstructionCompletion::Complete
+        );
+        assert!(state.ready_for_post_load_tasks);
+        cancelled_after_publication.cancel(); // Immutable lenders retain no live execution authority.
+        evidence(l, utf8, &report, &positions);
+        let clock = Instant::now();
+        let projection = project(report.document().unwrap()).unwrap();
+        assert_eq!(projection, l.expected);
+        eprintln!("immutable-test-comparison {:?}", clock.elapsed());
+        let mut previous = [0; 8];
+        for (name, usage, elapsed) in &phases {
+            let counts = WORK.map(|category| usage.work(category));
+            assert_eq!(
+                counts.iter().sum::<u64>(),
+                usage.resource(HtmlParseResource::WorkCredits).current
+            );
+            let delta = std::array::from_fn::<_, 8, _>(|i| counts[i] - previous[i]);
+            previous = counts;
+            eprintln!(
+                "{} {name} utf8={utf8} source={} work={delta:?} capacity={}/{} elapsed={elapsed:?}",
+                l.label,
+                report.source().len(),
+                usage.actual_capacity_bytes,
+                usage.actual_capacity_high_water
+            );
+            assert_eq!(
+                usage.resource(HtmlParseResource::SourceUnits).current,
+                report.source().len() as u64
+            );
+        }
+        // Report usage is immutable publication evidence, not a post-drop ledger.
+        // An identical fresh run exercises actual owning cleanup separately.
+        drop(report);
+        let SealObservation {
+            owner: mut cleanup, ..
+        } = sealed(l, utf8, false, None);
+        cleanup.release().unwrap();
+        super::super::tests::assert_released(&cleanup.parts.control);
+        Observation { projection, phases }
+    }
+    fn repeat(l: &Literal, utf8: bool) -> Projection {
+        let first = run(l, utf8);
+        let second = run(l, utf8);
+        assert_eq!(first.projection, second.projection);
+        for ((phase, a, _), (other, b, _)) in first.phases.iter().zip(&second.phases) {
+            assert_eq!(phase, other);
+            assert_eq!(WORK.map(|w| a.work(w)), WORK.map(|w| b.work(w)));
+            for resource in crate::settings::RESOURCES {
+                if !matches!(
+                    resource,
+                    HtmlParseResource::ManagedCapacityBytes
+                        | HtmlParseResource::PeakTransientBytes
+                        | HtmlParseResource::AtomicLayoutBytes
+                ) {
+                    assert_eq!(a.resource(resource), b.resource(resource));
+                }
+            }
+        }
+        first.projection
+    }
+    #[test]
+    fn literal_utf8_utf16_families_keep_exact_native_source_and_publication_contracts() {
+        for n in [0, 1, 8, 32] {
+            for l in [plain(n), attributes(n), siblings(n)] {
+                assert_eq!(repeat(&l, true), repeat(&l, false));
+            }
+            let crlf = references(n, true);
+            let lf = references(n, false);
+            let expected = repeat(&crlf, true);
+            assert_eq!(expected, repeat(&crlf, false));
+            assert_eq!(expected, repeat(&lf, true));
+            assert_eq!(expected, repeat(&lf, false));
+        }
+    }
+    #[test]
+    fn literal_utf16_surrogate_pair_crlf_and_reference_keep_distinct_source_origins() {
+        let payload = [
+            0xd800, 13, 10, 0xd83d, 0xde00, 38, 35, 49, 50, 56, 53, 49, 50, 59,
+        ];
+        let start = PREFIX.len() + 3;
+        let mut expected = document();
+        let p = append(&mut expected, 4, element("p", Vec::new()));
+        append(
+            &mut expected,
+            p,
+            Kind::Text(vec![0xd800, 10, 0xd83d, 0xde00, 0xd83d, 0xde00]),
+        );
+        let origins = [
+            ((0, 1), (0, 1), OriginKind::Literal),
+            ((1, 2), (1, 3), OriginKind::Newline),
+            ((2, 4), (3, 5), OriginKind::Literal),
+            ((4, 6), (5, 14), OriginKind::CharacterReference),
+        ]
+        .into_iter()
+        .map(|(output, source, kind)| Origin {
+            node: 6,
+            output,
+            source: (start + source.0, start + source.1),
+            kind,
+        })
+        .collect();
+        let mut body = units("<p>");
+        body.extend(payload);
+        body.extend(units("</p>"));
+        let l = literal(
+            "UTF16-surrogate",
+            body,
+            expected,
+            origins,
+            vec![Error {
+                kind: DiagnosticKind::Tokenizer(DiagnosticCode::SurrogateInInputStream),
+                context: DiagnosticContext::Tokenizer {
+                    phase: DiagnosticPhase::InputStream,
+                    state: State::Data,
+                },
+                role: DiagnosticLocationRole::InputFrontier,
+                token: None,
+                anchor: "parse-error-surrogate-in-input-stream",
+                branch: "surrogate-in-input-stream",
+                source: (start, start + 1),
+            }],
+            Vec::new(),
+        );
+        repeat(&l, false);
+    }
+
+    #[test]
+    fn literal_initial_pi_and_leading_feff_preserve_source_defined_mode_and_errors() {
+        use crate::parser::tree_builder::{
+            head::{HeadCondition, InsertionMode},
+            prologue::{PrologueCondition, PrologueMode},
+        };
+        // Initial PI is inserted without leaving Initial. Literal FEFF is not
+        // ASCII whitespace/BOM decoding; it takes Initial's anything-else path.
+        for feff in [false, true] {
+            let raw = if feff {
+                "\u{feff}<?Target data><!doctype html><p>X</p>"
+            } else {
+                "<?Target data><!doctype html><p>X</p>"
+            };
+            let mut expected = Projection {
+                nodes: vec![Node {
+                    kind: Kind::Document(if feff {
+                        HtmlDocumentMode::Quirks
+                    } else {
+                        HtmlDocumentMode::NoQuirks
+                    }),
+                    parent: None,
+                    children: Vec::new(),
+                    template: None,
+                    shadow: None,
+                    owner: None,
+                }],
+            };
+            if feff {
+                let html = append(&mut expected, 0, element("html", Vec::new()));
+                append(&mut expected, html, element("head", Vec::new()));
+                let body = append(&mut expected, html, element("body", Vec::new()));
+                append(&mut expected, body, Kind::Text(vec![0xfeff]));
+                append(
+                    &mut expected,
+                    body,
+                    Kind::Pi {
+                        target: units("Target"),
+                        data: units("data"),
+                    },
+                );
+                let p = append(&mut expected, body, element("p", Vec::new()));
+                append(&mut expected, p, Kind::Text(vec![88]));
+            } else {
+                append(
+                    &mut expected,
+                    0,
+                    Kind::Pi {
+                        target: units("Target"),
+                        data: units("data"),
+                    },
+                );
+                append(
+                    &mut expected,
+                    0,
+                    Kind::Doctype {
+                        name: units("html"),
+                        public: Some(Vec::new()),
+                        system: Some(Vec::new()),
+                    },
+                );
+                let html = append(&mut expected, 0, element("html", Vec::new()));
+                append(&mut expected, html, element("head", Vec::new()));
+                let body = append(&mut expected, html, element("body", Vec::new()));
+                let p = append(&mut expected, body, element("p", Vec::new()));
+                append(&mut expected, p, Kind::Text(vec![88]));
+            }
+            let pi = "<?Target data>".len();
+            let f = usize::from(feff);
+            let x = f + pi + "<!doctype html><p>".len();
+            let mut origins = vec![Origin {
+                node: 7,
+                output: (0, 1),
+                source: (x, x + 1),
+                kind: OriginKind::Literal,
+            }];
+            let errors = if feff {
+                origins.insert(
+                    0,
+                    Origin {
+                        node: 4,
+                        output: (0, 1),
+                        source: (0, 1),
+                        kind: OriginKind::Literal,
+                    },
+                );
+                vec![
+                    Error {
+                        kind: DiagnosticKind::Prologue(PrologueCondition::MissingDoctype),
+                        context: DiagnosticContext::Prologue(PrologueMode::Initial),
+                        role: DiagnosticLocationRole::TokenEnvelope,
+                        token: Some(DiagnosticToken::Text),
+                        anchor: "the-initial-insertion-mode",
+                        branch: "anything-else/missing-doctype",
+                        source: (0, 1),
+                    },
+                    Error {
+                        kind: DiagnosticKind::Tree(HeadCondition::UnexpectedDoctype),
+                        context: DiagnosticContext::Tree(InsertionMode::InBody),
+                        role: DiagnosticLocationRole::TokenEnvelope,
+                        token: Some(DiagnosticToken::Doctype),
+                        anchor: "parsing-main-inbody",
+                        branch: "doctype/ignore",
+                        source: (1 + pi, 1 + pi + "<!doctype html>".len()),
+                    },
+                ]
+            } else {
+                Vec::new()
+            };
+            let l = Literal {
+                label: if feff {
+                    "Initial-FEFF-PI"
+                } else {
+                    "Initial-PI"
+                },
+                raw: units(raw),
+                expected,
+                origins,
+                errors,
+                attributes: Vec::new(),
+            };
+            assert_eq!(repeat(&l, true), repeat(&l, false));
+        }
+    }
+
+    #[test]
+    fn attribute_lender_qualifies_actual_owner_slot_variant_and_foreign_refusal() {
+        use crate::construction::parser_session::{ParserArenaSession, RootKind};
+        let mut expected = document();
+        let attrs = ["x", "y"]
+            .into_iter()
+            .map(|name| Attr {
+                name: Name {
+                    namespace: None,
+                    prefix: None,
+                    local: units(name),
+                },
+                value: units("first"),
+            })
+            .collect();
+        append(&mut expected, 4, element("p", attrs));
+        let l = literal(
+            "attribute-lender",
+            units("<p x='first' y='first'></p>"),
+            expected,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let request = HtmlDocumentParseRequest::offline(source(&l, false), limits(&l, l.raw.len()));
+        let cancel = request.cancellation().clone();
+        let mut initialization = OrdinaryInitializationOwner::new(request);
+        let mut attempt = initialization.begin().unwrap();
+        let mut driver = Some(attempt.take_driver().unwrap());
+        while driver.as_mut().unwrap().step().unwrap() != HeadStep::Complete {}
+        let mut completed = StandaloneDocumentDriver::take_completed(&mut driver).unwrap();
+        completed.prepare_native_associations().unwrap();
+        let (body, element) = {
+            let mut view = completed.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = view.child_at(&root, 1).unwrap().unwrap();
+            let body = view.child_at(&html, 1).unwrap().unwrap();
+            let element = view.child_at(&body, 0).unwrap().unwrap();
+            assert_eq!(view.attribute_count(&element).unwrap(), 2);
+            (body, element)
+        };
+        let mut foreign_control =
+            ParseControl::new(limits(&l, l.raw.len()), crate::HtmlParseCancellation::new());
+        let mut foreign_session = ParserArenaSession::new(
+            &mut foreign_control,
+            RootKind::Document(HtmlDocumentMode::NoQuirks),
+        )
+        .unwrap();
+        let foreign_node = foreign_session.root(&mut foreign_control).unwrap();
+        let mut checked = [0; 2];
+        {
+            let mut rows = completed.native_associations().unwrap();
+            for i in 0..rows.len() {
+                let (slot, field) = match rows.row(i).unwrap().unwrap().0.destination {
+                    NativeDestination::Field(StringLocation::AttributeName(_, slot)) => {
+                        (slot, NativeAttributeField::Name)
+                    }
+                    NativeDestination::Field(StringLocation::AttributeValue(_, slot)) => {
+                        (slot, NativeAttributeField::Value)
+                    }
+                    _ => continue,
+                };
+                let opposite = if field == NativeAttributeField::Name {
+                    NativeAttributeField::Value
+                } else {
+                    NativeAttributeField::Name
+                };
+                assert!(rows.attribute_for(i, &element, slot, field).unwrap());
+                assert!(!rows.attribute_for(i, &body, slot, field).unwrap());
+                assert!(!rows.attribute_for(i, &element, 1 - slot, field).unwrap());
+                assert!(!rows.attribute_for(i, &element, 2, field).unwrap());
+                assert!(!rows.attribute_for(i, &element, slot, opposite).unwrap());
+                assert!(matches!(
+                    rows.attribute_for(i, &foreign_node, slot, field),
+                    Err(SessionError::ForeignNode)
+                ));
+                checked[usize::from(field == NativeAttributeField::Value)] += 1;
+            }
+            assert_eq!(checked, [2, 10]); // two one-unit names and two literal "first" values
+            cancel.cancel();
+            assert!(matches!(
+                rows.attribute_for(0, &element, 0, NativeAttributeField::Name),
+                Err(SessionError::Stop(ParseStop::Cancelled))
+            ));
+        }
+        let first = completed.at_stop().unwrap().clone();
+        drop(body);
+        drop(element);
+        completed.cleanup_failure().unwrap();
+        zero_storage(completed.after_cleanup().unwrap());
+        assert_eq!(completed.at_stop(), Some(&first));
+        completed.release().unwrap();
+        foreign_session.release(&mut foreign_control).unwrap();
+        super::super::tests::assert_released(&foreign_control);
+    }
+    fn zero_storage(usage: &ParseUsage) {
+        for resource in [
+            HtmlParseResource::BufferedUtf16Units,
+            HtmlParseResource::TokenAttributes,
+            HtmlParseResource::AuxiliaryEntries,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::SourceMapEntries,
+            HtmlParseResource::SourceMapPayloadUnits,
+            HtmlParseResource::Diagnostics,
+            HtmlParseResource::DiagnosticPayloadUnits,
+            HtmlParseResource::ContextEffects,
+            HtmlParseResource::OpenElements,
+            HtmlParseResource::ManagedCapacityBytes,
+            HtmlParseResource::PeakTransientBytes,
+        ] {
+            assert_eq!(usage.resource(resource).current, 0, "{resource:?}");
+        }
+    }
+    #[test]
+    fn original_request_pre_cancel_retains_unadmitted_source_and_canonical_snapshot() {
+        use crate::parser::tree_builder::StandaloneError;
+        let l = plain(1);
+        let original = source(&l, false);
+        let identity = original.identity().clone();
+        let request = HtmlDocumentParseRequest::offline(original, limits(&l, l.raw.len()));
+        request.cancellation().cancel();
+        let mut owner = OrdinaryInitializationOwner::new(request);
+        {
+            let mut attempt = owner.begin().unwrap();
+            assert!(matches!(
+                attempt.take_driver(),
+                Err(StandaloneError::Stop(ParseStop::Cancelled))
+            ));
+            let first = attempt.at_stop().unwrap().clone();
+            assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 0);
+            assert_eq!(first.resource(HtmlParseResource::WorkCredits).current, 0);
+            attempt.retain_failure().unwrap();
+        }
+        assert_eq!(owner.source().unwrap().identity(), &identity);
+        assert_eq!(
+            owner.source().unwrap().as_utf16().unwrap().code_units(),
+            l.raw
+        );
+        assert_eq!(owner.source_admitted(), Some(false));
+        let first = owner.at_stop().unwrap().clone();
+        assert_eq!(owner.after_cleanup(), Some(&first));
+        assert!(owner.diagnostics().is_none());
+        owner.release_failure().unwrap();
+        zero_storage(owner.retained_usage().unwrap());
+        assert_eq!(owner.at_stop(), Some(&first));
+    }
+    #[test]
+    fn between_real_driver_steps_cancel_keeps_duplicate_prefix_source_and_first_stop() {
+        let l = attributes(1);
+        let original = source(&l, true);
+        let identity = original.identity().clone();
+        let request = HtmlDocumentParseRequest::offline(original, limits(&l, l.raw.len()));
+        let cancel = request.cancellation().clone();
+        let mut owner = OrdinaryInitializationOwner::new(request);
+        {
+            let mut attempt = owner.begin().unwrap();
+            let mut driver = Some(attempt.take_driver().unwrap());
+            // Stop only after the real retained duplicate diagnostic is committed
+            // by an actual step; no poll hook/callback or private mutation.
+            let mut reached = false;
+            for _ in 0..l.raw.len() + 16 {
+                assert_eq!(driver.as_mut().unwrap().step().unwrap(), HeadStep::Consumed);
+                if let Some((_, session, _)) = driver.as_mut().unwrap().standalone_parts()
+                    && session.retained_evidence().unwrap().diagnostics().len() == 1
+                {
+                    reached = true;
+                    break;
+                }
+            }
+            assert!(reached);
+            cancel.cancel();
+            assert!(driver.as_mut().unwrap().step().is_err());
+            let c = &driver.as_ref().unwrap().control;
+            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            let first = c.first_stop_usage().unwrap().clone();
+            assert_eq!(
+                first.resource(HtmlParseResource::SourceUnits).current,
+                l.raw.len() as u64
+            );
+            let mut failed = StandaloneDocumentDriver::take_failed(&mut driver).unwrap();
+            assert!(driver.is_none());
+            assert_eq!(failed.at_stop(), &first);
+            assert_eq!(failed.source().identity(), &identity);
+            assert_eq!(failed.stop(), ParseStop::Cancelled);
+            let diagnostics = failed.diagnostics().unwrap();
+            assert_eq!(diagnostics.len(), 1);
+            let (record, location) = diagnostics.retained_record(0).unwrap();
+            assert_eq!(record.kind, l.errors[0].kind);
+            assert_eq!(record.context, l.errors[0].context);
+            assert_eq!(location.role, l.errors[0].role);
+            assert_eq!(location.token, l.errors[0].token);
+            check_range(failed.source(), &location.source, l.errors[0].source);
+            failed.release().unwrap();
+            zero_storage(failed.retained_usage());
+            assert_eq!(failed.at_stop(), &first);
+            assert_eq!(failed.stop(), ParseStop::Cancelled);
+        }
+        assert_eq!(owner.take_request().unwrap().source().identity(), &identity);
+    }
+    #[test]
+    fn final_report_exact_and_one_short_admission_preserve_original_complete_owner() {
+        let l = attributes(1);
+        let SealObservation {
+            owner, positions, ..
+        } = sealed(&l, true, false, None);
+        let mut measured = Some(owner);
+        let report = ImmutableParseReport::take_document(&mut measured).unwrap();
+        evidence(&l, true, &report, &positions);
+        assert_eq!(project(report.document().unwrap()).unwrap(), l.expected);
+        let exact = report
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        drop(report);
+        // Independent boundary: the final operation admits five record writes
+        // together after fixed compiled-layout copying. A measured completed run
+        // supplies its cumulative prefix, not the family admission envelope.
+        for work in [exact - 1, exact] {
+            let SealObservation {
+                owner, positions, ..
+            } = sealed(&l, true, false, Some(work));
+            let mut input = Some(owner);
+            let identity = input.as_ref().unwrap().source().identity().clone();
+            let result = ImmutableParseReport::take_document(&mut input);
+            if work == exact {
+                let report = result.unwrap();
+                assert!(input.is_none());
+                assert_eq!(
+                    report
+                        .usage()
+                        .resource(HtmlParseResource::WorkCredits)
+                        .current,
+                    exact
+                );
+                evidence(&l, true, &report, &positions);
+                assert_eq!(report.source().identity(), &identity);
+            } else {
+                assert!(
+                    matches!(result,Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    resource:HtmlParseResource::WorkCredits,current,requested_delta:5,..})) if current==exact-5)
+                );
+                let kept = input.as_mut().unwrap();
+                assert_eq!(kept.source().identity(), &identity);
+                assert_eq!(project(kept.document().unwrap()).unwrap(), l.expected);
+                assert_eq!(kept.evidence().unwrap().diagnostics().len(), 1);
+                let first = kept.parts.control.first_stop_usage().unwrap().clone();
+                let stop = kept.parts.control.stop();
+                kept.parts.cleanup_failure().unwrap();
+                assert_eq!(kept.parts.control.first_stop_usage(), Some(&first));
+                assert!(kept.parts.arena.is_none());
+                assert_eq!(kept.parts.diagnostics().unwrap().len(), 1);
+                kept.parts.release().unwrap();
+                zero_storage(kept.retained_usage());
+                assert_eq!(kept.parts.control.stop(), stop);
+                assert_eq!(kept.parts.control.first_stop_usage(), Some(&first));
+            }
+        }
+    }
+}

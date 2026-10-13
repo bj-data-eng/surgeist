@@ -1800,6 +1800,13 @@ impl ParserArenaSession {
     }
 }
 
+/// Selected authored attribute field in the actual retained container.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeAttributeField {
+    Name,
+    Value,
+}
+
 /// Read-only completed evidence with the same execution controller. A failed
 /// projection has no lender: its admitted suffix remains cleanup-only.
 pub(crate) struct NativeAssociations<'a> {
@@ -1899,6 +1906,57 @@ impl NativeAssociations<'_> {
         Ok(
             matches!(row.destination, NativeDestination::Field(StringLocation::Text(owner)) if owner == node),
         )
+    }
+    /// Match an actual retained attribute-container field to its native owner.
+    /// Container indices are payload identities, never native node positions.
+    pub(crate) fn attribute_for(
+        &mut self,
+        index: usize,
+        node: &ParserNode,
+        slot: usize,
+        field: NativeAttributeField,
+    ) -> Result<bool, SessionError> {
+        let node = self.storage.index(self.control, node)?;
+        self.control.charge(
+            WorkCategory::InspectByte,
+            mem::size_of::<NativeAssociation>() as u64,
+        )?;
+        let Some((row, _)) = self.row(index)? else {
+            return Ok(false);
+        };
+        let (container, actual_slot) = match (row.destination, field) {
+            (
+                NativeDestination::Field(StringLocation::AttributeName(container, slot)),
+                NativeAttributeField::Name,
+            )
+            | (
+                NativeDestination::Field(StringLocation::AttributeValue(container, slot)),
+                NativeAttributeField::Value,
+            ) => (container, slot),
+            _ => return Ok(false),
+        };
+        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(
+            WorkCategory::InspectByte,
+            mem::size_of::<RetainedPayload>() as u64,
+        )?;
+        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+            element: Some(owner),
+            values,
+            ..
+        }))) = self.storage.payloads.values.get(container)
+        else {
+            return Ok(false);
+        };
+        if *owner != node || actual_slot != slot {
+            return Ok(false);
+        }
+        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(
+            WorkCategory::InspectByte,
+            mem::size_of::<Attribute>() as u64,
+        )?;
+        Ok(values.as_slice().get(actual_slot).is_some())
     }
     pub(crate) fn cause_reference(
         &mut self,
