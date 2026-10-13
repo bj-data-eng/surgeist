@@ -2188,15 +2188,7 @@ fn replay_or_minimize(
                 cancellation,
             )?;
             summary.cleanup = cleanup_label(&call.process.cleanup);
-            let observation = evaluation(&call, input, target)?.unwrap_or(
-                CaseOutcome::unsupported("isolated replay ended without semantic identity")?,
-            );
-            Ok(crate::reduction::ReductionEvaluation::new(
-                observation,
-                discovery
-                    + call.process.stdout.bytes.len() as u64
-                    + call.process.stderr.bytes.len() as u64,
-            ))
+            reduction_evaluation(&call, input, target, discovery)
         },
     )?;
     let mut reduced = None;
@@ -2249,6 +2241,23 @@ fn replay_or_minimize(
         report.final_confirmed()
     );
     Ok(())
+}
+
+fn reduction_evaluation(
+    call: &WorkerCall,
+    input: &[u8],
+    target: &TargetDescriptor,
+    discovery_output: u64,
+) -> Result<crate::reduction::ReductionEvaluation> {
+    let observation = evaluation(call, input, target)?.unwrap_or(CaseOutcome::unsupported(
+        "isolated replay ended without semantic identity",
+    )?);
+    Ok(crate::reduction::ReductionEvaluation::new(
+        observation,
+        discovery_output
+            + call.process.stdout.bytes.len() as u64
+            + call.process.stderr.bytes.len() as u64,
+    ))
 }
 
 // Canonical bytes are transport here. Domain decode, validation, semantics and
