@@ -1577,6 +1577,7 @@ fn coverage(context: &CampaignContext<'_>, summary: &mut CampaignSummary) -> Res
     fs::create_dir(&engine_artifacts).map_err(io_error)?;
     let rss_mb = o.memory_bytes.div_ceil(1024 * 1024);
     let mut env = BTreeMap::new();
+    env.insert("SURGEIST_FUZZ_CASE_LIMIT".into(), o.cases.to_string().into());
     env.insert(
         "ASAN_OPTIONS".into(),
         "abort_on_error=1:detect_leaks=0".into(),

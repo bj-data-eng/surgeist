@@ -58,6 +58,12 @@ safe `fuzz_target!` macro and `CoverageDriver::libfuzzer_entry_framed`. The
 ordinary build remains a replay worker; the separately instrumented build is
 the coverage executable. Keep libfuzzer-sys optional in the owner package.
 The shared framework does not link libFuzzer into ordinary builds.
+Construct campaign drivers with `CoverageDriver::for_campaign`: the command
+passes a positive attempt limit, and the adapter reserves one attempt before
+generation or evaluation, including initial corpus inputs. Once exhausted,
+subsequent callbacks produce no owner calls or observations. Unchecked product
+observations and generation errors still consume an attempt; they do not become
+successful evaluations merely to fill the budget.
 
 ### Define meaningful expectations
 

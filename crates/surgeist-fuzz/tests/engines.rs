@@ -26,6 +26,7 @@ fn key(discriminator: &str) -> FailureKey {
 
 struct Target {
     descriptor: TargetDescriptor,
+    generated: Cell<u64>,
     evaluated: Cell<u64>,
 }
 impl Target {
@@ -47,6 +48,7 @@ impl Target {
                 max_generation_rejections: 1,
             })
             .unwrap(),
+            generated: Cell::new(0),
             evaluated: Cell::new(0),
         }
     }
@@ -70,6 +72,7 @@ impl CaseTarget for Target {
         Ok(vec![*case])
     }
     fn generate(&self, input: &[u8]) -> Result<Generation<u8>> {
+        self.generated.set(self.generated.get() + 1);
         if input.is_empty() || input == [255] {
             return Ok(Generation::Rejected(
                 GenerationRejection::new("no valid generation recipe").unwrap(),
@@ -385,7 +388,7 @@ fn coverage_counts_discards_and_checked_properties_and_filters_other_failures() 
     assert_eq!(driver.assessment(), CoverageAssessment::Insufficient);
     let other = driver.libfuzzer_entry(&[5], &mut |_| Ok(())).unwrap();
     assert!(
-        matches!(other, GeneratedEvaluation::Evaluated(evaluation) if evaluation.outcome.failure_key() == Some(&key("five")))
+        matches!(other, surgeist_fuzz::engine::CoverageAttempt::Completed(GeneratedEvaluation::Evaluated(evaluation)) if evaluation.outcome.failure_key() == Some(&key("five")))
     );
     assert_eq!(driver.assessment(), CoverageAssessment::Sufficient);
     let mut captured = vec![];
@@ -401,6 +404,72 @@ fn coverage_counts_discards_and_checked_properties_and_filters_other_failures() 
     );
     assert_eq!(captured, [3]);
     assert_eq!(driver.counts().evaluated(), 3);
+}
+
+#[cfg(feature = "coverage")]
+#[test]
+fn coverage_admission_counts_all_attempts_and_stops_before_owner_calls() {
+    use surgeist_fuzz::engine::{CoverageAttempt, CoverageDriver};
+    let target = Target::new();
+    assert!(CoverageDriver::with_attempt_limit(&target, None, 0).is_err());
+    let mut driver = CoverageDriver::with_attempt_limit(&target, None, 3).unwrap();
+    let mut output = vec![];
+    for input in [&[255][..], &[4][..], &[2][..]] {
+        assert!(matches!(
+            driver
+                .libfuzzer_entry_framed(input, &mut output, 4096)
+                .unwrap(),
+            CoverageAttempt::Completed(_)
+        ));
+    }
+    assert_eq!(driver.attempts(), 3);
+    assert_eq!(driver.counts(), ExecutionCounts::new(1, 1));
+    let retained = output.clone();
+    assert_eq!(
+        driver
+            .libfuzzer_entry_framed(&[254], &mut output, 4096)
+            .unwrap(),
+        CoverageAttempt::LimitReached
+    );
+    assert_eq!(target.generated.get(), 3);
+    assert_eq!(target.evaluated.get(), 2);
+    assert_eq!(output, retained);
+    assert_eq!(
+        driver
+            .test_one(&[2], &mut |_| panic!("capture after limit"))
+            .unwrap_err()
+            .kind(),
+        FuzzErrorKind::Resource
+    );
+}
+
+#[cfg(feature = "coverage")]
+#[test]
+fn unsuccessful_capture_consumes_one_attempt_without_evaluating() {
+    use surgeist_fuzz::engine::{CoverageAttempt, CoverageDriver};
+    let target = Target::new();
+    let mut driver = CoverageDriver::with_attempt_limit(&target, None, 1).unwrap();
+    assert_eq!(
+        driver
+            .test_one(&[2], &mut |_| Err(FuzzError::new(
+                FuzzErrorKind::Io,
+                "capture",
+                "unavailable"
+            )))
+            .unwrap_err()
+            .kind(),
+        FuzzErrorKind::Io
+    );
+    assert_eq!(driver.attempts(), 1);
+    assert_eq!(driver.counts(), ExecutionCounts::default());
+    assert_eq!(
+        driver
+            .libfuzzer_entry(&[2], &mut |_| panic!("capture after limit"))
+            .unwrap(),
+        CoverageAttempt::LimitReached
+    );
+    assert_eq!(target.generated.get(), 1);
+    assert_eq!(target.evaluated.get(), 0);
 }
 
 #[cfg(feature = "property")]

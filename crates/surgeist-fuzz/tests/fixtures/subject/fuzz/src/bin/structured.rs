@@ -13,7 +13,7 @@ static TARGET: std::sync::OnceLock<surgeist_fixture_fuzz::StructuredTarget> =
 #[cfg(feature = "coverage")]
 std::thread_local! {
     static DRIVER: std::cell::RefCell<surgeist_fuzz::engine::CoverageDriver<'static, surgeist_fixture_fuzz::StructuredTarget>> =
-        std::cell::RefCell::new(surgeist_fuzz::engine::CoverageDriver::new(TARGET.get_or_init(surgeist_fixture_fuzz::StructuredTarget::default), None).expect("fixture descriptor"));
+        std::cell::RefCell::new(surgeist_fuzz::engine::CoverageDriver::for_campaign(TARGET.get_or_init(surgeist_fixture_fuzz::StructuredTarget::default), None).expect("fixture campaign configuration"));
 }
 
 #[cfg(feature = "coverage")]

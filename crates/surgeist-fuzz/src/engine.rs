@@ -23,6 +23,14 @@ pub enum GeneratedEvaluation {
     Evaluated(Evaluation),
 }
 
+/// Admission is separate from generation rejection and owner observations.
+#[cfg(feature = "coverage")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CoverageAttempt {
+    Completed(GeneratedEvaluation),
+    LimitReached,
+}
+
 fn error(kind: FuzzErrorKind, detail: impl Into<String>) -> FuzzError {
     FuzzError::new(kind, "run fuzz engine", detail)
 }
@@ -107,10 +115,13 @@ pub struct CoverageDriver<'a, T: CaseTarget> {
     target: &'a T,
     selected_failure: Option<FailureKey>,
     counts: ExecutionCounts,
+    attempts: u64,
+    attempt_limit: Option<std::num::NonZeroU64>,
 }
 
 #[cfg(feature = "coverage")]
 impl<'a, T: CaseTarget> CoverageDriver<'a, T> {
+    /// Caller-controlled in-process driver without a campaign attempt ceiling.
     /// Selecting a failure key prevents an external minimizer switching bugs.
     pub fn new(target: &'a T, selected_failure: Option<FailureKey>) -> Result<Self> {
         if selected_failure
@@ -126,7 +137,59 @@ impl<'a, T: CaseTarget> CoverageDriver<'a, T> {
             target,
             selected_failure,
             counts: ExecutionCounts::default(),
+            attempts: 0,
+            attempt_limit: None,
         })
+    }
+
+    /// Admit at most this many callbacks, including rejected or errored attempts.
+    pub fn with_attempt_limit(
+        target: &'a T,
+        selected_failure: Option<FailureKey>,
+        limit: u64,
+    ) -> Result<Self> {
+        let limit = std::num::NonZeroU64::new(limit).ok_or_else(|| {
+            error(
+                FuzzErrorKind::InvalidLimits,
+                "coverage attempt limit must be positive",
+            )
+        })?;
+        let mut driver = Self::new(target, selected_failure)?;
+        driver.attempt_limit = Some(limit);
+        Ok(driver)
+    }
+
+    /// Campaign binaries require a positive decimal `SURGEIST_FUZZ_CASE_LIMIT`.
+    /// The driver enforces admission independently of libFuzzer startup callbacks.
+    pub fn for_campaign(target: &'a T, selected_failure: Option<FailureKey>) -> Result<Self> {
+        let value = std::env::var("SURGEIST_FUZZ_CASE_LIMIT").map_err(|source| {
+            FuzzError::with_source(
+                FuzzErrorKind::InvalidLimits,
+                "admit coverage campaign",
+                "SURGEIST_FUZZ_CASE_LIMIT must be present and UTF-8",
+                source,
+            )
+        })?;
+        if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(error(
+                FuzzErrorKind::InvalidLimits,
+                "SURGEIST_FUZZ_CASE_LIMIT must be a positive decimal integer",
+            ));
+        }
+        let limit = value.parse::<u64>().map_err(|source| {
+            FuzzError::with_source(
+                FuzzErrorKind::InvalidLimits,
+                "admit coverage campaign",
+                "SURGEIST_FUZZ_CASE_LIMIT exceeds the supported integer range",
+                source,
+            )
+        })?;
+        Self::with_attempt_limit(target, selected_failure, limit)
+    }
+
+    #[must_use]
+    pub const fn attempts(&self) -> u64 {
+        self.attempts
     }
     #[must_use]
     pub const fn counts(&self) -> ExecutionCounts {
@@ -141,9 +204,13 @@ impl<'a, T: CaseTarget> CoverageDriver<'a, T> {
         input: &[u8],
         capture: &mut dyn FnMut(&[u8]) -> Result<()>,
     ) -> Result<GeneratedEvaluation> {
-        let result = evaluate_generated(self.target, input, capture)?;
-        record(&mut self.counts, &result)?;
-        Ok(result)
+        match self.attempt(input, capture)? {
+            CoverageAttempt::Completed(result) => Ok(result),
+            CoverageAttempt::LimitReached => Err(error(
+                FuzzErrorKind::Resource,
+                "coverage attempt limit reached",
+            )),
+        }
     }
     /// Call from an owner binary's safe `fuzz_target!` closure. Semantic failures
     /// matching the selected key panic for libFuzzer; other failures stay visible
@@ -152,27 +219,53 @@ impl<'a, T: CaseTarget> CoverageDriver<'a, T> {
         &mut self,
         input: &[u8],
         capture: &mut dyn FnMut(&[u8]) -> Result<()>,
-    ) -> Result<GeneratedEvaluation> {
-        let result = self.test_one(input, capture)?;
-        self.raise_selected_failure(&result);
+    ) -> Result<CoverageAttempt> {
+        let result = self.attempt(input, capture)?;
+        if let CoverageAttempt::Completed(observation) = &result {
+            self.raise_selected_failure(observation);
+        }
         Ok(result)
     }
     /// Emits canonical capture before evaluation and cumulative observations
     /// afterwards, then escalates a matching owner failure. The controller owns
-    /// the campaign's total output quota and finite libFuzzer run budget.
+    /// the campaign's total output quota. Exhausted admission emits no frames.
     pub fn libfuzzer_entry_framed<W: std::io::Write>(
         &mut self,
         input: &[u8],
         writer: &mut W,
         max_frame_bytes: u32,
-    ) -> Result<GeneratedEvaluation> {
+    ) -> Result<CoverageAttempt> {
         use crate::worker::{write_capture, write_coverage_observation};
-        let result = self.test_one(input, &mut |canonical| {
+        let result = self.attempt(input, &mut |canonical| {
             write_capture(writer, canonical, max_frame_bytes).map(|_| ())
         })?;
-        write_coverage_observation(writer, &result, self.counts, max_frame_bytes)?;
-        self.raise_selected_failure(&result);
+        if let CoverageAttempt::Completed(observation) = &result {
+            write_coverage_observation(writer, observation, self.counts, max_frame_bytes)?;
+            self.raise_selected_failure(observation);
+        }
         Ok(result)
+    }
+
+    fn attempt(
+        &mut self,
+        input: &[u8],
+        capture: &mut dyn FnMut(&[u8]) -> Result<()>,
+    ) -> Result<CoverageAttempt> {
+        if self
+            .attempt_limit
+            .is_some_and(|limit| self.attempts >= limit.get())
+        {
+            return Ok(CoverageAttempt::LimitReached);
+        }
+        self.attempts = self.attempts.checked_add(1).ok_or_else(|| {
+            error(
+                FuzzErrorKind::Resource,
+                "coverage attempt counter exhausted",
+            )
+        })?;
+        let result = evaluate_generated(self.target, input, capture)?;
+        record(&mut self.counts, &result)?;
+        Ok(CoverageAttempt::Completed(result))
     }
     fn raise_selected_failure(&self, result: &GeneratedEvaluation) {
         if let GeneratedEvaluation::Evaluated(evaluation) = result
