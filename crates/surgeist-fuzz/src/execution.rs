@@ -462,7 +462,7 @@ mod unix {
     }
 
     // ESRCH is the only positive disappearance evidence. Permission/other errors
-    // retain the group as potentially present and become cleanup failures.
+    // retain the group as potentially present until a later observation or deadline.
     fn group_exists(group: Pid) -> Result<bool, rustix::io::Errno> {
         match test_kill_process_group(group) {
             Ok(()) => Ok(true),
@@ -611,6 +611,7 @@ mod unix {
         let grace_deadline = Instant::now() + spec.limits.termination_grace;
         let cleanup_deadline = grace_deadline + spec.limits.cleanup_timeout;
         let mut killed = false;
+        let mut probe_error = None;
         loop {
             if let Some(reason) = pipes.drain(spec)
                 && stop == ProcessStop::Exited
@@ -631,13 +632,13 @@ mod unix {
             }
             if !group_gone {
                 match probe_group(group) {
-                    Ok(false) => group_gone = true,
+                    Ok(false) => {
+                        group_gone = true;
+                        probe_error = None;
+                    }
                     Ok(true) => {}
                     Err(error) => {
-                        let detail = format!("check group disappearance: {error}");
-                        if !errors.contains(&detail) {
-                            errors.push(detail);
-                        }
+                        probe_error = Some(format!("check group disappearance: {error}"));
                     }
                 }
             }
@@ -652,6 +653,9 @@ mod unix {
                 break;
             }
             std::thread::sleep(POLL);
+        }
+        if let Some(error) = probe_error {
+            errors.push(error);
         }
         if pipes.stdout.is_some() || pipes.stderr.is_some() {
             errors.push("output pipes did not reach EOF before cleanup deadline".into());
@@ -685,13 +689,24 @@ mod unix {
         #[test]
         fn transient_probe_error_followed_by_observed_disappearance_completes_cleanup() {
             let limits = WorkerLimits::new(
-                0, 1024, 1024, Duration::from_secs(2), Duration::ZERO,
-                Duration::from_millis(100), MemoryPolicy::Unbounded,
-            ).unwrap();
+                0,
+                1024,
+                1024,
+                Duration::from_secs(2),
+                Duration::ZERO,
+                Duration::from_millis(100),
+                MemoryPolicy::Unbounded,
+            )
+            .unwrap();
             let spec = WorkerSpec::new(
-                PathBuf::from("/usr/bin/true"), PathBuf::from("/"), Vec::new(),
-                BTreeMap::new(), Vec::new(), limits,
-            ).unwrap();
+                PathBuf::from("/usr/bin/true"),
+                PathBuf::from("/"),
+                Vec::new(),
+                BTreeMap::new(),
+                Vec::new(),
+                limits,
+            )
+            .unwrap();
             let mut transient = 0;
             let outcome = execute_with_probe(&spec, &AtomicBool::new(false), |pid| {
                 match group_exists(pid) {
@@ -701,7 +716,8 @@ mod unix {
                     }
                     value => value,
                 }
-            }).unwrap();
+            })
+            .unwrap();
             assert_eq!(transient, 2);
             assert_eq!(outcome.cleanup, CleanupStatus::Complete);
             assert_eq!(outcome.exit, ProcessExit::Success);
