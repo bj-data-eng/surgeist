@@ -565,8 +565,8 @@ impl OwnedFragmentFailure {
 
 /// Immutable native/source ownership only; no complete lexical/D1 certificate.
 pub(crate) struct SealedFragmentConstruction {
-    request: FragmentRequestParts,
-    parts: FrozenContextFragmentParts,
+    pub(in crate::parser::tree_builder) request: FragmentRequestParts,
+    pub(in crate::parser::tree_builder) parts: FrozenContextFragmentParts,
 }
 impl SealedFragmentConstruction {
     fn take(

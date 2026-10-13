@@ -303,8 +303,8 @@ impl FailedContextFragment<'_> {
 /// Lifetime-free F construction. Captured dependencies and completed attachment
 /// effects remain in the same frozen session; no live DOM operation is executed.
 pub(crate) struct FrozenContextFragmentParts {
-    control: ParseControl,
-    arena: Option<crate::construction::parser_session::FrozenArena>,
+    pub(super) control: ParseControl,
+    pub(super) arena: Option<crate::construction::parser_session::FrozenArena>,
     source: (crate::HtmlSourceId, crate::HtmlSourceCoordinates, usize),
     final_usage: super::super::control::ParseUsage,
     requested: HtmlParserScriptingMode,
@@ -315,6 +315,35 @@ pub(crate) struct FrozenContextFragmentParts {
     after_cleanup: Option<super::super::control::ParseUsage>,
 }
 impl FrozenContextFragmentParts {
+    pub(super) fn prepare_report_request(
+        &mut self,
+        request: &crate::request::FragmentRequestParts,
+    ) -> Result<(), SessionError> {
+        self.control.require_source(request.source())?;
+        self.control.charge(WorkCategory::ProviderCall, 1)?;
+        self.control.charge(WorkCategory::RecordVisit, 5)?;
+        self.control.charge(
+            WorkCategory::InspectByte,
+            (2 * size_of::<crate::HtmlSourceId>()
+                + 2 * size_of::<crate::HtmlSourceCoordinates>()
+                + 2 * size_of::<usize>()
+                + 2 * size_of::<crate::HtmlParseCancellation>()) as u64,
+        )?;
+        if !self.control.owns_request(request.cancellation())
+            || self.source_binding()
+                != (
+                    request.source().identity(),
+                    request.source().coordinates(),
+                    request.source().len(),
+                )
+            || self.failed_evidence.is_some()
+            || self.after_cleanup.is_some()
+            || self.arena.as_ref().and_then(|a| a.fragment()).is_none()
+        {
+            return Err(SessionError::WrongToken);
+        }
+        Ok(())
+    }
     fn prepare_seal(
         &mut self,
         request: &HtmlFragmentParseRequest,

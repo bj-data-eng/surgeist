@@ -200,8 +200,8 @@ pub(super) fn terminal_qualification_bytes() -> usize {
 }
 
 pub(crate) struct SealedOrdinaryConstruction {
-    request: DocumentRequestParts,
-    parts: FrozenStandaloneParts,
+    pub(super) request: DocumentRequestParts,
+    pub(super) parts: FrozenStandaloneParts,
 }
 impl SealedOrdinaryConstruction {
     /// Both original owning slots survive every admission/qualification error.

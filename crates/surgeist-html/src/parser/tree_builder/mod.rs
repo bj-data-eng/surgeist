@@ -46,6 +46,7 @@ pub(crate) mod head;
 pub(crate) mod prologue;
 #[cfg(test)]
 mod provenance_scaling_tests;
+pub(crate) mod report;
 pub(crate) mod seal;
 mod tables;
 mod tag_sets;

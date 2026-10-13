@@ -46,6 +46,7 @@ pub(crate) mod history;
 pub(crate) mod native_view;
 mod pi;
 pub(crate) mod provenance;
+pub(crate) mod report;
 use provenance::{FieldCopy, OriginGroupRef};
 mod select;
 mod svg;

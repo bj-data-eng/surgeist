@@ -14,6 +14,11 @@ pub(crate) struct OptionState {
     nearest_select: Option<usize>,
 }
 impl OptionState {
+    /// Fixed canonical cache read; callers qualify the result-local reference
+    /// before immutable publication. This does not recompute ancestry.
+    pub(super) fn cached_nearest_select(&self) -> Option<usize> {
+        self.nearest_select
+    }
     pub(super) fn fresh() -> Self {
         Self {
             flags: HtmlOptionFlags::default(),

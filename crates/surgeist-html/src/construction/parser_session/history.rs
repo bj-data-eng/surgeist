@@ -1,13 +1,13 @@
 //! Immutable history reads over the actual frozen arena and evidence owner.
 //!
-//! Qualification is metered before freeze. Reads allocate nothing: inventory
+//! Qualification is metered before artifact transfer. Reads allocate nothing: inventory
 //! and atom access are fixed, while traversal advances one graph header using
 //! caller-owned scratch. This private owner is not a public parse-success seal.
 
 use super::*;
 use provenance::{ConstructionCause, GroupBody, HistoryData, LeafValue, OriginGroup};
 
-/// Only `freeze_history` constructs this owner. Generic native freeze does not
+/// Only the metered history qualification paths construct this owner. Generic native freeze does not
 /// establish the complete D1/lexical and history-payload qualification.
 pub(crate) struct FrozenHistory {
     arena: FrozenArena,
@@ -25,7 +25,7 @@ impl ParserArenaSession {
         c.charge(WorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
         let data = evidence.history_data()?;
-        qualify(storage, &data, c)?;
+        qualify(&storage.payloads, &data, c)?;
         // Admit the actual new wrapper before the existing recoverable arena
         // transfer. There is no fallible operation after successful freeze.
         payload_write::<FrozenHistory>(c, 1)?;
@@ -63,7 +63,7 @@ fn source_range(
 }
 
 fn qualify(
-    storage: &SessionStorage,
+    payloads: &PayloadStorage,
     data: &HistoryData<'_>,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
@@ -120,7 +120,7 @@ fn qualify(
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         let Some(RetainedPayload::String {
                             value, allocation, ..
-                        }) = storage.payloads.values.get(slot)
+                        }) = payloads.values.get(slot)
                         else {
                             return Err(SessionError::WrongToken);
                         };
@@ -173,6 +173,9 @@ fn qualify(
 }
 
 impl FrozenHistory {
+    pub(super) fn arena(&self) -> &FrozenArena {
+        &self.arena
+    }
     pub(crate) fn view(&self) -> Result<HistoryView<'_>, SessionError> {
         let storage = self.arena.storage.as_ref().ok_or(SessionError::Consumed)?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
@@ -195,6 +198,46 @@ impl FrozenHistory {
     /// A later public report consumes this owner and the execution controller.
     pub(crate) fn release(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         self.arena.release(c)
+    }
+}
+
+/// Exclusive, owner-issued transfer qualification over the exact retained
+/// frozen slot. There is no caller-supplied readiness flag or arena identifier.
+pub(crate) struct PreparedHistory<'a> {
+    input: &'a mut Option<FrozenArena>,
+}
+impl<'a> PreparedHistory<'a> {
+    pub(crate) fn prepare(
+        input: &'a mut Option<FrozenArena>,
+        c: &mut ParseControl,
+    ) -> Result<Self, SessionError> {
+        let arena = input.as_ref().ok_or(SessionError::Consumed)?;
+        let storage = arena.storage.as_ref().ok_or(SessionError::Consumed)?;
+        c.require_identity(&storage.control)?;
+        let native = match &storage.view {
+            FrozenView::Document(view) => &view.arena,
+            FrozenView::Fragment(view) => &view.arena,
+        };
+        storage.payloads.check_aliases(&native.records, c)?;
+        storage.effects.require_freezable(c)?;
+        let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        payload_write::<HistoryData<'_>>(c, 1)?;
+        let data = evidence.history_data()?;
+        // The existing active freeze and this retained frozen transfer share
+        // the same source/graph/leaf qualification, not two validators.
+        qualify(&storage.payloads, &data, c)?;
+        payload_write::<Self>(c, 1)?;
+        payload_write::<FrozenHistory>(c, 1)?;
+        payload_write::<Option<FrozenArena>>(c, 1)?;
+        Ok(Self { input })
+    }
+    /// All useful work and receiver admissions precede the consuming caller's
+    /// final checkpoint/snapshot. Commit only moves the qualified actual slot.
+    pub(crate) fn commit(self) -> FrozenHistory {
+        FrozenHistory {
+            arena: self.input.take().expect("exclusive qualified history slot"),
+        }
     }
 }
 
@@ -884,7 +927,7 @@ mod tests {
             )
             .unwrap();
             let before = c.usage().clone();
-            let outcome = qualify(storage, &data, &mut c);
+            let outcome = qualify(&storage.payloads, &data, &mut c);
             if short {
                 let first = c.stop().unwrap();
                 assert!(matches!(

@@ -627,8 +627,8 @@ struct FrozenSourceBinding {
 }
 pub(crate) struct FrozenStandaloneParts {
     source: FrozenSourceBinding,
-    control: ParseControl,
-    arena: Option<crate::construction::parser_session::FrozenArena>,
+    pub(super) control: ParseControl,
+    pub(super) arena: Option<crate::construction::parser_session::FrozenArena>,
     document_state: StandaloneDocumentState,
     final_usage: super::super::control::ParseUsage,
     failed_evidence:
@@ -636,6 +636,40 @@ pub(crate) struct FrozenStandaloneParts {
     after_cleanup: Option<super::super::control::ParseUsage>,
 }
 impl FrozenStandaloneParts {
+    pub(super) fn prepare_report_request(
+        &mut self,
+        request: &crate::request::DocumentRequestParts,
+    ) -> Result<(), crate::construction::parser_session::SessionError> {
+        use crate::construction::parser_session::SessionError;
+        self.control.require_source(request.source())?;
+        self.control.charge(WorkCategory::ProviderCall, 1)?;
+        self.control.charge(WorkCategory::RecordVisit, 7)?;
+        self.control.charge(
+            WorkCategory::InspectByte,
+            (2 * size_of::<crate::HtmlSourceId>()
+                + 2 * size_of::<crate::HtmlSourceCoordinates>()
+                + 2 * size_of::<usize>()
+                + 2 * size_of::<crate::HtmlParseCancellation>()
+                + size_of::<StandaloneDocumentState>()) as u64,
+        )?;
+        if !request.is_offline()
+            || !self.control.owns_request(request.cancellation())
+            || self.source_binding()
+                != (
+                    request.source().identity(),
+                    request.source().coordinates(),
+                    request.source().len(),
+                )
+            || self.failed_evidence.is_some()
+            || self.after_cleanup.is_some()
+            || self.arena.as_ref().and_then(|a| a.document()).is_none()
+            || self.document_state.completion
+                != crate::construction::parser_session::ConstructionCompletion::Complete
+        {
+            return Err(SessionError::WrongToken);
+        }
+        Ok(())
+    }
     /// Consumes only a successfully reclaimed stopped frozen owner. A cleanup
     /// refusal preserves the input slot, actual binding and safe evidence.
     pub(crate) fn detach_failure(
