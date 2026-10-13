@@ -18937,4 +18937,354 @@ mod complete_hostile_scan {
             assert_eq!(driver.control.first_stop_usage(), first.as_ref());
         }
     }
+
+    mod long_numeric_reference {
+        use super::*;
+
+        const PREFIX: &str = "<!doctype html><p>é&#0;P</p><p>";
+
+        fn source(hex: bool, digits: usize, utf16: bool) -> HtmlSource {
+            let raw = format!(
+                "{PREFIX}{}{};Z</p>",
+                if hex { "&#x" } else { "&#" },
+                if hex { "F" } else { "9" }.repeat(digits)
+            );
+            if utf16 {
+                HtmlSource::utf16(DocumentString::from(raw.as_str()))
+            } else {
+                HtmlSource::utf8(raw)
+            }
+        }
+
+        fn reference_start(utf16: bool) -> usize {
+            // Fifteen doctype units, p/é/&#0;/P/end-p, then start-p.
+            // é occupies one UTF16 unit and two UTF8 bytes.
+            if utf16 { 31 } else { 32 }
+        }
+
+        fn records(
+            view: DiagnosticEvidenceView<'_>,
+            source: &HtmlSource,
+            hex: bool,
+            digits: usize,
+            utf16: bool,
+            complete: bool,
+        ) {
+            let count = if complete { 2 } else { 1 };
+            assert_eq!(view.len(), count);
+            for index in 0..count {
+                let (record, location) = view.retained_record(index).unwrap();
+                let (code, anchor, branch, range) = if index == 0 {
+                    (
+                        DiagnosticCode::NullCharacterReference,
+                        "parse-error-null-character-reference",
+                        "null-character-reference",
+                        if utf16 { (19, 23) } else { (20, 24) },
+                    )
+                } else {
+                    let start = reference_start(utf16);
+                    (
+                        DiagnosticCode::CharacterReferenceOutsideUnicodeRange,
+                        "parse-error-character-reference-outside-unicode-range",
+                        "character-reference-outside-unicode-range",
+                        (start, start + digits + if hex { 4 } else { 3 }),
+                    )
+                };
+                assert_eq!(record.kind, DiagnosticKind::Tokenizer(code));
+                assert_eq!(
+                    record.context,
+                    DiagnosticContext::Tokenizer {
+                        phase: DiagnosticPhase::Tokenizer,
+                        state: State::Data,
+                    }
+                );
+                assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+                assert_eq!((record.rule.anchor, record.rule.branch), (anchor, branch));
+                assert_eq!(location.role, DiagnosticLocationRole::InputFrontier);
+                assert_eq!(location.token, None);
+                assert_eq!(location.source.source(), source.identity());
+                assert_eq!(location.source.coordinates(), source.coordinates());
+                assert_eq!((location.source.start(), location.source.end()), range);
+            }
+            assert!(view.retained_record(count).is_none());
+        }
+
+        fn run(
+            driver: &mut StandaloneDocumentDriver<'_>,
+        ) -> Result<head::HeadStep, StandaloneError> {
+            (0..1000)
+                .find_map(|_| match driver.step() {
+                    Ok(head::HeadStep::Consumed) => None,
+                    other => Some(other),
+                })
+                .expect("finite literal driver steps")
+        }
+
+        fn stopped(
+            driver: StandaloneDocumentDriver<'_>,
+            source: &HtmlSource,
+            hex: bool,
+            digits: usize,
+            utf16: bool,
+            expected: ParseStop,
+        ) {
+            let mut driver = driver;
+            assert_eq!(driver.control.stop(), Some(expected));
+            let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+            records(
+                state
+                    .before
+                    .kernel
+                    .session
+                    .observed_evidence()
+                    .diagnostics(),
+                source,
+                hex,
+                digits,
+                utf16,
+                false,
+            );
+            let first = driver.control.first_stop_usage().unwrap().clone();
+            let usage = driver.control.usage().clone();
+            assert_eq!(first, usage);
+            assert_eq!(
+                usage.resource(HtmlParseResource::SourceUnits).current,
+                source.len() as u64
+            );
+            assert!(usage.actual_capacity_bytes > 0);
+            assert!(driver.step().is_err());
+            assert!(driver.make_available(source.len()).is_err());
+            assert!(driver.seal_input().is_err());
+            assert_eq!(driver.control.usage(), &usage);
+            let mut slot = Some(driver);
+            assert!(
+                matches!(StandaloneDocumentDriver::take_completed(&mut slot), Err(StandaloneError::Stop(stop)) if stop == expected)
+            );
+            let driver = slot
+                .as_mut()
+                .expect("failed take retains actual partial owner");
+            assert_eq!(driver.control.usage(), &usage);
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+            assert_eq!(driver.control.first_stop_usage(), Some(&first));
+            assert_eq!(driver.control.stop(), Some(expected));
+            for category in [
+                WorkCategory::InputUnitRead,
+                WorkCategory::StateStep,
+                WorkCategory::RecordVisit,
+                WorkCategory::RecordWrite,
+                WorkCategory::InspectByte,
+                WorkCategory::CopyByte,
+                WorkCategory::ProviderCall,
+            ] {
+                assert_eq!(driver.control.usage().work(category), usage.work(category));
+            }
+            assert_eq!(
+                driver
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current,
+                usage.resource(HtmlParseResource::WorkCredits).current
+            );
+            let released = driver.control.usage().clone();
+            assert!(driver.step().is_err());
+            assert_eq!(driver.control.usage(), &released);
+        }
+
+        #[test]
+        fn decimal_and_hex_complete_partners_have_literal_replacement_and_retained_diagnostics() {
+            for hex in [false, true] {
+                for utf16 in [false, true] {
+                    let source = source(hex, 512, utf16);
+                    let request =
+                        crate::HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+                    let mut driver = entry::initialized_driver(&request);
+                    let result = run(&mut driver);
+                    if !matches!(result, Ok(head::HeadStep::Complete)) {
+                        let stop = driver.control.stop();
+                        driver.release().unwrap();
+                        assert_released(&driver.control);
+                        panic!("uninstrumented literal complete partner: {result:?} {stop:?}");
+                    }
+                    assert_eq!(
+                        driver
+                            .control
+                            .usage()
+                            .resource(HtmlParseResource::SourceUnits)
+                            .current,
+                        source.len() as u64
+                    );
+                    let mut slot = Some(driver);
+                    let mut completed =
+                        StandaloneDocumentDriver::take_completed(&mut slot).unwrap();
+                    assert!(slot.is_none());
+                    records(
+                        completed.diagnostics().unwrap(),
+                        &source,
+                        hex,
+                        512,
+                        utf16,
+                        true,
+                    );
+                    {
+                        let mut view = completed.native_view().unwrap();
+                        let root = view.root().unwrap();
+                        assert!(matches!(
+                            view.kind(&root).unwrap(),
+                            NativeKind::Document(HtmlDocumentMode::NoQuirks)
+                        ));
+                        assert_eq!(view.child_count(&root).unwrap(), 2);
+                        let doctype = progressive_native_node(&mut view, &[0]);
+                        let NativeKind::Doctype {
+                            name,
+                            public_id,
+                            system_id,
+                        } = view.kind(&doctype).unwrap()
+                        else {
+                            panic!("literal doctype")
+                        };
+                        progressive_native_units(&mut view, name, "html");
+                        progressive_native_units(&mut view, public_id.unwrap(), "");
+                        progressive_native_units(&mut view, system_id.unwrap(), "");
+                        let html = element(&mut view, &[1], "html");
+                        assert_eq!(view.child_count(&html).unwrap(), 2);
+                        let head = element(&mut view, &[1, 0], "head");
+                        assert_eq!(view.child_count(&head).unwrap(), 0);
+                        let body = element(&mut view, &[1, 1], "body");
+                        assert_eq!(view.child_count(&body).unwrap(), 2);
+                        let mut previous = None;
+                        for (index, expected) in ["é\u{fffd}P", "\u{fffd}Z"].into_iter().enumerate()
+                        {
+                            let p = element(&mut view, &[1, 1, index], "p");
+                            assert_eq!(view.attribute_count(&p).unwrap(), 0);
+                            assert_eq!(view.child_count(&p).unwrap(), 1);
+                            let text = progressive_native_node(&mut view, &[1, 1, index, 0]);
+                            if let Some(previous) = previous.replace(text.clone()) {
+                                assert!(!view.same_node(&previous, &text).unwrap());
+                            }
+                            let NativeKind::Text(value) = view.kind(&text).unwrap() else {
+                                panic!("literal text")
+                            };
+                            progressive_native_units(&mut view, value, expected);
+                        }
+                    }
+                    let mut parts = completed.freeze_parts().unwrap();
+                    parts.release().unwrap();
+                    assert_eq!(parts.retained_usage().actual_capacity_bytes, 0);
+                    for resource in [
+                        HtmlParseResource::BufferedUtf16Units,
+                        HtmlParseResource::TokenAttributes,
+                        HtmlParseResource::AuxiliaryEntries,
+                        HtmlParseResource::ManagedEdges,
+                        HtmlParseResource::ManagedAttributes,
+                        HtmlParseResource::ManagedUtf16Units,
+                        HtmlParseResource::SourceMapEntries,
+                        HtmlParseResource::Diagnostics,
+                        HtmlParseResource::ContextEffects,
+                        HtmlParseResource::OpenElements,
+                        HtmlParseResource::ManagedCapacityBytes,
+                        HtmlParseResource::PeakTransientBytes,
+                    ] {
+                        assert_eq!(parts.retained_usage().resource(resource).current, 0);
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn decimal_and_hex_complete_cancel_at_exact_original_digit_frontier() {
+            for hex in [false, true] {
+                for utf16 in [false, true] {
+                    let source = source(hex, 8192, utf16);
+                    let request =
+                        crate::HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+                    let cancellation = request.cancellation().clone();
+                    let mut driver = entry::initialized_driver(&request);
+                    let frontier = reference_start(utf16) + if hex { 3 } else { 2 } + 1024;
+                    let before = driver.control.usage().clone();
+                    crate::parser::tokenizer::tests::cancel_after_consumed(
+                        driver.tokenizer.as_mut().unwrap(),
+                        frontier,
+                        cancellation.clone(),
+                        &mut driver.control,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        driver.control.usage().work(WorkCategory::CopyByte)
+                            - before.work(WorkCategory::CopyByte),
+                        std::mem::size_of::<Option<(usize, HtmlParseCancellation)>>() as u64
+                    );
+                    assert_eq!(
+                        driver.control.usage().work(WorkCategory::RecordWrite)
+                            - before.work(WorkCategory::RecordWrite),
+                        1
+                    );
+                    assert!(driver.control.owns_request(&cancellation));
+                    assert!(run(&mut driver).is_err());
+                    assert!(cancellation.is_cancelled());
+                    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+                    let range = crate::parser::tokenizer::tests::current_scan_range(
+                        state.tokenizer.as_ref().unwrap(),
+                    );
+                    assert_eq!(range.source(), source.identity());
+                    assert_eq!(range.coordinates(), source.coordinates());
+                    assert_eq!(range.end(), frontier);
+                    assert!(range.end() < source.len());
+                    stopped(driver, &source, hex, 8192, utf16, ParseStop::Cancelled);
+                }
+            }
+        }
+
+        #[test]
+        fn decimal_and_hex_complete_digit_action_floor_forces_finite_work_refusal() {
+            const DIGITS: usize = 90_000;
+            // char_ref NumericDigits charges at least StateStep1, two ASCII
+            // InputUnitRead (peek/read), CopyByte(sizeof(bool)+sizeof(u32))
+            // and two actual accumulator writes per consumed digit. Other
+            // inspection/range/receiver/prefix fees are positive. The digit-only
+            // floor therefore cannot finish under this request-local budget.
+            let per_digit = 1 + 2 + std::mem::size_of::<bool>() + std::mem::size_of::<u32>() + 2;
+            let budget = (DIGITS * per_digit) as u64;
+            for hex in [false, true] {
+                for utf16 in [false, true] {
+                    let source = source(hex, DIGITS, utf16);
+                    let selected = limits(100)
+                        .into_builder()
+                        .work_credits(budget)
+                        .finish()
+                        .unwrap();
+                    let request =
+                        crate::HtmlDocumentParseRequest::offline(source.clone(), selected);
+                    let mut driver = entry::initialized_driver(&request);
+                    assert!(run(&mut driver).is_err());
+                    let stop = driver.control.stop().unwrap();
+                    let ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        limit,
+                        current,
+                        requested_delta,
+                    } = stop
+                    else {
+                        panic!("digit action work refusal: {stop:?}")
+                    };
+                    assert_eq!(limit, budget);
+                    assert!(current + requested_delta > limit);
+                    assert!(!request.cancellation().is_cancelled());
+                    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+                    let range = crate::parser::tokenizer::tests::current_scan_range(
+                        state.tokenizer.as_ref().unwrap(),
+                    );
+                    assert_eq!(range.source(), source.identity());
+                    assert_eq!(range.coordinates(), source.coordinates());
+                    assert!(range.end() > reference_start(utf16) + if hex { 3 } else { 2 });
+                    assert!(
+                        range.end() < reference_start(utf16) + DIGITS + if hex { 4 } else { 3 }
+                    );
+                    stopped(driver, &source, hex, DIGITS, utf16, stop);
+                }
+            }
+        }
+    }
 }
