@@ -8,7 +8,7 @@
 //! defaults, textarea/output text getters, captured time-element interpretation, image/link attribute author contexts and input/button form setting selection
 //! including the source no-validate state, default buttons and static implicit
 //! submission conditions, static constraint-validation candidacy, required text-control missingness, the static tabIndex getter,
-//! advisory information, dfn defining terms, title-element and anchor text and document titles, own/used capitalization,
+//! advisory information, address forbidden-descendant restrictions, dfn defining terms, title-element and anchor text and document titles, own/used capitalization,
 //! used autocorrection, computed writing suggestions, reflected command/popover
 //! Element associations, static command support, guarded popover targets and
 //! img/input dimension getters over qualified completed producer observations.
@@ -23,6 +23,7 @@ pub use language::*;
 mod advisory_title;
 mod dfn;
 pub use dfn::*;
+mod address;
 mod anchor;
 mod document_title;
 pub use document_title::*;
@@ -843,6 +844,8 @@ pub enum HtmlSemanticQuery {
     TitleText,
     /// Exact ordinary descendant Text data of an HTML a element.
     AnchorText,
+    /// Whether an HTML address has a source-prohibited ordinary descendant.
+    AddressHasForbiddenDescendant,
     /// Selected document title with ASCII whitespace stripped and collapsed.
     DocumentTitle,
     Meter,
@@ -954,6 +957,9 @@ impl HtmlSemanticQuery {
             }
             Self::EmbeddedDimensionAuthorConformance => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dimension-attributes"
+            }
+            Self::AddressHasForbiddenDescendant => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-address-element"
             }
             Self::AnchorText => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-a-text"
@@ -1369,6 +1375,7 @@ pub enum HtmlSemanticFact {
     DfnDefiningTerm(HtmlSemanticValue<HtmlDefiningTerm>),
     TitleText(HtmlSemanticValue<DocumentString>),
     AnchorText(HtmlSemanticValue<DocumentString>),
+    AddressHasForbiddenDescendant(HtmlSemanticValue<bool>),
     DocumentTitle(HtmlSemanticValue<HtmlDocumentTitle>),
     Meter(HtmlSemanticValue<HtmlMeterState>),
     Progress(HtmlSemanticValue<HtmlProgressState>),
@@ -2764,6 +2771,15 @@ impl<'a> HtmlSemanticSession<'a> {
                                 )?,
                             )
                         }
+                        HtmlSemanticQuery::AddressHasForbiddenDescendant => {
+                            HtmlSemanticFact::AddressHasForbiddenDescendant(if foreign {
+                                HtmlSemanticValue::Unsupported(
+                                    HtmlSemanticUnsupported::ForeignNamespace,
+                                )
+                            } else {
+                                self.address_has_forbidden_descendant(&request.subject, element)?
+                            })
+                        }
                         HtmlSemanticQuery::AnchorText => HtmlSemanticFact::AnchorText(if foreign {
                             HtmlSemanticValue::Unsupported(
                                 HtmlSemanticUnsupported::ForeignNamespace,
@@ -3235,6 +3251,11 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::EmbeddedDimensionAuthorConformance => {
                         HtmlSemanticFact::EmbeddedDimensionAuthorConformance(
+                            HtmlSemanticValue::Inapplicable,
+                        )
+                    }
+                    HtmlSemanticQuery::AddressHasForbiddenDescendant => {
+                        HtmlSemanticFact::AddressHasForbiddenDescendant(
                             HtmlSemanticValue::Inapplicable,
                         )
                     }

@@ -47,7 +47,7 @@ not assert all child/content constraints are machine checked.
 | --- | --- | --- | --- |
 | <a id="e001"></a>E001 | a; HTML | [the-a-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-a-element) | Hyperlink references, rel/target/referrer settings, captured TabIndex and [Anchor text](#anchor-text); navigation/activation and remaining author obligations separate. |
 | <a id="e002"></a>E002 | abbr; HTML | [the-abbr-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-abbr-element) | Exact abbreviation role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e003"></a>E003 | address; HTML | [the-address-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-address-element) | Exact contact content retained; the defining nearest article/body scope is source context, not a computed contact-owner query in the current surface. Applicable global states remain independently queryable; author/content-model checks are not certified. |
+| <a id="e003"></a>E003 | address; HTML | [the-address-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-address-element) | [Address descendant restriction](#address-descendant-restriction): captured AddressHasForbiddenDescendant observes the explicit ordinary descendant prohibition. Nearest article/body contact scope, contact meaning, flow-content membership and full author conformance remain separate; applicable global states are independently queryable. |
 | <a id="e004"></a>E004 | area; HTML | [the-area-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-area-element) | [Area geometry](#area-geometry), map membership and hyperlink settings; image association/hit testing not performed. |
 | <a id="e005"></a>E005 | article; HTML | [the-article-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-article-element) | Exact self-contained syndicatable or reusable composition role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e006"></a>E006 | aside; HTML | [the-aside-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-aside-element) | Exact sidebar for tangentially related content role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
@@ -1154,6 +1154,27 @@ selection, boundaries, exact UTF-16, work/storage/cancellation and retained repo
 A163 title-of-link and stylesheet-set names still require their distinct
 document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
 contextual author meaning; this query is no semantic-adequacy or exposure proof.
+
+## Address descendant restriction
+
+E003 supplies `AddressHasForbiddenDescendant` through
+[address.rs](src/semantics/address.rs), using the existing qualified ordinary
+tree walker. The pinned [address content restriction](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-address-element)
+prohibits heading and sectioning content, header, footer and address descendants.
+Heading-free hgroup is allowed by this restriction; a heading-bearing hgroup
+contains a prohibited h1–h6 descendant. Ordinary foreign wrappers are traversed;
+only exact expanded HTML names supply witnesses. Associated template/shadow
+trees and the subject itself are excluded.
+
+Known true is an established witness; known false requires complete influencing
+coverage. A later witness can resolve an earlier unavailable branch, but without
+one the first unresolved dependency remains Missing. Terminal failures cannot
+be bypassed. The [canonical explanation](README.md#captured-address-restriction)
+and [tests](tests/semantics_address.rs) describe qualified scalar results,
+borrowed-iterator scratch, cumulative capacity admission, cleanup and atomic
+batches. Flow content, contact-information meaning and the nearest article/body
+contact scope remain separate; no full content-conformance or live DOM claim
+follows.
 
 ## Anchor text
 

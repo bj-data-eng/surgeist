@@ -847,6 +847,7 @@ relationships count references to other retained records.
 
 `HtmlSemanticSession` borrows one capture and a matching `HtmlSemanticContext`
 to answer hidden-state, disabledness, language, directionality, list, table,
+address descendant restrictions,
 meter, progress, inertness, form-owner, labeled-control, current control-flag,
 editing-host, editable, isContentEditable, translation-mode, spellcheck IDL and
 computed-heading-level queries. Disabledness includes
@@ -1562,6 +1563,44 @@ and atomic batches. No traversal scratch is added. Fixed shared wrapper
 allocation retains the existing provider limitation. This query computes
 advisory information; link titles, stylesheet-set names and tooltip or
 accessibility exposure remain separate operations.
+
+<a id="captured-address-restriction"></a>
+
+Captured `HtmlSemanticQuery::AddressHasForbiddenDescendant` returns
+`HtmlSemanticValue<bool>` for the pinned address
+[descendant restriction](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-address-element).
+It detects ordinary HTML h1–h6, article, aside, nav, section, header, footer
+and address descendants. A heading-free hgroup is allowed by this restriction;
+a heading-bearing hgroup contains a prohibited h1–h6 descendant.
+
+`Known(true)` supplies an established forbidden witness as a Boolean, without
+reading that witness's children or later branches. `Known(false)` requires a
+complete influencing traversal with no witness. Unavailable ordered children
+remain Missing unless a later established witness resolves the existential
+question; otherwise the first unresolved dependency is retained. Terminal
+capture, work, allocation or cancellation failure stops immediately and cannot
+be replaced by a later witness.
+
+Only an exact expanded HTML address subject applies. Other HTML roles and
+non-elements are Inapplicable; foreign subjects are Unsupported. Ordinary
+foreign wrappers are traversed, but foreign lookalikes are not witnesses.
+Prefixes do not alter expanded identity; case and UTF-16 units remain exact.
+The subject itself and associated template/shadow trees are excluded.
+Attributes, Text, comments and processing-instruction data are not parsed.
+
+The [address owner](src/semantics/address.rs) borrows the existing ordinary
+tree walker. Its child-iterator scratch capacities and scalar outer result
+use the shared qualified semantic ledger; scratch is released on success,
+Missing or terminal failure, while cumulative allocation and first stop remain
+retained. There are no nested output records or retained witness identities.
+Batches are atomic; shared input backing and fixed wrappers retain the existing
+provider limits, without an allocator/RSS or parser cancellation-quantum promise.
+[Literal and resource tests](tests/semantics_address.rs) cover these distinctions.
+Closed Query/Fact additions intentionally break exhaustive matches.
+
+This predicate does not certify flow-content membership, contact-information
+meaning, nearest article/body contact scope, full address author conformance
+or live DOM behavior.
 
 <a id="captured-anchor-text"></a>
 
