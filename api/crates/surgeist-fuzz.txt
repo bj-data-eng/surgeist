@@ -48,6 +48,15 @@ pub surgeist_fuzz::artifact::ProcessStopReason::OutputLimit::stream: surgeist_fu
 pub enum surgeist_fuzz::artifact::ReplayMode
 pub surgeist_fuzz::artifact::ReplayMode::Comparison
 pub surgeist_fuzz::artifact::ReplayMode::Exact
+pub enum surgeist_fuzz::artifact::RunOutcome
+pub surgeist_fuzz::artifact::RunOutcome::Cancelled
+pub surgeist_fuzz::artifact::RunOutcome::Empty
+pub surgeist_fuzz::artifact::RunOutcome::Finding
+pub surgeist_fuzz::artifact::RunOutcome::InfrastructureFailure
+pub surgeist_fuzz::artifact::RunOutcome::Insufficient
+pub surgeist_fuzz::artifact::RunOutcome::InvalidRequest
+pub surgeist_fuzz::artifact::RunOutcome::ResourceStop
+pub surgeist_fuzz::artifact::RunOutcome::Sufficient
 pub struct surgeist_fuzz::artifact::ArtifactStore
 impl surgeist_fuzz::ArtifactStore
 pub fn surgeist_fuzz::ArtifactStore::add_corpus(&self, artifact: &surgeist_fuzz::CaseArtifact) -> surgeist_fuzz::Result<surgeist_generator::core::corpus::RelativePath>
@@ -258,6 +267,7 @@ pub struct surgeist_fuzz::artifact::RunRecord
 impl surgeist_fuzz::RunRecord
 pub const fn surgeist_fuzz::RunRecord::counts(&self) -> surgeist_fuzz::ExecutionCounts
 pub fn surgeist_fuzz::RunRecord::new(s: surgeist_fuzz::RunRecordSpec) -> surgeist_fuzz::Result<Self>
+pub const fn surgeist_fuzz::RunRecord::outcome(&self) -> surgeist_fuzz::RunOutcome
 pub fn surgeist_fuzz::RunRecord::readable_report(&self) -> alloc::string::String
 impl core::convert::TryFrom<surgeist_fuzz::RunRecordSpec> for surgeist_fuzz::RunRecord
 pub type surgeist_fuzz::RunRecord::Error = surgeist_fuzz::FuzzError
@@ -270,6 +280,7 @@ pub surgeist_fuzz::artifact::RunRecordSpec::config: surgeist_fuzz::RunConfig
 pub surgeist_fuzz::artifact::RunRecordSpec::counts: surgeist_fuzz::ExecutionCounts
 pub surgeist_fuzz::artifact::RunRecordSpec::exclusions: alloc::vec::Vec<alloc::string::String>
 pub surgeist_fuzz::artifact::RunRecordSpec::failures: alloc::vec::Vec<surgeist_fuzz::EvidenceStatus>
+pub surgeist_fuzz::artifact::RunRecordSpec::outcome: surgeist_fuzz::RunOutcome
 pub surgeist_fuzz::artifact::RunRecordSpec::schema: u32
 pub surgeist_fuzz::artifact::RunRecordSpec::target: surgeist_fuzz::TargetDescriptor
 impl core::convert::TryFrom<surgeist_fuzz::RunRecordSpec> for surgeist_fuzz::RunRecord
@@ -365,6 +376,10 @@ pub const surgeist_fuzz::generation::INTEGER_EDGES: &[i64]
 pub fn surgeist_fuzz::generation::bounded_vector<T>(count: usize, item_charge: surgeist_fuzz::generation::BudgetCharge, budget: &mut surgeist_fuzz::generation::Budget, construct: impl core::ops::function::FnMut() -> surgeist_fuzz::Result<T>) -> surgeist_fuzz::Result<alloc::vec::Vec<T>>
 pub fn surgeist_fuzz::generation::forest_from_choices(choices: &[u64], budget: &mut surgeist_fuzz::generation::Budget) -> surgeist_fuzz::Result<surgeist_fuzz::generation::OrderedForest>
 pub mod surgeist_fuzz::reduction
+pub enum surgeist_fuzz::reduction::ReductionInterruption
+pub surgeist_fuzz::reduction::ReductionInterruption::Cancelled
+pub surgeist_fuzz::reduction::ReductionInterruption::OutputLimit
+pub surgeist_fuzz::reduction::ReductionInterruption::TimeLimit
 pub enum surgeist_fuzz::reduction::ReductionPhase
 pub surgeist_fuzz::reduction::ReductionPhase::Candidate
 pub surgeist_fuzz::reduction::ReductionPhase::Canonical
@@ -385,6 +400,8 @@ pub struct surgeist_fuzz::reduction::ReductionEvaluation
 pub surgeist_fuzz::reduction::ReductionEvaluation::outcome: surgeist_fuzz::CaseOutcome
 pub surgeist_fuzz::reduction::ReductionEvaluation::output_bytes: u64
 impl surgeist_fuzz::reduction::ReductionEvaluation
+pub fn surgeist_fuzz::reduction::ReductionEvaluation::interrupted(reason: surgeist_fuzz::reduction::ReductionInterruption, output_bytes: u64) -> surgeist_fuzz::Result<Self>
+pub const fn surgeist_fuzz::reduction::ReductionEvaluation::interruption(&self) -> core::option::Option<surgeist_fuzz::reduction::ReductionInterruption>
 pub const fn surgeist_fuzz::reduction::ReductionEvaluation::new(outcome: surgeist_fuzz::CaseOutcome, output_bytes: u64) -> Self
 pub struct surgeist_fuzz::reduction::ReductionLimits
 impl surgeist_fuzz::reduction::ReductionLimits
@@ -576,6 +593,15 @@ pub surgeist_fuzz::ProcessStopReason::OutputLimit::stream: surgeist_fuzz::Diagno
 pub enum surgeist_fuzz::ReplayMode
 pub surgeist_fuzz::ReplayMode::Comparison
 pub surgeist_fuzz::ReplayMode::Exact
+pub enum surgeist_fuzz::RunOutcome
+pub surgeist_fuzz::RunOutcome::Cancelled
+pub surgeist_fuzz::RunOutcome::Empty
+pub surgeist_fuzz::RunOutcome::Finding
+pub surgeist_fuzz::RunOutcome::InfrastructureFailure
+pub surgeist_fuzz::RunOutcome::Insufficient
+pub surgeist_fuzz::RunOutcome::InvalidRequest
+pub surgeist_fuzz::RunOutcome::ResourceStop
+pub surgeist_fuzz::RunOutcome::Sufficient
 pub struct surgeist_fuzz::ArtifactStore
 impl surgeist_fuzz::ArtifactStore
 pub fn surgeist_fuzz::ArtifactStore::add_corpus(&self, artifact: &surgeist_fuzz::CaseArtifact) -> surgeist_fuzz::Result<surgeist_generator::core::corpus::RelativePath>
@@ -870,6 +896,7 @@ pub struct surgeist_fuzz::RunRecord
 impl surgeist_fuzz::RunRecord
 pub const fn surgeist_fuzz::RunRecord::counts(&self) -> surgeist_fuzz::ExecutionCounts
 pub fn surgeist_fuzz::RunRecord::new(s: surgeist_fuzz::RunRecordSpec) -> surgeist_fuzz::Result<Self>
+pub const fn surgeist_fuzz::RunRecord::outcome(&self) -> surgeist_fuzz::RunOutcome
 pub fn surgeist_fuzz::RunRecord::readable_report(&self) -> alloc::string::String
 impl core::convert::TryFrom<surgeist_fuzz::RunRecordSpec> for surgeist_fuzz::RunRecord
 pub type surgeist_fuzz::RunRecord::Error = surgeist_fuzz::FuzzError
@@ -882,6 +909,7 @@ pub surgeist_fuzz::RunRecordSpec::config: surgeist_fuzz::RunConfig
 pub surgeist_fuzz::RunRecordSpec::counts: surgeist_fuzz::ExecutionCounts
 pub surgeist_fuzz::RunRecordSpec::exclusions: alloc::vec::Vec<alloc::string::String>
 pub surgeist_fuzz::RunRecordSpec::failures: alloc::vec::Vec<surgeist_fuzz::EvidenceStatus>
+pub surgeist_fuzz::RunRecordSpec::outcome: surgeist_fuzz::RunOutcome
 pub surgeist_fuzz::RunRecordSpec::schema: u32
 pub surgeist_fuzz::RunRecordSpec::target: surgeist_fuzz::TargetDescriptor
 impl core::convert::TryFrom<surgeist_fuzz::RunRecordSpec> for surgeist_fuzz::RunRecord

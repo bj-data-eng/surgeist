@@ -611,6 +611,7 @@ struct Preflight {
     host: String,
     metadata: serde_json::Value,
     regression_files: Option<Vec<PathBuf>>,
+    coverage_engine: Option<String>,
 }
 fn clean_source(o: &Options, cancel: &AtomicBool) -> Result<SourceRevision> {
     let run = |args: Vec<OsString>| -> Result<String> {
@@ -711,6 +712,7 @@ fn preflight(o: &Options, cancel: &AtomicBool) -> Result<Preflight> {
     }
     let mut regression_files = None;
     let mut source = None;
+    let mut coverage_engine = None;
     let mut compiler = String::new();
     let mut host = String::new();
     if !matches!(o.command.as_str(), "list" | "validate" | "report") {
@@ -851,6 +853,23 @@ fn preflight(o: &Options, cancel: &AtomicBool) -> Result<Preflight> {
             }
         }
     }
+    if let Some(target) = selected.first() {
+        let needs_engine = o.command == "run"
+            || o.corpus.is_some()
+            || o.engine_proposal
+            || (matches!(o.command.as_str(), "replay" | "minimize") && {
+                let work = o.work.as_ref().expect("validated work");
+                if !work.is_dir() {
+                    return Err(invalid(
+                        "replay or reduction requires existing campaign evidence",
+                    ));
+                }
+                origin_requires_coverage(o, work)?
+            });
+        if needs_engine {
+            coverage_engine = Some(resolve_coverage_engine(o, target, &host, cancel)?);
+        }
+    }
     Ok(Preflight {
         registry,
         selected,
@@ -859,6 +878,7 @@ fn preflight(o: &Options, cancel: &AtomicBool) -> Result<Preflight> {
         host,
         metadata,
         regression_files,
+        coverage_engine,
     })
 }
 /// Enumerate immutable owner inputs before output admission. Fixture roles are
@@ -985,6 +1005,65 @@ fn hash_tree(path: &Path) -> Result<Sha256Digest> {
     collect(path, path, &mut out)?;
     Ok(Sha256Digest::from_bytes(out))
 }
+fn build_features(o: &Options, coverage: bool) -> Vec<String> {
+    let mut features = o.features.clone();
+    if coverage {
+        features.push(o.coverage_feature.clone());
+    }
+    features.sort();
+    features.dedup();
+    features
+}
+fn resolve_coverage_engine(
+    o: &Options,
+    target: &RegisteredTarget,
+    host: &str,
+    cancel: &AtomicBool,
+) -> Result<String> {
+    let features = build_features(o, true);
+    let output = invoke(
+        Invocation {
+            tool: &o.tools.cargo,
+            cwd: target.package_root(),
+            args: vec![
+                "metadata".into(),
+                "--offline".into(),
+                "--locked".into(),
+                "--frozen".into(),
+                "--format-version=1".into(),
+                "--no-default-features".into(),
+                "--manifest-path".into(),
+                target.manifest_path().as_os_str().to_owned(),
+                "--features".into(),
+                features.join(",").into(),
+                "--filter-platform".into(),
+                host.into(),
+            ],
+            environment: environment(o),
+            input: Vec::new(),
+            output: TOOL_OUTPUT,
+            timeout: Duration::from_millis(o.build_ms),
+        },
+        cancel,
+    )?;
+    require_success(&output, "resolved owner dependency preflight")?;
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout.bytes)
+        .map_err(|error| infrastructure(error.to_string()))?;
+    let package = metadata["packages"]
+        .as_array()
+        .and_then(|packages| {
+            packages.iter().find(|package| {
+                package["manifest_path"]
+                    .as_str()
+                    .is_some_and(|path| Path::new(path) == target.manifest_path())
+            })
+        })
+        .ok_or_else(|| infrastructure("selected owner manifest absent from resolved metadata"))?;
+    let id = package["id"]
+        .as_str()
+        .ok_or_else(|| infrastructure("selected owner package ID missing"))?;
+    crate::engine_identity::validate_engine_identity(&metadata, id)
+}
 fn build(
     o: &Options,
     p: &Preflight,
@@ -997,12 +1076,7 @@ fn build(
         .source
         .clone()
         .ok_or_else(|| infrastructure("source missing"))?;
-    let mut features = o.features.clone();
-    if coverage {
-        features.push(o.coverage_feature.clone());
-    }
-    features.sort();
-    features.dedup();
+    let features = build_features(o, coverage);
     let context = Sha256Digest::from_bytes(format!(
         "{}|{}|{}|{}|{features:?}|{}",
         source,
@@ -1109,11 +1183,15 @@ fn build(
         executable: digest_file(&exe)?,
         toolchain: p.compiler.lines().collect::<Vec<_>>().join("; "),
         engine: if coverage {
-            "libfuzzer-sys; framed-owner-protocol"
+            format!(
+                "{}; framed-owner-protocol",
+                p.coverage_engine
+                    .as_deref()
+                    .ok_or_else(|| infrastructure("coverage engine was not admitted"))?
+            )
         } else {
-            "isolated-owner-protocol"
-        }
-        .into(),
+            "isolated-owner-protocol".into()
+        },
         sanitizer: if coverage {
             "address; sanitizer-coverage-level=4"
         } else {
@@ -2480,15 +2558,10 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
     let target = &preflight.selected[0];
     let work = create_work(options)?;
     let (ordinary, mut identity) = build(options, &preflight, target, &work, false, cancellation)?;
-    let coverage_needed = options.command == "run"
-        || options.corpus.is_some()
-        || options.engine_proposal
-        || (matches!(options.command.as_str(), "replay" | "minimize")
-            && origin_requires_coverage(options, &work)?);
-    let coverage_build = if coverage_needed {
+    let coverage_build = if let Some(engine_label) = &preflight.coverage_engine {
         let (executable, engine_identity) =
             build(options, &preflight, target, &work, true, cancellation)?;
-        identity = combine_engine_identity(&identity, &engine_identity)?;
+        identity = combine_engine_identity(&identity, &engine_identity, engine_label)?;
         Some(executable)
     } else {
         None
@@ -2626,6 +2699,7 @@ fn next_run(work: &Path) -> Result<PathBuf> {
 fn combine_engine_identity(
     ordinary: &BuildIdentity,
     engine: &BuildIdentity,
+    engine_label: &str,
 ) -> Result<BuildIdentity> {
     let mut spec: BuildIdentitySpec = serde_json::from_slice(
         &serde_json::to_vec(ordinary).map_err(|e| infrastructure(e.to_string()))?,
@@ -2643,7 +2717,7 @@ fn combine_engine_identity(
             serde_json::to_vec(engine).map_err(|e| infrastructure(e.to_string()))?,
         ),
     )?);
-    spec.engine = "libfuzzer-sys 0.4.13; canonical replay via isolated owner protocol".into();
+    spec.engine = format!("{engine_label}; canonical replay via isolated owner protocol");
     spec.sanitizer = "address; sanitizer-coverage-level=4; coverage feature in engine build".into();
     BuildIdentity::new(spec)
 }

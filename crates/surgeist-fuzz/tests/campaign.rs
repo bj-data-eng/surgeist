@@ -354,6 +354,10 @@ fn raw_and_structured_coverage_findings_replay_the_materialized_owner_case() {
         let finding = snapshot.invoke(args);
         assert_eq!(finding.status, CampaignStatus::Finding, "{finding:?}");
         assert!(finding.evaluated >= 1);
+        assert_eq!(
+            serde_json::to_value(&finding.builds[0]).unwrap()["engine"],
+            "libfuzzer-sys 0.4.13; canonical replay via isolated owner protocol"
+        );
         assert_eq!(finding.cleanup, "complete");
         let path = finding
             .artifacts

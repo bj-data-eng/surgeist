@@ -302,3 +302,13 @@ cargo test --offline --locked -j 1 -p surgeist-fuzz --features execution --test 
 
 See [crate guidance](AGENTS.md) for focused checks and the [notice](NOTICE.md)
 for this source distribution's direct dependency attribution.
+
+### Resolved engine identity
+
+Coverage preflight resolves the selected owner manifest offline with the build's
+explicit features and target platform. It requires exactly one `libfuzzer-sys`
+normal dependency at version 0.4.13 in that owner's enabled dependency graph.
+Missing, ambiguous or unsupported versions fail before campaign output is
+created. Unrelated workspace packages and development/build dependencies cannot
+satisfy that requirement. Build records use this verified version; replay and
+engine proposals perform the same admission check.
