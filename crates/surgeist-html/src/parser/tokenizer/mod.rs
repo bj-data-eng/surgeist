@@ -856,7 +856,23 @@ impl<'source> Tokenizer<'source> {
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
-        self.emit_point(point, &self.current.clone(), self.current_kind, c, evidence)
+        self.emit_current_point(point, self.current_kind, c, evidence)
+    }
+    fn emit_current_point(
+        &mut self,
+        point: u32,
+        kind: OriginKind,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        let text = DraftText::build(c, |text, c| text.push(point, &self.current, kind, c))?;
+        self.emit(
+            TokenKind::Text(text),
+            self.current.start(),
+            self.current.end(),
+            c,
+            evidence,
+        )
     }
     fn replacement(
         &mut self,
@@ -864,13 +880,7 @@ impl<'source> Tokenizer<'source> {
         evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
         self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
-        self.emit_point(
-            0xFFFD,
-            &self.current.clone(),
-            OriginKind::NullReplacement,
-            c,
-            evidence,
-        )
+        self.emit_current_point(0xFFFD, OriginKind::NullReplacement, c, evidence)
     }
     fn clear_temporary(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
         self.temporary.value.clear(c)?;
