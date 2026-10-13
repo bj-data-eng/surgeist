@@ -338,6 +338,18 @@ fn capture_evidence(process: &ProcessOutcome) -> Result<ProcessEvidence> {
 }
 
 pub(super) fn run(context: &CampaignContext<'_>, summary: &mut CampaignSummary) -> Result<()> {
+    run_with_executor(context, summary, execution::execute_streaming)
+}
+
+fn run_with_executor(
+    context: &CampaignContext<'_>,
+    summary: &mut CampaignSummary,
+    mut execute: impl FnMut(
+        &WorkerSpec,
+        &AtomicBool,
+        &mut execution::OutputConsumer<'_, FuzzError>,
+    ) -> std::result::Result<execution::StreamingOutcome<FuzzError>, execution::ExecutionError>,
+) -> Result<()> {
     let o = context.options;
     reserve_evidence(context)?;
     let limits = limits(o)?;
@@ -474,7 +486,7 @@ pub(super) fn run(context: &CampaignContext<'_>, summary: &mut CampaignSummary) 
             worker_limits,
         )
         .map_err(|e| infrastructure(e.to_string()))?;
-        let streamed = execution::execute_streaming(
+        let streamed = execute(
             &spec,
             context.cancellation,
             &mut |stream, bytes| -> Result<()> {
