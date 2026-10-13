@@ -393,3 +393,175 @@ fn capture_evidence_keeps_newest_diagnostic_tail_and_reports_discarded_bytes() {
     assert_eq!(process.stderr.bytes.len(), 64 * 1024);
     assert!(!process.stderr.truncated);
 }
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+struct ControllerFixture {
+    fixture: Fixture,
+    executable: PathBuf,
+    worker: Directory,
+    work: Directory,
+    _source: Directory,
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+impl ControllerFixture {
+    fn new(partial_header: bool) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let source = Directory::new();
+        let worker = Directory::new();
+        let work = Directory::new();
+        let mut fixture = Fixture::new(2, 8);
+        fixture.options.source = source.0.clone();
+        fixture.options.tools.git = PathBuf::from("/usr/bin/git");
+        fixture.options.round_ms = 300;
+        fixture.options.round_cases = 3;
+        fixture.options.case_ms = 10;
+        fixture.options.wall_ms = 5000;
+        fixture.options.storage_bytes = 4 * 1024 * 1024;
+        fixture.options.storage_entries = 8;
+        fixture.store = ArtifactStore::open(
+            &fixture.directory.0,
+            StorageLimits::new(8, 4 * 1024 * 1024, 1024, 8192).unwrap(),
+        )
+        .unwrap();
+        let git = |args: &[&str]| {
+            let output = invoke(
+                Invocation {
+                    tool: &fixture.options.tools.git,
+                    cwd: &source.0,
+                    args: args.iter().map(Into::into).collect(),
+                    environment: BTreeMap::from([
+                        ("GIT_CONFIG_GLOBAL".into(), "/dev/null".into()),
+                        ("GIT_CONFIG_SYSTEM".into(), "/dev/null".into()),
+                    ]),
+                    input: Vec::new(),
+                    output: 64 * 1024,
+                    timeout: Duration::from_secs(10),
+                },
+                &fixture.cancellation,
+            )
+            .unwrap();
+            require_success(&output, "controlled source setup").unwrap();
+            output_text(&output).unwrap()
+        };
+        git(&["init", "--quiet"]);
+        git(&[
+            "-c",
+            "user.name=Controlled Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgSign=false",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "Controlled source fixture",
+        ]);
+        let revision = git(&["rev-parse", "HEAD"]);
+        let mut build = serde_json::to_value(&fixture.build).unwrap();
+        build["source"] = revision.trim().into();
+        fixture.build = serde_json::from_value(build).unwrap();
+        let executable = worker.0.join("controlled-worker");
+        let mut frames = Vec::new();
+        worker::write_frame(
+            &mut frames,
+            &WorkerResponse::Captured {
+                canonical: vec![0, 255],
+            },
+            1024,
+        )
+        .unwrap();
+        worker::write_frame(
+            &mut frames,
+            &evaluated(
+                CaseOutcome::evaluated(fixture.target.properties().to_vec()).unwrap(),
+                1,
+                0,
+            ),
+            1024,
+        )
+        .unwrap();
+        if partial_header {
+            frames.extend_from_slice(&[0, 0, 0]);
+        }
+        fs::write(executable.with_extension("frames"), frames).unwrap();
+        fs::write(&executable, b"#!/bin/sh\nprintf 'run\\n' >> \"$0.launches\"\n/bin/cat \"$0.frames\"\nwhile :; do /bin/sleep 60; done\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        Self {
+            fixture,
+            executable,
+            worker,
+            work,
+            _source: source,
+        }
+    }
+
+    fn context(&self) -> CampaignContext<'_> {
+        CampaignContext {
+            executable: &self.executable,
+            cwd: &self.work.0,
+            ..self.fixture.context()
+        }
+    }
+
+    fn launches(&self) -> usize {
+        fs::read_to_string(self.worker.0.join("controlled-worker.launches"))
+            .unwrap()
+            .lines()
+            .count()
+    }
+
+    fn checkpoint(&self) -> serde_json::Value {
+        serde_json::from_slice(&fs::read(self.work.0.join("session-state/progress.json")).unwrap())
+            .unwrap()
+    }
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn deadline_with_partial_next_frame_stops_without_rotating_to_another_round() {
+    let fixture = ControllerFixture::new(true);
+    let context = fixture.context();
+    let mut summary = CampaignSummary::new("run");
+    run(&context, &mut summary).unwrap();
+    assert_eq!(summary.status, CampaignStatus::ResourceStop, "{summary:?}");
+    assert_eq!(summary.evaluated, 1);
+    assert_eq!(fixture.launches(), 1);
+    assert_eq!(summary.cleanup, "complete");
+    assert_eq!(fixture.checkpoint()["terminal"], "resource-stop");
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn cancellation_before_next_spawn_publishes_terminal_counts_and_cancelled_record() {
+    let fixture = ControllerFixture::new(false);
+    let context = fixture.context();
+    let mut summary = CampaignSummary::new("run");
+    let mut attempts = 0;
+    let result = run_with_executor(&context, &mut summary, |spec, cancellation, consumer| {
+        attempts += 1;
+        if attempts == 2 {
+            cancellation.store(true, Ordering::Release);
+        }
+        execution::execute_streaming(spec, cancellation, consumer)
+    });
+    assert!(
+        result.is_ok(),
+        "pre-spawn cancellation lost terminal evidence: {result:?}; {summary:?}"
+    );
+    assert_eq!(summary.status, CampaignStatus::Cancelled);
+    assert_eq!(summary.evaluated, 1);
+    assert_eq!(fixture.launches(), 1);
+    let checkpoint = fixture.checkpoint();
+    assert_eq!(checkpoint["terminal"], "cancelled");
+    assert_eq!(checkpoint["evaluated"], 1);
+    let [reference] = summary.artifacts.as_slice() else {
+        panic!("cancelled campaign did not publish one terminal record")
+    };
+    let reference = crate::RelativePath::new(reference).unwrap();
+    let record = fixture.fixture.store.load_run(&reference).unwrap();
+    assert_eq!(record.outcome(), RunOutcome::Cancelled);
+    assert_eq!(record.counts(), ExecutionCounts::new(1, 0));
+}
