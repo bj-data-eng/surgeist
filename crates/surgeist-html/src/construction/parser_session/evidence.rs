@@ -900,4 +900,250 @@ mod tests {
         e.release(&mut c).unwrap();
         assert_released(&c);
     }
+
+    #[test]
+    fn tokenizer_null_comment_diagnostics_retain_bounded_pair_layouts() {
+        use super::super::provenance::{LexicalOccurrence, LexicalPart};
+        use crate::parser::tokenizer::{
+            Tokenizer,
+            token::{Event, OriginKind, Text, TextOrigin, Token, TokenEvent, TokenKind},
+        };
+
+        // HTML 877d comment state: one error and FFFD for each NULL. The real
+        // closed comment is followed by actual EOF, not a synthetic diagnostic
+        // append or ordinary-tree fixture. All limits precede observations.
+        // R=N+64; the quadratic term admits existing exact pair/comment/part
+        // submissions, while linear/fixed room admits lexical and owner fees.
+        // These finite fixture allowances are not an HTML work coefficient,
+        // allocator/RSS claim or the archived 100M threshold.
+        let per_record = mem::size_of::<DiagnosticRecord>()
+            + mem::size_of::<DiagnosticLocation>()
+            + mem::size_of::<TextOrigin>()
+            + mem::size_of::<LexicalOccurrence>()
+            + mem::size_of::<LexicalPart>()
+            + mem::size_of::<crate::HtmlSourceRange>()
+            + mem::size_of::<u16>();
+        let fixed = mem::size_of::<ParseControl>()
+            + mem::size_of::<ParseEvidence>()
+            + mem::size_of::<Tokenizer<'_>>()
+            + mem::size_of::<TokenEvent>()
+            + mem::size_of::<Token>()
+            + mem::size_of::<Text>()
+            + 8 * mem::size_of::<Option<Event>>();
+        let exact_growth = mem::size_of::<DiagnosticRecord>()
+            + mem::size_of::<DiagnosticLocation>()
+            + mem::size_of::<LexicalPart>()
+            + mem::size_of::<u16>();
+        let mut observations = Vec::new(); // Caller-owned observations only.
+        for n in [0_usize, 1, 8, 32, 128, 512] {
+            let room = (n + 64) as u64;
+            let physical = 64 * room * per_record as u64 + 16 * fixed as u64;
+            let work = 4 * room * room * exact_growth as u64
+                + 1024 * room * per_record as u64
+                + 32 * fixed as u64;
+            let selected = crate::HtmlParseLimits::builder()
+                .source_units((n + 7) as u64)
+                .buffered_utf16_units(64 * room)
+                .token_attributes(0)
+                .auxiliary_entries(64 * room)
+                .managed_nodes(0)
+                .managed_edges(0)
+                .managed_attributes(0)
+                .managed_utf16_units(64 * room)
+                .source_map_entries(128 * room)
+                .source_map_payload_units(64 * room)
+                .diagnostics((n + 8) as u64)
+                .diagnostic_payload_units(0)
+                .context_effects(0)
+                .open_elements(0)
+                .tree_depth(0)
+                .managed_capacity_bytes(physical)
+                .peak_transient_bytes(2 * physical)
+                .atomic_layout_bytes(physical)
+                .work_credits(work)
+                .finish()
+                .unwrap();
+            let source = HtmlSource::utf8(format!("<!--{}-->", "\0".repeat(n)));
+            assert_eq!(source.len(), n + 7);
+            let (mut c, mut evidence) = owner(&source, selected);
+            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut record_slots = 0;
+            let mut location_slots = 0;
+            let mut record_reservations = 0;
+            let mut location_reservations = 0;
+            let mut diagnostics = 0;
+            let mut comments = 0;
+            let mut eof = 0;
+            let mut exhausted = false;
+            for _ in 0..(source.len() + 8) {
+                let old_records = evidence.records.capacity();
+                let old_locations = evidence.locations.capacity();
+                let event = lexer.next(&mut c, false, &mut evidence).unwrap();
+                let records = evidence.records.capacity();
+                let locations = evidence.locations.capacity();
+                if records != old_records {
+                    record_slots += old_records + records;
+                    record_reservations += 1;
+                }
+                if locations != old_locations {
+                    location_slots += old_locations + locations;
+                    location_reservations += 1;
+                }
+                let Some(event) = event else {
+                    exhausted = true;
+                    break;
+                };
+                match &event {
+                    Event::Diagnostic(id) => {
+                        assert_eq!((comments, eof), (0, 0));
+                        assert!(diagnostics < n);
+                        assert_eq!(id.index, diagnostics);
+                        assert!(Arc::ptr_eq(&id.evidence, &evidence.identity));
+                        let (record, location) = evidence.get(&mut c, id).unwrap();
+                        assert_eq!(
+                            record.kind,
+                            DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                        );
+                        assert_eq!(
+                            record.context,
+                            DiagnosticContext::Tokenizer {
+                                phase: DiagnosticPhase::Tokenizer,
+                                state: State::Comment,
+                            }
+                        );
+                        assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+                        assert_eq!(record.rule.anchor, "parse-error-unexpected-null-character");
+                        assert_eq!(record.rule.branch, "unexpected-null-character");
+                        assert_eq!(record.location, diagnostics);
+                        assert_eq!(location.role, DiagnosticLocationRole::InputFrontier);
+                        assert_eq!(location.token, None);
+                        assert_eq!(location.source.source(), source.identity());
+                        assert_eq!(
+                            (location.source.start(), location.source.end()),
+                            (4 + diagnostics, 5 + diagnostics)
+                        );
+                        diagnostics += 1;
+                    }
+                    Event::Token(value) => {
+                        assert_eq!(diagnostics, n);
+                        let token = value.token();
+                        assert_eq!(token.source.source(), source.identity());
+                        match &token.kind {
+                            TokenKind::Comment(text) => {
+                                assert_eq!((comments, eof), (0, 0));
+                                assert_eq!((token.source.start(), token.source.end()), (0, n + 7));
+                                assert_eq!(text.value.text().code_units(), vec![0xfffd; n]);
+                                assert_eq!(text.origins.len(), n);
+                                for (i, origin) in text.origins.as_slice().iter().enumerate() {
+                                    assert_eq!(origin.kind, OriginKind::NullReplacement);
+                                    assert_eq!((origin.start, origin.end), (i, i + 1));
+                                    assert_eq!(origin.source.source(), source.identity());
+                                    assert_eq!(
+                                        (origin.source.start(), origin.source.end()),
+                                        (4 + i, 5 + i)
+                                    );
+                                }
+                                comments += 1;
+                            }
+                            TokenKind::Eof => {
+                                assert_eq!((comments, eof), (1, 0));
+                                assert_eq!(
+                                    (token.source.start(), token.source.end()),
+                                    (n + 7, n + 7)
+                                );
+                                eof += 1;
+                            }
+                            _ => panic!("unexpected token in the literal NULL comment"),
+                        }
+                    }
+                    Event::Preprocessing { .. } => panic!("no preprocessing in the literal source"),
+                }
+                assert_eq!(evidence.records.len(), diagnostics);
+                assert_eq!(evidence.locations.len(), diagnostics);
+                event.release(&mut c).unwrap();
+            }
+            assert!(exhausted, "actual lexical exhaustion for N={n}");
+            assert_eq!((diagnostics, comments, eof), (n, 1, 1));
+            assert_eq!((evidence.records.len(), evidence.locations.len()), (n, n));
+            let final_records = evidence.records.capacity();
+            let final_locations = evidence.locations.capacity();
+            let parse_reserve = c.usage().work(WorkCategory::ReserveByte);
+            let submitted_pair_bytes = record_slots * mem::size_of::<DiagnosticRecord>()
+                + location_slots * mem::size_of::<DiagnosticLocation>();
+            assert!(parse_reserve >= submitted_pair_bytes as u64);
+            let retained = evidence.diagnostics();
+            assert_eq!(retained.len(), n);
+            for i in 0..n {
+                let (record, location) = retained.retained_record(i).unwrap();
+                assert_eq!(record.location, i);
+                assert_eq!(
+                    record.kind,
+                    DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                );
+                assert_eq!(location.source.source(), source.identity());
+                assert_eq!(
+                    (location.source.start(), location.source.end()),
+                    (4 + i, 5 + i)
+                );
+            }
+            assert!(retained.retained_record(n).is_none());
+            assert_eq!(c.stop(), None);
+            let before_cleanup = c.usage().clone();
+            lexer.release(&mut c).unwrap();
+            evidence.release(&mut c).unwrap();
+            assert_released(&c);
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            for resource in [
+                HtmlParseResource::BufferedUtf16Units,
+                HtmlParseResource::TokenAttributes,
+                HtmlParseResource::AuxiliaryEntries,
+                HtmlParseResource::ManagedEdges,
+                HtmlParseResource::ManagedAttributes,
+                HtmlParseResource::ManagedUtf16Units,
+                HtmlParseResource::SourceMapEntries,
+                HtmlParseResource::SourceMapPayloadUnits,
+                HtmlParseResource::Diagnostics,
+                HtmlParseResource::DiagnosticPayloadUnits,
+                HtmlParseResource::ContextEffects,
+                HtmlParseResource::OpenElements,
+                HtmlParseResource::ManagedCapacityBytes,
+                HtmlParseResource::PeakTransientBytes,
+            ] {
+                assert_eq!(
+                    c.usage().resource(resource).current,
+                    0,
+                    "N={n} {resource:?}"
+                );
+                assert!(
+                    c.usage().resource(resource).high_water
+                        >= before_cleanup.resource(resource).high_water
+                );
+            }
+            assert!(c.usage().work(WorkCategory::ReserveByte) >= parse_reserve);
+            assert_eq!(c.stop(), None);
+            eprintln!(
+                "Pair witness N={n} record_reservations={record_reservations} record_slots={record_slots} final_records={final_records} compiled_record_bytes={} location_reservations={location_reservations} location_slots={location_slots} final_locations={final_locations} compiled_location_bytes={} parse_all_writer_reserve_bytes={parse_reserve} cleanup_actual_bytes={}",
+                mem::size_of::<DiagnosticRecord>(),
+                mem::size_of::<DiagnosticLocation>(),
+                c.usage().actual_capacity_bytes
+            );
+            observations.push((n, record_slots, location_slots));
+        }
+        // All six literal diagnostic/token/source/issuer/EOF/cleanup cases were
+        // checked before either growth assertion. These per-writer envelopes
+        // neither attribute whole ReserveByte to the pair nor prescribe a
+        // blanket Vec policy, physical copying or HTML linearity coefficient.
+        for (n, record_slots, location_slots) in observations {
+            assert!(
+                record_slots <= 8 * n,
+                "DiagnosticRecord layout submissions for N={n}: {record_slots} > {}",
+                8 * n
+            );
+            assert!(
+                location_slots <= 8 * n,
+                "DiagnosticLocation layout submissions for N={n}: {location_slots} > {}",
+                8 * n
+            );
+        }
+    }
 }
