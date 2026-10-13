@@ -2535,6 +2535,7 @@ pub surgeist_html::HtmlSemanticFact::TableRowIndex(surgeist_html::HtmlSemanticVa
 pub surgeist_html::HtmlSemanticFact::TableRows(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableRowCollection>)
 pub surgeist_html::HtmlSemanticFact::TableSectionRowIndex(surgeist_html::HtmlSemanticValue<core::option::Option<usize>>)
 pub surgeist_html::HtmlSemanticFact::TableSectionRows(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTableRowCollection>)
+pub surgeist_html::HtmlSemanticFact::TemplateForReference(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTemplateForReport>)
 pub surgeist_html::HtmlSemanticFact::TextareaDefaultValue(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlControlTextReadback>)
 pub surgeist_html::HtmlSemanticFact::TextareaValueMissing(surgeist_html::HtmlSemanticValue<bool>)
 pub surgeist_html::HtmlSemanticFact::TimeElement(surgeist_html::HtmlSemanticValue<surgeist_html::HtmlTimeElementReadback>)
@@ -2682,6 +2683,7 @@ pub surgeist_html::HtmlSemanticQuery::TableRowIndex
 pub surgeist_html::HtmlSemanticQuery::TableRows
 pub surgeist_html::HtmlSemanticQuery::TableSectionRowIndex
 pub surgeist_html::HtmlSemanticQuery::TableSectionRows
+pub surgeist_html::HtmlSemanticQuery::TemplateForReference
 pub surgeist_html::HtmlSemanticQuery::TextareaDefaultValue
 pub surgeist_html::HtmlSemanticQuery::TextareaValueMissing
 pub surgeist_html::HtmlSemanticQuery::TimeElement
@@ -2906,6 +2908,20 @@ pub enum surgeist_html::HtmlTemplateDocumentRole
 pub surgeist_html::HtmlTemplateDocumentRole::InertTemplate
 pub surgeist_html::HtmlTemplateDocumentRole::Ordinary
 pub surgeist_html::HtmlTemplateDocumentRole::Unavailable
+pub enum surgeist_html::HtmlTemplateForNameRelation
+pub surgeist_html::HtmlTemplateForNameRelation::Match(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlTemplateForNameRelation::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlTemplateForNameRelation::NoMatch
+pub surgeist_html::HtmlTemplateForNameRelation::NotSpecified
+pub enum surgeist_html::HtmlTemplateForSelection
+pub surgeist_html::HtmlTemplateForSelection::EmptyName
+pub surgeist_html::HtmlTemplateForSelection::Marker(surgeist_html::HtmlCaptureSubjectId)
+pub surgeist_html::HtmlTemplateForSelection::Missing(surgeist_html::HtmlSemanticMissing)
+pub surgeist_html::HtmlTemplateForSelection::NoMatch
+pub surgeist_html::HtmlTemplateForSelection::NotSpecified
+pub surgeist_html::HtmlTemplateForSelection::Start
+pub surgeist_html::HtmlTemplateForSelection::Start::end: core::option::Option<surgeist_html::HtmlCaptureSubjectId>
+pub surgeist_html::HtmlTemplateForSelection::Start::start: surgeist_html::HtmlCaptureSubjectId
 pub enum surgeist_html::HtmlTemporalError
 pub surgeist_html::HtmlTemporalError::DayOutOfRange
 pub surgeist_html::HtmlTemporalError::HourOutOfRange
@@ -6085,6 +6101,11 @@ impl surgeist_html::HtmlTableRowGroup
 pub fn surgeist_html::HtmlTableRowGroup::height(&self) -> usize
 pub fn surgeist_html::HtmlTableRowGroup::subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
 pub fn surgeist_html::HtmlTableRowGroup::y(&self) -> usize
+pub struct surgeist_html::HtmlTemplateForReport
+impl surgeist_html::HtmlTemplateForReport
+pub fn surgeist_html::HtmlTemplateForReport::name_relation(&self) -> &surgeist_html::HtmlTemplateForNameRelation
+pub fn surgeist_html::HtmlTemplateForReport::raw_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::HtmlTemplateForReport::selection(&self) -> &surgeist_html::HtmlTemplateForSelection
 pub struct surgeist_html::HtmlTemporalPrecisionError
 impl core::error::Error for surgeist_html::HtmlTemporalPrecisionError
 impl core::fmt::Display for surgeist_html::HtmlTemporalPrecisionError

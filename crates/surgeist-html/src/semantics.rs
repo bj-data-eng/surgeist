@@ -22,7 +22,9 @@ mod language;
 pub use language::*;
 mod advisory_title;
 mod dfn;
+mod template;
 pub use dfn::*;
+pub use template::*;
 mod address;
 mod anchor;
 mod document_title;
@@ -883,6 +885,8 @@ pub enum HtmlSemanticQuery {
     AdvisoryInformation,
     /// Exact defining term selected from own title, one abbr child, or descendant text.
     DfnDefiningTerm,
+    /// Same-tree template-for author witness and first marker/start selection.
+    TemplateForReference,
     /// Exact direct-child Text data of an HTML title element.
     TitleText,
     /// Exact ordinary descendant Text data of an HTML a element.
@@ -1026,6 +1030,9 @@ impl HtmlSemanticQuery {
             }
             Self::AdvisoryInformation => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#advisory-information"
+            }
+            Self::TemplateForReference => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-template-for"
             }
             Self::DfnDefiningTerm => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#defining-term"
@@ -1424,6 +1431,7 @@ pub enum HtmlSemanticFact {
     Directionality(HtmlSemanticValue<HtmlDirectionality>),
     AdvisoryInformation(HtmlSemanticValue<HtmlAdvisoryInformation>),
     DfnDefiningTerm(HtmlSemanticValue<HtmlDefiningTerm>),
+    TemplateForReference(HtmlSemanticValue<HtmlTemplateForReport>),
     TitleText(HtmlSemanticValue<DocumentString>),
     AnchorText(HtmlSemanticValue<DocumentString>),
     AddressHasForbiddenDescendant(HtmlSemanticValue<bool>),
@@ -1719,6 +1727,8 @@ pub struct HtmlSemanticSession<'a> {
     qualification: Arc<HtmlSemanticQualification>,
     usage: HtmlSemanticUsage,
     failure: Option<HtmlSemanticFailure>,
+    #[cfg(test)]
+    template_cancellation: Option<(template::CancellationPoint, HtmlSemanticCancellation)>,
 }
 #[derive(Clone, Copy)]
 enum HtmlParticipationField {
@@ -1770,6 +1780,8 @@ impl<'a> HtmlSemanticSession<'a> {
             }),
             usage: HtmlSemanticUsage::default(),
             failure: None,
+            #[cfg(test)]
+            template_cancellation: None,
         })
     }
     pub fn usage(&self) -> HtmlSemanticUsage {
@@ -2806,6 +2818,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         request.query,
                         HtmlSemanticQuery::IsAttributeAuthorContext
                             | HtmlSemanticQuery::MediaAttributeRules
+                            | HtmlSemanticQuery::TemplateForReference
                     ) {
                         false
                     } else {
@@ -2888,6 +2901,11 @@ impl<'a> HtmlSemanticSession<'a> {
                             } else {
                                 self.advisory_information(node, element)?
                             })
+                        }
+                        HtmlSemanticQuery::TemplateForReference => {
+                            HtmlSemanticFact::TemplateForReference(
+                                self.template_for_reference(&request.subject, element)?,
+                            )
                         }
                         HtmlSemanticQuery::DfnDefiningTerm => {
                             HtmlSemanticFact::DfnDefiningTerm(if foreign {
@@ -3354,6 +3372,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     HtmlSemanticQuery::AdvisoryInformation => {
                         HtmlSemanticFact::AdvisoryInformation(HtmlSemanticValue::Inapplicable)
+                    }
+                    HtmlSemanticQuery::TemplateForReference => {
+                        HtmlSemanticFact::TemplateForReference(HtmlSemanticValue::Inapplicable)
                     }
                     HtmlSemanticQuery::DfnDefiningTerm => {
                         HtmlSemanticFact::DfnDefiningTerm(HtmlSemanticValue::Inapplicable)

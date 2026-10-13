@@ -9,22 +9,27 @@ pub(super) struct PseudoAttribute {
     value_slot: usize,
 }
 
-fn xml_char(cp: u32) -> bool {
-    matches!(cp, 9|10|13|0x20..=0xd7ff|0xe000..=0xfffd|0x10000..=0x10ffff)
+struct PendingField {
+    buffer: Utf16Buffer,
+    maps: OwnedVec<TextOrigin>,
 }
-fn name_start(cp: u32) -> bool {
-    matches!(cp, 0x3a|0x41..=0x5a|0x5f|0x61..=0x7a|0xc0..=0xd6|0xd8..=0xf6|
-        0xf8..=0x2ff|0x370..=0x37d|0x37f..=0x1fff|0x200c..=0x200d|
-        0x2070..=0x218f|0x2c00..=0x2fef|0x3001..=0xd7ff|0xf900..=0xfdcf|
-        0xfdf0..=0xfffd|0x10000..=0xeffff)
+impl PendingField {
+    fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
+        let buffer = Utf16Buffer::new(c)?;
+        match OwnedVec::new(HtmlParseResource::SourceMapEntries) {
+            Ok(maps) => Ok(Self { buffer, maps }),
+            Err(error) => {
+                buffer.release(c)?;
+                Err(error.into())
+            }
+        }
+    }
+    fn release(self, c: &mut ParseControl) -> Result<(), SessionError> {
+        self.buffer.release(c)?;
+        self.maps.release(c)?;
+        Ok(())
+    }
 }
-fn name_char(cp: u32) -> bool {
-    name_start(cp) || matches!(cp,0x2d|0x2e|0x30..=0x39|0xb7|0x300..=0x36f|0x203f..=0x2040)
-}
-fn whitespace(cp: u32) -> bool {
-    matches!(cp, 9 | 10 | 13 | 32)
-}
-
 impl SessionStorage {
     fn raw_value(&self, c: &mut ParseControl, slot: usize) -> Result<DocumentString, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -42,274 +47,206 @@ impl SessionStorage {
     fn retire_raw(&mut self, c: &mut ParseControl, slot: usize) -> Result<(), SessionError> {
         self.retire_registered_string(c, slot)
     }
-    fn pi_scalar(
-        &self,
-        c: &mut ParseControl,
-        node: usize,
-        offset: usize,
-    ) -> Result<Option<(u32, usize)>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 2)?;
-        let HtmlNodeKind::ProcessingInstruction(pi) = &self.records[node].kind else {
-            return Err(SessionError::WrongToken);
+    pub(super) fn prepare_pi_map(&mut self, c: &mut ParseControl) -> Result<usize, SessionError> {
+        let values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        self.prepare_payload_slot_owned(c)?;
+        let map = self.payloads.values.len();
+        self.payloads.values.push(RetainedPayload::PiAttributes {
+            node: None,
+            values,
+            ready: false,
+        });
+        Ok(map)
+    }
+    pub(super) fn bind_pi_map(&mut self, map: usize, node: usize) {
+        let RetainedPayload::PiAttributes { node: bound, .. } = &mut self.payloads.values[map]
+        else {
+            unreachable!()
         };
-        let units = pi.data().code_units();
-        if offset >= units.len() {
-            return Ok(None);
-        }
-        c.charge(WorkCategory::InspectByte, 2)?;
-        let first = units[offset];
-        if (0xd800..=0xdbff).contains(&first) && offset + 1 < units.len() {
-            c.charge(WorkCategory::InspectByte, 2)?;
-            let second = units[offset + 1];
-            if (0xdc00..=0xdfff).contains(&second) {
-                return Ok(Some((
-                    0x10000 + ((u32::from(first) - 0xd800) << 10) + u32::from(second) - 0xdc00,
-                    2,
-                )));
-            }
-        }
-        Ok(Some((u32::from(first), 1)))
+        *bound = Some(node);
     }
-    fn pi_skip_space(
-        &self,
-        c: &mut ParseControl,
-        node: usize,
-        offset: &mut usize,
-    ) -> Result<bool, SessionError> {
-        let start = *offset;
-        while let Some((cp, width)) = self.pi_scalar(c, node, *offset)? {
-            if !whitespace(cp) {
-                break;
-            }
-            payload_write::<usize>(c, 1)?;
-            *offset += width;
-        }
-        Ok(*offset != start)
-    }
-    fn pi_reference(
-        &self,
-        c: &mut ParseControl,
-        node: usize,
-        offset: &mut usize,
-    ) -> Result<Option<u32>, SessionError> {
-        payload_write::<usize>(c, 1)?;
-        *offset += 1; // actual '&' inspected by the value owner
-        if self.pi_scalar(c, node, *offset)?.map(|p| p.0) == Some(35) {
-            payload_write::<usize>(c, 1)?;
-            *offset += 1;
-            let radix = if self.pi_scalar(c, node, *offset)?.map(|p| p.0) == Some(120) {
-                payload_write::<usize>(c, 1)?;
-                *offset += 1;
-                16u32
-            } else {
-                10u32
-            };
-            let mut value = 0u32;
-            let mut digits = 0usize;
-            loop {
-                let Some((cp, width)) = self.pi_scalar(c, node, *offset)? else {
-                    return Ok(None);
-                };
-                if cp == 59 {
-                    payload_write::<usize>(c, 1)?;
-                    *offset += width;
-                    return Ok((digits != 0 && xml_char(value)).then_some(value));
-                }
-                let digit = match cp {
-                    48..=57 => cp - 48,
-                    65..=70 if radix == 16 => cp - 65 + 10,
-                    97..=102 if radix == 16 => cp - 97 + 10,
-                    _ => return Ok(None),
-                };
-                let Some(next) = value.checked_mul(radix).and_then(|v| v.checked_add(digit)) else {
-                    return Ok(None);
-                };
-                payload_write::<(u32, usize, usize)>(c, 3)?;
-                value = next;
-                digits += 1;
-                *offset += width;
-            }
-        }
-        // The closed five names are the complete external grammar alternatives.
-        for (name, cp) in [
-            (b"amp;".as_slice(), 38),
-            (b"lt;".as_slice(), 60),
-            (b"gt;".as_slice(), 62),
-            (b"quot;".as_slice(), 34),
-            (b"apos;".as_slice(), 39),
-        ] {
-            let mut matched = true;
-            for (index, byte) in name.iter().enumerate() {
-                c.charge(WorkCategory::InspectByte, 1)?;
-                if self.pi_scalar(c, node, *offset + index)?.map(|p| p.0) != Some(u32::from(*byte))
-                {
-                    matched = false;
-                    break;
-                }
-            }
-            if matched {
-                payload_write::<usize>(c, 1)?;
-                *offset += name.len();
-                return Ok(Some(cp));
-            }
-        }
-        Ok(None)
-    }
-    fn parse_pi_pair(
+
+    pub(super) fn parse_pi_map(
         &mut self,
         c: &mut ParseControl,
         node: usize,
         map: usize,
-        offset: &mut usize,
-    ) -> Result<bool, SessionError> {
-        let mut name = Utf16Buffer::new(c)?;
-        let mut name_maps = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
-        let parsed = (|| {
-            let Some((cp, width)) = self.pi_scalar(c, node, *offset)? else {
-                return Ok(false);
-            };
-            if !name_start(cp) {
-                return Ok(false);
-            }
-            append_scalar(&mut name, c, cp)?;
-            self.pi_piece_origins(
-                c,
-                node,
-                *offset..*offset + width,
-                0..name.len(),
-                false,
-                &mut name_maps,
-            )?;
-            payload_write::<usize>(c, 1)?;
-            *offset += width;
-            while let Some((cp, width)) = self.pi_scalar(c, node, *offset)? {
-                if !name_char(cp) {
-                    break;
-                }
-                let begin = name.len();
-                append_scalar(&mut name, c, cp)?;
-                self.pi_piece_origins(
-                    c,
-                    node,
-                    *offset..*offset + width,
-                    begin..name.len(),
-                    false,
-                    &mut name_maps,
-                )?;
-                payload_write::<usize>(c, 1)?;
-                *offset += width;
-            }
-            self.pi_skip_space(c, node, offset)?;
-            if self.pi_scalar(c, node, *offset)?.map(|p| p.0) != Some(61) {
-                return Ok(false);
-            }
-            payload_write::<usize>(c, 1)?;
-            *offset += 1;
-            self.pi_skip_space(c, node, offset)?;
-            Ok::<_, SessionError>(true)
-        })();
-        match parsed {
-            Ok(true) => {}
-            result => {
-                name.release(c)?;
-                name_maps.release(c)?;
-                return result;
-            }
-        }
-        let mut value = match Utf16Buffer::new(c) {
-            Ok(v) => v,
-            Err(stop) => {
-                name.release(c)?;
-                name_maps.release(c)?;
-                return Err(stop.into());
-            }
+    ) -> Result<(), SessionError> {
+        use crate::pi_pseudo_attributes::{Action, Cursor, Field, Name, Reply};
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let HtmlNodeKind::ProcessingInstruction(pi) = &self.records[node].kind else {
+            return Err(SessionError::WrongToken);
         };
-        let mut value_maps = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
-        let parsed = (|| {
-            let Some((quote, _)) = self.pi_scalar(c, node, *offset)? else {
-                return Ok(false);
-            };
-            if !matches!(quote, 34 | 39) {
-                return Ok(false);
-            }
-            payload_write::<usize>(c, 1)?;
-            *offset += 1;
-            loop {
-                let Some((cp, width)) = self.pi_scalar(c, node, *offset)? else {
-                    return Ok(false);
-                };
-                if cp == quote {
-                    payload_write::<usize>(c, 1)?;
-                    *offset += width;
-                    return Ok(true);
-                }
-                if cp == 38 {
-                    let source_begin = *offset;
-                    let output_begin = value.len();
-                    let Some(cp) = self.pi_reference(c, node, offset)? else {
-                        return Ok(false);
-                    };
-                    append_scalar(&mut value, c, cp)?;
-                    self.pi_piece_origins(
-                        c,
-                        node,
-                        source_begin..*offset,
-                        output_begin..value.len(),
-                        true,
-                        &mut value_maps,
-                    )?;
-                } else {
-                    if cp == 60 || !xml_char(cp) {
-                        return Ok(false);
+        let mut cursor = Cursor::new(pi.data().len());
+        let mut name: Option<PendingField> = None;
+        let mut value: Option<PendingField> = None;
+        let result = (|| {
+            while let Some(action) = cursor.action() {
+                payload_write::<Cursor>(c, 1)?;
+                let reply = match action {
+                    Action::Read(offset) => {
+                        c.charge(WorkCategory::RecordVisit, 2)?;
+                        let HtmlNodeKind::ProcessingInstruction(pi) = &self.records[node].kind
+                        else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        let unit = if offset < pi.data().len() {
+                            c.charge(WorkCategory::InspectByte, 2)?;
+                            Some(pi.data().code_units()[offset])
+                        } else if offset == pi.data().len() {
+                            None
+                        } else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        Reply::Unit(unit)
                     }
-                    let output_begin = value.len();
-                    append_scalar(&mut value, c, cp)?;
-                    self.pi_piece_origins(
-                        c,
-                        node,
-                        *offset..*offset + width,
-                        output_begin..value.len(),
-                        false,
-                        &mut value_maps,
-                    )?;
-                    payload_write::<usize>(c, 1)?;
-                    *offset += width;
-                }
+                    Action::Step => Reply::Ack,
+                    Action::Begin(field) => {
+                        let pending = PendingField::new(c)?;
+                        match field {
+                            Field::Name => name = Some(pending),
+                            Field::Value => value = Some(pending),
+                        }
+                        Reply::Ack
+                    }
+                    Action::Emit {
+                        field,
+                        units,
+                        len,
+                        start,
+                        end,
+                        reference,
+                    } => {
+                        let pending = match field {
+                            Field::Name => name.as_mut(),
+                            Field::Value => value.as_mut(),
+                        }
+                        .ok_or(SessionError::WrongToken)?;
+                        let begin = pending.buffer.len();
+                        pending.buffer.extend_units(&units[..len], c)?;
+                        self.pi_piece_origins(
+                            c,
+                            node,
+                            start..end,
+                            begin..pending.buffer.len(),
+                            reference,
+                            &mut pending.maps,
+                        )?;
+                        Reply::Ack
+                    }
+                    Action::NameLength(index) => {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        let RetainedPayload::PiAttributes { values, .. } =
+                            &self.payloads.values[map]
+                        else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        Reply::Length(
+                            values
+                                .as_slice()
+                                .get(index)
+                                .ok_or(SessionError::WrongToken)?
+                                .name
+                                .len(),
+                        )
+                    }
+                    Action::NameUnit(which, offset) => {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        let units = match which {
+                            Name::Current => name
+                                .as_ref()
+                                .ok_or(SessionError::WrongToken)?
+                                .buffer
+                                .units(),
+                            Name::Pair(index) => {
+                                let RetainedPayload::PiAttributes { values, .. } =
+                                    &self.payloads.values[map]
+                                else {
+                                    return Err(SessionError::WrongToken);
+                                };
+                                values
+                                    .as_slice()
+                                    .get(index)
+                                    .ok_or(SessionError::WrongToken)?
+                                    .name
+                                    .code_units()
+                            }
+                        };
+                        if offset >= units.len() {
+                            return Err(SessionError::WrongToken);
+                        }
+                        c.charge(WorkCategory::InspectByte, 2)?;
+                        Reply::Unit(Some(units[offset]))
+                    }
+                    Action::Commit => {
+                        self.commit_pi_pair(
+                            c,
+                            node,
+                            map,
+                            name.take().ok_or(SessionError::WrongToken)?,
+                            value.take().ok_or(SessionError::WrongToken)?,
+                        )?;
+                        Reply::Ack
+                    }
+                    Action::Discard => {
+                        if let Some(field) = name.take() {
+                            field.release(c)?;
+                        }
+                        if let Some(field) = value.take() {
+                            field.release(c)?;
+                        }
+                        Reply::Ack
+                    }
+                    Action::Pop => {
+                        self.pop_pi_pair(c, map)?;
+                        Reply::Ack
+                    }
+                    Action::Ready(_) => {
+                        payload_write::<bool>(c, 1)?;
+                        let RetainedPayload::PiAttributes { ready, .. } =
+                            &mut self.payloads.values[map]
+                        else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        *ready = true;
+                        Reply::Ack
+                    }
+                };
+                cursor.reply(reply).map_err(|e| match e {
+                    crate::pi_pseudo_attributes::Error::Integrity => SessionError::WrongToken,
+                    crate::pi_pseudo_attributes::Error::Representation => SessionError::Stop(
+                        c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
+                            .unwrap_err(),
+                    ),
+                })?;
             }
+            Ok(())
         })();
-        match parsed {
-            Ok(true) => {}
-            result => {
-                name.release(c)?;
-                value.release(c)?;
-                name_maps.release(c)?;
-                value_maps.release(c)?;
-                return result;
-            }
+        // Only actual transient owners are reclaimed after a fixed terminal stop.
+        if let Some(field) = name {
+            field.release(c)?;
         }
-        // Duplicate exact names invalidate the whole map, not only this pair.
-        let duplicate = (|| -> Result<bool, SessionError> {
-            let RetainedPayload::PiAttributes { values, .. } = &self.payloads.values[map] else {
-                unreachable!()
-            };
-            for pair in values.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if pi_units_equal(c, pair.name.code_units(), name.units())? {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        })();
-        match duplicate {
-            Ok(false) => {}
-            result => {
-                name.release(c)?;
-                value.release(c)?;
-                name_maps.release(c)?;
-                value_maps.release(c)?;
-                return result.map(|_| false);
-            }
+        if let Some(field) = value {
+            field.release(c)?;
         }
+        result
+    }
+    fn commit_pi_pair(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        map: usize,
+        name: PendingField,
+        value: PendingField,
+    ) -> Result<(), SessionError> {
+        let PendingField {
+            buffer: name,
+            maps: name_maps,
+        } = name;
+        let PendingField {
+            buffer: value,
+            maps: value_maps,
+        } = value;
         let name = match name.freeze(c) {
             Ok(n) => n,
             Err(stop) => {
@@ -356,90 +293,29 @@ impl SessionStorage {
         }
         self.bind_string(name_slot, StringLocation::PiName(map, index));
         self.bind_string(value_slot, StringLocation::PiValue(map, index));
-        Ok(true)
-    }
-    pub(super) fn prepare_pi_map(&mut self, c: &mut ParseControl) -> Result<usize, SessionError> {
-        let values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        self.prepare_payload_slot_owned(c)?;
-        let map = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::PiAttributes {
-            node: None,
-            values,
-            ready: false,
-        });
-        Ok(map)
-    }
-    pub(super) fn bind_pi_map(&mut self, map: usize, node: usize) {
-        let RetainedPayload::PiAttributes { node: bound, .. } = &mut self.payloads.values[map]
-        else {
-            unreachable!()
-        };
-        *bound = Some(node);
-    }
-    pub(super) fn parse_pi_map(
-        &mut self,
-        c: &mut ParseControl,
-        node: usize,
-        map: usize,
-    ) -> Result<(), SessionError> {
-        let mut offset = 0usize;
-        let valid = (|| -> Result<bool, SessionError> {
-            self.pi_skip_space(c, node, &mut offset)?;
-            if self.pi_scalar(c, node, offset)?.is_none() {
-                return Ok(true);
-            }
-            loop {
-                if !self.parse_pi_pair(c, node, map, &mut offset)? {
-                    return Ok(false);
-                }
-                let separated = self.pi_skip_space(c, node, &mut offset)?;
-                if self.pi_scalar(c, node, offset)?.is_none() {
-                    return Ok(true);
-                }
-                if !separated {
-                    return Ok(false);
-                }
-            }
-        })()?;
-        if !valid {
-            self.clear_pi_map(c, map)?;
-        }
-        payload_write::<bool>(c, 1)?;
-        let RetainedPayload::PiAttributes { ready, .. } = &mut self.payloads.values[map] else {
-            unreachable!()
-        };
-        *ready = true;
         Ok(())
     }
-    fn clear_pi_map(&mut self, c: &mut ParseControl, map: usize) -> Result<(), SessionError> {
-        loop {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::PiAttributes { values, .. } = &self.payloads.values[map] else {
-                unreachable!()
-            };
-            if values.len() != 0 {
-                payload_write::<[StringLocation; 2]>(c, 2)?;
-            }
-            let RetainedPayload::PiAttributes { values, .. } = &mut self.payloads.values[map]
-            else {
-                unreachable!()
-            };
-            let Some(pair) = values.try_pop(c)? else {
-                return Ok(());
-            };
-            self.bind_string(pair.name_slot, StringLocation::Detached);
-            self.bind_string(pair.value_slot, StringLocation::Detached);
-            let PseudoAttribute {
-                name,
-                value,
-                name_slot,
-                value_slot,
-            } = pair;
-            drop(name);
-            drop(value);
-            self.retire_raw(c, name_slot)?;
-            self.retire_raw(c, value_slot)?;
-        }
+
+    fn pop_pi_pair(&mut self, c: &mut ParseControl, map: usize) -> Result<(), SessionError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        payload_write::<[StringLocation; 2]>(c, 2)?;
+        let RetainedPayload::PiAttributes { values, .. } = &mut self.payloads.values[map] else {
+            return Err(SessionError::WrongToken);
+        };
+        let pair = values.try_pop(c)?.ok_or(SessionError::WrongToken)?;
+        self.bind_string(pair.name_slot, StringLocation::Detached);
+        self.bind_string(pair.value_slot, StringLocation::Detached);
+        let PseudoAttribute {
+            name,
+            value,
+            name_slot,
+            value_slot,
+        } = pair;
+        drop(name);
+        drop(value);
+        self.retire_raw(c, name_slot)?;
+        self.retire_raw(c, value_slot)?;
+        Ok(())
     }
     pub(super) fn pi_attribute<'a>(
         &'a self,
@@ -471,39 +347,6 @@ impl SessionStorage {
         Err(SessionError::ProcessingInstructionMapUnavailable)
     }
 }
-fn pi_units_equal(c: &mut ParseControl, left: &[u16], right: &[u16]) -> Result<bool, SessionError> {
-    c.charge(WorkCategory::RecordVisit, 2)?;
-    if left.len() != right.len() {
-        return Ok(false);
-    }
-    for index in 0..left.len() {
-        c.charge(WorkCategory::InspectByte, 4)?;
-        if left[index] != right[index] {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-fn append_scalar(
-    buffer: &mut Utf16Buffer,
-    c: &mut ParseControl,
-    cp: u32,
-) -> Result<(), SessionError> {
-    if cp <= 0xffff {
-        buffer.push_unit(cp as u16, c)?;
-    } else {
-        let value = cp - 0x10000;
-        buffer.extend_units(
-            &[
-                0xd800 | ((value >> 10) as u16),
-                0xdc00 | ((value & 0x3ff) as u16),
-            ],
-            c,
-        )?;
-    }
-    Ok(())
-}
-
 impl FrozenArena {
     #[cfg(test)]
     pub(crate) fn processing_instruction_attribute<'a>(

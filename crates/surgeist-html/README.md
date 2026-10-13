@@ -2695,6 +2695,38 @@ The [select construction owner](src/construction/parser_session/select.rs),
 [independent private regression cases](src/construction/parser_session/select_tests.rs)
 record the consumed boundary.
 
+<a id="captured-template-marker-selection"></a>
+
+`HtmlSemanticQuery::TemplateForReference` interprets an HTML template's exact
+for attribute over an immutable capture. Its `HtmlTemplateForReport` separates
+the author requirement for a same-tree named marker/start PI from preparation's
+first selected marker or start/end range. For example, an unavailable earlier PI
+can leave selection Missing while a later established matching PI proves the
+author relation. Complete search without a witness yields NoMatch; unavailable
+influencing data remains Missing. Absent for skips the topology search, while
+empty for returns EmptyName for preparation and still checks its independent
+author relation.
+
+Names are case-sensitive. Search follows ordinary descendants and never joins
+template contents, shadow roots or host/slot associations. Start/end nesting
+counts following sibling PIs independently of their names; nested descendant end
+PIs do not close the selected start. Exhaustion preserves the start with no end.
+The [pinned for clause](../../references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md#attr-template-for)
+and [marker algorithm](../../references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md#find-markers)
+define these separate author and processing results.
+
+Native and captured readers share one allocation-free
+[XML pseudo-attribute cursor](src/pi_pseudo_attributes.rs) and
+[marker rules](src/template_markers.rs). The cursor validates the complete map:
+duplicate names or malformed unrelated fields invalidate it, including suffixes
+after a provisional matching name. XML scalar/name rules and numeric/predefined
+references apply; HTML entity recovery supplies no substitute. Original raw for
+is admitted before role classification. The existing semantic session owns all
+work, scratch, nested output, cancellation, sticky failure and atomic publication.
+The [captured tests](tests/semantics_template_for.rs) cover literal names, first
+selection, partial coverage, sibling ranges and finite refusal boundaries.
+This query reports immutable facts; it does not execute patching or attachment.
+
 <a id="private-ordinary-templates"></a>
 
 The fresh standalone Disabled driver also constructs ordinary templates in the
@@ -2721,7 +2753,7 @@ drain. The fresh operation's established shadow permission is false, so a
 recognized declarative shadow mode takes the source-required ordinary-template
 branch before considering for; it attaches no shadow root.
 
-The [PI-map owner](src/construction/parser_session/pi.rs) retains original native
+The [PI-map adapter](src/construction/parser_session/pi.rs) retains original native
 target/data and exact lexical maps alongside independently admitted decoded
 backing. The [whole XML-stylesheet grammar](../../references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md#pseudo-attributes)
 and [XML grammar closure](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md)
@@ -2746,8 +2778,8 @@ production boundary. The [private fragment owner](#private-context-fragments)
 separately supplies captured template initialization and qualified declarative
 shadow construction. Imported templates with unavailable patch facts, live DOM
 shadow attachment remain unfinished.
-No public captured
-template-for reference query or live DOM follows. Repeated registry/topology
+The [captured template-for query](#captured-template-marker-selection) separately
+reports immutable relations; live DOM mutation remains external. Repeated registry/topology
 scans, comparisons, copies and moves can be quadratic; finite charged/polled work
 establishes no linear-time or allocator/RSS guarantee.
 

@@ -1044,10 +1044,12 @@ fn non_element_clone_binding_boundary(kind: usize) {
     } else {
         0
     };
-    // The preserved PI data is literal D: three nonempty scalar reads12,
-    // name-buffer constructor1/push6, offset U+1, three EOF reads6,
-    // empty-map clear2, ready copy/write2 = U+30. Invalid whole grammar
-    // remains a successfully established empty map, rather than an error.
+    // The preserved PI data is literal D. The shared grammar has exactly13
+    // closed actions (independently characterized in its literal-D test), each
+    // with one actual Cursor copy/write. Its adapter visits initially2, reads
+    // D once (visit2/inspect2) and EOF three times (visit6), constructs one
+    // name buffer1, extends its one unit5, then writes ready2: base20.
+    // Invalid whole grammar still establishes an empty map, not a failure.
     let grammar = if kind == 2 {
         let (mut fee_control, mut fee_session, source, cancellation) =
             non_element_clone_fixture(kind);
@@ -1089,8 +1091,8 @@ fn non_element_clone_binding_boundary(kind: usize) {
         fee_session.release(&mut fee_control).unwrap();
         storage_zero(&fee_control);
         let origin = mem::size_of::<TextOrigin>() as u64;
-        mem::size_of::<usize>() as u64
-            + 30
+        13 * (mem::size_of::<crate::pi_pseudo_attributes::Cursor>() as u64 + 1)
+            + 20
             + field_visits
             + cursor_credits
             + 1 // actual PI mapper visit, separate from cursor traversal

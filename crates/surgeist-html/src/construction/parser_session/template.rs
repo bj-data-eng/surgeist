@@ -160,6 +160,7 @@ impl SessionStorage {
         scope: usize,
         name: &DocumentString,
     ) -> Result<(Option<usize>, Option<usize>), SessionError> {
+        use crate::template_markers::{self, First, Siblings, Target};
         let mut next = self.next_view_node(c, scope, scope, None)?;
         while let Some(node) = next {
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -169,26 +170,35 @@ impl SessionStorage {
             ) && let Some(value) = self.pi_attribute(c, node, "name")?
                 && exact_string_equal(c, value, name)?
             {
-                if self.pi_target(c, node, "marker")? {
+                let target = if self.pi_target(c, node, "marker")? {
+                    Target::Marker
+                } else if self.pi_target(c, node, "start")? {
+                    Target::Start
+                } else {
+                    Target::Other
+                };
+                if template_markers::first(target, true) == First::Marker {
                     return Ok((Some(node), Some(node)));
                 }
-                if self.pi_target(c, node, "start")? {
-                    let mut nesting = 0usize;
+                if template_markers::first(target, true) == First::Start {
+                    let mut nesting = Siblings::default();
                     let mut sibling = self.next_sibling(c, node)?;
                     while let Some(current) = sibling {
-                        if self.pi_target(c, current, "start")? {
-                            payload_write::<usize>(c, 1)?;
-                            nesting = nesting.checked_add(1).ok_or_else(|| {
-                                c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                                    .unwrap_err()
-                            })?;
-                        }
-                        if self.pi_target(c, current, "end")? {
-                            if nesting == 0 {
-                                return Ok((Some(node), Some(current)));
-                            }
-                            payload_write::<usize>(c, 1)?;
-                            nesting -= 1;
+                        let is_start = self.pi_target(c, current, "start")?;
+                        let is_end = self.pi_target(c, current, "end")?;
+                        payload_write::<Siblings>(c, 1)?;
+                        let target = if is_start {
+                            Target::Start
+                        } else if is_end {
+                            Target::End
+                        } else {
+                            Target::Other
+                        };
+                        if nesting.inspect(target).map_err(|()| {
+                            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
+                                .unwrap_err()
+                        })? {
+                            return Ok((Some(node), Some(current)));
                         }
                         payload_write::<Option<usize>>(c, 1)?;
                         sibling = self.next_sibling(c, current)?;

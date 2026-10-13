@@ -26857,4 +26857,115 @@ mod tests {
             ))
         );
     }
+    #[test]
+    fn shared_pi_map_literal_xml_closure_keeps_native_fields_and_reclaims_real_owners() {
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+        let cases: &[(&str, &[(&str, &str)])] = &[
+            ("name='X'", &[("name", "X")]),
+            ("name = \"&#88;\" x='ok' ", &[("name", "X"), ("x", "ok")]),
+            ("name='&amp;&lt;&gt;&quot;&apos;'", &[("name", "&<>\"'")]),
+            ("name='&#x1D11E;'", &[("name", "𝄞")]),
+            (
+                "name='&#0000000000000000000000000000000000000088;'",
+                &[("name", "X")],
+            ),
+            ("𐀀='v' name='X'", &[("𐀀", "v"), ("name", "X")]),
+            ("a='A' A='B'", &[("a", "A"), ("A", "B")]),
+            ("a='A' a='B'", &[]),
+            ("name='X' x='1' x='2'", &[]),
+            ("name='X'junk", &[]),
+            ("name='X'x='Y'", &[]),
+            ("name='X'\u{000c}x='Y'", &[]),
+            ("name='&unknown;'", &[]),
+            ("name='&#0;'", &[]),
+            ("name='&#xD800;'", &[]),
+            ("name='&#x110000;'", &[]),
+            ("name='&#999999999999999999999999999999;'", &[]),
+            ("name='&#xFFFFFFFFFFFFFFFFFFFFFFFFFFFF;'", &[]),
+            ("name='<'", &[]),
+            ("name='unterminated", &[]),
+            ("0bad='X'", &[]),
+        ];
+        for &(data, expected) in cases {
+            let source = crate::HtmlSource::utf8(format!("<?marker {data}?>"));
+            let mut c = control();
+            c.admit_source(&source).unwrap();
+            let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+            session.initialize_parse_evidence(&mut c, &source).unwrap();
+            let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+            let TokenKind::ProcessingInstruction { target, data: raw } =
+                lexical_kind(&mut lexer, &mut c)
+            else {
+                panic!("real PI")
+            };
+            let node = session
+                .allocate_processing_instruction(&mut c, &mut Some((target, raw)), None)
+                .unwrap();
+            let storage = session.active().unwrap();
+            let HtmlNodeKind::ProcessingInstruction(pi) = &storage.records[node.index].kind else {
+                panic!("original PI")
+            };
+            assert_eq!(pi.target().code_units(), [109, 97, 114, 107, 101, 114]);
+            assert_eq!(
+                pi.data().code_units(),
+                DocumentString::from(data).code_units()
+            );
+            let fields = storage
+                .payloads
+                .values
+                .iter()
+                .find_map(|p| match p {
+                    RetainedPayload::PiAttributes {
+                        node: Some(bound),
+                        values,
+                        ready: true,
+                    } if *bound == node.index => Some(values.as_slice()),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(fields.len(), expected.len(), "{data}");
+            for (field, (name, value)) in fields.iter().zip(expected) {
+                assert_eq!(
+                    field.name.code_units(),
+                    DocumentString::from(*name).code_units(),
+                    "{data}"
+                );
+                assert_eq!(
+                    field.value.code_units(),
+                    DocumentString::from(*value).code_units(),
+                    "{data}"
+                );
+            }
+            if data == "name='&#x1D11E;'" {
+                let group = storage
+                    .payloads
+                    .values
+                    .iter()
+                    .find_map(|p| match p {
+                        RetainedPayload::String {
+                            value,
+                            origins: Some(group),
+                            ..
+                        } if value.code_units() == [0xd834, 0xdd1e] => Some(group),
+                        _ => None,
+                    })
+                    .unwrap();
+                let rows = storage
+                    .evidence
+                    .as_ref()
+                    .unwrap()
+                    .observed_origins(group, &mut c)
+                    .unwrap();
+                assert_eq!(
+                    rows.iter()
+                        .map(|o| (o.start, o.end, o.source.start(), o.source.end()))
+                        .collect::<Vec<_>>(),
+                    [(0, 2, 15, 24)]
+                );
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
 }
