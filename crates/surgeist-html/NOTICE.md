@@ -67,12 +67,13 @@ hooks. The
 [selected standalone reduction](../../references/SOURCE-EDITIONS.md#disabled-script-preparation-and-standalone-checkpoint-sources)
 is an architecture capability specialization over absent runtime domains, not
 a browser event-loop implementation or an external timing algorithm. No timing
-source pin or normative null-script-return rule is selected. These private
-adaptations do not expose a complete parser or add a production dependency.
+source pin or normative null-script-return rule is selected. These adaptations
+run within the crate's bounded immutable parser; they add no runtime or MIME
+parser dependency and do not supply browser event-loop execution.
 
 ## Adapted parser source
 
-The private, test-compiled tokenizer adapts four source files from
+The private production tokenizer adapts four source files from
 [html5ever](https://github.com/servo/html5ever), revision
 `d7232d746d3112f08926d169591576bd12fe2fdf`. It preserves the upstream file
 notices and the choice of [MIT](../../licenses/html5ever/LICENSE-MIT) or
@@ -81,7 +82,9 @@ notices and the choice of [MIT](../../licenses/html5ever/LICENSE-MIT) or
 [authorship](../../licenses/html5ever/AUTHORS) material. The
 [origin record](PARSER-ORIGINS.md) identifies the incorporated files and their
 modifications. This source adaptation adds no Cargo dependency on html5ever,
-markup5ever, Tendril or web_atoms and does not yet expose a complete parser.
+markup5ever, Tendril or web_atoms. The Surgeist-owned public request/report
+boundary exposes decoded-Unicode ordinary document and qualified contextual
+fragment parsing; the tokenizer remains private implementation material.
 
 The private tree-insertion kernel additionally adapts bounded operations and
 scope lists from two files at that same revision. Its Initial/BeforeHtml

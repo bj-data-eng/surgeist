@@ -7,8 +7,9 @@ known-name inventories, common intrinsic value operations, bounded immutable
 captures of HTML semantic facts, synchronous decoded-Unicode parsing and
 source-owning immutable parse reports with terminal failure evidence.
 The [HTML contribution](https://github.com/bj-data-eng/surgeist/issues/1132)
-tracks the remaining typed vocabulary/value interpretation, parser, semantic
-interpretation, provenance and full parser resource-admission capabilities.
+defines this implemented boundary. The [language inventory](INVENTORY.md) records
+intrinsic operations and their external inputs; the [coverage matrix](docs/conformance-coverage.md)
+connects selected source clauses to executable evidence and capability limits.
 
 The [selected WHATWG edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 defines behavior; the separate html5ever revision identifies implementation
@@ -289,8 +290,9 @@ only their defining clauses; they do not establish current control state,
 resource lifecycle or activation effects.
 Referrer policy uses the [pinned external vocabulary](../../references/referrer-policy-vocabulary--cc435b05ca4a.md);
 its empty state remains unresolved rather than selecting a host network default.
-These views do not compute inheritance or claim runtime effects,
-and the remaining attribute families are tracked by the contribution.
+These views do not compute inheritance or claim runtime effects. The
+[language inventory](INVENTORY.md) identifies each attribute's HTML operation,
+external grammar and required contextual facts.
 
 <a id="script-type-values"></a>
 
@@ -2359,9 +2361,11 @@ this association. Synchronous tree mutations complete the whole source removal
 pass before insertion effects, including affected descendant images and
 formatting moves. A stop retains the actual source-ordered metadata prefix;
 only terminal cleanup remains available and partial publication is refused.
-Association scans are metered and can require quadratic work. Other resettable
-controls, unsupported table branches and hosted parsing remain unfinished. [Contextual fragments](#private-context-fragments)
-have their separately qualified private execution owner.
+Association scans are metered and can require quadratic work. The control,
+table and template operations below use the same controlled construction owner.
+Hosted document entry remains an explicitly unsupported capability;
+[contextual fragments](#private-context-fragments) have their separately
+qualified private execution owner.
 Ordinary EOF uses the [private completion owner](#private-ordinary-eof).
 
 The same association registry now admits parser-created button, fieldset and
@@ -2683,7 +2687,7 @@ finite and charged; repeated scans and child moves may be quadratic.
 
 These are private construction operations, not a live DOM mutation API. The
 separate DOM moveBefore primitive, imported templates with unavailable facts,
-external script execution and other unimplemented control state remain outside
+external script execution and live control interaction remain outside
 this ordinary capability. The [contextual fragment owner](#private-context-fragments)
 separately supplies captured initialization and qualified shadow construction.
 Ordinary EOF now
@@ -2712,12 +2716,14 @@ Unavailable evidence remains Missing or conditional rather than becoming a
 negative observation. Unknown extensions remain available for later definition;
 standard keyword recognition does not authorize an extension alias.
 
-The [native link owner](src/construction/parser_session/link_history.rs) retains
+The [native link owner](src/construction/parser_session.rs) retains
 the actual creating-parser document separately from the current node document.
 Fresh construction and clone start with fresh flags. Removing an existing
 no-namespace `disabled` attribute establishes explicitly-enabled state; absent
 removal and copied attributes do not simulate that transition. Completed metadata
-and captured link history expose the actual retained observations.
+and captured link history expose the actual retained observations. The
+[native regression cases](src/construction/parser_session/link_history.rs)
+check creation, mutation and clone history independently.
 
 `HtmlSemanticRequest::noopener` carries a formed, subject-qualified URL key and
 target through the [noopener operation](src/semantics/link_relationships/noopener.rs).

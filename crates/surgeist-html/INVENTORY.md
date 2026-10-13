@@ -1472,13 +1472,17 @@ follows. The [overview](README.md#script-type-values),
 record this boundary. Private checkpoint provenance remains in
 [PARSER-ORIGINS](PARSER-ORIGINS.md).
 
-## HTML-local operations with no corresponding complete producer
+<a id="html-local-operations-with-no-corresponding-complete-producer"></a>
 
-The following entries specify remaining rule/consumer boundaries. They are not
-newly invented runtime APIs or a claim that every obligation must become its own
-wrapper. Shared primitives can be consumed directly where their domain suffices;
-context-dependent algorithms need actual qualified input rather than guessed
-facts. The individual source links in the E/A tables govern each entry.
+## HTML intrinsic operations and external capability boundaries
+
+The following entries describe implemented HTML operations and the inputs or
+execution retained by other owners. They do not imply that every obligation
+needs its own wrapper. Shared primitives can be consumed directly where their
+domain suffices; context-dependent algorithms need actual qualified input rather
+than guessed facts. Each entry distinguishes its producer from any unavailable
+grammar, live state or external action. The individual source links in the E/A
+tables govern each entry.
 
 ### Input Image and embedded dimensions
 

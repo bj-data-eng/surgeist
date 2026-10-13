@@ -123,10 +123,14 @@ provides stable identities, immutable snapshots, atomic edits and headless live
 declaration, rule, stylesheet and MediaList operations. Its crate README records
 current extension operations and source-qualified capability limits.
 
-The `surgeist-html` contribution is underway: its shared HTML-owned values are
-implemented, while typed authoring, immutable parse results, html5ever ingestion,
-recovery, diagnostics and intrinsic interpretation remain contribution work.
-It has no DOM or downstream rendering dependency.
+`surgeist-html` implements shared HTML-owned values, typed native authoring,
+immutable construction and parse results, adapted html5ever ingestion, recovery,
+structured diagnostics, source provenance and bounded intrinsic interpretation.
+Its decoded-Unicode front door supports fresh offline ordinary documents and
+qualified contextual fragments. The crate README and conformance matrix record
+external fact requirements, unsupported hosted execution and selected coverage;
+they do not certify full browser conformance. It has no DOM or downstream
+rendering dependency and owns its direct CSS color integration.
 The HTML standard revision defines behavior; the html5ever revision identifies
 implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.

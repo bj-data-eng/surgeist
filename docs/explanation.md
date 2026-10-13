@@ -33,11 +33,15 @@ declaration, rule, stylesheet and MediaList operations. The
 [CSSOM crate guide](../crates/surgeist-cssom/README.md) explains the supported
 extension operations, explicit host facts and source-qualified formatting limits.
 Root host bindings and full product CSSOM conformance remain separate work.
-The next planned foundation is `surgeist-html`, using an explicitly pinned HTML
-standard and ingested html5ever implementation. It will provide the HTML types
-shared by markup parsing and Rust authoring, plus immutable recovered parse
-results and structured diagnostics. Implementation changes for safe Rust, source
-mapping and work limits do not define a separate HTML dialect.
+`surgeist-html` supplies the HTML types shared by markup parsing and Rust
+authoring, immutable recovered parse results, structured diagnostics and
+qualified intrinsic interpretation. Its explicitly pinned HTML standard defines
+behavior; adapted html5ever source supplies implementation provenance. The
+[HTML crate guide](../crates/surgeist-html/README.md) records the decoded-Unicode
+document/fragment entry operations, admission and external capability boundaries.
+HTML owns its direct integration with CSS color operations. Implementation
+changes for safe Rust, source mapping and work limits do not define a separate
+HTML dialect.
 
 `surgeist-dom`, the planned sole owner of live document identity, mutation and
 snapshots, will depend directly on HTML. DOM owns importing HTML construction
