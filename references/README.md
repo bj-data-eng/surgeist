@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 369 retained source identities and states their representations: 260 full documents/source witnesses, 95 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 372 retained source identities and states their representations: 260 full documents/source witnesses, 98 partial witnesses, and 14 metadata-only records. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -148,3 +148,14 @@ adds three full source identities with original file-specific notices. The
 distinguishes the UA-defined metric, WebKit evidence and Surgeist's clamp/tie
 choices. Source retention and this reference checkpoint do not implement the
 producer or certify accessibility.
+
+## HTML-delegated ECMAScript Number serialization
+
+The [bounded Number serialization clauses](ecmascript-number-serialization--2026--cd65f2eaa201.md)
+retain the dated 2026 source's complete ToString and Number::toString operations,
+all notes and required Number/rounding/math definitions. The
+[edition determination](SOURCE-EDITIONS.md#html-best-number-serialization)
+distinguishes the normative radix-10 formatting from Note 2's informative
+recommendation, deliberately selected as mandatory Surgeist digit-choice
+policy. The original draft header and Ecma legal terms remain explicit.
+This selects no JavaScript runtime, rolling edition or Range implementation.

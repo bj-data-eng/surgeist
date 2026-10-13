@@ -646,3 +646,37 @@ when the consumer requires text, preserving rich image output and the separate
 normative speech rules. This is Surgeist policy, not a CSSWG resolution or
 browser-parity claim. #534/#693/#694 own implementation and tests; resolving the
 source decision does not complete them.
+
+## HTML best-number serialization
+
+[Architecture selection in #1134](https://github.com/bj-data-eng/surgeist/issues/1134#html-best-number-representation-bounded-ecmascript-2026-delegation),
+also [referenced by parser #1136](https://github.com/bj-data-eng/surgeist/issues/1136#best-number-serialization-source-owner),
+selects the dated ECMAScript 2026 (ECMA-262 seventeenth edition) ToString Number
+branch → Number::toString radix 10. The
+[bounded conversion](ecmascript-number-serialization--2026--cd65f2eaa201.md)
+retains the complete two operations, Notes 1–3, and the exact Number/binary64
+rounding and required mathematical definitions from three hashed official pages.
+The actual publisher's Draft ECMA-262 / March 31, 2026 header remains visible;
+the selected dated edition does not mean the rolling tc39.es/ecma262/ source.
+
+The owning determination requires Note 2's optional ECMA recommendation as
+Surgeist policy: shortest roundtripping decimal significand, nearest exact-real
+candidate, then even decimal significand for an equal-distance tie. Radix-10
+n/k formatting remains normative source behavior: fixed notation iff
+-5 ≤ n ≤ 21, otherwise lowercase e with explicit exponent sign and no leading
+exponent zeroes; both signed zeroes emit 0. Finite HTML inputs exclude ECMA's
+nonfinite text branches. Number's valid authored strings remain unchanged;
+Range uses best representation only where its actual source algorithm requests it.
+
+The [separate Range arithmetic selection](https://github.com/bj-data-eng/surgeist/issues/1134#range-exact-arithmetic-and-the-finite-number-join)
+chooses nearest finite representable exact-dyadic lattice candidates within
+actual bounds, ties toward the larger number. That is a distinct Surgeist
+interpretation, not an ECMA Range algorithm or decimal/tolerance browser-parity
+claim. Unconstrained exact-real → Number conversion uses binary nearest/even;
+decimal serialization uses Note 2's decimal nearest/even choice. No intermediate
+rounding may be presented as proof of Range lattice membership.
+
+The [Ecma notice and full terms](../licenses/ecma262/NOTICE.md) accompany this
+bounded conversion. No JS runtime, BigInt/object coercion, other-radix behavior,
+dtoa code or dependency is selected. This reference supplies source evidence,
+not implementation or whole HTML/ECMA conformance acceptance.

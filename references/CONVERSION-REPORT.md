@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **369 source identities: 260 full documents/source witnesses, 95 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **372 source identities: 260 full documents/source witnesses, 98 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -628,3 +628,44 @@ This addition takes the collection from 366 to 369 identities: 260 full,
 passive SVG figures remain unchanged. Whole witness bodies, legal companion
 equality, UTF-8/LF/whitespace and affected local links/fragments were checked.
 No source acquisition, browser-source execution or new media/diagram conversion occurred.
+
+## ECMAScript Number serialization source retention — 2026-10-13
+
+The [bounded reference](ecmascript-number-serialization--2026--cd65f2eaa201.md)
+adds three partial original-page identities, taking the live collection from
+369 (260 full/95 partial/14 metadata) to 372 (260 full/98 partial/14 metadata).
+All earlier URL/hash pairs, historical counts and 81 passive SVG assets remain.
+
+Complete §7.1.17 and §6.1.6.1.20, including Notes 1–3, are retained. The Number
+introductory body ends after its Number-value-for-infinities paragraph, excluding
+unselected arithmetic operations. §5.2.6 retains complete numeric-kind, suffix,
+integer, operator, explicit-conversion, abs and interval paragraphs/lists;
+unrelated mathematical functions are omitted explicitly. The exact front
+title/date, complete About/Contributing block and introduction edition paragraph
+supply provenance. The source literally says Draft ECMA-262 / March 31, 2026
+and separately identifies the seventeenth edition; neither fact is normalized.
+
+Original page hashes and byte lengths appear in the reference; its converted
+Markdown hash is representation identity only. Ignored raw captures, selected
+HTML, Pandoc preparation/body/render outputs and fidelity.json remain under
+tmp/html-1134/ecma-number-sources. The existing approved Pandoc 3.1.11.1 and
+semantic filter were used, with a bounded link-label adapter to preserve
+variables inside links and prevent accidental nested URL autolinks.
+Whitespace-only text comparison passes from original selection through prepared
+HTML and rendered GFM. Superscript/subscript/variable text order, ordered-list
+and item counts and resolved link-destination order are checked independently.
+All source notes and nested formatting cases remain complete. The same checks
+cover the complete original legal section; LICENSE-2026.txt preserves its exact
+extracted text with only boundary/line-end whitespace cleanup.
+
+The full alternative copyright license grants copying/modification/distribution
+with the complete notice, disclaimers and modification notice retained. Those
+and the software/BSD/patent caveats accompany the conversion in
+[licenses/ecma262](../licenses/ecma262/NOTICE.md). No linked dtoa software or
+script was downloaded or executed. Conversion checks establish bounded text
+and structure fidelity, not formatter correctness, ECMA/HTML conformance,
+visual equivalence or source-integrated implementation.
+
+The converted reference SHA-256 is
+`d9a172cec01000e5abcced21ee4f9bade1f9b6266eb59a5eb1877c54e1b91bf5`.
+This representation hash does not replace any complete original-page hash.

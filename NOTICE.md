@@ -505,3 +505,12 @@ implementation-support conversions, including separate required 2015 derivative
 notices. The official 2015 update applies to existing publications. These are
 not replacement technical specifications, a complete XML parser, or evidence
 of stylesheet loading; no software dependency or project license changes.
+
+## HTML-delegated ECMAScript Number serialization reference
+
+The bounded [ECMAScript 2026 Number serialization reference](references/ecmascript-number-serialization--2026--cd65f2eaa201.md)
+includes official Ecma International material under the
+[complete original copyright/license/disclaimer and software terms](licenses/ecma262/LICENSE-2026.txt).
+Its [source and modification notice](licenses/ecma262/NOTICE.md) identifies
+the dated edition, copied portions and Markdown changes. No JavaScript runtime,
+dtoa code, dependency or product implementation is added by this reference.
