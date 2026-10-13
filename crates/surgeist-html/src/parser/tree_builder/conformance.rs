@@ -1068,7 +1068,7 @@ fn check(
             match driver.as_mut().expect("actual driver owned").step()? {
                 super::head::HeadStep::Consumed => {}
                 super::head::HeadStep::Complete => break,
-                super::head::HeadStep::Boundary(_) => {
+                super::head::HeadStep::NeedInput | super::head::HeadStep::Boundary(_) => {
                     return Err(super::StandaloneError::Head(
                         super::head::HeadError::IncompleteCompletion,
                     ));
@@ -1099,6 +1099,32 @@ fn check(
     })();
     completed.release().map_err(CaseError::Parser)?;
     observed
+}
+
+/// Feeding tests consume the same admitted native projection/comparison owner;
+/// their literal expectations do not come from a complete-source parse.
+pub(super) fn assert_completed_literal(
+    completed: &mut super::end::CompletedStandaloneDocument<'_>,
+    dump: &str,
+    mode: HtmlDocumentMode,
+) {
+    let fixture = Fixture {
+        ordinal: 0,
+        input: "",
+        errors: Vec::new(),
+        new_errors: None,
+        fragment: None,
+        scripting: FixtureScripting::Disabled,
+        expected: dump,
+    };
+    let expected = parsed_expected(&fixture, mode).unwrap();
+    let mut view = completed.native_view().unwrap();
+    let mut projection = MeteredProjection::new().unwrap();
+    let result = projection
+        .build(&mut view)
+        .and_then(|()| projection.compare(&expected, &mut view));
+    projection.release(&mut view).unwrap();
+    assert!(result.is_ok(), "completed literal comparison: {result:?}");
 }
 
 const DATA: &[(&str, &str)] = &[
@@ -2605,6 +2631,7 @@ mod whole_source_comparisons {
                 match driver.as_mut().unwrap().step().unwrap() {
                     HeadStep::Consumed => {}
                     HeadStep::Complete => break,
+                    HeadStep::NeedInput => panic!("sealed ordinary source requested more input"),
                     HeadStep::Boundary(b) => panic!("unexpected ordinary boundary {b:?}"),
                 }
             }

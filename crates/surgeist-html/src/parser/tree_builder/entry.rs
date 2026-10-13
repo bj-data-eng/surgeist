@@ -56,12 +56,15 @@ pub(crate) struct OrdinaryDocumentEntry<'source> {
 }
 impl<'source> OrdinaryDocumentEntry<'source> {
     pub(crate) fn new(request: &'source HtmlDocumentParseRequest) -> Self {
-        Self::create(request, false)
+        Self::create(request, false, false)
     }
     pub(super) fn owned(request: &'source HtmlDocumentParseRequest) -> Self {
-        Self::create(request, true)
+        Self::create(request, true, false)
     }
-    fn create(request: &'source HtmlDocumentParseRequest, owned: bool) -> Self {
+    pub(super) fn owned_progressive(request: &'source HtmlDocumentParseRequest) -> Self {
+        Self::create(request, true, true)
+    }
+    fn create(request: &'source HtmlDocumentParseRequest, owned: bool, progressive: bool) -> Self {
         let rejection = EntryRejection::for_request(request);
         let mut entry = Self {
             source: request.source(),
@@ -89,7 +92,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             failed_evidence: None,
             failure_usage: None,
         });
-        if entry.prepare(owned).is_err() {
+        if entry.prepare(owned, progressive).is_err() {
             let driver = entry.driver.as_mut().expect("actual initialization guard");
             // Resource/cancellation failure already owns the first stop. An
             // unexpected nonterminal stage error cannot leave a runnable prefix.
@@ -104,7 +107,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         }
         entry
     }
-    fn prepare(&mut self, owned: bool) -> Result<(), StandaloneError> {
+    fn prepare(&mut self, owned: bool, progressive: bool) -> Result<(), StandaloneError> {
         let driver = self.driver.as_mut().expect("actual initialization guard");
         let c = &mut driver.control;
         // Preserve source-admission precedence and use actual compiled layouts.
@@ -144,7 +147,12 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             crate::parser::control::OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         lexical.require_owner(c)?;
         driver.lexical = Some(lexical);
-        driver.tokenizer = Some(crate::parser::tokenizer::Tokenizer::new(
+        let make = if progressive {
+            crate::parser::tokenizer::Tokenizer::progressive
+        } else {
+            crate::parser::tokenizer::Tokenizer::new
+        };
+        driver.tokenizer = Some(make(
             driver.source,
             crate::parser::tokenizer::states::State::Data,
             None,

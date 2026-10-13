@@ -761,6 +761,7 @@ mod tests {
     pub(super) fn complete(driver: &mut ContextFragmentDriver<'_>) {
         for _ in 0..1000 {
             match driver.step().unwrap() {
+                HeadStep::NeedInput => panic!("complete fragment cannot starve"),
                 HeadStep::Consumed => {}
                 HeadStep::Complete => return,
                 HeadStep::Boundary(boundary) => panic!("unexpected real boundary {boundary:?}"),
@@ -3022,13 +3023,15 @@ mod tests {
                 .session
                 .evidence(&mut driver.control)
                 .unwrap();
-            let event = state
+            let crate::parser::tokenizer::TokenizerPull::Event(event) = state
                 .tokenizer
                 .as_mut()
                 .unwrap()
                 .next(&mut driver.control, false, evidence)
                 .unwrap()
-                .unwrap();
+            else {
+                panic!("complete fixture requires actual event");
+            };
             match event {
                 Event::Token(token) => break token.into_token(&mut driver.control).unwrap(),
                 event => state.lexical.try_push(&mut driver.control, event).unwrap(),

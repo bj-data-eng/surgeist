@@ -45,6 +45,17 @@ impl OrdinaryInitializationOwner {
     /// explicitly transferred or cleaned before dropping; no infallible Drop
     /// cleanup is implied. Only this consumer admits its actual fixed carrier.
     pub(crate) fn begin(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        self.begin_mode(false)
+    }
+    pub(crate) fn begin_progressive(
+        &mut self,
+    ) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        self.begin_mode(true)
+    }
+    fn begin_mode(
+        &mut self,
+        progressive: bool,
+    ) -> Result<InitializationAttempt<'_>, StandaloneError> {
         match self.phase {
             InitializationPhase::Rejected(reason) => return Err(reason.error()),
             InitializationPhase::Fresh => {}
@@ -53,7 +64,11 @@ impl OrdinaryInitializationOwner {
         let request = self.request.as_ref().ok_or(StandaloneError::Consumed)?;
         self.phase = InitializationPhase::Executing;
         Ok(InitializationAttempt {
-            entry: super::entry::OrdinaryDocumentEntry::owned(request),
+            entry: if progressive {
+                super::entry::OrdinaryDocumentEntry::owned_progressive(request)
+            } else {
+                super::entry::OrdinaryDocumentEntry::owned(request)
+            },
             request,
             failure: &mut self.failure,
             phase: &mut self.phase,

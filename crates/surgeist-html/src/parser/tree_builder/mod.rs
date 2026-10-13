@@ -881,6 +881,10 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(crate) fn step(&mut self) -> Result<head::HeadStep, StandaloneError> {
         let result = self.step_inner();
+        self.retain_terminal_failure(&result);
+        result
+    }
+    fn retain_terminal_failure<T>(&mut self, result: &Result<T, StandaloneError>) {
         if let Err(error) = &result {
             // One controller owns terminality. Retained owners support cleanup,
             // never resumption or successful partial continuation publication.
@@ -907,7 +911,60 @@ impl<'source> StandaloneDocumentDriver<'source> {
             };
             self.control.stop_unsupported_standalone(reason);
         }
+    }
+    pub(crate) fn make_available(&mut self, through: usize) -> Result<(), StandaloneError> {
+        let result = self.make_available_inner(through);
+        self.retain_terminal_failure(&result);
         result
+    }
+    fn make_available_inner(&mut self, through: usize) -> Result<(), StandaloneError> {
+        self.control.require_source(self.source)?;
+        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        if let Some(head) = &mut self.head {
+            head.require(&mut self.control)?;
+            self.control.charge(WorkCategory::RecordVisit, 2)?;
+            head.state
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .tokenizer
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .make_available(through, &mut self.control)?;
+        } else {
+            self.control.charge(WorkCategory::RecordVisit, 1)?;
+            self.tokenizer
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .make_available(through, &mut self.control)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn seal_input(&mut self) -> Result<(), StandaloneError> {
+        let result = self.seal_input_inner();
+        self.retain_terminal_failure(&result);
+        result
+    }
+    fn seal_input_inner(&mut self) -> Result<(), StandaloneError> {
+        self.control.require_source(self.source)?;
+        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        if let Some(head) = &mut self.head {
+            head.require(&mut self.control)?;
+            self.control.charge(WorkCategory::RecordVisit, 2)?;
+            head.state
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .tokenizer
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .seal_input(&mut self.control)?;
+        } else {
+            self.control.charge(WorkCategory::RecordVisit, 1)?;
+            self.tokenizer
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .seal_input(&mut self.control)?;
+        }
+        Ok(())
     }
     fn step_inner(&mut self) -> Result<head::HeadStep, StandaloneError> {
         use super::tokenizer::token::Event;
@@ -947,11 +1004,20 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     .session
                     .evidence(c)
                     .map_err(|e| StandaloneError::Head(e.into()))?;
-                self.event = self
+                let pulled = self
                     .tokenizer
                     .as_mut()
                     .ok_or(StandaloneError::Consumed)?
                     .next(c, false, evidence)?;
+                match pulled {
+                    super::tokenizer::TokenizerPull::Event(event) => self.event = Some(event),
+                    super::tokenizer::TokenizerPull::NeedInput => {
+                        return Ok(head::HeadStep::NeedInput);
+                    }
+                    super::tokenizer::TokenizerPull::Exhausted => {
+                        return Err(StandaloneError::TokenizerExhausted);
+                    }
+                }
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let event = self
                     .event

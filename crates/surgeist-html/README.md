@@ -2542,13 +2542,33 @@ text merging, replacement, cloning, retirement and replay retain original groups
 and later construction triggers. Its controlled projection reads actual canonical
 bindings and borrows only a complete admitted result. Completed, frozen and failed
 owners lend committed diagnostics through one fixed borrowed record/location view.
-Public all-overlap reverse queries, feeding/chunk invariance and public successful/
-failed report transfer remain unfinished. The [private fragment owner](#private-context-fragments)
+Public all-overlap reverse queries and public successful/failed report transfer
+remain unfinished. The [private fragment owner](#private-context-fragments)
 retains this committed diagnostic store through its own completion/failure paths. All
 these diagnostic operations are private
 and test-compiled; no public API or complete HTML parser follows.
 The [origin record](PARSER-ORIGINS.md#ordered-private-parse-evidence) distinguishes
 this Surgeist-owned storage and consumer from the adapted parser emitters.
+
+<a id="private-feeding-continuation"></a>
+
+The private, test-compiled ordinary driver can progressively expose an existing
+immutable source through the [input cursor](src/parser/input.rs), then explicitly
+seal it. `NeedInput` preserves the actual tokenizer, pending character reference
+and construction owner until more source becomes available. It does not mean EOF
+or restart parsing. Decoding, preprocessing and source ranges retain their original
+UTF-8 or UTF-16 coordinates; the original source is admitted once through the same
+controller. Advance, seal and step share the existing terminal-stop policy, and
+retries after a stop preserve its usage snapshot.
+
+The [literal partition tests](src/parser/tree_builder/tests.rs) cover every cut
+and unit-at-a-time exposure for selected ordinary constructions. Completed
+observations check native trees, retained qualified attribute order, exact ordered
+diagnostic ranges, and selected text/attribute/comment provenance, including
+fostered text, template contents and selectedcontent copies. These selected
+observations do not certify every provenance row or every HTML construction.
+The input remains wholly owned and immutable; this private mechanism does not
+provide a public streaming API, transport buffers or fragment feeding.
 
 <a id="private-conformance-observation"></a>
 

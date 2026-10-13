@@ -1319,11 +1319,12 @@ fn next_owned_token(
     c: &mut ParseControl,
 ) -> crate::parser::tokenizer::token::Token {
     loop {
-        match tokenizer
-            .next(c, false, evidence)
-            .unwrap()
-            .expect("actual token")
-        {
+        let crate::parser::tokenizer::TokenizerPull::Event(event) =
+            tokenizer.next(c, false, evidence).unwrap()
+        else {
+            panic!("actual token");
+        };
+        match event {
             Event::Token(event) => return event.into_token(c).unwrap(),
             event => event.release(c).unwrap(),
         }
@@ -3362,10 +3363,10 @@ fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
 #[test]
 fn tokenizer_next_input_position_is_nonconsuming_and_uses_real_utf8_crlf_and_utf16_coordinates() {
     for (source, reads) in [
-        (HtmlSource::utf8("<script></script>\r\n\u{1f680}"), 7),
+        (HtmlSource::utf8("<script></script>\r\n\u{1f680}"), 3),
         (
             HtmlSource::utf16(DocumentString::from("<script></script>\r\n\u{1f680}")),
-            2,
+            0,
         ),
     ] {
         let mut c = control(100);
@@ -3395,7 +3396,7 @@ fn tokenizer_next_input_position_is_nonconsuming_and_uses_real_utf8_crlf_and_utf
         );
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            15
+            12 // No next-item decoding; actual cursor/range metadata only.
         );
         let again = tokenizer
             .checked_next_input_position(&source, &mut c)
@@ -3637,25 +3638,13 @@ fn standalone_selfclosing_script_is_not_void_and_emits_exact_source_qualified_er
 
 #[test]
 fn tokenizer_next_input_point_has_independent_physical_provider_and_metadata_category_deltas() {
-    // Handoff: state + pending + five drafts. Then peek: reconsume, raw
-    // position and range. A character adds its offset and checked range's
-    // external/private metadata. EOF omits those three visits and one range.
-    for (source, visits, copies, input_reads, inspected) in [
-        (HtmlSource::utf8(""), 11, 2, 0, 0),
-        (
-            HtmlSource::utf8("ab"),
-            14,
-            3,
-            2,
-            (size_of::<usize>() + size_of::<u32>()) as u64,
-        ),
-        (
-            HtmlSource::utf16(DocumentString::from("ab")),
-            14,
-            3,
-            1,
-            (size_of::<usize>() + size_of::<u32>()) as u64,
-        ),
+    // State + pending + six actual drafts, outer fixed position record,
+    // cursor metadata and existing checked range. No next-item decoding,
+    // codepoint/offset inspection or preprocessing occurs at this handoff.
+    for source in [
+        HtmlSource::utf8(""),
+        HtmlSource::utf8("ab"),
+        HtmlSource::utf16(DocumentString::from("ab")),
     ] {
         let mut c = control(100);
         c.admit_source(&source).unwrap();
@@ -3668,13 +3657,13 @@ fn tokenizer_next_input_point_has_independent_physical_provider_and_metadata_cat
             .unwrap();
         assert_eq!((point.start(), point.end()), (0, 0));
         for (category, expected) in [
-            (WorkCategory::RecordVisit, visits),
+            (WorkCategory::RecordVisit, 12),
             (
                 WorkCategory::CopyByte,
-                copies * size_of::<crate::HtmlSourceRange>() as u64,
+                2 * size_of::<crate::HtmlSourceRange>() as u64,
             ),
-            (WorkCategory::InputUnitRead, input_reads),
-            (WorkCategory::InspectByte, inspected),
+            (WorkCategory::InputUnitRead, 0),
+            (WorkCategory::InspectByte, 0),
             (WorkCategory::ProviderCall, 1),
             (WorkCategory::RecordWrite, 1),
             (WorkCategory::StateStep, 0),
@@ -8737,13 +8726,15 @@ fn frameset_afterafter_whitespace_reconstruction_stop_retains_exact_original_ran
             .session
             .evidence(&mut driver.control)
             .unwrap();
-        let event = state
+        let crate::parser::tokenizer::TokenizerPull::Event(event) = state
             .tokenizer
             .as_mut()
             .unwrap()
             .next(&mut driver.control, false, evidence)
             .unwrap()
-            .unwrap();
+        else {
+            panic!("complete fixture requires actual event");
+        };
         match event {
             Event::Token(event) => {
                 let token = event.into_token(&mut driver.control).unwrap();
@@ -13219,13 +13210,15 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
             .session
             .evidence(&mut driver.control)
             .unwrap();
-        let event = state
+        let crate::parser::tokenizer::TokenizerPull::Event(event) = state
             .tokenizer
             .as_mut()
             .unwrap()
             .next(&mut driver.control, false, evidence)
             .unwrap()
-            .unwrap();
+        else {
+            panic!("complete fixture requires actual event");
+        };
         let Event::Token(event) = event else {
             panic!("actual form token");
         };
@@ -14822,4 +14815,1236 @@ fn ordinary_email_multiple_trims_tokens_but_preserves_internal_newline_through_e
         true,
         &[(2, 3, 68, 73), (13, 14, 83, 87)],
     );
+}
+
+fn progressive_driver_document(raw: &str, cuts: &[usize]) -> Vec<(usize, Vec<u16>)> {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+    let mut attempt = owner.begin_progressive().unwrap();
+    let mut driver = attempt.take_driver().unwrap();
+    for cut in cuts.iter().copied().chain(std::iter::once(raw.len())) {
+        driver.make_available(cut).unwrap();
+        let mut starved = false;
+        for _ in 0..(8 * raw.len() + 256) {
+            match driver.step().unwrap() {
+                head::HeadStep::Consumed => {}
+                head::HeadStep::NeedInput => {
+                    starved = true;
+                    break;
+                }
+                other => panic!("unsealed source completed or crossed boundary: {other:?}"),
+            }
+        }
+        assert!(starved);
+        assert!(driver.control.stop().is_none());
+        // NeedInput does not consume the driver or create completion proof.
+        let mut slot = Some(driver);
+        assert!(StandaloneDocumentDriver::take_completed(&mut slot).is_err());
+        driver = slot.take().unwrap();
+    }
+    driver.seal_input().unwrap();
+    let mut complete = false;
+    for _ in 0..(8 * raw.len() + 256) {
+        match driver.step().unwrap() {
+            head::HeadStep::Consumed => {}
+            head::HeadStep::Complete => {
+                complete = true;
+                break;
+            }
+            other => panic!("sealed source failed completion: {other:?}"),
+        }
+    }
+    assert!(complete);
+    let mut slot = Some(driver);
+    let mut completed = StandaloneDocumentDriver::take_completed(&mut slot).unwrap();
+    completed.prepare_native_associations().unwrap();
+    let parts = completed.freeze_parts().unwrap();
+    drop(completed);
+    drop(attempt);
+    let mut original = Some(owner.take_request().unwrap());
+    let mut parts = Some(parts);
+    let mut sealed =
+        super::seal::SealedOrdinaryConstruction::take(&mut original, &mut parts).unwrap();
+    assert_eq!(sealed.source().as_utf8(), Some(raw));
+    assert!(sealed.is_offline());
+    assert_eq!(
+        sealed
+            .final_usage()
+            .resource(HtmlParseResource::SourceUnits)
+            .current,
+        raw.len() as u64
+    );
+    let observed = outline(sealed.document().unwrap());
+    sealed.release().unwrap();
+    observed
+}
+#[test]
+fn progressive_ordinary_every_split_retains_native_tree_until_explicit_seal() {
+    let raw = "<!doctype html><p a='&amp;'>A&notin;B</p><i>C</i>";
+    let expected = expected_outline(&[
+        (0, "html"),
+        (1, "head"),
+        (1, "body"),
+        (2, "p"),
+        (3, "#A∉B"),
+        (2, "i"),
+        (3, "#C"),
+    ]);
+    for cut in 0..=raw.len() {
+        assert_eq!(
+            progressive_driver_document(raw, &[cut]),
+            expected,
+            "cut={cut}"
+        );
+    }
+    assert_eq!(
+        progressive_driver_document(raw, &(0..=raw.len()).collect::<Vec<_>>()),
+        expected
+    );
+}
+#[test]
+fn progressive_script_end_handoff_at_unavailable_frontier_is_zero_width_and_not_replayed() {
+    for (raw, expected) in [
+        (
+            "<script>x</script><p>y</p>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (2, "script"),
+                (3, "#x"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#y"),
+            ]),
+        ),
+        (
+            "<svg><script>x</script><path/></svg><p>y</p>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "svg"),
+                (3, "script"),
+                (4, "#x"),
+                (3, "path"),
+                (2, "p"),
+                (3, "#y"),
+            ]),
+        ),
+    ] {
+        let end = raw.find("</script>").unwrap() + 9;
+        assert_eq!(progressive_driver_document(raw, &[end]), expected);
+    }
+}
+#[test]
+fn progressive_retained_reference_cancellation_is_first_stop_and_has_no_retry_reads() {
+    let raw = "<!doctype html><p>&NotEqualTilde;</p>";
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let cancel = request.cancellation().clone();
+    let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+    let mut attempt = owner.begin_progressive().unwrap();
+    let mut driver = attempt.take_driver().unwrap();
+    driver.make_available(raw.find("Tilde").unwrap()).unwrap();
+    while driver.step().unwrap() != head::HeadStep::NeedInput {}
+    let before = driver.control.usage().clone();
+    cancel.cancel();
+    assert!(matches!(
+        driver.step(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    let first = driver.control.first_stop_usage().unwrap().clone();
+    assert!(matches!(
+        driver.make_available(raw.len()),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    assert!(matches!(
+        driver.seal_input(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    assert!(matches!(
+        driver.step(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    assert_eq!(
+        driver.control.usage().work(WorkCategory::InputUnitRead),
+        before.work(WorkCategory::InputUnitRead)
+    );
+    assert_eq!(driver.control.first_stop_usage(), Some(&first));
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.first_stop_usage(), Some(&first));
+}
+
+#[test]
+fn progressive_table_template_select_clone_and_checkbox_partitions_use_the_same_tree() {
+    for (raw, expected) in [
+        (
+            "<table>X<tr><td>A</table><p>B",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "#X"),
+                (2, "table"),
+                (3, "tbody"),
+                (4, "tr"),
+                (5, "td"),
+                (6, "#A"),
+                (2, "p"),
+                (3, "#B"),
+            ]),
+        ),
+        (
+            "<template><tr><td>A</template><p>B",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (2, "template"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#B"),
+            ]),
+        ),
+        (
+            "<form><input type=checkbox value='A\r\nB' checked><p>X</form>",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "form"),
+                (3, "input"),
+                (3, "p"),
+                (4, "#X"),
+            ]),
+        ),
+        (
+            "<select><button><selectedcontent></selectedcontent></button><option selected>A<b>B</b></option></select><p>C",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "select"),
+                (3, "button"),
+                (4, "selectedcontent"),
+                (5, "#A"),
+                (5, "b"),
+                (6, "#B"),
+                (3, "option"),
+                (4, "#A"),
+                (4, "b"),
+                (5, "#B"),
+                (2, "p"),
+                (3, "#C"),
+            ]),
+        ),
+        (
+            "",
+            expected_outline(&[(0, "html"), (1, "head"), (1, "body")]),
+        ),
+    ] {
+        let cuts = (0..=raw.len()).collect::<Vec<_>>();
+        assert_eq!(progressive_driver_document(raw, &cuts), expected, "{raw:?}");
+    }
+}
+#[test]
+fn progressive_advance_and_seal_refuse_invalid_frontiers_and_consumed_owners() {
+    for operation in 0..4 {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>X"), limits(100));
+        let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+        let mut attempt = owner.begin_progressive().unwrap();
+        let mut driver = attempt.take_driver().unwrap();
+        driver.make_available(2).unwrap();
+        let error = match operation {
+            0 => driver.make_available(1),
+            1 => driver.make_available(5),
+            2 => driver.seal_input(),
+            _ => {
+                driver.make_available(4).unwrap();
+                driver.seal_input().unwrap();
+                driver.seal_input()
+            }
+        }
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            StandaloneError::Stop(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::InputCursorState
+            ))
+        ));
+        let first = driver.control.first_stop_usage().unwrap().clone();
+        let reads = driver.control.usage().work(WorkCategory::InputUnitRead);
+        assert!(driver.step().is_err());
+        assert!(driver.make_available(4).is_err());
+        assert!(driver.seal_input().is_err());
+        assert_eq!(
+            driver.control.usage().work(WorkCategory::InputUnitRead),
+            reads
+        );
+        assert_eq!(driver.control.first_stop_usage(), Some(&first));
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert!(driver.step().is_err());
+    }
+}
+
+fn progressive_successfully_released_driver_refuses_feed_once(seal: bool) {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>X"), limits(100));
+    let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+    let mut attempt = owner.begin_progressive().unwrap();
+    let mut driver = attempt.take_driver().unwrap();
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert!(driver.control.stop().is_none());
+    assert!(driver.control.first_stop_usage().is_none());
+    let error = if seal {
+        driver.seal_input()
+    } else {
+        driver.make_available(0)
+    }
+    .unwrap_err();
+    assert!(matches!(error, StandaloneError::Consumed));
+    let expected = ParseStop::UnsupportedStandaloneState(
+        crate::parser::control::StandaloneUnsupported::InvalidNesting,
+    );
+    assert_eq!(driver.control.stop(), Some(expected));
+    let first = driver.control.first_stop_usage().unwrap().clone();
+    assert_eq!(driver.control.usage(), &first);
+    for _ in 0..2 {
+        assert!(matches!(
+            driver.make_available(4),
+            Err(StandaloneError::Stop(stop)) if stop == expected
+        ));
+        assert!(matches!(
+            driver.seal_input(),
+            Err(StandaloneError::Stop(stop)) if stop == expected
+        ));
+        assert!(matches!(
+            driver.step(),
+            Err(StandaloneError::Stop(stop)) if stop == expected
+        ));
+        assert_eq!(driver.control.usage(), &first);
+        assert_eq!(driver.control.first_stop_usage(), Some(&first));
+    }
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.first_stop_usage(), Some(&first));
+}
+
+#[test]
+fn progressive_successful_release_then_make_available_latches_consumed_first_stop() {
+    progressive_successfully_released_driver_refuses_feed_once(false);
+}
+
+#[test]
+fn progressive_successful_release_then_seal_input_latches_consumed_first_stop() {
+    progressive_successfully_released_driver_refuses_feed_once(true);
+}
+
+#[derive(Clone, Copy)]
+enum ProgressiveNativeField {
+    Text,
+    Comment,
+    AttributeName(usize),
+    AttributeValue(usize),
+}
+struct ProgressiveFieldExpectation<'a> {
+    path: &'a [usize],
+    field: ProgressiveNativeField,
+    value: &'a str,
+    // Full ordered output interval, source interval and origin kind, never an
+    // opaque group or payload-container index masquerading as a native node.
+    origins: &'a [(
+        usize,
+        usize,
+        usize,
+        usize,
+        crate::parser::tokenizer::token::OriginKind,
+    )],
+    operation: crate::construction::parser_session::provenance::ConstructionOperation,
+    rule: crate::construction::parser_session::provenance::ParserRule,
+    family: crate::construction::parser_session::evidence::DiagnosticToken,
+}
+struct ProgressiveAttributeExpectation<'a> {
+    path: &'a [usize],
+    // Actual retained order, unlike the corpus dump's alphabetic presentation.
+    attributes: &'a [(Option<&'a str>, Option<&'a str>, &'a str, &'a str)],
+}
+struct ProgressiveDiagnosticExpectation {
+    kind: crate::construction::parser_session::evidence::DiagnosticKind,
+    context: crate::construction::parser_session::evidence::DiagnosticContext,
+    role: crate::construction::parser_session::evidence::DiagnosticLocationRole,
+    token: Option<crate::construction::parser_session::evidence::DiagnosticToken>,
+    source: (usize, usize),
+    anchor: &'static str,
+    branch: &'static str,
+}
+
+fn progressive_native_node(
+    view: &mut crate::construction::parser_session::native_view::NativeView<'_>,
+    path: &[usize],
+) -> ParserNode {
+    let mut node = view.root().unwrap();
+    for &position in path {
+        node = if position == usize::MAX {
+            view.template_contents(&node).unwrap().unwrap()
+        } else {
+            view.child_at(&node, position).unwrap().unwrap()
+        };
+    }
+    node
+}
+
+fn progressive_native_units(
+    view: &mut crate::construction::parser_session::native_view::NativeView<'_>,
+    value: crate::construction::parser_session::native_view::NativeString<'_>,
+    expected: &str,
+) {
+    let expected: Vec<_> = expected.encode_utf16().collect();
+    assert_eq!(value.len(), expected.len());
+    for (index, unit) in expected.into_iter().enumerate() {
+        assert_eq!(view.unit(&value, index).unwrap(), Some(unit));
+    }
+    assert_eq!(view.unit(&value, value.len()).unwrap(), None);
+}
+
+fn progressive_completed_native_evidence(
+    raw: &str,
+    cuts: &[usize],
+    dump: &str,
+    attributes: &[ProgressiveAttributeExpectation<'_>],
+    fields: &[ProgressiveFieldExpectation<'_>],
+    diagnostics: &[ProgressiveDiagnosticExpectation],
+) {
+    use crate::construction::parser_session::{
+        StringLocation,
+        evidence::DiagnosticSeverity,
+        native_view::NativeKind,
+        provenance::{
+            AssociationRelation, ConstructionOperation, GroupBody, NativeAttributeField,
+            NativeDestination,
+        },
+    };
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let source = request.source().clone();
+    let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+    let mut attempt = owner.begin_progressive().unwrap();
+    let mut driver = attempt.take_driver().unwrap();
+    for cut in cuts.iter().copied().chain(std::iter::once(raw.len())) {
+        driver.make_available(cut).unwrap();
+        let mut starved = false;
+        for _ in 0..(8 * raw.len() + 256) {
+            match driver.step().unwrap() {
+                head::HeadStep::Consumed => {}
+                head::HeadStep::NeedInput => {
+                    starved = true;
+                    break;
+                }
+                other => panic!("unsealed completion/boundary: {other:?}"),
+            }
+        }
+        assert!(starved && driver.control.stop().is_none());
+    }
+    driver.seal_input().unwrap();
+    let mut complete = false;
+    for _ in 0..(8 * raw.len() + 256) {
+        match driver.step().unwrap() {
+            head::HeadStep::Consumed => {}
+            head::HeadStep::Complete => {
+                complete = true;
+                break;
+            }
+            other => panic!("sealed completion: {other:?}"),
+        }
+    }
+    assert!(complete);
+    let mut slot = Some(driver);
+    let mut completed = StandaloneDocumentDriver::take_completed(&mut slot).unwrap();
+    assert!(slot.is_none());
+    // This is the existing admitted full native observer/comparator, including
+    // namespaces, prefixes, attributes, ordinary and template edges/backlinks.
+    conformance::assert_completed_literal(&mut completed, dump, HtmlDocumentMode::NoQuirks);
+    {
+        let retained = completed.diagnostics().unwrap();
+        assert_eq!(retained.len(), diagnostics.len());
+        for (index, expected) in diagnostics.iter().enumerate() {
+            let (record, location) = retained.retained_record(index).unwrap();
+            assert_eq!(record.kind, expected.kind);
+            assert_eq!(record.context, expected.context);
+            assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+            assert_eq!(
+                (record.rule.anchor, record.rule.branch),
+                (expected.anchor, expected.branch)
+            );
+            assert_eq!(location.role, expected.role);
+            assert_eq!(location.token, expected.token);
+            assert_eq!(location.source.source(), source.identity());
+            assert_eq!(location.source.coordinates(), source.coordinates());
+            assert_eq!(
+                (location.source.start(), location.source.end()),
+                expected.source
+            );
+        }
+    }
+    {
+        let mut view = completed.native_view().unwrap();
+        for expected in attributes {
+            let node = progressive_native_node(&mut view, expected.path);
+            assert_eq!(
+                view.attribute_count(&node).unwrap(),
+                expected.attributes.len()
+            );
+            for (slot, &(namespace, prefix, local, value)) in expected.attributes.iter().enumerate()
+            {
+                let attr = view.attribute_at(&node, slot).unwrap().unwrap();
+                assert_eq!(attr.name.namespace.is_some(), namespace.is_some());
+                assert_eq!(attr.name.prefix.is_some(), prefix.is_some());
+                if let Some(namespace) = namespace {
+                    progressive_native_units(&mut view, attr.name.namespace.unwrap(), namespace);
+                }
+                if let Some(prefix) = prefix {
+                    progressive_native_units(&mut view, attr.name.prefix.unwrap(), prefix);
+                }
+                progressive_native_units(&mut view, attr.name.local, local);
+                progressive_native_units(&mut view, attr.value, value);
+            }
+            assert!(
+                view.attribute_at(&node, expected.attributes.len())
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+    completed.prepare_native_associations().unwrap();
+    for expected in fields {
+        let node = {
+            let mut view = completed.native_view().unwrap();
+            let node = progressive_native_node(&mut view, expected.path);
+            let value = match expected.field {
+                ProgressiveNativeField::Text => match view.kind(&node).unwrap() {
+                    NativeKind::Text(value) => value,
+                    _ => panic!("literal path must be native Text"),
+                },
+                ProgressiveNativeField::Comment => match view.kind(&node).unwrap() {
+                    NativeKind::Comment(value) => value,
+                    _ => panic!("literal path must be native Comment"),
+                },
+                ProgressiveNativeField::AttributeName(slot) => {
+                    view.attribute_at(&node, slot).unwrap().unwrap().name.local
+                }
+                ProgressiveNativeField::AttributeValue(slot) => {
+                    view.attribute_at(&node, slot).unwrap().unwrap().value
+                }
+            };
+            progressive_native_units(&mut view, value, expected.value);
+            node
+        };
+        let mut rows = completed.native_associations().unwrap();
+        // Comment field locations use native node identities. Attribute fields
+        // use retained container identities and must use the published checked
+        // mapping instead of comparing their raw indices with native nodes.
+        let mut comment_index = None;
+        if matches!(expected.field, ProgressiveNativeField::Comment) {
+            for index in 0..rows.len() {
+                if rows.node_for(index, &node).unwrap() {
+                    let (row, _) = rows.row(index).unwrap().unwrap();
+                    if let NativeDestination::Node(index) = row.destination {
+                        comment_index = Some(index);
+                    }
+                }
+            }
+            assert!(comment_index.is_some());
+        }
+        let mut count = 0;
+        let mut group_index = None;
+        for index in 0..rows.len() {
+            let matched = match expected.field {
+                ProgressiveNativeField::Text => rows.text_for(index, &node).unwrap(),
+                ProgressiveNativeField::Comment => {
+                    rows.row(index).unwrap().unwrap().0.destination
+                        == NativeDestination::Field(StringLocation::Comment(comment_index.unwrap()))
+                }
+                ProgressiveNativeField::AttributeName(slot) => rows
+                    .attribute_for(index, &node, slot, NativeAttributeField::Name)
+                    .unwrap(),
+                ProgressiveNativeField::AttributeValue(slot) => rows
+                    .attribute_for(index, &node, slot, NativeAttributeField::Value)
+                    .unwrap(),
+            };
+            if !matched {
+                continue;
+            }
+            let (row, cause) = rows.row(index).unwrap().unwrap();
+            assert_eq!(row.relation, AssociationRelation::Output);
+            let &(start, end, source_start, source_end, kind) = expected
+                .origins
+                .get(count)
+                .expect("no extra output origin or uncovered interval");
+            assert_eq!((row.start, row.end), (start, end));
+            assert_eq!(row.kind, Some(kind));
+            let range = row.source.as_ref().unwrap();
+            assert_eq!(range.source(), source.identity());
+            assert_eq!(range.coordinates(), source.coordinates());
+            assert_eq!((range.start(), range.end()), (source_start, source_end));
+            let group = row.group.unwrap();
+            if let Some(previous) = group_index {
+                assert_eq!(group, previous);
+            }
+            group_index = Some(group);
+            let cause_index = row.cause;
+            assert_eq!(cause.operation, expected.operation);
+            if expected.operation == ConstructionOperation::Copy {
+                let original = cause.original.unwrap();
+                assert!(cause.source.is_none());
+                let group = rows.group(group).unwrap().unwrap();
+                assert!(
+                    matches!(group.body, GroupBody::Alias { original: actual } if actual == original)
+                );
+            } else if expected.operation == ConstructionOperation::Replay {
+                let original = cause.original_cause.unwrap();
+                assert!(cause.source.is_none());
+                assert!(cause.rule.is_none() && cause.family.is_none());
+                let original = rows.cause_at(original).unwrap().unwrap();
+                assert_eq!(original.operation, ConstructionOperation::Token);
+                assert_eq!(original.rule, Some(expected.rule));
+                assert_eq!(original.family, Some(expected.family));
+                let cause_source = original.source.as_ref().unwrap();
+                assert_eq!(cause_source.source(), source.identity());
+                assert_eq!(
+                    (cause_source.start(), cause_source.end()),
+                    (source_start, source_end)
+                );
+            } else {
+                assert_eq!(cause.rule, Some(expected.rule));
+                assert_eq!(cause.family, Some(expected.family));
+                let cause_source = cause.source.as_ref().unwrap();
+                assert_eq!(cause_source.source(), source.identity());
+                assert!(cause_source.start() <= source_start && cause_source.end() >= source_end);
+            }
+            let group = rows.group(group).unwrap().unwrap();
+            assert_eq!(group.cause, cause_index);
+            assert_eq!(group.units, expected.value.encode_utf16().count());
+            if expected.operation == ConstructionOperation::Copy {
+                assert!(matches!(group.body, GroupBody::Alias { .. }));
+            }
+            count += 1;
+        }
+        assert_eq!(count, expected.origins.len());
+        let group = group_index.unwrap();
+        let mut cursor = Some(rows.group_origin_cursor(group).unwrap());
+        for &(start, end, source_start, source_end, kind) in expected.origins {
+            let origin = rows
+                .next_group_origin(cursor.as_mut().unwrap())
+                .unwrap()
+                .unwrap();
+            assert_eq!((origin.start, origin.end, origin.kind), (start, end, kind));
+            assert_eq!(origin.source.source(), source.identity());
+            assert_eq!(
+                (origin.source.start(), origin.source.end()),
+                (source_start, source_end)
+            );
+        }
+        assert!(
+            rows.next_group_origin(cursor.as_mut().unwrap())
+                .unwrap()
+                .is_none()
+        );
+        rows.release_group_origin_cursor(&mut cursor).unwrap();
+        assert!(cursor.is_none());
+        let mut value = Some(rows.materialize_group(group).unwrap());
+        assert_eq!(
+            value.as_ref().unwrap().text().code_units(),
+            expected.value.encode_utf16().collect::<Vec<_>>()
+        );
+        rows.release_materialized_group(&mut value).unwrap();
+        assert!(value.is_none());
+    }
+    assert!(completed.at_stop().is_none());
+    let parts = completed.freeze_parts().unwrap();
+    drop(completed);
+    drop(attempt);
+    let mut original = Some(owner.take_request().unwrap());
+    let mut parts = Some(parts);
+    let mut sealed =
+        super::seal::SealedOrdinaryConstruction::take(&mut original, &mut parts).unwrap();
+    assert_eq!(sealed.source().identity(), source.identity());
+    assert_eq!(sealed.source().as_utf8(), Some(raw));
+    assert!(sealed.is_offline());
+    assert_eq!(
+        sealed
+            .final_usage()
+            .resource(HtmlParseResource::SourceUnits)
+            .current,
+        raw.len() as u64
+    );
+    assert!(sealed.document().is_some());
+    sealed.release().unwrap();
+    assert_eq!(sealed.retained_usage().actual_capacity_bytes, 0);
+    for resource in [
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::ManagedEdges,
+        HtmlParseResource::ManagedAttributes,
+        HtmlParseResource::ManagedUtf16Units,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::SourceMapPayloadUnits,
+        HtmlParseResource::Diagnostics,
+        HtmlParseResource::DiagnosticPayloadUnits,
+        HtmlParseResource::ContextEffects,
+        HtmlParseResource::OpenElements,
+        HtmlParseResource::ManagedCapacityBytes,
+    ] {
+        assert_eq!(sealed.retained_usage().resource(resource).current, 0);
+    }
+}
+
+#[test]
+fn progressive_partitions_retain_qualified_ordered_attributes_d1_and_diagnostic_ranges() {
+    use crate::construction::parser_session::{
+        evidence::{DiagnosticContext, DiagnosticKind, DiagnosticLocationRole, DiagnosticToken},
+        provenance::ParserRule,
+    };
+    use crate::parser::tokenizer::token::{DiagnosticCode, DiagnosticPhase, OriginKind};
+    // HTML877d comment NULL replacement, first duplicate attribute retention,
+    // character references and foreign attribute/name adjustment. All offsets
+    // below are literal UTF-8 source positions, not values from another run.
+    let raw = "<!doctype html><!--\0--><p z='&amp;' a=X z=Y>&notin;</p><svg viewbox='0' xlink:href='&amp;'/>";
+    let dump = "| <!DOCTYPE html>\n| <!-- � -->\n| <html>\n|   <head>\n|   <body>\n|     <p>\n|       a=\"X\"\n|       z=\"&\"\n|       \"∉\"\n|     <svg svg>\n|       viewBox=\"0\"\n|       xlink href=\"&\"\n";
+    let attributes = [
+        ProgressiveAttributeExpectation {
+            path: &[2, 1, 0],
+            attributes: &[(None, None, "z", "&"), (None, None, "a", "X")],
+        },
+        ProgressiveAttributeExpectation {
+            path: &[2, 1, 1],
+            attributes: &[
+                (None, None, "viewBox", "0"),
+                (
+                    Some("http://www.w3.org/1999/xlink"),
+                    Some("xlink"),
+                    "href",
+                    "&",
+                ),
+            ],
+        },
+    ];
+    let fields = [
+        ProgressiveFieldExpectation {
+            path: &[1],
+            field: ProgressiveNativeField::Comment,
+            value: "�",
+            origins: &[(0, 1, 19, 20, OriginKind::NullReplacement)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Prologue(prologue::PrologueMode::BeforeHtml),
+            family: DiagnosticToken::Comment,
+        },
+        ProgressiveFieldExpectation {
+            path: &[2, 1, 0],
+            field: ProgressiveNativeField::AttributeName(0),
+            value: "z",
+            origins: &[(0, 1, 26, 27, OriginKind::Literal)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Tag,
+        },
+        ProgressiveFieldExpectation {
+            path: &[2, 1, 0],
+            field: ProgressiveNativeField::AttributeValue(0),
+            value: "&",
+            origins: &[(0, 1, 29, 34, OriginKind::CharacterReference)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Tag,
+        },
+        ProgressiveFieldExpectation {
+            path: &[2, 1, 0, 0],
+            field: ProgressiveNativeField::Text,
+            value: "∉",
+            origins: &[(0, 1, 44, 51, OriginKind::CharacterReference)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Text,
+        },
+        ProgressiveFieldExpectation {
+            path: &[2, 1, 1],
+            field: ProgressiveNativeField::AttributeValue(1),
+            value: "&",
+            origins: &[(0, 1, 84, 89, OriginKind::CharacterReference)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Tag,
+        },
+    ];
+    let diagnostics = [
+        ProgressiveDiagnosticExpectation {
+            kind: DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter),
+            context: DiagnosticContext::Tokenizer {
+                phase: DiagnosticPhase::Tokenizer,
+                state: State::Comment,
+            },
+            role: DiagnosticLocationRole::InputFrontier,
+            token: None,
+            source: (19, 20),
+            anchor: "parse-error-unexpected-null-character",
+            branch: "unexpected-null-character",
+        },
+        ProgressiveDiagnosticExpectation {
+            kind: DiagnosticKind::Tokenizer(DiagnosticCode::DuplicateAttribute),
+            context: DiagnosticContext::Tokenizer {
+                phase: DiagnosticPhase::Tokenizer,
+                state: State::AttributeName,
+            },
+            role: DiagnosticLocationRole::InputFrontier,
+            token: None,
+            source: (41, 42),
+            anchor: "parse-error-duplicate-attribute",
+            branch: "duplicate-attribute",
+        },
+    ];
+    for cut in 0..=raw.len() {
+        progressive_completed_native_evidence(
+            raw,
+            &[cut],
+            dump,
+            &attributes,
+            &fields,
+            &diagnostics,
+        );
+    }
+    progressive_completed_native_evidence(
+        raw,
+        &(0..=raw.len()).collect::<Vec<_>>(),
+        dump,
+        &attributes,
+        &fields,
+        &diagnostics,
+    );
+}
+
+#[test]
+fn progressive_partitions_keep_fostered_native_destination_and_buffered_diagnostic_roles() {
+    use crate::construction::parser_session::{
+        evidence::{DiagnosticContext, DiagnosticKind, DiagnosticLocationRole, DiagnosticToken},
+        provenance::ParserRule,
+    };
+    use crate::parser::tokenizer::token::OriginKind;
+    let raw = "<!doctype html><table>X<tr><td>A</table><p>B";
+    let dump = "| <!DOCTYPE html>\n| <html>\n|   <head>\n|   <body>\n|     \"X\"\n|     <table>\n|       <tbody>\n|         <tr>\n|           <td>\n|             \"A\"\n|     <p>\n|       \"B\"\n";
+    let fields = [
+        ProgressiveFieldExpectation {
+            path: &[1, 1, 0],
+            field: ProgressiveNativeField::Text,
+            value: "X",
+            origins: &[(0, 1, 22, 23, OriginKind::Literal)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Replay,
+            rule: ParserRule::Tree(head::InsertionMode::InTableText),
+            family: DiagnosticToken::Text,
+        },
+        ProgressiveFieldExpectation {
+            path: &[1, 1, 1, 0, 0, 0, 0],
+            field: ProgressiveNativeField::Text,
+            value: "A",
+            origins: &[(0, 1, 31, 32, OriginKind::Literal)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Text,
+        },
+    ];
+    let diagnostics = [
+        ProgressiveDiagnosticExpectation {
+            kind: DiagnosticKind::Tree(head::HeadCondition::NonWhitespaceInTable),
+            context: DiagnosticContext::Tree(head::InsertionMode::InTableText),
+            role: DiagnosticLocationRole::BufferedTableCharacter,
+            token: Some(DiagnosticToken::Text),
+            source: (22, 23),
+            anchor: "parsing-main-intabletext",
+            branch: "pending-characters/non-whitespace",
+        },
+        ProgressiveDiagnosticExpectation {
+            kind: DiagnosticKind::Tree(head::HeadCondition::UnexpectedTableToken),
+            context: DiagnosticContext::Tree(head::InsertionMode::InTableText),
+            role: DiagnosticLocationRole::BufferedTableCharacter,
+            token: Some(DiagnosticToken::Text),
+            source: (22, 23),
+            anchor: "parsing-main-intable",
+            branch: "anything-else/pending-character",
+        },
+    ];
+    for cut in 0..=raw.len() {
+        progressive_completed_native_evidence(raw, &[cut], dump, &[], &fields, &diagnostics);
+    }
+    progressive_completed_native_evidence(
+        raw,
+        &(0..=raw.len()).collect::<Vec<_>>(),
+        dump,
+        &[],
+        &fields,
+        &diagnostics,
+    );
+}
+
+#[test]
+fn progressive_partitions_keep_template_fragment_native_and_source_destinations() {
+    use crate::construction::parser_session::{evidence::DiagnosticToken, provenance::ParserRule};
+    use crate::parser::tokenizer::token::OriginKind;
+    let raw = "<!doctype html><template><tr><td>A</template><p>B";
+    let dump = "| <!DOCTYPE html>\n| <html>\n|   <head>\n|     <template>\n|       content\n|         <tr>\n|           <td>\n|             \"A\"\n|   <body>\n|     <p>\n|       \"B\"\n";
+    let fields = [ProgressiveFieldExpectation {
+        path: &[1, 0, 0, usize::MAX, 0, 0, 0],
+        field: ProgressiveNativeField::Text,
+        value: "A",
+        origins: &[(0, 1, 33, 34, OriginKind::Literal)],
+        operation: crate::construction::parser_session::provenance::ConstructionOperation::Token,
+        rule: ParserRule::Tree(head::InsertionMode::InBody),
+        family: DiagnosticToken::Text,
+    }];
+    for cut in 0..=raw.len() {
+        progressive_completed_native_evidence(raw, &[cut], dump, &[], &fields, &[]);
+    }
+    progressive_completed_native_evidence(
+        raw,
+        &(0..=raw.len()).collect::<Vec<_>>(),
+        dump,
+        &[],
+        &fields,
+        &[],
+    );
+}
+
+#[test]
+fn progressive_partitions_keep_selectedcontent_copy_groups_and_distinct_native_destinations() {
+    use crate::construction::parser_session::{evidence::DiagnosticToken, provenance::ParserRule};
+    use crate::parser::tokenizer::token::OriginKind;
+    let raw = "<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected>A<b>B</b></option></select><p>C";
+    let dump = "| <!DOCTYPE html>\n| <html>\n|   <head>\n|   <body>\n|     <select>\n|       <button>\n|         <selectedcontent>\n|           \"A\"\n|           <b>\n|             \"B\"\n|       <option>\n|         selected=\"\"\n|         \"A\"\n|         <b>\n|           \"B\"\n|     <p>\n|       \"C\"\n";
+    let fields = [
+        ProgressiveFieldExpectation {
+            path: &[1, 1, 0, 0, 0, 0],
+            field: ProgressiveNativeField::Text,
+            value: "A",
+            origins: &[(0, 1, 92, 93, OriginKind::Literal)],
+            operation: crate::construction::parser_session::provenance::ConstructionOperation::Copy,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Text,
+        },
+        ProgressiveFieldExpectation {
+            path: &[1, 1, 0, 0, 0, 1, 0],
+            field: ProgressiveNativeField::Text,
+            value: "B",
+            origins: &[(0, 1, 96, 97, OriginKind::Literal)],
+            operation: crate::construction::parser_session::provenance::ConstructionOperation::Copy,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Text,
+        },
+        ProgressiveFieldExpectation {
+            path: &[1, 1, 0, 1, 0],
+            field: ProgressiveNativeField::Text,
+            value: "A",
+            origins: &[(0, 1, 92, 93, OriginKind::Literal)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Text,
+        },
+        ProgressiveFieldExpectation {
+            path: &[1, 1, 0, 1, 1, 0],
+            field: ProgressiveNativeField::Text,
+            value: "B",
+            origins: &[(0, 1, 96, 97, OriginKind::Literal)],
+            operation:
+                crate::construction::parser_session::provenance::ConstructionOperation::Token,
+            rule: ParserRule::Tree(head::InsertionMode::InBody),
+            family: DiagnosticToken::Text,
+        },
+    ];
+    for cut in 0..=raw.len() {
+        progressive_completed_native_evidence(raw, &[cut], dump, &[], &fields, &[]);
+    }
+    progressive_completed_native_evidence(
+        raw,
+        &(0..=raw.len()).collect::<Vec<_>>(),
+        dump,
+        &[],
+        &fields,
+        &[],
+    );
+}
+
+#[test]
+fn progressive_rawtext_rcdata_script_escaped_endings_and_crlf_handoffs_preserve_native_text() {
+    for (raw, expected) in [
+        (
+            "<title>A&amp;</TiTlEextra!></TiTlE><p>B",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (2, "title"),
+                (3, "#A&</TiTlEextra!>"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#B"),
+            ]),
+        ),
+        (
+            "<style>A&amp;</styLe><p>B",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (2, "style"),
+                (3, "#A&amp;"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#B"),
+            ]),
+        ),
+        (
+            "<script><!--<script>x</script>--></script>\r\n<p>B",
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (2, "script"),
+                (3, "#<!--<script>x</script>-->"),
+                (2, "#\n"),
+                (1, "body"),
+                (2, "p"),
+                (3, "#B"),
+            ]),
+        ),
+    ] {
+        for cut in 0..=raw.len() {
+            assert_eq!(
+                progressive_driver_document(raw, &[cut]),
+                expected,
+                "{raw:?} cut={cut}"
+            );
+        }
+    }
+}
+
+fn progressive_driver_limits(
+    caps: HtmlParseLimits,
+) -> (Option<ParseStop>, crate::parser::control::ParseUsage) {
+    let raw = "<!doctype html><p>&unknown;&#x41;</p>";
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), caps);
+    let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+    let mut attempt = owner.begin_progressive().unwrap();
+    let mut driver = match attempt.take_driver() {
+        Ok(driver) => driver,
+        Err(_) => {
+            let at = attempt.at_stop().unwrap().clone();
+            attempt.retain_failure().unwrap();
+            drop(attempt);
+            owner.release_failure().unwrap();
+            let usage = owner.retained_usage().unwrap();
+            for resource in [
+                HtmlParseResource::BufferedUtf16Units,
+                HtmlParseResource::ManagedCapacityBytes,
+                HtmlParseResource::AuxiliaryEntries,
+                HtmlParseResource::OpenElements,
+            ] {
+                assert_eq!(usage.resource(resource).current, 0);
+            }
+            return (
+                Some(match owner.failure().unwrap() {
+                    super::entry::InitializationFailure::Stopped(stop) => stop,
+                    _ => panic!("execution refusal"),
+                }),
+                at,
+            );
+        }
+    };
+    let result = (|| -> Result<(), StandaloneError> {
+        for cut in [raw.len() / 2, raw.len()] {
+            driver.make_available(cut)?;
+            loop {
+                match driver.step()? {
+                    head::HeadStep::Consumed => {}
+                    head::HeadStep::NeedInput => break,
+                    other => panic!("unsealed {other:?}"),
+                }
+            }
+        }
+        driver.seal_input()?;
+        loop {
+            match driver.step()? {
+                head::HeadStep::Consumed => {}
+                head::HeadStep::Complete => break,
+                other => panic!("sealed {other:?}"),
+            }
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let first = driver.control.stop().unwrap();
+        let at = driver.control.first_stop_usage().unwrap().clone();
+        assert!(driver.step().is_err());
+        assert!(driver.make_available(raw.len()).is_err());
+        assert!(driver.seal_input().is_err());
+        assert_eq!(driver.control.first_stop_usage(), Some(&at));
+        assert_eq!(driver.control.stop(), Some(first));
+        let mut slot = Some(driver);
+        assert!(StandaloneDocumentDriver::take_completed(&mut slot).is_err());
+        driver = slot.take().unwrap();
+    }
+    if driver.release().is_err() {
+        let first = driver.control.first_stop_usage().unwrap().clone();
+        driver.release().unwrap();
+        assert_eq!(driver.control.first_stop_usage(), Some(&first));
+    }
+    assert_released(&driver.control);
+    (driver.control.stop(), driver.control.usage().clone())
+}
+#[test]
+fn progressive_ordinary_completion_has_exact_work_storage_and_fixed_layout_refusals() {
+    let (stop, usage) = progressive_driver_limits(limits(100));
+    assert_eq!(stop, None);
+    let work = usage.resource(HtmlParseResource::WorkCredits).current;
+    assert_eq!(
+        progressive_driver_limits(
+            limits(100)
+                .into_builder()
+                .work_credits(work)
+                .finish()
+                .unwrap()
+        )
+        .0,
+        None
+    );
+    assert!(matches!(
+        progressive_driver_limits(
+            limits(100)
+                .into_builder()
+                .work_credits(work - 1)
+                .finish()
+                .unwrap()
+        )
+        .0,
+        Some(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::WorkCredits,
+            ..
+        })
+    ));
+    for limit in [0, 1, 512, 2048, 8192, 16384] {
+        assert!(matches!(
+            progressive_driver_limits(
+                limits(100)
+                    .into_builder()
+                    .work_credits(limit)
+                    .finish()
+                    .unwrap()
+            )
+            .0,
+            Some(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            })
+        ));
+    }
+    for (resource, peak) in [
+        (
+            HtmlParseResource::ManagedCapacityBytes,
+            usage
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .high_water,
+        ),
+        (
+            HtmlParseResource::OpenElements,
+            usage.resource(HtmlParseResource::OpenElements).high_water,
+        ),
+        (
+            HtmlParseResource::AtomicLayoutBytes,
+            usage.largest_atomic_layout,
+        ),
+    ] {
+        let caps = |limit| {
+            let b = limits(100).into_builder();
+            match resource {
+                HtmlParseResource::ManagedCapacityBytes => b.managed_capacity_bytes(limit),
+                HtmlParseResource::OpenElements => b.open_elements(limit),
+                HtmlParseResource::AtomicLayoutBytes => b.atomic_layout_bytes(limit),
+                _ => unreachable!(),
+            }
+            .finish()
+            .unwrap()
+        };
+        assert_eq!(
+            progressive_driver_limits(caps(peak)).0,
+            None,
+            "{resource:?}"
+        );
+        assert!(
+            matches!(progressive_driver_limits(caps(peak-1)).0,Some(ParseStop::LimitExceeded {resource:actual,..}) if actual==resource),
+            "{resource:?}"
+        );
+    }
+}
+
+#[test]
+fn progressive_original_cancellation_before_initialization_and_immediately_before_seal_is_terminal()
+{
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
+    request.cancellation().cancel();
+    let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+    let mut attempt = owner.begin_progressive().unwrap();
+    assert!(attempt.take_driver().is_err());
+    assert_eq!(
+        attempt.at_stop().unwrap().work(WorkCategory::InputUnitRead),
+        0
+    );
+    attempt.retain_failure().unwrap();
+    drop(attempt);
+    let first = owner.at_stop().unwrap().clone();
+    owner.release_failure().unwrap();
+    assert_eq!(owner.at_stop(), Some(&first));
+    for resource in [
+        HtmlParseResource::ManagedCapacityBytes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::OpenElements,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::Diagnostics,
+    ] {
+        assert_eq!(
+            owner.after_cleanup().unwrap().resource(resource).current,
+            0,
+            "{resource:?}"
+        );
+    }
+
+    let raw = "<p>&notin;";
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let cancellation = request.cancellation().clone();
+    let mut owner = super::seal::OrdinaryInitializationOwner::new(request);
+    let mut attempt = owner.begin_progressive().unwrap();
+    let mut driver = attempt.take_driver().unwrap();
+    driver.make_available(raw.len()).unwrap();
+    while driver.step().unwrap() != head::HeadStep::NeedInput {}
+    let reads = driver.control.usage().work(WorkCategory::InputUnitRead);
+    cancellation.cancel();
+    assert!(matches!(
+        driver.seal_input(),
+        Err(StandaloneError::Stop(ParseStop::Cancelled))
+    ));
+    let first = driver.control.first_stop_usage().unwrap().clone();
+    assert!(driver.step().is_err());
+    assert!(driver.seal_input().is_err());
+    assert_eq!(
+        driver.control.usage().work(WorkCategory::InputUnitRead),
+        reads
+    );
+    assert_eq!(driver.control.first_stop_usage(), Some(&first));
+    let mut slot = Some(driver);
+    assert!(StandaloneDocumentDriver::take_completed(&mut slot).is_err());
+    let mut driver = slot.take().unwrap();
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.first_stop_usage(), Some(&first));
 }

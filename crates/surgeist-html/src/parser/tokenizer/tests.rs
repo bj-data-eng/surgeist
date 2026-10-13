@@ -33,7 +33,11 @@ impl<'a> LexerFixture<'a> {
         c: &mut ParseControl,
         cdata: bool,
     ) -> Result<Option<Event>, ParseStop> {
-        self.lexer.next(c, cdata, &mut self.evidence)
+        match self.lexer.next(c, cdata, &mut self.evidence)? {
+            super::TokenizerPull::Event(event) => Ok(Some(event)),
+            super::TokenizerPull::Exhausted => Ok(None),
+            super::TokenizerPull::NeedInput => panic!("complete fixture cannot starve"),
+        }
     }
     pub(crate) fn next_in(
         &mut self,
@@ -41,7 +45,11 @@ impl<'a> LexerFixture<'a> {
         cdata: bool,
         evidence: &mut ParseEvidence,
     ) -> Result<Option<Event>, ParseStop> {
-        self.lexer.next(c, cdata, evidence)
+        match self.lexer.next(c, cdata, evidence)? {
+            super::TokenizerPull::Event(event) => Ok(Some(event)),
+            super::TokenizerPull::Exhausted => Ok(None),
+            super::TokenizerPull::NeedInput => panic!("complete fixture cannot starve"),
+        }
     }
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         self.lexer.release(c)?;
@@ -54,7 +62,7 @@ impl<'a> LexerFixture<'a> {
         self.evidence.tokenizer_observation(id)
     }
     fn step(&mut self, c: &mut ParseControl, cdata: bool) -> Result<(), ParseStop> {
-        self.lexer.step(c, cdata, &mut self.evidence)
+        self.lexer.step(c, cdata, &mut self.evidence).map(|_| ())
     }
     fn read(&mut self, c: &mut ParseControl) -> Result<Option<u32>, ParseStop> {
         self.lexer.read(c, &mut self.evidence)
@@ -1403,7 +1411,9 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     c.admit_source(&source).unwrap();
     let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     t.step(&mut c, false).unwrap();
+    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
     t.step(&mut c, false).unwrap();
+    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
     assert_eq!(t.pending_len, 6);
     let bytes = 6 * size_of::<Option<Event>>() + size_of::<usize>();
     assert!(bytes > WORK_QUANTUM);
@@ -1442,7 +1452,9 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
     c.admit_source(&source).unwrap();
     let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     t.step(&mut c, false).unwrap();
+    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
     t.step(&mut c, false).unwrap();
+    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
     let before = c.usage().clone();
     let stop = match t.next(&mut c, false) {
         Err(stop) => stop,
@@ -3323,4 +3335,616 @@ fn draft_text_origin_foreign_and_cancelled_push_preserve_exact_owned_prefix() {
         c.usage().resource(HtmlParseResource::WorkCredits),
         snapshot.resource(HtmlParseResource::WorkCredits)
     );
+}
+
+/// The real progressive tokenizer, evidence store and controller are retained
+/// between pulls. These projections observe values; no test token is supplied.
+fn collect_progressive(
+    source: &HtmlSource,
+    cuts: &[usize],
+    cdata: bool,
+) -> (Vec<Seen>, Vec<DiagnosticCode>) {
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(source).unwrap();
+    let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+    let mut lexer = Tokenizer::progressive(source, State::Data, None, &mut c).unwrap();
+    let mut output = Vec::new();
+    let mut errors = Vec::new();
+    let mut exhausted = false;
+    for cut in cuts.iter().copied().chain(std::iter::once(source.len())) {
+        lexer.make_available(cut, &mut c).unwrap();
+        loop {
+            match lexer.next(&mut c, cdata, &mut evidence).unwrap() {
+                TokenizerPull::NeedInput => break,
+                TokenizerPull::Exhausted => panic!("unsealed source cannot finish"),
+                TokenizerPull::Event(event) => {
+                    progressive_observe(&event, &evidence, &mut output, &mut errors);
+                    assert!(!output.iter().any(|item| matches!(item, Seen::Eof)));
+                    event.release(&mut c).unwrap();
+                }
+            }
+        }
+        assert!(c.stop().is_none());
+    }
+    lexer.seal_input(&mut c).unwrap();
+    while !exhausted {
+        match lexer.next(&mut c, cdata, &mut evidence).unwrap() {
+            TokenizerPull::NeedInput => panic!("sealed full source cannot starve"),
+            TokenizerPull::Exhausted => exhausted = true,
+            TokenizerPull::Event(event) => {
+                progressive_observe(&event, &evidence, &mut output, &mut errors);
+                event.release(&mut c).unwrap();
+            }
+        }
+    }
+    assert_eq!(
+        output
+            .iter()
+            .filter(|item| matches!(item, Seen::Eof))
+            .count(),
+        1
+    );
+    lexer.release(&mut c).unwrap();
+    evidence.release(&mut c).unwrap();
+    for resource in [
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::Diagnostics,
+        HtmlParseResource::ManagedCapacityBytes,
+    ] {
+        assert_eq!(c.usage().resource(resource).current, 0, "{resource:?}");
+    }
+    (output, errors)
+}
+fn progressive_observe(
+    event: &Event,
+    evidence: &ParseEvidence,
+    output: &mut Vec<Seen>,
+    errors: &mut Vec<DiagnosticCode>,
+) {
+    match event {
+        Event::Diagnostic(id) => errors.push(evidence.tokenizer_observation(id).code),
+        Event::Preprocessing { .. } => {}
+        Event::Token(token) => output.push(match &token.token().kind {
+            TokenKind::Text(t) => Seen::Text(text(t)),
+            TokenKind::Comment(t) => Seen::Comment(text(t)),
+            TokenKind::Tag(t) => Seen::Tag(
+                t.kind,
+                text(&t.name),
+                t.self_closing,
+                t.attributes
+                    .as_slice()
+                    .iter()
+                    .map(|a| (text(&a.name), text(&a.value)))
+                    .collect(),
+                t.had_duplicate_attributes,
+            ),
+            TokenKind::Doctype(t) => Seen::Doctype(
+                t.name.as_ref().map(text),
+                t.public_id.as_ref().map(text),
+                t.system_id.as_ref().map(text),
+                t.force_quirks,
+            ),
+            TokenKind::ProcessingInstruction { target, data } => Seen::Pi(text(target), text(data)),
+            TokenKind::Eof => Seen::Eof,
+        }),
+    }
+}
+#[test]
+fn progressive_every_reference_split_preserves_literal_outputs_and_final_diagnostics() {
+    for (input, expected) in [
+        ("A&notin;B", "A∉B"),
+        ("&notit;", "¬it;"),
+        ("&#x1F642;", "🙂"),
+        ("&#65z", "Az"),
+        ("&#x;", "&#x;"),
+        ("&unknown;", "&unknown;"),
+        ("&NotEqualTilde;", "≂̸"),
+        ("&amp", "&"),
+        ("&", "&"),
+        ("&#99999999999999999999999;", "�"),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let complete = collect(&source, State::Data, None, false);
+        assert_eq!(joined(&complete.0), units(expected));
+        for cut in 0..=source.len() {
+            let progressive = collect_progressive(&source, &[cut], false);
+            assert_eq!(
+                joined(&progressive.0),
+                units(expected),
+                "{input:?} cut={cut}"
+            );
+            assert_eq!(progressive.1, complete.1, "{input:?} cut={cut}");
+        }
+        let progressive =
+            collect_progressive(&source, &(0..=source.len()).collect::<Vec<_>>(), false);
+        assert_eq!(joined(&progressive.0), units(expected));
+        assert_eq!(progressive.1, complete.1);
+    }
+}
+#[test]
+fn progressive_every_declaration_attribute_and_cdata_split_preserves_tokens() {
+    for (input, cdata) in [
+        (
+            "<!DOCTYPE html PUBLIC \"p\" \"s\"><!--a--!><x a='&notit;' b='&#x41;'>Z",
+            false,
+        ),
+        ("<![CDATA[a]]]>Z", true),
+        ("<![CDATA[a]]]>Z", false),
+        ("<!--a---><?target data?>", false),
+        ("<!DOCTYPE h SYSTEM \"x\"><!--x", false),
+        ("\u{feff}A\u{feff}B", false),
+        ("<a x=one y='two' z=\"three\">", false),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let complete = collect(&source, State::Data, None, cdata);
+        for cut in 0..=source.len() {
+            assert_eq!(
+                collect_progressive(&source, &[cut], cdata),
+                complete,
+                "{input:?} cut={cut}"
+            );
+        }
+    }
+}
+#[test]
+fn progressive_split_utf8_and_utf16_preprocessing_preserves_source_units() {
+    let utf8 = HtmlSource::utf8("A\r\n🙂B\rC");
+    for cut in 0..=utf8.len() {
+        assert_eq!(
+            joined(&collect_progressive(&utf8, &[cut], false).0),
+            units("A\n🙂B\nC")
+        );
+    }
+    let utf16 = HtmlSource::utf16(DocumentString::from_utf16(vec![
+        65, 13, 10, 0xd83d, 0xde42, 0xd800, 66,
+    ]));
+    for cut in 0..=utf16.len() {
+        assert_eq!(
+            joined(&collect_progressive(&utf16, &[cut], false).0),
+            vec![65, 10, 0xd83d, 0xde42, 0xd800, 66]
+        );
+    }
+}
+
+fn run_progressive_limits(
+    source: &HtmlSource,
+    caps: HtmlParseLimits,
+) -> (Option<ParseStop>, crate::parser::control::ParseUsage) {
+    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    if c.admit_source(source).is_ok()
+        && let Ok(mut evidence) = ParseEvidence::prepare(&mut c)
+    {
+        if let Ok(mut lexer) = Tokenizer::progressive(source, State::Data, None, &mut c) {
+            let outcome = (|| -> Result<(), ParseStop> {
+                for cut in [source.len() / 2, source.len()] {
+                    lexer.make_available(cut, &mut c)?;
+                    loop {
+                        match lexer.next(&mut c, false, &mut evidence)? {
+                            TokenizerPull::NeedInput => break,
+                            TokenizerPull::Event(event) => event.release(&mut c)?,
+                            TokenizerPull::Exhausted => panic!("unsealed EOF"),
+                        }
+                    }
+                }
+                lexer.seal_input(&mut c)?;
+                loop {
+                    match lexer.next(&mut c, false, &mut evidence)? {
+                        TokenizerPull::Event(event) => event.release(&mut c)?,
+                        TokenizerPull::Exhausted => break,
+                        TokenizerPull::NeedInput => panic!("sealed starvation"),
+                    }
+                }
+                Ok(())
+            })();
+            if let Err(first) = outcome {
+                let at_stop = c.first_stop_usage().unwrap().clone();
+                assert_eq!(c.stop(), Some(first));
+                assert!(
+                    matches!(lexer.next(&mut c,false,&mut evidence),Err(second) if second==first)
+                );
+                assert_eq!(lexer.make_available(source.len(), &mut c), Err(first));
+                assert_eq!(lexer.seal_input(&mut c), Err(first));
+                assert_eq!(c.first_stop_usage(), Some(&at_stop));
+            }
+            lexer.release(&mut c).unwrap();
+        }
+        evidence.release(&mut c).unwrap();
+    }
+    assert_storage_released(&c);
+    (c.stop(), c.usage().clone())
+}
+#[test]
+fn progressive_real_work_and_storage_exact_one_short_keep_first_stop_and_cleanup() {
+    let source = HtmlSource::utf8("<a x='&not='>&NotEqualTilde;&#xFFFF");
+    let (stop, usage) = run_progressive_limits(&source, limits());
+    assert_eq!(stop, None);
+    assert_eq!(
+        usage.resource(HtmlParseResource::SourceUnits).current,
+        source.len() as u64
+    );
+    let work = usage.resource(HtmlParseResource::WorkCredits).current;
+    let exact = limits().into_builder().work_credits(work).finish().unwrap();
+    assert_eq!(run_progressive_limits(&source, exact).0, None);
+    let short = limits()
+        .into_builder()
+        .work_credits(work - 1)
+        .finish()
+        .unwrap();
+    assert!(matches!(
+        run_progressive_limits(&source, short).0,
+        Some(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::WorkCredits,
+            ..
+        })
+    ));
+    for resource in [
+        HtmlParseResource::ManagedCapacityBytes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::Diagnostics,
+    ] {
+        let peak = usage.resource(resource).high_water;
+        assert!(peak > 0, "{resource:?}");
+        let with = |value| {
+            let b = limits().into_builder();
+            match resource {
+                HtmlParseResource::ManagedCapacityBytes => b.managed_capacity_bytes(value),
+                HtmlParseResource::AuxiliaryEntries => b.auxiliary_entries(value),
+                HtmlParseResource::SourceMapEntries => b.source_map_entries(value),
+                HtmlParseResource::BufferedUtf16Units => b.buffered_utf16_units(value),
+                HtmlParseResource::TokenAttributes => b.token_attributes(value),
+                HtmlParseResource::Diagnostics => b.diagnostics(value),
+                _ => unreachable!(),
+            }
+            .finish()
+            .unwrap()
+        };
+        assert_eq!(
+            run_progressive_limits(&source, with(peak)).0,
+            None,
+            "{resource:?}"
+        );
+        assert!(
+            matches!(run_progressive_limits(&source,with(peak-1)).0,Some(ParseStop::LimitExceeded {resource:actual,..}) if actual==resource),
+            "{resource:?}"
+        );
+    }
+    let layout = usage.largest_atomic_layout;
+    assert_eq!(
+        run_progressive_limits(
+            &source,
+            limits()
+                .into_builder()
+                .atomic_layout_bytes(layout)
+                .finish()
+                .unwrap()
+        )
+        .0,
+        None
+    );
+    assert!(matches!(
+        run_progressive_limits(
+            &source,
+            limits()
+                .into_builder()
+                .atomic_layout_bytes(layout - 1)
+                .finish()
+                .unwrap()
+        )
+        .0,
+        Some(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::AtomicLayoutBytes,
+            ..
+        })
+    ));
+}
+#[test]
+fn progressive_cancel_during_actual_numeric_scan_preserves_source_snapshot_and_releases_reference()
+{
+    let raw = format!("&#{};", "9".repeat(8192));
+    let source = HtmlSource::utf8(raw);
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(), cancellation.clone());
+    c.admit_source(&source).unwrap();
+    let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+    let mut lexer = Tokenizer::progressive(&source, State::Data, None, &mut c).unwrap();
+    lexer.make_available(source.len(), &mut c).unwrap();
+    lexer
+        .cursor
+        .cancel_after_consumed(1024, cancellation.clone(), &mut c)
+        .unwrap();
+    assert!(matches!(
+        lexer.next(&mut c, false, &mut evidence),
+        Err(ParseStop::Cancelled)
+    ));
+    assert!(cancellation.is_cancelled());
+    assert!(lexer.cursor.position(&mut c).is_err());
+    assert_eq!(lexer.current.source(), source.identity());
+    assert!(lexer.current.end() >= 1024 && lexer.current.end() < source.len());
+    let first = c.first_stop_usage().unwrap().clone();
+    let reads = c.usage().work(WorkCategory::InputUnitRead);
+    assert!((1024..20 * 8192).contains(&reads));
+    assert!(lexer.pending_len == 0); // No completed reference or speculative EOF.
+    assert!(matches!(
+        lexer.next(&mut c, false, &mut evidence),
+        Err(ParseStop::Cancelled)
+    ));
+    assert_eq!(c.usage().work(WorkCategory::InputUnitRead), reads);
+    assert_eq!(c.first_stop_usage(), Some(&first));
+    lexer.release(&mut c).unwrap();
+    evidence.release(&mut c).unwrap();
+    assert_storage_released(&c);
+    assert_eq!(c.first_stop_usage(), Some(&first));
+}
+#[test]
+fn progressive_unknown_reference_and_attribute_never_diagnose_or_finish_on_starvation() {
+    for raw in ["&unknown;", "&#x;", "<a x='&not=']>"] {
+        let source = HtmlSource::utf8(raw);
+        let cut = if raw.starts_with('<') {
+            raw.find('=').unwrap() + 1
+        } else {
+            raw.len() - 1
+        };
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+        let mut lexer = Tokenizer::progressive(&source, State::Data, None, &mut c).unwrap();
+        lexer.make_available(cut, &mut c).unwrap();
+        loop {
+            match lexer.next(&mut c, false, &mut evidence).unwrap() {
+                TokenizerPull::NeedInput => break,
+                TokenizerPull::Event(event) => {
+                    assert!(!matches!(event, Event::Diagnostic(_)));
+                    event.release(&mut c).unwrap();
+                }
+                TokenizerPull::Exhausted => panic!("unfinished source"),
+            }
+        }
+        let observations = evidence.lexical_observations();
+        assert!(observations.0.iter().all(|record| record.disposition
+            != crate::construction::parser_session::provenance::LexicalDisposition::Abandoned));
+        assert!(observations.1.iter().all(|part| part.role
+            != crate::construction::parser_session::provenance::LexicalRole::EndAnchor));
+        let before = observations.0.len();
+        let reads = c.usage().work(WorkCategory::InputUnitRead);
+        for _ in 0..3 {
+            assert!(matches!(
+                lexer.next(&mut c, false, &mut evidence).unwrap(),
+                TokenizerPull::NeedInput
+            ));
+        }
+        assert_eq!(evidence.lexical_observations().0.len(), before);
+        assert_eq!(c.usage().work(WorkCategory::InputUnitRead), reads);
+        lexer.release(&mut c).unwrap();
+        evidence.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+#[test]
+fn progressive_large_uninstrumented_numeric_scan_has_exact_and_one_short_work_boundaries() {
+    let source = HtmlSource::utf8(format!("&#{};", "9".repeat(8192)));
+    let (stop, usage) = run_progressive_limits(&source, limits());
+    assert_eq!(stop, None);
+    let work = usage.resource(HtmlParseResource::WorkCredits).current;
+    assert!(usage.work(WorkCategory::InputUnitRead) > 8192);
+    assert_eq!(
+        run_progressive_limits(
+            &source,
+            limits().into_builder().work_credits(work).finish().unwrap()
+        )
+        .0,
+        None
+    );
+    assert!(matches!(
+        run_progressive_limits(
+            &source,
+            limits()
+                .into_builder()
+                .work_credits(work - 1)
+                .finish()
+                .unwrap()
+        )
+        .0,
+        Some(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::WorkCredits,
+            ..
+        })
+    ));
+}
+#[test]
+fn progressive_foreign_controller_cannot_advance_seal_or_read_actual_continuation() {
+    let source = HtmlSource::utf8("&notin;");
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+    let mut lexer = Tokenizer::progressive(&source, State::Data, None, &mut c).unwrap();
+    lexer.make_available(4, &mut c).unwrap();
+    assert!(matches!(
+        lexer.next(&mut c, false, &mut evidence).unwrap(),
+        TokenizerPull::NeedInput
+    ));
+    let before = c.usage().clone();
+    for operation in 0..3 {
+        let mut foreign = ParseControl::new(limits(), HtmlParseCancellation::new());
+        foreign.admit_source(&source).unwrap();
+        let stop = match operation {
+            0 => lexer
+                .make_available(source.len(), &mut foreign)
+                .unwrap_err(),
+            1 => lexer.seal_input(&mut foreign).unwrap_err(),
+            _ => lexer
+                .next(&mut foreign, false, &mut evidence)
+                .err()
+                .unwrap(),
+        };
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::ForeignControl)
+        );
+        assert_eq!(c.usage(), &before);
+        assert_eq!(foreign.usage().work(WorkCategory::InputUnitRead), 0);
+    }
+    lexer.make_available(source.len(), &mut c).unwrap();
+    lexer.seal_input(&mut c).unwrap();
+    let mut observed = Vec::new();
+    let mut errors = Vec::new();
+    loop {
+        match lexer.next(&mut c, false, &mut evidence).unwrap() {
+            TokenizerPull::Event(event) => {
+                progressive_observe(&event, &evidence, &mut observed, &mut errors);
+                event.release(&mut c).unwrap();
+            }
+            TokenizerPull::Exhausted => break,
+            TokenizerPull::NeedInput => panic!("sealed original"),
+        }
+    }
+    assert_eq!(joined(&observed), units("∉"));
+    assert!(errors.is_empty());
+    lexer.release(&mut c).unwrap();
+    evidence.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+#[test]
+fn progressive_lexical_parts_keep_exact_original_anchors_and_duplicate_quotes_across_pauses() {
+    use crate::construction::parser_session::provenance::{
+        LexicalDisposition, LexicalKind, LexicalRole,
+    };
+    type Occurrences = Vec<(LexicalKind, LexicalDisposition, usize, usize, Option<usize>)>;
+    type Parts = Vec<(
+        usize,
+        LexicalRole,
+        usize,
+        usize,
+        usize,
+        usize,
+        Option<OriginKind>,
+    )>;
+    fn projection(source: &HtmlSource, progressive: bool, cut: usize) -> (Occurrences, Parts) {
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(source).unwrap();
+        let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+        let mut lexer = if progressive {
+            Tokenizer::progressive(source, State::Data, None, &mut c)
+        } else {
+            Tokenizer::new(source, State::Data, None, &mut c)
+        }
+        .unwrap();
+        if progressive {
+            for end in [cut, source.len()] {
+                lexer.make_available(end, &mut c).unwrap();
+                loop {
+                    match lexer.next(&mut c, false, &mut evidence).unwrap() {
+                        TokenizerPull::NeedInput => break,
+                        TokenizerPull::Event(event) => event.release(&mut c).unwrap(),
+                        TokenizerPull::Exhausted => panic!("unsealed"),
+                    }
+                }
+            }
+            lexer.seal_input(&mut c).unwrap();
+        }
+        loop {
+            match lexer.next(&mut c, false, &mut evidence).unwrap() {
+                TokenizerPull::Event(event) => event.release(&mut c).unwrap(),
+                TokenizerPull::Exhausted => break,
+                TokenizerPull::NeedInput => panic!("sealed"),
+            }
+        }
+        let (occurrences, parts, omissions) = evidence.lexical_observations();
+        assert!(omissions.is_empty());
+        let out = (
+            occurrences
+                .iter()
+                .map(|record| {
+                    assert_eq!(record.source.source(), source.identity());
+                    (
+                        record.kind,
+                        record.disposition,
+                        record.source.start(),
+                        record.source.end(),
+                        record.parent,
+                    )
+                })
+                .collect(),
+            parts
+                .iter()
+                .map(|part| {
+                    assert_eq!(part.source.source(), source.identity());
+                    (
+                        part.occurrence,
+                        part.role,
+                        part.source.start(),
+                        part.source.end(),
+                        part.start,
+                        part.end,
+                        part.kind,
+                    )
+                })
+                .collect(),
+        );
+        lexer.release(&mut c).unwrap();
+        evidence.release(&mut c).unwrap();
+        assert_storage_released(&c);
+        out
+    }
+    let source = HtmlSource::utf8("<a x='&amp;'><!--C--><?go D?>");
+    let complete = projection(&source, false, 0);
+    assert!(complete.1.iter().any(|p| p.1 == LexicalRole::Value
+        && (p.2, p.3, p.4, p.5, p.6) == (6, 11, 0, 1, Some(OriginKind::CharacterReference))));
+    assert!(
+        complete.1.iter().any(
+            |p| p.1 == LexicalRole::OpeningQuote(states::Quote::Single) && (p.2, p.3) == (5, 6)
+        )
+    );
+    assert!(
+        complete
+            .1
+            .iter()
+            .any(|p| p.1 == LexicalRole::ClosingQuote(states::Quote::Single)
+                && (p.2, p.3) == (11, 12))
+    );
+    assert!(
+        complete
+            .0
+            .iter()
+            .any(|o| o.0 == LexicalKind::Comment && (o.2, o.3) == (13, 21))
+    );
+    for cut in 0..=source.len() {
+        assert_eq!(projection(&source, true, cut), complete, "cut={cut}");
+    }
+    let duplicate = HtmlSource::utf8("<a x='A' x=B y=\"C\">");
+    let complete = projection(&duplicate, false, 0);
+    for cut in 0..=duplicate.len() {
+        assert_eq!(
+            projection(&duplicate, true, cut),
+            complete,
+            "duplicate cut={cut}"
+        );
+    }
+}
+
+#[test]
+fn progressive_attribute_named_reference_waits_for_actual_equal_sign_exception() {
+    let source = HtmlSource::utf8("<a x='&not=' y='&notin;'>");
+    let expected = vec![
+        Seen::Tag(
+            TagKind::Start,
+            units("a"),
+            false,
+            vec![(units("x"), units("&not=")), (units("y"), units("∉"))],
+            false,
+        ),
+        Seen::Eof,
+    ];
+    for cut in 0..=source.len() {
+        let (output, errors) = collect_progressive(&source, &[cut], false);
+        assert_eq!(output, expected, "cut={cut}");
+        assert!(errors.is_empty());
+    }
 }

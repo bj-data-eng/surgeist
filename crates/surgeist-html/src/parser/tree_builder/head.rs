@@ -118,6 +118,7 @@ pub(crate) enum HeadBoundary {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HeadStep {
+    NeedInput,
     Consumed,
     Complete,
     Boundary(HeadBoundary),
@@ -585,11 +586,22 @@ impl<'source> HeadStage<'source> {
                 .session
                 .evidence(c)
                 .map_err(KernelError::from)?;
-            state.lexical_pending = state
+            let pulled = state
                 .tokenizer
                 .as_mut()
                 .ok_or(HeadError::Consumed)?
                 .next(c, cdata, evidence)?;
+            match pulled {
+                super::super::tokenizer::TokenizerPull::Event(event) => {
+                    state.lexical_pending = Some(event)
+                }
+                super::super::tokenizer::TokenizerPull::NeedInput => {
+                    return Ok(HeadStep::NeedInput);
+                }
+                super::super::tokenizer::TokenizerPull::Exhausted => {
+                    return Err(HeadError::TokenizerExhausted);
+                }
+            }
             let event = state
                 .lexical_pending
                 .as_ref()

@@ -83,6 +83,7 @@ enum InputAvailability {
         through: usize,
         sealed: bool,
         boundary: ConsumedSourceBoundary,
+        current_span: Option<(ConsumedSourceBoundary, ConsumedSourceBoundary)>,
     },
 }
 
@@ -136,6 +137,7 @@ pub(crate) struct InputCheckpoint {
 pub(crate) struct ProgressiveInputCheckpoint {
     checkpoint: InputCheckpoint,
     boundary: ConsumedSourceBoundary,
+    current_span: Option<(ConsumedSourceBoundary, ConsumedSourceBoundary)>,
 }
 
 pub(crate) struct InputCursor<'source> {
@@ -148,6 +150,8 @@ pub(crate) struct InputCursor<'source> {
     /// Lookahead does not advance this frontier; replay cannot duplicate errors.
     processed_through: usize,
     availability: InputAvailability,
+    #[cfg(test)]
+    cancel_after_consumed: Option<(usize, crate::HtmlParseCancellation)>,
 }
 
 impl<'source> InputCursor<'source> {
@@ -166,6 +170,8 @@ impl<'source> InputCursor<'source> {
             reconsume: false,
             processed_through: 0,
             availability: InputAvailability::Complete,
+            #[cfg(test)]
+            cancel_after_consumed: None,
         })
     }
 
@@ -193,7 +199,10 @@ impl<'source> InputCursor<'source> {
                 through: 0,
                 sealed: false,
                 boundary: source.initial_consumed_boundary(),
+                current_span: None,
             },
+            #[cfg(test)]
+            cancel_after_consumed: None,
         })
     }
 
@@ -309,6 +318,18 @@ impl<'source> InputCursor<'source> {
         boundary: Option<ConsumedSourceBoundary>,
         control: &mut ParseControl,
     ) -> Result<InputRead, ParseStop> {
+        let span = if let Some(end) = boundary.as_ref() {
+            control.charge(
+                WorkCategory::CopyByte,
+                (2 * size_of::<ConsumedSourceBoundary>()) as u64,
+            )?;
+            Some((
+                self.boundary().expect("actual progressive start").clone(),
+                end.clone(),
+            ))
+        } else {
+            None
+        };
         let end = match &read {
             InputRead::Character(character) => character.source.end(),
             InputRead::Eof(range) => range.end(),
@@ -318,12 +339,21 @@ impl<'source> InputCursor<'source> {
         }
         control.charge(WorkCategory::CopyByte, size_of::<InputRead>() as u64)?;
         control.charge(WorkCategory::RecordWrite, 1)?;
+        if span.is_some() {
+            control.charge(WorkCategory::RecordWrite, 1)?;
+        }
         if let InputAvailability::Progressive {
             boundary: current, ..
         } = &mut self.availability
             && let Some(boundary) = boundary
         {
             *current = boundary;
+        }
+        if let InputAvailability::Progressive { current_span, .. } = &mut self.availability {
+            // A reconsume has no new proof and preserves the saved span.
+            if let Some(span) = span {
+                *current_span = Some(span);
+            }
         }
         self.current = Some(read.clone().without_record());
         self.position = end;
@@ -369,6 +399,7 @@ impl<'source> InputCursor<'source> {
         Ok(ProgressiveInputCheckpoint {
             checkpoint: self.checkpoint(),
             boundary: boundary.clone(),
+            current_span: self.current_span().cloned(),
         })
     }
 
@@ -431,6 +462,9 @@ impl<'source> InputCursor<'source> {
         self.reconsume = mark.checkpoint.reconsume;
         if let InputAvailability::Progressive { boundary, .. } = &mut self.availability {
             *boundary = mark.boundary.clone();
+        }
+        if let InputAvailability::Progressive { current_span, .. } = &mut self.availability {
+            *current_span = mark.current_span.clone();
         }
         Ok(())
     }
@@ -549,6 +583,90 @@ impl<'source> InputCursor<'source> {
             .ok_or_else(|| control.fail_invariant(Invariant::InputCursorState))
     }
 
+    pub(crate) fn is_progressive(&self) -> bool {
+        matches!(self.availability, InputAvailability::Progressive { .. })
+    }
+    fn current_span(&self) -> Option<&(ConsumedSourceBoundary, ConsumedSourceBoundary)> {
+        match &self.availability {
+            InputAvailability::Progressive { current_span, .. } => current_span.as_ref(),
+            InputAvailability::Complete => None,
+        }
+    }
+    /// Actual saved decoded endpoints, including the preprocessed CRLF span.
+    pub(crate) fn consumed_span(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<Option<(ConsumedSourceBoundary, ConsumedSourceBoundary)>, ParseStop> {
+        c.require_identity(&self.owner)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if !self.is_progressive() {
+            return Ok(None);
+        }
+        c.charge(
+            WorkCategory::CopyByte,
+            (2 * size_of::<ConsumedSourceBoundary>()) as u64,
+        )?;
+        Ok(Some(self.current_span().cloned().unwrap_or_else(|| {
+            let boundary = self.boundary().expect("progressive boundary");
+            (boundary.clone(), boundary.clone())
+        })))
+    }
+    /// A test-only synchronization point on actual consumed progress. The
+    /// original handle is polled by the existing input-read admission path.
+    #[cfg(test)]
+    pub(super) fn cancel_after_consumed(
+        &mut self,
+        through: usize,
+        cancellation: crate::HtmlParseCancellation,
+        c: &mut ParseControl,
+    ) -> Result<(), ParseStop> {
+        c.require_identity(&self.owner)?;
+        c.charge(
+            WorkCategory::CopyByte,
+            size_of::<Option<(usize, crate::HtmlParseCancellation)>>() as u64,
+        )?;
+        c.charge(WorkCategory::RecordWrite, 1)?;
+        self.cancel_after_consumed = Some((through, cancellation));
+        Ok(())
+    }
+    /// Does not decode a next item; safe even at an unavailable frontier.
+    pub(crate) fn next_anchor(&self, c: &mut ParseControl) -> Result<HtmlSourceRange, ParseStop> {
+        c.require_identity(&self.owner)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if let Some(boundary) = self.boundary() {
+            let next = if self.reconsume {
+                &self
+                    .current_span()
+                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                    .0
+            } else {
+                boundary
+            };
+            return self.proven_range(next, next, c);
+        }
+        let position = if self.reconsume {
+            match self
+                .current
+                .as_ref()
+                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            {
+                InputRead::Character(ch) => ch.source.start(),
+                InputRead::Eof(range) => range.start(),
+            }
+        } else {
+            self.position
+        };
+        self.checked_range(position, position, c)
+    }
+    pub(crate) fn range_between(
+        &self,
+        start: &ConsumedSourceBoundary,
+        end: &ConsumedSourceBoundary,
+        c: &mut ParseControl,
+    ) -> Result<HtmlSourceRange, ParseStop> {
+        c.require_identity(&self.owner)?;
+        self.proven_range(start, end, c)
+    }
     fn boundary(&self) -> Option<&ConsumedSourceBoundary> {
         match &self.availability {
             InputAvailability::Complete => None,
@@ -613,6 +731,14 @@ impl<'source> InputCursor<'source> {
         start: Option<&ConsumedSourceBoundary>,
         control: &mut ParseControl,
     ) -> Result<DecodedPoll, ParseStop> {
+        // Test synchronization fires only after actual committed progress and
+        // before the existing charged read/poll. It adds no production poll.
+        #[cfg(test)]
+        if let Some((through, cancellation)) = &self.cancel_after_consumed
+            && self.position >= *through
+        {
+            cancellation.cancel();
+        }
         let raw = match self.read_raw_at(position, start, control)? {
             RawPoll::NeedInput => return Ok(DecodedPoll::NeedInput),
             RawPoll::Ready(raw) => raw,
@@ -1336,9 +1462,11 @@ mod tests {
         let proof_prefix = 12
             + size_of::<ConsumedBoundaryAdvance>() as u64
             + size_of::<ConsumedSourceBoundary>() as u64;
-        let complete = 19
+        // Retaining the actual current start/end costs two proved-boundary
+        // copies and one additional persistent span write, before commit.
+        let complete = 20
             + size_of::<ConsumedBoundaryAdvance>() as u64
-            + size_of::<ConsumedSourceBoundary>() as u64
+            + 3 * size_of::<ConsumedSourceBoundary>() as u64
             + size_of::<HtmlSourceRange>() as u64
             + size_of::<InputRead>() as u64;
         for (extra, success, reads) in [

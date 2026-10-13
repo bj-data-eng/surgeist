@@ -1256,9 +1256,15 @@ mod tests {
                     location_slots += old_locations + locations;
                     location_reservations += 1;
                 }
-                let Some(event) = event else {
-                    exhausted = true;
-                    break;
+                let event = match event {
+                    crate::parser::tokenizer::TokenizerPull::Event(event) => event,
+                    crate::parser::tokenizer::TokenizerPull::Exhausted => {
+                        exhausted = true;
+                        break;
+                    }
+                    crate::parser::tokenizer::TokenizerPull::NeedInput => {
+                        panic!("complete fixture cannot starve")
+                    }
                 };
                 match &event {
                     Event::Diagnostic(id) => {

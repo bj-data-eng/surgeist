@@ -186,6 +186,7 @@ mod tests {
             let mut driver = Some(attempt.take_driver().unwrap());
             loop {
                 match driver.as_mut().unwrap().step().unwrap() {
+                    HeadStep::NeedInput => panic!("complete report fixture cannot starve"),
                     HeadStep::Consumed => {}
                     HeadStep::Complete => break,
                     HeadStep::Boundary(b) => panic!("unexpected boundary {b:?}"),
@@ -333,6 +334,7 @@ mod tests {
             let mut driver = Some(attempt.take_driver().unwrap());
             loop {
                 match driver.as_mut().unwrap().step().unwrap() {
+                    HeadStep::NeedInput => panic!("complete report fixture cannot starve"),
                     HeadStep::Consumed => {}
                     HeadStep::Complete => break,
                     HeadStep::Boundary(b) => panic!("unexpected fragment boundary {b:?}"),

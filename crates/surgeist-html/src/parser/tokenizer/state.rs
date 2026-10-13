@@ -60,6 +60,17 @@ impl Tokenizer<'_> {
             )?;
         }
         admit_record_write(size_of::<usize>() + size_of::<HtmlSourceRange>(), 2, c)?;
+        self.save_proof_range(
+            ProofRole::LessThan,
+            self.current.start(),
+            self.current.end(),
+            c,
+        )?;
+        if self.cursor.is_progressive() {
+            let start = self.boundary_proof(self.current.start(), c)?;
+            admit_record_write(size_of::<crate::source::ConsumedSourceBoundary>(), 1, c)?;
+            self.proofs.as_mut().expect("progressive").start = start;
+        }
         self.start = self.current.start();
         self.less_than = self.current.clone();
         let lexical = evidence.lexical_begin(c, &self.current, LexicalKind::Markup, None)?;
@@ -80,16 +91,28 @@ impl Tokenizer<'_> {
         c: &mut ParseControl,
         cdata_allowed: bool,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<StepProgress, ParseStop> {
         // These lookahead states examine the next input without consuming a
         // mismatching character. The indexed cursor charges each repeated read.
         if self.state == MarkupDeclaration {
-            if self.consume_ascii(b"--", false, c, evidence)? {
+            if match self.consume_ascii(b"--", false, c, evidence)? {
+                AsciiMatch::Matched => true,
+                AsciiMatch::Mismatched => false,
+                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
+            } {
                 self.create_comment(c)?;
                 self.set_state(CommentStart, c)?;
-            } else if self.consume_ascii(b"DOCTYPE", true, c, evidence)? {
+            } else if match self.consume_ascii(b"DOCTYPE", true, c, evidence)? {
+                AsciiMatch::Matched => true,
+                AsciiMatch::Mismatched => false,
+                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
+            } {
                 self.set_state(Doctype, c)?;
-            } else if self.consume_ascii(b"[CDATA[", false, c, evidence)? {
+            } else if match self.consume_ascii(b"[CDATA[", false, c, evidence)? {
+                AsciiMatch::Matched => true,
+                AsciiMatch::Mismatched => false,
+                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
+            } {
                 if cdata_allowed {
                     self.set_state(Cdata, c)?;
                 } else {
@@ -112,25 +135,42 @@ impl Tokenizer<'_> {
                 self.create_comment(c)?;
                 self.set_state(BogusComment, c)?;
             }
-            return Ok(());
+            return Ok(StepProgress::Advanced);
         }
         if self.state == AfterDoctypeName {
-            if self.consume_ascii(b"PUBLIC", true, c, evidence)? {
+            if match self.consume_ascii(b"PUBLIC", true, c, evidence)? {
+                AsciiMatch::Matched => true,
+                AsciiMatch::Mismatched => false,
+                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
+            } {
                 self.set_state(AfterDoctypeKeyword(Public), c)?;
-                return Ok(());
+                return Ok(StepProgress::Advanced);
             }
-            if self.consume_ascii(b"SYSTEM", true, c, evidence)? {
+            if match self.consume_ascii(b"SYSTEM", true, c, evidence)? {
+                AsciiMatch::Matched => true,
+                AsciiMatch::Mismatched => false,
+                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
+            } {
                 self.set_state(AfterDoctypeKeyword(System), c)?;
-                return Ok(());
+                return Ok(StepProgress::Advanced);
             }
         }
+        if self.cursor.is_progressive()
+            && matches!(
+                self.cursor.poll_peek(c)?,
+                super::super::input::InputPoll::NeedInput
+            )
+        {
+            return Ok(StepProgress::NeedInput);
+        }
         let Some(p) = self.read(c, evidence)? else {
-            return self.eof(c, evidence);
+            self.eof(c, evidence)?;
+            return Ok(StepProgress::Advanced);
         };
         self.retain_lexical_syntax(p, c, evidence)?;
         match self.state {
             Data => match p {
-                0x26 => self.character_reference(false, c, evidence)?,
+                0x26 => self.character_reference(false, c)?,
                 0x3C => {
                     self.mark_less_than(c, evidence)?;
                     self.set_state(TagOpen, c)?;
@@ -149,7 +189,7 @@ impl Tokenizer<'_> {
                 }
             }
             Raw(kind) => match p {
-                0x26 if kind == Rcdata => self.character_reference(false, c, evidence)?,
+                0x26 if kind == Rcdata => self.character_reference(false, c)?,
                 0x3C => {
                     self.mark_less_than(c, evidence)?;
                     if kind == ScriptEscaped(DoubleEscaped) {
@@ -167,7 +207,18 @@ impl Tokenizer<'_> {
                 _ => self.character(p, c, evidence)?,
             },
             TagOpen => match p {
-                0x21 => self.set_state(MarkupDeclaration, c)?,
+                0x21 => {
+                    if self.cursor.is_progressive() {
+                        let proof = self.boundary_proof(self.current.end(), c)?;
+                        admit_record_write(
+                            size_of::<crate::source::ConsumedSourceBoundary>(),
+                            1,
+                            c,
+                        )?;
+                        self.proofs.as_mut().expect("progressive").declaration = proof;
+                    }
+                    self.set_state(MarkupDeclaration, c)?;
+                }
                 0x2F => {
                     self.remember_slash(c)?;
                     self.set_state(EndTagOpen, c)?;
@@ -460,7 +511,7 @@ impl Tokenizer<'_> {
                 }
                 _ if q == Unquoted && space(p) => self.set_state(BeforeAttributeName, c)?,
                 0x3E if q == Unquoted => self.emit_tag(c, evidence)?,
-                0x26 => self.character_reference(true, c, evidence)?,
+                0x26 => self.character_reference(true, c)?,
                 0 => {
                     self.error(UnexpectedNullCharacter, c, evidence)?;
                     self.attribute_value(
@@ -863,7 +914,7 @@ impl Tokenizer<'_> {
             }
             MarkupDeclaration => return Err(c.fail_invariant(Invariant::InputCursorState)),
         }
-        Ok(())
+        Ok(StepProgress::Advanced)
     }
     fn eof(&mut self, c: &mut ParseControl, evidence: &mut ParseEvidence) -> Result<(), ParseStop> {
         match self.state {
