@@ -408,7 +408,8 @@ impl HeadState<'_> {
             ),
             c,
         )?;
-        if self.token_in(&["template"], c)?.is_some() {
+        let template = self.token_in(&["template"], c)?.is_some();
+        if template && !late {
             return self.template_start(c);
         }
         if late && self.token_in(&["script"], c)?.is_some() {
@@ -434,7 +435,9 @@ impl HeadState<'_> {
                 .kernel
                 .push(self.temporary_head.as_ref().expect("stored head"), c)?;
         }
-        let step = if self.token_in(&["script"], c)?.is_some() {
+        let step = if template {
+            self.template_start(c)?
+        } else if self.token_in(&["script"], c)?.is_some() {
             self.script_start(close, c)?
         } else if self.token_in(&["title"], c)?.is_some() {
             self.raw_text(Raw::Rcdata, close, c)?

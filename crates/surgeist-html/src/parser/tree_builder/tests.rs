@@ -18120,3 +18120,347 @@ fn ordinary_range_input_isolated_utf16_surrogate_stays_native_default_and_genera
     );
     assert_eq!(boundary, super::head::HeadStep::Complete);
 }
+
+// HTML877d AfterHead raw96773–96784 requires the real head pointer even
+// when InHead processing makes template the new current stack identity.
+#[test]
+fn afterhead_template_removes_exact_head_identity_and_retains_source_diagnostic() {
+    use super::head::{HeadCondition, HeadStep, InsertionMode};
+    use crate::construction::parser_session::evidence::{
+        DiagnosticContext, DiagnosticKind, DiagnosticLocationRole, DiagnosticSeverity,
+        DiagnosticToken,
+    };
+    for (source, late) in [
+        (
+            "<!doctype html><head></head><template>x</template><body>z",
+            true,
+        ),
+        ("<!doctype html><body><template>x</template>z", false),
+    ] {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+        let mut driver = super::entry::initialized_driver(&request);
+        let mut reached = false;
+        for _ in 0..100 {
+            driver.step().unwrap();
+            let Some(stage) = &mut driver.head else {
+                continue;
+            };
+            let state = stage.state.as_mut().unwrap();
+            if state.mode != InsertionMode::InTemplate {
+                continue;
+            }
+            assert!(state.temporary_head.is_none());
+            assert_eq!(state.template_modes.len(), 1);
+            assert_eq!(state.formatting.len(), 1);
+            let current = state.before.kernel.current(&mut driver.control).unwrap();
+            assert!(
+                state
+                    .before
+                    .kernel
+                    .named(&current, "template", &mut driver.control)
+                    .unwrap()
+            );
+            let parent = state
+                .before
+                .kernel
+                .session
+                .parent(&mut driver.control, &current)
+                .unwrap()
+                .unwrap();
+            assert!(
+                state
+                    .before
+                    .kernel
+                    .named(
+                        &parent,
+                        if late { "head" } else { "body" },
+                        &mut driver.control
+                    )
+                    .unwrap()
+            );
+            if late {
+                let head = state.head.as_ref().unwrap();
+                assert!(
+                    state
+                        .before
+                        .kernel
+                        .session
+                        .same_node(&mut driver.control, &parent, head)
+                        .unwrap()
+                );
+                assert_eq!(state.before.kernel.stack().unwrap().len(), 2);
+                for index in 0..2 {
+                    let entry = state.before.kernel.at(index, &mut driver.control).unwrap();
+                    assert!(
+                        !state
+                            .before
+                            .kernel
+                            .session
+                            .same_node(&mut driver.control, &entry, head)
+                            .unwrap()
+                    );
+                }
+                // Removing head must leave template current, rather than popping it.
+                let still_current = state.before.kernel.current(&mut driver.control).unwrap();
+                assert!(
+                    state
+                        .before
+                        .kernel
+                        .session
+                        .same_node(&mut driver.control, &still_current, &current)
+                        .unwrap()
+                );
+            }
+            reached = true;
+            break;
+        }
+        assert!(reached);
+        assert_eq!(standalone_boundary(&mut driver), HeadStep::Complete);
+        let (mut control, mut frozen) = body_document(driver);
+        let diagnostics = frozen.retained_evidence().unwrap().diagnostics();
+        assert_eq!(diagnostics.len(), usize::from(late));
+        if late {
+            let (record, location) = diagnostics.retained_record(0).unwrap();
+            assert_eq!(
+                record.kind,
+                DiagnosticKind::Tree(HeadCondition::UnexpectedBodyToken)
+            );
+            assert_eq!(
+                record.context,
+                DiagnosticContext::Tree(InsertionMode::AfterHead)
+            );
+            assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+            assert_eq!(record.rule.anchor, "the-after-head-insertion-mode");
+            assert_eq!(record.rule.branch, "head-start/delegate-using-head-pointer");
+            assert_eq!(location.role, DiagnosticLocationRole::TokenEnvelope);
+            assert_eq!(location.token, Some(DiagnosticToken::Tag));
+            assert_eq!(location.source.source(), request.source().identity());
+            assert_eq!((location.source.start(), location.source.end()), (28, 38));
+        }
+        frozen.release(&mut control).unwrap();
+        assert_released(&control);
+    }
+}
+
+#[test]
+fn afterhead_template_open_slot_refusal_retains_actual_temporary_head_and_first_stop() {
+    use super::head::InsertionMode;
+    // Initial head creation requires two slots. After it closes, html is
+    // open; the temporary head consumes slot two and template needs slot three.
+    for open in [2, 3] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><head></head><template>x</template>"),
+            limits(open),
+        );
+        let mut driver = super::entry::initialized_driver(&request);
+        let mut failed = false;
+        for _ in 0..100 {
+            if driver.step().is_err() {
+                failed = true;
+                break;
+            }
+        }
+        if open == 3 {
+            assert!(!failed);
+            assert_eq!(
+                standalone_boundary(&mut driver),
+                super::head::HeadStep::Complete
+            );
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            continue;
+        }
+        assert!(failed);
+        assert!(matches!(
+            driver.control.stop(),
+            Some(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::OpenElements,
+                requested_delta: 1,
+                ..
+            })
+        ));
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(
+            state.mode,
+            if open == 1 {
+                InsertionMode::AfterHead
+            } else {
+                InsertionMode::InTemplate
+            }
+        );
+        assert!(state.temporary_head.is_some());
+        assert_eq!(state.before.kernel.stack().unwrap().len(), open as usize);
+        assert_eq!(state.diagnostics().len(), 1);
+        let first = driver.control.stop();
+        let at = driver.control.first_stop_usage().unwrap().clone();
+        let usage = driver.control.usage().clone();
+        assert!(driver.step().is_err());
+        assert_eq!(driver.control.usage(), &usage);
+        assert_eq!(driver.control.first_stop_usage(), Some(&at));
+        driver.release().unwrap();
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            usage.resource(HtmlParseResource::WorkCredits).current,
+            "terminal cleanup performs no useful work or capacity reservation"
+        );
+        assert_eq!(driver.control.stop(), first);
+        assert_eq!(driver.control.first_stop_usage(), Some(&at));
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn afterhead_template_cancel_and_one_short_work_precede_input_and_cleanup_do_no_work() {
+    use super::head::InsertionMode;
+    for cancel in [false, true] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><head></head><template>x</template>"),
+            limits(100),
+        );
+        let mut driver = super::entry::initialized_driver(&request);
+        let mut reached = false;
+        for _ in 0..100 {
+            driver.step().unwrap();
+            if driver
+                .head
+                .as_ref()
+                .and_then(|stage| stage.state.as_ref())
+                .is_some_and(|state| state.mode == InsertionMode::AfterHead)
+            {
+                reached = true;
+                break;
+            }
+        }
+        assert!(reached);
+        if cancel {
+            request.cancellation().cancel();
+        } else {
+            // The next original-controller qualification requires a single
+            // credit. Leave zero (one short), before pulling the template token.
+            let remaining = request.limits().work_credits()
+                - driver
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current;
+            driver
+                .control
+                .charge(WorkCategory::StateStep, remaining)
+                .unwrap();
+        }
+        let reads = driver.control.usage().work(WorkCategory::InputUnitRead);
+        let writes = driver.control.usage().work(WorkCategory::RecordWrite);
+        assert!(driver.step().is_err());
+        if cancel {
+            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        } else {
+            assert!(matches!(
+                driver.control.stop(),
+                Some(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    requested_delta: 1,
+                    ..
+                })
+            ));
+        }
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.mode, InsertionMode::AfterHead);
+        assert!(state.temporary_head.is_none());
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 1);
+        assert!(state.diagnostics().is_empty());
+        let first = driver.control.stop();
+        let at = driver.control.first_stop_usage().unwrap().clone();
+        let usage = driver.control.usage().clone();
+        assert!(driver.step().is_err());
+        assert_eq!(driver.control.usage(), &usage);
+        assert_eq!(
+            driver.control.usage().work(WorkCategory::InputUnitRead),
+            reads
+        );
+        assert_eq!(
+            driver.control.usage().work(WorkCategory::RecordWrite),
+            writes
+        );
+        driver.release().unwrap();
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            usage.resource(HtmlParseResource::WorkCredits).current,
+            "terminal cleanup performs no useful work or capacity reservation"
+        );
+        assert_eq!(driver.control.stop(), first);
+        assert_eq!(driver.control.first_stop_usage(), Some(&at));
+        assert_eq!(
+            driver.control.usage().work(WorkCategory::InputUnitRead),
+            reads
+        );
+        assert_eq!(
+            driver.control.usage().work(WorkCategory::RecordWrite),
+            writes
+        );
+        assert_released(&driver.control);
+    }
+}
+
+#[test]
+fn afterhead_template_diagnostic_refusal_precedes_temporary_head_and_template_effects() {
+    use super::head::InsertionMode;
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<!doctype html><head></head><template>x</template>"),
+        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+    );
+    let mut driver = super::entry::initialized_driver(&request);
+    let mut failed = false;
+    for _ in 0..100 {
+        if driver.step().is_err() {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    assert!(matches!(
+        driver.control.stop(),
+        Some(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::Diagnostics,
+            requested_delta: 1,
+            ..
+        })
+    ));
+    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+    assert_eq!(state.mode, InsertionMode::AfterHead);
+    assert!(state.temporary_head.is_none());
+    assert_eq!(state.template_modes.len(), 0);
+    assert_eq!(state.formatting.len(), 0);
+    assert_eq!(state.before.kernel.stack().unwrap().len(), 1);
+    assert!(state.diagnostics().is_empty());
+    let pending = state.pending.as_ref().unwrap();
+    assert_eq!((pending.source.start(), pending.source.end()), (28, 38));
+    assert!(matches!(pending.payload, Payload::Tag(Some(_))));
+    // No successful pair has been published; the original tag remains owned.
+    let first = driver.control.stop();
+    let at = driver.control.first_stop_usage().unwrap().clone();
+    let usage = driver.control.usage().clone();
+    assert!(driver.step().is_err());
+    assert_eq!(driver.control.usage(), &usage);
+    driver.release().unwrap();
+    assert_eq!(
+        driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current,
+        usage.resource(HtmlParseResource::WorkCredits).current,
+        "terminal cleanup performs no useful work or capacity reservation"
+    );
+    assert_eq!(driver.control.stop(), first);
+    assert_eq!(driver.control.first_stop_usage(), Some(&at));
+    assert_released(&driver.control);
+}

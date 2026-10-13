@@ -2825,7 +2825,8 @@ Old phase-specific test views are ephemeral projections of this one store.
 Selected [literal tests](src/parser/tree_builder/tests.rs) check chronology with
 backward source offsets and the distinct pre/listing self-closing rule label;
 they do not establish every diagnostic condition or corpus error conformance.
-The retained corpus `#errors`/`#new-errors` metadata below remains unverified.
+Selected comments and nested-template cases below have source-qualified typed
+diagnostic expectations; the remaining corpus error metadata is unverified.
 The private ordinary completed owner also prepares native-field associations
 through the [same evidence authority](src/construction/parser_session/provenance.rs):
 text merging, replacement, cloning, retirement and replay retain original groups
@@ -2875,7 +2876,7 @@ completed owner through their existing cleanup paths.
 The bundled [html5lib-tests subset](tests/fixtures/html5lib-f994590f/tree-construction/README.md)
 at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains eight complete
 data files, with 169 cases. All 169 are decoded as fixture-format coverage.
-Exactly 57 stable file/ordinal bindings are replayed through the completed
+Exactly 167 stable file/ordinal bindings are replayed through the completed
 ordinary parser with scripting Disabled and no fragment context:
 
 | Whole retained file | Replayed one-based case ordinals |
@@ -2887,7 +2888,22 @@ ordinary parser with scripting Disabled and no fragment context:
 | tests24.dat | 1–8 |
 | tables01.dat | 1–19 |
 | comments01.dat | 1–16 |
-| template.dat | 1 |
+| template.dat | 1–108, 110–112 |
+
+All 111 ordinary template cases run through both UTF-8 and UTF-16 inputs. Case
+109 runs separately through the actual template-context fragment owner in both
+encodings, comparing its output root and associated template contents. Selected
+template transitions (81, 94, 100, 108, 110–112) also run at every two-part cut
+and with unit-at-a-time exposure, for 670 progressive ordinary runs. The
+AfterHead template cases retain the saved head as their insertion parent while
+removing that exact temporary head identity from the open-element stack.
+
+All 16 comments cases run through both encodings, every two-part cut and
+unit-at-a-time exposure. Source-qualified literal expectations compare 27 typed
+diagnostics in chronology with their rule, context, token and source ranges.
+Additional UTF-16 inputs cover isolated surrogates, surrogate pairs and CRLF.
+The nested-template EOF case separately checks two distinct diagnostic
+invocations at the same source position.
 
 The adapter compares native document mode, expanded names, prefixes, exact
 UTF-16 text and attributes, child order and parent/owner relationships.
@@ -2906,11 +2922,11 @@ HTML language. Its historical format statement that HTML cannot emit processing
 instructions disagrees with this pinned edition; current source-literal
 expectations exercise that distinction. The corpus doctype dump also collapses
 absent and empty identifiers, so source supplements disambiguate actual parser
-creation without erasing native null/empty fields. Retained `#errors` and
-`#new-errors` metadata is explicitly unverified: ordered diagnostics and source
-offset comparison still need their own consumer. The other retained cases,
-fragment contexts and scripting-Enabled replay remain unexecuted here; newer
-HTML disagreements require source-qualified expectations before expansion.
+creation without erasing native null/empty fields. The selected typed diagnostic
+expectations above do not certify all retained `#errors` and `#new-errors`
+metadata. Scripting-Enabled replay and progressive fragment feeding remain
+unexecuted here; newer HTML disagreements require source-qualified expectations
+before expansion.
 
 Expected fixtures and native literal construction use ordinary test allocations.
 Actual completed-parser observation and its flat consumer vectors share the
