@@ -5,10 +5,13 @@
 //! zero. Final ordinary sRGB scalars select Color 4 ties toward positive infinity
 //! on the same finite-bit kernel; retained color calculation roles stay separate.
 
+pub(crate) mod bounded;
+
 use crate::exact_decimal::{DecimalRounding, LexicalDecimal};
 use crate::{
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
 };
+use bounded::{FiniteFormatCursor, FormatReply, FormatRequest};
 
 type Result<T> = std::result::Result<T, Error>;
 use CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow};
@@ -112,8 +115,8 @@ pub(crate) fn format_css_number_with_sign(
 }
 
 /// Rounds the actual finite binary value to millionths, without a float round
-/// or a shortest-decimal intermediate. Fixed stack storage covers every finite
-/// binary64 integer; only the final bounded text is allocated.
+/// or a shortest-decimal intermediate. Caller scratch covers every finite
+/// binary64 integer; output allocation contains only the final bounded text.
 pub(crate) fn format_projected_number(value: f64, limit: usize) -> Result<String> {
     format_finite_number(value, limit, DecimalRounding::AwayFromZero)
 }
@@ -127,66 +130,57 @@ pub(crate) fn format_ordinary_color_number(value: f64, limit: usize) -> Result<S
 
 fn format_finite_number(value: f64, limit: usize, rounding: DecimalRounding) -> Result<String> {
     assert!(value.is_finite(), "checked finite projected scalar");
-    let bits = value.to_bits();
-    let negative = bits >> 63 != 0;
-    let encoded_exponent = ((bits >> 52) & 0x7ff) as i32;
-    let fraction = bits & ((1_u64 << 52) - 1);
-    let (significand, exponent) = if encoded_exponent == 0 {
-        (fraction, -1074)
-    } else {
-        ((1_u64 << 52) | fraction, encoded_exponent - 1075)
-    };
-    if significand == 0 {
-        return emit(std::iter::empty(), 0, 0, false, limit);
-    }
-    let mut digits = [0_u8; 309];
-    let mut len = 0;
-    let decimal_exponent;
-    if exponent < 0 {
-        let mut rounded = rounded_millionths(significand, exponent, negative, rounding);
-        if rounded == 0 {
-            return emit(std::iter::empty(), 0, 0, false, limit);
-        }
-        let mut trailing = 0;
-        while rounded.is_multiple_of(10) {
-            trailing += 1;
-            rounded /= 10;
-        }
-        decimal_exponent = -6 + trailing;
-        while rounded != 0 {
-            digits[len] = (rounded % 10) as u8;
-            len += 1;
-            rounded /= 10;
-        }
-    } else {
-        let mut integer = significand;
-        while integer != 0 {
-            digits[len] = (integer % 10) as u8;
-            len += 1;
-            integer /= 10;
-        }
-        for _ in 0..exponent {
-            let mut carry = 0;
-            for digit in &mut digits[..len] {
-                let doubled = *digit * 2 + carry;
-                *digit = doubled % 10;
-                carry = doubled / 10;
+    let mut cursor = FiniteFormatCursor::new(value, rounding).expect("checked finite scalar");
+    // This ordinary owner services the SAME digit protocol as the controlled
+    // used serializer. It owns real scratch and reserves only final output;
+    // no preview number or expanded fractional spelling is materialized.
+    let mut scratch = Vec::new();
+    let mut output = String::new();
+    let mut output_ready = false;
+    loop {
+        if let Some(length) = cursor.planned_length()
+            && !output_ready
+        {
+            if length > limit {
+                return Err(Error::new(ByteLimit));
             }
-            if carry != 0 {
-                // (2^53-1)*2^971 has at most 309 decimal digits.
-                digits[len] = carry;
-                len += 1;
-            }
+            output
+                .try_reserve(length)
+                .map_err(|_| Error::new(CapacityOverflow))?;
+            output_ready = true;
         }
-        decimal_exponent = 0;
+        let reply = match cursor.next_request() {
+            FormatRequest::Compute(kernel) => FormatReply::Computed(kernel),
+            FormatRequest::ReadDigit { index } => FormatReply::Digit {
+                index,
+                digit: scratch[index],
+            },
+            FormatRequest::AppendDigit { index, digit } => {
+                assert_eq!(index, scratch.len(), "actual next scratch index");
+                scratch
+                    .try_reserve(1)
+                    .map_err(|_| Error::new(CapacityOverflow))?;
+                scratch.push(digit);
+                FormatReply::Appended { index, digit }
+            }
+            FormatRequest::ReplaceDigit { index, digit } => {
+                scratch[index] = digit;
+                FormatReply::Replaced { index, digit }
+            }
+            FormatRequest::EmitByte { unit } => {
+                debug_assert!(output_ready);
+                output.push(char::from(unit));
+                FormatReply::Emitted { unit }
+            }
+            FormatRequest::Done(summary) => {
+                debug_assert_eq!(summary.emitted, output.len());
+                return Ok(output);
+            }
+        };
+        cursor
+            .complete(reply)
+            .expect("actual ordinary owner acknowledgement");
     }
-    emit(
-        digits[..len].iter().rev().copied(),
-        len,
-        decimal_exponent,
-        negative,
-        limit,
-    )
 }
 
 /// Tests the actual finite binary coefficient using the formatter's millionths

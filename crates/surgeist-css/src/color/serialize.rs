@@ -1,0 +1,616 @@
+//! Canonical used serialization, with admitted digit storage and final writes.
+
+use super::protocol::{CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data};
+use super::used::{CssUsedColor, CssUsedColorError};
+use crate::exact_decimal::DecimalRounding;
+use crate::numeric_formatting::bounded::{FiniteFormatCursor, FormatReply, FormatRequest};
+use crate::{CssColorInterpolationSpace as Space, CssPredefinedColorSpace as Predefined};
+
+/// Selects the standard used serialization, including the conditional HTML form.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssColorSerializationRequest {
+    Css,
+    HtmlCompatible,
+}
+
+#[derive(Clone, Copy)]
+enum Piece {
+    Literal(&'static [u8]),
+    Number(f64),
+    None,
+    Hex(u8),
+    End,
+}
+
+struct Plan {
+    pieces: [Piece; 19],
+}
+impl Plan {
+    fn new(
+        value: CssUsedColor,
+        request: CssColorSerializationRequest,
+    ) -> Result<Self, CssUsedColorError> {
+        let mut pieces = [Piece::End; 19];
+        if request == CssColorSerializationRequest::HtmlCompatible
+            && value.alpha() == Some(1.0)
+            && let Some([r, g, b]) = value.srgb_bytes()
+        {
+            pieces[..4].copy_from_slice(&[
+                Piece::Literal(b"#"),
+                Piece::Hex(r),
+                Piece::Hex(g),
+                Piece::Hex(b),
+            ]);
+            return Ok(Self { pieces });
+        }
+        let missing = value.channels().contains(&None) || value.alpha().is_none();
+        let value = if matches!(value.space(), Space::Hsl | Space::Hwb) && !missing {
+            let converted = value.convert(Space::Predefined(Predefined::Srgb))?;
+            if value.uses_color_function() {
+                converted.with_color_function()
+            } else {
+                converted.with_legacy_srgb()
+            }
+        } else {
+            value
+        };
+        let space = value.space();
+        let legacy = space == Space::Predefined(Predefined::Srgb)
+            && !value.uses_color_function()
+            && !missing;
+        let alpha = value.alpha() != Some(1.0);
+        let (prefix, percentages): (&'static [u8], bool) = match space {
+            Space::Predefined(Predefined::Srgb) if legacy => {
+                (if alpha { b"rgba(" } else { b"rgb(" }, false)
+            }
+            Space::Predefined(Predefined::Srgb) => (b"color(srgb ", false),
+            Space::Predefined(Predefined::SrgbLinear) => (b"color(srgb-linear ", false),
+            Space::Predefined(Predefined::DisplayP3) => (b"color(display-p3 ", false),
+            Space::Predefined(Predefined::DisplayP3Linear) => (b"color(display-p3-linear ", false),
+            Space::Predefined(Predefined::A98Rgb) => (b"color(a98-rgb ", false),
+            Space::Predefined(Predefined::ProphotoRgb) => (b"color(prophoto-rgb ", false),
+            Space::Predefined(Predefined::Rec2020) => (b"color(rec2020 ", false),
+            Space::Predefined(Predefined::XyzD50) => (b"color(xyz-d50 ", false),
+            Space::Predefined(Predefined::XyzD65) => (b"color(xyz-d65 ", false),
+            Space::Hsl => (b"hsl(", true),
+            Space::Hwb => (b"hwb(", true),
+            Space::Lab => (b"lab(", false),
+            Space::Lch => (b"lch(", false),
+            Space::Oklab => (b"oklab(", false),
+            Space::Oklch => (b"oklch(", false),
+        };
+        let separator: &'static [u8] = if legacy { b", " } else { b" " };
+        let channels = value.channels();
+        pieces[0] = Piece::Literal(prefix);
+        let mut next = 1;
+        // Exactly three fixed channels, never a variable component/profile scan.
+        for (index, channel) in channels.into_iter().enumerate() {
+            pieces[next] = match channel {
+                Some(number) => Piece::Number(if legacy {
+                    number.clamp(0.0, 1.0) * 255.0
+                } else {
+                    number
+                }),
+                None => Piece::None,
+            };
+            next += 1;
+            if percentages && index != 0 && channel.is_some() {
+                pieces[next] = Piece::Literal(b"%");
+                next += 1;
+            }
+            if index != 2 {
+                pieces[next] = Piece::Literal(separator);
+                next += 1;
+            }
+        }
+        if alpha {
+            pieces[next] = Piece::Literal(if legacy { b", " } else { b" / " });
+            next += 1;
+            pieces[next] = match value.alpha() {
+                None => Piece::None,
+                Some(number) => Piece::Number(if legacy {
+                    value.alpha_byte().map_or(number, legacy_byte_alpha)
+                } else {
+                    number
+                }),
+            };
+            next += 1;
+        }
+        pieces[next] = Piece::Literal(b")");
+        Ok(Self { pieces })
+    }
+}
+
+// Color4 16.1.1 defining steps. The pinned byte-236 example disagrees with
+// step 3; the operation follows the stated integer-rounding algorithm.
+fn legacy_byte_alpha(alpha: u8) -> f64 {
+    let nearest = (u32::from(alpha) * 100 + 127) / 255;
+    if (nearest * 255 + 50) / 100 == u32::from(alpha) {
+        f64::from(nearest) / 100.0
+    } else {
+        f64::from((u32::from(alpha) * 1000 + 127) / 255) / 1000.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SerializationAction {
+    Plan,
+    Compute,
+    ReadDigit { index: usize },
+    AppendDigit { index: usize },
+    ReplaceDigit { index: usize },
+    Emit { unit: u8 },
+    Done,
+    Stopped,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SerializationError {
+    Protocol(CssColorProtocolError),
+    Numerical(CssUsedColorError),
+}
+enum Stage {
+    Plan,
+    Pieces,
+    Format(FiniteFormatCursor),
+    Done,
+    Stopped,
+}
+
+/// Fixed state only. The caller owns all digits and every final output byte.
+pub(crate) struct UsedSerializer<'owner> {
+    owner: &'owner CssColorOperationOwner,
+    phase: usize,
+    value: CssUsedColor,
+    request: CssColorSerializationRequest,
+    plan: Option<Plan>,
+    stage: Stage,
+    piece: usize,
+    offset: usize,
+    digit_base: usize,
+    digits: usize,
+    emitted: usize,
+}
+impl<'owner> UsedSerializer<'owner> {
+    pub(crate) fn start(
+        owner: &'owner mut CssColorOperationOwner,
+        value: CssUsedColor,
+        request: CssColorSerializationRequest,
+    ) -> Result<Self, CssColorProtocolError> {
+        let phase = owner.begin()?;
+        Ok(Self::start_phase(owner, phase, value, request))
+    }
+    pub(super) fn start_phase(
+        owner: &'owner CssColorOperationOwner,
+        phase: usize,
+        value: CssUsedColor,
+        request: CssColorSerializationRequest,
+    ) -> Self {
+        Self {
+            owner,
+            phase,
+            value,
+            request,
+            plan: None,
+            stage: Stage::Plan,
+            piece: 0,
+            offset: 0,
+            digit_base: 0,
+            digits: 0,
+            emitted: 0,
+        }
+    }
+    pub(crate) fn action(&self) -> SerializationAction {
+        match &self.stage {
+            Stage::Plan => SerializationAction::Plan,
+            Stage::Pieces => match self.plan.as_ref().expect("planned pieces").pieces[self.piece] {
+                Piece::Literal(bytes) => bytes
+                    .get(self.offset)
+                    .map_or(SerializationAction::Compute, |unit| {
+                        SerializationAction::Emit { unit: *unit }
+                    }),
+                Piece::None => b"none"
+                    .get(self.offset)
+                    .map_or(SerializationAction::Compute, |unit| {
+                        SerializationAction::Emit { unit: *unit }
+                    }),
+                Piece::Hex(byte) if self.offset < 2 => SerializationAction::Emit {
+                    unit: b"0123456789abcdef"[usize::from(if self.offset == 0 {
+                        byte >> 4
+                    } else {
+                        byte & 15
+                    })],
+                },
+                Piece::Hex(_) | Piece::Number(_) | Piece::End => SerializationAction::Compute,
+            },
+            Stage::Format(cursor) => match cursor.next_request() {
+                FormatRequest::Compute(_) | FormatRequest::Done(_) => SerializationAction::Compute,
+                FormatRequest::ReadDigit { index } => SerializationAction::ReadDigit {
+                    index: self.digit_base + index,
+                },
+                FormatRequest::AppendDigit { index, .. } => SerializationAction::AppendDigit {
+                    index: self.digit_base + index,
+                },
+                FormatRequest::ReplaceDigit { index, .. } => SerializationAction::ReplaceDigit {
+                    index: self.digit_base + index,
+                },
+                FormatRequest::EmitByte { unit } => SerializationAction::Emit { unit },
+            },
+            Stage::Done => SerializationAction::Done,
+            Stage::Stopped => SerializationAction::Stopped,
+        }
+    }
+    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+        match &self.stage {
+            Stage::Plan => super::CssColorKernel::SerializationPlan,
+            Stage::Format(cursor) if matches!(cursor.next_request(), FormatRequest::Compute(_)) => {
+                super::CssColorKernel::Format
+            }
+            _ => super::CssColorKernel::Transition,
+        }
+    }
+    pub(crate) fn compute(&mut self) -> Result<(), SerializationError> {
+        match &mut self.stage {
+            Stage::Plan => {
+                let plan = match Plan::new(self.value, self.request) {
+                    Ok(plan) => plan,
+                    Err(error) => {
+                        self.stage = Stage::Stopped;
+                        return Err(SerializationError::Numerical(error));
+                    }
+                };
+                self.plan = Some(plan);
+                self.stage = Stage::Pieces;
+            }
+            Stage::Pieces => match self.plan.as_ref().expect("planned pieces").pieces[self.piece] {
+                Piece::Number(value) => {
+                    self.digit_base = self.digits;
+                    self.stage = Stage::Format(
+                        FiniteFormatCursor::new(value, DecimalRounding::TowardPositiveInfinity)
+                            .map_err(|_| {
+                                SerializationError::Numerical(CssUsedColorError::Unrepresentable)
+                            })?,
+                    );
+                }
+                Piece::End => self.stage = Stage::Done,
+                _ if self.action() == SerializationAction::Compute => {
+                    self.piece += 1;
+                    self.offset = 0;
+                }
+                _ => {
+                    return Err(SerializationError::Protocol(
+                        CssColorProtocolError::WrongAction,
+                    ));
+                }
+            },
+            Stage::Format(cursor) => match cursor.next_request() {
+                FormatRequest::Compute(kernel) => cursor
+                    .complete(FormatReply::Computed(kernel))
+                    .map_err(|_| {
+                        SerializationError::Protocol(CssColorProtocolError::WrongAction)
+                    })?,
+                FormatRequest::Done(_) => {
+                    self.stage = Stage::Pieces;
+                    self.piece += 1;
+                    self.offset = 0;
+                }
+                _ => {
+                    return Err(SerializationError::Protocol(
+                        CssColorProtocolError::WrongAction,
+                    ));
+                }
+            },
+            Stage::Done | Stage::Stopped => {
+                return Err(SerializationError::Protocol(
+                    CssColorProtocolError::Terminal,
+                ));
+            }
+        }
+        Ok(())
+    }
+    fn qualify(&self, slot: &CssColorSlot<'_>) -> Result<(), CssColorProtocolError> {
+        slot.qualify(
+            self.owner,
+            self.phase,
+            slot.index,
+            super::protocol::CssColorBank::Algorithm,
+        )
+    }
+    pub(crate) fn read_digit(
+        &mut self,
+        index: usize,
+        slot: &CssColorSlot<'_>,
+    ) -> Result<(), CssColorProtocolError> {
+        if self.action() != (SerializationAction::ReadDigit { index }) {
+            return Err(CssColorProtocolError::WrongAction);
+        }
+        self.qualify(slot)?;
+        if slot.index != index {
+            return Err(CssColorProtocolError::WrongIndex);
+        }
+        let Data::FormatDigit(digit) = slot.data else {
+            return Err(CssColorProtocolError::WrongSlot);
+        };
+        let Stage::Format(cursor) = &mut self.stage else {
+            return Err(CssColorProtocolError::WrongAction);
+        };
+        cursor
+            .complete(FormatReply::Digit {
+                index: index - self.digit_base,
+                digit,
+            })
+            .map_err(|_| CssColorProtocolError::WrongAction)
+    }
+    pub(crate) fn digit_record(
+        &self,
+        index: usize,
+    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+        let Stage::Format(cursor) = &self.stage else {
+            return Err(CssColorProtocolError::WrongAction);
+        };
+        let digit = match cursor.next_request() {
+            FormatRequest::AppendDigit {
+                index: expected,
+                digit,
+            }
+            | FormatRequest::ReplaceDigit {
+                index: expected,
+                digit,
+            } if self.digit_base + expected == index => digit,
+            _ => return Err(CssColorProtocolError::WrongIndex),
+        };
+        if matches!(self.action(), SerializationAction::AppendDigit { .. }) {
+            self.digits
+                .checked_add(1)
+                .ok_or(CssColorProtocolError::Overflow)?;
+        }
+        Ok(CssColorSlot::new(
+            self.owner,
+            self.phase,
+            index,
+            Data::FormatDigit(digit),
+        ))
+    }
+    /// Called only after the actual append/replacement succeeds. Refused storage
+    /// leaves the same request available, including the exact old digit.
+    pub(crate) fn digit_written(
+        &mut self,
+        index: usize,
+        slot: &CssColorSlot<'_>,
+    ) -> Result<(), CssColorProtocolError> {
+        self.qualify(slot)?;
+        if slot.index != index {
+            return Err(CssColorProtocolError::WrongIndex);
+        }
+        let Data::FormatDigit(digit) = slot.data else {
+            return Err(CssColorProtocolError::WrongSlot);
+        };
+        let action = self.action();
+        let reply = match action {
+            SerializationAction::AppendDigit { index: expected }
+                if index == expected && index == self.digits =>
+            {
+                FormatReply::Appended {
+                    index: index - self.digit_base,
+                    digit,
+                }
+            }
+            SerializationAction::ReplaceDigit { index: expected } if index == expected => {
+                FormatReply::Replaced {
+                    index: index - self.digit_base,
+                    digit,
+                }
+            }
+            _ => return Err(CssColorProtocolError::WrongIndex),
+        };
+        let next = if matches!(action, SerializationAction::AppendDigit { .. }) {
+            self.digits
+                .checked_add(1)
+                .ok_or(CssColorProtocolError::Overflow)?
+        } else {
+            self.digits
+        };
+        let Stage::Format(cursor) = &mut self.stage else {
+            return Err(CssColorProtocolError::WrongAction);
+        };
+        cursor
+            .complete(reply)
+            .map_err(|_| CssColorProtocolError::WrongAction)?;
+        self.digits = next;
+        Ok(())
+    }
+    pub(crate) fn emitted(&mut self, unit: u8) -> Result<(), CssColorProtocolError> {
+        if self.action() != (SerializationAction::Emit { unit }) {
+            return Err(CssColorProtocolError::WrongAction);
+        }
+        let next = self
+            .emitted
+            .checked_add(1)
+            .ok_or(CssColorProtocolError::Overflow)?;
+        match &mut self.stage {
+            Stage::Format(cursor) => cursor
+                .complete(FormatReply::Emitted { unit })
+                .map_err(|_| CssColorProtocolError::WrongAction)?,
+            Stage::Pieces => self.offset += 1,
+            _ => return Err(CssColorProtocolError::WrongAction),
+        }
+        self.emitted = next;
+        Ok(())
+    }
+    pub(crate) fn abandon(&mut self) {
+        self.stage = Stage::Stopped;
+    }
+    pub(crate) fn completed_length(&self) -> Result<usize, CssColorProtocolError> {
+        if matches!(self.stage, Stage::Done) {
+            Ok(self.emitted)
+        } else {
+            Err(CssColorProtocolError::Terminal)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn serialize(value: CssUsedColor, request: CssColorSerializationRequest) -> String {
+        let mut owner = CssColorOperationOwner::new();
+        let mut serializer = UsedSerializer::start(&mut owner, value, request).unwrap();
+        let mut digits = Vec::new();
+        let mut output = Vec::new();
+        loop {
+            match serializer.action() {
+                SerializationAction::Plan | SerializationAction::Compute => {
+                    serializer.compute().unwrap()
+                }
+                SerializationAction::AppendDigit { index } => {
+                    assert_eq!(index, digits.len());
+                    digits.push(serializer.digit_record(index).unwrap());
+                    serializer.digit_written(index, &digits[index]).unwrap();
+                }
+                SerializationAction::ReplaceDigit { index } => {
+                    digits[index] = serializer.digit_record(index).unwrap();
+                    serializer.digit_written(index, &digits[index]).unwrap();
+                }
+                SerializationAction::ReadDigit { index } => {
+                    serializer.read_digit(index, &digits[index]).unwrap()
+                }
+                SerializationAction::Emit { unit } => {
+                    output.push(unit);
+                    serializer.emitted(unit).unwrap();
+                }
+                SerializationAction::Done => {
+                    assert_eq!(serializer.completed_length().unwrap(), output.len());
+                    break;
+                }
+                SerializationAction::Stopped => panic!("unexpected stop"),
+            }
+        }
+        String::from_utf8(output).unwrap()
+    }
+    #[test]
+    fn hex_requires_actual_byte_proof_and_html_request() {
+        let value = CssUsedColor::from_srgba8([255, 0, 255, 255]);
+        assert_eq!(
+            serialize(value, CssColorSerializationRequest::HtmlCompatible),
+            "#ff00ff"
+        );
+        assert_eq!(
+            serialize(value, CssColorSerializationRequest::Css),
+            "rgb(255, 0, 255)"
+        );
+        assert_eq!(
+            serialize(
+                value.with_color_function(),
+                CssColorSerializationRequest::HtmlCompatible
+            ),
+            "#ff00ff"
+        );
+        let float = CssUsedColor::try_new(value.space(), value.channels(), value.alpha()).unwrap();
+        assert_eq!(
+            serialize(float, CssColorSerializationRequest::HtmlCompatible),
+            "color(srgb 1 0 1)"
+        );
+    }
+    #[test]
+    fn legacy_byte_alpha_and_floating_alpha_remain_distinct() {
+        let byte = CssUsedColor::from_srgba8([255, 0, 255, 237]);
+        assert_eq!(
+            serialize(byte, CssColorSerializationRequest::Css),
+            "rgba(255, 0, 255, 0.93)"
+        );
+        assert_eq!(
+            serialize(
+                CssUsedColor::from_srgba8([0, 0, 0, 236]),
+                CssColorSerializationRequest::Css
+            ),
+            "rgba(0, 0, 0, 0.925)"
+        );
+        let float = CssUsedColor::try_new(byte.space(), byte.channels(), byte.alpha()).unwrap();
+        assert_eq!(
+            serialize(float, CssColorSerializationRequest::Css),
+            "color(srgb 1 0 1 / 0.929412)"
+        );
+    }
+    #[test]
+    fn missing_forms_extended_coordinates_and_alias_are_source_defined() {
+        for (space, channels, alpha, expected) in [
+            (
+                Space::Hsl,
+                [None, Some(50.0), Some(20.0)],
+                None,
+                "hsl(none 50% 20% / none)",
+            ),
+            (
+                Space::Hwb,
+                [Some(270.0), None, Some(2.0)],
+                Some(1.0),
+                "hwb(270 none 2%)",
+            ),
+            (
+                Space::Lab,
+                [Some(29.0), Some(39.0), Some(20.0)],
+                Some(1.0),
+                "lab(29 39 20)",
+            ),
+            (
+                Space::Predefined(Predefined::DisplayP3),
+                [Some(-0.2), Some(1.2), None],
+                Some(0.5),
+                "color(display-p3 -0.2 1.2 none / 0.5)",
+            ),
+            (
+                Space::Predefined(Predefined::XyzD65),
+                [Some(1.0), Some(2.0), Some(3.0)],
+                Some(1.0),
+                "color(xyz-d65 1 2 3)",
+            ),
+        ] {
+            assert_eq!(
+                serialize(
+                    CssUsedColor::try_new(space, channels, alpha).unwrap(),
+                    CssColorSerializationRequest::Css
+                ),
+                expected
+            );
+        }
+    }
+    #[test]
+    fn refusal_and_foreign_digits_do_not_advance_or_emit() {
+        let mut owner = CssColorOperationOwner::new();
+        let mut foreign = CssColorOperationOwner::new();
+        let value = CssUsedColor::from_srgba8([255, 0, 0, 255]);
+        let mut serializer =
+            UsedSerializer::start(&mut owner, value, CssColorSerializationRequest::Css).unwrap();
+        let mut other =
+            UsedSerializer::start(&mut foreign, value, CssColorSerializationRequest::Css).unwrap();
+        let reach_append = |operation: &mut UsedSerializer<'_>| {
+            loop {
+                match operation.action() {
+                    SerializationAction::Plan | SerializationAction::Compute => {
+                        operation.compute().unwrap()
+                    }
+                    SerializationAction::Emit { unit } => operation.emitted(unit).unwrap(),
+                    SerializationAction::AppendDigit { index } => return index,
+                    _ => panic!("unexpected request"),
+                }
+            }
+        };
+        let index = reach_append(&mut serializer);
+        let other_index = reach_append(&mut other);
+        let pending = serializer.action();
+        let foreign_slot = other.digit_record(other_index).unwrap();
+        assert_eq!(
+            serializer.digit_written(index, &foreign_slot),
+            Err(CssColorProtocolError::ForeignSlot)
+        );
+        assert_eq!(serializer.action(), pending);
+        {
+            let _refused = serializer.digit_record(index).unwrap();
+        }
+        assert_eq!(serializer.action(), pending);
+        serializer.abandon();
+        assert_eq!(
+            serializer.completed_length(),
+            Err(CssColorProtocolError::Terminal)
+        );
+    }
+}

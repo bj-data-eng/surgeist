@@ -198,6 +198,95 @@ providers; palette lookup and color mixing remain downstream. See the
 [palette reference](docs/reference.md#authored-font-palette) and
 [executable example](examples/font_palette.rs).
 
+## Standalone used colors
+
+Use `parse_used_color` to resolve a standalone color over an original borrowed
+UTF-8 or UTF-16 input and explicit immutable `CssColorFacts`. Select
+`CssColorGrammarRequest::WholeColor` for a complete value or `PrefixColor` for a
+color prefix; the result retains the actual input, fact envelope and consumed
+original-unit range. Parsing produces a typed `CssUsedColor` or a
+`CssColorStandardFailure` before serialization, so it needs no output allowance.
+`serialize_used_color` then serializes the selected used value with either the
+CSS or conditional HTML-compatible request. These ordinary adapters use the
+same grammar and operation as the controlled protocol. Their explicit
+`CssColorOrdinaryLimits` bound input units, logical bank records, actions and
+output units; they do not bound allocator capacity or stand in for a consumer's
+resource controller. See the [public operation examples](tests/used_color_operations.rs).
+
+The shared grammar recognizes all 21 retained color branches: currentcolor,
+transparent, hex, named and system colors; rgb, hsl, hwb, lab, lch, oklab and
+oklch; predefined and custom `color()`; relative custom colors, `alpha()` and
+other relative colors; `color-mix()`, `light-dark()`, `contrast-color()` and
+`device-cmyk()`. Absolute and relative predefined-space evaluation, numeric
+expressions, missing-channel handling, conversion and mixing are intrinsic
+operations. The ordinary authored parser also uses this grammar through its
+actual Parsed and Components inputs, preserving symbolic `CssColor` values and
+origins rather than resolving them during authored parsing.
+
+Resolution observes only reached dependencies. The no-element
+`CssColorPropertyFacts::InitialProperties` branch resolves currentcolor through
+CanvasText and therefore still needs the actual palette entry. Supplied current
+color, system palette, effective light/dark scheme, profile metadata and
+applicable profile/device conversions are explicit facts, joined to the expected
+`CssColorFactIdentity` and their resource identities/revisions. The consumer
+owns the join to its real capture and resources. Profile `parameter_count` is
+independent of optional ordered component names. Only the selected
+`light-dark()` arm needs contextual facts, although both arms must have valid
+syntax. Known absent/invalid profile or device conditions retain their selected
+standard recovery; unavailable facts do not invent a fallback. Custom-profile
+forward conversions require applicable checked conversion records. Reached
+reverse-profile and custom-interpolation conversions have explicit unsupported
+boundaries where the fact carrier cannot represent the operation. Contextual
+numeric units likewise require a supported basis. CSS performs no resource
+loading or contextual style calculation.
+
+The selected `contrast-color()` policy converts to XYZ D65 Y, ignores alpha,
+clamps finite Y to [0, 1], and compares the black and white luminance ratios;
+white wins a tie. This is Surgeist's selected UA policy. Its source selection and
+capability boundaries are recorded in the
+[Color delegation reference](../../references/SOURCE-EDITIONS.md#html-color-delegation-and-intrinsic-contrast-policy).
+
+`CssUsedColor` retains finite signed channels, missing channels/alpha and the
+serialization family. Ordered `CssUsedColorTransformation` operations make
+conversion, opaque alpha and sRGB quantization explicit; equivalent coordinates
+do not establish byte provenance. Absolute sRGB/HSL/HWB values can serialize as
+legacy rgb/rgba while equivalent relative or mixed values preserve modern
+`color(srgb ...)` serialization. Missing components retain `none` where required.
+The HTML-compatible request emits lowercase hex only for an opaque value with
+established sRGB bytes. Used serialization uses the shared incremental decimal
+formatter and rounding policy. Byte alpha follows Color 4's numbered rounding
+algorithm (236 serializes as 0.925; 237 as 0.93), separately from floating alpha;
+the pinned nonnormative byte-236 example disagrees with that algorithm. Authored
+specified serialization remains a separate phase and preserves its existing
+precision contract.
+
+For a consumer with an existing controller, `CssColorOperation::parse_used`
+lends one `CssColorActionDescription` at a time. The consumer admits and polls
+before servicing each source read, fact read, bank read/write, fixed compute or
+final output unit using its actual `CssColorActionLayout` and compiled register
+sizes. It owns the Algorithm, Arithmetic and Evaluation vectors and their real
+capacity, copy and release events. Opaque slots are checked against the bank,
+exclusive `CssColorOperationOwner`, phase and ordinal; the anchor is not another
+resource controller. CSS neither allocates these banks nor assigns work weights
+or cancellation policy to the caller. Dropping an action leaves it pending;
+`abandon` does not dispose the caller's storage.
+
+Retire actual scratch through its original owner before moving a used checkpoint
+to a transformation or serializer. `CssColorBankLengths` checks empty logical
+banks but cannot prove ticket disposal. The caller-owned `Option` checkpoint
+and transformation slots preserve their value on fallible preflight refusal;
+`recover` returns the latest committed checkpoint and numerical refusal retains
+the input to that transformation. It does not restart a cancelled controller.
+Only final chosen serialization admits output. A standard-failure checkpoint
+can accept an explicitly checked caller fallback, retaining its failure/source
+context. Unavailable, unsupported, malformed-fact, numerical and protocol errors
+remain distinct from standard invalidity; resource refusal and cancellation
+belong to the original controlled consumer. Ordinary adapters additionally
+report typed logical-limit and allocation failures. See the
+[controlled protocol](src/color/bounded.rs) and [fact carriers](src/color/facts.rs).
+These standalone operations do not establish a complete contextual CSSOM/style
+consumer or HTML color-input adapter.
+
 ## Start
 
 ```rust

@@ -12,7 +12,10 @@ pub use color_expression::{
     CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
 };
 
-mod projection;
+pub(crate) mod bounded_decimal;
+pub(crate) mod bounded_expression;
+mod ordinary_expression;
+pub(crate) mod projection;
 pub(crate) use projection::{
     DeferredNumericProjection, NumericComparisonCapture, NumericProjectionOutcome,
     NumericProjectionScale, capture_specified, capture_specified_for_comparison,
@@ -227,7 +230,7 @@ pub struct CssNumericType {
     hint: Option<CssNumericDimension>,
 }
 impl CssNumericType {
-    const NUMBER: Self = Self {
+    pub(crate) const NUMBER: Self = Self {
         powers: [0; 7],
         hint: None,
     };
@@ -293,10 +296,10 @@ impl CssNumericType {
             || self.powers.iter().filter(|p| **p == 1).count() == 1
                 && self.powers.iter().all(|p| *p == 0 || *p == 1)
     }
-    fn is_number(self) -> bool {
+    pub(crate) fn is_number(self) -> bool {
         self.powers == [0; 7]
     }
-    fn is(self, d: CssNumericDimension) -> bool {
+    pub(crate) fn is(self, d: CssNumericDimension) -> bool {
         self.powers == Self::dimension(d).powers
     }
 }
@@ -517,6 +520,72 @@ pub enum CssNumericUnit {
     Flex,
 }
 
+impl CssNumericUnit {
+    /// One shared decoded-unit registry. The bounded caller supplies its fixed
+    /// ASCII name cache; ordinary authored callers lend their existing name.
+    pub(crate) fn parse(unit: &str) -> Option<Self> {
+        if let Some(unit) = CssLengthUnit::from_css_unit(unit) {
+            return Some(Self::Length(unit));
+        }
+        Some(cssparser::match_ignore_ascii_case! { unit,
+            "deg" => Self::Angle(crate::CssAngleUnit::Degrees),
+            "grad" => Self::Angle(crate::CssAngleUnit::Gradians),
+            "rad" => Self::Angle(crate::CssAngleUnit::Radians),
+            "turn" => Self::Angle(crate::CssAngleUnit::Turns),
+            "s" => Self::Time(crate::CssTimeUnit::Seconds),
+            "ms" => Self::Time(crate::CssTimeUnit::Milliseconds),
+            "hz" => Self::Frequency(crate::CssFrequencyUnit::Hertz),
+            "khz" => Self::Frequency(crate::CssFrequencyUnit::Kilohertz),
+            "dpi" => Self::Resolution(crate::CssResolutionUnit::Dpi),
+            "dpcm" => Self::Resolution(crate::CssResolutionUnit::Dpcm),
+            "dppx" | "x" => Self::Resolution(crate::CssResolutionUnit::Dppx),
+            "fr" => Self::Flex,
+            _ => return None,
+        })
+    }
+    /// Intrinsic canonical coefficient conversion. Contextual lengths and
+    /// flex values deliberately have no invented basis.
+    pub(crate) fn intrinsic_scale(self) -> Option<(&'static str, f64)> {
+        use CssLengthUnit as L;
+        Some(match self {
+            Self::Length(unit) => match unit {
+                L::Px => ("px", 1.0),
+                L::In => ("px", 96.0),
+                L::Cm => ("px", 96.0 / 2.54),
+                L::Mm => ("px", 96.0 / 25.4),
+                L::Q => ("px", 96.0 / 101.6),
+                L::Pt => ("px", 96.0 / 72.0),
+                L::Pc => ("px", 16.0),
+                _ => return None,
+            },
+            Self::Angle(unit) => match unit {
+                crate::CssAngleUnit::Degrees => ("deg", 1.0),
+                crate::CssAngleUnit::Gradians => ("deg", 0.9),
+                crate::CssAngleUnit::Radians => ("deg", 180.0 / std::f64::consts::PI),
+                crate::CssAngleUnit::Turns => ("deg", 360.0),
+            },
+            Self::Time(crate::CssTimeUnit::Seconds) => ("s", 1.0),
+            Self::Time(crate::CssTimeUnit::Milliseconds) => ("s", 0.001),
+            Self::Frequency(crate::CssFrequencyUnit::Hertz) => ("hz", 1.0),
+            Self::Frequency(crate::CssFrequencyUnit::Kilohertz) => ("hz", 1000.0),
+            Self::Resolution(crate::CssResolutionUnit::Dppx) => ("dppx", 1.0),
+            Self::Resolution(crate::CssResolutionUnit::Dpi) => ("dppx", 1.0 / 96.0),
+            Self::Resolution(crate::CssResolutionUnit::Dpcm) => ("dppx", 2.54 / 96.0),
+            Self::Flex => return None,
+        })
+    }
+    pub(crate) const fn dimension(self) -> CssNumericDimension {
+        match self {
+            Self::Length(_) => CssNumericDimension::Length,
+            Self::Angle(_) => CssNumericDimension::Angle,
+            Self::Time(_) => CssNumericDimension::Time,
+            Self::Frequency(_) => CssNumericDimension::Frequency,
+            Self::Resolution(_) => CssNumericDimension::Resolution,
+            Self::Flex => CssNumericDimension::Flex,
+        }
+    }
+}
+
 /// A checked exact lexical numeric leaf.
 #[derive(Clone, Copy, Debug)]
 pub struct CssNumericLiteralRef<'a> {
@@ -526,25 +595,9 @@ pub struct CssNumericLiteralRef<'a> {
 impl<'a> CssNumericLiteralRef<'a> {
     pub fn canonical_unit(self) -> Option<CssNumericUnit> {
         let unit = self.unit()?;
-        if let Some(unit) = CssLengthUnit::from_css_unit(unit) {
-            return Some(CssNumericUnit::Length(unit));
-        }
-        Some(match unit.to_ascii_lowercase().as_str() {
-            "deg" => CssNumericUnit::Angle(crate::CssAngleUnit::Degrees),
-            "grad" => CssNumericUnit::Angle(crate::CssAngleUnit::Gradians),
-            "rad" => CssNumericUnit::Angle(crate::CssAngleUnit::Radians),
-            "turn" => CssNumericUnit::Angle(crate::CssAngleUnit::Turns),
-            "s" => CssNumericUnit::Time(crate::CssTimeUnit::Seconds),
-            "ms" => CssNumericUnit::Time(crate::CssTimeUnit::Milliseconds),
-            "hz" => CssNumericUnit::Frequency(crate::CssFrequencyUnit::Hertz),
-            "khz" => CssNumericUnit::Frequency(crate::CssFrequencyUnit::Kilohertz),
-            "dpi" => CssNumericUnit::Resolution(crate::CssResolutionUnit::Dpi),
-            "dpcm" => CssNumericUnit::Resolution(crate::CssResolutionUnit::Dpcm),
-            "dppx" | "x" => CssNumericUnit::Resolution(crate::CssResolutionUnit::Dppx),
-            "fr" => CssNumericUnit::Flex,
-            _ => unreachable!("checked numeric unit"),
-        })
+        Some(CssNumericUnit::parse(unit).expect("checked numeric unit"))
     }
+
     pub fn numeric_type(self) -> CssNumericType {
         self.ty
     }
@@ -600,6 +653,22 @@ pub enum CssNumericConstant {
     NaN,
 }
 impl CssNumericConstant {
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        cssparser::match_ignore_ascii_case! { name,
+            "e" => Some(Self::E), "pi" => Some(Self::Pi),
+            "infinity" => Some(Self::Infinity), "-infinity" => Some(Self::NegativeInfinity),
+            "nan" => Some(Self::NaN), _ => None,
+        }
+    }
+    pub(crate) fn magnitude(self) -> f64 {
+        match self {
+            Self::E => std::f64::consts::E,
+            Self::Pi => std::f64::consts::PI,
+            Self::Infinity => f64::INFINITY,
+            Self::NegativeInfinity => f64::NEG_INFINITY,
+            Self::NaN => f64::NAN,
+        }
+    }
     fn name(self) -> &'static str {
         match self {
             Self::E => "e",
@@ -635,8 +704,8 @@ pub enum CssMathFunction {
     Sign,
 }
 impl CssMathFunction {
-    fn parse(name: &str) -> Option<Self> {
-        Some(match name.to_ascii_lowercase().as_str() {
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        Some(cssparser::match_ignore_ascii_case! { name,
             "calc" => Self::Calc,
             "min" => Self::Min,
             "max" => Self::Max,
@@ -1619,19 +1688,20 @@ impl CalculationRoot {
     }
 }
 
-fn unit_dimension(unit: &str) -> Option<CssNumericDimension> {
-    if CssLengthUnit::from_css_unit(unit).is_some() {
-        return Some(CssNumericDimension::Length);
+pub(crate) fn literal_type(unit: Option<CssNumericUnit>, percentage: bool) -> CssNumericType {
+    if percentage {
+        CssNumericType::dimension(CssNumericDimension::Percentage)
+    } else {
+        unit.map_or(CssNumericType::NUMBER, |unit| {
+            CssNumericType::dimension(unit.dimension())
+        })
     }
-    Some(match unit.to_ascii_lowercase().as_str() {
-        "deg" | "grad" | "rad" | "turn" => CssNumericDimension::Angle,
-        "s" | "ms" => CssNumericDimension::Time,
-        "hz" | "khz" => CssNumericDimension::Frequency,
-        "dpi" | "dpcm" | "dppx" | "x" => CssNumericDimension::Resolution,
-        "fr" => CssNumericDimension::Flex,
-        _ => return None,
-    })
 }
+
+fn unit_dimension(unit: &str) -> Option<CssNumericDimension> {
+    CssNumericUnit::parse(unit).map(CssNumericUnit::dimension)
+}
+
 fn trivia(c: &CssComponentValue) -> bool {
     matches!(
         c.view(),
@@ -1654,12 +1724,6 @@ fn direct_syntax(items: &[CssComponentValue]) -> Vec<CssComponentValue> {
         })
         .cloned()
         .collect()
-}
-fn whitespace(c: &CssComponentValue) -> bool {
-    matches!(
-        c.view(),
-        CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-    )
 }
 fn ident(c: &CssComponentValue, name: &str) -> bool {
     matches!(c.view(),CssComponentValueRef::Token(CssValueTokenRef::Ident(s))if s.eq_ignore_ascii_case(name))
@@ -1846,165 +1910,11 @@ pub(crate) fn validate_calc_size_graph(
     )
 }
 
-struct Cursor<'a, 'p> {
-    items: &'a [CssComponentValue],
-    i: usize,
-    parser: &'p mut NumericParser<'a>,
-}
-impl<'a> Cursor<'a, '_> {
-    fn skip(&mut self) -> bool {
-        let mut ws = false;
-        while self.i < self.items.len() && trivia(&self.items[self.i]) {
-            ws |= whitespace(&self.items[self.i]);
-            self.i += 1;
-        }
-        ws
-    }
-    fn err(&self, k: CssNumericConstructionErrorKind) -> CssNumericConstructionError {
-        self.parser.error(
-            k,
-            self.items
-                .get(self.i)
-                .or_else(|| self.items.iter().rev().find(|c| !trivia(c))),
-        )
-    }
-    fn sum(&mut self) -> Result<CssCalculationExpression> {
-        let start = self.i;
-        let first = self.product()?;
-        let mut ty = first.ty;
-        let origin = first.origin.clone();
-        let mut terms = vec![(None, first)];
-        loop {
-            let mark = self.i;
-            let ws = self.skip();
-            let op = match self.items.get(self.i).map(CssComponentValue::view) {
-                Some(CssComponentValueRef::Token(CssValueTokenRef::Delim('+'))) => {
-                    CssCalculationSumOperator::Add
-                }
-                Some(CssComponentValueRef::Token(CssValueTokenRef::Delim('-'))) => {
-                    CssCalculationSumOperator::Subtract
-                }
-                _ => {
-                    self.i = mark;
-                    break;
-                }
-            };
-            if !ws {
-                return Err(self.err(CssNumericConstructionErrorKind::MalformedExpression));
-            }
-            self.i += 1;
-            if !self.skip() {
-                return Err(self.err(CssNumericConstructionErrorKind::MalformedExpression));
-            }
-            let right_site = self.items.get(self.i);
-            let right = self.product()?;
-            ty = ty.add(right.ty).ok_or_else(|| {
-                self.parser.error(
-                    CssNumericConstructionErrorKind::IncompatibleTypes,
-                    right_site,
-                )
-            })?;
-            terms.push((Some(op), right));
-        }
-        if terms.len() == 1 {
-            Ok(terms.pop().unwrap().1)
-        } else {
-            Ok(CssCalculationExpression {
-                kind: NodeKind::Sum(terms),
-                ty,
-                origin,
-                components: None,
-                syntax: direct_syntax(&self.items[start..self.i]),
-                closing: None,
-            })
-        }
-    }
-    fn product(&mut self) -> Result<CssCalculationExpression> {
-        let start = self.i;
-        let first = self.value()?;
-        let mut ty = first.ty;
-        let origin = first.origin.clone();
-        let mut factors = vec![(None, first)];
-        loop {
-            let mark = self.i;
-            self.skip();
-            let op = match self.items.get(self.i).map(CssComponentValue::view) {
-                Some(CssComponentValueRef::Token(CssValueTokenRef::Delim('*'))) => {
-                    CssCalculationProductOperator::Multiply
-                }
-                Some(CssComponentValueRef::Token(CssValueTokenRef::Delim('/'))) => {
-                    CssCalculationProductOperator::Divide
-                }
-                _ => {
-                    self.i = mark;
-                    break;
-                }
-            };
-            self.i += 1;
-            self.skip();
-            let right_site = self.items.get(self.i);
-            let right = self.value()?;
-            if ty.hint.is_some() && right.ty.hint.is_some() && ty.hint != right.ty.hint {
-                return Err(self.parser.error(
-                    CssNumericConstructionErrorKind::IncompatibleTypes,
-                    right_site,
-                ));
-            }
-            ty = ty
-                .product(right.ty, op == CssCalculationProductOperator::Divide)
-                .ok_or_else(|| {
-                    let error = self
-                        .parser
-                        .error(CssNumericConstructionErrorKind::ResourceLimit, right_site);
-                    CssNumericConstructionError::component(CssComponentValueError::new(
-                        CssComponentValueErrorKind::CapacityOverflow,
-                        error
-                            .origin
-                            .clone()
-                            .expect("a checked right operand has an origin"),
-                    ))
-                    .with_path(error.path)
-                })?;
-            factors.push((Some(op), right));
-        }
-        if factors.len() == 1 {
-            Ok(factors.pop().unwrap().1)
-        } else {
-            Ok(CssCalculationExpression {
-                kind: NodeKind::Product(factors),
-                ty,
-                origin,
-                components: None,
-                syntax: direct_syntax(&self.items[start..self.i]),
-                closing: None,
-            })
-        }
-    }
-    fn value(&mut self) -> Result<CssCalculationExpression> {
-        self.skip();
-        let c = self
-            .items
-            .get(self.i)
-            .ok_or_else(|| self.err(CssNumericConstructionErrorKind::MalformedExpression))?;
-        self.i += 1;
-        self.parser.take(c)
-    }
-}
 fn sequence<'a>(
     items: &'a [CssComponentValue],
     parser: &mut NumericParser<'a>,
 ) -> Result<CssCalculationExpression> {
-    let mut c = Cursor {
-        items,
-        i: 0,
-        parser,
-    };
-    let result = c.sum()?;
-    c.skip();
-    if c.i != items.len() {
-        return Err(c.err(CssNumericConstructionErrorKind::MalformedExpression));
-    }
-    Ok(result)
+    ordinary_expression::parse(items, parser, None)
 }
 fn parse_node<'a>(
     c: &'a CssComponentValue,
@@ -2028,14 +1938,7 @@ fn parse_node<'a>(
             ),
         ),
         CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => {
-            let constant = match name.to_ascii_lowercase().as_str() {
-                "e" => Some(CssNumericConstant::E),
-                "pi" => Some(CssNumericConstant::Pi),
-                "infinity" => Some(CssNumericConstant::Infinity),
-                "-infinity" => Some(CssNumericConstant::NegativeInfinity),
-                "nan" => Some(CssNumericConstant::NaN),
-                _ => None,
-            };
+            let constant = CssNumericConstant::parse(name);
             if let Some(v) = constant {
                 (NodeKind::Constant(v), CssNumericType::NUMBER)
             } else if root == CalculationRoot::ProfileRelative {
@@ -2111,130 +2014,8 @@ fn parse_function<'a>(
     parser: &mut NumericParser<'a>,
     component: &'a CssComponentValue,
 ) -> Result<(NodeKind, CssNumericType)> {
-    use CssMathFunction as F;
-    let err = |kind| CssNumericConstructionError::at(kind, Some(component));
-    let mut segments: Vec<&[CssComponentValue]> = values
-        .items()
-        .split(|c| {
-            matches!(
-                c.view(),
-                CssComponentValueRef::Token(CssValueTokenRef::Comma)
-            )
-        })
-        .collect();
-    let mut strategy = None;
-    if function == F::Round {
-        let significant: Vec<_> = segments[0].iter().filter(|c| !trivia(c)).collect();
-        if significant.len() == 1 {
-            strategy = if ident(significant[0], "nearest") {
-                Some(CssRoundingStrategy::Nearest)
-            } else if ident(significant[0], "up") {
-                Some(CssRoundingStrategy::Up)
-            } else if ident(significant[0], "down") {
-                Some(CssRoundingStrategy::Down)
-            } else if ident(significant[0], "to-zero") {
-                Some(CssRoundingStrategy::ToZero)
-            } else {
-                None
-            };
-            if strategy.is_some() {
-                segments.remove(0);
-            }
-        }
-    }
-    let valid_arity = match function {
-        F::Min | F::Max | F::Hypot => !segments.is_empty(),
-        F::Clamp => segments.len() == 3,
-        F::Round | F::Log => (1..=2).contains(&segments.len()),
-        F::Mod | F::Rem | F::Atan2 | F::Pow => segments.len() == 2,
-        _ => segments.len() == 1,
-    };
-    if !valid_arity {
-        return Err(err(CssNumericConstructionErrorKind::Arity));
-    }
-    let mut args = Vec::new();
-    for (i, s) in segments.iter().enumerate() {
-        let sig: Vec<_> = s.iter().filter(|c| !trivia(c)).collect();
-        if sig.is_empty() {
-            return Err(err(CssNumericConstructionErrorKind::Arity));
-        }
-        if function == F::Clamp && i != 1 && sig.len() == 1 && ident(sig[0], "none") {
-            args.push(None)
-        } else {
-            args.push(Some(sequence(s, parser)?));
-        }
-    }
-    let ts: Vec<_> = args.iter().flatten().map(|a| a.ty).collect();
-    if ts.is_empty() {
-        return Err(err(CssNumericConstructionErrorKind::Arity));
-    }
-    let common = || {
-        ts.iter()
-            .copied()
-            .try_fold(None, |acc: Option<CssNumericType>, t| match acc {
-                None => Some(Some(t)),
-                Some(a) => a.add(t).map(Some),
-            })
-            .flatten()
-            .ok_or_else(|| err(CssNumericConstructionErrorKind::IncompatibleTypes))
-    };
-    let output = match function {
-        F::Calc | F::Abs => ts[0],
-        F::Min | F::Max | F::Clamp | F::Hypot | F::Mod | F::Rem => common()?,
-        F::Round => {
-            if args.len() == 1 && !ts[0].is_number() {
-                return Err(err(CssNumericConstructionErrorKind::InvalidArgumentType));
-            }
-            common()?
-        }
-        F::Sin | F::Cos | F::Tan => {
-            if !ts[0].is_number() && !ts[0].is(CssNumericDimension::Angle) {
-                return Err(err(CssNumericConstructionErrorKind::InvalidArgumentType));
-            }
-            CssNumericType {
-                hint: ts[0].hint,
-                ..CssNumericType::NUMBER
-            }
-        }
-        F::Asin | F::Acos | F::Atan => {
-            if !ts[0].is_number() {
-                return Err(err(CssNumericConstructionErrorKind::InvalidArgumentType));
-            }
-            CssNumericType {
-                hint: ts[0].hint,
-                ..CssNumericType::dimension(CssNumericDimension::Angle)
-            }
-        }
-        F::Atan2 => {
-            let t = common()?;
-            CssNumericType {
-                hint: t.hint,
-                ..CssNumericType::dimension(CssNumericDimension::Angle)
-            }
-        }
-        F::Pow | F::Sqrt | F::Log | F::Exp => {
-            if ts.iter().any(|t| !t.is_number()) {
-                return Err(err(CssNumericConstructionErrorKind::InvalidArgumentType));
-            }
-            common()?
-        }
-        F::Sign => CssNumericType {
-            hint: ts[0].hint,
-            ..CssNumericType::NUMBER
-        },
-    };
-    if !output.simple() || ts.iter().any(|t| !t.simple()) && !matches!(function, F::Calc | F::Sign)
-    {
-        return Err(err(CssNumericConstructionErrorKind::InvalidArgumentType));
-    }
-    Ok((
-        NodeKind::Function {
-            function,
-            args,
-            strategy,
-        },
-        output,
-    ))
+    let value = ordinary_expression::parse(values.items(), parser, Some((function, component)))?;
+    Ok((value.kind, value.ty))
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]

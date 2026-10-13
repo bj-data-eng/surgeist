@@ -6041,7 +6041,7 @@ pub enum CssLengthUnit {
 
 impl CssLengthUnit {
     pub(crate) fn from_css_unit(unit: &str) -> Option<Self> {
-        Some(match unit.to_ascii_lowercase().as_str() {
+        Some(cssparser::match_ignore_ascii_case! { unit,
             "px" => Self::Px,
             "em" => Self::Em,
             "rem" => Self::Rem,

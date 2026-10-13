@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![deny(unfulfilled_lint_expectations)]
 #![recursion_limit = "512"]
 //! Browser-recovering CSS ingestion for Surgeist.
 //!
@@ -1793,6 +1794,24 @@ mod box_spacing;
 mod break_controls;
 mod calc_size;
 mod clip;
+mod color;
+pub use color::{
+    CssColorAction, CssColorActionDescription, CssColorActionLayout, CssColorBank,
+    CssColorBankLengths, CssColorFactError, CssColorFactIdentity, CssColorFactRead, CssColorFacts,
+    CssColorFailureCheckpoint, CssColorGrammarRequest, CssColorInitializationLayout, CssColorInput,
+    CssColorInputKind, CssColorInputRange, CssColorKernel, CssColorOperation,
+    CssColorOperationError, CssColorOperationOwner, CssColorOrdinaryError, CssColorOrdinaryLimits,
+    CssColorOrdinaryOutcome, CssColorOrdinaryResource, CssColorOrdinaryResult,
+    CssColorPaletteEntry, CssColorParseOutcome, CssColorProfileAvailability,
+    CssColorProfileBinding, CssColorProfileConversion, CssColorProfileConversionRecord,
+    CssColorPropertyFacts, CssColorProtocolError, CssColorSchemeFact, CssColorSerialization,
+    CssColorSerializationAction, CssColorSerializationReceipt, CssColorSerializationRequest,
+    CssColorSlot, CssColorSlotKind, CssColorSourceDescriptor, CssColorStandardFailure,
+    CssColorStandardFailureKind, CssColorTransformAction, CssColorTransformation,
+    CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssUsedColor,
+    CssUsedColorCheckpoint, CssUsedColorError, CssUsedColorTransformation, parse_used_color,
+    serialize_used_color,
+};
 mod color_alpha;
 mod color_scalar;
 mod column_rule;

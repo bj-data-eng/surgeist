@@ -22,34 +22,113 @@ pub(super) fn extreme(a: f64, b: f64, minimum: bool) -> f64 {
     if (a < b) == minimum { a } else { b }
 }
 
+/// Fixed operand payload for one already type-checked CSS math kernel.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Operand {
+    pub(crate) value: f64,
+    pub(crate) degrees: bool,
+}
+
+/// A one-operand-per-action fold for the three variadic numeric functions.
+/// No borrowed argument slice is scanned inside a fold action.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct VariadicMath {
+    function: Function,
+    value: Option<f64>,
+    nan: bool,
+}
+impl VariadicMath {
+    pub(crate) const fn new(function: Function) -> Option<Self> {
+        match function {
+            Function::Min | Function::Max | Function::Hypot => Some(Self {
+                function,
+                value: None,
+                nan: false,
+            }),
+            _ => None,
+        }
+    }
+    pub(crate) fn push(&mut self, value: f64) {
+        self.nan |= value.is_nan();
+        self.value = Some(match self.function {
+            Function::Min | Function::Max => self.value.map_or(value, |previous| {
+                extreme(previous, value, self.function == Function::Min)
+            }),
+            Function::Hypot => self.value.unwrap_or(0.0).hypot(value),
+            _ => unreachable!("checked variadic function"),
+        });
+    }
+    pub(crate) fn finish(self) -> Option<f64> {
+        self.value
+            .map(|value| if self.nan { f64::NAN } else { value })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct KernelArguments;
+
 pub(super) fn evaluate(
     function: Function,
     args: &[Option<Scalar>],
     strategy: Option<Strategy>,
 ) -> f64 {
-    let at = |i: usize| {
-        args[i]
-            .as_ref()
-            .expect("present checked function argument")
-            .value
+    if let Some(mut fold) = VariadicMath::new(function) {
+        for argument in args.iter().flatten() {
+            fold.push(argument.value);
+        }
+        return fold.finish().expect("checked nonempty variadic function");
+    }
+    let mut fixed = [None; 3];
+    assert!(args.len() <= fixed.len(), "checked fixed arity");
+    for (index, argument) in args.iter().enumerate() {
+        fixed[index] = argument.as_ref().map(|argument| Operand {
+            value: argument.value,
+            degrees: argument.unit == Unit::Canonical("deg"),
+        });
+    }
+    evaluate_fixed(function, fixed, args.len(), strategy).expect("checked function arguments")
+}
+
+/// One fixed-arity numerical computation, shared by ordinary and bounded owners.
+/// Invalid argument headers are refused before a kernel executes.
+pub(crate) fn evaluate_fixed(
+    function: Function,
+    args: [Option<Operand>; 3],
+    length: usize,
+    strategy: Option<Strategy>,
+) -> Result<f64, KernelArguments> {
+    let valid = match function {
+        Function::Min | Function::Max | Function::Hypot => false,
+        Function::Clamp => length == 3 && args[1].is_some(),
+        Function::Round | Function::Log => {
+            (length == 1 || length == 2) && args[0].is_some() && (length == 1 || args[1].is_some())
+        }
+        Function::Mod | Function::Rem | Function::Atan2 | Function::Pow => {
+            length == 2 && args[0].is_some() && args[1].is_some()
+        }
+        _ => length == 1 && args[0].is_some(),
     };
+    if !valid
+        || args
+            .get(length..)
+            .is_none_or(|tail| tail.iter().any(Option::is_some))
+    {
+        return Err(KernelArguments);
+    }
+    let at = |i: usize| args[i].expect("checked present argument").value;
     let a = args
         .iter()
         .flatten()
         .next()
         .expect("checked function arguments")
         .value;
-    if args.iter().flatten().any(|v| v.value.is_nan()) {
-        return f64::NAN;
+    // Exactly three fixed registers; this is not an arbitrary argument scan.
+    if args.iter().flatten().any(|value| value.value.is_nan()) {
+        return Ok(f64::NAN);
     }
-    match function {
+    Ok(match function {
         Function::Calc => a,
-        Function::Min | Function::Max => args
-            .iter()
-            .flatten()
-            .map(|v| v.value)
-            .reduce(|a, b| extreme(a, b, function == Function::Min))
-            .expect("nonempty comparison"),
+        Function::Min | Function::Max | Function::Hypot => unreachable!("variadic owner"),
         Function::Clamp => {
             let mut value = at(1);
             if let Some(upper) = &args[2] {
@@ -62,13 +141,13 @@ pub(super) fn evaluate(
         }
         Function::Round => round(
             a,
-            if args.len() == 1 { 1.0 } else { at(1) },
+            if length == 1 { 1.0 } else { at(1) },
             strategy.unwrap_or(Strategy::Nearest),
         ),
         Function::Mod | Function::Rem => remainder(a, at(1), function == Function::Mod),
         Function::Sin | Function::Cos | Function::Tan => {
             let angle = args[0].as_ref().expect("angle argument");
-            trig(function, a, angle.unit == Unit::Canonical("deg"))
+            trig(function, a, angle.degrees)
         }
         Function::Asin => {
             if !(-1.0..=1.0).contains(&a) {
@@ -100,12 +179,8 @@ pub(super) fn evaluate(
                 a.sqrt()
             }
         }
-        Function::Hypot => args
-            .iter()
-            .flatten()
-            .fold(0.0f64, |value, arg| value.hypot(arg.value)),
         Function::Log => {
-            let base = if args.len() == 1 {
+            let base = if length == 1 {
                 std::f64::consts::E
             } else {
                 at(1)
@@ -118,7 +193,7 @@ pub(super) fn evaluate(
                 0.0
             } else if a == f64::INFINITY {
                 f64::INFINITY
-            } else if args.len() == 1 {
+            } else if length == 1 {
                 a.ln()
             } else {
                 a.ln() / base.ln()
@@ -133,7 +208,7 @@ pub(super) fn evaluate(
                 a.signum()
             }
         }
-    }
+    })
 }
 
 fn round(a: f64, b: f64, strategy: Strategy) -> f64 {
@@ -341,6 +416,63 @@ fn pow(a: f64, b: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn variadic_steps_preserve_css_nan_and_signed_zero() {
+        let mut min = VariadicMath::new(Function::Min).unwrap();
+        min.push(0.0);
+        min.push(-0.0);
+        assert_eq!(min.finish().unwrap().to_bits(), (-0.0f64).to_bits());
+        let mut max = VariadicMath::new(Function::Max).unwrap();
+        max.push(-0.0);
+        max.push(0.0);
+        assert_eq!(max.finish().unwrap().to_bits(), 0.0f64.to_bits());
+        let mut hypot = VariadicMath::new(Function::Hypot).unwrap();
+        hypot.push(3.0);
+        hypot.push(4.0);
+        assert_eq!(hypot.finish(), Some(5.0));
+        hypot.push(f64::INFINITY);
+        hypot.push(f64::NAN);
+        assert!(hypot.finish().unwrap().is_nan());
+        assert!(VariadicMath::new(Function::Calc).is_none());
+        assert_eq!(VariadicMath::new(Function::Min).unwrap().finish(), None);
+    }
+
+    #[test]
+    fn fixed_kernel_refuses_headers_and_reuses_angle_and_clamp_semantics() {
+        let value = |value, degrees| Some(Operand { value, degrees });
+        assert_eq!(
+            evaluate_fixed(Function::Pow, [value(2.0, false), None, None], 1, None),
+            Err(KernelArguments)
+        );
+        assert_eq!(
+            evaluate_fixed(
+                Function::Abs,
+                [value(-3.0, false), value(4.0, false), None],
+                1,
+                None
+            ),
+            Err(KernelArguments)
+        );
+        assert_eq!(
+            evaluate_fixed(
+                Function::Clamp,
+                [None, value(2.0, false), value(1.0, false)],
+                3,
+                None
+            ),
+            Ok(1.0)
+        );
+        assert_eq!(
+            evaluate_fixed(Function::Sin, [value(90.0, true), None, None], 1, None),
+            Ok(1.0)
+        );
+        assert_eq!(
+            evaluate_fixed(Function::Sign, [value(-0.0, false), None, None], 1, None)
+                .unwrap()
+                .to_bits(),
+            (-0.0f64).to_bits()
+        );
+    }
     #[test]
     fn stepped_functions_follow_css_ties_signs_and_infinite_steps() {
         for (strategy, positive, negative) in [

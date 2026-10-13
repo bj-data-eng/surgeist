@@ -1,8 +1,8 @@
 //! Bounded specified-value projection; the authored graph is never rewritten.
 
 use super::{
-    CssCalculationExpression, CssMathFunction as Function, CssNumericConstant, CssNumericDimension,
-    CssNumericType, CssRoundingStrategy, NodeKind,
+    CssCalculationExpression, CssMathFunction as Function, CssNumericDimension, CssNumericType,
+    CssRoundingStrategy, NodeKind,
 };
 #[cfg(test)]
 use crate::CssSpecifiedValueSerializationLimits as Limits;
@@ -13,7 +13,7 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
-mod math;
+pub(crate) mod math;
 
 type Result<T> = std::result::Result<T, Error>;
 type Id = usize;
@@ -23,7 +23,7 @@ type Id = usize;
 // binary64 degrees remain supported, including the 31 values above this one.
 const ANGLE_OVERFLOW_ENDPOINT: f64 = f64::from_bits(f64::MAX.to_bits() - 31);
 
-fn finite_angle_overflow(value: f64, finite_operands: bool) -> f64 {
+pub(crate) fn finite_angle_overflow(value: f64, finite_operands: bool) -> f64 {
     if value.is_infinite() && finite_operands {
         ANGLE_OVERFLOW_ENDPOINT.copysign(value)
     } else {
@@ -1073,17 +1073,9 @@ fn prepare_specified_scaled_with_mode(
                 };
                 projection.value(lexical_value(number.representation()), unit, node.ty)?
             }
-            NodeKind::Constant(constant) => projection.value(
-                match constant {
-                    CssNumericConstant::E => std::f64::consts::E,
-                    CssNumericConstant::Pi => std::f64::consts::PI,
-                    CssNumericConstant::Infinity => f64::INFINITY,
-                    CssNumericConstant::NegativeInfinity => f64::NEG_INFINITY,
-                    CssNumericConstant::NaN => f64::NAN,
-                },
-                Unit::Number,
-                node.ty,
-            )?,
+            NodeKind::Constant(constant) => {
+                projection.value(constant.magnitude(), Unit::Number, node.ty)?
+            }
             NodeKind::Size => projection.add(Kind::Symbol("size".into()), node.ty)?,
             NodeKind::ProfileChannel(name) => {
                 if projection.context.output_suppressed() {
@@ -1276,29 +1268,13 @@ fn finite_angle_leaf(representation: &str, factor: f64) -> f64 {
 }
 
 fn canonical_unit(unit: &str) -> (Unit, f64) {
-    let lower = unit.to_ascii_lowercase();
-    let (canonical, factor) = match lower.as_str() {
-        "px" => ("px", 1.0),
-        "in" => ("px", 96.0),
-        "cm" => ("px", 96.0 / 2.54),
-        "mm" => ("px", 96.0 / 25.4),
-        "q" => ("px", 96.0 / 101.6),
-        "pt" => ("px", 96.0 / 72.0),
-        "pc" => ("px", 16.0),
-        "deg" => ("deg", 1.0),
-        "grad" => ("deg", 0.9),
-        "rad" => ("deg", 180.0 / std::f64::consts::PI),
-        "turn" => ("deg", 360.0),
-        "s" => ("s", 1.0),
-        "ms" => ("s", 0.001),
-        "hz" => ("hz", 1.0),
-        "khz" => ("hz", 1000.0),
-        "dppx" | "x" => ("dppx", 1.0),
-        "dpi" => ("dppx", 1.0 / 96.0),
-        "dpcm" => ("dppx", 2.54 / 96.0),
-        _ => return (Unit::Context(lower), 1.0),
-    };
-    (Unit::Canonical(canonical), factor)
+    if let Some((canonical, factor)) =
+        super::CssNumericUnit::parse(unit).and_then(super::CssNumericUnit::intrinsic_scale)
+    {
+        (Unit::Canonical(canonical), factor)
+    } else {
+        (Unit::Context(unit.to_ascii_lowercase()), 1.0)
+    }
 }
 
 #[derive(Clone, Copy)]

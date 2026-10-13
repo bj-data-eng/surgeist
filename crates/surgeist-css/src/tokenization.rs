@@ -11,6 +11,11 @@ use std::ops::Range;
 
 use cssparser::{Parser, ParserInput, Token};
 
+pub(crate) mod bounded;
+pub(crate) mod color_tokens;
+pub(crate) mod name;
+pub(crate) mod number;
+
 /// Prepare one complete working input, preserving any masks already applied by
 /// structural recovery. Clean inputs remain borrowed. Each token is visited at
 /// its actual boundary, including URLs whose provider cursor overruns that end.
@@ -121,16 +126,15 @@ pub(crate) fn source_token_parts<'a>(
 /// CSS Syntax 3 §4.3.9 over authored code points, including preprocessing.
 /// EOF is a valid escape second code point, and NUL becomes U+FFFD (§3.3).
 fn would_start_identifier(text: &str) -> bool {
-    fn name_start(point: char) -> bool {
-        point.is_ascii_alphabetic() || point == '_' || point == '\0' || !point.is_ascii()
-    }
-    fn valid_escape(first: Option<char>, second: Option<char>) -> bool {
-        first == Some('\\') && !matches!(second, Some('\n' | '\r' | '\u{c}'))
-    }
     let mut points = text.chars();
     let first = points.next();
     let second = points.next();
     let third = points.next();
+    identifier_start([first, second, third])
+}
+
+/// CSS Syntax's fixed three-code-point identifier-start decision.
+pub(crate) fn identifier_start([first, second, third]: [Option<char>; 3]) -> bool {
     match first {
         Some('-') => {
             second.is_some_and(|point| point == '-' || name_start(point))
@@ -142,43 +146,36 @@ fn would_start_identifier(text: &str) -> bool {
     }
 }
 
+pub(crate) fn name_start(point: char) -> bool {
+    point.is_ascii_alphabetic() || point == '_' || point == '\0' || !point.is_ascii()
+}
+
+pub(crate) fn name_point(point: char) -> bool {
+    name_start(point) || point.is_ascii_digit() || point == '-'
+}
+
+pub(crate) fn valid_escape(first: Option<char>, second: Option<char>) -> bool {
+    first == Some('\\') && !matches!(second, Some('\n' | '\r' | '\u{c}'))
+}
+
 // CSS Syntax's consume-a-number spelling boundary. The dependency supplies the
 // token category; this scan preserves the exact prefix without float conversion.
 pub(crate) fn numeric_prefix_length(representation: &str) -> usize {
     let bytes = representation.as_bytes();
-    let mut end = usize::from(
-        bytes
-            .first()
-            .is_some_and(|byte| matches!(byte, b'+' | b'-')),
-    );
-    while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-        end += 1;
-    }
-    if bytes.get(end) == Some(&b'.') && bytes.get(end + 1).is_some_and(u8::is_ascii_digit) {
-        end += 1;
-        while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-            end += 1;
-        }
-    }
-    if bytes
-        .get(end)
-        .is_some_and(|byte| matches!(byte, b'e' | b'E'))
-    {
-        let mut exponent = end + 1;
-        if bytes
-            .get(exponent)
-            .is_some_and(|byte| matches!(byte, b'+' | b'-'))
+    let mut cursor = number::NumberCursor::new();
+    let mut end = 0;
+    loop {
+        let window = [bytes.get(end), bytes.get(end + 1), bytes.get(end + 2)]
+            .map(|byte| byte.copied().map(char::from));
+        match cursor
+            .step(window)
+            .expect("a borrowed token's counters fit its length")
         {
-            exponent += 1;
-        }
-        if bytes.get(exponent).is_some_and(u8::is_ascii_digit) {
-            end = exponent + 1;
-            while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-                end += 1;
-            }
+            number::Step::Consume(_) => end += 1,
+            number::Step::Transition => {}
+            number::Step::Done(_) => return end,
         }
     }
-    end
 }
 
 fn source_token(source: &str, offset: usize) -> Option<(usize, Token<'_>, Option<usize>)> {

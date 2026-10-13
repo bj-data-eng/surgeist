@@ -378,14 +378,46 @@ fn validation_page_rules_match_ordinary_retention_and_recovery() {
         [CssRule::Import(_), CssRule::Page(_)]
     ));
 
+    let admitted = assert_sheet_parity(
+        "@page :first { color: red; margin-top: 1em; margin-bottom: -2cm; } .after {}",
+    );
+    assert!(admitted.is_clean(), "{:?}", admitted.diagnostics());
+    let [CssRule::Page(page), CssRule::Style(_)] = admitted.syntax().rules() else {
+        panic!("expected admitted Page declarations and following style rule");
+    };
+    assert_eq!(
+        page.declarations()
+            .properties()
+            .iter()
+            .map(|declaration| declaration.known().unwrap().property())
+            .collect::<Vec<_>>(),
+        [
+            surgeist_css::CssKnownProperty::Color,
+            surgeist_css::CssKnownProperty::MarginTop,
+            surgeist_css::CssKnownProperty::MarginBottom
+        ]
+    );
+
     let recovered = assert_sheet_parity(concat!(
-        "@page :first { color: red; mystery: 1; margin-top: 1em; ",
+        "@page :first { color: #12; mystery: 1; margin-top: 1px 2px; ",
         "margin-bottom: -2cm; } .after {}",
     ));
     assert!(matches!(
         recovered.syntax().rules(),
         [CssRule::Page(_), CssRule::Style(_)]
     ));
+    let CssRule::Page(page) = &recovered.syntax().rules()[0] else {
+        unreachable!()
+    };
+    let [retained] = page.declarations().properties().as_slice() else {
+        panic!("only valid negative margin remains")
+    };
+    let surgeist_css::CssKnownPropertyValueRef::MarginBottom(value) =
+        retained.known().unwrap().property_value().unwrap()
+    else {
+        panic!("negative physical margin")
+    };
+    assert_eq!(value.value().serialize_specified().unwrap(), "-2cm");
     assert_eq!(recovered.diagnostics().len(), 3);
     assert!(
         recovered
