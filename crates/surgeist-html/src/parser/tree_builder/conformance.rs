@@ -3498,3 +3498,567 @@ mod whole_source_comparisons {
         }
     }
 }
+
+#[cfg(test)]
+mod comment_diagnostic_corpus {
+    use super::*;
+    use crate::construction::parser_session::evidence::{
+        DiagnosticContext, DiagnosticKind, DiagnosticLocation, DiagnosticLocationRole,
+        DiagnosticRecord, DiagnosticRule, DiagnosticSeverity, DiagnosticToken,
+        FailureDiagnosticEvidence,
+    };
+    use crate::parser::control::ParseUsage;
+    use crate::parser::tokenizer::{
+        states::State,
+        token::{DiagnosticCode, DiagnosticPhase},
+    };
+    use crate::parser::tree_builder::{
+        StandaloneDocumentDriver,
+        end::CompletedStandaloneDocument,
+        head::HeadStep,
+        prologue::{PrologueCondition, PrologueMode},
+    };
+    use crate::{HtmlDocumentParseRequest, HtmlSource};
+
+    #[derive(Clone, Copy)]
+    struct ExpectedDiagnostic {
+        kind: DiagnosticKind,
+        context: DiagnosticContext,
+        rule: DiagnosticRule,
+        role: DiagnosticLocationRole,
+        token: Option<DiagnosticToken>,
+        source: (usize, usize),
+    }
+    const fn missing(source: (usize, usize), token: DiagnosticToken) -> ExpectedDiagnostic {
+        ExpectedDiagnostic {
+            kind: DiagnosticKind::Prologue(PrologueCondition::MissingDoctype),
+            context: DiagnosticContext::Prologue(PrologueMode::Initial),
+            rule: DiagnosticRule {
+                anchor: "the-initial-insertion-mode",
+                branch: "anything-else/missing-doctype",
+            },
+            role: DiagnosticLocationRole::TokenEnvelope,
+            token: Some(token),
+            source,
+        }
+    }
+    const fn tokenizer(
+        code: DiagnosticCode,
+        state: State,
+        anchor: &'static str,
+        branch: &'static str,
+        source: (usize, usize),
+    ) -> ExpectedDiagnostic {
+        ExpectedDiagnostic {
+            kind: DiagnosticKind::Tokenizer(code),
+            context: DiagnosticContext::Tokenizer {
+                phase: DiagnosticPhase::Tokenizer,
+                state,
+            },
+            rule: DiagnosticRule { anchor, branch },
+            role: DiagnosticLocationRole::InputFrontier,
+            token: None,
+            source,
+        }
+    }
+    // HTML877d raw95175–95278,95591–95614,96324–96379. Each entry is
+    // an actual source-defined invocation, in execution chronology. Frontier
+    // coordinates and token envelopes are the retained diagnostic contract,
+    // not a translation of the corpus's legacy line/column labels.
+    // Data-state raw94593 emits the current input character. Initial sees
+    // first F0..1 (or H20..21), not a callback-batched whole word.
+    const FOO: ExpectedDiagnostic = missing((0, 1), DiagnosticToken::Text);
+    const RESERVED_XML: ExpectedDiagnostic = tokenizer(
+        DiagnosticCode::DisallowedProcessingInstructionTarget,
+        State::PiTarget,
+        "parse-error-disallowed-processing-instruction-target",
+        "disallowed-processing-instruction-target",
+        (5, 6),
+    );
+    const SELECTED: [&[ExpectedDiagnostic]; 16] = [
+        &[FOO],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::IncorrectlyClosedComment,
+                State::CommentEndBang,
+                "parse-error-incorrectly-closed-comment",
+                "incorrectly-closed-comment",
+                (15, 16),
+            ),
+        ],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::EofInComment,
+                State::Comment,
+                "parse-error-eof-in-comment",
+                "eof-in-comment",
+                (20, 20),
+            ),
+        ],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::EofInComment,
+                State::Comment,
+                "parse-error-eof-in-comment",
+                "eof-in-comment",
+                (20, 20),
+            ),
+        ],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::EofInComment,
+                State::Comment,
+                "parse-error-eof-in-comment",
+                "eof-in-comment",
+                (21, 21),
+            ),
+        ],
+        &[FOO],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::IncorrectlyClosedComment,
+                State::CommentEndBang,
+                "parse-error-incorrectly-closed-comment",
+                "incorrectly-closed-comment",
+                (31, 32),
+            ),
+        ],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::EofInComment,
+                State::Comment,
+                "parse-error-eof-in-comment",
+                "eof-in-comment",
+                (35, 35),
+            ),
+        ],
+        &[FOO],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::AbruptClosingOfEmptyComment,
+                State::CommentStartDash,
+                "parse-error-abrupt-closing-of-empty-comment",
+                "abrupt-closing-of-empty-comment",
+                (8, 9),
+            ),
+        ],
+        &[
+            FOO,
+            tokenizer(
+                DiagnosticCode::AbruptClosingOfEmptyComment,
+                State::CommentStart,
+                "parse-error-abrupt-closing-of-empty-comment",
+                "abrupt-closing-of-empty-comment",
+                (7, 8),
+            ),
+        ],
+        &[RESERVED_XML, missing((20, 21), DiagnosticToken::Text)],
+        &[RESERVED_XML, missing((20, 20), DiagnosticToken::Eof)],
+        &[RESERVED_XML, missing((13, 13), DiagnosticToken::Eof)],
+        &[FOO],
+        &[missing((0, 6), DiagnosticToken::Tag)],
+    ];
+    fn selected(ordinal: usize) -> &'static [ExpectedDiagnostic] {
+        SELECTED[ordinal.checked_sub(1).expect("one-based fixture ordinal")]
+    }
+    #[derive(Debug, Eq, PartialEq)]
+    enum ComparisonError {
+        Stop(ParseStop),
+        Mismatch { index: usize, field: &'static str },
+    }
+    impl From<ParseStop> for ComparisonError {
+        fn from(stop: ParseStop) -> Self {
+            Self::Stop(stop)
+        }
+    }
+    fn equal_label(
+        c: &mut ParseControl,
+        actual: &str,
+        expected: &str,
+    ) -> Result<bool, ComparisonError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(WorkCategory::InspectByte, (2 * size_of::<usize>()) as u64)?;
+        if actual.len() != expected.len() {
+            return Ok(false);
+        }
+        for (actual, expected) in actual.bytes().zip(expected.bytes()) {
+            c.charge(WorkCategory::InspectByte, 2)?;
+            if actual != expected {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+    // A bounded owning test consumer, not another diagnostic producer. It
+    // borrows the actual transferred record/location buffers and the native
+    // lender's SAME control. No diagnostic clone, callback or sorting occurs.
+    fn compare(
+        c: &mut ParseControl,
+        evidence: &FailureDiagnosticEvidence,
+        source: &HtmlSource,
+        expected: &[ExpectedDiagnostic],
+    ) -> Result<(), ComparisonError> {
+        c.require_source(source)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(WorkCategory::InspectByte, (2 * size_of::<usize>()) as u64)?;
+        if evidence.len() != expected.len() {
+            return Err(ComparisonError::Mismatch {
+                index: 0,
+                field: "record length",
+            });
+        }
+        for (index, expected) in expected.iter().enumerate() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(
+                WorkCategory::InspectByte,
+                (size_of::<DiagnosticRecord>()
+                    + size_of::<DiagnosticLocation>()
+                    + size_of::<ExpectedDiagnostic>()) as u64,
+            )?;
+            let (record, location) = evidence
+                .retained_record(index)
+                .expect("exact retained length was checked");
+            c.require_source_range(&location.source)?;
+            for (field, matches) in [
+                ("kind", record.kind == expected.kind),
+                ("phase/state", record.context == expected.context),
+                (
+                    "severity",
+                    record.severity == DiagnosticSeverity::Recoverable,
+                ),
+                ("location role", location.role == expected.role),
+                ("token family", location.token == expected.token),
+            ] {
+                if !matches {
+                    return Err(ComparisonError::Mismatch { index, field });
+                }
+            }
+            if !equal_label(c, record.rule.anchor, expected.rule.anchor)? {
+                return Err(ComparisonError::Mismatch {
+                    index,
+                    field: "rule anchor",
+                });
+            }
+            if !equal_label(c, record.rule.branch, expected.rule.branch)? {
+                return Err(ComparisonError::Mismatch {
+                    index,
+                    field: "rule branch",
+                });
+            }
+            if location.source != source.range(expected.source.0, expected.source.1).unwrap() {
+                return Err(ComparisonError::Mismatch {
+                    index,
+                    field: "qualified source range",
+                });
+            }
+        }
+        Ok(())
+    }
+    fn completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'_> {
+        let mut entry = super::super::entry::OrdinaryDocumentEntry::new(request);
+        let mut driver = Some(entry.take_driver().unwrap());
+        loop {
+            match driver.as_mut().unwrap().step().unwrap() {
+                HeadStep::Consumed => {}
+                HeadStep::Complete => break,
+                other => panic!("ordinary whole-source fixture did not complete: {other:?}"),
+            }
+        }
+        StandaloneDocumentDriver::take_completed(&mut driver).unwrap()
+    }
+    #[test]
+    fn all_comments01_disabled_cases_match_selected_typed_diagnostics_and_native_trees() {
+        let (_, raw) = DATA
+            .iter()
+            .find(|(name, _)| *name == "comments01.dat")
+            .unwrap();
+        let fixtures = decode(raw).unwrap();
+        assert_eq!(fixtures.len(), 16);
+        // The immutable f994590f format says new-errors adds rows. Its concrete
+        // legacy labels overlap: malformed --!>, duplicate EOF-in-comment and
+        // renamed abrupt-closing branches. The xml cases use old pre-PI rules.
+        // Preserve all27 old +11 new rows without claiming38 invocations or
+        // upstream error-count conformance. Pinned HTML877d selects27 here.
+        assert_eq!(fixtures.iter().map(|f| f.errors.len()).sum::<usize>(), 27);
+        assert_eq!(
+            fixtures
+                .iter()
+                .filter_map(|f| f.new_errors.as_ref())
+                .map(Vec::len)
+                .sum::<usize>(),
+            11
+        );
+        assert_eq!(
+            (1..=16)
+                .map(|ordinal| selected(ordinal).len())
+                .sum::<usize>(),
+            27
+        );
+        for fixture in fixtures {
+            assert!(fixture.fragment.is_none());
+            assert_eq!(fixture.scripting, FixtureScripting::Both);
+            let expected = parsed_expected(&fixture, HtmlDocumentMode::Quirks).unwrap();
+            let request = HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8(fixture.input),
+                super::super::tests::limits(1_000),
+            );
+            let mut completed = completed(&request);
+            let evidence = completed.take_diagnostics().unwrap();
+            let (diagnostics, structure) = {
+                let mut view = completed.native_view().unwrap();
+                let before_reads = view.usage().work(WorkCategory::InputUnitRead);
+                let diagnostic_result = compare(
+                    view.control(),
+                    &evidence,
+                    request.source(),
+                    selected(fixture.ordinal),
+                );
+                assert_eq!(view.usage().work(WorkCategory::InputUnitRead), before_reads);
+                if diagnostic_result.is_err() {
+                    for index in 0..evidence.len() {
+                        let (record, location) = evidence.retained_record(index).unwrap();
+                        eprintln!(
+                            "comments01/{} actual#{index}: {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+                            fixture.ordinal,
+                            record.kind,
+                            record.context,
+                            record.severity,
+                            record.rule,
+                            location.role,
+                            location.token,
+                            location.source
+                        );
+                    }
+                }
+                let mut projection = MeteredProjection::new().unwrap();
+                let structural_result = projection
+                    .build(&mut view)
+                    .and_then(|()| projection.compare(&expected, &mut view));
+                projection.release(&mut view).unwrap();
+                evidence.release(view.control()).unwrap();
+                assert_eq!(
+                    view.usage()
+                        .resource(HtmlParseResource::Diagnostics)
+                        .current,
+                    0
+                );
+                (diagnostic_result, structural_result)
+            };
+            completed.release().unwrap();
+            structure.unwrap_or_else(|error| {
+                panic!("comments01/{} structural: {error:?}", fixture.ordinal)
+            });
+            diagnostics.unwrap_or_else(|error| {
+                panic!("comments01/{} diagnostic: {error:?}", fixture.ordinal)
+            });
+        }
+    }
+
+    // The consumer's entire work envelope is fixed headers, range issuer
+    // checks, and the literal rule bytes. No source text is rescanned.
+    fn comparison_cost(expected: &[ExpectedDiagnostic]) -> u64 {
+        let header = 1 + 2 * size_of::<usize>();
+        let record = 1
+            + size_of::<DiagnosticRecord>()
+            + size_of::<DiagnosticLocation>()
+            + size_of::<ExpectedDiagnostic>()
+            + 2; // require_source_range: one visit + one provider call
+        let bytes = expected.iter().fold(header, |total, item| {
+            total + record + 2 * header + 2 * (item.rule.anchor.len() + item.rule.branch.len())
+        });
+        u64::try_from(bytes).unwrap()
+    }
+    fn zero_storage(usage: &ParseUsage) {
+        for resource in [
+            HtmlParseResource::BufferedUtf16Units,
+            HtmlParseResource::TokenAttributes,
+            HtmlParseResource::AuxiliaryEntries,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::SourceMapEntries,
+            HtmlParseResource::SourceMapPayloadUnits,
+            HtmlParseResource::Diagnostics,
+            HtmlParseResource::DiagnosticPayloadUnits,
+            HtmlParseResource::ContextEffects,
+            HtmlParseResource::OpenElements,
+            HtmlParseResource::ManagedCapacityBytes,
+        ] {
+            assert_eq!(usage.resource(resource).current, 0, "{resource:?}");
+        }
+    }
+    #[test]
+    fn typed_comparison_rejects_each_field_and_changed_chronology() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("FOO<!-- BAR --!>BAZ"),
+            super::super::tests::limits(1_000),
+        );
+        let mut completed = completed(&request);
+        let evidence = completed.take_diagnostics().unwrap();
+        let result = {
+            let mut view = completed.native_view().unwrap();
+            let expected = selected(2);
+            compare(view.control(), &evidence, request.source(), expected).unwrap();
+            let mut checks = Vec::new();
+            let mut changed = expected.to_vec();
+            changed[0].kind = changed[1].kind;
+            checks.push((changed, "kind"));
+            let mut changed = expected.to_vec();
+            changed[0].context = changed[1].context;
+            checks.push((changed, "phase/state"));
+            let mut changed = expected.to_vec();
+            changed[0].role = DiagnosticLocationRole::InputFrontier;
+            checks.push((changed, "location role"));
+            let mut changed = expected.to_vec();
+            changed[0].token = Some(DiagnosticToken::Tag);
+            checks.push((changed, "token family"));
+            let mut changed = expected.to_vec();
+            changed[0].rule.anchor = "the-Initial-insertion-mode";
+            checks.push((changed, "rule anchor"));
+            let mut changed = expected.to_vec();
+            changed[0].rule.branch = "anything-else/missing-Doctype";
+            checks.push((changed, "rule branch"));
+            let mut changed = expected.to_vec();
+            changed[0].source = (1, 2);
+            checks.push((changed, "qualified source range"));
+            let mut changed = expected.to_vec();
+            changed.swap(0, 1);
+            checks.push((changed, "kind"));
+            let mut observations = Vec::new();
+            for (changed, field) in checks {
+                observations.push((
+                    compare(view.control(), &evidence, request.source(), &changed),
+                    field,
+                ));
+            }
+            observations.push((
+                compare(view.control(), &evidence, request.source(), &expected[..1]),
+                "record length",
+            ));
+            evidence.release(view.control()).unwrap();
+            observations
+        };
+        completed.release().unwrap();
+        for (observed, field) in result {
+            assert_eq!(observed, Err(ComparisonError::Mismatch { index: 0, field }));
+        }
+    }
+    #[test]
+    fn comparison_exact_and_one_short_work_preserve_first_stop_and_real_cleanup() {
+        // The same existing finite fixture cap is retained. A real charged
+        // test action consumes spare work to leave exactly the independently
+        // derived consumer envelope (or one credit less); no limit is changed.
+        for short in [false, true] {
+            let request = HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8("FOO<!-- BAR --!>BAZ"),
+                super::super::tests::limits(1_000),
+            );
+            let mut completed = completed(&request);
+            let evidence = completed.take_diagnostics().unwrap();
+            let expected = selected(2);
+            let cost = comparison_cost(expected);
+            let first = {
+                let mut view = completed.native_view().unwrap();
+                let remaining = cost - u64::from(short);
+                let used = view
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current;
+                view.control()
+                    .charge(
+                        WorkCategory::StateStep,
+                        request.limits().work_credits() - used - remaining,
+                    )
+                    .unwrap();
+                let before = view
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current;
+                let input_reads = view.usage().work(WorkCategory::InputUnitRead);
+                let result = compare(view.control(), &evidence, request.source(), expected);
+                assert_eq!(view.usage().work(WorkCategory::InputUnitRead), input_reads);
+                if short {
+                    assert!(matches!(
+                        result,
+                        Err(ComparisonError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            requested_delta: 2,
+                            ..
+                        }))
+                    ));
+                    // The final two-byte branch comparison is atomic.
+                    assert_eq!(
+                        view.usage()
+                            .resource(HtmlParseResource::WorkCredits)
+                            .current
+                            - before,
+                        cost - 2
+                    );
+                } else {
+                    result.unwrap();
+                    assert_eq!(
+                        view.usage()
+                            .resource(HtmlParseResource::WorkCredits)
+                            .current
+                            - before,
+                        cost
+                    );
+                    request.cancellation().cancel();
+                    assert_eq!(
+                        compare(view.control(), &evidence, request.source(), expected),
+                        Err(ComparisonError::Stop(ParseStop::Cancelled))
+                    );
+                }
+                let first = view.control().first_stop_usage().unwrap().clone();
+                let stop = view.control().stop().unwrap();
+                assert_eq!(
+                    compare(view.control(), &evidence, request.source(), &[]),
+                    Err(ComparisonError::Stop(stop))
+                );
+                evidence.release(view.control()).unwrap();
+                assert_eq!(view.control().first_stop_usage(), Some(&first));
+                first
+            };
+            assert_eq!(completed.at_stop(), Some(&first));
+            completed.cleanup_failure().unwrap();
+            zero_storage(completed.after_cleanup().unwrap());
+            assert_eq!(completed.at_stop(), Some(&first));
+            completed.release().unwrap();
+        }
+    }
+    #[test]
+    fn cancellation_before_comparison_reads_no_record_and_releases_transferred_evidence() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("FOO<!-- BAR --!>BAZ"),
+            super::super::tests::limits(1_000),
+        );
+        let mut completed = completed(&request);
+        let evidence = completed.take_diagnostics().unwrap();
+        let first = {
+            let mut view = completed.native_view().unwrap();
+            let before = view.usage().clone();
+            request.cancellation().cancel();
+            assert_eq!(
+                compare(view.control(), &evidence, request.source(), selected(2)),
+                Err(ComparisonError::Stop(ParseStop::Cancelled))
+            );
+            let first = view.control().first_stop_usage().unwrap().clone();
+            assert_eq!(first, before);
+            assert_eq!(evidence.len(), 2);
+            evidence.release(view.control()).unwrap();
+            assert_eq!(view.control().first_stop_usage(), Some(&first));
+            first
+        };
+        completed.cleanup_failure().unwrap();
+        zero_storage(completed.after_cleanup().unwrap());
+        assert_eq!(completed.at_stop(), Some(&first));
+        completed.release().unwrap();
+    }
+}
