@@ -771,7 +771,9 @@ impl ParseEvidence {
                     // These are producer transformations, not raw equality. The
                     // actual token/copy operation preserves its atomic output;
                     // validation must not invent an entity/XML resolver here.
-                    OriginKind::CharacterReference | OriginKind::RecoverySyntax => {
+                    OriginKind::CharacterReference
+                    | OriginKind::RecoverySyntax
+                    | OriginKind::InputValueNormalization => {
                         c.charge(WorkCategory::InspectByte, output.len() as u64 * 2)?;
                         if output.is_empty() || begin == end {
                             return Err(SessionError::WrongToken);

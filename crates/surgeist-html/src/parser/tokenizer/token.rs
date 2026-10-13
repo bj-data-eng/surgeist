@@ -26,6 +26,9 @@ pub enum OriginKind {
     NullReplacement,
     CharacterReference,
     RecoverySyntax,
+    /// Actual strict LocalDateTime value sanitization changes SPACE to T.
+    /// Retains the whole original source interval and field cause.
+    InputValueNormalization,
 }
 pub struct TextOrigin {
     pub(crate) start: usize,

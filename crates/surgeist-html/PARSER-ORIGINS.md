@@ -26,9 +26,10 @@ Ordinary textarea creation, RCDATA and raw/reset hooks now use it as well.
 Fresh ordinary output creation also completes its empty reset before association;
 null-default and current observations read actual ordinary descendant text.
 Ordinary select/option/optgroup/selectedcontent creation and source-ordered
-selection, cloning and intrinsic checkpoint effects now use that driver. Other
-resettable control creation and unsupported table rows retain explicit
-unfinished continuations. Fresh ordinary templates now
+selection, cloning and intrinsic checkpoint effects now use that driver.
+Submit/Reset/Button Default-mode and five strict temporal input states use the
+same canonical input owner. Other resettable control creation and unsupported
+table rows retain explicit unfinished continuations. Fresh ordinary templates
 use that same driver with real inert-document/contents ownership and PI patching.
 Exact SVG scripts now retain separate processed state under the selected
 restricted offline operation, with source-ordered foreign-end and nonparser
@@ -365,6 +366,13 @@ cleanup runs no useful reset. Repeated scans and copies may be quadratic and
 remain charged and polled. Other input states, hosted initialization, general
 setters remain separate work.
 
+The Submit/Reset/Button extension adds only canonical input-kind mappings and
+Default-mode selection in [the shared input rules](src/input.rs). Existing
+source-ordered initialization, nonempty Value-to-Default writeback, fresh reset,
+cloning and actual content readback use the same controlled parser owner. Absent
+value supplies empty; present empty stays empty. No display label, activation,
+submission, form-wide reset event or new upstream source is introduced.
+
 The Radio extension adds Surgeist-owned shared state rules and admitted peer
 effects in `src/input.rs` and `src/construction/parser_session/radio.rs`.
 No additional upstream parser source is ingested. The selected HTML
@@ -387,6 +395,25 @@ Email list counts remain stored through freeze and clone; they are not inferred
 by splitting the sanitized string. Original default attributes and source
 histories remain independent. No additional upstream source is ingested, and
 address/URL validation, live editing and external execution remain separate.
+
+The five-state temporal extension is Surgeist-owned. The shared borrowed strict
+cursor in [temporal.rs](src/temporal.rs) is consumed by both ordinary component
+recognition and the [input sanitizer](src/input.rs); the existing numeric
+one-digit remainder kernel supplies arbitrary-year calendar decisions without
+machine-integer materialization. The selected
+[input clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-input-element)
+govern invalid-to-empty Date/Month/Week/Time/LocalDateTime current values and
+LocalDateTime's shortest `T` spelling. Broader time/local recovery stays separate.
+The existing construction adapter admits each cursor action and actual copy
+before publication. Native defaults, current backing, clone flags and reset
+remain separate; no alternate temporal parser, controller or payload registry
+is introduced. The tokenizer origin vocabulary and existing provenance validator
+record an actual SPACE-to-`T` transformation as InputValueNormalization with its
+original source interval, rather than raw equality or a guessed lexical range.
+Completed public readers borrow that same admitted evidence. No additional
+html5ever source or language edition is incorporated. Stepping, live setters,
+pickers, time zones, validation and allocator/RSS guarantees remain outside this
+bounded extension.
 
 The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
 `mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry

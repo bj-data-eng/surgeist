@@ -1152,6 +1152,402 @@ impl TemporalAlternative {
     ];
 }
 
+/// One-step strict grammar shared with ordinary component recognition.
+/// Adapters admit/poll before each advance; no heap or controller is owned here.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TemporalInputFormat {
+    Month,
+    Date,
+    Week,
+    Time,
+    LocalDateTime,
+}
+#[derive(Clone, Copy, Debug)]
+enum TemporalScanStep {
+    Year,
+    YearEnd,
+    Hyphen,
+    WeekMarker,
+    Pair(TemporalPair),
+    AfterPair(TemporalPair),
+    Colon,
+    TimeTail,
+    FractionTail,
+    Fraction,
+    Separator,
+    Finish,
+    Done,
+}
+#[derive(Clone, Copy, Debug)]
+enum TemporalPair {
+    Month,
+    Day,
+    Week,
+    Hour,
+    Minute,
+    Second,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TemporalInputPlan {
+    pub(crate) retained_end: usize,
+    pub(crate) replacement: Option<usize>,
+}
+pub(crate) struct TemporalValidationCursor<'a> {
+    input: &'a [u16],
+    format: TemporalInputFormat,
+    full: bool,
+    position: usize,
+    step: TemporalScanStep,
+    year_end: usize,
+    positive: bool,
+    remainder: u16,
+    month: u8,
+    day: u8,
+    week: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+    pair_count: usize,
+    pair: u8,
+    second_start: Option<usize>,
+    fraction_start: usize,
+    fraction_len: usize,
+    fraction_last: usize,
+    millisecond: u16,
+    separator: Option<usize>,
+    replacement: Option<usize>,
+    result: Option<Result<BorrowedTemporalPlan<'a>, HtmlTemporalError>>,
+}
+impl<'a> TemporalValidationCursor<'a> {
+    pub(crate) fn new(input: &'a [u16], format: TemporalInputFormat, full: bool) -> Self {
+        Self {
+            input,
+            format,
+            full,
+            position: 0,
+            step: if format == TemporalInputFormat::Time {
+                TemporalScanStep::Pair(TemporalPair::Hour)
+            } else {
+                TemporalScanStep::Year
+            },
+            year_end: 0,
+            positive: false,
+            remainder: 0,
+            month: 0,
+            day: 0,
+            week: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            pair_count: 0,
+            pair: 0,
+            second_start: None,
+            fraction_start: 0,
+            fraction_len: 0,
+            fraction_last: 0,
+            millisecond: 0,
+            separator: None,
+            replacement: None,
+            result: None,
+        }
+    }
+    pub(crate) fn finished(&self) -> bool {
+        matches!(self.step, TemporalScanStep::Done)
+    }
+    pub(crate) fn inspects_unit(&self) -> bool {
+        matches!(
+            self.step,
+            TemporalScanStep::Year
+                | TemporalScanStep::Hyphen
+                | TemporalScanStep::WeekMarker
+                | TemporalScanStep::Pair(_)
+                | TemporalScanStep::Colon
+                | TemporalScanStep::TimeTail
+                | TemporalScanStep::FractionTail
+                | TemporalScanStep::Fraction
+                | TemporalScanStep::Separator
+        ) && self.position < self.input.len()
+    }
+    fn fail(&mut self, error: HtmlTemporalError) {
+        self.result = Some(Err(error));
+        self.step = TemporalScanStep::Done;
+    }
+    fn pair_step(&mut self, field: TemporalPair) {
+        self.pair_count = 0;
+        self.pair = 0;
+        self.step = TemporalScanStep::Pair(field);
+    }
+    pub(crate) fn advance(&mut self) {
+        match self.step {
+            TemporalScanStep::Done => {}
+            TemporalScanStep::Year => {
+                if let Some(unit @ 0x30..=0x39) = self.input.get(self.position).copied() {
+                    let digit = (unit - 0x30) as u8;
+                    self.positive |= digit != 0;
+                    self.remainder =
+                        crate::numeric::remainder_digit(digit, 400, u64::from(self.remainder))
+                            as u16;
+                    self.position += 1;
+                } else {
+                    self.year_end = self.position;
+                    self.step = TemporalScanStep::YearEnd;
+                }
+            }
+            TemporalScanStep::YearEnd => {
+                if self.year_end < 4 {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
+                } else if !self.positive {
+                    self.fail(HtmlTemporalError::ZeroYear);
+                } else {
+                    self.step = TemporalScanStep::Hyphen;
+                }
+            }
+            TemporalScanStep::Hyphen => {
+                if self.input.get(self.position) != Some(&0x2d) {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
+                } else {
+                    self.position += 1;
+                    if self.format == TemporalInputFormat::Week {
+                        self.step = TemporalScanStep::WeekMarker;
+                    } else if self.month == 0 {
+                        self.pair_step(TemporalPair::Month);
+                    } else {
+                        self.pair_step(TemporalPair::Day);
+                    }
+                }
+            }
+            TemporalScanStep::WeekMarker => {
+                if self.input.get(self.position) != Some(&0x57) {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
+                } else {
+                    self.position += 1;
+                    self.pair_step(TemporalPair::Week);
+                }
+            }
+            TemporalScanStep::Pair(field) => {
+                if let Some(unit @ 0x30..=0x39) = self.input.get(self.position).copied() {
+                    if self.pair_count == 2 {
+                        self.fail(HtmlTemporalError::InvalidSyntax);
+                    } else {
+                        self.pair = self.pair * 10 + (unit - 0x30) as u8;
+                        self.pair_count += 1;
+                        self.position += 1;
+                    }
+                } else {
+                    self.step = TemporalScanStep::AfterPair(field);
+                }
+            }
+            TemporalScanStep::AfterPair(field) => {
+                if self.pair_count != 2 {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
+                    return;
+                }
+                match field {
+                    TemporalPair::Month => {
+                        self.month = self.pair;
+                        if !(1..=12).contains(&self.month) {
+                            self.fail(HtmlTemporalError::MonthOutOfRange);
+                        } else if self.format == TemporalInputFormat::Month {
+                            self.step = TemporalScanStep::Finish;
+                        } else {
+                            self.step = TemporalScanStep::Hyphen;
+                        }
+                    }
+                    TemporalPair::Day => {
+                        self.day = self.pair;
+                        if self.day == 0
+                            || self.day
+                                > days_in_month(self.month, leap_from_remainder(self.remainder))
+                        {
+                            self.fail(HtmlTemporalError::DayOutOfRange);
+                        } else if self.format == TemporalInputFormat::LocalDateTime {
+                            self.step = TemporalScanStep::Separator;
+                        } else {
+                            self.step = TemporalScanStep::Finish;
+                        }
+                    }
+                    TemporalPair::Week => {
+                        self.week = self.pair;
+                        self.step = TemporalScanStep::Finish;
+                    }
+                    TemporalPair::Hour => {
+                        self.hour = self.pair;
+                        self.step = TemporalScanStep::Colon;
+                    }
+                    TemporalPair::Minute => {
+                        self.minute = self.pair;
+                        self.step = TemporalScanStep::TimeTail;
+                    }
+                    TemporalPair::Second => {
+                        self.second = self.pair;
+                        self.step = TemporalScanStep::FractionTail;
+                    }
+                }
+            }
+            TemporalScanStep::Separator => {
+                match self.input.get(self.position) {
+                    Some(0x54) => {}
+                    Some(0x20) => self.replacement = Some(self.position),
+                    _ => {
+                        self.fail(HtmlTemporalError::InvalidSyntax);
+                        return;
+                    }
+                }
+                self.separator = Some(self.position);
+                self.position += 1;
+                self.pair_step(TemporalPair::Hour);
+            }
+            TemporalScanStep::Colon => {
+                if self.input.get(self.position) != Some(&0x3a) {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
+                } else {
+                    self.position += 1;
+                    self.pair_step(TemporalPair::Minute);
+                }
+            }
+            TemporalScanStep::TimeTail => {
+                if self.input.get(self.position) == Some(&0x3a) {
+                    self.position += 1;
+                    self.second_start = Some(self.position);
+                    self.pair_step(TemporalPair::Second);
+                } else {
+                    self.step = TemporalScanStep::Finish;
+                }
+            }
+            TemporalScanStep::FractionTail => {
+                if self.input.get(self.position) == Some(&0x2e) {
+                    self.position += 1;
+                    self.fraction_start = self.position;
+                    self.step = TemporalScanStep::Fraction;
+                } else {
+                    self.step = TemporalScanStep::Finish;
+                }
+            }
+            TemporalScanStep::Fraction => {
+                if let Some(unit @ 0x30..=0x39) = self.input.get(self.position).copied() {
+                    if self.fraction_len == 3 {
+                        self.fail(HtmlTemporalError::InvalidSyntax);
+                    } else {
+                        self.millisecond = self.millisecond * 10 + unit - 0x30;
+                        self.fraction_len += 1;
+                        self.position += 1;
+                        if unit != 0x30 {
+                            self.fraction_last = self.position;
+                        }
+                    }
+                } else if self.fraction_len == 0 {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
+                } else {
+                    self.step = TemporalScanStep::Finish;
+                }
+            }
+            TemporalScanStep::Finish => {
+                if matches!(
+                    self.format,
+                    TemporalInputFormat::Time | TemporalInputFormat::LocalDateTime
+                ) {
+                    if self.hour > 23 {
+                        self.fail(HtmlTemporalError::HourOutOfRange);
+                        return;
+                    }
+                    if self.minute > 59 {
+                        self.fail(HtmlTemporalError::MinuteOutOfRange);
+                        return;
+                    }
+                    if self.second > 59 {
+                        self.fail(HtmlTemporalError::SecondOutOfRange);
+                        return;
+                    }
+                }
+                if self.full && self.position != self.input.len() {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
+                    return;
+                }
+                if self.format == TemporalInputFormat::Week
+                    && (self.week == 0 || self.week > last_week_from_remainder(self.remainder))
+                {
+                    self.fail(HtmlTemporalError::WeekOutOfRange);
+                    return;
+                }
+                let year = BorrowedYear {
+                    digits: &self.input[..self.year_end],
+                    remainder: self.remainder,
+                };
+                let month = BorrowedMonth {
+                    year,
+                    month: self.month,
+                };
+                let date = BorrowedDate {
+                    month,
+                    day: self.day,
+                };
+                let seconds = self
+                    .second_start
+                    .map_or(&[0x30][..], |start| &self.input[start..start + 2]);
+                let fraction =
+                    &self.input[self.fraction_start..self.fraction_start + self.fraction_len];
+                let ms = match self.fraction_len {
+                    1 => self.millisecond * 100,
+                    2 => self.millisecond * 10,
+                    _ => self.millisecond,
+                };
+                let time = BorrowedTime {
+                    hour: self.hour,
+                    minute: self.minute,
+                    second: self.second,
+                    second_digits: seconds,
+                    fraction_digits: fraction,
+                    millisecond: ms,
+                };
+                self.result = Some(Ok(match self.format {
+                    TemporalInputFormat::Month => BorrowedTemporalPlan::Month(month),
+                    TemporalInputFormat::Date => BorrowedTemporalPlan::Date(date),
+                    TemporalInputFormat::Week => BorrowedTemporalPlan::Week(BorrowedWeek {
+                        year,
+                        week: self.week,
+                    }),
+                    TemporalInputFormat::Time => BorrowedTemporalPlan::Time(time),
+                    TemporalInputFormat::LocalDateTime => {
+                        BorrowedTemporalPlan::LocalDateTime(BorrowedLocalDateTime { date, time })
+                    }
+                }));
+                self.step = TemporalScanStep::Done;
+            }
+        }
+    }
+    pub(crate) fn result(&self) -> Option<Result<BorrowedTemporalPlan<'a>, HtmlTemporalError>> {
+        self.result
+    }
+    pub(crate) fn normalization(&self) -> Option<TemporalInputPlan> {
+        if !matches!(self.result, Some(Ok(_))) {
+            return None;
+        }
+        let end = if self.format == TemporalInputFormat::LocalDateTime {
+            if self.second == 0 && self.millisecond == 0 {
+                self.separator.expect("local separator validated") + 6
+            } else if self.fraction_last == 0 {
+                self.second_start.expect("nonzero seconds has seconds") + 2
+            } else {
+                self.fraction_last
+            }
+        } else {
+            self.position
+        };
+        Some(TemporalInputPlan {
+            retained_end: end,
+            replacement: self.replacement,
+        })
+    }
+    fn ordinary(mut self) -> Result<(BorrowedTemporalPlan<'a>, usize), HtmlTemporalError> {
+        while !self.finished() {
+            self.advance();
+        }
+        self.result()
+            .expect("completed recognizer")
+            .map(|plan| (plan, self.position))
+    }
+}
+
 /// Checked upper bound for one recognition attempt, in the semantic caller's
 /// logical work units. Cursor advancement, the year modulo pass, seconds-run
 /// validation, fraction folding and calendar-zero checks visit each input unit
@@ -1469,15 +1865,10 @@ pub(crate) fn recognize_time_alternative(
             BorrowedTemporalPlan::GlobalDateTime(BorrowedGlobalDateTime { local, offset })
         }
         TemporalAlternative::Week => {
-            let year = cursor.borrowed_year()?;
-            cursor.expect(b'-')?;
-            cursor.expect(b'W')?;
-            let week = cursor.pair()?;
-            cursor.end()?;
-            if week == 0 || week > last_week_from_remainder(year.remainder) {
-                return Err(HtmlTemporalError::WeekOutOfRange);
-            }
-            BorrowedTemporalPlan::Week(BorrowedWeek { year, week })
+            let (plan, consumed) =
+                TemporalValidationCursor::new(input, TemporalInputFormat::Week, true).ordinary()?;
+            cursor.position = consumed;
+            plan
         }
         TemporalAlternative::Year => {
             if phase == TemporalPhase::Author && input.len() < 4 {
@@ -1804,46 +2195,34 @@ impl<'a> Cursor<'a> {
             self.position += 1;
         }
     }
-    fn fraction_digits(&mut self) -> Result<&'a [u16], HtmlTemporalError> {
-        if !self.take(b'.') {
-            return Ok(&[]);
-        }
-        let digits = self.digits();
-        if !(1..=3).contains(&digits.len()) {
-            return Err(HtmlTemporalError::InvalidSyntax);
-        }
-        Ok(digits)
-    }
-    fn borrowed_year(&mut self) -> Result<BorrowedYear<'a>, HtmlTemporalError> {
-        let digits = self.digits();
-        if digits.len() < 4 {
-            return Err(HtmlTemporalError::InvalidSyntax);
-        }
-        recognize_year_digits(digits)
-    }
-    fn year(&mut self) -> Result<HtmlYear, HtmlTemporalError> {
-        self.borrowed_year().map(BorrowedYear::ordinary)
-    }
     fn borrowed_month(&mut self) -> Result<BorrowedMonth<'a>, HtmlTemporalError> {
-        let year = self.borrowed_year()?;
-        self.expect(b'-')?;
-        let month = self.pair()?;
-        if !(1..=12).contains(&month) {
-            return Err(HtmlTemporalError::MonthOutOfRange);
-        }
-        Ok(BorrowedMonth { year, month })
+        let (BorrowedTemporalPlan::Month(plan), consumed) = TemporalValidationCursor::new(
+            &self.input[self.position..],
+            TemporalInputFormat::Month,
+            false,
+        )
+        .ordinary()?
+        else {
+            unreachable!()
+        };
+        self.position += consumed;
+        Ok(plan)
     }
     fn month(&mut self) -> Result<HtmlMonth, HtmlTemporalError> {
         self.borrowed_month().map(BorrowedMonth::ordinary)
     }
     fn borrowed_date(&mut self) -> Result<BorrowedDate<'a>, HtmlTemporalError> {
-        let month = self.borrowed_month()?;
-        self.expect(b'-')?;
-        let day = self.pair()?;
-        if day == 0 || day > days_in_month(month.month, month.year.leap()) {
-            return Err(HtmlTemporalError::DayOutOfRange);
-        }
-        Ok(BorrowedDate { month, day })
+        let (BorrowedTemporalPlan::Date(plan), consumed) = TemporalValidationCursor::new(
+            &self.input[self.position..],
+            TemporalInputFormat::Date,
+            false,
+        )
+        .ordinary()?
+        else {
+            unreachable!()
+        };
+        self.position += consumed;
+        Ok(plan)
     }
     fn date(&mut self) -> Result<HtmlDate, HtmlTemporalError> {
         self.borrowed_date().map(BorrowedDate::ordinary)
@@ -1852,40 +2231,46 @@ impl<'a> Cursor<'a> {
         &mut self,
         phase: TemporalPhase,
     ) -> Result<BorrowedTime<'a>, HtmlTemporalError> {
+        if phase == TemporalPhase::Author {
+            let (BorrowedTemporalPlan::Time(plan), consumed) = TemporalValidationCursor::new(
+                &self.input[self.position..],
+                TemporalInputFormat::Time,
+                false,
+            )
+            .ordinary()?
+            else {
+                unreachable!()
+            };
+            self.position += consumed;
+            return Ok(plan);
+        }
         let hour = self.pair()?;
         self.expect(b':')?;
         let minute = self.pair()?;
         let mut second_digits = &[0x30][..];
         let mut fraction_digits = &[][..];
         if self.take(b':') {
-            if phase == TemporalPhase::Author {
-                let start = self.position;
-                self.pair()?;
-                second_digits = &self.input[start..self.position];
-                fraction_digits = self.fraction_digits()?;
-            } else {
-                let start = self.position;
-                while self
-                    .peek()
-                    .is_some_and(|unit| unit == 0x2e || (0x30..=0x39).contains(&unit))
-                {
-                    self.position += 1;
-                }
-                let seconds = &self.input[start..self.position];
-                if seconds.len() < 2
-                    || seconds[..2]
-                        .iter()
-                        .any(|unit| !(0x30..=0x39).contains(unit))
-                    || seconds.len() == 3
-                    || (seconds.len() > 3 && seconds[2] != 0x2e)
-                    || seconds.iter().filter(|&&unit| unit == 0x2e).count() > 1
-                {
-                    return Err(HtmlTemporalError::InvalidSyntax);
-                }
-                second_digits = &seconds[..2];
-                if seconds.len() > 3 {
-                    fraction_digits = &seconds[3..];
-                }
+            let start = self.position;
+            while self
+                .peek()
+                .is_some_and(|unit| unit == 0x2e || (0x30..=0x39).contains(&unit))
+            {
+                self.position += 1;
+            }
+            let seconds = &self.input[start..self.position];
+            if seconds.len() < 2
+                || seconds[..2]
+                    .iter()
+                    .any(|unit| !(0x30..=0x39).contains(unit))
+                || seconds.len() == 3
+                || (seconds.len() > 3 && seconds[2] != 0x2e)
+                || seconds.iter().filter(|&&unit| unit == 0x2e).count() > 1
+            {
+                return Err(HtmlTemporalError::InvalidSyntax);
+            }
+            second_digits = &seconds[..2];
+            if seconds.len() > 3 {
+                fraction_digits = &seconds[3..];
             }
         }
         let second = if second_digits.len() == 1 {
@@ -1903,15 +2288,7 @@ impl<'a> Cursor<'a> {
         if second > 59 {
             return Err(HtmlTemporalError::SecondOutOfRange);
         }
-        let mut millisecond = 0;
-        if phase == TemporalPhase::Author {
-            for &digit in fraction_digits {
-                millisecond = millisecond * 10 + digit - 0x30;
-            }
-            for _ in fraction_digits.len()..3 {
-                millisecond *= 10;
-            }
-        }
+        let millisecond = 0;
         Ok(BorrowedTime {
             hour,
             minute,
@@ -1929,6 +2306,20 @@ impl<'a> Cursor<'a> {
         &mut self,
         phase: TemporalPhase,
     ) -> Result<BorrowedLocalDateTime<'a>, HtmlTemporalError> {
+        if phase == TemporalPhase::Author {
+            let (BorrowedTemporalPlan::LocalDateTime(plan), consumed) =
+                TemporalValidationCursor::new(
+                    &self.input[self.position..],
+                    TemporalInputFormat::LocalDateTime,
+                    false,
+                )
+                .ordinary()?
+            else {
+                unreachable!()
+            };
+            self.position += consumed;
+            return Ok(plan);
+        }
         let date = self.borrowed_date()?;
         if !self.take(b'T') && !self.take(b' ') {
             return Err(HtmlTemporalError::InvalidSyntax);
@@ -2064,13 +2455,13 @@ pub(crate) fn validate_global_date_time(
     Ok(HtmlGlobalDateTime::new(local, offset))
 }
 pub(crate) fn validate_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    let year = cursor.year()?;
-    cursor.expect(b'-')?;
-    cursor.expect(b'W')?;
-    let week = cursor.pair()?;
-    cursor.end()?;
-    HtmlWeek::new(year, week)
+    let (BorrowedTemporalPlan::Week(plan), _) =
+        TemporalValidationCursor::new(input.code_units(), TemporalInputFormat::Week, true)
+            .ordinary()?
+    else {
+        unreachable!()
+    };
+    Ok(plan.ordinary())
 }
 // The month/date/yearless/week processing algorithms have the same value
 // domains and full-consumption checks as their authored grammars (§2.3.5).
@@ -2100,13 +2491,7 @@ pub(crate) fn parse_yearless_date(
     HtmlYearlessDate::new(month, day)
 }
 pub(crate) fn parse_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    let year = cursor.year()?;
-    cursor.expect(b'-')?;
-    cursor.expect(b'W')?;
-    let week = cursor.pair()?;
-    cursor.end()?;
-    HtmlWeek::new(year, week)
+    validate_week(input)
 }
 pub(crate) fn parse_time(input: &DocumentString) -> Result<HtmlParsedTime, HtmlTemporalError> {
     let mut cursor = Cursor::new(input);
@@ -3149,6 +3534,88 @@ mod tests {
             "2000-01-01T12:34Zx",
         ] {
             assert!(parse_date_or_time(&text(raw)).is_err(), "{raw}");
+        }
+    }
+    #[test]
+    fn strict_component_cursor_keeps_arbitrary_borrowed_year_and_actual_gregorian_remainder() {
+        let raw = text("10000000000000000000000000000000000000000000400-02-29");
+        let mut cursor =
+            TemporalValidationCursor::new(raw.code_units(), TemporalInputFormat::Date, true);
+        assert!(cursor.result().is_none());
+        let mut steps = 0;
+        while !cursor.finished() {
+            let before = cursor.position;
+            cursor.advance();
+            assert!(cursor.position == before || cursor.position == before + 1);
+            steps += 1;
+            assert!(steps <= raw.len() * 4 + 64);
+        }
+        let BorrowedTemporalPlan::Date(plan) = cursor.result().unwrap().unwrap() else {
+            panic!("date plan");
+        };
+        assert_eq!(plan.year().digits(), &raw.code_units()[..47]);
+        assert_eq!(plan.year().remainder_400(), 0);
+        assert_eq!(plan.day, 29);
+        assert_eq!(cursor.normalization().unwrap().retained_end, raw.len());
+        assert_eq!(cursor.normalization().unwrap().replacement, None);
+    }
+
+    #[test]
+    fn strict_component_cursor_preserves_literal_component_error_precedence_and_full_consumption() {
+        for (format, input, error) in [
+            (
+                TemporalInputFormat::Date,
+                "0000-01-01",
+                HtmlTemporalError::ZeroYear,
+            ),
+            (
+                TemporalInputFormat::Date,
+                "2024-13-X",
+                HtmlTemporalError::MonthOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Date,
+                "2023-02-29X",
+                HtmlTemporalError::DayOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Week,
+                "2021-W53X",
+                HtmlTemporalError::InvalidSyntax,
+            ),
+            (
+                TemporalInputFormat::Week,
+                "2021-W53",
+                HtmlTemporalError::WeekOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "24:00:XX",
+                HtmlTemporalError::InvalidSyntax,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "24:00:00X",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "12:34:56.1234",
+                HtmlTemporalError::InvalidSyntax,
+            ),
+            (
+                TemporalInputFormat::LocalDateTime,
+                "2023-02-29t24:00",
+                HtmlTemporalError::DayOutOfRange,
+            ),
+        ] {
+            let raw = text(input);
+            let mut cursor = TemporalValidationCursor::new(raw.code_units(), format, true);
+            while !cursor.finished() {
+                cursor.advance();
+            }
+            assert_eq!(cursor.result().unwrap().unwrap_err(), error, "{input}");
+            assert!(cursor.normalization().is_none());
         }
     }
 }

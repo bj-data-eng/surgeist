@@ -13538,21 +13538,7 @@ fn ordinary_text_input_makes_frameset_not_ok_and_is_void_inside_reconstructed_fo
 
 #[test]
 fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_before_effects() {
-    for kind in [
-        "date",
-        "month",
-        "week",
-        "time",
-        "datetime-local",
-        "number",
-        "range",
-        "color",
-        "file",
-        "submit",
-        "image",
-        "reset",
-        "button",
-    ] {
+    for kind in ["number", "range", "color", "file", "image"] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(
                 "<!doctype html><table><input type={kind} value=kept>"
@@ -16691,4 +16677,81 @@ fn ordinary_temporal_input_local_datetime_normalizes_separator_and_shortest_time
             ("2024-02-29T12:34Z", "2024-02-29T12:34Z", "", &[]),
         ],
     );
+}
+
+#[test]
+fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_values_and_owner() {
+    for (keyword, kind) in [
+        ("button", crate::HtmlInputStringKind::Button),
+        ("reset", crate::HtmlInputStringKind::Reset),
+        ("submit", crate::HtmlInputStringKind::Submit),
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!(
+                "<!doctype html><form id=f><table><input type={keyword} value='A&#13;B&#10;C'></table>Z</form>"
+            )),
+            limits(100),
+        );
+        let mut driver = super::entry::initialized_driver(&request);
+        let boundary = standalone_boundary(&mut driver);
+        if boundary != super::head::HeadStep::Complete {
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(boundary, super::head::HeadStep::Complete);
+            continue;
+        }
+        let (mut c, mut frozen) = body_document(driver);
+        let doc = frozen.document().unwrap();
+        let actual_outline = outline(doc);
+        let html = doc
+            .root()
+            .children()
+            .find(|id| matches!(doc.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = doc.node(&html).unwrap().children().nth(1).unwrap();
+        let form = doc.node(&body).unwrap().children().next().unwrap();
+        let children: Vec<_> = doc.node(&form).unwrap().children().collect();
+        let child_count = children.len();
+        let input_children = doc.node(&children[0]).unwrap().children().count();
+        let state = frozen.input_state(&mut c, &children[0]).unwrap();
+        let owner = frozen.form_association_owner(&mut c, &children[0]).unwrap();
+        let owns = owner.as_ref() == Some(&form);
+        drop(owner);
+        let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
+        frozen
+            .append_input_value(&mut c, &children[0], &mut buffer)
+            .unwrap();
+        let value = buffer.units().to_vec();
+        buffer.release(&mut c).unwrap();
+        let HtmlNodeKind::Text(text) = doc.node(&children[2]).unwrap().kind() else {
+            panic!("following actual text")
+        };
+        let following_text = text.code_units().to_vec();
+        drop(children);
+        drop(form);
+        drop(body);
+        drop(html);
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(c.stop(), None);
+        assert_eq!(
+            actual_outline,
+            expected_outline(&[
+                (0, "html"),
+                (1, "head"),
+                (1, "body"),
+                (2, "form"),
+                (3, "input"),
+                (3, "table"),
+                (3, "#Z")
+            ])
+        );
+        assert_eq!(child_count, 3);
+        assert_eq!(input_children, 0);
+        assert_eq!(state.flags.kind(), kind);
+        assert_eq!(value, [65, 13, 66, 10, 67]);
+        assert!(owns);
+        assert_eq!(following_text, [90]);
+    }
 }

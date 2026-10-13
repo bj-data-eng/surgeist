@@ -11,8 +11,9 @@
 
 use crate::{DocumentString, HtmlInputType};
 
-/// The string-backed input states covered by these rules, including Checkbox and Radio
-/// DefaultOn content readback. Value mode alone does not imply selection support.
+/// The string-backed input states covered by these rules, including button
+/// Default and Checkbox/Radio DefaultOn content readback. Value mode alone
+/// does not imply selection support or an activation/rendering capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputStringKind {
     Hidden,
@@ -24,6 +25,14 @@ pub enum HtmlInputStringKind {
     Radio,
     Email,
     Url,
+    Submit,
+    Reset,
+    Button,
+    Date,
+    Month,
+    Week,
+    Time,
+    LocalDateTime,
 }
 
 /// An actual recognized input state whose rules are outside this family.
@@ -47,6 +56,15 @@ impl TryFrom<HtmlInputType> for HtmlInputStringKind {
             HtmlInputType::Radio => Self::Radio,
             HtmlInputType::Email => Self::Email,
             HtmlInputType::Url => Self::Url,
+            HtmlInputType::Submit => Self::Submit,
+            HtmlInputType::Reset => Self::Reset,
+            HtmlInputType::Button => Self::Button,
+            HtmlInputType::Date => Self::Date,
+            HtmlInputType::Month => Self::Month,
+            HtmlInputType::Week => Self::Week,
+            HtmlInputType::Time => Self::Time,
+            HtmlInputType::LocalDateTime => Self::LocalDateTime,
+
             other => return Err(HtmlInputStringUnsupportedType(other)),
         })
     }
@@ -63,11 +81,19 @@ impl HtmlInputStringKind {
             Self::Radio => HtmlInputType::Radio,
             Self::Email => HtmlInputType::Email,
             Self::Url => HtmlInputType::Url,
+            Self::Submit => HtmlInputType::Submit,
+            Self::Reset => HtmlInputType::Reset,
+            Self::Button => HtmlInputType::Button,
+            Self::Date => HtmlInputType::Date,
+            Self::Month => HtmlInputType::Month,
+            Self::Week => HtmlInputType::Week,
+            Self::Time => HtmlInputType::Time,
+            Self::LocalDateTime => HtmlInputType::LocalDateTime,
         }
     }
     pub fn value_mode(self) -> HtmlInputValueMode {
         match self {
-            Self::Hidden => HtmlInputValueMode::Default,
+            Self::Hidden | Self::Submit | Self::Reset | Self::Button => HtmlInputValueMode::Default,
             Self::Checkbox | Self::Radio => HtmlInputValueMode::DefaultOn,
             _ => HtmlInputValueMode::Value,
         }
@@ -79,7 +105,20 @@ impl HtmlInputStringKind {
             Self::Text | Self::Search | Self::Telephone | Self::Password | Self::Url
         )
     }
+    fn temporal_format(self) -> Option<HtmlInputTemporalFormat> {
+        match self {
+            Self::Date => Some(HtmlInputTemporalFormat::Date),
+            Self::Month => Some(HtmlInputTemporalFormat::Month),
+            Self::Week => Some(HtmlInputTemporalFormat::Week),
+            Self::Time => Some(HtmlInputTemporalFormat::Time),
+            Self::LocalDateTime => Some(HtmlInputTemporalFormat::LocalDateTime),
+            _ => None,
+        }
+    }
     pub fn sanitization(self) -> HtmlInputSanitization {
+        if let Some(format) = self.temporal_format() {
+            return HtmlInputSanitization::Temporal(format);
+        }
         if self == Self::Email {
             HtmlInputSanitization::Email
         } else if self == Self::Url {
@@ -116,13 +155,38 @@ pub enum HtmlInputSanitization {
     StripCrLfAndTrim,
     /// The complete operation requires actual multiple-attribute presence.
     Email,
+    /// Strict source-defined temporal grammar; invalid becomes empty.
+    Temporal(HtmlInputTemporalFormat),
 }
 impl HtmlInputSanitization {
-    /// Unit-local filtering only. Boundary trimming and Email's mode-dependent
-    /// comma processing require HtmlInputSanitizationCursor; this predicate
-    /// alone does not perform those complete sanitizers.
+    /// Unit-local filtering only. Boundary trimming, Email comma processing
+    /// and strict temporal validation/normalization require
+    /// HtmlInputSanitizationCursor; this predicate cannot certify them.
     pub fn retain_unit(self, unit: u16) -> bool {
-        matches!(self, Self::Preserve | Self::Email) || !matches!(unit, 0x0d | 0x0a)
+        matches!(self, Self::Preserve | Self::Email | Self::Temporal(_))
+            || !matches!(unit, 0x0d | 0x0a)
+    }
+}
+
+/// Actual source-selected strict temporal input grammar. This fixed rule type
+/// does not allocate or supply current-state, calendar UI or stepping behavior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlInputTemporalFormat {
+    Date,
+    Month,
+    Week,
+    Time,
+    LocalDateTime,
+}
+impl HtmlInputTemporalFormat {
+    fn owner(self) -> crate::temporal::TemporalInputFormat {
+        match self {
+            Self::Date => crate::temporal::TemporalInputFormat::Date,
+            Self::Month => crate::temporal::TemporalInputFormat::Month,
+            Self::Week => crate::temporal::TemporalInputFormat::Week,
+            Self::Time => crate::temporal::TemporalInputFormat::Time,
+            Self::LocalDateTime => crate::temporal::TemporalInputFormat::LocalDateTime,
+        }
     }
 }
 
@@ -148,6 +212,7 @@ impl HtmlInputRetainedRange {
     }
 }
 enum SanitizerStep {
+    Temporal,
     Leading,
     Trailing,
     Emit,
@@ -169,10 +234,19 @@ pub struct HtmlInputSanitizationCursor<'a> {
     commas: crate::tokens::CommaTokenCursor<'a>,
     pending: Option<HtmlInputRetainedRange>,
     count: usize,
+    temporal: Option<crate::temporal::TemporalValidationCursor<'a>>,
+    temporal_plan: Option<crate::temporal::TemporalInputPlan>,
 }
 impl<'a> HtmlInputSanitizationCursor<'a> {
     pub fn new(policy: HtmlInputSanitization, units: &'a [u16], mode: HtmlInputEmailMode) -> Self {
+        let temporal = match policy {
+            HtmlInputSanitization::Temporal(format) => Some(
+                crate::temporal::TemporalValidationCursor::new(units, format.owner(), true),
+            ),
+            _ => None,
+        };
         let step = match policy {
+            HtmlInputSanitization::Temporal(_) => SanitizerStep::Temporal,
             HtmlInputSanitization::Email if mode == HtmlInputEmailMode::Multiple => {
                 SanitizerStep::Commas
             }
@@ -191,11 +265,33 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
             commas: crate::tokens::CommaTokenCursor::new(units),
             pending: None,
             count: 0,
+            temporal,
+            temporal_plan: None,
         }
+    }
+    /// A source-qualified successful local normalization replaces only its
+    /// SPACE separator with T. The adapter retains the whole original origin.
+    pub fn replacement_unit(&self, position: usize) -> Option<u16> {
+        self.temporal_plan
+            .and_then(|plan| plan.replacement)
+            .filter(|&separator| separator == position)
+            .map(|_| 0x54)
     }
     pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
         match self.step {
             SanitizerStep::Done => None,
+            SanitizerStep::Temporal => Some(
+                if self
+                    .temporal
+                    .as_ref()
+                    .expect("temporal scanner")
+                    .inspects_unit()
+                {
+                    HtmlInputRuleWork::InspectValueUnit
+                } else {
+                    HtmlInputRuleWork::ReadField
+                },
+            ),
             SanitizerStep::Leading | SanitizerStep::Trailing if self.start < self.end => {
                 Some(HtmlInputRuleWork::InspectValueUnit)
             }
@@ -207,6 +303,16 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
     }
     pub fn advance(&mut self) -> Option<HtmlInputRetainedRange> {
         match self.step {
+            SanitizerStep::Temporal => {
+                let scanner = self.temporal.as_mut().expect("temporal scanner");
+                scanner.advance();
+                if scanner.finished() {
+                    self.temporal_plan = scanner.normalization();
+                    self.end = self.temporal_plan.map_or(0, |plan| plan.retained_end);
+                    self.step = SanitizerStep::Emit;
+                }
+            }
+
             SanitizerStep::Leading => {
                 if self.start < self.end && crate::tokens::ascii_whitespace(self.units[self.start])
                 {

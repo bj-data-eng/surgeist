@@ -57,6 +57,14 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
                 | HtmlInputType::Radio
                 | HtmlInputType::Email
                 | HtmlInputType::Url
+                | HtmlInputType::Submit
+                | HtmlInputType::Reset
+                | HtmlInputType::Button
+                | HtmlInputType::Date
+                | HtmlInputType::Month
+                | HtmlInputType::Week
+                | HtmlInputType::Time
+                | HtmlInputType::LocalDateTime
         ) {
             assert_eq!(
                 HtmlInputStringKind::try_from(state).unwrap().input_type(),
@@ -81,6 +89,121 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
     assert_eq!(
         recognize(Some(&DocumentString::from_utf16(vec![0xd800]))),
         HtmlInputType::Text
+    );
+}
+
+#[test]
+fn default_button_states_preserve_units_and_have_no_selection_or_display_fallback() {
+    let units = [0, 9, 10, 13, 0x85, 0xa0, 0xd800, 0xdc00, 0xdfff, 88];
+    for (state, kind) in [
+        (HtmlInputType::Submit, HtmlInputStringKind::Submit),
+        (HtmlInputType::Reset, HtmlInputStringKind::Reset),
+        (HtmlInputType::Button, HtmlInputStringKind::Button),
+    ] {
+        assert_eq!(HtmlInputStringKind::try_from(state).unwrap(), kind);
+        assert_eq!(kind.input_type(), state);
+        assert_eq!(kind.value_mode(), HtmlInputValueMode::Default);
+        assert_eq!(kind.value_mode().content_fallback(), Some(&[][..]));
+        assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
+        assert!(!kind.is_selectable());
+        let kept: Vec<_> = units
+            .into_iter()
+            .filter(|&u| kind.sanitization().retain_unit(u))
+            .collect();
+        assert_eq!(kept, units);
+        let fresh = HtmlInputStringFlags::fresh().type_changed(kind);
+        assert_eq!(
+            fresh.value_setter_begin(),
+            HtmlInputValueSetterStart::SetContentValue
+        );
+        assert_eq!(
+            fresh.value_attribute_changed(),
+            HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
+                HtmlInputSanitization::Preserve
+            )
+        );
+        let dirty = HtmlInputStringFlags::from_retained(kind, true, true, true, true, true);
+        assert_eq!(
+            dirty.value_attribute_changed(),
+            HtmlInputValueAttributeEffect::KeepCurrent
+        );
+        let mut reset = HtmlInputReset::new(dirty);
+        let Some(HtmlInputResetEffect::ClearDirtyAndUserValidity(cleared)) = reset.next_effect()
+        else {
+            panic!("clear flags first")
+        };
+        assert!(!cleared.dirty_value() && !cleared.dirty_checkedness() && !cleared.user_validity());
+        assert!(cleared.checkedness() && cleared.indeterminate());
+        assert_eq!(
+            reset.next_effect(),
+            Some(HtmlInputResetEffect::ReplaceCurrentFromDefault)
+        );
+        assert_eq!(
+            reset.next_effect(),
+            Some(HtmlInputResetEffect::SetCheckedFromPresence)
+        );
+        assert_eq!(
+            reset.next_effect(),
+            Some(HtmlInputResetEffect::EmptySelectedFiles)
+        );
+        assert_eq!(
+            reset.next_effect(),
+            Some(HtmlInputResetEffect::Sanitize(
+                HtmlInputSanitization::Preserve
+            ))
+        );
+        assert_eq!(reset.next_effect(), None);
+    }
+}
+
+#[test]
+fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on_exit() {
+    use HtmlInputTypeEffect::*;
+    let effects = |old, new, len| {
+        let mut change = HtmlInputTypeChange::new(old, new, len);
+        std::iter::from_fn(|| change.next_effect()).collect::<Vec<_>>()
+    };
+    for kind in [
+        HtmlInputStringKind::Submit,
+        HtmlInputStringKind::Reset,
+        HtmlInputStringKind::Button,
+    ] {
+        assert_eq!(
+            effects(HtmlInputStringKind::Text, kind, 1),
+            [
+                SetContentValueFromCurrent,
+                SetRendering,
+                SignalTypeChange,
+                Sanitize(HtmlInputSanitization::Preserve)
+            ]
+        );
+        assert_eq!(
+            effects(HtmlInputStringKind::Text, kind, 0),
+            [
+                SetRendering,
+                SignalTypeChange,
+                Sanitize(HtmlInputSanitization::Preserve)
+            ]
+        );
+        assert_eq!(
+            effects(kind, HtmlInputStringKind::Text, 1),
+            [
+                SetCurrentFromDefaultAndClearDirty,
+                SetRendering,
+                SignalTypeChange,
+                Sanitize(HtmlInputSanitization::StripCrLf),
+                SetInitialCursorAndNoneDirection
+            ]
+        );
+        assert!(effects(kind, kind, 1).is_empty());
+    }
+    assert_eq!(
+        effects(HtmlInputStringKind::Submit, HtmlInputStringKind::Reset, 1),
+        [
+            SetRendering,
+            SignalTypeChange,
+            Sanitize(HtmlInputSanitization::Preserve)
+        ]
     );
 }
 

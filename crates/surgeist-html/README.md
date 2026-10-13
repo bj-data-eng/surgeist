@@ -884,7 +884,10 @@ limits, and reports retain its exact producer/configuration revision.
 
 The [shared input rules](src/input.rs) expose fixed state and source-ordered
 requirements for Hidden, Text, Search, Telephone, Password, Checkbox, Radio,
-Email and URL.
+Email, URL, Submit, Reset, Button, Date, Month, Week, Time and LocalDateTime.
+Submit/Reset/Button use Default mode: present value content, including empty,
+is read unchanged; absence supplies empty rather than `on` or a display label.
+They preserve exact UTF-16 and do not support selection.
 Checkbox and Radio use DefaultOn: their native value reads the content attribute, including
 present empty, and returns `on` only when that attribute is absent. This does
 not synthesize an attribute or change the independent internal/default value.
@@ -899,6 +902,15 @@ trim boundary ASCII whitespace. Multiple Email trims each lenient comma token,
 preserves internal newlines and retains the produced value count. Empty input
 has zero values; a whitespace-only token has one empty value. The count cannot
 be reconstructed from the joined string. URL supports selection; Email does not.
+The five temporal kinds use Value mode without selection. Their cursor consumes
+the shared strict Month/Date/Week/Time/LocalDateTime grammar; invalid or incomplete
+strings become empty. Date/Month/Week/Time preserve valid spelling, including
+leading-zero years and optional zero time components. Time fractions require
+one through three ASCII digits; broader temporal recovery precision does not
+make an input value valid. LocalDateTime preserves the valid date spelling,
+uses `T` and emits the shortest valid time: unnecessary zero seconds and trailing
+fraction zeros are omitted. These rules do not trim arbitrary whitespace, add a
+zone or execute stepping, constraint validation, a picker or live editing.
 `HtmlInputStringFlags` retains the actual intrinsic flags; strings, selection
 and form identity remain separately owned. Type/default/checked changes,
 per-control reset and cloning keep their distinct triggers. Keyword recognition
@@ -931,7 +943,8 @@ not establish subject identity, mutation history or capture qualification.
 [Input tests](tests/input_rules.rs),
 [Checkbox tests](tests/input_checkbox_rules.rs),
 [Radio tests](tests/input_radio_rules.rs),
-[Email/URL tests](tests/input_email_url_rules.rs) and
+[Email/URL tests](tests/input_email_url_rules.rs),
+[temporal input tests](tests/input_temporal_rules.rs) and
 [family tests](tests/control_values.rs) cover the pure rules. Parser tests cover
 their actual controlled consumers. Other input families, tree-dependent effects,
 full textarea setters/normalization and runtime events require their respective
@@ -1993,8 +2006,9 @@ Fragments use their qualified Inert or Disabled profile; influencing unavailable
 context facts or required custom reactions produce typed failures. Neither entry
 executes JavaScript, fetches resources, attaches a live shadow root or synthesizes
 browser events. Supported input construction covers Text, Search, Telephone,
-Password, Hidden, Checkbox, Radio, Email and URL. The `input` Button state and temporal input states
-remain unsupported. Other unavailable construction branches stop
+Password, Hidden, Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month,
+Week, Time and LocalDateTime. Number, Range, Color, File and Image input
+construction remain unsupported. Other unavailable construction branches stop
 explicitly rather than publishing a partial success.
 
 `HtmlSource::utf8` accepts already decoded Unicode in Rust string storage;
@@ -2314,13 +2328,14 @@ value cache. Stops preserve any owned partial scratch and refuse observation or
 freeze; terminal cleanup performs no useful reset. General setters, nonnull
 overrides, form reset and hosted initialization remain separate work.
 
-Private input creation supports Hidden, Text, Search, Telephone, Password,
-Checkbox, Radio, Email and URL
-through the [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
+Internal input creation supports Hidden, Text, Search, Telephone, Password,
+Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month, Week, Time and
+LocalDateTime through the [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
-Text loses CR and LF; changing to Hidden writes a nonempty internal value back
-to the native value attribute. Changing to Checkbox or Radio has the same nonempty
-writeback requirement. Type-first Hidden, Checkbox or Radio preserves CR and LF instead.
+Text loses CR and LF; changing from Value mode to Hidden, Submit, Reset or Button
+writes a nonempty internal value back to the native value attribute. Changing to
+Checkbox or Radio has the same nonempty writeback requirement. Type-first Hidden,
+Submit, Reset, Button, Checkbox or Radio preserves CR and LF instead.
 Text/Search/Telephone/Password strip those units from current value while keeping
 the native default independently observable. Creation completes per-control
 initialization before canonical form association. Checkbox current checkedness,
@@ -2336,6 +2351,26 @@ native value attribute and source ranges. Multiple Email's produced count
 survives freeze and cloning without resplitting the joined current value:
 `a, ` produces `a,` with two values, while `a,` produces `a` with one.
 These operations do not validate Email addresses or URLs or resolve a base URL.
+
+Temporal creation and final per-control reset run the same borrowed strict
+sanitizer over the actual installed default, retaining raw native value content
+independently from the produced current value. For example,
+`2024-02-29 12:34:00.000` remains the LocalDateTime default while current value
+becomes `2024-02-29T12:34`; invalid input produces empty current value without
+repairing the default. Cloning copies actual current backing and canonical flags
+without resanitizing it; a later reset reloads and sanitizes the native default.
+Each cursor inspection/fixed action and actual output copy uses the existing
+controller's work, cancellation and capacity admission. SPACE-to-`T` replacement
+carries `HtmlParseOriginKind::InputValueNormalization` with the whole original
+source interval and identity, including a character-reference interval when
+that supplied the SPACE. It does not masquerade as literal equality or invent
+source offsets for an indivisible origin. Public report associations and metadata
+lend these produced origins, raw values and flags through their existing
+[qualified readers](#decoded-unicode-parsing). The new kind, sanitizer and origin
+variants intentionally break exhaustive matches; no compatibility shim is added.
+These operations do not execute live setters, validation or stepping; typed
+content-coordinate conversion remains a separate operation. Time zones,
+activation, submission and form-wide reset events remain outside this unit.
 
 Radio construction applies the five [source-defined group triggers](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
 through the existing admitted effect owner. Peer normalization changes only

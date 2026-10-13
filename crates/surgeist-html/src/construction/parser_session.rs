@@ -1632,7 +1632,9 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         if matches!(
             policy,
-            crate::HtmlInputSanitization::Email | crate::HtmlInputSanitization::StripCrLfAndTrim
+            crate::HtmlInputSanitization::Email
+                | crate::HtmlInputSanitization::StripCrLfAndTrim
+                | crate::HtmlInputSanitization::Temporal(_)
         ) {
             let mode = if policy == crate::HtmlInputSanitization::Email
                 && self.form_attribute(control, node, "multiple")?.is_some()
@@ -8093,8 +8095,23 @@ fn copy_input_value_core(
                     }
                     if omitted == 0 {
                         let start = buffer.len();
-                        buffer
-                            .extend_units(&value.code_units()[origin.start..origin.end], control)?;
+                        let mut transformed = false;
+                        if matches!(policy, crate::HtmlInputSanitization::Temporal(_)) {
+                            for position in origin.start..origin.end {
+                                control.charge(WorkCategory::InspectByte, 2)?;
+                                let unit = value.code_units()[position];
+                                let replacement = selection
+                                    .as_ref()
+                                    .and_then(|cursor| cursor.replacement_unit(position));
+                                transformed |= replacement.is_some();
+                                buffer.extend_units(&[replacement.unwrap_or(unit)], control)?;
+                            }
+                        } else {
+                            buffer.extend_units(
+                                &value.code_units()[origin.start..origin.end],
+                                control,
+                            )?;
+                        }
                         control.charge(WorkCategory::ProviderCall, 1)?;
                         payload_write::<TextOrigin>(control, 1)?;
                         copied.try_push(
@@ -8103,7 +8120,7 @@ fn copy_input_value_core(
                                 start,
                                 end: buffer.len(),
                                 source: origin.source.clone(),
-                                kind: origin.kind,
+                                kind: if transformed { crate::parser::tokenizer::token::OriginKind::InputValueNormalization } else { origin.kind },
                             },
                         )?;
                     }
@@ -13955,22 +13972,360 @@ mod tests {
     }
 
     #[test]
-    fn text_input_other_valid_states_refuse_before_any_metadata_or_lexical_take() {
-        for kind in [
-            "date",
-            "month",
-            "week",
-            "time",
-            "datetime-local",
-            "number",
-            "range",
-            "color",
-            "file",
-            "submit",
-            "image",
-            "reset",
-            "button",
+    fn default_button_input_clone_retains_exact_native_default_raw_and_fresh_flags() {
+        for (keyword, kind) in [
+            ("button", crate::HtmlInputStringKind::Button),
+            ("reset", crate::HtmlInputStringKind::Reset),
+            ("submit", crate::HtmlInputStringKind::Submit),
         ] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(format!(
+                    "<html><head></head><input type={keyword} value='A&#13;B&#10;C' checked readonly>"
+                )),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let node = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap();
+            assert!(input.is_none());
+            let original = session.input_state(&mut c, &node).unwrap();
+            assert_eq!(original.flags.kind(), kind);
+            assert!(original.flags.checkedness());
+            assert!(
+                !original.flags.dirty_value()
+                    && !original.flags.dirty_checkedness()
+                    && !original.flags.user_validity()
+                    && !original.flags.indeterminate()
+            );
+            assert!(original.selected_files_empty);
+            assert_eq!(original.cursor, 0);
+            assert!(!original.value_rewritten_during_creation);
+            assert!(
+                session
+                    .input_writeback_sources(&mut c, &node)
+                    .unwrap()
+                    .is_none()
+            );
+            let copy = session
+                .active_mut()
+                .unwrap()
+                .clone_node(&mut c, node.index, DocumentRef::Owned(0))
+                .unwrap();
+            let copy = session.active().unwrap().node(&mut c, copy).unwrap();
+            assert_ne!(node.index, copy.index);
+            assert_eq!(session.input_state(&mut c, &copy).unwrap(), original);
+            assert!(
+                session
+                    .form_association_owner(&mut c, &copy)
+                    .unwrap()
+                    .is_none()
+            );
+            let storage = session.active().unwrap();
+            let a = find_input_state(&storage.payloads, &mut c, node.index)
+                .unwrap()
+                .0;
+            let b = find_input_state(&storage.payloads, &mut c, copy.index)
+                .unwrap()
+                .0;
+            let RetainedPayload::String { value: a, .. } = &storage.payloads.values[a] else {
+                panic!("original raw")
+            };
+            let RetainedPayload::String { value: b, .. } = &storage.payloads.values[b] else {
+                panic!("copy raw")
+            };
+            assert!(!Arc::ptr_eq(a.backing(), b.backing()));
+            assert_eq!(a.code_units(), [65, 13, 66, 10, 67]);
+            assert_eq!(b.code_units(), [65, 13, 66, 10, 67]);
+            // Author-prohibited checked/readonly remain actual native attributes;
+            // parser construction does not discard them as author validation.
+            let HtmlNodeKind::Element(element) = &storage.records[copy.index].kind else {
+                panic!("native copy")
+            };
+            let names: Vec<_> = element
+                .attributes()
+                .iter()
+                .map(|a| a.name().local_name().code_units().to_vec())
+                .collect();
+            assert_eq!(
+                names,
+                [
+                    vec![116, 121, 112, 101],
+                    vec![118, 97, 108, 117, 101],
+                    vec![99, 104, 101, 99, 107, 101, 100],
+                    vec![114, 101, 97, 100, 111, 110, 108, 121]
+                ]
+            );
+            let mut buffer = Utf16Buffer::new(&mut c).unwrap();
+            session
+                .append_input_value(&mut c, &copy, &mut buffer)
+                .unwrap();
+            assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
+            buffer.clear(&mut c).unwrap();
+            session
+                .append_input_internal_value(&mut c, &copy, &mut buffer)
+                .unwrap();
+            assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
+            buffer.clear(&mut c).unwrap();
+            session
+                .append_input_default_value(&mut c, &copy, &mut buffer)
+                .unwrap();
+            assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
+            buffer.release(&mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    #[test]
+    fn default_button_input_alias_foreign_parent_and_cancel_preserve_incoming_token() {
+        for keyword in ["button", "reset", "submit"] {
+            for case in 0..3 {
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(format!(
+                        "<html><head></head><input type={keyword} value=x>"
+                    )),
+                    limits(),
+                );
+                let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                    input_owner(&request);
+                let records = session.active().unwrap().records.len();
+                let slots = session.active().unwrap().payloads.values.len();
+                let alias = (case == 0).then(|| {
+                    input.as_ref().unwrap().attributes.as_slice()[1]
+                        .value
+                        .value
+                        .text()
+                        .clone()
+                });
+                let mut foreign = None;
+                let target = if case == 1 {
+                    let other = ParserArenaSession::new(
+                        &mut c,
+                        RootKind::Document(HtmlDocumentMode::NoQuirks),
+                    )
+                    .unwrap();
+                    let root = other.root(&mut c).unwrap();
+                    foreign = Some(other);
+                    root
+                } else {
+                    parent
+                };
+                if case == 2 {
+                    request.cancellation().cancel();
+                }
+                let error = session
+                    .allocate_input_for_creation(
+                        &mut c,
+                        &mut input,
+                        CreationLocation {
+                            intended_parent: &target,
+                            current_form: None,
+                            context: CreationContext::Ordinary,
+                        },
+                        &range,
+                        &capability,
+                    )
+                    .unwrap_err();
+                assert_eq!(
+                    error,
+                    match case {
+                        0 => SessionError::AliasedPayload,
+                        1 => SessionError::ForeignNode,
+                        _ => SessionError::Stop(ParseStop::Cancelled),
+                    }
+                );
+                assert!(input.is_some());
+                assert_eq!(session.active().unwrap().records.len(), records);
+                assert_eq!(session.active().unwrap().payloads.values.len(), slots);
+                assert_eq!(
+                    input.as_ref().unwrap().attributes.as_slice()[1]
+                        .value
+                        .value
+                        .text()
+                        .code_units(),
+                    [120]
+                );
+                drop(alias);
+                let first = c.stop();
+                release_formatting_tag(&mut input, &mut c).unwrap();
+                lexer.release(&mut c).unwrap();
+                if let Some(mut other) = foreign {
+                    other.release(&mut c).unwrap();
+                }
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.stop(), first);
+            }
+        }
+    }
+
+    #[test]
+    fn default_button_input_exact_work_and_stopped_prefixes_keep_tickets_and_first_stop() {
+        for keyword in ["button", "reset", "submit"] {
+            let source =
+                format!("<html><head></head><input value='A&#13;B&#10;C' type={keyword} checked>");
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(source.as_str()),
+                limits(),
+            );
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap();
+            let total = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            // Real full transaction establishes the admitted boundary; exact
+            // and one-short then assert different outcomes and identical cleanup.
+            for tail in [0, 1, 32, 128, 512] {
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(source.as_str()),
+                    limits()
+                        .into_builder()
+                        .work_credits(total - tail)
+                        .finish()
+                        .unwrap(),
+                );
+                let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                    input_owner(&request);
+                let result = session.allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                );
+                if tail == 0 {
+                    assert!(result.is_ok());
+                    assert!(input.is_none());
+                    assert_eq!(
+                        c.usage().resource(HtmlParseResource::WorkCredits).current,
+                        total
+                    );
+                    assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }))
+                    ));
+                }
+                let first = c.stop().unwrap();
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+                let at_stop = c.usage().resource(HtmlParseResource::WorkCredits).current;
+                release_formatting_tag(&mut input, &mut c).unwrap();
+                lexer.release(&mut c).unwrap();
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.stop(), Some(first));
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::WorkCredits).current,
+                    at_stop
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn default_button_input_two_preserved_raw_copies_have_exact_and_one_short_unit_caps() {
+        for (keyword, exact) in [("button", 95), ("submit", 95), ("reset", 94)] {
+            for cap in [exact - 1, exact] {
+                // html name+namespace32; input name+namespace33; type/value
+                // names9; type keyword6 (Reset5), original A/CR/B/LF/C5.
+                // The value-attribute installation and fresh reset each retain
+                // an independent five-unit raw backing, alongside original fields.
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(format!(
+                        "<html><head></head><input type={keyword} value='A&#13;B&#10;C'>"
+                    )),
+                    limits()
+                        .into_builder()
+                        .managed_utf16_units(cap)
+                        .finish()
+                        .unwrap(),
+                );
+                let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                    input_owner(&request);
+                let result = session.allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                );
+                if cap == exact {
+                    assert!(result.is_ok());
+                    assert_eq!(
+                        c.usage()
+                            .resource(HtmlParseResource::ManagedUtf16Units)
+                            .high_water,
+                        exact
+                    );
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::ManagedUtf16Units,
+                            ..
+                        }))
+                    ));
+                    let first = c.stop().unwrap();
+                    assert_eq!(
+                        session.freeze(&mut c).err(),
+                        Some(SessionError::Stop(first))
+                    );
+                }
+                let first = c.stop();
+                release_formatting_tag(&mut input, &mut c).unwrap();
+                lexer.release(&mut c).unwrap();
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.stop(), first);
+            }
+        }
+    }
+
+    #[test]
+    fn text_input_other_valid_states_refuse_before_any_metadata_or_lexical_take() {
+        for kind in ["number", "range", "color", "file", "image"] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(format!("<html><head></head><input type={kind} value=x>")),
                 limits(),
@@ -24432,6 +24787,349 @@ mod tests {
                     stopped_work
                 );
             }
+        }
+    }
+    #[test]
+    fn temporal_input_reset_cancellation_retains_real_current_before_association() {
+        for (source, expected, count) in [
+            (
+                "<html><head></head><input type=date value='2024-02-29'>",
+                "2024-02-29".encode_utf16().collect::<Vec<_>>(),
+                None,
+            ),
+            (
+                "<html><head></head><input type=time value='12:34:56.1234'>",
+                vec![],
+                None,
+            ),
+            (
+                "<html><head></head><input type=datetime-local value='2024-02-29&#32;12:34:00.000'>",
+                "2024-02-29T12:34".encode_utf16().collect::<Vec<_>>(),
+                None,
+            ),
+        ] {
+            let request =
+                crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            session.active_mut().unwrap().cancel_after_input_reset =
+                Some(request.cancellation().clone());
+            let result = session.allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: CreationContext::Ordinary,
+                },
+                &range,
+                &capability,
+            );
+            assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+            assert!(input.is_none());
+            let (actual, observed_count, attached, parser_inserted) = {
+                let storage = session.active().unwrap();
+                let (node, raw, state) = storage
+                    .payloads
+                    .values
+                    .iter()
+                    .find_map(|p| match p {
+                        RetainedPayload::Input {
+                            node: Some(node),
+                            raw,
+                            complete: true,
+                            state,
+                            ..
+                        } => Some((*node, *raw, *state)),
+                        _ => None,
+                    })
+                    .unwrap();
+                let RetainedPayload::String { value, .. } = &storage.payloads.values[raw] else {
+                    unreachable!()
+                };
+                let association = storage
+                    .payloads
+                    .values
+                    .iter()
+                    .find_map(|p| match p {
+                        RetainedPayload::FormAssociation {
+                            node: Some(owner),
+                            state,
+                        } if *owner == node => Some(*state),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert!(!state.flags.dirty_value());
+                assert!(!state.flags.dirty_checkedness());
+                (
+                    value.code_units().to_vec(),
+                    state.email_value_count,
+                    storage.records[node].parent.is_some(),
+                    association.parser_inserted,
+                )
+            };
+            assert_eq!(
+                session.freeze(&mut c).err(),
+                Some(SessionError::Stop(ParseStop::Cancelled))
+            );
+            let stopped_work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::WorkCredits).current,
+                stopped_work
+            );
+            assert_eq!(actual, expected);
+            assert_eq!(observed_count, count);
+            assert!(!attached);
+            assert!(!parser_inserted);
+        }
+    }
+
+    #[test]
+    fn temporal_input_exact_work_and_stopped_scan_copy_prefixes_release_actual_owners() {
+        for (source, expected) in [
+            (
+                "<html><head></head><input type=date value='002024-02-29'>",
+                "002024-02-29",
+            ),
+            ("<html><head></head><input type=week value='2021-W53'>", ""),
+            (
+                "<html><head></head><input type=datetime-local value='2024-02-29&#32;12:34:01.120'>",
+                "2024-02-29T12:34:01.12",
+            ),
+        ] {
+            let request =
+                crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let node = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap();
+            let total = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            let state = session.input_state(&mut c, &node).unwrap();
+            let mut output = Utf16Buffer::new(&mut c).unwrap();
+            session
+                .append_input_value(&mut c, &node, &mut output)
+                .unwrap();
+            let value = output.units().to_vec();
+            output.release(&mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(value, expected.encode_utf16().collect::<Vec<_>>());
+            assert_eq!(state.email_value_count, None);
+            assert!(!state.flags.kind().is_selectable());
+            for tail in [0, 1, 32, 128, 512, 1024, 2048] {
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(source),
+                    limits()
+                        .into_builder()
+                        .work_credits(total - tail)
+                        .finish()
+                        .unwrap(),
+                );
+                let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                    input_owner(&request);
+                let result = session.allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                );
+                if tail == 0 {
+                    assert!(result.is_ok());
+                    assert!(input.is_none());
+                    assert_eq!(
+                        c.usage().resource(HtmlParseResource::WorkCredits).current,
+                        total
+                    );
+                    assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }))
+                    ));
+                }
+                let first = c.stop().unwrap();
+                assert_eq!(
+                    session.freeze(&mut c).err(),
+                    Some(SessionError::Stop(first))
+                );
+                let stopped_work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+                release_formatting_tag(&mut input, &mut c).unwrap();
+                lexer.release(&mut c).unwrap();
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                assert_eq!(c.usage().actual_capacity_bytes, 0);
+                assert_eq!(c.stop(), Some(first));
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::WorkCredits).current,
+                    stopped_work
+                );
+            }
+        }
+    }
+    #[test]
+    fn temporal_input_ordered_type_reset_and_clone_keep_normalization_cause_and_exact_default() {
+        use crate::parser::tokenizer::token::OriginKind;
+        for (source, source_start, source_end) in [
+            (
+                "<html><head></head><input value='2024-02-29&#32;12:34:01.120' type=datetime-local>",
+                43,
+                48,
+            ),
+            (
+                "<html><head></head><input type=datetime-local value='2024-02-29 12:34:01.120'>",
+                63,
+                64,
+            ),
+        ] {
+            let request =
+                crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
+            let (mut c, mut session, capability, lexer, parent, mut input, range) =
+                input_owner(&request);
+            let node = session
+                .allocate_input_for_creation(
+                    &mut c,
+                    &mut input,
+                    CreationLocation {
+                        intended_parent: &parent,
+                        current_form: None,
+                        context: CreationContext::Ordinary,
+                    },
+                    &range,
+                    &capability,
+                )
+                .unwrap();
+            let before = session.input_state(&mut c, &node).unwrap();
+            let raw = find_input_state(&session.active().unwrap().payloads, &mut c, node.index)
+                .unwrap()
+                .0;
+            let normalized = {
+                let storage = session.active().unwrap();
+                let RetainedPayload::String {
+                    value,
+                    origins: Some(group),
+                    ..
+                } = &storage.payloads.values[raw]
+                else {
+                    panic!("actual current owner");
+                };
+                let value = value.code_units().to_vec();
+                let normalized = storage
+                    .observed_origins(group, &mut c)
+                    .unwrap()
+                    .into_iter()
+                    .filter(|origin| origin.kind == OriginKind::InputValueNormalization)
+                    .map(|origin| {
+                        (
+                            origin.start,
+                            origin.end,
+                            origin.source.source().clone(),
+                            origin.source.start(),
+                            origin.source.end(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                (value, normalized)
+            };
+            let copy = session
+                .active_mut()
+                .unwrap()
+                .clone_node(&mut c, node.index, DocumentRef::Owned(0))
+                .unwrap();
+            let copy = session.active().unwrap().node(&mut c, copy).unwrap();
+            let clone_state = session.input_state(&mut c, &copy).unwrap();
+            let copy_raw =
+                find_input_state(&session.active().unwrap().payloads, &mut c, copy.index)
+                    .unwrap()
+                    .0;
+            let independent = {
+                let storage = session.active().unwrap();
+                let RetainedPayload::String { value: a, .. } = &storage.payloads.values[raw] else {
+                    unreachable!()
+                };
+                let RetainedPayload::String { value: b, .. } = &storage.payloads.values[copy_raw]
+                else {
+                    unreachable!()
+                };
+                !Arc::ptr_eq(a.backing(), b.backing())
+            };
+            let storage = session.active_mut().unwrap();
+            let copy_slot = storage.payloads.values.iter().position(
+                |payload| matches!(payload, RetainedPayload::Input { node: Some(id), .. } if *id == copy.index)
+            ).unwrap();
+            storage.reset_input(&mut c, copy.index, copy_slot).unwrap();
+            let reset = session.input_state(&mut c, &copy).unwrap();
+            let mut output = Utf16Buffer::new(&mut c).unwrap();
+            session
+                .append_input_internal_value(&mut c, &copy, &mut output)
+                .unwrap();
+            let reset_current = output.units().to_vec();
+            output.clear(&mut c).unwrap();
+            session
+                .append_input_default_value(&mut c, &copy, &mut output)
+                .unwrap();
+            let default = output.units().to_vec();
+            output.release(&mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            assert_eq!(c.stop(), None);
+            assert!(independent);
+            assert_eq!(before, clone_state);
+            assert_eq!(
+                reset.flags.kind(),
+                crate::HtmlInputStringKind::LocalDateTime
+            );
+            assert!(
+                !reset.flags.dirty_value()
+                    && !reset.flags.dirty_checkedness()
+                    && !reset.flags.user_validity()
+            );
+            assert!(!reset.flags.kind().is_selectable());
+            assert_eq!(
+                normalized.0,
+                "2024-02-29T12:34:01.12".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(reset_current, normalized.0);
+            assert_eq!(
+                default,
+                "2024-02-29 12:34:01.120".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                normalized.1,
+                [(
+                    10,
+                    11,
+                    request.source().identity().clone(),
+                    source_start,
+                    source_end
+                )]
+            );
         }
     }
 }

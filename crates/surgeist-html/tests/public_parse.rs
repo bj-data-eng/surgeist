@@ -1249,3 +1249,204 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
     }
     assert_eq!(inputs, 2);
 }
+
+#[test]
+fn button_default_value_preserves_ordered_content_and_retained_raw_after_cancel() {
+    for (literal, expected, value_slot, writeback) in [
+        ("<!doctype html><input type=button>", "", None, false),
+        (
+            "<!doctype html><input type=button value='&#13;&#10;X'>",
+            "\r\nX",
+            Some(1),
+            false,
+        ),
+        (
+            "<!doctype html><input value='&#13;&#10;X' type=button>",
+            "X",
+            Some(0),
+            true,
+        ),
+    ] {
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits());
+        let identity = request.source().identity().clone();
+        let cancellation = request.cancellation().clone();
+        let report = request.parse().unwrap();
+        let usage = report.usage().clone();
+        cancellation.cancel();
+        assert_eq!(report.source().identity(), &identity);
+        assert_eq!(report.source().as_utf8(), Some(literal));
+        let document = report.document().unwrap();
+        assert_eq!(document.mode(), HtmlDocumentMode::NoQuirks);
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let children: Vec<_> = document.node(&body).unwrap().children().collect();
+        assert_eq!(children.len(), 1);
+        let input = document.node(&children[0]).unwrap();
+        let HtmlNodeKind::Element(element) = input.kind() else {
+            panic!("input")
+        };
+        assert_eq!(element.name().local_name(), &DocumentString::from("input"));
+        let default = value_slot.map(|slot| {
+            let attribute = &element.attributes().as_slice()[slot];
+            assert_eq!(
+                attribute.name().local_name(),
+                &DocumentString::from("value")
+            );
+            attribute.value()
+        });
+        // Default mode reads the content attribute, with the empty fallback.
+        assert_eq!(
+            default.map(DocumentString::code_units).unwrap_or(&[]),
+            DocumentString::from(expected).code_units()
+        );
+        assert_eq!(input.children().count(), 0);
+        let mut metadata = report.metadata();
+        let mut inputs = 0;
+        loop {
+            match metadata.advance() {
+                HtmlParseMetadataStep::Record(record) => {
+                    if let Some(flags) = record.input_flags() {
+                        inputs += 1;
+                        assert_eq!(record.node().id(), input.id());
+                        assert_eq!(flags.kind(), HtmlInputStringKind::Button);
+                        assert_eq!(flags.kind().value_mode(), HtmlInputValueMode::Default);
+                        assert!(!flags.dirty_value());
+                        assert_eq!(
+                            record.input_raw_value(),
+                            Some(&DocumentString::from(expected))
+                        );
+                        assert_eq!(record.input_creation_writeback(), Some(writeback));
+                    }
+                }
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
+            }
+        }
+        assert_eq!(inputs, 1);
+        assert_eq!(report.usage(), &usage);
+    }
+}
+
+#[test]
+fn local_datetime_normalization_retains_exact_space_origin_and_original_value_history() {
+    for (literal, source_end, spelling) in [
+        (
+            "<!doctype html><input type=datetime-local value='2024-02-29 12:34:00.000'>",
+            60,
+            " ",
+        ),
+        (
+            "<!doctype html><input type=datetime-local value='2024-02-29&#32;12:34:00.000'>",
+            64,
+            "&#32;",
+        ),
+    ] {
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits());
+        let identity = request.source().identity().clone();
+        let cancellation = request.cancellation().clone();
+        let report = request.parse().unwrap();
+        let usage = report.usage().clone();
+        cancellation.cancel();
+        assert_eq!(report.source().identity(), &identity);
+        assert_eq!(report.source().as_utf8(), Some(literal));
+        let document = report.document().unwrap();
+        assert_eq!(document.mode(), HtmlDocumentMode::NoQuirks);
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let children: Vec<_> = document.node(&body).unwrap().children().collect();
+        assert_eq!(children.len(), 1);
+        let input = document.node(&children[0]).unwrap();
+        let HtmlNodeKind::Element(element) = input.kind() else {
+            panic!("input")
+        };
+        assert_eq!(element.name().local_name(), &DocumentString::from("input"));
+        let default = &element.attributes().as_slice()[1];
+        assert_eq!(default.name().local_name(), &DocumentString::from("value"));
+        assert_eq!(
+            default.value(),
+            &DocumentString::from("2024-02-29 12:34:00.000")
+        );
+        let mut metadata = report.metadata();
+        let mut inputs = 0;
+        loop {
+            match metadata.advance() {
+                HtmlParseMetadataStep::Record(record) => {
+                    if let Some(flags) = record.input_flags() {
+                        inputs += 1;
+                        assert_eq!(record.node().id(), input.id());
+                        assert_eq!(flags.kind(), HtmlInputStringKind::LocalDateTime);
+                        assert_eq!(flags.kind().value_mode(), HtmlInputValueMode::Value);
+                        assert!(!flags.dirty_value());
+                        assert_eq!(
+                            record.input_raw_value(),
+                            Some(&DocumentString::from("2024-02-29T12:34"))
+                        );
+                        assert_eq!(record.input_creation_writeback(), Some(false));
+                    }
+                }
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
+            }
+        }
+        assert_eq!(inputs, 1);
+        let range = report.source().range(59, source_end).unwrap();
+        assert_eq!(
+            report.source().text(&range).unwrap(),
+            DocumentString::from(spelling)
+        );
+        let rows = report.associations();
+        let history = report.history_view();
+        let mut normalized = 0;
+        for index in 0..rows.len() {
+            let row = rows.row(index).unwrap();
+            if row.origin_kind() != Some(HtmlParseOriginKind::InputValueNormalization)
+                || row.relation() != HtmlParseAssociationRelation::Output
+            {
+                continue;
+            }
+            let HtmlParseDestination::Raw { node, kind } = row.destination() else {
+                panic!("normalization belongs to retained current input value")
+            };
+            normalized += 1;
+            assert_eq!(node.id(), input.id());
+            assert_eq!(kind, HtmlParseRawField::Input);
+            assert_eq!((row.start(), row.end()), (10, 11));
+            assert_eq!(row.source(), Some(&range));
+            assert_eq!(row.source().unwrap().source(), &identity);
+            let cause = row.cause();
+            assert_eq!(
+                cause.operation(),
+                HtmlParseConstructionOperation::Replacement
+            );
+            let original = cause.original_group().unwrap();
+            let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
+            let mut cursor = history.cursor(original, &mut scratch, None).unwrap();
+            let mut units = Vec::new();
+            loop {
+                match cursor.advance() {
+                    HtmlParseHistoryStep::Progress => {}
+                    HtmlParseHistoryStep::Leaf(leaf) => {
+                        assert_eq!(leaf.offset(), units.len());
+                        units.extend_from_slice(leaf.units());
+                    }
+                    HtmlParseHistoryStep::Complete => break,
+                    HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                }
+            }
+            assert_eq!(
+                units,
+                DocumentString::from("2024-02-29 12:34:00.000").code_units()
+            );
+        }
+        assert_eq!(normalized, 1);
+        assert_eq!(report.usage(), &usage);
+    }
+}

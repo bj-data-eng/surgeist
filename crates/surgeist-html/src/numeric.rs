@@ -95,7 +95,7 @@ fn write_fraction_product(input: &[u8], multiplier: u32, output: &mut [u8]) -> u
     carry
 }
 
-fn remainder_digit(digit: u8, divisor: u64, remainder: u64) -> u64 {
+pub(crate) fn remainder_digit(digit: u8, divisor: u64, remainder: u64) -> u64 {
     (remainder * 10 + u64::from(digit)) % divisor
 }
 
