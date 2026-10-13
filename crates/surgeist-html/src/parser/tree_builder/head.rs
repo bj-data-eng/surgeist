@@ -613,6 +613,7 @@ impl<'source> HeadStage<'source> {
                 };
                 state.pending = Some(PendingToken::from_token(event.into_token(c)?));
             } else {
+                state.lexical.reserve_geometric(c, 1)?;
                 write(size_of::<Option<Event>>(), 1, c)?;
                 let event = state
                     .lexical_pending
@@ -1921,5 +1922,485 @@ mod script_state_tests {
         ));
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
+    }
+}
+
+#[cfg(test)]
+mod event_retention_tests {
+    use super::super::{
+        entry,
+        tests::{assert_released, limits},
+    };
+    use super::*;
+    use crate::parser::{
+        control::{Invariant, ParseUsage},
+        input::PreprocessingRecord,
+    };
+    use crate::{HtmlDocumentParseRequest, HtmlParseCancellation, HtmlParseResource, HtmlSource};
+
+    fn in_head(driver: &mut super::super::StandaloneDocumentDriver<'_>) {
+        for _ in 0..32 {
+            if driver
+                .head
+                .as_ref()
+                .and_then(|head| head.state.as_ref())
+                .is_some_and(|state| state.mode == InsertionMode::InHead && state.pending.is_none())
+            {
+                return;
+            }
+            assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+        }
+        panic!("actual head-start prefix was not consumed");
+    }
+
+    fn preprocessing(event: &Event, source: &HtmlSource, start: usize) {
+        let Event::Preprocessing {
+            record,
+            source: range,
+            retention,
+        } = event
+        else {
+            panic!("real CRLF preprocessing Event");
+        };
+        assert_eq!(*record, PreprocessingRecord::Newline { was_crlf: true });
+        assert_eq!(range.source(), source.identity());
+        assert_eq!((range.start(), range.end()), (start, start + 2));
+        assert_eq!((retention.len(), retention.capacity()), (1, 1));
+        assert_eq!(retention.as_slice()[0], *range);
+    }
+
+    fn first_comment_event_footprint(source: &HtmlSource) -> ParseUsage {
+        let request = HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+        let mut driver = entry::initialized_driver(&request);
+        assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+        assert_eq!(driver.lexical.as_ref().unwrap().len(), 1);
+        preprocessing(&driver.lexical.as_ref().unwrap().as_slice()[0], source, 4);
+        let baseline = driver.control.usage().clone();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        baseline
+    }
+
+    #[test]
+    fn fresh_event_capacity_clips_and_one_short_keeps_the_pending_preprocessing_ticket() {
+        let source = HtmlSource::utf8("<!--\r\n\r\n\r\n-->");
+        let footprint = first_comment_event_footprint(&source);
+        // CommentStart queues the first preprocessing Event and reconsumes
+        // its newline in Comment on the next pull; no data unit/origin has
+        // been appended at this first observable prefix checkpoint.
+        let base = footprint.actual_capacity_bytes
+            - size_of::<Event>() as u64
+            - size_of::<crate::HtmlSourceRange>() as u64;
+        let event = size_of::<Event>() as u64;
+        let origin = size_of::<crate::parser::tokenizer::token::TextOrigin>() as u64;
+        let range = size_of::<crate::HtmlSourceRange>() as u64;
+        // Three source-defined CRLFs produce three one-range Event tickets,
+        // three LF units and a four-slot geometric DraftText origin capacity.
+        // Existing two Event slots are replaced by exactly three when four
+        // cannot fit. Peak overlaps only the old/new vector being replaced.
+        let final_bytes = base + 6 + 4 * origin + 3 * range + 3 * event;
+        let peak = (base + 6 + 6 * origin + 3 * range + 2 * event)
+            .max(base + 6 + 4 * origin + 3 * range + 5 * event)
+            .max(
+                footprint
+                    .resource(HtmlParseResource::PeakTransientBytes)
+                    .high_water,
+            );
+        for short in [false, true] {
+            let caps = limits(100)
+                .into_builder()
+                .managed_capacity_bytes(final_bytes - u64::from(short))
+                .peak_transient_bytes(peak)
+                .finish()
+                .unwrap();
+            let request = HtmlDocumentParseRequest::offline(source.clone(), caps);
+            let mut driver = entry::initialized_driver(&request);
+            for _ in 0..2 {
+                assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+            }
+            assert_eq!(
+                (
+                    driver.lexical.as_ref().unwrap().len(),
+                    driver.lexical.as_ref().unwrap().capacity()
+                ),
+                (2, 2)
+            );
+            let result = driver.step();
+            if short {
+                assert!(matches!(
+                    result,
+                    Err(super::super::StandaloneError::Stop(
+                        ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::ManagedCapacityBytes,
+                            ..
+                        }
+                    ))
+                ));
+                assert_eq!(
+                    (
+                        driver.lexical.as_ref().unwrap().len(),
+                        driver.lexical.as_ref().unwrap().capacity()
+                    ),
+                    (2, 2)
+                );
+                preprocessing(driver.event.as_ref().unwrap(), &source, 8);
+                assert_eq!(
+                    driver.control.usage().actual_capacity_bytes,
+                    final_bytes - event
+                );
+                let before = driver.control.usage().clone();
+                let stop = driver.control.stop();
+                assert!(driver.step().is_err());
+                assert_eq!(driver.control.usage(), &before);
+                assert_eq!(driver.control.stop(), stop);
+                preprocessing(driver.event.as_ref().unwrap(), &source, 8);
+            } else {
+                assert_eq!(result.unwrap(), HeadStep::Consumed);
+                assert_eq!(
+                    (
+                        driver.lexical.as_ref().unwrap().len(),
+                        driver.lexical.as_ref().unwrap().capacity()
+                    ),
+                    (3, 3)
+                );
+                assert!(driver.event.is_none());
+                assert_eq!(driver.control.usage().actual_capacity_bytes, final_bytes);
+                assert_eq!(
+                    driver
+                        .control
+                        .usage()
+                        .resource(HtmlParseResource::PeakTransientBytes)
+                        .high_water,
+                    peak
+                );
+            }
+            for (i, value) in driver
+                .lexical
+                .as_ref()
+                .unwrap()
+                .as_slice()
+                .iter()
+                .enumerate()
+            {
+                preprocessing(value, &source, 4 + 2 * i);
+            }
+            let at_stop = driver.control.first_stop_usage().cloned();
+            let before = driver.control.usage().clone();
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+            assert_eq!(driver.control.first_stop_usage(), at_stop.as_ref());
+            assert_eq!(
+                driver.control.usage().actual_capacity_high_water,
+                before.actual_capacity_high_water
+            );
+            if at_stop.is_some() {
+                assert_eq!(
+                    driver
+                        .control
+                        .usage()
+                        .resource(HtmlParseResource::WorkCredits),
+                    before.resource(HtmlParseResource::WorkCredits)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fresh_event_logical_denial_retains_geometric_capacity_and_exact_pending_owner() {
+        let source = HtmlSource::utf8("<!--\r\n\r\n\r\n-->");
+        let baseline = first_comment_event_footprint(&source);
+        // Inside one comment there is no intervening text-token slot. The
+        // observed first Event footprint already includes one real Event;
+        // allowing one additional slot admits exactly two retained Events.
+        let caps = limits(100)
+            .into_builder()
+            .auxiliary_entries(
+                baseline
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current
+                    + 1,
+            )
+            .finish()
+            .unwrap();
+        let request = HtmlDocumentParseRequest::offline(source.clone(), caps);
+        let mut driver = entry::initialized_driver(&request);
+        for _ in 0..2 {
+            assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+        }
+        assert!(matches!(
+            driver.step(),
+            Err(super::super::StandaloneError::Stop(
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::AuxiliaryEntries,
+                    ..
+                }
+            ))
+        ));
+        assert_eq!(
+            (
+                driver.lexical.as_ref().unwrap().len(),
+                driver.lexical.as_ref().unwrap().capacity()
+            ),
+            (2, 4)
+        );
+        preprocessing(driver.event.as_ref().unwrap(), &source, 8);
+        for (i, event) in driver
+            .lexical
+            .as_ref()
+            .unwrap()
+            .as_slice()
+            .iter()
+            .enumerate()
+        {
+            preprocessing(event, &source, 4 + 2 * i);
+        }
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            baseline
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current
+                + 1
+        );
+        let at_stop = driver.control.first_stop_usage().unwrap().clone();
+        let before = driver.control.usage().clone();
+        assert!(driver.step().is_err());
+        assert_eq!(driver.control.usage(), &before);
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.first_stop_usage(), Some(&at_stop));
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
+    }
+
+    #[test]
+    fn head_event_logical_denial_keeps_real_preprocessing_ticket_and_zero_cleanup() {
+        let source = HtmlSource::utf8(format!(
+            "<!doctype html><html><head><!--{}--></head><body></body></html>",
+            "\r\n".repeat(32)
+        ));
+        let baseline = {
+            let request = HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+            let mut driver = entry::initialized_driver(&request);
+            in_head(&mut driver);
+            assert_eq!(
+                driver
+                    .head
+                    .as_ref()
+                    .unwrap()
+                    .state
+                    .as_ref()
+                    .unwrap()
+                    .lexical
+                    .len(),
+                0
+            );
+            let baseline = driver.control.usage().clone();
+            driver.release().unwrap();
+            assert_released(&driver.control);
+            baseline
+        };
+        let allowed = (baseline
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .high_water
+            - baseline
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current) as usize;
+        assert!(allowed < 32);
+        let caps = limits(100)
+            .into_builder()
+            .auxiliary_entries(
+                baseline
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .high_water,
+            )
+            .finish()
+            .unwrap();
+        let request = HtmlDocumentParseRequest::offline(source.clone(), caps);
+        let mut driver = entry::initialized_driver(&request);
+        in_head(&mut driver);
+        assert!(matches!(
+            driver.step(),
+            Err(super::super::StandaloneError::Head(HeadError::Kernel(
+                KernelError::Stop(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::AuxiliaryEntries,
+                    ..
+                })
+            )))
+        ));
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(
+            (state.lexical.len(), state.lexical.capacity()),
+            (allowed, (allowed + 1).next_power_of_two())
+        );
+        for (i, event) in state.lexical.as_slice().iter().enumerate() {
+            preprocessing(event, &source, 31 + 2 * i);
+        }
+        preprocessing(
+            state.lexical_pending.as_ref().unwrap(),
+            &source,
+            31 + 2 * allowed,
+        );
+        let at_stop = driver.control.first_stop_usage().unwrap().clone();
+        let before = driver.control.usage().clone();
+        assert!(driver.step().is_err());
+        assert_eq!(driver.control.usage(), &before);
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.first_stop_usage(), Some(&at_stop));
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
+    }
+
+    #[test]
+    fn head_event_growth_preserves_source_eof_and_foreign_cancelled_owner_refusals() {
+        use crate::construction::parser_session::evidence::{DiagnosticContext, DiagnosticKind};
+        use crate::parser::tokenizer::token::{DiagnosticCode, DiagnosticPhase};
+        let source = HtmlSource::utf8(format!(
+            "<!doctype html><html><head><!--{}--></head><body></body></html>",
+            "\0".repeat(32)
+        ));
+        let request = HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+        let mut driver = entry::initialized_driver(&request);
+        in_head(&mut driver);
+        let before = driver.control.usage().clone();
+        let mut foreign = ParseControl::new(limits(100), HtmlParseCancellation::new());
+        assert!(matches!(
+            driver.head.as_mut().unwrap().step(&mut foreign),
+            Err(HeadError::Kernel(KernelError::Stop(
+                ParseStop::InternalInvariant(Invariant::ForeignControl)
+            )))
+        ));
+        assert_eq!(driver.control.usage(), &before);
+        assert!(
+            driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .lexical_pending
+                .is_none()
+        );
+        assert_eq!(foreign.first_stop_usage().unwrap(), foreign.usage());
+        for _ in 0..128 {
+            match driver.step().unwrap() {
+                HeadStep::Consumed => {}
+                HeadStep::Complete => break,
+                other => panic!("unexpected ordinary boundary: {other:?}"),
+            }
+        }
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert!(state.end.is_some());
+        assert_eq!((state.lexical.len(), state.lexical.capacity()), (32, 32));
+        let evidence = state.before.kernel.session.observed_evidence();
+        for (i, event) in state.lexical.as_slice().iter().enumerate() {
+            let Event::Diagnostic(id) = event else {
+                panic!("NULL diagnostic Event");
+            };
+            let (record, location) = evidence.get(&mut driver.control, id).unwrap();
+            assert_eq!(
+                record.kind,
+                DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+            );
+            assert_eq!(
+                record.context,
+                DiagnosticContext::Tokenizer {
+                    phase: DiagnosticPhase::Tokenizer,
+                    state: State::Comment
+                }
+            );
+            assert_eq!(location.source.source(), source.identity());
+            assert_eq!(
+                (location.source.start(), location.source.end()),
+                (31 + i, 32 + i)
+            );
+        }
+        let mut input = Some(driver);
+        let mut complete =
+            super::super::StandaloneDocumentDriver::take_completed(&mut input).unwrap();
+        assert!(input.is_none());
+        assert_eq!(complete.diagnostics().unwrap().len(), 32);
+        {
+            use crate::construction::parser_session::native_view::NativeKind;
+            let mut view = complete.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = view.child_at(&root, 1).unwrap().unwrap();
+            let head = view.child_at(&html, 0).unwrap().unwrap();
+            assert_eq!(view.child_count(&head).unwrap(), 1);
+            let comment = view.child_at(&head, 0).unwrap().unwrap();
+            let NativeKind::Comment(value) = view.kind(&comment).unwrap() else {
+                panic!("real head comment");
+            };
+            assert_eq!(value.len(), 32);
+            for i in 0..32 {
+                assert_eq!(view.unit(&value, i).unwrap(), Some(0xfffd));
+            }
+        }
+        let mut parts = complete.freeze_parts().unwrap();
+        parts.release().unwrap();
+        assert_eq!(parts.retained_usage().actual_capacity_bytes, 0);
+        assert!(parts.at_stop().is_none());
+
+        // Cancellation is a real request signal at a reached source-qualified
+        // head phase, not a callback injected into the reserve operation.
+        let request = HtmlDocumentParseRequest::offline(source, limits(100));
+        let mut driver = entry::initialized_driver(&request);
+        in_head(&mut driver);
+        request.cancellation().cancel();
+        assert!(driver.step().is_err());
+        let snapshot = driver.control.first_stop_usage().unwrap().clone();
+        let before = driver.control.usage().clone();
+        assert!(
+            driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .lexical_pending
+                .is_none()
+        );
+        assert_eq!(
+            driver
+                .head
+                .as_ref()
+                .unwrap()
+                .state
+                .as_ref()
+                .unwrap()
+                .lexical
+                .len(),
+            0
+        );
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.first_stop_usage(), Some(&snapshot));
+        assert_eq!(
+            driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits),
+            before.resource(HtmlParseResource::WorkCredits)
+        );
     }
 }

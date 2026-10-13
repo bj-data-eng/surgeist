@@ -972,6 +972,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     };
                     self.token = Some(event.into_token(c)?);
                 } else {
+                    self.lexical
+                        .as_mut()
+                        .ok_or(StandaloneError::Consumed)?
+                        .reserve_geometric(c, 1)?;
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     write(size_of::<Option<Event>>(), 1, c)?;
                     let event = self.event.take().expect("retained lexical event");
