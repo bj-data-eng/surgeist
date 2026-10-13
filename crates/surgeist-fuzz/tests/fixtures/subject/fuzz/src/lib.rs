@@ -26,6 +26,46 @@ fn descriptor(name: &str) -> TargetDescriptor {
 pub struct BytesTarget {
     descriptor: TargetDescriptor,
 }
+
+/// A successful control whose canonical capture alone exceeds 16 MiB over
+/// 20,000 evaluations. Entropy does not alter this deliberately fixed case.
+pub struct StreamingTarget {
+    descriptor: TargetDescriptor,
+}
+impl Default for StreamingTarget {
+    fn default() -> Self {
+        Self {
+            descriptor: descriptor("surgeist-fixture::streaming"),
+        }
+    }
+}
+impl CaseTarget for StreamingTarget {
+    type Case = Vec<u8>;
+    fn descriptor(&self) -> &TargetDescriptor {
+        &self.descriptor
+    }
+    fn decode(&self, input: &[u8]) -> Result<Self::Case> {
+        if input.len() != 1024 || input.iter().any(|byte| *byte != 0) {
+            return Err(error("streaming control requires exactly 1024 zero bytes"));
+        }
+        Ok(input.to_vec())
+    }
+    fn encode(&self, case: &Self::Case) -> Result<Vec<u8>> {
+        self.decode(case)
+    }
+    fn generate(&self, input: &[u8]) -> Result<Generation<Self::Case>> {
+        if input.len() as u64 > self.descriptor.limits().bytes() {
+            return Err(error("streaming entropy exceeds byte ceiling"));
+        }
+        Ok(Generation::Generated(vec![0; 1024]))
+    }
+    fn evaluate(&self, case: &Self::Case) -> Result<CaseOutcome> {
+        if subject::reported_bytes(case) != 1024 {
+            return Err(error("streaming control byte count changed"));
+        }
+        CaseOutcome::evaluated(self.descriptor.properties().to_vec())
+    }
+}
 impl Default for BytesTarget {
     fn default() -> Self {
         Self {

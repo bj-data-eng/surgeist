@@ -29,10 +29,11 @@ fn standalone_author_workspace_registers_raw_and_structured_binaries_and_fixture
         String::from_utf8_lossy(&output.stderr)
     );
     let registry = TargetRegistry::from_metadata_json(&root, &output.stdout).unwrap();
-    assert_eq!(registry.targets().count(), 2);
+    assert_eq!(registry.targets().count(), 3);
     for (id, binary) in [
         ("surgeist-fixture::bytes", "fixture-worker"),
         ("surgeist-fixture::structured", "fixture-structured-worker"),
+        ("surgeist-fixture::streaming", "fixture-streaming-worker"),
     ] {
         let target = registry.get(&TargetId::new(id).unwrap()).unwrap();
         assert_eq!(target.descriptor().binary(), binary);

@@ -16,6 +16,20 @@ min_evaluated = 1
 max_generation_rejections = 0
 
 [[targets]]
+id = "surgeist-fixture::streaming"
+owner = "surgeist-fixture"
+binary = "fixture-streaming-worker"
+properties = ["surgeist-fixture::streaming-byte-count"]
+source_references = ["crates/surgeist-fuzz/tests/fixtures/subject/src/lib.rs#reported_bytes"]
+format = { identity = "surgeist-fixture::streaming", revision = 1 }
+generator_identity = { identity = "surgeist-fixture::streaming", revision = 1 }
+encoding = "structured"
+limits = { bytes = 4096, nodes = 0, depth = 0, text_units = 0, operations = 0 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
+
+[[targets]]
 id = "surgeist-fixture::structured"
 owner = "surgeist-fixture"
 binary = "fixture-structured-worker"

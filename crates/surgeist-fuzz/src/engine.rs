@@ -228,7 +228,7 @@ impl<'a, T: CaseTarget> CoverageDriver<'a, T> {
     }
     /// Emits canonical capture before evaluation and cumulative observations
     /// afterwards, then escalates a matching owner failure. The controller owns
-    /// the campaign's total output quota. Exhausted admission emits no frames.
+    /// the campaign's frame and retention limits. Exhausted admission emits no frames.
     pub fn libfuzzer_entry_framed<W: std::io::Write>(
         &mut self,
         input: &[u8],

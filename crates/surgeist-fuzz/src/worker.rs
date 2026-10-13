@@ -208,6 +208,139 @@ pub fn read_frame<R: Read, T: DeserializeOwned>(reader: &mut R, maximum: u32) ->
     })
 }
 
+/// Incremental strict response framing. Storage is bounded by one payload and
+/// a four-byte header, independently of the number of completed responses.
+/// A decode or consumer error poisons the decoder; previously emitted responses
+/// remain the consumer's evidence. Call `finish` only after the stream ends.
+#[derive(Debug)]
+pub struct ResponseDecoder {
+    maximum: u32,
+    header: [u8; 4],
+    header_len: usize,
+    expected: Option<usize>,
+    payload: Vec<u8>,
+    failed: bool,
+    finished: bool,
+}
+
+impl ResponseDecoder {
+    pub fn new(maximum: u32) -> Result<Self> {
+        if maximum == 0 || usize::try_from(maximum).is_err() {
+            return Err(protocol(
+                FuzzErrorKind::InvalidLimits,
+                "response frame ceiling must be positive and fit address space",
+            ));
+        }
+        Ok(Self {
+            maximum,
+            header: [0; 4],
+            header_len: 0,
+            expected: None,
+            payload: Vec::new(),
+            failed: false,
+            finished: false,
+        })
+    }
+
+    /// Emits completed responses exactly once, including several in one chunk.
+    /// Unknown/duplicate fields and trailing JSON data are rejected. Oversized
+    /// headers are rejected before allocating their payload.
+    pub fn push(
+        &mut self,
+        bytes: &[u8],
+        emit: &mut dyn FnMut(WorkerResponse) -> Result<()>,
+    ) -> Result<()> {
+        self.active()?;
+        let result = self.push_inner(bytes, emit);
+        if result.is_err() {
+            self.failed = true;
+        }
+        result
+    }
+
+    fn active(&self) -> Result<()> {
+        if self.failed || self.finished {
+            return Err(protocol(
+                FuzzErrorKind::Codec,
+                "response decoder is failed or finished",
+            ));
+        }
+        Ok(())
+    }
+
+    fn push_inner(
+        &mut self,
+        mut bytes: &[u8],
+        emit: &mut dyn FnMut(WorkerResponse) -> Result<()>,
+    ) -> Result<()> {
+        while !bytes.is_empty() {
+            if self.expected.is_none() {
+                let count = (4 - self.header_len).min(bytes.len());
+                self.header[self.header_len..self.header_len + count]
+                    .copy_from_slice(&bytes[..count]);
+                self.header_len += count;
+                bytes = &bytes[count..];
+                if self.header_len < 4 {
+                    continue;
+                }
+                let length = u32::from_be_bytes(self.header);
+                if length == 0 || length > self.maximum {
+                    return Err(protocol(
+                        FuzzErrorKind::Resource,
+                        "frame length exceeds quota or is zero",
+                    ));
+                }
+                let length = usize::try_from(length).map_err(|_| {
+                    protocol(
+                        FuzzErrorKind::Resource,
+                        "frame length exceeds address space",
+                    )
+                })?;
+                self.payload
+                    .try_reserve_exact(length)
+                    .map_err(|_| protocol(FuzzErrorKind::Resource, "frame allocation failed"))?;
+                self.expected = Some(length);
+            }
+            let length = self
+                .expected
+                .expect("accepted header establishes payload length");
+            let count = (length - self.payload.len()).min(bytes.len());
+            self.payload.extend_from_slice(&bytes[..count]);
+            bytes = &bytes[count..];
+            if self.payload.len() == length {
+                let response = serde_json::from_slice(&self.payload).map_err(|cause| {
+                    FuzzError::with_source(
+                        FuzzErrorKind::Codec,
+                        "owner worker protocol",
+                        "invalid JSON frame",
+                        cause,
+                    )
+                })?;
+                self.payload.clear();
+                self.expected = None;
+                self.header_len = 0;
+                emit(response)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Requires a complete final frame. A partial header or payload is an error;
+    /// it never removes responses already accepted by the consumer.
+    pub fn finish(&mut self) -> Result<()> {
+        self.active()?;
+        if self.header_len != 0 || self.expected.is_some() {
+            self.failed = true;
+            return Err(protocol(
+                FuzzErrorKind::Codec,
+                "truncated final response frame",
+            ));
+        }
+        self.finished = true;
+        Ok(())
+    }
+}
+
 struct BoundedBuffer {
     bytes: Vec<u8>,
     maximum: usize,

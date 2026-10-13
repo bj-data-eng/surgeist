@@ -50,6 +50,45 @@ fn main() {
                 }
             }
         }
+        Some("stream") => {
+            let stdout_bytes: usize = args[2].parse().unwrap();
+            let stderr_bytes: usize = args[3].parse().unwrap();
+            let chunk = [b'x'; 8192];
+            let mut stdout = std::io::stdout().lock();
+            for offset in (0..stdout_bytes).step_by(chunk.len()) {
+                stdout
+                    .write_all(&chunk[..chunk.len().min(stdout_bytes - offset)])
+                    .unwrap();
+            }
+            stdout.flush().unwrap();
+            let chunk = [b'z'; 8192];
+            let mut stderr = std::io::stderr().lock();
+            for offset in (0..stderr_bytes).step_by(chunk.len()) {
+                stderr
+                    .write_all(&chunk[..chunk.len().min(stderr_bytes - offset)])
+                    .unwrap();
+            }
+            stderr.write_all(b"last diagnostics").unwrap();
+            stderr.flush().unwrap();
+        }
+        Some("framed-stream") => {
+            let frames: usize = args[2].parse().unwrap();
+            let response = surgeist_fuzz::worker::WorkerResponse::Generated {
+                canonical: vec![3; 2048],
+            };
+            let mut stdout = std::io::stdout().lock();
+            for _ in 0..frames {
+                surgeist_fuzz::worker::write_frame(&mut stdout, &response, 8192).unwrap();
+            }
+        }
+        Some("stream-drain") => {
+            std::io::stdout().write_all(&[b'x'; 16 * 1024]).unwrap();
+            std::io::stdout().flush().unwrap();
+            std::fs::write(&args[2], b"output complete").unwrap();
+            loop {
+                std::thread::sleep(Duration::from_secs(60));
+            }
+        }
         Some("descendant") | Some("descendant-exit") => {
             println!("{}", abandoned_descendant(args.get(2)));
             std::io::stdout().flush().unwrap();

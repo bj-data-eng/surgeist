@@ -2,12 +2,12 @@
 #![cfg(all(feature = "execution", target_os = "macos", target_arch = "aarch64"))]
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use surgeist_fuzz::{
     ArtifactStore, RelativePath, StorageLimits,
@@ -203,6 +203,25 @@ fn parser_and_no_write_preflight_reject_ambiguous_or_unavailable_requests() {
         ],
         vec!["check".into(), "--memory-policy".into(), "hard".into()],
         vec!["run".into(), "--toolchain".into(), "stable".into()],
+        vec![
+            "run".into(),
+            "--continuous".into(),
+            "--cases".into(),
+            "1".into(),
+        ],
+        vec![
+            "run".into(),
+            "--continuous".into(),
+            "--wall-ms".into(),
+            "1".into(),
+        ],
+        vec![
+            "run".into(),
+            "--continuous".into(),
+            "--workers".into(),
+            "2".into(),
+        ],
+        vec!["check".into(), "--continuous".into()],
     ] {
         let mut args: Vec<OsString> = args;
         args.extend(["--work".into(), work.as_os_str().to_owned()]);
@@ -231,10 +250,375 @@ fn list_and_validate_discover_without_building_or_starting_campaigns() {
         .collect();
         let result = run_cli(&args, &AtomicBool::new(false)).unwrap();
         assert_eq!(result.status, CampaignStatus::Sufficient);
-        assert_eq!(result.targets.len(), 2);
+        assert_eq!(result.targets.len(), 3);
         assert!(result.builds.is_empty());
         assert!(result.runs.is_empty());
     }
+}
+
+#[test]
+fn coverage_session_controls_reject_zero_budgets_before_writing() {
+    let root = std::env::temp_dir().join(format!(
+        "surgeist-session-preflight-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir(&root).unwrap();
+    let root = root.canonicalize().unwrap();
+    let work = root.join("must-not-exist");
+    for (request, expected) in [
+        (vec!["run", "--continuous", "--cases", "1"], "--continuous"),
+        (
+            vec!["run", "--continuous", "--wall-ms", "1"],
+            "--continuous",
+        ),
+        (vec!["run", "--continuous", "--workers", "2"], "one worker"),
+        (vec!["check", "--continuous"], "requires run"),
+    ] {
+        let mut args: Vec<OsString> = request.into_iter().map(Into::into).collect();
+        args.extend(["--work".into(), work.as_os_str().to_owned()]);
+        let error = run_cli(&args, &AtomicBool::new(false)).unwrap_err();
+        assert!(error.detail().contains(expected), "{error}");
+        assert!(!work.exists());
+    }
+    for option in [
+        "--round-cases",
+        "--round-ms",
+        "--retained-entries",
+        "--session-bytes",
+        "--session-entries",
+        "--log-bytes",
+        "--progress-ms",
+    ] {
+        let args: Vec<OsString> = vec![
+            "run".into(),
+            "--continuous".into(),
+            "--toolchain".into(),
+            "nightly-2026-09-01".into(),
+            "--work".into(),
+            work.as_os_str().to_owned(),
+            option.into(),
+            "0".into(),
+        ];
+        let error = run_cli(&args, &AtomicBool::new(false)).unwrap_err();
+        assert!(error.detail().contains("positive"), "{option}: {error}");
+        assert!(!work.exists(), "{option} admitted campaign writes");
+    }
+    for cases in ["1", "2"] {
+        let args: Vec<OsString> = vec![
+            "run".into(),
+            "--continuous".into(),
+            "--round-cases".into(),
+            cases.into(),
+            "--work".into(),
+            work.as_os_str().to_owned(),
+        ];
+        let error = run_cli(&args, &AtomicBool::new(false)).unwrap_err();
+        assert!(error.detail().contains("at least three"), "{error}");
+        assert!(!work.exists());
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn set_option(args: &mut [OsString], option: &str, value: &str) {
+    let index = args.iter().position(|arg| arg == option).unwrap();
+    args[index + 1] = value.into();
+}
+
+fn streaming_args(snapshot: &Snapshot) -> Vec<OsString> {
+    let mut args = snapshot.args("run", "surgeist-fixture::streaming");
+    set_option(&mut args, "--case-ms", "1000");
+    args.extend([
+        "--toolchain".into(),
+        "nightly-2026-09-01".into(),
+        "--retained-entries".into(),
+        "2".into(),
+        "--log-bytes".into(),
+        "4096".into(),
+    ]);
+    args
+}
+
+fn checkpoint(summary: &CampaignSummary) -> serde_json::Value {
+    let path = Path::new(&summary.runs[0]).join("session-state/progress.json");
+    serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
+fn regular_file_usage(root: &Path) -> (u64, u64) {
+    if !root.exists() {
+        return (0, 0);
+    }
+    let mut entries = 0;
+    let mut bytes = 0;
+    for entry in fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        let metadata = fs::symlink_metadata(entry.path()).unwrap();
+        assert!(!metadata.file_type().is_symlink());
+        if metadata.is_dir() {
+            let (nested_entries, nested_bytes) = regular_file_usage(&entry.path());
+            entries += nested_entries;
+            bytes += nested_bytes;
+        } else {
+            assert!(metadata.is_file());
+            entries += 1;
+            bytes += metadata.len();
+        }
+    }
+    (entries, bytes)
+}
+
+fn await_round_checkpoint(
+    snapshot: &Snapshot,
+    running: &std::thread::JoinHandle<surgeist_fuzz::Result<CampaignSummary>>,
+    minimum: u64,
+    previous_sessions: &BTreeSet<PathBuf>,
+) -> Option<serde_json::Value> {
+    let start = Instant::now();
+    let mut observed = None;
+    while start.elapsed() < Duration::from_secs(240) && !running.is_finished() {
+        if let Ok(sessions) = fs::read_dir(snapshot.work.join("sessions")) {
+            for session in sessions.flatten() {
+                if previous_sessions.contains(&session.path()) {
+                    continue;
+                }
+                let path = session.path().join("session-state/progress.json");
+                if let Ok(bytes) = fs::read(path)
+                    && let Ok(progress) = serde_json::from_slice::<serde_json::Value>(&bytes)
+                {
+                    let enough = progress["completed_rounds"].as_u64().unwrap_or(0) >= minimum;
+                    observed = Some(progress);
+                    if enough {
+                        return observed;
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    observed
+}
+
+#[test]
+#[ignore = "compiles an isolated instrumented owner and streams 20,000 real evaluations"]
+fn twenty_thousand_coverage_evaluations_keep_exact_totals_without_success_archives() {
+    let snapshot = Snapshot::new();
+    let mut args = streaming_args(&snapshot);
+    set_option(&mut args, "--cases", "20000");
+    set_option(&mut args, "--wall-ms", "120000");
+    args.extend(["--round-cases".into(), "1000".into()]);
+    let summary = snapshot.invoke(args);
+    assert_eq!(summary.status, CampaignStatus::Sufficient, "{summary:?}");
+    assert_eq!(summary.evaluated, 20_000);
+    assert_eq!(summary.generation_rejected, 0);
+    assert_eq!(summary.cleanup, "complete");
+    // Every successful evaluation is preceded by a 1024-byte canonical capture,
+    // independently forcing the wire payload beyond the former stdout ceiling.
+    assert!(summary.evaluated * 1024 > 16 * 1024 * 1024);
+    assert_eq!(summary.builds.len(), 1);
+    assert_eq!(summary.runs.len(), 1);
+    assert_eq!(summary.corpora.len(), 1);
+    let progress = checkpoint(&summary);
+    assert_eq!(progress["mode"], "finite");
+    assert_eq!(progress["evaluated"], 20_000);
+    assert_eq!(progress["generation_rejected"], 0);
+    assert_eq!(progress["terminal"], "sufficient");
+    assert!(progress["stdout_bytes"].as_u64().unwrap() > 16 * 1024 * 1024);
+    assert_eq!(
+        progress["checked_properties"],
+        serde_json::json!(["surgeist-fixture::streaming-byte-count"])
+    );
+    assert_eq!(
+        progress["build"],
+        serde_json::to_value(&summary.builds[0]).unwrap()
+    );
+    assert!(progress["retained_entries"].as_u64().unwrap() <= 2);
+    let (entries, bytes) = regular_file_usage(Path::new(&summary.corpora[0]));
+    assert!(entries <= 2);
+    assert!(bytes <= 2 * 4096);
+    let (session_entries, session_bytes) =
+        regular_file_usage(&Path::new(&summary.runs[0]).join("session-state"));
+    assert!(session_entries <= 4096);
+    assert!(session_bytes <= 256 * 1024 * 1024);
+    assert!(
+        session_entries <= 32,
+        "success state accumulated {session_entries} files"
+    );
+    assert!(
+        session_bytes <= 128 * 1024,
+        "success state accumulated {session_bytes} bytes"
+    );
+    eprintln!(
+        "finite coverage: {} evaluations, {} engine campaign ms, {session_entries} persisted session files, {session_bytes} persisted session bytes; build/setup time excluded",
+        summary.evaluated, progress["elapsed_millis"]
+    );
+    assert_eq!(
+        regular_file_usage(&snapshot.work.join("artifacts/corpus")),
+        (0, 0)
+    );
+    assert_eq!(
+        regular_file_usage(&snapshot.work.join("artifacts/failures")),
+        (0, 0)
+    );
+    assert_eq!(
+        regular_file_usage(&snapshot.work.join("artifacts/captures")),
+        (0, 0)
+    );
+    let report = snapshot.invoke(snapshot.args("report", "surgeist-fixture::streaming"));
+    assert_eq!(report.recorded_runs.len(), 1);
+    assert!(report.recorded_runs[0].counts().evaluated() > 0);
+    assert!(report.recorded_runs[0].counts().evaluated() <= 1000);
+    assert_eq!(report.recorded_runs[0].counts().generation_rejected(), 0);
+    assert_eq!(
+        report.recorded_runs[0].outcome(),
+        surgeist_fuzz::RunOutcome::Sufficient
+    );
+}
+
+#[test]
+#[ignore = "compiles an isolated instrumented owner and cancels after observed coverage rounds"]
+fn continuous_coverage_cancels_after_multiple_rounds_and_restarts_with_recorded_provenance() {
+    let snapshot = Snapshot::new();
+    let cancel = snapshot.root.join("cancel");
+    let mut args = streaming_args(&snapshot);
+    for option in ["--cases", "--wall-ms"] {
+        let index = args.iter().position(|arg| arg == option).unwrap();
+        args.drain(index..index + 2);
+    }
+    args.extend([
+        "--continuous".into(),
+        "--round-cases".into(),
+        "32".into(),
+        "--round-ms".into(),
+        "5000".into(),
+        "--progress-ms".into(),
+        "1".into(),
+        "--cancel-file".into(),
+        cancel.as_os_str().to_owned(),
+    ]);
+    let continuous_args = args.clone();
+    let running = std::thread::spawn(move || run_cli(&args, &AtomicBool::new(false)));
+    let start = Instant::now();
+    let observed = await_round_checkpoint(&snapshot, &running, 3, &BTreeSet::new());
+    // Request cancellation even on a timeout before awaiting the owned thread.
+    fs::write(&cancel, b"cancel after observable completed rounds").unwrap();
+    let summary = running.join().unwrap().unwrap();
+    let observed = observed.expect("no progress checkpoint observed before bounded wait ended");
+    assert!(
+        observed["completed_rounds"].as_u64().unwrap_or(0) >= 3,
+        "wait ended after {:?}; last checkpoint {observed}; summary {summary:?}",
+        start.elapsed()
+    );
+    assert_eq!(summary.status, CampaignStatus::Cancelled, "{summary:?}");
+    assert_eq!(summary.cleanup, "complete");
+    assert!(summary.evaluated >= 96);
+    assert_eq!(summary.generation_rejected, 0);
+    assert_eq!(summary.builds.len(), 1);
+    assert_eq!(summary.runs.len(), 1);
+    let terminal = checkpoint(&summary);
+    assert_eq!(terminal["mode"], "continuous");
+    assert_eq!(terminal["terminal"], "cancelled");
+    assert_eq!(terminal["round_cases"], 32);
+    assert_eq!(terminal["round_millis"], 5000);
+    assert_eq!(terminal["evaluated"], summary.evaluated);
+    assert_eq!(terminal["generation_rejected"], summary.generation_rejected);
+    eprintln!(
+        "continuous coverage: {} evaluations across {} rounds, {} engine campaign ms; build/setup time excluded",
+        summary.evaluated, terminal["completed_rounds"], terminal["elapsed_millis"]
+    );
+    assert_eq!(
+        terminal["checked_properties"],
+        serde_json::json!(["surgeist-fixture::streaming-byte-count"])
+    );
+    assert_eq!(
+        terminal["build"],
+        serde_json::to_value(&summary.builds[0]).unwrap()
+    );
+    assert!(terminal["retained_entries"].as_u64().unwrap() <= 2);
+    assert_eq!(
+        regular_file_usage(&snapshot.work.join("artifacts/corpus")),
+        (0, 0)
+    );
+    let report = snapshot.invoke(snapshot.args("report", "surgeist-fixture::streaming"));
+    assert_eq!(report.recorded_runs.len(), 1);
+    assert_eq!(
+        report.recorded_runs[0].outcome(),
+        surgeist_fuzz::RunOutcome::Cancelled
+    );
+    let source_corpus = PathBuf::from(&summary.corpora[0]);
+    let originals: BTreeMap<_, _> = fs::read_dir(&source_corpus)
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            (entry.file_name(), fs::read(entry.path()).unwrap())
+        })
+        .collect();
+    let mut restart = streaming_args(&snapshot);
+    set_option(&mut restart, "--cases", "64");
+    set_option(&mut restart, "--wall-ms", "30000");
+    restart.extend([
+        "--restart-corpus".into(),
+        source_corpus.as_os_str().to_owned(),
+    ]);
+    let restarted = snapshot.invoke(restart);
+    assert_eq!(
+        restarted.status,
+        CampaignStatus::Sufficient,
+        "{restarted:?}"
+    );
+    assert_eq!(restarted.evaluated, 64);
+    assert_eq!(restarted.cleanup, "complete");
+    assert_eq!(restarted.builds, summary.builds);
+    assert_ne!(restarted.runs, summary.runs);
+    assert_ne!(restarted.corpora, summary.corpora);
+    assert_eq!(checkpoint(&restarted)["build"], terminal["build"]);
+    for (name, bytes) in originals {
+        assert_eq!(fs::read(source_corpus.join(name)).unwrap(), bytes);
+    }
+    let previous_sessions: BTreeSet<_> = fs::read_dir(snapshot.work.join("sessions"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    let changed_cancel = snapshot.root.join("cancel-source-change");
+    let mut args = continuous_args;
+    let index = args.iter().position(|arg| arg == "--cancel-file").unwrap();
+    args[index + 1] = changed_cancel.as_os_str().to_owned();
+    let running = std::thread::spawn(move || run_cli(&args, &AtomicBool::new(false)));
+    let observed = await_round_checkpoint(&snapshot, &running, 1, &previous_sessions);
+    let observed_round = observed
+        .as_ref()
+        .is_some_and(|progress| progress["completed_rounds"].as_u64().unwrap_or(0) >= 1);
+    if observed_round {
+        fs::write(
+            snapshot.source.join("unexpected-source-change.txt"),
+            b"changed after engine round",
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !running.is_finished() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    let stopped_on_source_change = running.is_finished();
+    if !stopped_on_source_change {
+        fs::write(&changed_cancel, b"bounded source-change wait expired").unwrap();
+    }
+    let changed = running.join().unwrap().unwrap();
+    assert!(
+        observed_round,
+        "no fresh source-change round observed; last checkpoint {observed:?}; result {changed:?}"
+    );
+    assert!(
+        stopped_on_source_change,
+        "source-change stop deadline expired; result {changed:?}"
+    );
+    assert_eq!(
+        changed.status,
+        CampaignStatus::InfrastructureFailure,
+        "{changed:?}"
+    );
+    assert_eq!(changed.cleanup, "complete");
+    assert_eq!(changed.builds, summary.builds);
+    assert_eq!(checkpoint(&changed)["terminal"], "infrastructure-failure");
 }
 
 #[test]

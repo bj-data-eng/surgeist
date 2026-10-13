@@ -27,6 +27,9 @@ Select campaign integration and real sanitizer coverage separately as described
 in the [contributor guide](README.md). They compile isolated source bases and
 control descendants; never point their output at another worker's checkout or
 target directory. Use a clean source revision and explicit finite budgets.
+Continuous coverage is an explicit single-worker mode composed of finite engine
+rounds; tests must arrange bounded cancellation. Mutable session retention is
+separate from immutable failure evidence.
 
 Failure identity is the declared property, class and stable discriminator.
 Unqualified crashes/panics cannot establish same-bug minimization. Retain exact

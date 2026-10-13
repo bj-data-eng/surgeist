@@ -1,5 +1,8 @@
-//! Finite campaigns over registered owner binaries and the shared executor.
+//! Local campaigns over registered owner binaries and the shared executor.
+
 #![forbid(unsafe_code)]
+
+mod coverage;
 
 use crate::artifact::*;
 use crate::execution::{
@@ -223,6 +226,30 @@ struct Options {
     /// Absolute path whose appearance requests cancellation.
     #[arg(long)]
     cancel_file: Option<PathBuf>,
+    /// Continue coverage rounds until cancelled, finding, or resource/error stop.
+    #[arg(long, conflicts_with_all = ["cases", "wall_ms"])]
+    continuous: bool,
+    /// Maximum owner attempts in each coverage round.
+    #[arg(long, default_value_t = 1000)]
+    round_cases: u64,
+    /// Maximum wall time in each coverage round.
+    #[arg(long, default_value_t = 30_000)]
+    round_ms: u64,
+    /// Maximum retained engine entropy inputs between rounds.
+    #[arg(long, default_value_t = 64)]
+    retained_entries: u64,
+    /// Mutable session regular-file byte budget, separate from immutable evidence.
+    #[arg(long, default_value_t = 256 * 1024 * 1024)]
+    session_bytes: u64,
+    /// Mutable session entry budget, separate from immutable evidence.
+    #[arg(long, default_value_t = 4096)]
+    session_entries: u64,
+    /// Retained engine diagnostic tail, in bytes.
+    #[arg(long, default_value_t = 64 * 1024)]
+    log_bytes: u64,
+    /// Minimum interval between replaceable progress checkpoints.
+    #[arg(long, default_value_t = 1000)]
+    progress_ms: u64,
     /// Finite generation/coverage execution limit.
     #[arg(long, default_value_t = 100)]
     cases: u64,
@@ -313,7 +340,7 @@ impl Options {
             || o.wall_ms == 0
             || o.case_ms == 0
             || o.build_ms == 0
-            || o.case_ms > o.wall_ms
+            || (!o.continuous && o.case_ms > o.wall_ms)
             || o.input_bytes == 0
             || o.input_bytes > 128 * 1024
             || o.storage_bytes == 0
@@ -328,6 +355,12 @@ impl Options {
             return Err(invalid(
                 "positive finite budgets required; input ceiling 128 KiB; case deadline must fit wall budget",
             ));
+        }
+        if o.continuous && (o.command != "run" || o.workers != 1) {
+            return Err(invalid("continuous mode requires run with one worker"));
+        }
+        if o.command == "run" {
+            coverage::validate_options(o)?;
         }
         if o.workers > 1 && !matches!(o.command.as_str(), "check" | "run") {
             return Err(invalid("parallel workers only for check/run"));
@@ -840,18 +873,6 @@ fn preflight(o: &Options, cancel: &AtomicBool) -> Result<Preflight> {
             o.storage_bytes.min(16 * 1024 * 1024),
             o.confirmations,
         )?;
-        if o.command == "run" {
-            let worst = o
-                .cases
-                .checked_add(2)
-                .and_then(|n| n.checked_mul(o.input_bytes))
-                .ok_or_else(|| invalid("corpus budget overflow"))?;
-            if worst > o.storage_bytes || o.cases.saturating_add(2) > o.storage_entries {
-                return Err(invalid(
-                    "quotas cannot admit conservative finite corpus bound",
-                ));
-            }
-        }
     }
     if let Some(target) = selected.first() {
         let needs_engine = o.command == "run"
@@ -1813,207 +1834,6 @@ fn directory_usage(path: &Path, max_entries: u64, max_bytes: u64) -> Result<(u64
     }
     Ok((entries, bytes))
 }
-fn coverage(context: &CampaignContext<'_>, summary: &mut CampaignSummary) -> Result<()> {
-    let CampaignContext {
-        options: o,
-        target,
-        executable: exe,
-        cwd,
-        build,
-        config,
-        store,
-        cancellation: cancel,
-        ..
-    } = *context;
-    let corpus = cwd.join("entropy-corpus");
-    fs::create_dir(&corpus).map_err(io_error)?;
-    summary.corpora.push(corpus.to_string_lossy().into_owned());
-    let basis = CorpusBasis {
-        schema: 1,
-        target: target.clone(),
-        build: build.clone(),
-        encoding: "engine entropy, not canonical codec bytes".into(),
-    };
-    if let Some(previous) = &o.restart {
-        let metadata = previous
-            .parent()
-            .ok_or_else(|| invalid("restart corpus has no run directory"))?
-            .join("corpus-basis.json");
-        let prior: CorpusBasis = serde_json::from_slice(&read_bounded(&metadata, FRAME.into())?)
-            .map_err(|e| invalid(e.to_string()))?;
-        if prior.schema != 1
-            || prior.target != basis.target
-            || prior.build != basis.build
-            || prior.encoding != basis.encoding
-        {
-            return Err(invalid("restart corpus/build inputs differ from this run"));
-        }
-        let (entries, bytes) = directory_usage(previous, o.storage_entries, o.storage_bytes)?;
-        if entries.saturating_add(o.cases).saturating_add(2) > o.storage_entries
-            || bytes.saturating_add(o.cases.saturating_add(2).saturating_mul(o.input_bytes))
-                > o.storage_bytes
-        {
-            return Err(invalid(
-                "restart corpus leaves insufficient conservative quota",
-            ));
-        }
-        for entry in fs::read_dir(previous).map_err(io_error)? {
-            let entry = entry.map_err(io_error)?;
-            write_new(
-                &corpus.join(entry.file_name()),
-                &read_bounded(&entry.path(), o.input_bytes)?,
-            )?;
-        }
-    } else {
-        let seed = if let Some(input) = &o.input {
-            read_bounded(input, o.input_bytes)?
-        } else {
-            vec![0]
-        };
-        write_new(&corpus.join("seed"), &seed)?;
-    }
-    write_new(
-        &cwd.join("corpus-basis.json"),
-        &serde_json::to_vec_pretty(&basis).map_err(|e| infrastructure(e.to_string()))?,
-    )?;
-    let engine_artifacts = cwd.join("engine-artifacts");
-    fs::create_dir(&engine_artifacts).map_err(io_error)?;
-    let rss_mb = o.memory_bytes.div_ceil(1024 * 1024);
-    let mut env = BTreeMap::new();
-    env.insert(
-        "SURGEIST_FUZZ_CASE_LIMIT".into(),
-        o.cases.to_string().into(),
-    );
-    env.insert(
-        "ASAN_OPTIONS".into(),
-        "abort_on_error=1:detect_leaks=0".into(),
-    );
-    let args = vec![
-        format!("-runs={}", o.cases).into(),
-        format!("-max_total_time={}", o.wall_ms.div_ceil(1000)).into(),
-        format!("-timeout={}", o.case_ms.div_ceil(1000)).into(),
-        format!("-max_len={}", o.input_bytes).into(),
-        format!("-rss_limit_mb={rss_mb}").into(),
-        format!("-seed={}", o.seed).into(),
-        "-print_final_stats=1".into(),
-        format!("-artifact_prefix={}/", engine_artifacts.display()).into(),
-        corpus.as_os_str().to_owned(),
-    ];
-    let output_limit = usize::try_from(o.storage_bytes.min(16 * 1024 * 1024))
-        .map_err(|_| invalid("output quota exceeds address space"))?;
-    let process = invoke(
-        Invocation {
-            tool: exe,
-            cwd,
-            args,
-            environment: env,
-            input: Vec::new(),
-            output: output_limit,
-            timeout: Duration::from_millis(o.wall_ms),
-        },
-        cancel,
-    )?;
-    summary.cleanup = cleanup_label(&process.cleanup);
-    summary.status = classify_process(&process);
-    summary.sampled_peak_rss_bytes = process.sampled_peak_rss_bytes;
-    write_new(&cwd.join("engine.stderr"), &process.stderr.bytes)?;
-    let responses = parse_frames(&process)?;
-    let mut pending = None;
-    let mut counts = ExecutionCounts::default();
-    let mut checked = BTreeSet::new();
-    let mut failures = Vec::new();
-    let mut known_failure = false;
-    for response in responses {
-        match response {
-            WorkerResponse::Captured { canonical } => {
-                if pending.is_some() {
-                    return Err(infrastructure(
-                        "coverage capture without completing prior case",
-                    ));
-                }
-                if canonical.len() as u64 > o.input_bytes {
-                    return Err(infrastructure("coverage canonical input exceeds limit"));
-                }
-                pending = Some(canonical);
-            }
-            WorkerResponse::Evaluated {
-                outcome,
-                counts: new,
-            } => {
-                let input = pending
-                    .take()
-                    .ok_or_else(|| infrastructure("coverage result without capture"))?;
-                target.validate_outcome(&outcome)?;
-                if new.generation_rejected() != counts.generation_rejected()
-                    || new.evaluated() != counts.evaluated() + u64::from(outcome.is_evaluated())
-                {
-                    return Err(infrastructure(
-                        "coverage counters are not monotonic owner evaluations",
-                    ));
-                }
-                counts = new;
-                checked.extend(outcome.checked_properties().iter().cloned());
-                let artifact = CaseArtifact::new(
-                    target.clone(),
-                    build.clone(),
-                    config.clone(),
-                    input,
-                    outcome.clone(),
-                )?;
-                if outcome.failure_key().is_some() {
-                    let path = store.publish_failure(&artifact)?;
-                    summary.artifacts.push(path.as_str().into());
-                    failures.push(EvidenceStatus::Available { artifact: path });
-                    known_failure = true;
-                } else if outcome.is_evaluated() {
-                    store.add_corpus(&artifact)?;
-                }
-            }
-            WorkerResponse::GenerationRejected { counts: new, .. } => {
-                if pending.is_some()
-                    || new.evaluated() != counts.evaluated()
-                    || new.generation_rejected() != counts.generation_rejected() + 1
-                {
-                    return Err(infrastructure("invalid coverage rejection counters"));
-                }
-                counts = new;
-            }
-            _ => return Err(infrastructure("unexpected coverage protocol response")),
-        }
-    }
-    if let Some(input) = pending {
-        if summary.status == CampaignStatus::Sufficient {
-            return Err(infrastructure("coverage exit omitted final evaluation"));
-        }
-        let artifact = CaptureArtifact::new(
-            target.clone(),
-            build.clone(),
-            config.clone(),
-            input,
-            ProcessEvidence::from_outcome(&process)?,
-        )?;
-        let path = store.publish_capture(&artifact)?;
-        summary.artifacts.push(path.as_str().into());
-        failures.push(EvidenceStatus::Available { artifact: path });
-    }
-    if summary.status == CampaignStatus::Finding && failures.is_empty() {
-        failures.push(EvidenceStatus::Unavailable {
-            reason: EvidenceUnavailable::NoCurrentCase,
-        });
-    }
-    if known_failure && process.cleanup == CleanupStatus::Complete {
-        summary.status = CampaignStatus::Finding;
-    }
-    if summary.status == CampaignStatus::Sufficient {
-        summary.status = assessment(target.assess_generated(counts));
-    }
-    directory_usage(&corpus, o.storage_entries, o.storage_bytes)?;
-    directory_usage(&engine_artifacts, o.storage_entries, o.storage_bytes)?;
-    summary.evaluated = counts.evaluated();
-    summary.generation_rejected = counts.generation_rejected();
-    summary.detail="ASan coverage feedback in engine.stderr; fresh run over persisted entropy corpus; no in-memory checkpoint; byte ceilings stop framed stdout; RSS engine guard is coarse, OS memory unbounded".into();
-    publish_run(context, counts, checked, failures, summary)
-}
 
 fn status_for_error(error: &FuzzError) -> CampaignStatus {
     match error.kind() {
@@ -2615,7 +2435,7 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
         .push(run_directory.to_string_lossy().into_owned());
     if options.workers == 1 {
         if let Some(executable) = coverage_build {
-            coverage(
+            coverage::run(
                 &CampaignContext {
                     options,
                     target: target.descriptor(),
@@ -2662,7 +2482,8 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
             &mut summary,
         )?;
     }
-    if !cancellation.load(Ordering::Acquire)
+    if summary.status != CampaignStatus::InfrastructureFailure
+        && !cancellation.load(Ordering::Acquire)
         && clean_source(options, cancellation)?
             != *preflight.source.as_ref().expect("campaign source")
     {
@@ -2673,8 +2494,16 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
 
 fn run_config(options: &Options) -> Result<RunConfig> {
     RunConfig::new(RunConfigSpec {
-        cases: options.cases,
-        wall_millis: options.wall_ms,
+        cases: if options.continuous {
+            options.round_cases
+        } else {
+            options.cases
+        },
+        wall_millis: if options.continuous {
+            options.round_ms
+        } else {
+            options.wall_ms
+        },
         case_millis: options.case_ms,
         memory_bytes: options.memory_bytes,
         seed: Some(options.seed),
@@ -2817,7 +2646,7 @@ fn run_parallel(
                         regression_files: None,
                     };
                     let execution = if coverage_executable.is_some() {
-                        coverage(&context, &mut result)
+                        coverage::run(&context, &mut result)
                     } else {
                         check(&context, &mut result)
                     };

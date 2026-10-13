@@ -488,6 +488,11 @@ pub surgeist_fuzz::worker::WorkerResponse::GenerationRejected::counts: surgeist_
 pub surgeist_fuzz::worker::WorkerResponse::GenerationRejected::rejection: surgeist_fuzz::GenerationRejection
 pub surgeist_fuzz::worker::WorkerResponse::Reduced
 pub surgeist_fuzz::worker::WorkerResponse::Reduced::emitted: u32
+pub struct surgeist_fuzz::worker::ResponseDecoder
+impl surgeist_fuzz::worker::ResponseDecoder
+pub fn surgeist_fuzz::worker::ResponseDecoder::finish(&mut self) -> surgeist_fuzz::Result<()>
+pub fn surgeist_fuzz::worker::ResponseDecoder::new(maximum: u32) -> surgeist_fuzz::Result<Self>
+pub fn surgeist_fuzz::worker::ResponseDecoder::push(&mut self, bytes: &[u8], emit: &mut dyn core::ops::function::FnMut(surgeist_fuzz::worker::WorkerResponse) -> surgeist_fuzz::Result<()>) -> surgeist_fuzz::Result<()>
 pub struct surgeist_fuzz::worker::WorkerLimits
 impl surgeist_fuzz::worker::WorkerLimits
 pub const fn surgeist_fuzz::worker::WorkerLimits::max_candidates(self) -> u32
