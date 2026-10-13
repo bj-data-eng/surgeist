@@ -16159,3 +16159,218 @@ fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current(
         assert_eq!(default, value.encode_utf16().collect::<Vec<_>>());
     }
 }
+fn ordinary_default_button_input_observes_ordered_values(
+    raw: &'static str,
+    expected_type: crate::HtmlInputType,
+    type_units: &[u16],
+) {
+    // HTML877d Default mode returns the actual value attribute or empty.
+    // Value-before-type first uses Text sanitization, then Value→Default
+    // writes the nonempty current value back; type-before-value preserves CR/LF.
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let mut driver = super::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "ordinary Button/Reset/Submit must complete before native Default values are observed"
+        );
+        return;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let child_count = children.len();
+    let mut attributes = Vec::new();
+    let mut names = Vec::new();
+    let mut states = Vec::new();
+    let mut owners = Vec::new();
+    let mut input_child_counts = Vec::new();
+    let mut current_values = Vec::new();
+    let mut internal_values = Vec::new();
+    let mut default_values = Vec::new();
+    for input in &children[..4] {
+        let node = document.node(input).unwrap();
+        input_child_counts.push(node.children().count());
+        let HtmlNodeKind::Element(element) = node.kind() else {
+            panic!("the actual void input must remain a native element");
+        };
+        names.push((
+            element.name().local_name().code_units().to_vec(),
+            element
+                .name()
+                .namespace()
+                .uri()
+                .unwrap()
+                .code_units()
+                .to_vec(),
+        ));
+        attributes.push(
+            element
+                .attributes()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute
+                            .name()
+                            .namespace()
+                            .uri()
+                            .map(|uri| uri.code_units().to_vec()),
+                        attribute.name().local_name().code_units().to_vec(),
+                        attribute.value().code_units().to_vec(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        );
+        let owner = frozen.form_association_owner(&mut control, input).unwrap();
+        owners.push(owner.as_ref() == Some(&form));
+        drop(owner);
+        states.push(frozen.input_state(&mut control, input).unwrap());
+        let mut value = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+        frozen
+            .append_input_value(&mut control, input, &mut value)
+            .unwrap();
+        current_values.push(value.units().to_vec());
+        value.clear(&mut control).unwrap();
+        frozen
+            .append_input_internal_value(&mut control, input, &mut value)
+            .unwrap();
+        internal_values.push(value.units().to_vec());
+        value.clear(&mut control).unwrap();
+        frozen
+            .append_input_default_value(&mut control, input, &mut value)
+            .unwrap();
+        default_values.push(value.units().to_vec());
+        value.release(&mut control).unwrap();
+    }
+    let HtmlNodeKind::Text(text) = document.node(&children[4]).unwrap().kind() else {
+        panic!("Z must follow all four void inputs as an actual form child");
+    };
+    let following_text = text.code_units().to_vec();
+    let original_source = {
+        let evidence = frozen.retained_evidence().unwrap();
+        let (_, parts, _) = evidence.lexical_observations();
+        !parts.is_empty()
+            && parts
+                .iter()
+                .all(|part| part.source.source() == request.source().identity())
+    };
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "input"),
+            (3, "input"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 5);
+    assert_eq!(input_child_counts, vec![0; 4]);
+    assert_eq!(
+        names,
+        vec![
+            (
+                vec![105, 110, 112, 117, 116],
+                "http://www.w3.org/1999/xhtml"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            );
+            4
+        ]
+    );
+    let type_attribute = (None, vec![116, 121, 112, 101], type_units.to_vec());
+    let value_name = vec![118, 97, 108, 117, 101];
+    assert_eq!(
+        attributes,
+        vec![
+            vec![
+                type_attribute.clone(),
+                (None, value_name.clone(), vec![13, 10, 88])
+            ],
+            vec![(None, value_name.clone(), vec![88]), type_attribute.clone()],
+            vec![type_attribute.clone()],
+            vec![type_attribute, (None, value_name, vec![])],
+        ]
+    );
+    let expected_values = vec![vec![13, 10, 88], vec![88], vec![], vec![]];
+    assert_eq!(current_values, expected_values);
+    assert_eq!(internal_values, expected_values);
+    assert_eq!(default_values, expected_values);
+    assert_eq!(owners, vec![true; 4]);
+    assert_eq!(following_text, vec![90]);
+    assert!(original_source);
+    for state in states {
+        assert_eq!(state.flags.kind().input_type(), expected_type);
+        assert_eq!(
+            state.flags.kind().value_mode(),
+            crate::HtmlInputValueMode::Default
+        );
+        assert_eq!(
+            state.flags.kind().sanitization(),
+            crate::HtmlInputSanitization::Preserve
+        );
+        assert!(!state.flags.dirty_value());
+        assert!(!state.flags.dirty_checkedness());
+        assert!(!state.flags.checkedness());
+        assert!(!state.flags.indeterminate());
+        assert!(!state.flags.user_validity());
+        assert!(state.selected_files_empty);
+        assert_eq!(state.cursor, 0);
+    }
+}
+
+#[test]
+fn ordinary_default_button_input_button_preserves_order_and_empty_default_through_eof() {
+    ordinary_default_button_input_observes_ordered_values(
+        "<!doctype html><form id=f><input type=button value='&#13;&#10;X'><input value='&#13;&#10;X' type=button><input type=button><input type=button value=''>Z</form>",
+        crate::HtmlInputType::Button,
+        &[98, 117, 116, 116, 111, 110],
+    );
+}
+
+#[test]
+fn ordinary_default_button_input_reset_preserves_order_and_empty_default_through_eof() {
+    ordinary_default_button_input_observes_ordered_values(
+        "<!doctype html><form id=f><input type=reset value='&#13;&#10;X'><input value='&#13;&#10;X' type=reset><input type=reset><input type=reset value=''>Z</form>",
+        crate::HtmlInputType::Reset,
+        &[114, 101, 115, 101, 116],
+    );
+}
+
+#[test]
+fn ordinary_default_button_input_submit_preserves_order_and_empty_default_through_eof() {
+    ordinary_default_button_input_observes_ordered_values(
+        "<!doctype html><form id=f><input type=submit value='&#13;&#10;X'><input value='&#13;&#10;X' type=submit><input type=submit><input type=submit value=''>Z</form>",
+        crate::HtmlInputType::Submit,
+        &[115, 117, 98, 109, 105, 116],
+    );
+}
