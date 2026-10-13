@@ -12,7 +12,7 @@
 use crate::{DocumentString, HtmlInputType};
 
 /// The string-backed input states covered by these rules, including Checkbox and Radio
-/// DefaultOn content readback. Selection operations apply only to Value mode.
+/// DefaultOn content readback. Value mode alone does not imply selection support.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputStringKind {
     Hidden,
@@ -22,6 +22,8 @@ pub enum HtmlInputStringKind {
     Password,
     Checkbox,
     Radio,
+    Email,
+    Url,
 }
 
 /// An actual recognized input state whose rules are outside this family.
@@ -43,6 +45,8 @@ impl TryFrom<HtmlInputType> for HtmlInputStringKind {
             HtmlInputType::Password => Self::Password,
             HtmlInputType::Checkbox => Self::Checkbox,
             HtmlInputType::Radio => Self::Radio,
+            HtmlInputType::Email => Self::Email,
+            HtmlInputType::Url => Self::Url,
             other => return Err(HtmlInputStringUnsupportedType(other)),
         })
     }
@@ -57,6 +61,8 @@ impl HtmlInputStringKind {
             Self::Password => HtmlInputType::Password,
             Self::Checkbox => HtmlInputType::Checkbox,
             Self::Radio => HtmlInputType::Radio,
+            Self::Email => HtmlInputType::Email,
+            Self::Url => HtmlInputType::Url,
         }
     }
     pub fn value_mode(self) -> HtmlInputValueMode {
@@ -66,8 +72,19 @@ impl HtmlInputStringKind {
             _ => HtmlInputValueMode::Value,
         }
     }
+    /// Selection support is distinct from Value mode: Email is not selectable.
+    pub fn is_selectable(self) -> bool {
+        matches!(
+            self,
+            Self::Text | Self::Search | Self::Telephone | Self::Password | Self::Url
+        )
+    }
     pub fn sanitization(self) -> HtmlInputSanitization {
-        if self.value_mode() != HtmlInputValueMode::Value {
+        if self == Self::Email {
+            HtmlInputSanitization::Email
+        } else if self == Self::Url {
+            HtmlInputSanitization::StripCrLfAndTrim
+        } else if self.value_mode() != HtmlInputValueMode::Value {
             HtmlInputSanitization::Preserve
         } else {
             HtmlInputSanitization::StripCrLf
@@ -96,11 +113,171 @@ impl HtmlInputValueMode {
 pub enum HtmlInputSanitization {
     Preserve,
     StripCrLf,
+    StripCrLfAndTrim,
+    /// The complete operation requires actual multiple-attribute presence.
+    Email,
 }
 impl HtmlInputSanitization {
-    /// One constant-work UTF-16 predicate; no Unicode conversion or scan.
+    /// Unit-local filtering only. Boundary trimming and Email's mode-dependent
+    /// comma processing require HtmlInputSanitizationCursor; this predicate
+    /// alone does not perform those complete sanitizers.
     pub fn retain_unit(self, unit: u16) -> bool {
-        self == Self::Preserve || !matches!(unit, 0x0d | 0x0a)
+        matches!(self, Self::Preserve | Self::Email) || !matches!(unit, 0x0d | 0x0a)
+    }
+}
+
+/// Actual Email sanitizer mode, selected by specified multiple presence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlInputEmailMode {
+    Single,
+    Multiple,
+}
+/// A borrowed surviving source interval. Separators retain actual comma units;
+/// no output string or synthetic source position is created by the rule owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlInputRetainedRange {
+    start: usize,
+    end: usize,
+}
+impl HtmlInputRetainedRange {
+    pub fn start(self) -> usize {
+        self.start
+    }
+    pub fn end(self) -> usize {
+        self.end
+    }
+}
+enum SanitizerStep {
+    Leading,
+    Trailing,
+    Emit,
+    Commas,
+    Pending,
+    Done,
+}
+/// Complete borrowed sanitizer boundary decisions. Each advance performs at
+/// most one admitted source-unit inspection or fixed state action. Adapters
+/// apply retain_unit to non-Email-multiple intervals, copy surviving origins,
+/// and own allocation/cancellation. This cursor owns none of those capabilities.
+pub struct HtmlInputSanitizationCursor<'a> {
+    units: &'a [u16],
+    policy: HtmlInputSanitization,
+    mode: HtmlInputEmailMode,
+    start: usize,
+    end: usize,
+    step: SanitizerStep,
+    commas: crate::tokens::CommaTokenCursor<'a>,
+    pending: Option<HtmlInputRetainedRange>,
+    count: usize,
+}
+impl<'a> HtmlInputSanitizationCursor<'a> {
+    pub fn new(policy: HtmlInputSanitization, units: &'a [u16], mode: HtmlInputEmailMode) -> Self {
+        let step = match policy {
+            HtmlInputSanitization::Email if mode == HtmlInputEmailMode::Multiple => {
+                SanitizerStep::Commas
+            }
+            HtmlInputSanitization::Email | HtmlInputSanitization::StripCrLfAndTrim => {
+                SanitizerStep::Leading
+            }
+            _ => SanitizerStep::Emit,
+        };
+        Self {
+            units,
+            policy,
+            mode,
+            start: 0,
+            end: units.len(),
+            step,
+            commas: crate::tokens::CommaTokenCursor::new(units),
+            pending: None,
+            count: 0,
+        }
+    }
+    pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
+        match self.step {
+            SanitizerStep::Done => None,
+            SanitizerStep::Leading | SanitizerStep::Trailing if self.start < self.end => {
+                Some(HtmlInputRuleWork::InspectValueUnit)
+            }
+            SanitizerStep::Commas if self.commas.inspection().is_some() => {
+                Some(HtmlInputRuleWork::InspectValueUnit)
+            }
+            _ => Some(HtmlInputRuleWork::ReadField),
+        }
+    }
+    pub fn advance(&mut self) -> Option<HtmlInputRetainedRange> {
+        match self.step {
+            SanitizerStep::Leading => {
+                if self.start < self.end && crate::tokens::ascii_whitespace(self.units[self.start])
+                {
+                    self.start += 1;
+                } else {
+                    self.step = SanitizerStep::Trailing;
+                }
+            }
+            SanitizerStep::Trailing => {
+                if self.start < self.end
+                    && crate::tokens::ascii_whitespace(self.units[self.end - 1])
+                {
+                    self.end -= 1;
+                } else {
+                    self.step = SanitizerStep::Emit;
+                }
+            }
+            SanitizerStep::Emit => {
+                self.step = SanitizerStep::Done;
+                return Some(HtmlInputRetainedRange {
+                    start: self.start,
+                    end: self.end,
+                });
+            }
+            SanitizerStep::Commas => {
+                if let Some(range) = self.commas.advance() {
+                    self.count += 1;
+                    let token = HtmlInputRetainedRange {
+                        start: range.start,
+                        end: range.end,
+                    };
+                    if let Some(separator) = range.separator {
+                        self.pending = Some(token);
+                        self.step = SanitizerStep::Pending;
+                        return Some(HtmlInputRetainedRange {
+                            start: separator,
+                            end: separator + 1,
+                        });
+                    }
+                    return Some(token);
+                }
+                if self.commas.finished() {
+                    self.step = SanitizerStep::Done;
+                }
+            }
+            SanitizerStep::Pending => {
+                self.step = SanitizerStep::Commas;
+                return self.pending.take();
+            }
+            SanitizerStep::Done => {}
+        }
+        None
+    }
+    /// Final actual produced Email values count, not lenient resplitting of a
+    /// joined current string. Single/non-Email operations have no such list.
+    pub fn email_value_count(&self) -> Option<usize> {
+        if matches!(self.step, SanitizerStep::Done)
+            && self.policy == HtmlInputSanitization::Email
+            && self.mode == HtmlInputEmailMode::Multiple
+        {
+            Some(self.count)
+        } else {
+            None
+        }
+    }
+    pub fn retain_unit(&self, unit: u16) -> bool {
+        if self.policy == HtmlInputSanitization::Email && self.mode == HtmlInputEmailMode::Single {
+            !matches!(unit, 0x0d | 0x0a)
+        } else {
+            self.policy.retain_unit(unit)
+        }
     }
 }
 
@@ -351,9 +528,7 @@ impl HtmlInputTypeChange {
                 1 => return Some(HtmlInputTypeEffect::SetRendering),
                 2 => return Some(HtmlInputTypeEffect::SignalTypeChange),
                 3 => return Some(HtmlInputTypeEffect::Sanitize(self.next.sanitization())),
-                4 if self.previous.value_mode() != HtmlInputValueMode::Value
-                    && self.next.value_mode() == HtmlInputValueMode::Value =>
-                {
+                4 if !self.previous.is_selectable() && self.next.is_selectable() => {
                     return Some(HtmlInputTypeEffect::SetInitialCursorAndNoneDirection);
                 }
                 _ => {}
@@ -375,6 +550,8 @@ pub enum HtmlInputRuleWork {
     CompareAsciiUnit,
     /// One pair of actual UTF16 values.
     CompareValueUnits,
+    /// One source UTF-16 unit used by a sanitizer boundary decision.
+    InspectValueUnit,
 }
 
 enum TypeStep {
@@ -636,10 +813,7 @@ pub fn input_value_setter_finish(
     comparison: HtmlInputValueComparison,
     post_clamp: HtmlInputSelection,
 ) -> HtmlInputValueSetterFinish {
-    if kind.value_mode() == HtmlInputValueMode::Value
-        && !comparison.is_equal()
-        && post_clamp.cursor_position().is_some()
-    {
+    if kind.is_selectable() && !comparison.is_equal() && post_clamp.cursor_position().is_some() {
         HtmlInputValueSetterFinish::SetEndCursorUnselectAndNoneDirection
     } else {
         HtmlInputValueSetterFinish::NoAdditionalEffect
@@ -697,7 +871,9 @@ mod tests {
             HtmlInputRuleWork::ReadField => c.charge(WorkCategory::RecordVisit, 1),
             HtmlInputRuleWork::ReadValueLengths => c.charge(WorkCategory::RecordVisit, 2),
             HtmlInputRuleWork::CompareAsciiUnit => c.charge(WorkCategory::InspectByte, 3),
-            HtmlInputRuleWork::CompareValueUnits => c.charge(WorkCategory::InspectByte, 2),
+            HtmlInputRuleWork::CompareValueUnits | HtmlInputRuleWork::InspectValueUnit => {
+                c.charge(WorkCategory::InspectByte, 2)
+            }
         }
     }
     #[test]

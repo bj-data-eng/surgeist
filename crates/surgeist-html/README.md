@@ -882,7 +882,8 @@ limits, and reports retain its exact producer/configuration revision.
 <a id="shared-intrinsic-control-rules"></a>
 
 The [shared input rules](src/input.rs) expose fixed state and source-ordered
-requirements for Hidden, Text, Search, Telephone, Password, Checkbox and Radio.
+requirements for Hidden, Text, Search, Telephone, Password, Checkbox, Radio,
+Email and URL.
 Checkbox and Radio use DefaultOn: their native value reads the content attribute, including
 present empty, and returns `on` only when that attribute is absent. This does
 not synthesize an attribute or change the independent internal/default value.
@@ -891,6 +892,12 @@ insertion changes. The actual adapter normalizes checked peers after applying
 each qualifying trigger to the subject. Group membership requires the same
 ordinary tree and form owner, with an exact nonempty UTF-16 name. These local
 rules do not resolve tree membership or mutate peers themselves.
+`HtmlInputSanitizationCursor` borrows exact UTF-16 and reports one fixed action
+or unit inspection before each advance. URL and single Email remove CR/LF and
+trim boundary ASCII whitespace. Multiple Email trims each lenient comma token,
+preserves internal newlines and retains the produced value count. Empty input
+has zero values; a whitespace-only token has one empty value. The count cannot
+be reconstructed from the joined string. URL supports selection; Email does not.
 `HtmlInputStringFlags` retains the actual intrinsic flags; strings, selection
 and form identity remain separately owned. Type/default/checked changes,
 per-control reset and cloning keep their distinct triggers. Keyword recognition
@@ -922,7 +929,8 @@ atomic edits. Constructing flags retains supplied intrinsic slot values; it does
 not establish subject identity, mutation history or capture qualification.
 [Input tests](tests/input_rules.rs),
 [Checkbox tests](tests/input_checkbox_rules.rs),
-[Radio tests](tests/input_radio_rules.rs) and
+[Radio tests](tests/input_radio_rules.rs),
+[Email/URL tests](tests/input_email_url_rules.rs) and
 [family tests](tests/control_values.rs) cover the pure rules. Parser tests cover
 their actual controlled consumers. Other input families, tree-dependent effects,
 full textarea setters/normalization and runtime events require their respective
@@ -2167,7 +2175,8 @@ freeze; terminal cleanup performs no useful reset. General setters, nonnull
 overrides, form reset, hosted initialization and public parse completion remain
 separate work.
 
-Private input creation supports Hidden, Text, Search, Telephone, Password, Checkbox and Radio
+Private input creation supports Hidden, Text, Search, Telephone, Password,
+Checkbox, Radio, Email and URL
 through the [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
 Text loses CR and LF; changing to Hidden writes a nonempty internal value back
@@ -2180,6 +2189,14 @@ dirty checkedness and indeterminateness remain independent; reset restores
 checked-attribute presence and clears dirty flags while retaining indeterminateness.
 Checkbox cloning preserves the specified current backing and flags, without
 copying form association or applying Radio peer normalization.
+
+Email/URL creation applies the borrowed sanitizer through the same admitted
+value/origin owner. Actual no-namespace `multiple` presence selects Email's
+list mode. Final reset sanitizes the actual default, preserving the independent
+native value attribute and source ranges. Multiple Email's produced count
+survives freeze and cloning without resplitting the joined current value:
+`a, ` produces `a,` with two values, while `a,` produces `a` with one.
+These operations do not validate Email addresses or URLs or resolve a base URL.
 
 Radio construction applies the five [source-defined group triggers](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
 through the existing admitted effect owner. Peer normalization changes only

@@ -377,6 +377,16 @@ authority. Captured peers without mutable canonical state and influencing
 captured connection facts remain qualified refusals. This construction adapter
 does not supply DOM identity, live mutations, browser activation or events.
 
+The Email/URL extension is Surgeist-owned shared value interpretation in
+`src/input.rs`, using the same lenient comma-token owner as `src/tokens.rs`.
+The selected HTML URL and Email state sanitizers govern ASCII trimming,
+newline handling and actual `multiple` presence. The parser adapter charges
+the borrowed cursor and actual source/origin copies before advancing. Produced
+Email list counts remain stored through freeze and clone; they are not inferred
+by splitting the sanitized string. Original default attributes and source
+histories remain independent. No additional upstream source is ingested, and
+address/URL validation, live editing and external execution remain separate.
+
 The structural table adaptation incorporates `rules.rs` lines 1037–1411 and
 `mod.rs` lines 1236–1320 into `src/parser/tree_builder/tables.rs`, with table entry
 in the body driver. Its initial adapted SHA-256 is

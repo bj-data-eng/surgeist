@@ -664,6 +664,7 @@ impl SessionStorage {
                         cursor: 0,
                         selected_files_empty: true,
                         value_rewritten_during_creation: false,
+                        email_value_count: None,
                     },
                 },
             )?);
@@ -858,6 +859,7 @@ impl SessionStorage {
             self.replace_input_raw(c, slot, text)?;
             let mut state = self.read_input_state(c, slot)?;
             state.flags = state.flags.clone_flags_from(original.flags);
+            state.email_value_count = original.email_value_count;
             self.write_input_state(c, slot, state)?;
             if state
                 .flags

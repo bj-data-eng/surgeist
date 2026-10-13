@@ -55,6 +55,8 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
                 | HtmlInputType::Password
                 | HtmlInputType::Checkbox
                 | HtmlInputType::Radio
+                | HtmlInputType::Email
+                | HtmlInputType::Url
         ) {
             assert_eq!(
                 HtmlInputStringKind::try_from(state).unwrap().input_type(),

@@ -389,29 +389,118 @@ pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item =
         .filter(|token| !token.is_empty())
 }
 
+/// One borrowed Infra split-on-commas field. The separator is the actual
+/// preceding comma; a trailing final comma does not produce another field.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CommaTokenRange {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) separator: Option<usize>,
+}
+#[derive(Clone, Copy)]
+enum CommaStep {
+    Start,
+    Scan,
+    Leading,
+    Trailing,
+    Emit,
+    Done,
+}
+/// Allocation-free boundary owner shared with controlled Email sanitization.
+pub(crate) struct CommaTokenCursor<'a> {
+    units: &'a [u16],
+    position: usize,
+    start: usize,
+    end: usize,
+    separator: Option<usize>,
+    next_separator: Option<usize>,
+    step: CommaStep,
+}
+impl<'a> CommaTokenCursor<'a> {
+    pub(crate) fn new(units: &'a [u16]) -> Self {
+        Self {
+            units,
+            position: 0,
+            start: 0,
+            end: 0,
+            separator: None,
+            next_separator: None,
+            step: CommaStep::Start,
+        }
+    }
+    /// Some(index) is the sole source-unit inspection in the next action.
+    pub(crate) fn inspection(&self) -> Option<usize> {
+        match self.step {
+            CommaStep::Scan if self.position < self.units.len() => Some(self.position),
+            CommaStep::Leading if self.start < self.end => Some(self.start),
+            CommaStep::Trailing if self.start < self.end => Some(self.end - 1),
+            _ => None,
+        }
+    }
+    pub(crate) fn finished(&self) -> bool {
+        matches!(self.step, CommaStep::Done)
+    }
+    pub(crate) fn advance(&mut self) -> Option<CommaTokenRange> {
+        match self.step {
+            CommaStep::Start => {
+                if self.position == self.units.len() {
+                    self.step = CommaStep::Done;
+                } else {
+                    self.start = self.position;
+                    self.separator = self.next_separator;
+                    self.step = CommaStep::Scan;
+                }
+            }
+            CommaStep::Scan => {
+                if self.position < self.units.len() && self.units[self.position] != 0x2c {
+                    self.position += 1;
+                } else {
+                    self.end = self.position;
+                    self.step = CommaStep::Leading;
+                }
+            }
+            CommaStep::Leading => {
+                if self.start < self.end && ascii_whitespace(self.units[self.start]) {
+                    self.start += 1;
+                } else {
+                    self.step = CommaStep::Trailing;
+                }
+            }
+            CommaStep::Trailing => {
+                if self.start < self.end && ascii_whitespace(self.units[self.end - 1]) {
+                    self.end -= 1;
+                } else {
+                    self.step = CommaStep::Emit;
+                }
+            }
+            CommaStep::Emit => {
+                let range = CommaTokenRange {
+                    start: self.start,
+                    end: self.end,
+                    separator: self.separator,
+                };
+                if self.position < self.units.len() {
+                    self.next_separator = Some(self.position);
+                    self.position += 1;
+                }
+                self.step = CommaStep::Start;
+                return Some(range);
+            }
+            CommaStep::Done => {}
+        }
+        None
+    }
+}
 /// Infra split-on-commas, which omits a field following a final comma and
 /// produces no tokens for an empty input; this is not Infra's strict split.
 pub(crate) fn split_comma_tokens(input: &DocumentString) -> HtmlCommaSeparatedTokens {
     let mut tokens = Vec::new();
-    let units = input.code_units();
-    let mut position = 0;
-    while position < units.len() {
-        let start = position;
-        while position < units.len() && units[position] != u16::from(b',') {
-            position += 1;
-        }
-        let mut token = &units[start..position];
-        while token.first().is_some_and(|&u| ascii_whitespace(u)) {
-            token = &token[1..];
-        }
-        while token.last().is_some_and(|&u| ascii_whitespace(u)) {
-            token = &token[..token.len() - 1];
-        }
-        tokens.push(HtmlCommaToken {
-            value: DocumentString::from_utf16(token),
-        });
-        if position < units.len() {
-            position += 1;
+    let mut cursor = CommaTokenCursor::new(input.code_units());
+    while !cursor.finished() {
+        if let Some(range) = cursor.advance() {
+            tokens.push(HtmlCommaToken {
+                value: DocumentString::from_utf16(&input.code_units()[range.start..range.end]),
+            });
         }
     }
     HtmlCommaSeparatedTokens::new(tokens)

@@ -10283,11 +10283,7 @@ fn hidden_input_proofless_head_rejects_before_diagnostic_stack_or_creation() {
 }
 #[test]
 fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
-    for markup in [
-        "<input type=number>",
-        "<input type=email>",
-        "<input type=file>",
-    ] {
+    for markup in ["<input type=number>", "<input type=file>"] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{markup}")),
             limits(100),
@@ -13543,8 +13539,6 @@ fn ordinary_text_input_makes_frameset_not_ok_and_is_void_inside_reconstructed_fo
 #[test]
 fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_before_effects() {
     for kind in [
-        "url",
-        "email",
         "date",
         "month",
         "week",
@@ -16102,4 +16096,66 @@ fn radio_table_delegation_fosters_real_void_inputs_and_preserves_reset_default_o
     drop((body, html));
     frozen.release(&mut c).unwrap();
     assert_released(&c);
+}
+
+#[test]
+fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current() {
+    for (value, expected, count) in [
+        ("", "", 0),
+        (" ", "", 1),
+        ("a@b.test,", "a@b.test", 1),
+        ("a@b.test, ", "a@b.test,", 2),
+        (",,", ",", 2),
+        (", , ", ",,", 3),
+    ] {
+        let raw = format!(
+            "<!doctype html><form id=f><input multiple=false type=email value='{value}'>Z</form>"
+        );
+        let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+        let mut driver = super::entry::initialized_driver(&request);
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadStep::Complete
+        );
+        let (mut control, mut frozen) = body_document(driver);
+        let document = frozen.document().unwrap();
+        let html = document
+            .root()
+            .children()
+            .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+            .unwrap();
+        let body = document.node(&html).unwrap().children().nth(1).unwrap();
+        let form = document.node(&body).unwrap().children().next().unwrap();
+        let input = document.node(&form).unwrap().children().next().unwrap();
+        let state = frozen.input_state(&mut control, &input).unwrap();
+        let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+        let owned = owner.as_ref() == Some(&form);
+        drop(owner);
+        let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+        frozen
+            .append_input_value(&mut control, &input, &mut buffer)
+            .unwrap();
+        let current = buffer.units().to_vec();
+        buffer.clear(&mut control).unwrap();
+        frozen
+            .append_input_default_value(&mut control, &input, &mut buffer)
+            .unwrap();
+        let default = buffer.units().to_vec();
+        buffer.release(&mut control).unwrap();
+        drop(input);
+        drop(form);
+        drop(body);
+        drop(html);
+        frozen.release(&mut control).unwrap();
+        assert_released(&control);
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(control.stop(), None);
+        assert!(owned);
+        assert_eq!(state.email_value_count, Some(count), "{value:?}");
+        assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Email);
+        assert!(!state.flags.kind().is_selectable());
+        assert!(!state.flags.dirty_value());
+        assert_eq!(current, expected.encode_utf16().collect::<Vec<_>>());
+        assert_eq!(default, value.encode_utf16().collect::<Vec<_>>());
+    }
 }

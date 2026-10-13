@@ -820,10 +820,13 @@ include Checkbox/Radio DefaultOn content readback, checked/indeterminate transit
 and the source-ordered reset/type/clone requirements. Radio's five trigger
 decisions are shared rules; the private parser owns admitted peer normalization
 over actual name, ordinary tree and form-owner identity.
+Email/URL use a borrowed, stepwise sanitizer; Multiple Email retains its actual
+produced value count independently of the joined current string. These rules
+do not establish address/URL validity or live setter execution.
 [The overview](README.md#shared-intrinsic-control-rules) explains trigger order,
 bounded recognition/comparison and adapter responsibilities;
 [input tests](tests/input_rules.rs), [Checkbox tests](tests/input_checkbox_rules.rs),
-[Radio tests](tests/input_radio_rules.rs)
+[Radio tests](tests/input_radio_rules.rs), [Email/URL tests](tests/input_email_url_rules.rs)
 and [family tests](tests/control_values.rs)
 verify literal local decisions. Strings, selection, form/tree references,
 resource admission and canonical DOM mutation remain with their actual adapters.
