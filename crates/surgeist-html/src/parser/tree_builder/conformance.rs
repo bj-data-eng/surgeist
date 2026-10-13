@@ -6711,3 +6711,6 @@ mod comment_diagnostic_corpus {
         }
     }
 }
+
+#[cfg(test)]
+mod comparative_feed;
