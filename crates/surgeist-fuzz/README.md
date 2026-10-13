@@ -102,6 +102,13 @@ Diagnostic output and cleanup status remain explicit.
 `ArtifactStore` operates on a caller-owned root with entry, byte, input and
 metadata quotas. Handle-relative no-follow operations reject path escapes and
 symlinks. Evidence bundles are immutable; the commit marker is published last.
+Every published run records its terminal outcome separately from counts and
+cleanup. `report` includes these validated records, preserving cancellation,
+resource stops and insufficient evaluation even when their counts coincide.
+An interrupted reduction retains an incomplete report and its previously
+verified best input; a response cannot confirm a candidate after failed cleanup
+or abnormal process termination.
+
 Interrupted bundles are reported as partial recovery material and cannot be
 loaded as complete evidence. A duplicate is accepted only if its bytes and
 metadata match. Concurrent writers wait up to five seconds for the publication

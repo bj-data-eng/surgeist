@@ -320,6 +320,7 @@ fn persisted_run_retains_distinct_terminal_outcomes_in_roundtrip_and_report() {
         target: descriptor(),
         build: build('a'),
         config: config(),
+        outcome: RunOutcome::Insufficient,
         counts: ExecutionCounts::new(0, 1),
         checked_properties: vec![],
         exclusions: vec![],
@@ -328,13 +329,99 @@ fn persisted_run_retains_distinct_terminal_outcomes_in_roundtrip_and_report() {
     })
     .unwrap();
     let original = serde_json::to_value(record).unwrap();
-    for outcome in ["cancelled", "resource-stop", "insufficient"] {
+    for (outcome, expected) in [
+        ("cancelled", RunOutcome::Cancelled),
+        ("resource-stop", RunOutcome::ResourceStop),
+        ("insufficient", RunOutcome::Insufficient),
+    ] {
         let mut json = original.clone();
         json["outcome"] = outcome.into();
         let loaded: RunRecord = serde_json::from_value(json)
             .expect("persisted terminal observation must retain the declared outcome");
+        assert_eq!(loaded.outcome(), expected);
         assert_eq!(serde_json::to_value(&loaded).unwrap()["outcome"], outcome);
-        assert!(loaded.readable_report().contains(&format!("Outcome: {outcome}\n")));
+        assert!(
+            loaded
+                .readable_report()
+                .contains(&format!("Outcome: {outcome}\n"))
+        );
+    }
+}
+
+#[test]
+fn terminal_run_outcomes_are_mandatory_closed_and_consistent_with_counts() {
+    let mut target = serde_json::to_value(descriptor()).unwrap();
+    target["min_evaluated"] = 5.into();
+    let record = RunRecord::new(RunRecordSpec {
+        schema: 1,
+        target: serde_json::from_value(target).unwrap(),
+        build: build('a'),
+        config: config(),
+        outcome: RunOutcome::Sufficient,
+        counts: ExecutionCounts::new(1, 0),
+        checked_properties: descriptor().properties().to_vec(),
+        exclusions: vec![],
+        failures: vec![],
+        cleanup: "complete".into(),
+    })
+    .expect("explicit regression selection need not meet the generation minimum");
+    let original = serde_json::to_value(record).unwrap();
+    for (label, outcome) in [
+        ("sufficient", RunOutcome::Sufficient),
+        ("finding", RunOutcome::Finding),
+        ("invalid-request", RunOutcome::InvalidRequest),
+        ("infrastructure-failure", RunOutcome::InfrastructureFailure),
+        ("cancelled", RunOutcome::Cancelled),
+        ("resource-stop", RunOutcome::ResourceStop),
+        ("insufficient", RunOutcome::Insufficient),
+        ("empty", RunOutcome::Empty),
+    ] {
+        let mut json = original.clone();
+        json["outcome"] = label.into();
+        if outcome == RunOutcome::Empty {
+            json["counts"]["evaluated"] = 0.into();
+        }
+        let loaded: RunRecord = serde_json::from_value(json).unwrap();
+        assert_eq!(loaded.outcome(), outcome);
+        assert_eq!(serde_json::to_value(&loaded).unwrap()["outcome"], label);
+        assert!(
+            loaded
+                .readable_report()
+                .contains(&format!("Outcome: {label}\n"))
+        );
+    }
+    let mut missing = original.clone();
+    missing.as_object_mut().unwrap().remove("outcome");
+    assert!(serde_json::from_value::<RunRecord>(missing).is_err());
+    for invalid in [
+        serde_json::json!("unknown"),
+        serde_json::json!(null),
+        serde_json::json!({"kind": "sufficient", "ignored": true}),
+    ] {
+        let mut unknown = original.clone();
+        unknown["outcome"] = invalid;
+        assert!(serde_json::from_value::<RunRecord>(unknown).is_err());
+    }
+    let serialized = serde_json::to_string(&original).unwrap();
+    let duplicate = serialized.replacen(
+        "\"outcome\":\"sufficient\"",
+        "\"outcome\":\"sufficient\",\"outcome\":\"cancelled\"",
+        1,
+    );
+    assert!(serde_json::from_str::<RunRecord>(&duplicate).is_err());
+    for (outcome, evaluated, rejected) in [
+        ("sufficient", 0, 0),
+        ("sufficient", 0, 1),
+        ("empty", 1, 0),
+        ("empty", 0, 1),
+    ] {
+        let mut invalid = original.clone();
+        invalid["outcome"] = outcome.into();
+        invalid["counts"]["evaluated"] = evaluated.into();
+        invalid["counts"]["generation_rejected"] = rejected.into();
+        let spec = serde_json::from_value::<RunRecordSpec>(invalid.clone()).unwrap();
+        assert!(RunRecord::new(spec).is_err());
+        assert!(serde_json::from_value::<RunRecord>(invalid).is_err());
     }
 }
 
@@ -345,6 +432,7 @@ fn run_observation_validates_counts_and_reports_unavailable_evidence() {
         target: descriptor(),
         build: build('a'),
         config: config(),
+        outcome: RunOutcome::Finding,
         counts: ExecutionCounts::new(2, 3),
         checked_properties: descriptor().properties().to_vec(),
         exclusions: vec!["browser unavailable".into()],
@@ -733,6 +821,7 @@ fn run_publication_links_only_available_evidence_from_its_recorded_build() {
         target: descriptor(),
         build,
         config: config.clone(),
+        outcome: RunOutcome::Finding,
         counts: ExecutionCounts::new(1, 0),
         checked_properties: descriptor().properties().to_vec(),
         exclusions: vec![],

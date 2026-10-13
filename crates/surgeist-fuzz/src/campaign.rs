@@ -69,6 +69,8 @@ pub struct CampaignSummary {
     pub builds: Vec<BuildIdentity>,
     pub runs: Vec<String>,
     pub artifacts: Vec<String>,
+    /// Validated terminal records included by the report command.
+    pub recorded_runs: Vec<RunRecord>,
     pub corpora: Vec<String>,
     pub evaluated: u64,
     pub generation_rejected: u64,
@@ -87,6 +89,7 @@ impl CampaignSummary {
             builds: Vec::new(),
             runs: Vec::new(),
             artifacts: Vec::new(),
+            recorded_runs: Vec::new(),
             corpora: Vec::new(),
             evaluated: 0,
             generation_rejected: 0,
@@ -1337,6 +1340,16 @@ fn publish_run(
         build: build.clone(),
         config: config.clone(),
         counts,
+        outcome: match summary.status {
+            CampaignStatus::Sufficient => RunOutcome::Sufficient,
+            CampaignStatus::Finding => RunOutcome::Finding,
+            CampaignStatus::InvalidRequest => RunOutcome::InvalidRequest,
+            CampaignStatus::InfrastructureFailure => RunOutcome::InfrastructureFailure,
+            CampaignStatus::Cancelled => RunOutcome::Cancelled,
+            CampaignStatus::ResourceStop => RunOutcome::ResourceStop,
+            CampaignStatus::Insufficient => RunOutcome::Insufficient,
+            CampaignStatus::Empty => RunOutcome::Empty,
+        },
         checked_properties: checked.into_iter().collect(),
         exclusions: vec![
             "finite observations; no exhaustive correctness claim".into(),
@@ -2249,14 +2262,31 @@ fn reduction_evaluation(
     target: &TargetDescriptor,
     discovery_output: u64,
 ) -> Result<crate::reduction::ReductionEvaluation> {
+    use crate::reduction::{ReductionEvaluation, ReductionInterruption};
+    // Cleanup failure must stop reduction before any semantic response can
+    // confirm a candidate. Operational interruptions retain an incomplete report.
+    if call.process.cleanup != CleanupStatus::Complete {
+        require_success(&call.process, "isolated reduction cleanup")?;
+    }
+    let output_bytes = discovery_output
+        + call.process.stdout.bytes.len() as u64
+        + call.process.stderr.bytes.len() as u64;
+    let interruption = match call.process.stop {
+        ProcessStop::Cancelled => Some(ReductionInterruption::Cancelled),
+        ProcessStop::Deadline => Some(ReductionInterruption::TimeLimit),
+        ProcessStop::OutputLimit(_) => Some(ReductionInterruption::OutputLimit),
+        _ => None,
+    };
+    if let Some(reason) = interruption {
+        return ReductionEvaluation::interrupted(reason, output_bytes);
+    }
+    require_success(&call.process, "isolated reduction replay")?;
     let observation = evaluation(call, input, target)?.unwrap_or(CaseOutcome::unsupported(
         "isolated replay ended without semantic identity",
     )?);
     Ok(crate::reduction::ReductionEvaluation::new(
         observation,
-        discovery_output
-            + call.process.stdout.bytes.len() as u64
-            + call.process.stderr.bytes.len() as u64,
+        output_bytes,
     ))
 }
 
@@ -2424,6 +2454,11 @@ fn run_options(options: &Options, cancellation: &AtomicBool) -> Result<CampaignS
             .iter()
             .map(|p| p.as_str().to_owned())
             .collect();
+        for path in &recovery.published {
+            if path.as_str().starts_with("runs/") {
+                summary.recorded_runs.push(artifact_store.load_run(path)?);
+            }
+        }
         summary.detail = format!(
             "published={}, partial={}, bytes={}",
             recovery.published.len(),
@@ -2861,25 +2896,47 @@ mod tests {
     use super::*;
 
     fn keyed_reduction_call() -> (WorkerCall, TargetDescriptor) {
-        let mut manifest: crate::registry::FuzzManifest = toml::from_str(include_str!(
-            "../tests/fixtures/subject/fuzz/fuzz.toml"
-        )).unwrap();
+        let mut manifest: crate::registry::FuzzManifest =
+            toml::from_str(include_str!("../tests/fixtures/subject/fuzz/fuzz.toml")).unwrap();
         let target = manifest.targets.remove(0);
         let outcome = CaseOutcome::failure(
-            crate::FailureKey::new(target.properties()[0].clone(), crate::FailureClass::PropertyViolation, None).unwrap(),
+            crate::FailureKey::new(
+                target.properties()[0].clone(),
+                crate::FailureClass::PropertyViolation,
+                None,
+            )
+            .unwrap(),
             "controlled keyed response",
-        ).unwrap();
+        )
+        .unwrap();
         let call = WorkerCall {
             responses: vec![
-                WorkerResponse::Captured { canonical: b"BUG!".to_vec() },
-                WorkerResponse::Evaluated { outcome, counts: ExecutionCounts::new(1, 0) },
+                WorkerResponse::Captured {
+                    canonical: b"BUG!".to_vec(),
+                },
+                WorkerResponse::Evaluated {
+                    outcome,
+                    counts: ExecutionCounts::new(1, 0),
+                },
             ],
             process: ProcessOutcome {
-                stop: ProcessStop::Exited, exit: ProcessExit::Success,
-                stdout: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
-                stderr: execution::CapturedOutput { bytes: Vec::new(), truncated: false, eof: true },
-                input_bytes_written: 0, duration: Duration::ZERO,
-                cleanup: CleanupStatus::Complete, process_group: 1, sampled_peak_rss_bytes: None,
+                stop: ProcessStop::Exited,
+                exit: ProcessExit::Success,
+                stdout: execution::CapturedOutput {
+                    bytes: Vec::new(),
+                    truncated: false,
+                    eof: true,
+                },
+                stderr: execution::CapturedOutput {
+                    bytes: Vec::new(),
+                    truncated: false,
+                    eof: true,
+                },
+                input_bytes_written: 0,
+                duration: Duration::ZERO,
+                cleanup: CleanupStatus::Complete,
+                process_group: 1,
+                sampled_peak_rss_bytes: None,
             },
         };
         (call, target)
@@ -2888,9 +2945,17 @@ mod tests {
     #[test]
     fn keyed_response_cannot_confirm_after_failed_cleanup_or_abnormal_exit() {
         let (mut call, target) = keyed_reduction_call();
-        assert!(reduction_evaluation(&call, b"BUG!", &target, 0).unwrap().outcome.failure_key().is_some());
+        assert!(
+            reduction_evaluation(&call, b"BUG!", &target, 0)
+                .unwrap()
+                .outcome
+                .failure_key()
+                .is_some()
+        );
         call.process.cleanup = CleanupStatus::Failed {
-            child_reaped: true, group_gone: false, errors: vec!["unobserved group disappearance".into()],
+            child_reaped: true,
+            group_gone: false,
+            errors: vec!["unobserved group disappearance".into()],
         };
         assert!(reduction_evaluation(&call, b"BUG!", &target, 0).is_err());
         call.process.cleanup = CleanupStatus::Complete;
@@ -2901,8 +2966,11 @@ mod tests {
     #[test]
     fn keyed_response_cannot_confirm_after_an_operational_stop() {
         let (mut call, target) = keyed_reduction_call();
-        for stop in [ProcessStop::Cancelled, ProcessStop::Deadline,
-            ProcessStop::OutputLimit(execution::OutputStream::Stdout)] {
+        for stop in [
+            ProcessStop::Cancelled,
+            ProcessStop::Deadline,
+            ProcessStop::OutputLimit(execution::OutputStream::Stdout),
+        ] {
             call.process.stop = stop;
             let replay = reduction_evaluation(&call, b"BUG!", &target, 0).unwrap();
             assert!(replay.outcome.failure_key().is_none());

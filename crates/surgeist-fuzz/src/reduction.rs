@@ -77,6 +77,23 @@ pub struct ReplayBudget {
 pub struct ReductionEvaluation {
     pub outcome: CaseOutcome,
     pub output_bytes: u64,
+    interruption: Option<ReductionInterruption>,
+}
+/// Operational stops cannot confirm a semantic failure, even after a response.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReductionInterruption {
+    Cancelled,
+    TimeLimit,
+    OutputLimit,
+}
+impl ReductionInterruption {
+    const fn status(self) -> ReductionStatus {
+        match self {
+            Self::Cancelled => ReductionStatus::Cancelled,
+            Self::TimeLimit => ReductionStatus::TimeLimit,
+            Self::OutputLimit => ReductionStatus::OutputLimit,
+        }
+    }
 }
 impl ReductionEvaluation {
     #[must_use]
@@ -84,7 +101,19 @@ impl ReductionEvaluation {
         Self {
             outcome,
             output_bytes,
+            interruption: None,
         }
+    }
+    pub fn interrupted(reason: ReductionInterruption, output_bytes: u64) -> Result<Self> {
+        Ok(Self {
+            outcome: CaseOutcome::unsupported(format!("isolated replay interrupted: {reason:?}"))?,
+            output_bytes,
+            interruption: Some(reason),
+        })
+    }
+    #[must_use]
+    pub const fn interruption(&self) -> Option<ReductionInterruption> {
+        self.interruption
     }
 }
 
@@ -279,6 +308,10 @@ impl<T: CaseTarget, E: FnMut(&[u8], ReplayBudget) -> Result<ReductionEvaluation>
                 outcome: replay.outcome,
                 output_bytes: replay.output_bytes,
             });
+            if let Some(reason) = replay.interruption {
+                self.report.status = reason.status();
+                return Ok(Confirmation::Stopped);
+            }
             // Keep even a rejected over-limit observation in the evidence chain.
             if replay.output_bytes > budget.output_bytes {
                 self.report.status = ReductionStatus::OutputLimit;

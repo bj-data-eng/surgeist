@@ -450,6 +450,34 @@ fn failure_reference(reference: &RelativePath) -> bool {
         })
 }
 
+/// Explicit terminal observation, independent of execution counts and cleanup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RunOutcome {
+    Sufficient,
+    Finding,
+    InvalidRequest,
+    InfrastructureFailure,
+    Cancelled,
+    ResourceStop,
+    Insufficient,
+    Empty,
+}
+impl RunOutcome {
+    const fn report_label(self) -> &'static str {
+        match self {
+            Self::Sufficient => "sufficient",
+            Self::Finding => "finding",
+            Self::InvalidRequest => "invalid-request",
+            Self::InfrastructureFailure => "infrastructure-failure",
+            Self::Cancelled => "cancelled",
+            Self::ResourceStop => "resource-stop",
+            Self::Insufficient => "insufficient",
+            Self::Empty => "empty",
+        }
+    }
+}
+
 /// Terminal run observation. Counts describe actual execution, not conformance.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "RunRecordSpec")]
@@ -458,6 +486,7 @@ pub struct RunRecord {
     target: TargetDescriptor,
     build: BuildIdentity,
     config: RunConfig,
+    outcome: RunOutcome,
     counts: ExecutionCounts,
     checked_properties: Vec<PropertyId>,
     exclusions: Vec<String>,
@@ -471,6 +500,7 @@ pub struct RunRecordSpec {
     pub target: TargetDescriptor,
     pub build: BuildIdentity,
     pub config: RunConfig,
+    pub outcome: RunOutcome,
     pub counts: ExecutionCounts,
     pub checked_properties: Vec<PropertyId>,
     pub exclusions: Vec<String>,
@@ -486,6 +516,9 @@ impl TryFrom<RunRecordSpec> for RunRecord {
 impl RunRecord {
     pub fn new(s: RunRecordSpec) -> Result<Self> {
         if s.schema != SCHEMA
+            || (s.outcome == RunOutcome::Sufficient && s.counts.evaluated() == 0)
+            || (s.outcome == RunOutcome::Empty
+                && (s.counts.evaluated() != 0 || s.counts.generation_rejected() != 0))
             || !text(&s.cleanup)
             || !unique(&s.checked_properties)
             || s.checked_properties
@@ -517,6 +550,7 @@ impl RunRecord {
             target: s.target,
             build: s.build,
             config: s.config,
+            outcome: s.outcome,
             counts: s.counts,
             checked_properties: s.checked_properties,
             exclusions: s.exclusions,
@@ -529,6 +563,10 @@ impl RunRecord {
         self.counts
     }
     #[must_use]
+    pub const fn outcome(&self) -> RunOutcome {
+        self.outcome
+    }
+    #[must_use]
     pub fn readable_report(&self) -> String {
         let properties = self
             .checked_properties
@@ -537,9 +575,10 @@ impl RunRecord {
             .collect::<Vec<_>>()
             .join(", ");
         format!(
-            "Target: {}\nSource: {}\nChecked properties: {}\nExecuted: {}\nGeneration rejected: {}\nExclusions: {}\nFailure evidence: {:?}\nCleanup: {}\nFinite observations only; no exhaustive correctness claim.\n",
+            "Target: {}\nSource: {}\nOutcome: {}\nChecked properties: {}\nExecuted: {}\nGeneration rejected: {}\nExclusions: {}\nFailure evidence: {:?}\nCleanup: {}\nFinite observations only; no exhaustive correctness claim.\n",
             self.target.id(),
             self.build.source,
+            self.outcome.report_label(),
             properties,
             self.counts.evaluated(),
             self.counts.generation_rejected(),

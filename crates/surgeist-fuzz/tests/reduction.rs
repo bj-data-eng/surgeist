@@ -523,3 +523,56 @@ fn owner_structural_reduction_keeps_unique_ids_and_valid_references() {
     assert_eq!(report.chain().len(), 2);
     assert!(report.original_confirmed() && report.final_confirmed());
 }
+
+#[test]
+fn operational_interruptions_preserve_the_verified_best_without_final_confirmation() {
+    use surgeist_fuzz::reduction::ReductionInterruption;
+    for (reason, status) in [
+        (ReductionInterruption::Cancelled, ReductionStatus::Cancelled),
+        (ReductionInterruption::TimeLimit, ReductionStatus::TimeLimit),
+        (
+            ReductionInterruption::OutputLimit,
+            ReductionStatus::OutputLimit,
+        ),
+    ] {
+        let target = target(InputEncoding::Structured);
+        let mut best_calls = 0;
+        let report = reduce_with(
+            &target,
+            b"BUG!noise",
+            &key("selected"),
+            limits(),
+            &AtomicBool::new(false),
+            |input, _| {
+                if input == b"BUG!" {
+                    best_calls += 1;
+                    if best_calls == 3 {
+                        return ReductionEvaluation::interrupted(reason, 7);
+                    }
+                }
+                Ok(ReductionEvaluation::new(
+                    target.evaluate(&input.to_vec())?,
+                    3,
+                ))
+            },
+        )
+        .unwrap();
+        assert_eq!(report.status(), status);
+        assert_eq!(report.original_input(), b"BUG!noise");
+        assert_eq!(report.best_input(), b"BUG!");
+        assert!(report.original_confirmed());
+        assert!(!report.final_confirmed());
+        assert_eq!(report.chain().len(), 1);
+        assert_eq!(report.replay_count() as usize, report.observations().len());
+        assert_eq!(report.output_bytes(), (report.replay_count() - 1) * 3 + 7);
+        assert!(
+            report
+                .observations()
+                .last()
+                .unwrap()
+                .outcome
+                .failure_key()
+                .is_none()
+        );
+    }
+}

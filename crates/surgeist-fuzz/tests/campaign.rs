@@ -248,6 +248,16 @@ fn isolated_campaigns_capture_replay_reduce_and_compare_two_source_builds() {
     assert_eq!(finding.status, CampaignStatus::Finding);
     assert!(!finding.artifacts.is_empty());
     assert_eq!(finding.cleanup, "complete");
+    let report = snapshot.invoke(snapshot.args("report", "surgeist-fixture::bytes"));
+    assert_eq!(report.recorded_runs.len(), 1);
+    assert_eq!(
+        report.recorded_runs[0].outcome(),
+        surgeist_fuzz::RunOutcome::Finding
+    );
+    assert_eq!(
+        report.recorded_runs[0].counts().evaluated(),
+        finding.evaluated
+    );
     let original = finding
         .artifacts
         .iter()
