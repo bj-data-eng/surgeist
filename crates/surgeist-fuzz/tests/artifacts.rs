@@ -1139,3 +1139,23 @@ fn publication_waits_for_another_writer_then_preserves_both_cases() {
         assert!(store.recovery_report().unwrap().partial.is_empty());
     });
 }
+
+#[test]
+fn smaller_store_quotas_report_resource_limits_and_preserve_evidence() {
+    let directory = Directory::new();
+    let store = ArtifactStore::open(directory.path(), limits()).unwrap();
+    let first = store.publish_failure(&artifact(b"original")).unwrap();
+    store.publish_failure(&artifact(b"another")).unwrap();
+    for limit in [
+        StorageLimits::new(1, 1024 * 1024, 1024, 8192).unwrap(),
+        StorageLimits::new(100, 64, 32, 64).unwrap(),
+    ] {
+        let error = match ArtifactStore::open(directory.path(), limit) {
+            Ok(_) => panic!("smaller quota admitted existing evidence"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), FuzzErrorKind::Resource, "{error}");
+    }
+    assert_eq!(store.load_failure(&first).unwrap().input(), b"original");
+    assert_eq!(store.recovery_report().unwrap().published.len(), 2);
+}
