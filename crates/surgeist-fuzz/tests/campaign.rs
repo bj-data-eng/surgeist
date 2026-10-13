@@ -672,3 +672,28 @@ fn regression_selection_parallel_counts_and_preflight_limits_are_observable() {
         surgeist_fuzz::FuzzErrorKind::Resource
     );
 }
+
+#[test]
+#[ignore = "resolves an isolated owner configuration before admitting campaign output"]
+fn coverage_requires_a_resolved_engine_before_campaign_writes() {
+    let snapshot = Snapshot::new();
+    let mut args = snapshot.args("run", "surgeist-fixture::bytes");
+    let index = args.iter().position(|arg| arg == "--case-ms").unwrap();
+    args[index + 1] = "1000".into();
+    args.extend([
+        "--toolchain".into(),
+        "nightly-2026-09-01".into(),
+        "--coverage-feature".into(),
+        "property".into(),
+    ]);
+    let result = run_cli(&args, &AtomicBool::new(false));
+    assert!(
+        !snapshot.work.exists(),
+        "unsupported engine selection must fail before campaign writes"
+    );
+    let error = result.expect_err("property-only owner has no coverage engine");
+    assert_eq!(
+        error.kind(),
+        surgeist_fuzz::FuzzErrorKind::MissingCapability
+    );
+}
