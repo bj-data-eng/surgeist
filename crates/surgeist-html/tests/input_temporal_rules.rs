@@ -1,9 +1,9 @@
 use surgeist_html::{
-    DocumentString, HtmlInputEmailMode, HtmlInputSanitizationCursor, HtmlInputStringFlags,
-    HtmlInputStringKind, HtmlInputTemporalFormat, HtmlInputType, HtmlInputValueMode,
+    DocumentString, HtmlInputEmailMode, HtmlInputFlags, HtmlInputKind, HtmlInputSanitizationCursor,
+    HtmlInputTemporalFormat, HtmlInputType, HtmlInputValueMode,
 };
 
-fn sanitized(kind: HtmlInputStringKind, input: &[u16]) -> Vec<u16> {
+fn sanitized(kind: HtmlInputKind, input: &[u16]) -> Vec<u16> {
     let mut cursor =
         HtmlInputSanitizationCursor::new(kind.sanitization(), input, HtmlInputEmailMode::Single);
     let mut output = Vec::new();
@@ -37,31 +37,31 @@ fn temporal_states_are_value_mode_and_independently_nonselectable() {
     for (state, kind, format) in [
         (
             HtmlInputType::Date,
-            HtmlInputStringKind::Date,
+            HtmlInputKind::Date,
             HtmlInputTemporalFormat::Date,
         ),
         (
             HtmlInputType::Month,
-            HtmlInputStringKind::Month,
+            HtmlInputKind::Month,
             HtmlInputTemporalFormat::Month,
         ),
         (
             HtmlInputType::Week,
-            HtmlInputStringKind::Week,
+            HtmlInputKind::Week,
             HtmlInputTemporalFormat::Week,
         ),
         (
             HtmlInputType::Time,
-            HtmlInputStringKind::Time,
+            HtmlInputKind::Time,
             HtmlInputTemporalFormat::Time,
         ),
         (
             HtmlInputType::LocalDateTime,
-            HtmlInputStringKind::LocalDateTime,
+            HtmlInputKind::LocalDateTime,
             HtmlInputTemporalFormat::LocalDateTime,
         ),
     ] {
-        assert_eq!(HtmlInputStringKind::try_from(state).unwrap(), kind);
+        assert_eq!(HtmlInputKind::try_from(state).unwrap(), kind);
         assert_eq!(kind.input_type(), state);
         assert_eq!(kind.value_mode(), HtmlInputValueMode::Value);
         assert!(!kind.is_selectable());
@@ -69,7 +69,7 @@ fn temporal_states_are_value_mode_and_independently_nonselectable() {
             kind.sanitization(),
             surgeist_html::HtmlInputSanitization::Temporal(format)
         );
-        let flags = HtmlInputStringFlags::fresh().type_changed(kind);
+        let flags = HtmlInputFlags::fresh().type_changed(kind);
         assert_eq!(flags.kind(), kind);
         assert!(!flags.dirty_value());
     }
@@ -95,7 +95,7 @@ fn strict_date_uses_exact_gregorian_year_and_preserves_original_digits() {
     ] {
         assert_eq!(
             sanitized(
-                HtmlInputStringKind::Date,
+                HtmlInputKind::Date,
                 DocumentString::from(input).code_units()
             ),
             expected.encode_utf16().collect::<Vec<_>>(),
@@ -107,14 +107,14 @@ fn strict_date_uses_exact_gregorian_year_and_preserves_original_digits() {
 #[test]
 fn month_and_week_use_strict_component_and_year_specific_bounds() {
     for (kind, input, expected) in [
-        (HtmlInputStringKind::Month, "2024-12", "2024-12"),
-        (HtmlInputStringKind::Month, "2024-13", ""),
-        (HtmlInputStringKind::Month, "2024-1", ""),
-        (HtmlInputStringKind::Week, "2020-W53", "2020-W53"),
-        (HtmlInputStringKind::Week, "2021-W53", ""),
-        (HtmlInputStringKind::Week, "2020-w53", ""),
-        (HtmlInputStringKind::Week, "2020-W00", ""),
-        (HtmlInputStringKind::Week, "002020-W53", "002020-W53"),
+        (HtmlInputKind::Month, "2024-12", "2024-12"),
+        (HtmlInputKind::Month, "2024-13", ""),
+        (HtmlInputKind::Month, "2024-1", ""),
+        (HtmlInputKind::Week, "2020-W53", "2020-W53"),
+        (HtmlInputKind::Week, "2021-W53", ""),
+        (HtmlInputKind::Week, "2020-w53", ""),
+        (HtmlInputKind::Week, "2020-W00", ""),
+        (HtmlInputKind::Week, "002020-W53", "002020-W53"),
     ] {
         assert_eq!(
             sanitized(kind, DocumentString::from(input).code_units()),
@@ -140,7 +140,7 @@ fn strict_time_preserves_optional_zero_seconds_but_rejects_recovery_only_precisi
     ] {
         assert_eq!(
             sanitized(
-                HtmlInputStringKind::Time,
+                HtmlInputKind::Time,
                 DocumentString::from(input).code_units()
             ),
             expected.encode_utf16().collect::<Vec<_>>(),
@@ -163,7 +163,7 @@ fn local_datetime_uses_shortest_time_with_exact_date_spelling_and_t_separator() 
     ] {
         assert_eq!(
             sanitized(
-                HtmlInputStringKind::LocalDateTime,
+                HtmlInputKind::LocalDateTime,
                 DocumentString::from(input).code_units()
             ),
             expected.encode_utf16().collect::<Vec<_>>(),
@@ -175,11 +175,11 @@ fn local_datetime_uses_shortest_time_with_exact_date_spelling_and_t_separator() 
 #[test]
 fn temporal_empty_null_and_isolated_surrogates_are_not_trimmed_or_repaired() {
     for kind in [
-        HtmlInputStringKind::Date,
-        HtmlInputStringKind::Month,
-        HtmlInputStringKind::Week,
-        HtmlInputStringKind::Time,
-        HtmlInputStringKind::LocalDateTime,
+        HtmlInputKind::Date,
+        HtmlInputKind::Month,
+        HtmlInputKind::Week,
+        HtmlInputKind::Time,
+        HtmlInputKind::LocalDateTime,
     ] {
         for input in [&[][..], &[0][..], &[0xd800][..], &[0xdc00][..], &[0x20][..]] {
             assert!(sanitized(kind, input).is_empty());

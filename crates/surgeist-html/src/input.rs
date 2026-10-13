@@ -11,11 +11,13 @@
 
 use crate::{DocumentString, HtmlInputType};
 
-/// The string-backed input states covered by these rules, including button
-/// Default and Checkbox/Radio DefaultOn content readback. Value mode alone
+/// The input states covered by these intrinsic rules, including Filename and
+/// Default/DefaultOn native content readback. Value mode alone
 /// does not imply selection support or an activation/rendering capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlInputStringKind {
+pub enum HtmlInputKind {
+    File,
+    Image,
     Hidden,
     Text,
     Search,
@@ -38,16 +40,18 @@ pub enum HtmlInputStringKind {
 
 /// An actual recognized input state whose rules are outside this family.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlInputStringUnsupportedType(HtmlInputType);
-impl HtmlInputStringUnsupportedType {
+pub struct HtmlInputUnsupportedType(HtmlInputType);
+impl HtmlInputUnsupportedType {
     pub fn input_type(self) -> HtmlInputType {
         self.0
     }
 }
-impl TryFrom<HtmlInputType> for HtmlInputStringKind {
-    type Error = HtmlInputStringUnsupportedType;
+impl TryFrom<HtmlInputType> for HtmlInputKind {
+    type Error = HtmlInputUnsupportedType;
     fn try_from(value: HtmlInputType) -> Result<Self, Self::Error> {
         Ok(match value {
+            HtmlInputType::File => Self::File,
+            HtmlInputType::Image => Self::Image,
             HtmlInputType::Hidden => Self::Hidden,
             HtmlInputType::Text => Self::Text,
             HtmlInputType::Search => Self::Search,
@@ -67,13 +71,15 @@ impl TryFrom<HtmlInputType> for HtmlInputStringKind {
             HtmlInputType::LocalDateTime => Self::LocalDateTime,
             HtmlInputType::Number => Self::Number,
 
-            other => return Err(HtmlInputStringUnsupportedType(other)),
+            other => return Err(HtmlInputUnsupportedType(other)),
         })
     }
 }
-impl HtmlInputStringKind {
+impl HtmlInputKind {
     pub fn input_type(self) -> HtmlInputType {
         match self {
+            Self::File => HtmlInputType::File,
+            Self::Image => HtmlInputType::Image,
             Self::Hidden => HtmlInputType::Hidden,
             Self::Text => HtmlInputType::Text,
             Self::Search => HtmlInputType::Search,
@@ -96,7 +102,10 @@ impl HtmlInputStringKind {
     }
     pub fn value_mode(self) -> HtmlInputValueMode {
         match self {
-            Self::Hidden | Self::Submit | Self::Reset | Self::Button => HtmlInputValueMode::Default,
+            Self::Hidden | Self::Submit | Self::Reset | Self::Button | Self::Image => {
+                HtmlInputValueMode::Default
+            }
+            Self::File => HtmlInputValueMode::Filename,
             Self::Checkbox | Self::Radio => HtmlInputValueMode::DefaultOn,
             _ => HtmlInputValueMode::Value,
         }
@@ -140,17 +149,59 @@ pub enum HtmlInputValueMode {
     Value,
     Default,
     DefaultOn,
+    Filename,
 }
 impl HtmlInputValueMode {
-    /// None selects current internal value; Some selects the actual content
-    /// value when present, otherwise this borrowed fallback. Present empty wins.
-    /// This rule allocates nothing and does not qualify actual stored attributes.
-    pub fn content_fallback(self) -> Option<&'static [u16]> {
+    /// Selects the native getter's actual storage; specified empty content wins.
+    /// Filename requires an established selected-resource fact. This borrowed
+    /// rule owns no resource acquisition or identity qualification.
+    pub fn readback<'a>(
+        self,
+        internal: &'a [u16],
+        content: Option<&'a [u16]>,
+        files: Option<HtmlInputFileSelection>,
+    ) -> Option<&'a [u16]> {
         match self {
-            Self::Value => None,
-            Self::Default => Some(&[]),
-            Self::DefaultOn => Some(&[0x6f, 0x6e]),
+            Self::Value => Some(internal),
+            Self::Default => Some(content.unwrap_or(&[])),
+            Self::DefaultOn => Some(content.unwrap_or(&[0x6f, 0x6e])),
+            Self::Filename => files.map(|HtmlInputFileSelection::Empty| &[] as &[u16]),
         }
+    }
+}
+/// An established empty selection, distinct from value content or a synthetic path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlInputFileSelection {
+    Empty,
+}
+/// Filename setter refusal for a nonempty proposed value. No files are created.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlInputFilenameInvalidState;
+pub fn input_filename_setter(
+    value: &[u16],
+) -> Result<HtmlInputFileSelection, HtmlInputFilenameInvalidState> {
+    if value.is_empty() {
+        Ok(HtmlInputFileSelection::Empty)
+    } else {
+        Err(HtmlInputFilenameInvalidState)
+    }
+}
+/// Source-selected coordinate for fresh immutable Image construction only.
+/// Activation and arbitrary host coordinates are outside this constructor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlInputImageCoordinate {
+    x: u32,
+    y: u32,
+}
+impl HtmlInputImageCoordinate {
+    pub(crate) fn initial() -> Self {
+        Self { x: 0, y: 0 }
+    }
+    pub fn x(self) -> u32 {
+        self.x
+    }
+    pub fn y(self) -> u32 {
+        self.y
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -426,23 +477,23 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
 /// Canonical semantic flags, shared by actual parser and future DOM storage.
 /// Strings, selection, form identity and resource availability are separate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlInputStringFlags {
-    kind: HtmlInputStringKind,
+pub struct HtmlInputFlags {
+    kind: HtmlInputKind,
     dirty_value: bool,
     dirty_checkedness: bool,
     checkedness: bool,
     indeterminate: bool,
     user_validity: bool,
 }
-impl HtmlInputStringFlags {
+impl HtmlInputFlags {
     /// Blank creation starts in missing-type Text before ordered attributes.
     pub fn fresh() -> Self {
-        Self::from_retained(HtmlInputStringKind::Text, false, false, false, false, false)
+        Self::from_retained(HtmlInputKind::Text, false, false, false, false, false)
     }
     /// Preserve actual retained facts without rerunning creation/reset.
     /// This does not qualify a source, identity, or availability of other fields.
     pub fn from_retained(
-        kind: HtmlInputStringKind,
+        kind: HtmlInputKind,
         dirty_value: bool,
         dirty_checkedness: bool,
         checkedness: bool,
@@ -458,7 +509,7 @@ impl HtmlInputStringFlags {
             user_validity,
         }
     }
-    pub fn kind(self) -> HtmlInputStringKind {
+    pub fn kind(self) -> HtmlInputKind {
         self.kind
     }
     pub fn dirty_value(self) -> bool {
@@ -511,9 +562,7 @@ impl HtmlInputStringFlags {
             | HtmlRadioTrigger::Name
             | HtmlRadioTrigger::FormOwner
             | HtmlRadioTrigger::Type
-            | HtmlRadioTrigger::Connected => {
-                self.kind == HtmlInputStringKind::Radio && self.checkedness
-            }
+            | HtmlRadioTrigger::Connected => self.kind == HtmlInputKind::Radio && self.checkedness,
         }
     }
     /// Source peer normalization changes only checkedness, never dirty state,
@@ -540,7 +589,7 @@ impl HtmlInputStringFlags {
     }
     /// Actual state transition only. Attribute spelling changes within one state
     /// do not invoke HTML's type-change algorithm.
-    pub fn type_changed(mut self, next: HtmlInputStringKind) -> Self {
+    pub fn type_changed(mut self, next: HtmlInputKind) -> Self {
         self.kind = next;
         self
     }
@@ -555,7 +604,9 @@ impl HtmlInputStringFlags {
     /// Default and DefaultOn require the content-attribute path instead.
     /// This is a requirement for an adapter, not event execution.
     pub fn value_setter_begin(self) -> HtmlInputValueSetterStart {
-        if self.kind.value_mode() != HtmlInputValueMode::Value {
+        if self.kind.value_mode() == HtmlInputValueMode::Filename {
+            HtmlInputValueSetterStart::SetFilename
+        } else if self.kind.value_mode() != HtmlInputValueMode::Value {
             HtmlInputValueSetterStart::SetContentValue
         } else {
             let mut next = self;
@@ -584,25 +635,27 @@ pub enum HtmlInputCheckedAttributeChange {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputValueSetterStart {
+    /// Apply input_filename_setter to the proposed value before clearing files.
+    SetFilename,
     SetContentValue,
-    SetCurrentValue(HtmlInputStringFlags),
+    SetCurrentValue(HtmlInputFlags),
 }
 
 /// Source reset order. This is per-control reset, not a form reset event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputResetEffect {
-    ClearDirtyAndUserValidity(HtmlInputStringFlags),
+    ClearDirtyAndUserValidity(HtmlInputFlags),
     ReplaceCurrentFromDefault,
     SetCheckedFromPresence,
     EmptySelectedFiles,
     Sanitize(HtmlInputSanitization),
 }
 pub struct HtmlInputReset {
-    initial: HtmlInputStringFlags,
+    initial: HtmlInputFlags,
     stage: u8,
 }
 impl HtmlInputReset {
-    pub fn new(initial: HtmlInputStringFlags) -> Self {
+    pub fn new(initial: HtmlInputFlags) -> Self {
         Self { initial, stage: 0 }
     }
     /// Apply each action to updated actual storage before the next action.
@@ -626,6 +679,7 @@ impl HtmlInputReset {
 pub enum HtmlInputTypeEffect {
     SetContentValueFromCurrent,
     SetCurrentFromDefaultAndClearDirty,
+    SetCurrentEmptyForFilename,
     SetRendering,
     SignalTypeChange,
     Sanitize(HtmlInputSanitization),
@@ -633,17 +687,13 @@ pub enum HtmlInputTypeEffect {
 }
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlInputTypeChange {
-    previous: HtmlInputStringKind,
-    next: HtmlInputStringKind,
+    previous: HtmlInputKind,
+    next: HtmlInputKind,
     nonempty: bool,
     stage: u8,
 }
 impl HtmlInputTypeChange {
-    pub fn new(
-        previous: HtmlInputStringKind,
-        next: HtmlInputStringKind,
-        current_value_len: usize,
-    ) -> Self {
+    pub fn new(previous: HtmlInputKind, next: HtmlInputKind, current_value_len: usize) -> Self {
         Self {
             previous,
             next,
@@ -657,7 +707,10 @@ impl HtmlInputTypeChange {
             self.stage += 1;
             match stage {
                 0 if self.previous.value_mode() == HtmlInputValueMode::Value
-                    && self.next.value_mode() != HtmlInputValueMode::Value
+                    && matches!(
+                        self.next.value_mode(),
+                        HtmlInputValueMode::Default | HtmlInputValueMode::DefaultOn
+                    )
                     && self.nonempty =>
                 {
                     return Some(HtmlInputTypeEffect::SetContentValueFromCurrent);
@@ -666,6 +719,11 @@ impl HtmlInputTypeChange {
                     && self.next.value_mode() == HtmlInputValueMode::Value =>
                 {
                     return Some(HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty);
+                }
+                0 if self.previous.value_mode() != HtmlInputValueMode::Filename
+                    && self.next.value_mode() == HtmlInputValueMode::Filename =>
+                {
+                    return Some(HtmlInputTypeEffect::SetCurrentEmptyForFilename);
                 }
                 1 => return Some(HtmlInputTypeEffect::SetRendering),
                 2 => return Some(HtmlInputTypeEffect::SignalTypeChange),
@@ -951,7 +1009,7 @@ pub enum HtmlInputValueSetterFinish {
     SetEndCursorUnselectAndNoneDirection,
 }
 pub fn input_value_setter_finish(
-    kind: HtmlInputStringKind,
+    kind: HtmlInputKind,
     comparison: HtmlInputValueComparison,
     post_clamp: HtmlInputSelection,
 ) -> HtmlInputValueSetterFinish {

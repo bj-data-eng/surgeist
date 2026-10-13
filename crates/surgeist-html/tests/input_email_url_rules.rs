@@ -1,6 +1,6 @@
 use surgeist_html::{
-    HtmlInputEmailMode, HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
-    HtmlInputStringKind, HtmlInputType, HtmlInputTypeChange, HtmlInputTypeEffect,
+    HtmlInputEmailMode, HtmlInputKind, HtmlInputRuleWork, HtmlInputSanitization,
+    HtmlInputSanitizationCursor, HtmlInputType, HtmlInputTypeChange, HtmlInputTypeEffect,
     HtmlInputValueMode,
 };
 
@@ -30,10 +30,10 @@ fn sanitize(
 #[test]
 fn url_and_email_are_value_states_with_distinct_selection_support() {
     for (state, kind, selectable) in [
-        (HtmlInputType::Url, HtmlInputStringKind::Url, true),
-        (HtmlInputType::Email, HtmlInputStringKind::Email, false),
+        (HtmlInputType::Url, HtmlInputKind::Url, true),
+        (HtmlInputType::Email, HtmlInputKind::Email, false),
     ] {
-        assert_eq!(HtmlInputStringKind::try_from(state).unwrap(), kind);
+        assert_eq!(HtmlInputKind::try_from(state).unwrap(), kind);
         assert_eq!(kind.input_type(), state);
         assert_eq!(kind.value_mode(), HtmlInputValueMode::Value);
         assert_eq!(kind.is_selectable(), selectable);
@@ -43,7 +43,7 @@ fn url_and_email_are_value_states_with_distinct_selection_support() {
 #[test]
 fn single_email_and_url_remove_crlf_then_only_boundary_ascii_whitespace() {
     let raw = [32, 9, 65, 13, 66, 10, 67, 12, 32];
-    for kind in [HtmlInputStringKind::Email, HtmlInputStringKind::Url] {
+    for kind in [HtmlInputKind::Email, HtmlInputKind::Url] {
         assert_eq!(
             sanitize(kind.sanitization(), &raw, HtmlInputEmailMode::Single),
             (vec![65, 66, 67], None)
@@ -114,12 +114,12 @@ fn url_ignores_email_mode_and_all_sanitizers_preserve_surrogate_units() {
 
 #[test]
 fn email_to_url_initializes_cursor_while_url_to_email_does_not() {
-    fn effects(old: HtmlInputStringKind, next: HtmlInputStringKind) -> Vec<HtmlInputTypeEffect> {
+    fn effects(old: HtmlInputKind, next: HtmlInputKind) -> Vec<HtmlInputTypeEffect> {
         let mut cursor = HtmlInputTypeChange::new(old, next, 3);
         std::iter::from_fn(|| cursor.next_effect()).collect()
     }
     assert_eq!(
-        effects(HtmlInputStringKind::Email, HtmlInputStringKind::Url),
+        effects(HtmlInputKind::Email, HtmlInputKind::Url),
         vec![
             HtmlInputTypeEffect::SetRendering,
             HtmlInputTypeEffect::SignalTypeChange,
@@ -128,7 +128,7 @@ fn email_to_url_initializes_cursor_while_url_to_email_does_not() {
         ]
     );
     assert_eq!(
-        effects(HtmlInputStringKind::Url, HtmlInputStringKind::Email),
+        effects(HtmlInputKind::Url, HtmlInputKind::Email),
         vec![
             HtmlInputTypeEffect::SetRendering,
             HtmlInputTypeEffect::SignalTypeChange,

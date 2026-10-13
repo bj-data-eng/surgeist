@@ -42,6 +42,21 @@ enum DocumentContext {
     },
 }
 
+impl DocumentContext {
+    fn image_support(&self) -> crate::HtmlImageSupport {
+        match self {
+            Self::Offline => crate::HtmlImageSupport::Disabled,
+            Self::Captured { capture, document } => match capture
+                .node(document.subject())
+                .expect("checked request document")
+                .kind()
+            {
+                HtmlCapturedNodeKind::Document(facts) => facts.parser_creation_image_support(),
+                _ => unreachable!("checked request document"),
+            },
+        }
+    }
+}
 /// One owned decoded document request with fresh cancellation capability.
 /// This is configuration, not an admitted source or a successful parse result.
 /// Requests cannot be cloned; an explicit retry constructs a fresh request.
@@ -134,6 +149,10 @@ impl HtmlDocumentParseRequest {
     pub fn scripting_mode(&self) -> HtmlParserScriptingMode {
         HtmlParserScriptingMode::Disabled
     }
+    /// Fixed fresh-offline images-disabled policy; captures retain their own fact.
+    pub fn image_support(&self) -> crate::HtmlImageSupport {
+        self.context.image_support()
+    }
     /// Document requests retain the standard's initial false permission.
     pub fn allow_declarative_shadow_roots(&self) -> bool {
         false
@@ -163,6 +182,9 @@ pub(crate) struct DocumentRequestParts {
     context: DocumentContext,
 }
 impl DocumentRequestParts {
+    pub(crate) fn image_support(&self) -> crate::HtmlImageSupport {
+        self.context.image_support()
+    }
     pub(crate) fn source(&self) -> &HtmlSource {
         &self.source
     }
@@ -202,6 +224,21 @@ pub struct HtmlFragmentParseRequest {
     allow_declarative_shadow_roots: bool,
 }
 impl HtmlFragmentParseRequest {
+    /// Capture/revision-qualified attestation for this entry Document's parser
+    /// creation environment. Target-only image support is insufficient.
+    pub fn image_support(&self) -> crate::HtmlImageSupport {
+        match self
+            .context
+            .capture()
+            .node(self.context.target_document().subject())
+            .expect("checked entry document")
+            .kind()
+        {
+            HtmlCapturedNodeKind::Document(facts) => facts.parser_creation_image_support(),
+            _ => unreachable!("checked entry document"),
+        }
+    }
+
     /// Parse in the actual retained context, returning no partial tree on failure.
     #[expect(
         clippy::result_large_err,

@@ -884,7 +884,8 @@ limits, and reports retain its exact producer/configuration revision.
 
 The [shared input rules](src/input.rs) expose fixed state and source-ordered
 requirements for Hidden, Text, Search, Telephone, Password, Checkbox, Radio,
-Email, URL, Submit, Reset, Button, Date, Month, Week, Time, LocalDateTime and Number.
+Email, URL, Submit, Reset, Button, Date, Month, Week, Time, LocalDateTime, Number,
+File and Image.
 Submit/Reset/Button use Default mode: present value content, including empty,
 is read unchanged; absence supplies empty rather than `on` or a display label.
 They preserve exact UTF-16 and do not support selection.
@@ -920,7 +921,16 @@ Invalid whole strings become empty; the sanitizer does not trim whitespace or
 recover a numeric prefix. It does not clamp to min/max or perform optional step
 rounding.
 
-`HtmlInputStringFlags` retains the actual intrinsic flags; strings, selection
+File uses Filename mode with an established `HtmlInputFileSelection::Empty`,
+separate from its internal value and native value attribute. The native readback
+is empty even when value content is present. `input_filename_setter` rejects
+nonempty proposed values with `HtmlInputFilenameInvalidState`; empty clears the
+selection. Image uses Default mode and preserves exact content, including CR/LF.
+Neither state supports text selection. `HtmlInputValueMode::readback` selects
+borrowed internal/content/file facts without searching attributes or allocating;
+callers explicitly obtain any content evidence from their owning tree.
+
+`HtmlInputFlags` retains the actual intrinsic flags; strings, selection
 and form identity remain separately owned. Type/default/checked changes,
 per-control reset and cloning keep their distinct triggers. Keyword recognition
 advances one row, length decision or ASCII unit at a time, using the existing
@@ -953,7 +963,8 @@ not establish subject identity, mutation history or capture qualification.
 [Checkbox tests](tests/input_checkbox_rules.rs),
 [Radio tests](tests/input_radio_rules.rs),
 [Email/URL tests](tests/input_email_url_rules.rs),
-[temporal input tests](tests/input_temporal_rules.rs) and
+[temporal input tests](tests/input_temporal_rules.rs),
+[File/Image tests](tests/input_file_image_rules.rs) and
 [family tests](tests/control_values.rs) cover the pure rules. Parser tests cover
 their actual controlled consumers. Other input families, tree-dependent effects,
 full textarea setters/normalization and runtime events require their respective
@@ -2016,8 +2027,10 @@ context facts or required custom reactions produce typed failures. Neither entry
 executes JavaScript, fetches resources, attaches a live shadow root or synthesizes
 browser events. Supported input construction covers Text, Search, Telephone,
 Password, Hidden, Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month,
-Week, Time, LocalDateTime and Number. Range, Color, File and Image input
-construction remain unsupported. Other unavailable construction branches stop
+Week, Time, LocalDateTime, Number, File and Image. Offline Image construction
+explicitly selects Disabled image support; fragments require qualified creation
+environment evidence when a nonempty `src` makes that policy influential.
+Range and Color input construction remain unsupported. Other unavailable branches stop
 explicitly rather than publishing a partial success.
 
 `HtmlSource::utf8` accepts already decoded Unicode in Rust string storage;
@@ -2110,6 +2123,10 @@ reopen execution or alter that snapshot. Its
   empty multiple Email retains `Some(0)`, whitespace-only retains `Some(1)`;
   single Email and other kinds return `None`. It reads the produced count without
   resplitting the joined current value.
+  `input_file_selection()` lends the established empty File selection.
+  `input_image_coordinate()` and `input_image_source()` lend Image's initial
+  `(0,0)` coordinate and independently retained last Image source, distinguishing
+  absent from present-empty. Native attributes remain separately traversable.
 - `diagnostics()` lends committed record/location pairs in emission order,
   including delayed errors whose source offsets go backwards. Recovery evidence
   is not an author-conformance certificate.
@@ -2339,7 +2356,7 @@ overrides, form reset and hosted initialization remain separate work.
 
 Internal input creation supports Hidden, Text, Search, Telephone, Password,
 Checkbox, Radio, Email, URL, Submit, Reset, Button, Date, Month, Week, Time,
-LocalDateTime and Number through the
+LocalDateTime, Number, File and Image through the
 [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
 Text loses CR and LF; changing from Value mode to Hidden, Submit, Reset or Button
@@ -2394,6 +2411,35 @@ type-first Number checks the complete string without trimming it. Public report
 readers expose the resulting current value, independent native default and
 qualified origins. No parsed current-number scalar, min/max clamping or optional
 step rounding is produced by these hooks.
+
+File construction establishes an empty selected-resource fact while retaining
+raw, internal and default values independently. Changing into Filename mode
+clears the internal current value; native readback still uses the selected-file
+fact. Changing from a non-Value mode into Value installs the actual default and
+clears dirty value before subsequent effects. Reset preserves indeterminateness;
+cloning initializes empty files, then transfers the five common current-value
+and flag fields without copying user validity.
+
+Image construction starts with coordinate `(0,0)` and retains its last Image
+source under the existing controller, including absence versus present-empty.
+Actual Image `src` changes and reentry into Image compare the registered source
+history; changes while in another state do not replace it. Reset preserves that
+history and coordinate, while cloning initializes them in the target creation
+environment before transferring common fields. No activation or resource loading
+is performed. [Public File/Image tests](tests/public_file_image.rs) cover these
+immutable observations, admission and policy refusals.
+
+`HtmlImageSupport` distinguishes Unavailable, Disabled and Enabled policy from
+scripting or the absence of a loader. Captured documents hold a target-only
+`image_support` observation separately from `parser_creation_image_support`, an
+explicit entry-Document creation-environment attestation. Temporary and inert
+parser-created Documents keep distinct identities and derive only that attested
+policy for this operation. They do not copy URL, origin or settings. Absent or
+exact-empty `src` bypasses the policy; whitespace is nonempty. Unknown or target-only
+evidence returns `MissingContextFact(ImageSupport)`, Disabled skips before fetch,
+and Enabled returns `UnsupportedStandaloneState(ImageResource)`. Captured clones
+use the target's own qualified creation attestation. These facts do not admit
+captured ordinary-document parsing, file pickers, image fetching or live events.
 
 Radio construction applies the five [source-defined group triggers](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
 through the existing admitted effect owner. Peer normalization changes only

@@ -35,11 +35,34 @@ impl<'a> PreparedReportStorage<'a> {
                     // must still belong to this immutable result.
                     checked_node(arena, node.ok_or(SessionError::WrongToken)?, c)?;
                 }
-                RetainedPayload::Input { raw, complete, .. } => {
+                RetainedPayload::Input {
+                    raw,
+                    complete,
+                    state,
+                    ..
+                } => {
                     if !complete {
                         return Err(SessionError::InputMetadataUnavailable);
                     }
                     checked_raw(storage, *raw, c)?;
+                    c.charge(WorkCategory::RecordVisit, 2)?;
+                    if state.flags.kind() == crate::HtmlInputKind::File
+                        && !state.selected_files_empty
+                    {
+                        return Err(SessionError::InputMetadataUnavailable);
+                    }
+                    if let input_image::ImageState::Last {
+                        source: Some(source),
+                        ..
+                    } = state.image
+                    {
+                        checked_raw(storage, source, c)?;
+                    }
+                    if state.flags.kind() == crate::HtmlInputKind::Image
+                        && matches!(state.image, input_image::ImageState::NeverEntered)
+                    {
+                        return Err(SessionError::InputMetadataUnavailable);
+                    }
                 }
                 RetainedPayload::SelectFamily {
                     state: SelectMetadata::Option(state),
@@ -296,7 +319,7 @@ impl<'a> MetadataRef<'a> {
             index: metadata_node(self.payload).expect("issued metadata node"),
         }
     }
-    fn raw(&self, slot: usize) -> &'a DocumentString {
+    pub(super) fn raw(&self, slot: usize) -> &'a DocumentString {
         let RetainedPayload::String { value, .. } = &self.storage.payloads.values[slot] else {
             unreachable!("qualified raw field");
         };

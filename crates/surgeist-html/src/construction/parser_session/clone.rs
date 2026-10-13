@@ -660,11 +660,12 @@ impl SessionStorage {
                     raw,
                     complete: false,
                     state: InputState {
-                        flags: crate::HtmlInputStringFlags::fresh(),
+                        flags: crate::HtmlInputFlags::fresh(),
                         cursor: 0,
                         selected_files_empty: true,
                         value_rewritten_during_creation: false,
                         email_value_count: None,
+                        image: input_image::ImageState::NeverEntered,
                     },
                 },
             )?);
@@ -913,7 +914,7 @@ impl SessionStorage {
         }
         Err(SessionError::OutputMetadataUnavailable)
     }
-    fn copy_raw_field(
+    pub(super) fn copy_raw_field(
         &mut self,
         c: &mut ParseControl,
         source: usize,
@@ -922,7 +923,11 @@ impl SessionStorage {
         drop(value);
         Ok(slot)
     }
-    fn retire_raw_field(&mut self, c: &mut ParseControl, slot: usize) -> Result<(), SessionError> {
+    pub(super) fn retire_raw_field(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+    ) -> Result<(), SessionError> {
         self.retire_registered_string(c, slot)
     }
     /// Copy a registered field without aliasing its native backing or ticket.

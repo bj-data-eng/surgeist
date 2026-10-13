@@ -35,6 +35,9 @@ use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValu
 use std::{mem, sync::Weak};
 
 mod clone;
+mod input_image;
+#[cfg(test)]
+use input_image::append_native_input_value;
 mod completion;
 pub(crate) mod context;
 mod details;
@@ -383,12 +386,13 @@ pub(crate) struct OutputState {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct InputState {
-    pub(crate) flags: crate::HtmlInputStringFlags,
+    pub(crate) flags: crate::HtmlInputFlags,
     pub(crate) cursor: usize,
     pub(crate) selected_files_empty: bool,
     pub(crate) value_rewritten_during_creation: bool,
     /// Actual produced multiple-Email values, not a resplit of joined text.
     pub(crate) email_value_count: Option<usize>,
+    image: input_image::ImageState,
 }
 /// Actual parser-created association, distinct from structural owners.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1695,7 +1699,14 @@ impl SessionStorage {
             .is_none()
             && exact_ascii(control, Some(name), "name")?;
         let state = self.read_input_state(control, slot)?;
-        let multiple_attr = state.flags.kind() == crate::HtmlInputStringKind::Email
+        let src_attr = state.flags.kind() == crate::HtmlInputKind::Image
+            && element.attributes().as_slice()[position]
+                .name()
+                .namespace()
+                .uri()
+                .is_none()
+            && exact_ascii(control, Some(name), "src")?;
+        let multiple_attr = state.flags.kind() == crate::HtmlInputKind::Email
             && exact_ascii(control, Some(name), "multiple")?;
         if value_attr
             && let crate::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(policy) =
@@ -1724,12 +1735,12 @@ impl SessionStorage {
                 input_type_state(control, element.attributes().as_slice()[position].value())?;
             // The type-change algorithm is triggered by a change of state,
             // not merely by installing another spelling of the same state.
-            let next_kind = crate::HtmlInputStringKind::try_from(next_kind)
-                .map_err(|_| SessionError::WrongToken)?;
+            let next_kind =
+                crate::HtmlInputKind::try_from(next_kind).map_err(|_| SessionError::WrongToken)?;
             if next_kind != state.flags.kind() {
                 let mut next = state;
                 next.flags = state.flags.type_changed(next_kind);
-                if next_kind != crate::HtmlInputStringKind::Email {
+                if next_kind != crate::HtmlInputKind::Email {
                     next.email_value_count = None;
                 }
                 self.write_input_state(control, slot, next)?;
@@ -1767,6 +1778,54 @@ impl SessionStorage {
                         )?;
                         self.replace_input_raw(control, slot, text)?;
                     }
+                    if effect == crate::HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty {
+                        let mut source = None;
+                        control.charge(WorkCategory::RecordVisit, 1)?;
+                        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+                            unreachable!()
+                        };
+                        for (position, attribute) in
+                            element.attributes().as_slice().iter().enumerate()
+                        {
+                            control.charge(WorkCategory::RecordVisit, 2)?;
+                            if attribute.name().namespace().uri().is_none()
+                                && exact_ascii(
+                                    control,
+                                    Some(attribute.name().local_name()),
+                                    "value",
+                                )?
+                            {
+                                source = Some(self.attribute_value_slot(control, node, position)?);
+                                break;
+                            }
+                        }
+                        let field = match source {
+                            Some(source) => copy_input_value(
+                                &self.payloads,
+                                self.evidence.as_ref(),
+                                control,
+                                source,
+                                crate::HtmlInputSanitization::Preserve,
+                            )?,
+                            None => FieldCopy {
+                                value: literal_string(control, b"")?,
+                                origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
+                                original: None,
+                            },
+                        };
+                        self.replace_input_raw(control, slot, field)?;
+                        let mut current = self.read_input_state(control, slot)?;
+                        current.flags = current.flags.type_default_installed();
+                        self.write_input_state(control, slot, current)?;
+                    }
+                    if effect == crate::HtmlInputTypeEffect::SetCurrentEmptyForFilename {
+                        let field = FieldCopy {
+                            value: literal_string(control, b"")?,
+                            origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
+                            original: None,
+                        };
+                        self.replace_input_raw(control, slot, field)?;
+                    }
                     if let crate::HtmlInputTypeEffect::Sanitize(policy) = effect
                         && policy != crate::HtmlInputSanitization::Preserve
                     {
@@ -1774,14 +1833,20 @@ impl SessionStorage {
                         self.install_sanitized_input_value(control, node, slot, raw, policy)?;
                     }
                     if effect == crate::HtmlInputTypeEffect::SignalTypeChange
-                        && next_kind == crate::HtmlInputStringKind::Radio
+                        && next_kind == crate::HtmlInputKind::Radio
                     {
                         self.normalize_radio(control, node, None)?;
                     }
                     // Rendering has no host recipient in
                     // fresh immutable construction. Initial cursor is already0.
                 }
+                if next_kind == crate::HtmlInputKind::Image {
+                    self.image_type_entered(control, node, slot)?;
+                }
             }
+        }
+        if src_attr {
+            self.image_source_changed(control, node, slot)?;
         }
         if name_attr
             && state
@@ -1790,7 +1855,7 @@ impl SessionStorage {
         {
             self.normalize_radio(control, node, None)?;
         }
-        if state.flags.kind() == crate::HtmlInputStringKind::Email && multiple_attr {
+        if state.flags.kind() == crate::HtmlInputKind::Email && multiple_attr {
             let raw = self.input_raw_slot(control, slot)?;
             self.install_sanitized_input_value(
                 control,
@@ -1944,7 +2009,7 @@ impl SessionStorage {
                 original: None,
             };
             self.replace_input_raw(control, slot, field)?;
-            if state.flags.kind() == crate::HtmlInputStringKind::Email {
+            if state.flags.kind() == crate::HtmlInputKind::Email {
                 state.email_value_count =
                     if self.form_attribute(control, node, "multiple")?.is_some() {
                         Some(0)
@@ -1956,7 +2021,7 @@ impl SessionStorage {
         }
         if matches!(
             state.flags.kind(),
-            crate::HtmlInputStringKind::Email | crate::HtmlInputStringKind::Url
+            crate::HtmlInputKind::Email | crate::HtmlInputKind::Url
         ) {
             state = self.read_input_state(control, slot)?;
         }
@@ -5111,8 +5176,7 @@ impl ParserArenaSession {
             storage.payloads.check_aliases(&storage.records, control)?;
             if matches!(profile, CreationProfile::Input(..))
                 && (!exact_ascii(control, Some(tag.name.value.text()), "input")?
-                    || crate::HtmlInputStringKind::try_from(input_tag_state(control, tag)?)
-                        .is_err())
+                    || crate::HtmlInputKind::try_from(input_tag_state(control, tag)?).is_err())
             {
                 return Err(SessionError::WrongToken);
             }
@@ -5263,11 +5327,12 @@ impl ParserArenaSession {
                 raw,
                 complete: false,
                 state: InputState {
-                    flags: crate::HtmlInputStringFlags::fresh(),
+                    flags: crate::HtmlInputFlags::fresh(),
                     cursor: 0,
                     selected_files_empty: true,
                     value_rewritten_during_creation: false,
                     email_value_count: None,
+                    image: input_image::ImageState::NeverEntered,
                 },
             });
             Some(slot)
@@ -5445,6 +5510,9 @@ impl ParserArenaSession {
         })();
         match result {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
+            Err(SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport)) => Err(
+                SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
+            ),
             Err(_)
                 if slot.is_some()
                     || matches!(
@@ -5513,17 +5581,15 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         destination.require_owner(control)?;
         let state = self.input_state(control, node)?;
-        if let Some(fallback) = state.flags.kind().value_mode().content_fallback() {
-            append_input_content(
-                &self.active()?.records,
-                control,
-                node.index,
-                destination,
-                fallback,
-            )
-        } else {
-            self.append_input_internal_value(control, node, destination)
-        }
+        let storage = self.active()?;
+        append_native_input_value(
+            &storage.records,
+            &storage.payloads,
+            control,
+            node.index,
+            state,
+            destination,
+        )
     }
     #[cfg(test)]
     pub(crate) fn append_input_default_value(
@@ -6616,16 +6682,19 @@ impl FrozenArena {
     ) -> Result<(), SessionError> {
         destination.require_owner(control)?;
         let state = self.input_state(control, node)?;
-        if let Some(fallback) = state.flags.kind().value_mode().content_fallback() {
-            let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
-            let arena = match &storage.view {
-                FrozenView::Document(view) => &view.arena,
-                FrozenView::Fragment(view) => &view.arena,
-            };
-            append_input_content(&arena.records, control, node.index, destination, fallback)
-        } else {
-            self.append_input_internal_value(control, node, destination)
-        }
+        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
+        let arena = match &storage.view {
+            FrozenView::Document(view) => &view.arena,
+            FrozenView::Fragment(view) => &view.arena,
+        };
+        append_native_input_value(
+            &arena.records,
+            &storage.payloads,
+            control,
+            node.index,
+            state,
+            destination,
+        )
     }
     #[cfg(test)]
     pub(crate) fn append_input_default_value(
@@ -7859,7 +7928,7 @@ fn validate_initial_input_origins(
     for attribute in tag.attributes.as_slice() {
         control.charge(WorkCategory::RecordVisit, 1)?;
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
-            policy = crate::HtmlInputStringKind::try_from(input_type_state(
+            policy = crate::HtmlInputKind::try_from(input_type_state(
                 control,
                 attribute.value.value.text(),
             )?)
@@ -12269,7 +12338,7 @@ mod tests {
             }
         }
     }
-    fn radio_next_attribute(
+    pub(super) fn radio_next_attribute(
         lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
     ) -> Option<crate::parser::tokenizer::token::Attribute> {
@@ -12515,7 +12584,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             session.input_state(&mut c, &a).unwrap().flags.kind(),
-            crate::HtmlInputStringKind::Radio
+            crate::HtmlInputKind::Radio
         );
         assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
         assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
@@ -12653,7 +12722,7 @@ mod tests {
             assert_eq!(c.stop(), first);
         }
     }
-    fn input_owner<'a>(
+    pub(super) fn input_owner<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
     ) -> (
         ParseControl,
@@ -13585,7 +13654,7 @@ mod tests {
                 )
                 .unwrap();
             let state = session.input_state(&mut c, &node).unwrap();
-            assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Checkbox);
+            assert_eq!(state.flags.kind(), crate::HtmlInputKind::Checkbox);
             assert_eq!(state.flags.checkedness(), checked);
             assert!(
                 !state.flags.dirty_value()
@@ -13709,8 +13778,8 @@ mod tests {
             .unwrap()
             .read_input_state(&mut c, slot)
             .unwrap();
-        state.flags = crate::HtmlInputStringFlags::from_retained(
-            crate::HtmlInputStringKind::Checkbox,
+        state.flags = crate::HtmlInputFlags::from_retained(
+            crate::HtmlInputKind::Checkbox,
             true,
             true,
             false,
@@ -13760,7 +13829,7 @@ mod tests {
                 .parser_inserted
         );
         let cloned = session.input_state(&mut c, &copy).unwrap();
-        assert_eq!(cloned.flags.kind(), crate::HtmlInputStringKind::Checkbox);
+        assert_eq!(cloned.flags.kind(), crate::HtmlInputKind::Checkbox);
         assert!(
             cloned.flags.dirty_value()
                 && cloned.flags.dirty_checkedness()
@@ -13975,9 +14044,9 @@ mod tests {
     #[test]
     fn default_button_input_clone_retains_exact_native_default_raw_and_fresh_flags() {
         for (keyword, kind) in [
-            ("button", crate::HtmlInputStringKind::Button),
-            ("reset", crate::HtmlInputStringKind::Reset),
-            ("submit", crate::HtmlInputStringKind::Submit),
+            ("button", crate::HtmlInputKind::Button),
+            ("reset", crate::HtmlInputKind::Reset),
+            ("submit", crate::HtmlInputKind::Submit),
         ] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(format!(
@@ -14326,7 +14395,7 @@ mod tests {
 
     #[test]
     fn text_input_other_valid_states_refuse_before_any_metadata_or_lexical_take() {
-        for kind in ["range", "color", "file", "image"] {
+        for kind in ["range", "color"] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(format!("<html><head></head><input type={kind} value=x>")),
                 limits(),
@@ -25102,10 +25171,7 @@ mod tests {
             assert_eq!(c.stop(), None);
             assert!(independent);
             assert_eq!(before, clone_state);
-            assert_eq!(
-                reset.flags.kind(),
-                crate::HtmlInputStringKind::LocalDateTime
-            );
+            assert_eq!(reset.flags.kind(), crate::HtmlInputKind::LocalDateTime);
             assert!(
                 !reset.flags.dirty_value()
                     && !reset.flags.dirty_checkedness()
@@ -25238,7 +25304,7 @@ mod tests {
             session.release(&mut c).unwrap();
             storage_zero(&c);
             assert_eq!(actual, expected.encode_utf16().collect::<Vec<_>>());
-            assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Number);
+            assert_eq!(state.flags.kind(), crate::HtmlInputKind::Number);
             assert_eq!(state.email_value_count, None);
             for tail in [0, 1, 32, 128, 512, 1024, 2048] {
                 let request = crate::HtmlDocumentParseRequest::offline(
@@ -25382,7 +25448,7 @@ mod tests {
             assert_eq!(before, clone_state);
             assert_eq!(current, expected.encode_utf16().collect::<Vec<_>>());
             assert_eq!(default, value.encode_utf16().collect::<Vec<_>>());
-            assert_eq!(reset.flags.kind(), crate::HtmlInputStringKind::Number);
+            assert_eq!(reset.flags.kind(), crate::HtmlInputKind::Number);
             assert!(reset.flags.checkedness());
             assert!(!reset.flags.dirty_value() && !reset.flags.dirty_checkedness());
             assert!(!reset.flags.kind().is_selectable());
@@ -25427,9 +25493,7 @@ mod tests {
                         complete: true,
                         state,
                         ..
-                    } if state.flags.kind() == crate::HtmlInputStringKind::Number => {
-                        Some((*node, *raw))
-                    }
+                    } if state.flags.kind() == crate::HtmlInputKind::Number => Some((*node, *raw)),
                     _ => None,
                 })
                 .unwrap();

@@ -66,16 +66,13 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
                 | HtmlInputType::Time
                 | HtmlInputType::LocalDateTime
                 | HtmlInputType::Number
+                | HtmlInputType::File
+                | HtmlInputType::Image
         ) {
-            assert_eq!(
-                HtmlInputStringKind::try_from(state).unwrap().input_type(),
-                state
-            );
+            assert_eq!(HtmlInputKind::try_from(state).unwrap().input_type(), state);
         } else {
             assert_eq!(
-                HtmlInputStringKind::try_from(state)
-                    .unwrap_err()
-                    .input_type(),
+                HtmlInputKind::try_from(state).unwrap_err().input_type(),
                 state
             );
         }
@@ -97,14 +94,14 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
 fn default_button_states_preserve_units_and_have_no_selection_or_display_fallback() {
     let units = [0, 9, 10, 13, 0x85, 0xa0, 0xd800, 0xdc00, 0xdfff, 88];
     for (state, kind) in [
-        (HtmlInputType::Submit, HtmlInputStringKind::Submit),
-        (HtmlInputType::Reset, HtmlInputStringKind::Reset),
-        (HtmlInputType::Button, HtmlInputStringKind::Button),
+        (HtmlInputType::Submit, HtmlInputKind::Submit),
+        (HtmlInputType::Reset, HtmlInputKind::Reset),
+        (HtmlInputType::Button, HtmlInputKind::Button),
     ] {
-        assert_eq!(HtmlInputStringKind::try_from(state).unwrap(), kind);
+        assert_eq!(HtmlInputKind::try_from(state).unwrap(), kind);
         assert_eq!(kind.input_type(), state);
         assert_eq!(kind.value_mode(), HtmlInputValueMode::Default);
-        assert_eq!(kind.value_mode().content_fallback(), Some(&[][..]));
+        assert_eq!(kind.value_mode().readback(&[], None, None), Some(&[][..]));
         assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
         assert!(!kind.is_selectable());
         let kept: Vec<_> = units
@@ -112,7 +109,7 @@ fn default_button_states_preserve_units_and_have_no_selection_or_display_fallbac
             .filter(|&u| kind.sanitization().retain_unit(u))
             .collect();
         assert_eq!(kept, units);
-        let fresh = HtmlInputStringFlags::fresh().type_changed(kind);
+        let fresh = HtmlInputFlags::fresh().type_changed(kind);
         assert_eq!(
             fresh.value_setter_begin(),
             HtmlInputValueSetterStart::SetContentValue
@@ -123,7 +120,7 @@ fn default_button_states_preserve_units_and_have_no_selection_or_display_fallbac
                 HtmlInputSanitization::Preserve
             )
         );
-        let dirty = HtmlInputStringFlags::from_retained(kind, true, true, true, true, true);
+        let dirty = HtmlInputFlags::from_retained(kind, true, true, true, true, true);
         assert_eq!(
             dirty.value_attribute_changed(),
             HtmlInputValueAttributeEffect::KeepCurrent
@@ -165,12 +162,12 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
         std::iter::from_fn(|| change.next_effect()).collect::<Vec<_>>()
     };
     for kind in [
-        HtmlInputStringKind::Submit,
-        HtmlInputStringKind::Reset,
-        HtmlInputStringKind::Button,
+        HtmlInputKind::Submit,
+        HtmlInputKind::Reset,
+        HtmlInputKind::Button,
     ] {
         assert_eq!(
-            effects(HtmlInputStringKind::Text, kind, 1),
+            effects(HtmlInputKind::Text, kind, 1),
             [
                 SetContentValueFromCurrent,
                 SetRendering,
@@ -179,7 +176,7 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
             ]
         );
         assert_eq!(
-            effects(HtmlInputStringKind::Text, kind, 0),
+            effects(HtmlInputKind::Text, kind, 0),
             [
                 SetRendering,
                 SignalTypeChange,
@@ -187,7 +184,7 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
             ]
         );
         assert_eq!(
-            effects(kind, HtmlInputStringKind::Text, 1),
+            effects(kind, HtmlInputKind::Text, 1),
             [
                 SetCurrentFromDefaultAndClearDirty,
                 SetRendering,
@@ -199,7 +196,7 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
         assert!(effects(kind, kind, 1).is_empty());
     }
     assert_eq!(
-        effects(HtmlInputStringKind::Submit, HtmlInputStringKind::Reset, 1),
+        effects(HtmlInputKind::Submit, HtmlInputKind::Reset, 1),
         [
             SetRendering,
             SignalTypeChange,
@@ -212,17 +209,17 @@ fn default_button_type_changes_write_back_only_nonempty_value_and_select_only_on
 fn five_state_sanitization_filters_only_cr_lf_units() {
     let original = [0, 9, 10, 13, 0x85, 0xa0, 0xd800, 0xdc00, 0xdfff, 0x41];
     for kind in [
-        HtmlInputStringKind::Hidden,
-        HtmlInputStringKind::Text,
-        HtmlInputStringKind::Search,
-        HtmlInputStringKind::Telephone,
-        HtmlInputStringKind::Password,
+        HtmlInputKind::Hidden,
+        HtmlInputKind::Text,
+        HtmlInputKind::Search,
+        HtmlInputKind::Telephone,
+        HtmlInputKind::Password,
     ] {
         let kept: Vec<_> = original
             .into_iter()
             .filter(|&unit| kind.sanitization().retain_unit(unit))
             .collect();
-        if kind == HtmlInputStringKind::Hidden {
+        if kind == HtmlInputKind::Hidden {
             assert_eq!(kind.value_mode(), HtmlInputValueMode::Default);
             assert_eq!(kept, original);
         } else {
@@ -234,8 +231,8 @@ fn five_state_sanitization_filters_only_cr_lf_units() {
 
 #[test]
 fn dirty_value_and_checkedness_gate_real_attribute_triggers_independently() {
-    let fresh = HtmlInputStringFlags::fresh();
-    assert_eq!(fresh.kind(), HtmlInputStringKind::Text);
+    let fresh = HtmlInputFlags::fresh();
+    assert_eq!(fresh.kind(), HtmlInputKind::Text);
     assert_eq!(
         fresh.value_attribute_changed(),
         HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(
@@ -260,21 +257,15 @@ fn dirty_value_and_checkedness_gate_real_attribute_triggers_independently() {
             .unwrap()
             .checkedness()
     );
-    let retained = HtmlInputStringFlags::from_retained(
-        HtmlInputStringKind::Text,
-        false,
-        true,
-        true,
-        true,
-        true,
-    );
+    let retained =
+        HtmlInputFlags::from_retained(HtmlInputKind::Text, false, true, true, true, true);
     assert!(
         retained
             .checked_attribute_changed(HtmlInputCheckedAttributeChange::Removed)
             .is_none()
     );
     assert!(retained.dirty_checkedness() && retained.indeterminate() && retained.user_validity());
-    let hidden = fresh.type_changed(HtmlInputStringKind::Hidden);
+    let hidden = fresh.type_changed(HtmlInputKind::Hidden);
     assert_eq!(
         hidden.value_setter_begin(),
         HtmlInputValueSetterStart::SetContentValue
@@ -290,14 +281,8 @@ fn dirty_value_and_checkedness_gate_real_attribute_triggers_independently() {
 
 #[test]
 fn reset_orders_flags_default_checked_files_then_sanitization() {
-    let flags = HtmlInputStringFlags::from_retained(
-        HtmlInputStringKind::Password,
-        true,
-        true,
-        true,
-        true,
-        true,
-    );
+    let flags =
+        HtmlInputFlags::from_retained(HtmlInputKind::Password, true, true, true, true, true);
     let mut reset = HtmlInputReset::new(flags);
     let Some(HtmlInputResetEffect::ClearDirtyAndUserValidity(cleared)) = reset.next_effect() else {
         panic!("first reset step")
@@ -335,7 +320,7 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
         std::iter::from_fn(|| change.next_effect()).collect::<Vec<_>>()
     };
     assert_eq!(
-        effects(HtmlInputStringKind::Text, HtmlInputStringKind::Hidden, 3),
+        effects(HtmlInputKind::Text, HtmlInputKind::Hidden, 3),
         [
             SetContentValueFromCurrent,
             SetRendering,
@@ -344,7 +329,7 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
         ]
     );
     assert_eq!(
-        effects(HtmlInputStringKind::Text, HtmlInputStringKind::Hidden, 0),
+        effects(HtmlInputKind::Text, HtmlInputKind::Hidden, 0),
         [
             SetRendering,
             SignalTypeChange,
@@ -352,7 +337,7 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
         ]
     );
     assert_eq!(
-        effects(HtmlInputStringKind::Hidden, HtmlInputStringKind::Search, 3),
+        effects(HtmlInputKind::Hidden, HtmlInputKind::Search, 3),
         [
             SetCurrentFromDefaultAndClearDirty,
             SetRendering,
@@ -362,28 +347,17 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
         ]
     );
     assert_eq!(
-        effects(
-            HtmlInputStringKind::Search,
-            HtmlInputStringKind::Telephone,
-            3
-        ),
+        effects(HtmlInputKind::Search, HtmlInputKind::Telephone, 3),
         [
             SetRendering,
             SignalTypeChange,
             Sanitize(HtmlInputSanitization::StripCrLf)
         ]
     );
-    assert!(effects(HtmlInputStringKind::Text, HtmlInputStringKind::Text, 3).is_empty());
-    let dirty = HtmlInputStringFlags::from_retained(
-        HtmlInputStringKind::Hidden,
-        true,
-        true,
-        true,
-        true,
-        true,
-    );
+    assert!(effects(HtmlInputKind::Text, HtmlInputKind::Text, 3).is_empty());
+    let dirty = HtmlInputFlags::from_retained(HtmlInputKind::Hidden, true, true, true, true, true);
     let next = dirty
-        .type_changed(HtmlInputStringKind::Text)
+        .type_changed(HtmlInputKind::Text)
         .type_default_installed();
     assert!(!next.dirty_value());
     assert!(
@@ -396,15 +370,9 @@ fn state_changes_have_source_order_and_same_state_has_no_type_effects() {
 
 #[test]
 fn clone_copies_only_specified_flags_without_resetting_current_or_default() {
-    let original = HtmlInputStringFlags::from_retained(
-        HtmlInputStringKind::Search,
-        true,
-        true,
-        true,
-        true,
-        true,
-    );
-    let destination = HtmlInputStringFlags::fresh().type_changed(HtmlInputStringKind::Search);
+    let original =
+        HtmlInputFlags::from_retained(HtmlInputKind::Search, true, true, true, true, true);
+    let destination = HtmlInputFlags::fresh().type_changed(HtmlInputKind::Search);
     let clone = destination.clone_flags_from(original);
     assert!(
         clone.dirty_value()
@@ -413,7 +381,7 @@ fn clone_copies_only_specified_flags_without_resetting_current_or_default() {
             && clone.indeterminate()
     );
     assert!(!clone.user_validity());
-    assert_eq!(clone.kind(), HtmlInputStringKind::Search);
+    assert_eq!(clone.kind(), HtmlInputKind::Search);
     assert!(original.user_validity());
 }
 
@@ -450,7 +418,7 @@ fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
     let different = compare(&[97, 98, 99, 100], &[119, 120, 121, 122]);
     assert_eq!(
         input_value_setter_finish(
-            HtmlInputStringKind::Hidden,
+            HtmlInputKind::Hidden,
             different,
             HtmlInputSelection::cursor(1)
         ),
@@ -462,12 +430,12 @@ fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
         .clamp(4, Unsupported);
     assert_eq!(selection.selection_range(), Some((1, 2, Forward)));
     assert_eq!(
-        input_value_setter_finish(HtmlInputStringKind::Text, different, selection),
+        input_value_setter_finish(HtmlInputKind::Text, different, selection),
         NoAdditionalEffect
     );
     assert_eq!(
         input_value_setter_finish(
-            HtmlInputStringKind::Text,
+            HtmlInputKind::Text,
             different,
             HtmlInputSelection::cursor(1).clamp(4, Supported)
         ),
@@ -475,15 +443,11 @@ fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
     );
     let equal = compare(&[97, 98, 99, 100], &[97, 98, 99, 100]);
     assert_eq!(
-        input_value_setter_finish(HtmlInputStringKind::Text, equal, selection),
+        input_value_setter_finish(HtmlInputKind::Text, equal, selection),
         NoAdditionalEffect
     );
     assert_eq!(
-        input_value_setter_finish(
-            HtmlInputStringKind::Text,
-            equal,
-            HtmlInputSelection::cursor(1)
-        ),
+        input_value_setter_finish(HtmlInputKind::Text, equal, HtmlInputSelection::cursor(1)),
         NoAdditionalEffect
     );
     let shortened = compare(&[97, 98, 99, 100], &[120]);
@@ -491,13 +455,13 @@ fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
     let cursor = range.clamp(1, Unsupported);
     assert_eq!(cursor.cursor_position(), Some(1));
     assert_eq!(
-        input_value_setter_finish(HtmlInputStringKind::Text, shortened, cursor),
+        input_value_setter_finish(HtmlInputKind::Text, shortened, cursor),
         SetEndCursorUnselectAndNoneDirection
     );
     let retained = range.clamp(1, Supported);
     assert_eq!(retained.selection_range(), Some((1, 1, Forward)));
     assert_eq!(
-        input_value_setter_finish(HtmlInputStringKind::Text, shortened, retained),
+        input_value_setter_finish(HtmlInputKind::Text, shortened, retained),
         NoAdditionalEffect
     );
 }
@@ -507,7 +471,7 @@ fn native_sanitized_equal_value_still_sets_dirty_without_replacing_default_or_cu
     let default = [65, 13, 66, 10, 67];
     let old_current = [65, 66, 67];
     let supplied = [65, 13, 66, 10, 67];
-    let flags = HtmlInputStringFlags::fresh();
+    let flags = HtmlInputFlags::fresh();
     let HtmlInputValueSetterStart::SetCurrentValue(dirty) = flags.value_setter_begin() else {
         panic!("Text Value mode")
     };
@@ -522,7 +486,7 @@ fn native_sanitized_equal_value_still_sets_dirty_without_replacing_default_or_cu
     assert!(equal.is_equal());
     assert_eq!(
         input_value_setter_finish(
-            HtmlInputStringKind::Text,
+            HtmlInputKind::Text,
             equal,
             HtmlInputSelection::cursor(1)
                 .clamp(current.len(), HtmlInputEmptySelectionSupport::Supported)
@@ -564,7 +528,7 @@ fn selection_range_validation_clamping_and_direction_use_actual_capabilities() {
 
 #[test]
 fn number_shared_rules_preserve_complete_grammar_without_binary64_conversion() {
-    let kind = HtmlInputStringKind::try_from(HtmlInputType::Number).unwrap();
+    let kind = HtmlInputKind::try_from(HtmlInputType::Number).unwrap();
     assert_eq!(kind.value_mode(), HtmlInputValueMode::Value);
     assert_eq!(kind.sanitization(), HtmlInputSanitization::Number);
     assert!(!kind.is_selectable());
@@ -651,17 +615,17 @@ fn number_sanitizer_inspection_actions_are_explicit_and_source_ordered() {
 #[test]
 fn number_reset_type_and_clone_use_value_mode_without_selection_effects() {
     use HtmlInputTypeEffect::*;
-    let number = HtmlInputStringKind::Number;
-    let old = HtmlInputStringFlags::from_retained(number, true, true, true, true, true);
+    let number = HtmlInputKind::Number;
+    let old = HtmlInputFlags::from_retained(number, true, true, true, true, true);
     let reset = old.reset_begin().reset_checkedness(false);
     assert_eq!(reset.kind(), number);
     assert!(!reset.dirty_value() && !reset.dirty_checkedness() && !reset.checkedness());
-    let clone = HtmlInputStringFlags::fresh()
+    let clone = HtmlInputFlags::fresh()
         .type_changed(number)
         .clone_flags_from(old);
     assert!(clone.dirty_value() && clone.dirty_checkedness() && clone.checkedness());
     assert!(!clone.user_validity());
-    let mut change = HtmlInputTypeChange::new(HtmlInputStringKind::Hidden, number, 3);
+    let mut change = HtmlInputTypeChange::new(HtmlInputKind::Hidden, number, 3);
     let effects = std::iter::from_fn(|| change.next_effect()).collect::<Vec<_>>();
     assert_eq!(
         effects,
@@ -672,7 +636,7 @@ fn number_reset_type_and_clone_use_value_mode_without_selection_effects() {
             Sanitize(HtmlInputSanitization::Number),
         ]
     );
-    let mut change = HtmlInputTypeChange::new(number, HtmlInputStringKind::Text, 3);
+    let mut change = HtmlInputTypeChange::new(number, HtmlInputKind::Text, 3);
     assert_eq!(
         std::iter::from_fn(|| change.next_effect()).collect::<Vec<_>>(),
         [

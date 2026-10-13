@@ -3723,7 +3723,8 @@ fn tokenizer_next_input_point_uses_actual_reconsume_and_reference_lookahead_posi
 #[test]
 fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short_terminal_admission()
  {
-    // Two actual proof checks each read seven qualification facts. The queue
+    // Two actual proof checks each read eight qualification facts, including
+    // the explicit images-disabled construction capability. The queue
     // owner reads checkpoint1, readiness7 (including the Radio phase) and empty cursor/length2. Its actual
     // bool set/clear contributes CopyByte2/RecordWrite2, with StateStep1.
     // One-short fails the final clear write, retaining the flag under first-stop.
@@ -3733,7 +3734,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         crate::construction::parser_session::provenance::ConstructionCauseRef,
     >() as u64
         + std::mem::size_of::<Option<usize>>() as u64;
-    let expected_work = 25 + 1 + (2 + cause_bytes) + 4 + 1;
+    let expected_work = 27 + 1 + (2 + cause_bytes) + 4 + 1;
     for short in [false, true] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<script>x</script>"),
@@ -3756,7 +3757,7 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let result = proof.checkpoint(c, session);
         assert_eq!(
             c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            25
+            27
         );
         assert_eq!(
             c.usage().work(WorkCategory::ProviderCall) - before.work(WorkCategory::ProviderCall),
@@ -10283,7 +10284,8 @@ fn hidden_input_proofless_head_rejects_before_diagnostic_stack_or_creation() {
 }
 #[test]
 fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
-    for markup in ["<input type=range>", "<input type=file>"] {
+    {
+        let markup = "<input type=range>";
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{markup}")),
             limits(100),
@@ -13538,7 +13540,7 @@ fn ordinary_text_input_makes_frameset_not_ok_and_is_void_inside_reconstructed_fo
 
 #[test]
 fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_before_effects() {
-    for kind in ["range", "color", "file", "image"] {
+    for kind in ["range", "color"] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(
                 "<!doctype html><table><input type={kind} value=kept>"
@@ -13725,7 +13727,7 @@ fn ordinary_checkbox_same_name_preserves_both_checked_and_external_explicit_form
             Some(form.clone())
         );
         let state = frozen.input_state(&mut c, input).unwrap();
-        assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Checkbox);
+        assert_eq!(state.flags.kind(), crate::HtmlInputKind::Checkbox);
         assert_eq!(state.flags.checkedness(), input != &outside);
         assert!(
             !state.flags.dirty_checkedness()
@@ -13781,8 +13783,8 @@ fn ordinary_checkbox_actual_work_and_storage_boundaries_stop_once_and_release_ev
         usage.resource(R::ManagedCapacityBytes).high_water,
         usage.resource(R::AuxiliaryEntries).high_water,
         usage.resource(R::SourceMapEntries).high_water,
-        std::mem::size_of::<crate::HtmlInputStringKind>(),
-        std::mem::size_of::<crate::HtmlInputStringFlags>()
+        std::mem::size_of::<crate::HtmlInputKind>(),
+        std::mem::size_of::<crate::HtmlInputFlags>()
     );
     for resource in [
         R::WorkCredits,
@@ -13895,7 +13897,7 @@ fn ordinary_checkbox_fostered_void_node_retains_current_form_and_unsanitized_val
         Some(form)
     );
     let state = frozen.input_state(&mut c, &input).unwrap();
-    assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Checkbox);
+    assert_eq!(state.flags.kind(), crate::HtmlInputKind::Checkbox);
     assert!(state.flags.checkedness());
     assert!(!state.flags.dirty_checkedness() && !state.value_rewritten_during_creation);
     let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
@@ -16138,7 +16140,7 @@ fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current(
         assert_eq!(control.stop(), None);
         assert!(owned);
         assert_eq!(state.email_value_count, Some(count), "{value:?}");
-        assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Email);
+        assert_eq!(state.flags.kind(), crate::HtmlInputKind::Email);
         assert!(!state.flags.kind().is_selectable());
         assert!(!state.flags.dirty_value());
         assert_eq!(current, expected.encode_utf16().collect::<Vec<_>>());
@@ -16682,9 +16684,9 @@ fn ordinary_temporal_input_local_datetime_normalizes_separator_and_shortest_time
 #[test]
 fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_values_and_owner() {
     for (keyword, kind) in [
-        ("button", crate::HtmlInputStringKind::Button),
-        ("reset", crate::HtmlInputStringKind::Reset),
-        ("submit", crate::HtmlInputStringKind::Submit),
+        ("button", crate::HtmlInputKind::Button),
+        ("reset", crate::HtmlInputKind::Reset),
+        ("submit", crate::HtmlInputKind::Submit),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(

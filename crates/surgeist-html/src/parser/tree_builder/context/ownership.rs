@@ -113,7 +113,10 @@ impl<'source> FragmentEntry<'source> {
             .kernel
             .session
             .root(c)?;
-        write(size_of::<ConstructionCapability>(), 4, c)?;
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let images = request.image_support();
+        write(size_of::<ConstructionCapability>(), 5, c)?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         stage.install_standalone(
             ConstructionCapability {
@@ -121,6 +124,7 @@ impl<'source> FragmentEntry<'source> {
                 owner: c.identity(),
                 document,
                 profile: ExecutionProfile::Fragment,
+                images,
             },
             c,
         )?;

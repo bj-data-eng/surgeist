@@ -76,6 +76,7 @@ pub enum StandaloneUnsupported {
     InvalidNesting,
     Completion,
     DetailsNotification,
+    ImageResource,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

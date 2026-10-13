@@ -48,7 +48,7 @@ pub use tokens::*;
 pub use values::*;
 pub use vocabulary::*;
 
-pub use construction::parser_session::read::HtmlParseRetiredDestination;
+pub use construction::parser_session::read::{HtmlInputImageSource, HtmlParseRetiredDestination};
 pub use construction::parser_session::{
     ConstructionCompletion as HtmlParseCompletion, ConstructionReadiness as HtmlParseReadiness,
     StandaloneDocumentState as HtmlParseDocumentState,

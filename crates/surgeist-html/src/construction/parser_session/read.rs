@@ -759,7 +759,7 @@ impl<'a> HtmlParseHistory<'a> {
 }
 
 impl<'a> report::MetadataRef<'a> {
-    pub fn input_flags(&self) -> Option<&'a crate::HtmlInputStringFlags> {
+    pub fn input_flags(&self) -> Option<&'a crate::HtmlInputFlags> {
         self.input().map(|(s, _)| &s.flags)
     }
     pub fn input_raw_value(&self) -> Option<&'a DocumentString> {
@@ -770,6 +770,38 @@ impl<'a> report::MetadataRef<'a> {
     /// An empty multiple Email value retains Some(0), distinct from whitespace-only Some(1).
     pub fn input_email_value_count(&self) -> Option<usize> {
         self.input().and_then(|(state, _)| state.email_value_count)
+    }
+    /// Established actual File resources. Other input states have no File view.
+    pub fn input_file_selection(&self) -> Option<crate::HtmlInputFileSelection> {
+        self.input().and_then(|(state, _)| {
+            (state.flags.kind() == crate::HtmlInputKind::File && state.selected_files_empty)
+                .then_some(crate::HtmlInputFileSelection::Empty)
+        })
+    }
+    /// Initial selected coordinates of actual Image construction, not geometry.
+    pub fn input_image_coordinate(&self) -> Option<crate::HtmlInputImageCoordinate> {
+        self.input().and_then(|(state, _)| match state.image {
+            input_image::ImageState::Last { coordinate, .. }
+                if state.flags.kind() == crate::HtmlInputKind::Image =>
+            {
+                Some(coordinate)
+            }
+            _ => None,
+        })
+    }
+    /// Last source observed while Image, including specified empty versus absent.
+    /// None means this actual Input has never entered Image.
+    pub fn input_image_source(&self) -> Option<HtmlInputImageSource<'a>> {
+        self.input().and_then(|(state, _)| match state.image {
+            input_image::ImageState::NeverEntered => None,
+            input_image::ImageState::Last { source: None, .. } => {
+                Some(HtmlInputImageSource::Absent)
+            }
+            input_image::ImageState::Last {
+                source: Some(source),
+                ..
+            } => Some(HtmlInputImageSource::Present(self.raw(source))),
+        })
     }
     pub fn input_cursor(&self) -> Option<usize> {
         self.input().map(|(s, _)| s.cursor)
@@ -848,4 +880,11 @@ impl HtmlParseScript<'_> {
     pub fn steps_when_result_ready(&self) -> Option<ScriptReadySteps> {
         self.state.steps_when_result_ready
     }
+}
+
+/// Source-specific immutable Image history; present empty and absence differ.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlInputImageSource<'a> {
+    Absent,
+    Present(&'a DocumentString),
 }

@@ -28,7 +28,8 @@ impl ManagedFamily {
 enum ManagedEffect {
     Details(crate::HtmlDetailsAttributeEffect),
     InputName,
-    InputRadioType,
+    InputType,
+    InputSource,
     InputChecked(Option<crate::HtmlInputCheckedAttributeChange>),
 }
 impl SessionStorage {
@@ -54,7 +55,8 @@ impl SessionStorage {
                 old,
                 new,
             )),
-            ManagedFamily::Input if local == "type" => ManagedEffect::InputRadioType,
+            ManagedFamily::Input if local == "type" => ManagedEffect::InputType,
+            ManagedFamily::Input if local == "src" => ManagedEffect::InputSource,
             ManagedFamily::Input if local == "name" => ManagedEffect::InputName,
             ManagedFamily::Input => {
                 ManagedEffect::InputChecked(match (old.is_some(), new.is_some()) {
@@ -90,7 +92,7 @@ impl SessionStorage {
         match effect {
             ManagedEffect::Details(effect) => self.details_change(c, node, effect),
             ManagedEffect::InputName => self.normalize_radio(c, node, None),
-            ManagedEffect::InputRadioType => {
+            ManagedEffect::InputType => {
                 let (slot, _) = self
                     .radio_input(c, node)?
                     .ok_or(SessionError::InputMetadataUnavailable)?;
@@ -118,6 +120,15 @@ impl SessionStorage {
                     container,
                     position.ok_or(SessionError::AttributeStorageUnavailable)?,
                 )
+            }
+            ManagedEffect::InputSource => {
+                let (slot, state) = self
+                    .radio_input(c, node)?
+                    .ok_or(SessionError::InputMetadataUnavailable)?;
+                if state.flags.kind() == crate::HtmlInputKind::Image {
+                    self.image_source_changed(c, node, slot)?;
+                }
+                Ok(())
             }
             ManagedEffect::InputChecked(None) => Ok(()),
             ManagedEffect::InputChecked(Some(change)) => {
@@ -295,6 +306,10 @@ impl ParserArenaSession {
             && exact_ascii(c, Some(attr.name.value.text()), "type")?
         {
             "type"
+        } else if matches!(family, ManagedFamily::Input)
+            && exact_ascii(c, Some(attr.name.value.text()), "src")?
+        {
+            "src"
         } else if exact_ascii(c, Some(attr.name.value.text()), family.boolean())? {
             family.boolean()
         } else {
@@ -302,14 +317,23 @@ impl ParserArenaSession {
         };
         if matches!(family, ManagedFamily::Input) {
             let (_, state) = find_input_state(&storage.payloads, c, node)?;
-            if local == "type"
-                && (input_type_state(c, attr.value.value.text())? != crate::HtmlInputType::Radio
-                    || !matches!(
+            if local == "type" {
+                let next = input_type_state(c, attr.value.value.text())?;
+                let file_image = matches!(
+                    state.flags.kind(),
+                    crate::HtmlInputKind::File | crate::HtmlInputKind::Image
+                ) || matches!(
+                    next,
+                    crate::HtmlInputType::File | crate::HtmlInputType::Image
+                );
+                let radio = next == crate::HtmlInputType::Radio
+                    && matches!(
                         state.flags.kind(),
-                        crate::HtmlInputStringKind::Radio | crate::HtmlInputStringKind::Checkbox
-                    ))
-            {
-                return Err(SessionError::WrongToken);
+                        crate::HtmlInputKind::Radio | crate::HtmlInputKind::Checkbox
+                    );
+                if !(radio || file_image && crate::HtmlInputKind::try_from(next).is_ok()) {
+                    return Err(SessionError::WrongToken);
+                }
             }
         }
         let container = storage.element_attribute_container(c, node)?;

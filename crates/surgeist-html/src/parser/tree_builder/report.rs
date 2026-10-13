@@ -130,6 +130,24 @@ impl ImmutableParseReport {
             ReportContext::Fragment(request) => request.effective_scripting_mode(),
         }
     }
+    /// Request-qualified image policy; this is not a resource load result.
+    pub fn image_support(&self) -> crate::HtmlImageSupport {
+        match &self.context {
+            ReportContext::Document { request, .. } => request.image_support(),
+            ReportContext::Fragment(request) => match request
+                .context()
+                .capture()
+                .node(request.context().target_document().subject())
+                .expect("checked target document")
+                .kind()
+            {
+                crate::HtmlCapturedNodeKind::Document(facts) => {
+                    facts.parser_creation_image_support()
+                }
+                _ => unreachable!("checked target document"),
+            },
+        }
+    }
     pub fn allow_declarative_shadow_roots(&self) -> bool {
         match &self.context {
             ReportContext::Fragment(request) => request.allow_declarative_shadow_roots(),

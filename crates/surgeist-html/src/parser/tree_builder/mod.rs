@@ -36,6 +36,8 @@ mod body;
 #[cfg(test)]
 mod conformance;
 mod context;
+#[cfg(test)]
+pub(crate) use context::initialized_driver as initialized_fragment_fixture;
 mod doctype;
 mod end;
 pub(crate) mod entry;
@@ -768,6 +770,7 @@ pub(crate) struct ConstructionCapability<'source> {
     owner: ControlIdentity,
     document: ParserNode,
     profile: ExecutionProfile,
+    images: crate::HtmlImageSupport,
 }
 /// Issued only after the corresponding real request/bootstrap is admitted.
 /// The fragment's scripting/attachment facts remain in the sole session owner.
@@ -797,6 +800,14 @@ impl ConstructionCapability<'_> {
         c.require_identity(&self.owner)?;
         c.charge(WorkCategory::RecordVisit, 3)?;
         c.require_source(self.source)?;
+        if matches!(self.profile, ExecutionProfile::Ordinary) {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if self.images != crate::HtmlImageSupport::Disabled {
+                return Err(SessionError::ContextFactUnavailable(
+                    crate::HtmlCaptureFact::ImageSupport,
+                ));
+            }
+        }
         match self.profile {
             ExecutionProfile::Ordinary => session.validate_standalone_proof(c, &self.document)?,
             ExecutionProfile::Fragment => session.validate_fragment_proof(c, &self.document)?,
@@ -1114,7 +1125,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         )?);
         c.charge(WorkCategory::RecordVisit, 2)?;
         let head = self.head.as_mut().expect("actual fresh head transfer");
-        write(size_of::<ConstructionCapability>(), 4, c)?;
+        write(size_of::<ConstructionCapability>(), 5, c)?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         let document = head
             .state
@@ -1130,6 +1141,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             owner: c.identity(),
             document,
             profile: ExecutionProfile::Ordinary,
+            images: crate::HtmlImageSupport::Disabled,
         };
         head.install_standalone(capability, c)?;
         // Swap retained real lexical evidence into the same head owner; leave

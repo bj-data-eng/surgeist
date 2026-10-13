@@ -147,6 +147,18 @@ impl<'source> ContextFragmentDriver<'source> {
             frozen: None,
         })
     }
+    /// Actual fixture-only borrow; no new public mutation or entry capability.
+    #[cfg(test)]
+    pub(crate) fn input_fixture_parts(
+        &mut self,
+    ) -> Option<(
+        &mut ParseControl,
+        &mut ParserArenaSession,
+        &super::ConstructionCapability<'source>,
+    )> {
+        let (session, capability) = self.head.as_mut()?.standalone_parts()?;
+        Some((&mut self.control, session, capability))
+    }
     pub(crate) fn step(&mut self) -> Result<HeadStep, FragmentExecutionError> {
         self.control.require_source(self.request.source())?;
         let result = self
@@ -733,7 +745,7 @@ impl<'source> CompletedContextFragment<'source> {
 }
 
 #[cfg(test)]
-fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextFragmentDriver<'_> {
+pub(crate) fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextFragmentDriver<'_> {
     let mut entry =
         ownership::FragmentEntry::new(request, super::parse::InitializationTarget::Native);
     match entry.take_driver() {

@@ -153,6 +153,15 @@ pub enum HtmlScriptingStatus {
     Disabled,
     Unavailable,
 }
+/// Captured image policy at the host revision. Its declared applicability
+/// distinguishes a target-only observation from a parser creation environment;
+/// it is not intrinsic Document state or inferred from scripting or a loader.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlImageSupport {
+    Unavailable,
+    Disabled,
+    Enabled,
+}
 /// Captured internal creation slot, independent of the current `is` attribute.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCapturedIsValue {
@@ -421,6 +430,7 @@ pub enum HtmlCaptureFact {
     Parent,
     FragmentHost,
     ScriptingStatus,
+    ImageSupport,
     Registry,
     Definitions,
     IsValue,
@@ -518,6 +528,8 @@ enum Association {
 pub struct HtmlCapturedDocument {
     mode: HtmlDocumentMode,
     scripting: HtmlScriptingStatus,
+    image_support: HtmlImageSupport,
+    parser_creation_image_support: HtmlImageSupport,
     registry: Registry,
     class: HtmlDocumentClass,
     template_role: HtmlTemplateDocumentRole,
@@ -527,6 +539,17 @@ pub struct HtmlCapturedDocument {
 impl HtmlCapturedDocument {
     pub fn mode(&self) -> HtmlDocumentMode {
         self.mode
+    }
+    /// Target-only policy observation; it does not authorize parser-created
+    /// temporary or inert documents.
+    pub fn image_support(&self) -> HtmlImageSupport {
+        self.image_support
+    }
+    /// Explicit policy attestation for this entry Document's parser creation
+    /// environment. Its capture identity/host revision qualify that scope;
+    /// target-only image_support does not establish it.
+    pub fn parser_creation_image_support(&self) -> HtmlImageSupport {
+        self.parser_creation_image_support
     }
     pub fn scripting(&self) -> HtmlScriptingStatus {
         self.scripting
@@ -912,6 +935,8 @@ impl HtmlCaptureBuilder {
             HtmlCapturedNodeKind::Document(HtmlCapturedDocument {
                 mode,
                 scripting,
+                image_support: HtmlImageSupport::Unavailable,
+                parser_creation_image_support: HtmlImageSupport::Unavailable,
                 registry,
                 class: HtmlDocumentClass::Unavailable,
                 template_role: HtmlTemplateDocumentRole::Unavailable,
@@ -922,6 +947,45 @@ impl HtmlCaptureBuilder {
             Parent::Root,
             usage,
         )
+    }
+    /// Establishes a target-only policy observation associated with this
+    /// builder-qualified Document. It does not establish creation-environment
+    /// applicability or infer policy from mode or scripting.
+    pub fn establish_document_image_support(
+        &mut self,
+        document: &HtmlCaptureBuilderSubject,
+        support: HtmlImageSupport,
+    ) -> Result<(), HtmlCaptureError> {
+        let index = self.index(document)?;
+        self.require(index, HtmlCaptureSubjectKind::Document)?;
+        let HtmlCapturedNodeKind::Document(facts) = &mut self.data.records[index].kind else {
+            unreachable!("qualified document")
+        };
+        if facts.image_support != HtmlImageSupport::Unavailable {
+            return Err(HtmlCaptureError::DocumentFactsAlreadyEstablished);
+        }
+        facts.image_support = support;
+        Ok(())
+    }
+    /// Attests image policy for the parser creation environment associated
+    /// with this builder-qualified entry Document, including documents created
+    /// within that operation. This is an adapter premise, not copied Document
+    /// URL/settings/resource state. Target-only support is an independent fact.
+    pub fn establish_parser_creation_image_support(
+        &mut self,
+        entry_document: &HtmlCaptureBuilderSubject,
+        support: HtmlImageSupport,
+    ) -> Result<(), HtmlCaptureError> {
+        let index = self.index(entry_document)?;
+        self.require(index, HtmlCaptureSubjectKind::Document)?;
+        let HtmlCapturedNodeKind::Document(facts) = &mut self.data.records[index].kind else {
+            unreachable!("qualified document")
+        };
+        if facts.parser_creation_image_support != HtmlImageSupport::Unavailable {
+            return Err(HtmlCaptureError::DocumentFactsAlreadyEstablished);
+        }
+        facts.parser_creation_image_support = support;
+        Ok(())
     }
     /// Establishes conditional template-owner facts without deriving them from
     /// mode, scripting or element namespace. A cache must name an actual inert

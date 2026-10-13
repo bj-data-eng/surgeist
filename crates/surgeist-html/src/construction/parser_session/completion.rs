@@ -32,7 +32,7 @@ impl StandaloneDocumentState {
     }
 }
 impl SessionStorage {
-    fn completion_slot(&self, c: &mut ParseControl) -> Result<usize, SessionError> {
+    pub(super) fn completion_slot(&self, c: &mut ParseControl) -> Result<usize, SessionError> {
         self.require(c)?;
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;

@@ -3,16 +3,22 @@ use surgeist_html::*;
 // HTML877d Checkbox/default-on, common reset/type-change/clone/checked rules.
 #[test]
 fn checkbox_has_exact_default_on_content_fallback_and_no_sanitizer() {
-    let kind = HtmlInputStringKind::try_from(HtmlInputType::Checkbox).unwrap();
-    assert_eq!(kind, HtmlInputStringKind::Checkbox);
+    let kind = HtmlInputKind::try_from(HtmlInputType::Checkbox).unwrap();
+    assert_eq!(kind, HtmlInputKind::Checkbox);
     assert_eq!(kind.input_type(), HtmlInputType::Checkbox);
     assert_eq!(kind.value_mode(), HtmlInputValueMode::DefaultOn);
-    assert_eq!(kind.value_mode().content_fallback(), Some(&[111, 110][..]));
     assert_eq!(
-        HtmlInputValueMode::Default.content_fallback(),
+        kind.value_mode().readback(&[], None, None),
+        Some(&[111, 110][..])
+    );
+    assert_eq!(
+        HtmlInputValueMode::Default.readback(&[], None, None),
         Some(&[][..])
     );
-    assert_eq!(HtmlInputValueMode::Value.content_fallback(), None);
+    assert_eq!(
+        HtmlInputValueMode::Value.readback(&[65], None, None),
+        Some(&[65][..])
+    );
     let units = [0, 9, 10, 13, 32, 0x85, 0xa0, 0xd800, 0xdc00, 0xdfff];
     assert!(
         units
@@ -21,16 +27,16 @@ fn checkbox_has_exact_default_on_content_fallback_and_no_sanitizer() {
     );
     assert_eq!(kind.sanitization(), HtmlInputSanitization::Preserve);
     assert_eq!(
-        HtmlInputStringKind::try_from(HtmlInputType::File)
+        HtmlInputKind::try_from(HtmlInputType::Color)
             .unwrap_err()
             .input_type(),
-        HtmlInputType::File
+        HtmlInputType::Color
     );
 }
 
 #[test]
 fn default_on_setter_changes_content_and_does_not_dirty_current_value() {
-    let flags = HtmlInputStringFlags::fresh().type_changed(HtmlInputStringKind::Checkbox);
+    let flags = HtmlInputFlags::fresh().type_changed(HtmlInputKind::Checkbox);
     assert_eq!(
         flags.value_setter_begin(),
         HtmlInputValueSetterStart::SetContentValue
@@ -42,14 +48,8 @@ fn default_on_setter_changes_content_and_does_not_dirty_current_value() {
             HtmlInputSanitization::Preserve
         )
     );
-    let dirty = HtmlInputStringFlags::from_retained(
-        HtmlInputStringKind::Checkbox,
-        true,
-        false,
-        false,
-        false,
-        false,
-    );
+    let dirty =
+        HtmlInputFlags::from_retained(HtmlInputKind::Checkbox, true, false, false, false, false);
     assert_eq!(
         dirty.value_attribute_changed(),
         HtmlInputValueAttributeEffect::KeepCurrent
@@ -58,7 +58,7 @@ fn default_on_setter_changes_content_and_does_not_dirty_current_value() {
 
 #[test]
 fn checked_setter_is_dirty_and_indeterminate_is_independent() {
-    let initial = HtmlInputStringFlags::fresh().type_changed(HtmlInputStringKind::Checkbox);
+    let initial = HtmlInputFlags::fresh().type_changed(HtmlInputKind::Checkbox);
     let checked = initial
         .checked_attribute_changed(HtmlInputCheckedAttributeChange::Added)
         .unwrap();
@@ -90,14 +90,8 @@ fn checked_setter_is_dirty_and_indeterminate_is_independent() {
 
 #[test]
 fn checkbox_reset_clears_only_specified_flags_and_retains_indeterminate() {
-    let initial = HtmlInputStringFlags::from_retained(
-        HtmlInputStringKind::Checkbox,
-        true,
-        true,
-        true,
-        true,
-        true,
-    );
+    let initial =
+        HtmlInputFlags::from_retained(HtmlInputKind::Checkbox, true, true, true, true, true);
     let mut reset = HtmlInputReset::new(initial);
     let Some(HtmlInputResetEffect::ClearDirtyAndUserValidity(next)) = reset.next_effect() else {
         panic!("first flags");
@@ -127,17 +121,13 @@ fn checkbox_reset_clears_only_specified_flags_and_retains_indeterminate() {
     assert_eq!(reset.next_effect(), None);
 }
 
-fn effects(
-    old: HtmlInputStringKind,
-    new: HtmlInputStringKind,
-    len: usize,
-) -> Vec<HtmlInputTypeEffect> {
+fn effects(old: HtmlInputKind, new: HtmlInputKind, len: usize) -> Vec<HtmlInputTypeEffect> {
     let mut cursor = HtmlInputTypeChange::new(old, new, len);
     std::iter::from_fn(|| cursor.next_effect()).collect()
 }
 #[test]
 fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
-    use HtmlInputStringKind::{Checkbox, Hidden, Text};
+    use HtmlInputKind::{Checkbox, Hidden, Text};
     use HtmlInputTypeEffect::*;
     assert_eq!(
         effects(Text, Checkbox, 3),
@@ -183,7 +173,7 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
         ]
     );
     assert!(effects(Checkbox, Checkbox, 3).is_empty());
-    let original = HtmlInputStringFlags::from_retained(Checkbox, true, true, true, true, true);
+    let original = HtmlInputFlags::from_retained(Checkbox, true, true, true, true, true);
     let reload = original.type_changed(Text).type_default_installed();
     assert!(!reload.dirty_value());
     assert!(
@@ -196,17 +186,11 @@ fn checkbox_type_changes_preserve_mode_order_and_selection_applicability() {
 
 #[test]
 fn checkbox_cloning_copies_four_flags_without_user_validity_or_kind_overwrite() {
-    let original = HtmlInputStringFlags::from_retained(
-        HtmlInputStringKind::Checkbox,
-        true,
-        true,
-        true,
-        true,
-        true,
-    );
-    let destination = HtmlInputStringFlags::fresh().type_changed(HtmlInputStringKind::Checkbox);
+    let original =
+        HtmlInputFlags::from_retained(HtmlInputKind::Checkbox, true, true, true, true, true);
+    let destination = HtmlInputFlags::fresh().type_changed(HtmlInputKind::Checkbox);
     let copy = destination.clone_flags_from(original);
-    assert_eq!(copy.kind(), HtmlInputStringKind::Checkbox);
+    assert_eq!(copy.kind(), HtmlInputKind::Checkbox);
     assert!(
         copy.dirty_value()
             && copy.dirty_checkedness()
@@ -225,7 +209,7 @@ fn checkbox_value_finish_never_requests_text_cursor_effects() {
     }
     assert_eq!(
         input_value_setter_finish(
-            HtmlInputStringKind::Checkbox,
+            HtmlInputKind::Checkbox,
             comparison.result().unwrap(),
             HtmlInputSelection::cursor(0)
         ),
