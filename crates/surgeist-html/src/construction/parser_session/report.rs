@@ -30,6 +30,11 @@ impl<'a> PreparedReportStorage<'a> {
                 checked_node(arena, node, c)?;
             }
             match payload {
+                RetainedPayload::Details { node, .. } => {
+                    // Construction eligibility is private, but its bound node
+                    // must still belong to this immutable result.
+                    checked_node(arena, node.ok_or(SessionError::WrongToken)?, c)?;
+                }
                 RetainedPayload::Input { raw, complete, .. } => {
                     if !complete {
                         return Err(SessionError::InputMetadataUnavailable);
@@ -194,6 +199,9 @@ fn checked_raw(
 }
 fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
     match payload {
+        // Notification eligibility is a parser proof, not authored state.
+        // Details name/open remain canonical native attributes.
+        RetainedPayload::Details { .. } => None,
         RetainedPayload::Shadow { root, .. } => *root,
         RetainedPayload::StandaloneDocumentCompletion { node, .. } => Some(*node),
         RetainedPayload::LookupRegistry { node, .. }

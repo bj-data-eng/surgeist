@@ -715,6 +715,23 @@ pub enum surgeist_html::HtmlDesignMode
 pub surgeist_html::HtmlDesignMode::Disabled
 pub surgeist_html::HtmlDesignMode::Enabled
 pub surgeist_html::HtmlDesignMode::Unavailable
+pub enum surgeist_html::HtmlDetailsAttribute
+pub surgeist_html::HtmlDetailsAttribute::Name
+pub surgeist_html::HtmlDetailsAttribute::Open
+pub surgeist_html::HtmlDetailsAttribute::Other
+pub enum surgeist_html::HtmlDetailsAttributeEffect
+pub surgeist_html::HtmlDetailsAttributeEffect::CloseGiven
+pub surgeist_html::HtmlDetailsAttributeEffect::None
+pub surgeist_html::HtmlDetailsAttributeEffect::Notify
+pub surgeist_html::HtmlDetailsAttributeEffect::Notify::close_other: bool
+pub surgeist_html::HtmlDetailsAttributeEffect::Notify::new: surgeist_html::HtmlDetailsState
+pub surgeist_html::HtmlDetailsAttributeEffect::Notify::old: surgeist_html::HtmlDetailsState
+pub enum surgeist_html::HtmlDetailsExclusivity
+pub surgeist_html::HtmlDetailsExclusivity::CloseGiven
+pub surgeist_html::HtmlDetailsExclusivity::CloseOther
+pub enum surgeist_html::HtmlDetailsState
+pub surgeist_html::HtmlDetailsState::Closed
+pub surgeist_html::HtmlDetailsState::Open
 pub enum surgeist_html::HtmlDimension
 pub surgeist_html::HtmlDimension::Absolute(surgeist_html::HtmlNonNegativeDecimal)
 pub surgeist_html::HtmlDimension::Percentage(surgeist_html::HtmlNonNegativeDecimal)
@@ -5419,5 +5436,6 @@ pub fn surgeist_html::VocabularySource::retained_capture_sha256(self) -> &'stati
 pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
+pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
 pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputStringKind, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish

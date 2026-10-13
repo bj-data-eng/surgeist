@@ -1231,8 +1231,34 @@ impl HeadState<'_> {
             )?;
             return Ok(Some(self.discard(c)?));
         }
-        if self.token_in(BLOCK, c)?.is_some() {
+        if let Some(block) = self.token_in(BLOCK, c)? {
             self.close_p_in_scope(c)?;
+            // Dispatch the actual admitted closed-table result. Inspect both
+            // fixed metadata lengths, then each of the seven ASCII bytes.
+            c.charge(WorkCategory::RecordVisit, 2)?;
+            let mut details = block.len() == b"details".len();
+            if details {
+                let mut index = 0;
+                while index < 7 {
+                    c.charge(WorkCategory::InspectByte, 2)?;
+                    details &= block.as_bytes()[index] == b"details"[index];
+                    index += 1;
+                }
+            }
+            if details {
+                self.insert_details(c)?;
+                if close {
+                    self.emit(
+                        HeadCondition::UnacknowledgedSelfClosing,
+                        crate::construction::parser_session::evidence::DiagnosticRule {
+                            anchor: "parsing-main-inbody",
+                            branch: "ordinary-start/self-closing",
+                        },
+                        c,
+                    )?;
+                }
+                return Ok(Some(self.finish(c)?));
+            }
         } else if self.token_in(HEADING, c)?.is_some() {
             self.close_p_in_scope(c)?;
             let current = self.before.kernel.current(c)?;

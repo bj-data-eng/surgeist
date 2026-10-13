@@ -75,6 +75,7 @@ pub(crate) enum StandaloneUnsupported {
     PendingScript,
     InvalidNesting,
     Completion,
+    DetailsNotification,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -814,6 +815,60 @@ impl ParseControl {
         );
         shared.shared = Arc::downgrade(values);
         Ok(old)
+    }
+    /// One real adjacent shift in unique admitted attribute storage. The caller
+    /// prepays and immediately commits the matching retained location progress.
+    pub(crate) fn shift_attribute_slot(
+        &mut self,
+        values: &mut Arc<Vec<crate::Attribute>>,
+        shared: &mut SharedAllocation<Vec<crate::Attribute>>,
+        vector: &VectorCapacity<crate::Attribute>,
+        index: usize,
+    ) -> Result<(), ParseStop> {
+        self.prepare_attribute_edit(values, shared, vector)?;
+        self.charge(WorkCategory::RecordVisit, 2)?;
+        if index.checked_add(1).is_none_or(|next| next >= values.len()) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let bytes = 3 * size_of::<crate::Attribute>();
+        self.admit_atomic_layout(bytes)?;
+        self.charge_many(&[
+            (WorkCategory::CopyByte, bytes as u64),
+            (WorkCategory::RecordWrite, 2),
+        ])?;
+        drop(std::mem::replace(&mut shared.shared, Weak::new()));
+        Arc::get_mut(values)
+            .expect("only actual ticket Weak removed")
+            .swap(index, index + 1);
+        shared.shared = Arc::downgrade(values);
+        Ok(())
+    }
+    /// Removes only the real last initialized slot, returning its actual owner.
+    /// All fallible admission precedes the fixed pop/ledger commit.
+    pub(crate) fn pop_attribute_slot(
+        &mut self,
+        values: &mut Arc<Vec<crate::Attribute>>,
+        shared: &mut SharedAllocation<Vec<crate::Attribute>>,
+        vector: &VectorCapacity<crate::Attribute>,
+    ) -> Result<crate::Attribute, ParseStop> {
+        self.prepare_attribute_edit(values, shared, vector)?;
+        self.charge(WorkCategory::RecordVisit, 1)?;
+        if values.is_empty() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        self.admit_atomic_layout(size_of::<crate::Attribute>())?;
+        self.charge_many(&[
+            (WorkCategory::CopyByte, size_of::<crate::Attribute>() as u64),
+            (WorkCategory::RecordWrite, 2),
+        ])?;
+        self.release(HtmlParseResource::ManagedAttributes, 1)?;
+        drop(std::mem::replace(&mut shared.shared, Weak::new()));
+        let result = Arc::get_mut(values)
+            .expect("only actual ticket Weak removed")
+            .pop()
+            .expect("actual last slot checked");
+        shared.shared = Arc::downgrade(values);
+        Ok(result)
     }
     /// Consumes real storage plus its ticket, returning both on invalid owner
     /// or capacity. Cleanup needs no budget, and releases capacity only: managed

@@ -201,6 +201,79 @@ mod tests {
             .unwrap()
     }
 
+    #[test]
+    fn details_publication_keeps_native_attributes_and_skips_private_eligibility() {
+        use crate::HtmlNodeKind;
+        use crate::construction::parser_session::report::{MetadataDocument, MetadataStep};
+        let literal =
+            "<!doctype html><details name=g open>A</details><details name=g open>B</details>";
+        let mut sealed = Some(ordinary(literal, true));
+        let report = ImmutableParseReport::take_document(&mut sealed).unwrap();
+        assert!(sealed.is_none());
+        let document = report.document().unwrap();
+        let html = document.root().children().last().unwrap();
+        let body = document.node(&html).unwrap().children().last().unwrap();
+        let details: Vec<_> = document.node(&body).unwrap().children().collect();
+        assert_eq!(details.len(), 2);
+        for (index, id) in details.iter().enumerate() {
+            let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() else {
+                panic!("native Details element");
+            };
+            assert_eq!(
+                element.name().local_name().code_units(),
+                &[100, 101, 116, 97, 105, 108, 115]
+            );
+            let attributes: Vec<_> = element
+                .attributes()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute.name().local_name().code_units(),
+                        attribute.value().code_units(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                attributes,
+                if index == 0 {
+                    vec![
+                        (&[110, 97, 109, 101][..], &[103][..]),
+                        (&[111, 112, 101, 110][..], &[][..]),
+                    ]
+                } else {
+                    vec![(&[110, 97, 109, 101][..], &[103][..])]
+                }
+            );
+        }
+        let usage = report.usage().clone();
+        let mut counts = [0; 2];
+        let mut cursor = report.metadata();
+        loop {
+            match cursor.advance() {
+                MetadataStep::Record(record) => {
+                    for (index, id) in details.iter().enumerate() {
+                        if record.node().id() == *id {
+                            // Ordinary creation retains node-document identity;
+                            // creation-registry metadata is fragment-specific.
+                            // The private Details marker emits no record.
+                            let Some(MetadataDocument::Owned(owner)) = record.node_document()
+                            else {
+                                panic!("canonical ordinary node-document record");
+                            };
+                            assert_eq!(owner.id(), document.root().id());
+                            counts[index] += 1;
+                        }
+                    }
+                }
+                MetadataStep::Skipped => {}
+                MetadataStep::Complete => break,
+            }
+        }
+        assert_eq!(counts, [1, 1]);
+        assert_eq!(report.usage(), &usage);
+        assert_eq!(report.source().as_utf8(), Some(literal));
+    }
+
     fn fragment(literal: &str, shadow: bool) -> SealedFragmentConstruction {
         fragment_with_scripting(literal, shadow, crate::HtmlScriptingStatus::Disabled)
     }

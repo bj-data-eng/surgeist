@@ -770,6 +770,18 @@ enum ExecutionProfile {
     Fragment,
 }
 impl ConstructionCapability<'_> {
+    pub(crate) fn details_notification_domain(
+        &self,
+        c: &mut ParseControl,
+        session: &ParserArenaSession,
+    ) -> Result<bool, SessionError> {
+        self.validate_session(c, session)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        // This sealed producer's ordinary request has no host realm, listener,
+        // task recipient or reentry. Toggle has no intrinsic follow-on callback;
+        // its task/tracker can be eliminated, preserving exclusivity mutations.
+        Ok(matches!(self.profile, ExecutionProfile::Ordinary))
+    }
     pub(crate) fn validate_session(
         &self,
         c: &mut ParseControl,

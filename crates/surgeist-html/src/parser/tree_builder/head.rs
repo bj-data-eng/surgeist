@@ -1058,6 +1058,44 @@ impl HeadState<'_> {
         self.before.kernel.push(&node, c)?;
         Ok(node)
     }
+    pub(super) fn insert_details(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
+        let place = self.before.kernel.appropriate_place(None, c)?;
+        let template = self.before.kernel.last_template(c)?;
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        let capability = &self
+            .script
+            .as_ref()
+            .ok_or_else(|| {
+                c.stop_unsupported_standalone(
+                    crate::parser::control::StandaloneUnsupported::Provenance,
+                )
+            })?
+            .capability;
+        let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
+        let Payload::Tag(input) = &mut pending.payload else {
+            return Err(HeadError::MissingInput);
+        };
+        let node = self.before.kernel.session.allocate_details_for_creation(
+            c,
+            input,
+            crate::construction::parser_session::CreationLocation {
+                intended_parent: &place.parent,
+                current_form: self.current_form.as_ref().and_then(FormPointer::owned),
+                context: template.as_ref().map_or(
+                    crate::construction::parser_session::CreationContext::Ordinary,
+                    crate::construction::parser_session::CreationContext::Template,
+                ),
+            },
+            &pending.source,
+            capability,
+        )?;
+        let location = self.before.kernel.adjusted_location(None, c)?;
+        self.before
+            .kernel
+            .insert_element_at(&node, &location, c, Some(capability))?;
+        self.before.kernel.push(&node, c)?;
+        Ok(node)
+    }
     pub(super) fn insert_select_family(
         &mut self,
         c: &mut ParseControl,

@@ -77,6 +77,12 @@ pub(super) enum IntrinsicTask {
 /// No frame aliases native backing or owns an independent tree/controller.
 #[derive(Clone, Copy)]
 pub(super) enum EffectFrame {
+    Details {
+        node: usize,
+        close: crate::HtmlDetailsExclusivity,
+        root: usize,
+        next: Option<usize>,
+    },
     AdoptSubtree {
         root: usize,
         next: Option<usize>,
@@ -291,7 +297,7 @@ impl SessionStorage {
         self.effects.current = self.effects.transfer.take();
         Ok(())
     }
-    fn write_current_effect(
+    pub(super) fn write_current_effect(
         &mut self,
         c: &mut ParseControl,
         frame: Option<EffectFrame>,
@@ -366,6 +372,12 @@ impl SessionStorage {
         frame: EffectFrame,
     ) -> Result<(), SessionError> {
         match frame {
+            EffectFrame::Details {
+                node,
+                close,
+                root,
+                next,
+            } => self.step_details(c, node, close, root, next),
             EffectFrame::AdoptSubtree {
                 root,
                 next,
@@ -1017,7 +1029,9 @@ impl SessionStorage {
         detached: Option<usize>,
         removal: bool,
     ) -> Result<(), SessionError> {
-        if self.html_local(c, node, "option")? {
+        if !removal && self.html_local(c, node, "details")? {
+            self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseGiven)?;
+        } else if self.html_local(c, node, "option")? {
             let (slot, SelectMetadata::Option(mut state)) = self.select_metadata(c, node)? else {
                 return Err(SessionError::SelectMetadataUnavailable);
             };

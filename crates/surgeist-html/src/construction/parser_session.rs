@@ -37,6 +37,7 @@ use std::{mem, sync::Weak};
 mod clone;
 mod completion;
 pub(crate) mod context;
+mod details;
 pub(crate) use context::ParserDocumentReference;
 use context::{DocumentRef, FragmentContextStorage};
 pub(crate) mod evidence;
@@ -137,6 +138,10 @@ enum AttributeMergeName {
 #[derive(Clone, Copy)]
 enum CreationProfile<'a, 'source> {
     Ordinary,
+    Details(
+        &'a crate::parser::tree_builder::ConstructionCapability<'source>,
+        &'a crate::HtmlSourceRange,
+    ),
     Input(
         &'a crate::parser::tree_builder::ConstructionCapability<'source>,
         &'a crate::HtmlSourceRange,
@@ -148,6 +153,9 @@ enum CreationProfile<'a, 'source> {
 }
 #[derive(Clone, Copy)]
 enum OrderedCreation {
+    Details {
+        metadata: usize,
+    },
     Input {
         input: usize,
         association: usize,
@@ -198,6 +206,8 @@ impl FormattingCreation {
 }
 
 struct SessionStorage {
+    #[cfg(test)]
+    cancel_after_details_shift: Option<crate::HtmlParseCancellation>,
     control: ControlIdentity,
     effects: ConstructionEffects,
     evidence: Option<ParseEvidence>,
@@ -295,6 +305,12 @@ enum RetainedPayload {
         origins: OriginGroupRef,
     },
     Attributes(Option<AttributeStorage>),
+    // Presence is an actual closed-recipient proof issued by ordinary creation;
+    // no task was queued and the source toggle tracker remains null.
+    Details {
+        node: Option<usize>,
+        notification: details::NotificationDomain,
+    },
     SvgScript {
         node: Option<usize>,
         state: SvgScriptState,
@@ -465,6 +481,16 @@ pub(crate) enum DisabledScriptPreparation {
     ParserDocumentMismatch,
 }
 enum AttributeStorage {
+    Removing {
+        values: OrderedAttributes,
+        allocation: VectorCapacity<Attribute>,
+        shared: SharedAllocation<Vec<Attribute>>,
+        element: Option<usize>,
+        index: usize,
+        shifted: usize,
+        popped: bool,
+        rebound: usize,
+    },
     Building {
         values: Vec<Attribute>,
         allocation: VectorCapacity<Attribute>,
@@ -537,7 +563,7 @@ impl PayloadStorage {
                 RetainedPayload::String {
                     value, location, ..
                 } => {
-                    let stored = location.value(records, &self.values, control)?;
+                    let stored = location.value(records, &self.values, index, control)?;
                     cleanup_charge(control, WorkCategory::ProviderCall, 2)?;
                     let expected = if let Some(stored) = stored {
                         if !Arc::ptr_eq(stored.backing(), value.backing()) {
@@ -551,11 +577,14 @@ impl PayloadStorage {
                         return Err(SessionError::AliasedPayload);
                     }
                 }
-                RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                    values,
-                    element,
-                    ..
-                })) => {
+                RetainedPayload::Attributes(Some(
+                    AttributeStorage::Frozen {
+                        values, element, ..
+                    }
+                    | AttributeStorage::Removing {
+                        values, element, ..
+                    },
+                )) => {
                     let expected = if let Some(index) = element {
                         cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
                         cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
@@ -597,6 +626,7 @@ impl PayloadStorage {
                 | RetainedPayload::InputSource { .. }
                 | RetainedPayload::Input { .. }
                 | RetainedPayload::SelectFamily { .. }
+                | RetainedPayload::Details { .. }
                 | RetainedPayload::Retired => {}
                 RetainedPayload::HistoricalString { origins } => {
                     origins.require_disposal_owner(control)?
@@ -643,7 +673,8 @@ impl PayloadStorage {
                 let count = match &storage {
                     AttributeStorage::Building { values, .. }
                     | AttributeStorage::Transferring { values, .. } => values.len(),
-                    AttributeStorage::Frozen { values, .. } => values.len(),
+                    AttributeStorage::Frozen { values, .. }
+                    | AttributeStorage::Removing { values, .. } => values.len(),
                 };
                 match storage {
                     AttributeStorage::Building {
@@ -656,6 +687,12 @@ impl PayloadStorage {
                             .expect("actual attribute vector ticket");
                     }
                     AttributeStorage::Frozen {
+                        values,
+                        allocation,
+                        shared,
+                        ..
+                    }
+                    | AttributeStorage::Removing {
                         values,
                         allocation,
                         shared,
@@ -723,6 +760,7 @@ impl StringLocation {
         &self,
         records: &'a [Record],
         payloads: &'a [RetainedPayload],
+        registry_index: usize,
         control: &mut ParseControl,
     ) -> Result<Option<&'a DocumentString>, SessionError> {
         let value = match *self {
@@ -793,6 +831,28 @@ impl StringLocation {
             | Self::AttributePrefix(container, index) => {
                 cleanup_charge(control, WorkCategory::RecordVisit, 2)?;
                 let attribute = match payloads.get(container) {
+                    Some(RetainedPayload::Attributes(Some(AttributeStorage::Removing {
+                        values,
+                        index: removed,
+                        shifted,
+                        popped,
+                        rebound,
+                        ..
+                    }))) => {
+                        if registry_index >= *rebound && index == *removed && *popped {
+                            return Ok(None);
+                        }
+                        let position = if registry_index < *rebound {
+                            index
+                        } else if index == *removed {
+                            index + shifted
+                        } else if index > *removed && index <= removed + shifted {
+                            index - 1
+                        } else {
+                            index
+                        };
+                        values.as_slice().get(position)
+                    }
                     Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
                         values,
                         destination,
@@ -895,6 +955,8 @@ impl SessionStorage {
             .share_owned(Identity)
             .map_err(|(stop, _)| SessionError::Stop(stop))?;
         let mut session = Self {
+            #[cfg(test)]
+            cancel_after_details_shift: None,
             control: control.identity(),
             effects,
             evidence: None,
@@ -1262,6 +1324,15 @@ impl SessionStorage {
                 prepared,
             )?;
             match creation {
+                OrderedCreation::Details { metadata } => {
+                    payload_write::<Option<usize>>(control, 1)?;
+                    let RetainedPayload::Details { node: bound, .. } =
+                        &mut self.payloads.values[metadata]
+                    else {
+                        unreachable!()
+                    };
+                    *bound = Some(node.index);
+                }
                 OrderedCreation::Input {
                     input,
                     association,
@@ -1370,6 +1441,9 @@ impl SessionStorage {
                     self.drain_form_effects(control)?;
                 }
                 match creation {
+                    OrderedCreation::Details { .. } => {
+                        self.initial_details_attribute(control, node.index, position)?
+                    }
                     OrderedCreation::Input {
                         input, association, ..
                     } => self.initial_input_attribute(
@@ -1419,6 +1493,7 @@ impl SessionStorage {
             )?;
             self.usage.attributes += count;
             match creation {
+                OrderedCreation::Details { .. } => {}
                 OrderedCreation::Input { input, .. } => {
                     self.reset_input(control, node.index, input)?
                 }
@@ -3319,7 +3394,7 @@ impl SessionStorage {
         }
         let mut next = Some(root);
         while let Some(node) = next {
-            for name in ["option", "optgroup", "selectedcontent", "script"] {
+            for name in ["option", "optgroup", "selectedcontent", "script", "details"] {
                 if self.html_local(control, node, name)? {
                     local = true;
                     if name == "option" || name == "selectedcontent" {
@@ -4182,6 +4257,8 @@ impl SessionStorage {
             evidence,
             fragment,
             #[cfg(test)]
+                cancel_after_details_shift: _,
+            #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
                 cancel_after_textarea_reset: _,
@@ -4702,6 +4779,24 @@ impl ParserArenaSession {
             location.context,
         )
     }
+    pub(crate) fn allocate_details_for_creation(
+        &mut self,
+        control: &mut ParseControl,
+        input: &mut Option<Tag>,
+        location: CreationLocation<'_>,
+        token_source: &crate::HtmlSourceRange,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
+    ) -> Result<ParserNode, SessionError> {
+        capability.validate_session(control, self)?;
+        self.allocate_for_creation(
+            control,
+            input,
+            location.intended_parent,
+            location.current_form,
+            CreationProfile::Details(capability, token_source),
+            location.context,
+        )
+    }
     pub(crate) fn allocate_select_family_for_creation(
         &mut self,
         control: &mut ParseControl,
@@ -4786,12 +4881,34 @@ impl ParserArenaSession {
         }
         let token_source = match profile {
             CreationProfile::Ordinary => None,
-            CreationProfile::Input(capability, source)
+            CreationProfile::Details(capability, source)
+            | CreationProfile::Input(capability, source)
             | CreationProfile::Select(capability, source) => {
                 // Concrete borrowed capability, not a caller-supplied eligibility flag.
                 capability.validate_session(control, self)?;
                 Some(source)
             }
+        };
+        let details_domain = if let CreationProfile::Details(capability, _) = profile {
+            if !exact_ascii(control, Some(tag.name.value.text()), "details")? {
+                return Err(SessionError::WrongToken);
+            }
+            let closed = capability.details_notification_domain(control, self)?;
+            for attr in tag.attributes.as_slice() {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if exact_ascii(control, Some(attr.name.value.text()), "open")? && !closed {
+                    return Err(control
+                        .stop_unsupported_standalone(StandaloneUnsupported::DetailsNotification)
+                        .into());
+                }
+            }
+            Some(if closed {
+                details::NotificationDomain::ClosedOrdinary
+            } else {
+                details::NotificationDomain::Unavailable
+            })
+        } else {
+            None
         };
         let select_metadata = if matches!(profile, CreationProfile::Select(..)) {
             select::initial_metadata(control, tag)?
@@ -4896,6 +5013,17 @@ impl ParserArenaSession {
             true,
             &mut prepared,
         )?;
+        let details_slot = if let Some(notification) = details_domain {
+            storage.prepare_payload_slot(control)?;
+            let slot = storage.payloads.values.len();
+            storage.payloads.values.push(RetainedPayload::Details {
+                node: None,
+                notification,
+            });
+            Some(slot)
+        } else {
+            None
+        };
         let select_slot = if let Some(state) = select_metadata {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
@@ -5015,7 +5143,15 @@ impl ParserArenaSession {
             let Tag {
                 name, attributes, ..
             } = take_payload(input, control)?;
-            let node = if let Some(input_slot) = input_slot {
+            let node = if let Some(metadata) = details_slot {
+                storage.allocate_ordered_payload(
+                    control,
+                    name,
+                    attributes,
+                    prepared,
+                    OrderedCreation::Details { metadata },
+                )?
+            } else if let Some(input_slot) = input_slot {
                 storage.allocate_ordered_payload(
                     control,
                     name,
@@ -5118,7 +5254,13 @@ impl ParserArenaSession {
         })();
         match result {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) if slot.is_some() || matches!(profile, CreationProfile::Select(..)) => {
+            Err(_)
+                if slot.is_some()
+                    || matches!(
+                        profile,
+                        CreationProfile::Select(..) | CreationProfile::Details(..)
+                    ) =>
+            {
                 Err(control
                     .fail_invariant(
                         crate::parser::control::Invariant::IncompleteFormAssociationCreation,
@@ -6069,6 +6211,8 @@ impl ParserArenaSession {
             evidence,
             fragment,
             #[cfg(test)]
+                cancel_after_details_shift: _,
+            #[cfg(test)]
                 cancel_after_removal: _,
             #[cfg(test)]
                 cancel_after_textarea_reset: _,
@@ -6102,6 +6246,8 @@ impl ParserArenaSession {
                     effects,
                     evidence,
                     fragment,
+                    #[cfg(test)]
+                    cancel_after_details_shift: None,
                     #[cfg(test)]
                     cancel_after_removal: None,
                     #[cfg(test)]

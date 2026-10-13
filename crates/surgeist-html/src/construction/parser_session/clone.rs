@@ -5,6 +5,7 @@ use super::*;
 
 #[derive(Clone, Copy, Default)]
 struct CloneBindings {
+    details: Option<usize>,
     association: Option<usize>,
     select: Option<usize>,
     textarea: Option<usize>,
@@ -667,6 +668,20 @@ impl SessionStorage {
                 },
             )?);
         }
+        if self.html_local(c, source, "details")? {
+            let notification = self.details_domain(c, source)?;
+            if self.form_attribute(c, source, "open")?.is_some() {
+                self.require_details_notification(c, source)?;
+            }
+            payload_write::<Option<usize>>(c, 1)?;
+            result.details = Some(self.retain_clone_metadata(
+                c,
+                RetainedPayload::Details {
+                    node: None,
+                    notification,
+                },
+            )?);
+        }
         if self.html_local(c, source, "output")? {
             self.output_clone_slot(c, source)?;
             payload_write::<Option<usize>>(c, 1)?;
@@ -722,6 +737,7 @@ impl SessionStorage {
         bindings: CloneBindings,
     ) -> Result<(), SessionError> {
         for slot in [
+            bindings.details,
             bindings.association,
             bindings.select,
             bindings.textarea,
@@ -737,7 +753,8 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 1)?;
             payload_write::<Option<usize>>(c, 1)?;
             match &mut self.payloads.values[slot] {
-                RetainedPayload::LookupRegistry { node: bound, .. }
+                RetainedPayload::Details { node: bound, .. }
+                | RetainedPayload::LookupRegistry { node: bound, .. }
                 | RetainedPayload::FormAssociation { node: bound, .. }
                 | RetainedPayload::SelectFamily { node: bound, .. }
                 | RetainedPayload::Textarea { node: bound, .. }
@@ -758,6 +775,9 @@ impl SessionStorage {
         container: usize,
         position: usize,
     ) -> Result<(), SessionError> {
+        if bindings.details.is_some() {
+            self.initial_details_attribute(c, node, position)?;
+        }
         if let Some(input) = bindings.input {
             self.initial_input_attribute(
                 c,

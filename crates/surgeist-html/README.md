@@ -2187,6 +2187,23 @@ and copies may be quadratic and remain charged and polled. Other input families,
 hosted initialization, complete live setter integration and public parse
 completion remain separate work.
 
+Private Details construction applies the [shared attribute-effect rules](src/details_rules.rs)
+during source-ordered attribute creation, cloning and insertion. A nonempty,
+exact UTF-16 name groups members in the same ordinary tree. Name changes and
+insertion close the given open member when a peer is open; adding open closes
+the other open member. Removing open notifies without closing another member,
+and replacing a present open attribute leaves its state unchanged.
+
+The closed ordinary producer qualifies notification elimination from its actual
+absence of host recipients and reentry. Disabled scripting alone is insufficient.
+Fragments may construct closed/name-only Details; an open transition requiring
+unavailable notification facts refuses before consuming the incoming attribute.
+Native name/open attributes remain authoritative. A private node-bound eligibility
+marker is qualified and skipped during immutable metadata publication. Controlled
+attribute removal retains charged shift/pop/rebind progress and original retired
+source histories; interruption prevents publication and preserves cleanup ownership.
+Live toggle dispatch, tracker state and hosted mutation remain downstream work.
+
 Ordinary formatting starts and ends now use the active-formatting list, Noah
 rule, reconstruction and adoption algorithm. Reconstruction and adoption replay
 the actual original tag into independently owned controlled storage, preserving

@@ -3204,4 +3204,56 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn details_fragment_closed_and_name_only_preserve_supported_creation() {
+        for source in [
+            "<details></details>",
+            "<details name=g><summary>A</summary></details>",
+        ] {
+            let request = request(source, "div", HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            complete(&mut driver);
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+    }
+    #[test]
+    fn details_fragment_open_requires_actual_notification_capability_before_take() {
+        let request = request(
+            "<details name=g open>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut driver = initialized_driver(&request);
+        let mut failed = false;
+        for _ in 0..128 {
+            if driver.step().is_err() {
+                failed = true;
+                break;
+            }
+        }
+        assert!(failed);
+        assert_eq!(
+            driver.control.stop(),
+            Some(ParseStop::UnsupportedStandaloneState(
+                crate::parser::control::StandaloneUnsupported::DetailsNotification
+            ))
+        );
+        let pending = driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .pending
+            .as_ref()
+            .unwrap();
+        assert!(
+            matches!(&pending.payload, super::super::prologue::Payload::Tag(Some(tag)) if tag.attributes.len()==2)
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
 }

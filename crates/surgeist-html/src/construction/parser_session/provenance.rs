@@ -2231,7 +2231,8 @@ impl ParserArenaSession {
                 continue;
             };
             c.require_document_string(allocation, value)?;
-            let Some(native) = location.value(&storage.records, &storage.payloads.values, c)?
+            let Some(native) =
+                location.value(&storage.records, &storage.payloads.values, payload_slot, c)?
             else {
                 continue;
             };
@@ -2465,6 +2466,42 @@ impl SessionStorage {
                 original_cause: None,
                 retired_destination: None,
                 original_node: Some(source),
+                intended_parent: None,
+                original: None,
+                incoming: None,
+                trigger: evidence.native.current,
+            },
+        )?;
+        payload_write::<Option<usize>>(c, 1)?;
+        evidence.native.current = Some(index);
+        Ok(previous)
+    }
+    /// Actual private attribute mutation, not a fabricated parser token/rule.
+    pub(super) fn begin_details_change(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        source: Option<&crate::HtmlSourceRange>,
+    ) -> Result<Option<ConstructionCauseRef>, SessionError> {
+        if let Some(source) = source {
+            c.require_source_range(source)?;
+        }
+        let Some(evidence) = &mut self.evidence else {
+            return Ok(None);
+        };
+        let previous = evidence.current_cause(c)?;
+        payload_write::<Option<crate::HtmlSourceRange>>(c, 1)?;
+        let index = evidence.append_cause(
+            c,
+            ConstructionCause {
+                operation: ConstructionOperation::Replacement,
+                source: source.cloned(),
+                captured: None,
+                rule: None,
+                family: None,
+                original_cause: None,
+                retired_destination: None,
+                original_node: Some(node),
                 intended_parent: None,
                 original: None,
                 incoming: None,
