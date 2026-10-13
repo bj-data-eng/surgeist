@@ -10295,7 +10295,6 @@ fn hidden_input_unsupported_other_type_retains_actual_form_continuation() {
     for markup in [
         "<input type=number>",
         "<input type=email>",
-        "<input type=checkbox>",
         "<input type=file>",
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
@@ -13561,7 +13560,6 @@ fn ordinary_text_input_unsupported_valid_types_preserve_original_pending_token_b
         "number",
         "range",
         "color",
-        "checkbox",
         "radio",
         "file",
         "submit",
@@ -13711,6 +13709,236 @@ fn ordinary_checkbox_keeps_unsanitized_default_and_form_sibling_through_eof() {
         ]
     );
     assert!(owner_is_form);
+}
+
+#[test]
+fn ordinary_checkbox_same_name_preserves_both_checked_and_external_explicit_form_owner() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><input type=checkbox name=g checked><input type=CHECKBOX name=g checked=false></form><input type=checkbox form=f value=''>",
+        ),
+        limits(100),
+    );
+    let mut driver = super::entry::initialized_driver(&request);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadStep::Complete
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let doc = frozen.document().unwrap();
+    assert_eq!(
+        outline(doc),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "input"),
+            (2, "input")
+        ])
+    );
+    let html = doc
+        .root()
+        .children()
+        .find(|id| matches!(doc.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = doc.node(&html).unwrap().children().nth(1).unwrap();
+    let form = doc.node(&body).unwrap().children().next().unwrap();
+    let outside = doc.node(&body).unwrap().children().nth(1).unwrap();
+    let members: Vec<_> = doc.node(&form).unwrap().children().collect();
+    for input in members.iter().chain(std::iter::once(&outside)) {
+        assert_eq!(
+            frozen.form_association_owner(&mut c, input).unwrap(),
+            Some(form.clone())
+        );
+        let state = frozen.input_state(&mut c, input).unwrap();
+        assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Checkbox);
+        assert_eq!(state.flags.checkedness(), input != &outside);
+        assert!(
+            !state.flags.dirty_checkedness()
+                && !state.flags.dirty_value()
+                && !state.flags.indeterminate()
+        );
+        let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
+        frozen
+            .append_input_value(&mut c, input, &mut value)
+            .unwrap();
+        assert_eq!(
+            value.units(),
+            if input == &outside {
+                &[][..]
+            } else {
+                &[111, 110][..]
+            }
+        );
+        value.release(&mut c).unwrap();
+        let HtmlNodeKind::Element(element) = doc.node(input).unwrap().kind() else {
+            panic!("input");
+        };
+        assert_eq!(
+            element
+                .attributes()
+                .iter()
+                .filter(|a| a.name().local_name().code_units() == [118, 97, 108, 117, 101])
+                .count(),
+            usize::from(input == &outside)
+        );
+    }
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn ordinary_checkbox_actual_work_and_storage_boundaries_stop_once_and_release_every_prefix() {
+    use crate::HtmlParseResource as R;
+    let source = "<!doctype html><form><input value='A&#13;B&#10;C' type=checkbox checked><input type=checkbox>Z</form>";
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100));
+    let mut driver = super::entry::initialized_driver(&request);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadStep::Complete
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    let usage = driver.control.usage().clone();
+    eprintln!(
+        "Checkbox full transaction: work={} units={} managed_bytes={} auxiliary={} source_maps={}; kind={} flags={}",
+        usage.resource(R::WorkCredits).high_water,
+        usage.resource(R::ManagedUtf16Units).high_water,
+        usage.resource(R::ManagedCapacityBytes).high_water,
+        usage.resource(R::AuxiliaryEntries).high_water,
+        usage.resource(R::SourceMapEntries).high_water,
+        std::mem::size_of::<crate::HtmlInputStringKind>(),
+        std::mem::size_of::<crate::HtmlInputStringFlags>()
+    );
+    for resource in [
+        R::WorkCredits,
+        R::ManagedUtf16Units,
+        R::ManagedCapacityBytes,
+        R::AuxiliaryEntries,
+        R::SourceMapEntries,
+    ] {
+        let peak = usage.resource(resource).high_water;
+        assert!(peak > 1);
+        for short in [false, true] {
+            let cap = peak - u64::from(short);
+            let builder = limits(100).into_builder();
+            let limited = match resource {
+                R::WorkCredits => builder.work_credits(cap),
+                R::ManagedUtf16Units => builder.managed_utf16_units(cap),
+                R::ManagedCapacityBytes => builder.managed_capacity_bytes(cap),
+                R::AuxiliaryEntries => builder.auxiliary_entries(cap),
+                R::SourceMapEntries => builder.source_map_entries(cap),
+                _ => unreachable!(),
+            }
+            .finish()
+            .unwrap();
+            let request =
+                crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limited);
+            let mut driver = super::entry::initialized_driver(&request);
+            let result = (|| {
+                for _ in 0..1000 {
+                    let step = driver.step()?;
+                    if step != super::head::HeadStep::Consumed {
+                        return Ok::<_, super::StandaloneError>(step);
+                    }
+                }
+                panic!("finite actual source");
+            })();
+            let disposal = driver.release();
+            if short {
+                // The complete transaction includes terminal-safe disposal.
+                // A one-short Work cap can reach Complete then refuse its
+                // final cleanup admission; the same original owner is retried.
+                assert!(result.is_err() || disposal.is_err());
+                assert!(
+                    matches!(driver.control.stop(), Some(ParseStop::LimitExceeded { resource: actual, .. }) if actual == resource)
+                );
+                let first = driver.control.stop().unwrap();
+                let at_stop = driver.control.usage().clone();
+                assert!(driver.step().is_err());
+                assert_eq!(driver.control.stop(), Some(first));
+                assert_eq!(driver.control.usage(), &at_stop);
+                driver.release().unwrap();
+                assert_released(&driver.control);
+                assert_eq!(driver.control.stop(), Some(first));
+                assert_eq!(
+                    driver.control.usage().resource(R::WorkCredits).current,
+                    at_stop.resource(R::WorkCredits).current
+                );
+            } else {
+                assert_eq!(result.ok(), Some(super::head::HeadStep::Complete));
+                disposal.unwrap();
+                assert_released(&driver.control);
+                assert_eq!(driver.control.usage().resource(resource).high_water, peak);
+                assert_eq!(driver.control.stop(), None);
+            }
+        }
+    }
+}
+
+#[test]
+fn ordinary_checkbox_fostered_void_node_retains_current_form_and_unsanitized_value() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><table><input type=checkbox value='A&#13;B&#10;C' checked><tr><td>T</table>Z</form>",
+        ),
+        limits(100),
+    );
+    let mut driver = super::entry::initialized_driver(&request);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadStep::Complete
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    let doc = frozen.document().unwrap();
+    assert_eq!(
+        outline(doc),
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "table"),
+            (4, "tbody"),
+            (5, "tr"),
+            (6, "td"),
+            (7, "#T"),
+            (3, "#Z")
+        ])
+    );
+    let html = doc
+        .root()
+        .children()
+        .find(|id| matches!(doc.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = doc.node(&html).unwrap().children().nth(1).unwrap();
+    let form = doc.node(&body).unwrap().children().next().unwrap();
+    let input = doc.node(&form).unwrap().children().next().unwrap();
+    assert_eq!(doc.node(&input).unwrap().children().count(), 0);
+    assert_eq!(
+        frozen.form_association_owner(&mut c, &input).unwrap(),
+        Some(form)
+    );
+    let state = frozen.input_state(&mut c, &input).unwrap();
+    assert_eq!(state.flags.kind(), crate::HtmlInputStringKind::Checkbox);
+    assert!(state.flags.checkedness());
+    assert!(!state.flags.dirty_checkedness() && !state.value_rewritten_during_creation);
+    let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
+    frozen
+        .append_input_value(&mut c, &input, &mut value)
+        .unwrap();
+    assert_eq!(value.units(), [65, 13, 66, 10, 67]);
+    value.clear(&mut c).unwrap();
+    frozen
+        .append_input_internal_value(&mut c, &input, &mut value)
+        .unwrap();
+    assert_eq!(value.units(), [65, 13, 66, 10, 67]);
+    value.release(&mut c).unwrap();
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
 }
 
 #[test]

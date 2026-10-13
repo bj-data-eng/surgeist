@@ -53,6 +53,7 @@ fn authoritative_type_recognition_preserves_all_states_and_text_defaults() {
                 | HtmlInputType::Search
                 | HtmlInputType::Telephone
                 | HtmlInputType::Password
+                | HtmlInputType::Checkbox
         ) {
             assert_eq!(
                 HtmlInputStringKind::try_from(state).unwrap().input_type(),

@@ -11,7 +11,8 @@
 
 use crate::{DocumentString, HtmlInputType};
 
-/// The five input states covered by these string-value rules.
+/// The string-backed input states covered by these rules, including Checkbox
+/// DefaultOn content readback. Selection operations apply only to Value mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputStringKind {
     Hidden,
@@ -19,6 +20,7 @@ pub enum HtmlInputStringKind {
     Search,
     Telephone,
     Password,
+    Checkbox,
 }
 
 /// An actual recognized input state whose rules are outside this family.
@@ -38,6 +40,7 @@ impl TryFrom<HtmlInputType> for HtmlInputStringKind {
             HtmlInputType::Search => Self::Search,
             HtmlInputType::Telephone => Self::Telephone,
             HtmlInputType::Password => Self::Password,
+            HtmlInputType::Checkbox => Self::Checkbox,
             other => return Err(HtmlInputStringUnsupportedType(other)),
         })
     }
@@ -50,17 +53,18 @@ impl HtmlInputStringKind {
             Self::Search => HtmlInputType::Search,
             Self::Telephone => HtmlInputType::Telephone,
             Self::Password => HtmlInputType::Password,
+            Self::Checkbox => HtmlInputType::Checkbox,
         }
     }
     pub fn value_mode(self) -> HtmlInputValueMode {
-        if self == Self::Hidden {
-            HtmlInputValueMode::Default
-        } else {
-            HtmlInputValueMode::Value
+        match self {
+            Self::Hidden => HtmlInputValueMode::Default,
+            Self::Checkbox => HtmlInputValueMode::DefaultOn,
+            _ => HtmlInputValueMode::Value,
         }
     }
     pub fn sanitization(self) -> HtmlInputSanitization {
-        if self == Self::Hidden {
+        if self.value_mode() != HtmlInputValueMode::Value {
             HtmlInputSanitization::Preserve
         } else {
             HtmlInputSanitization::StripCrLf
@@ -71,6 +75,19 @@ impl HtmlInputStringKind {
 pub enum HtmlInputValueMode {
     Value,
     Default,
+    DefaultOn,
+}
+impl HtmlInputValueMode {
+    /// None selects current internal value; Some selects the actual content
+    /// value when present, otherwise this borrowed fallback. Present empty wins.
+    /// This rule allocates nothing and does not qualify actual stored attributes.
+    pub fn content_fallback(self) -> Option<&'static [u16]> {
+        match self {
+            Self::Value => None,
+            Self::Default => Some(&[]),
+            Self::DefaultOn => Some(&[0x6f, 0x6e]),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputSanitization {
@@ -156,6 +173,18 @@ impl HtmlInputStringFlags {
         self.checkedness = change == HtmlInputCheckedAttributeChange::Added;
         Some(self)
     }
+    /// HTML checked setter: current checkedness changes and becomes dirty.
+    /// Checkbox has no peer normalization; Radio is outside this family.
+    pub fn checked_setter(mut self, checked: bool) -> Self {
+        self.checkedness = checked;
+        self.dirty_checkedness = true;
+        self
+    }
+    /// HTML indeterminate setter changes only the actual indeterminateness.
+    pub fn indeterminate_setter(mut self, indeterminate: bool) -> Self {
+        self.indeterminate = indeterminate;
+        self
+    }
     /// Source reset's first flag step, before default/value/checked/file effects.
     pub fn reset_begin(mut self) -> Self {
         self.dirty_value = false;
@@ -181,9 +210,10 @@ impl HtmlInputStringFlags {
     }
     /// Native Value-mode requirements: install supplied current value first,
     /// then apply the returned dirty flags and sanitize the actual current value.
-    /// Hidden requires the content-attribute path instead. No event is requested.
+    /// Default and DefaultOn require the content-attribute path instead.
+    /// This is a requirement for an adapter, not event execution.
     pub fn value_setter_begin(self) -> HtmlInputValueSetterStart {
-        if self.kind.value_mode() == HtmlInputValueMode::Default {
+        if self.kind.value_mode() != HtmlInputValueMode::Value {
             HtmlInputValueSetterStart::SetContentValue
         } else {
             let mut next = self;
@@ -285,12 +315,12 @@ impl HtmlInputTypeChange {
             self.stage += 1;
             match stage {
                 0 if self.previous.value_mode() == HtmlInputValueMode::Value
-                    && self.next.value_mode() == HtmlInputValueMode::Default
+                    && self.next.value_mode() != HtmlInputValueMode::Value
                     && self.nonempty =>
                 {
                     return Some(HtmlInputTypeEffect::SetContentValueFromCurrent);
                 }
-                0 if self.previous.value_mode() == HtmlInputValueMode::Default
+                0 if self.previous.value_mode() != HtmlInputValueMode::Value
                     && self.next.value_mode() == HtmlInputValueMode::Value =>
                 {
                     return Some(HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty);
@@ -298,8 +328,8 @@ impl HtmlInputTypeChange {
                 1 => return Some(HtmlInputTypeEffect::SetRendering),
                 2 => return Some(HtmlInputTypeEffect::SignalTypeChange),
                 3 => return Some(HtmlInputTypeEffect::Sanitize(self.next.sanitization())),
-                4 if self.previous == HtmlInputStringKind::Hidden
-                    && self.next != HtmlInputStringKind::Hidden =>
+                4 if self.previous.value_mode() != HtmlInputValueMode::Value
+                    && self.next.value_mode() == HtmlInputValueMode::Value =>
                 {
                     return Some(HtmlInputTypeEffect::SetInitialCursorAndNoneDirection);
                 }

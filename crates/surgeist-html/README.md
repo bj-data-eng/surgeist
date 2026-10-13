@@ -882,7 +882,10 @@ limits, and reports retain its exact producer/configuration revision.
 <a id="shared-intrinsic-control-rules"></a>
 
 The [shared input rules](src/input.rs) expose fixed state and source-ordered
-requirements for Hidden, Text, Search, Telephone and Password.
+requirements for Hidden, Text, Search, Telephone, Password and Checkbox.
+Checkbox uses DefaultOn: its native value reads the content attribute, including
+present empty, and returns `on` only when that attribute is absent. This does
+not synthesize an attribute or change the independent internal/default value.
 `HtmlInputStringFlags` retains the actual intrinsic flags; strings, selection
 and form identity remain separately owned. Type/default/checked changes,
 per-control reset and cloning keep their distinct triggers. Keyword recognition
@@ -912,7 +915,8 @@ The private parser stores and consumes these same values. DOM will store its
 canonical current values and identities and apply HTML's requirements within its
 atomic edits. Constructing flags retains supplied intrinsic slot values; it does
 not establish subject identity, mutation history or capture qualification.
-[Input tests](tests/input_rules.rs) and
+[Input tests](tests/input_rules.rs),
+[Checkbox tests](tests/input_checkbox_rules.rs) and
 [family tests](tests/control_values.rs) cover the pure rules. Parser tests cover
 their actual controlled consumers. Other input families, tree-dependent effects,
 full textarea setters/normalization and runtime events require their respective
@@ -2157,14 +2161,19 @@ freeze; terminal cleanup performs no useful reset. General setters, nonnull
 overrides, form reset, hosted initialization and public parse completion remain
 separate work.
 
-Private input creation supports Hidden, Text, Search, Telephone and Password
+Private input creation supports Hidden, Text, Search, Telephone, Password and Checkbox
 through the [shared intrinsic rules](#shared-intrinsic-control-rules). Initial
 attributes run in source order. A value seen while the fresh input is still in
 Text loses CR and LF; changing to Hidden writes a nonempty internal value back
-to the native value attribute. Type-first Hidden preserves CR and LF instead.
+to the native value attribute. Changing to Checkbox has the same nonempty
+writeback requirement. Type-first Hidden or Checkbox preserves CR and LF instead.
 Text/Search/Telephone/Password strip those units from current value while keeping
 the native default independently observable. Creation completes per-control
-initialization before canonical form association.
+initialization before canonical form association. Checkbox current checkedness,
+dirty checkedness and indeterminateness remain independent; reset restores
+checked-attribute presence and clears dirty flags while retaining indeterminateness.
+Checkbox cloning preserves the specified current backing and flags, without
+copying form association or applying Radio peer normalization.
 
 Active and frozen private observations distinguish current and native default
 values, actual dirty/checkedness/indeterminate/user-validity flags, form owner

@@ -815,10 +815,14 @@ conformance is certified.
 
 Shared [input state/rules](src/input.rs) and
 [textarea/select/option flags](src/control_values.rs) provide the HTML-owned
-fixed intrinsic vocabulary consumed by the actual private parser.
+fixed intrinsic vocabulary consumed by the actual private parser. Input rules
+include Checkbox DefaultOn content readback, checked/indeterminate transitions
+and the source-ordered reset/type/clone requirements; Radio peer effects remain
+outside that family.
 [The overview](README.md#shared-intrinsic-control-rules) explains trigger order,
 bounded recognition/comparison and adapter responsibilities;
-[input tests](tests/input_rules.rs) and [family tests](tests/control_values.rs)
+[input tests](tests/input_rules.rs), [Checkbox tests](tests/input_checkbox_rules.rs)
+and [family tests](tests/control_values.rs)
 verify literal local decisions. Strings, selection, form/tree references,
 resource admission and canonical DOM mutation remain with their actual adapters.
 These pure rules do not replace the separately qualified captured observations

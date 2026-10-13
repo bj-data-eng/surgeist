@@ -1238,6 +1238,7 @@ pub enum surgeist_html::HtmlInputSizeValue
 pub surgeist_html::HtmlInputSizeValue::NoPositiveRequest
 pub surgeist_html::HtmlInputSizeValue::PositiveCharacters(surgeist_html::HtmlNonNegativeInteger)
 pub enum surgeist_html::HtmlInputStringKind
+pub surgeist_html::HtmlInputStringKind::Checkbox
 pub surgeist_html::HtmlInputStringKind::Hidden
 pub surgeist_html::HtmlInputStringKind::Password
 pub surgeist_html::HtmlInputStringKind::Search
@@ -1294,7 +1295,10 @@ pub surgeist_html::HtmlInputValueAttributeEffect::KeepCurrent
 pub surgeist_html::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(surgeist_html::HtmlInputSanitization)
 pub enum surgeist_html::HtmlInputValueMode
 pub surgeist_html::HtmlInputValueMode::Default
+pub surgeist_html::HtmlInputValueMode::DefaultOn
 pub surgeist_html::HtmlInputValueMode::Value
+impl surgeist_html::HtmlInputValueMode
+pub fn surgeist_html::HtmlInputValueMode::content_fallback(self) -> core::option::Option<&'static [u16]>
 pub enum surgeist_html::HtmlInputValueSetterFinish
 pub surgeist_html::HtmlInputValueSetterFinish::NoAdditionalEffect
 pub surgeist_html::HtmlInputValueSetterFinish::SetEndCursorUnselectAndNoneDirection
@@ -3991,6 +3995,7 @@ pub fn surgeist_html::HtmlInputStep::positive(number: surgeist_html::HtmlFloatin
 pub struct surgeist_html::HtmlInputStringFlags
 impl surgeist_html::HtmlInputStringFlags
 pub fn surgeist_html::HtmlInputStringFlags::checked_attribute_changed(self, change: surgeist_html::HtmlInputCheckedAttributeChange) -> core::option::Option<Self>
+pub fn surgeist_html::HtmlInputStringFlags::checked_setter(self, checked: bool) -> Self
 pub fn surgeist_html::HtmlInputStringFlags::checkedness(self) -> bool
 pub fn surgeist_html::HtmlInputStringFlags::clone_flags_from(self, original: Self) -> Self
 pub fn surgeist_html::HtmlInputStringFlags::dirty_checkedness(self) -> bool
@@ -3998,6 +4003,7 @@ pub fn surgeist_html::HtmlInputStringFlags::dirty_value(self) -> bool
 pub fn surgeist_html::HtmlInputStringFlags::fresh() -> Self
 pub fn surgeist_html::HtmlInputStringFlags::from_retained(kind: surgeist_html::HtmlInputStringKind, dirty_value: bool, dirty_checkedness: bool, checkedness: bool, indeterminate: bool, user_validity: bool) -> Self
 pub fn surgeist_html::HtmlInputStringFlags::indeterminate(self) -> bool
+pub fn surgeist_html::HtmlInputStringFlags::indeterminate_setter(self, indeterminate: bool) -> Self
 pub fn surgeist_html::HtmlInputStringFlags::kind(self) -> surgeist_html::HtmlInputStringKind
 pub fn surgeist_html::HtmlInputStringFlags::reset_begin(self) -> Self
 pub fn surgeist_html::HtmlInputStringFlags::reset_checkedness(self, actual_checked_presence: bool) -> Self
