@@ -16755,3 +16755,655 @@ fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_value
         assert_eq!(following_text, [90]);
     }
 }
+
+fn ordinary_number_input_observes_complete(
+    source: HtmlSource,
+    expected_attributes: &[(&str, &[u16])],
+    expected_default: &[u16],
+    expected_current: &[u16],
+    expected_references: &[(usize, usize, usize, usize)],
+) -> super::head::HeadStep {
+    use crate::construction::parser_session::provenance::LexicalRole;
+    use crate::parser::tokenizer::token::OriginKind;
+
+    let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
+    let mut driver = super::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let first_stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.stop(), first_stop);
+        assert!(first_stop.is_none());
+        assert!(driver.control.first_stop_usage().is_none());
+        return boundary;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let child_count = children.len();
+    let input = children[0].clone();
+    let input_children = document.node(&input).unwrap().children().count();
+    let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
+        panic!("input must be an actual native element");
+    };
+    let namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let local = element.name().local_name().code_units().to_vec();
+    let attributes: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|attribute| {
+            (
+                attribute
+                    .name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                attribute.name().local_name().code_units().to_vec(),
+                attribute.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    let HtmlNodeKind::Text(text) = document.node(&children[1]).unwrap().kind() else {
+        panic!("Z must remain an actual sibling after the void input");
+    };
+    let following_text = text.code_units().to_vec();
+    let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+    let owner_is_form = owner.as_ref() == Some(&form);
+    drop(owner);
+    let state = frozen.input_state(&mut control, &input).unwrap();
+    let actual_type = state.flags.kind().input_type();
+    let value_mode = state.flags.kind().value_mode();
+    let selectable = state.flags.kind().is_selectable();
+    let flags = (
+        state.flags.dirty_value(),
+        state.flags.dirty_checkedness(),
+        state.flags.checkedness(),
+        state.flags.indeterminate(),
+        state.flags.user_validity(),
+    );
+    let files_empty = state.selected_files_empty;
+    let writeback_absent = frozen
+        .input_writeback_sources(&mut control, &input)
+        .unwrap()
+        .is_none();
+    let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+    frozen
+        .append_input_internal_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let internal = buffer.units().to_vec();
+    buffer.clear(&mut control).unwrap();
+    frozen
+        .append_input_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let current = buffer.units().to_vec();
+    buffer.clear(&mut control).unwrap();
+    frozen
+        .append_input_default_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let default = buffer.units().to_vec();
+    buffer.release(&mut control).unwrap();
+    let (references, source_qualified) = {
+        let evidence = frozen.retained_evidence().unwrap();
+        let (_, parts, _) = evidence.lexical_observations();
+        let source_qualified = parts
+            .iter()
+            .all(|part| part.source.source() == request.source().identity());
+        let references = parts
+            .iter()
+            .filter(|part| {
+                part.role == LexicalRole::Value && part.kind == Some(OriginKind::CharacterReference)
+            })
+            .map(|part| (part.start, part.end, part.source.start(), part.source.end()))
+            .collect::<Vec<_>>();
+        (references, source_qualified)
+    };
+    drop(input);
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 2);
+    assert_eq!(input_children, 0);
+    assert_eq!(
+        namespace,
+        "http://www.w3.org/1999/xhtml"
+            .encode_utf16()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(local, [105, 110, 112, 117, 116]);
+    assert_eq!(
+        attributes,
+        expected_attributes
+            .iter()
+            .map(|(name, value)| (
+                None,
+                name.encode_utf16().collect::<Vec<_>>(),
+                value.to_vec()
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(following_text, [90]);
+    assert!(owner_is_form && files_empty && writeback_absent && source_qualified);
+    assert_eq!(actual_type, crate::HtmlInputType::Number);
+    assert_eq!(value_mode, crate::HtmlInputValueMode::Value);
+    assert!(!selectable);
+    assert_eq!(flags, (false, false, false, false, false));
+    assert_eq!(default, expected_default);
+    assert_eq!(internal, expected_current);
+    assert_eq!(current, expected_current);
+    assert_eq!(references, expected_references);
+    boundary
+}
+
+// HTML877d36776 uses complete valid-floating-point grammar (3209+), not
+// prefix recovery or binary64 representability. Each real fixture disposes
+// before the final completion oracle, so the whole matrix runs at RED.
+fn ordinary_number_input_literal_matrix(cases: &[(&str, &str)]) {
+    let keyword: Vec<_> = "number".encode_utf16().collect();
+    let mut boundaries = Vec::new();
+    for &(raw_value, expected_current) in cases {
+        let value: Vec<_> = raw_value.encode_utf16().collect();
+        let current: Vec<_> = expected_current.encode_utf16().collect();
+        for value_first in [false, true] {
+            let attrs = if value_first {
+                format!("value='{raw_value}' type=number")
+            } else {
+                format!("type=number value='{raw_value}'")
+            };
+            let raw = format!("<!doctype html><form id=f><input {attrs}>Z</form>");
+            let expected = if value_first {
+                vec![("value", value.as_slice()), ("type", keyword.as_slice())]
+            } else {
+                vec![("type", keyword.as_slice()), ("value", value.as_slice())]
+            };
+            let boundary = ordinary_number_input_observes_complete(
+                HtmlSource::utf8(raw),
+                &expected,
+                &value,
+                &current,
+                &[],
+            );
+            boundaries.push((raw_value, value_first, boundary));
+        }
+    }
+    for (value, value_first, boundary) in boundaries {
+        assert_eq!(
+            boundary,
+            super::head::HeadStep::Complete,
+            "Number value={value:?}, value-first={value_first}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_number_input_complete_author_numbers_preserve_exact_units_even_on_float_overflow() {
+    ordinary_number_input_literal_matrix(&[
+        (".5", ".5"),
+        ("-0", "-0"),
+        ("1e+2", "1e+2"),
+        ("1e999", "1e999"),
+        ("001.00", "001.00"),
+    ]);
+}
+
+#[test]
+fn ordinary_number_input_invalid_complete_forms_empty_without_prefix_recovery_or_trim() {
+    ordinary_number_input_literal_matrix(&[
+        ("+1", ""),
+        ("1.", ""),
+        ("12junk", ""),
+        (" 1", ""),
+        ("1 ", ""),
+        ("1e", ""),
+        ("1e+", ""),
+        ("NaN", ""),
+        ("Infinity", ""),
+    ]);
+}
+
+#[test]
+fn ordinary_number_input_absent_and_present_empty_defaults_remain_distinct_native_attributes() {
+    let keyword: Vec<_> = "number".encode_utf16().collect();
+    let absent = ordinary_number_input_observes_complete(
+        HtmlSource::utf8("<!doctype html><form id=f><input type=number>Z</form>"),
+        &[("type", &keyword)],
+        &[],
+        &[],
+        &[],
+    );
+    let empty = ordinary_number_input_observes_complete(
+        HtmlSource::utf8("<!doctype html><form id=f><input type=number value=''>Z</form>"),
+        &[("type", &keyword), ("value", &[])],
+        &[],
+        &[],
+        &[],
+    );
+    assert_eq!(absent, super::head::HeadStep::Complete);
+    assert_eq!(empty, super::head::HeadStep::Complete);
+}
+
+#[test]
+fn ordinary_number_input_entity_crlf_stays_default_but_invalidates_current_in_both_orders() {
+    let keyword: Vec<_> = "number".encode_utf16().collect();
+    let default = [49, 13, 10, 50];
+    let mut boundaries = Vec::new();
+    for value_first in [false, true] {
+        let attrs = if value_first {
+            "value='1&#13;&#10;2' type=number"
+        } else {
+            "type=number value='1&#13;&#10;2'"
+        };
+        let raw = format!("<!doctype html><form id=f><input {attrs}>Z</form>");
+        let cr = raw.find("&#13;").unwrap();
+        let lf = raw.find("&#10;").unwrap();
+        let expected = if value_first {
+            vec![("value", default.as_slice()), ("type", keyword.as_slice())]
+        } else {
+            vec![("type", keyword.as_slice()), ("value", default.as_slice())]
+        };
+        boundaries.push(ordinary_number_input_observes_complete(
+            HtmlSource::utf8(raw),
+            &expected,
+            &default,
+            &[],
+            &[(1, 2, cr, cr + 5), (2, 3, lf, lf + 5)],
+        ));
+    }
+    for boundary in boundaries {
+        assert_eq!(boundary, super::head::HeadStep::Complete);
+    }
+}
+
+#[test]
+fn ordinary_number_input_isolated_utf16_surrogate_stays_native_default_and_empties_current() {
+    let mut raw: Vec<_> = "<!doctype html><form id=f><input type=number value='"
+        .encode_utf16()
+        .collect();
+    raw.extend([49, 0xd800, 50]);
+    raw.extend("'>Z</form>".encode_utf16());
+    let keyword: Vec<_> = "number".encode_utf16().collect();
+    let boundary = ordinary_number_input_observes_complete(
+        HtmlSource::utf16(crate::DocumentString::from_utf16(raw)),
+        &[("type", &keyword), ("value", &[49, 0xd800, 50])],
+        &[49, 0xd800, 50],
+        &[],
+        &[],
+    );
+    assert_eq!(boundary, super::head::HeadStep::Complete);
+}
+
+#[test]
+fn ordinary_number_input_initial_value_is_not_mandatorily_clamped_or_step_rounded() {
+    let keyword: Vec<_> = "number".encode_utf16().collect();
+    let boundary = ordinary_number_input_observes_complete(
+        HtmlSource::utf8(
+            "<!doctype html><form id=f><input type=number min=0 max=10 step=2 value=13>Z</form>",
+        ),
+        &[
+            ("type", &keyword),
+            ("min", &[48]),
+            ("max", &[49, 48]),
+            ("step", &[50]),
+            ("value", &[49, 51]),
+        ],
+        &[49, 51],
+        &[49, 51],
+        &[],
+    );
+    assert_eq!(boundary, super::head::HeadStep::Complete);
+}
+
+// HTML877d reset34985–96, type-change35087–102, Filename39211–31,
+// Image Default38055–57, and Image src guards37907–25. Fresh offline image
+// support is affirmatively disabled by the selected #1136 construction policy;
+// these cases do not infer that premise from scripting or a missing loader.
+fn ordinary_file_image_input_observes_completed_state(
+    raw: &str,
+    expected_type: crate::HtmlInputType,
+    expected_attributes: &[(&str, &str)],
+    expected_default: &str,
+    expected_internal: &str,
+    expected_current: &str,
+    expected_checked: bool,
+) -> super::head::HeadStep {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
+    let mut driver = super::entry::initialized_driver(&request);
+    let boundary = standalone_boundary(&mut driver);
+    if boundary != super::head::HeadStep::Complete {
+        let stop = driver.control.stop();
+        driver.release().unwrap();
+        assert_released(&driver.control);
+        assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
+        assert_eq!(driver.control.stop(), stop);
+        assert!(stop.is_none());
+        assert!(driver.control.first_stop_usage().is_none());
+        return boundary;
+    }
+
+    let (mut control, mut frozen) = body_document(driver);
+    let document = frozen.document().unwrap();
+    let mode = document.mode();
+    let actual_outline = outline(document);
+    let html = document
+        .root()
+        .children()
+        .find(|id| matches!(document.node(id).unwrap().kind(), HtmlNodeKind::Element(_)))
+        .unwrap();
+    let body = document.node(&html).unwrap().children().nth(1).unwrap();
+    let form = document.node(&body).unwrap().children().next().unwrap();
+    let children: Vec<_> = document.node(&form).unwrap().children().collect();
+    let child_count = children.len();
+    let input = children[0].clone();
+    let node = document.node(&input).unwrap();
+    let input_child_count = node.children().count();
+    let HtmlNodeKind::Element(element) = node.kind() else {
+        panic!("input must be an actual native Element");
+    };
+    let name = element.name().local_name().code_units().to_vec();
+    let namespace = element
+        .name()
+        .namespace()
+        .uri()
+        .unwrap()
+        .code_units()
+        .to_vec();
+    let attributes: Vec<_> = element
+        .attributes()
+        .iter()
+        .map(|a| {
+            (
+                a.name()
+                    .namespace()
+                    .uri()
+                    .map(|uri| uri.code_units().to_vec()),
+                a.name().local_name().code_units().to_vec(),
+                a.value().code_units().to_vec(),
+            )
+        })
+        .collect();
+    let HtmlNodeKind::Text(text) = document.node(&children[1]).unwrap().kind() else {
+        panic!("Z must be the actual following sibling, not an input descendant");
+    };
+    let following_text = text.code_units().to_vec();
+    let owner = frozen.form_association_owner(&mut control, &input).unwrap();
+    let owner_is_form = owner.as_ref() == Some(&form);
+    drop(owner);
+    let association_kind = frozen
+        .form_association_state(&mut control, &input)
+        .unwrap()
+        .kind;
+    let state = frozen.input_state(&mut control, &input).unwrap();
+    let actual_type = state.flags.kind().input_type();
+    let flags = (
+        state.flags.dirty_value(),
+        state.flags.dirty_checkedness(),
+        state.flags.checkedness(),
+        state.flags.indeterminate(),
+        state.flags.user_validity(),
+    );
+    let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
+    frozen
+        .append_input_default_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let default = buffer.units().to_vec();
+    buffer.clear(&mut control).unwrap();
+    frozen
+        .append_input_internal_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let internal = buffer.units().to_vec();
+    buffer.clear(&mut control).unwrap();
+    frozen
+        .append_input_value(&mut control, &input, &mut buffer)
+        .unwrap();
+    let current = buffer.units().to_vec();
+    buffer.release(&mut control).unwrap();
+    let original_source = {
+        let (_, parts, _) = frozen.retained_evidence().unwrap().lexical_observations();
+        !parts.is_empty()
+            && parts
+                .iter()
+                .all(|part| part.source.source() == request.source().identity())
+    };
+    drop(input);
+    drop(children);
+    drop(form);
+    drop(body);
+    drop(html);
+    frozen.release(&mut control).unwrap();
+    assert_released(&control);
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+    assert_eq!(control.stop(), None);
+
+    assert_eq!(mode, HtmlDocumentMode::NoQuirks);
+    assert_eq!(
+        actual_outline,
+        expected_outline(&[
+            (0, "html"),
+            (1, "head"),
+            (1, "body"),
+            (2, "form"),
+            (3, "input"),
+            (3, "#Z"),
+        ])
+    );
+    assert_eq!(child_count, 2);
+    assert_eq!(input_child_count, 0);
+    assert_eq!(name, vec![105, 110, 112, 117, 116]);
+    assert_eq!(
+        namespace,
+        "http://www.w3.org/1999/xhtml"
+            .encode_utf16()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        attributes,
+        expected_attributes
+            .iter()
+            .map(|(name, value)| (
+                None,
+                name.encode_utf16().collect::<Vec<_>>(),
+                value.encode_utf16().collect::<Vec<_>>(),
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(following_text, vec![90]);
+    assert!(owner_is_form && original_source);
+    assert_eq!(
+        association_kind,
+        crate::construction::parser_session::FormAssociationKind::Input
+    );
+    assert_eq!(actual_type, expected_type);
+    assert_eq!(flags, (false, false, expected_checked, false, false));
+    assert!(state.selected_files_empty);
+    assert_eq!(default, expected_default.encode_utf16().collect::<Vec<_>>());
+    assert_eq!(
+        internal,
+        expected_internal.encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(current, expected_current.encode_utf16().collect::<Vec<_>>());
+    boundary
+}
+
+type FileImageInputLiteral<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a str, bool);
+
+#[test]
+fn ordinary_file_input_empty_selection_keeps_raw_default_and_ordered_internal_value() {
+    // The malformed value/checked content remains stored. Reset installs that
+    // default internally but actually empties selected files; Filename getter
+    // therefore returns empty, never a synthetic path or the raw value.
+    let cases: &[FileImageInputLiteral<'_>] = &[
+        ("type=file", &[("type", "file")], "", false),
+        (
+            "type=file value=''",
+            &[("type", "file"), ("value", "")],
+            "",
+            false,
+        ),
+        (
+            "type=file value='not-a-file' checked=false",
+            &[
+                ("type", "file"),
+                ("value", "not-a-file"),
+                ("checked", "false"),
+            ],
+            "not-a-file",
+            true,
+        ),
+        (
+            "type=file value='&#13;&#10;X'",
+            &[("type", "file"), ("value", "\r\nX")],
+            "\r\nX",
+            false,
+        ),
+        (
+            "value='&#13;&#10;X' type=file",
+            &[("value", "\r\nX"), ("type", "file")],
+            "\r\nX",
+            false,
+        ),
+        (
+            "checked value='raw' type=file",
+            &[("checked", ""), ("value", "raw"), ("type", "file")],
+            "raw",
+            true,
+        ),
+    ];
+    let mut outcomes = Vec::new();
+    for &(attributes, native_attributes, default, checked) in cases {
+        let raw = format!("<!doctype html><form id=f><input {attributes}>Z</form>");
+        outcomes.push((
+            attributes,
+            ordinary_file_image_input_observes_completed_state(
+                &raw,
+                crate::HtmlInputType::File,
+                native_attributes,
+                default,
+                default,
+                "",
+                checked,
+            ),
+        ));
+    }
+    // Every literal takes the real driver path and is released before any
+    // discriminatory completion assertion, including all currently refused cases.
+    assert!(
+        outcomes
+            .iter()
+            .all(|(_, boundary)| *boundary == super::head::HeadStep::Complete),
+        "all File literals must complete with established empty selection: {outcomes:?}"
+    );
+}
+
+#[test]
+fn ordinary_offline_image_input_disabled_policy_keeps_default_and_all_src_spellings() {
+    // Source guards skip URL/fetch before parsing src under the selected disabled
+    // image policy. Whitespace/relative/absolute/data/fragment are not empty-src
+    // or guessed URL-failure cases, and input Image remains form-associated.
+    let cases: &[FileImageInputLiteral<'_>] = &[
+        ("type=image", &[("type", "image")], "", false),
+        (
+            "type=image src='' value=''",
+            &[("type", "image"), ("src", ""), ("value", "")],
+            "",
+            false,
+        ),
+        (
+            "type=image src='photo.png' value='raw' checked",
+            &[
+                ("type", "image"),
+                ("src", "photo.png"),
+                ("value", "raw"),
+                ("checked", ""),
+            ],
+            "raw",
+            true,
+        ),
+        (
+            "src=' \t ' type=image value='&#13;&#10;X'",
+            &[("src", " \t "), ("type", "image"), ("value", "\r\nX")],
+            "\r\nX",
+            false,
+        ),
+        (
+            "type=image src='https://example.invalid/p.png'",
+            &[("type", "image"), ("src", "https://example.invalid/p.png")],
+            "",
+            false,
+        ),
+        (
+            "src='data:image/png;base64,AA==' type=image",
+            &[("src", "data:image/png;base64,AA=="), ("type", "image")],
+            "",
+            false,
+        ),
+        (
+            "type=image src='#fragment'",
+            &[("type", "image"), ("src", "#fragment")],
+            "",
+            false,
+        ),
+        (
+            "value='&#13;&#10;X' src='photo.png' type=image",
+            &[("value", "X"), ("src", "photo.png"), ("type", "image")],
+            "X",
+            false,
+        ),
+    ];
+    let mut outcomes = Vec::new();
+    for &(attributes, native_attributes, value, checked) in cases {
+        let raw = format!("<!doctype html><form id=f><input {attributes}>Z</form>");
+        outcomes.push((
+            attributes,
+            ordinary_file_image_input_observes_completed_state(
+                &raw,
+                crate::HtmlInputType::Image,
+                native_attributes,
+                value,
+                value,
+                value,
+                checked,
+            ),
+        ));
+    }
+    assert!(
+        outcomes
+            .iter()
+            .all(|(_, boundary)| *boundary == super::head::HeadStep::Complete),
+        "all offline Image literals must complete under actual images-disabled policy: {outcomes:?}"
+    );
+}
