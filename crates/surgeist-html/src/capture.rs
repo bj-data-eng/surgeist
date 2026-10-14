@@ -2500,15 +2500,11 @@ impl HtmlFragmentContext {
         html(&self.element_values().name, "template")
     }
     pub fn is_mathml_text_integration_point(&self) -> bool {
-        let name = &self.element_values().name;
-        namespace(name.namespace(), "http://www.w3.org/1998/Math/MathML")
-            && ["mi", "mo", "mn", "ms", "mtext"]
-                .iter()
-                .any(|n| exact(name.local_name(), n))
+        crate::is_mathml_text_integration_point(&self.element_values().name)
     }
     pub fn is_html_integration_point(&self) -> bool {
         let element = self.element_values();
-        crate::integration_points::is_html_integration_point(&element.name, &element.attributes)
+        crate::is_html_integration_point(&element.name, &element.attributes)
     }
     /// Initial tokenizer choice derives from context identity and effective mode.
     pub fn initial_tokenizer_state(
@@ -2516,7 +2512,7 @@ impl HtmlFragmentContext {
         requested: HtmlParserScriptingMode,
     ) -> Result<HtmlFragmentTokenizerState, HtmlCaptureError> {
         let mode = self.resolve_scripting_mode(requested)?;
-        Ok(crate::fragment_initialization::tokenizer_state_for_context(
+        Ok(crate::fragment_tokenizer_state(
             &self.element_values().name,
             mode,
         ))
@@ -2524,7 +2520,7 @@ impl HtmlFragmentContext {
     /// Resets initial insertion mode with the single internal root replaced by context.
     /// Captured ancestor templates/tables are not put on the parser's open stack.
     pub fn initial_insertion_mode(&self) -> HtmlFragmentInsertionMode {
-        crate::fragment_initialization::insertion_mode_for_context(&self.element_values().name)
+        crate::fragment_insertion_mode(&self.element_values().name)
     }
 }
 /// Allocation-free ordered lookup. Every action is admitted before `step`;

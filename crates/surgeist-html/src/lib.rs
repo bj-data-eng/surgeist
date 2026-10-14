@@ -48,8 +48,10 @@ pub use custom_names::*;
 pub use details_rules::*;
 pub use fragment_initialization::{
     HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode,
+    fragment_insertion_mode, fragment_tokenizer_state,
 };
 pub use input::*;
+pub use integration_points::{is_html_integration_point, is_mathml_text_integration_point};
 pub use interpretation::*;
 pub use media::*;
 pub use nonce::*;

@@ -12,6 +12,19 @@ pub surgeist_html::bounded::HtmlAttributeValidationError::NotReady
 impl core::error::Error for surgeist_html::bounded::HtmlAttributeValidationError
 impl core::fmt::Display for surgeist_html::bounded::HtmlAttributeValidationError
 pub fn surgeist_html::bounded::HtmlAttributeValidationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlFragmentNameTest<'a>
+pub surgeist_html::bounded::HtmlFragmentNameTest::HtmlNamespace
+pub surgeist_html::bounded::HtmlFragmentNameTest::Local(&'a [&'static str])
+pub enum surgeist_html::bounded::HtmlIntegrationPointComparison
+pub surgeist_html::bounded::HtmlIntegrationPointComparison::AsciiCaseInsensitive
+pub surgeist_html::bounded::HtmlIntegrationPointComparison::Exact
+pub enum surgeist_html::bounded::HtmlIntegrationPointRule
+pub surgeist_html::bounded::HtmlIntegrationPointRule::Always
+pub surgeist_html::bounded::HtmlIntegrationPointRule::EncodingAttribute
+pub surgeist_html::bounded::HtmlIntegrationPointRule::Never
+pub enum surgeist_html::bounded::HtmlMathmlTextPointTest<'a>
+pub surgeist_html::bounded::HtmlMathmlTextPointTest::Local(&'a [&'static str])
+pub surgeist_html::bounded::HtmlMathmlTextPointTest::Namespace(&'static str)
 pub struct surgeist_html::bounded::HtmlAttributeStorage
 impl surgeist_html::bounded::HtmlAttributeStorage
 pub fn surgeist_html::bounded::HtmlAttributeStorage::from_shared_attributes(attributes: alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>) -> Self
@@ -34,6 +47,11 @@ pub fn surgeist_html::bounded::HtmlAttributeValidationLayout::record_visits(self
 pub struct surgeist_html::bounded::HtmlValidatedAttributes
 impl surgeist_html::bounded::HtmlValidatedAttributes
 pub fn surgeist_html::bounded::HtmlValidatedAttributes::into_attributes(self) -> surgeist_html::OrderedAttributes
+pub fn surgeist_html::bounded::fragment_initial_modes<E>(effective: surgeist_html::HtmlParserScriptingMode, compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlFragmentNameTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<(surgeist_html::HtmlFragmentTokenizerState, surgeist_html::HtmlFragmentInsertionMode), E>
+pub fn surgeist_html::bounded::html_integration_point_encoding_attribute<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, value: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<bool>, E>
+pub fn surgeist_html::bounded::html_integration_point_rule<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::HtmlIntegrationPointRule, E>
+pub fn surgeist_html::bounded::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
+pub fn surgeist_html::bounded::stack_reset_insertion_mode<E>(compare: impl core::ops::function::FnMut(&'static str) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlFragmentInsertionMode>, E>
 pub enum surgeist_html::HtmlAboutBaseUrl
 pub surgeist_html::HtmlAboutBaseUrl::KnownNull
 pub surgeist_html::HtmlAboutBaseUrl::KnownRecord(surgeist_html::HtmlBaseUrlRecord)
@@ -7463,7 +7481,11 @@ pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
 pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
+pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
+pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedName, effective: surgeist_html::HtmlParserScriptingMode) -> surgeist_html::HtmlFragmentTokenizerState
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>
 pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish
+pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> bool
+pub fn surgeist_html::is_mathml_text_integration_point(name: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
 pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedName, content: core::option::Option<&surgeist_html::DocumentString>, connection: surgeist_html::HtmlNonceConnection, policy: surgeist_html::HtmlHeaderDeliveredCsp) -> surgeist_html::HtmlNonceInsertionEffect

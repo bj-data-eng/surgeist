@@ -19,10 +19,12 @@ use super::{
 };
 use crate::{
     DocumentString,
+    bounded::{
+        self, HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
+    },
     construction::parser_session::{
         BodyTextKind, BodyTextRuns, ForeignNamespace, ParserNode, partition_body_text,
     },
-    integration_points::{self, Comparison, IntegrationPointRule},
     parser::{
         control::{ParseControl, StandaloneUnsupported, WorkCategory},
         tokenizer::token::{TagKind, Text},
@@ -61,22 +63,22 @@ pub(super) fn insensitive(
 fn integration_comparison(
     value: &DocumentString,
     literal: &'static str,
-    comparison: Comparison,
+    comparison: HtmlIntegrationPointComparison,
     c: &mut ParseControl,
 ) -> Result<bool, HeadError> {
     match comparison {
-        Comparison::Exact => Ok(tag_sets::ascii_eq(value, literal, c)?),
-        Comparison::AsciiCaseInsensitive => insensitive(value, literal, c),
+        HtmlIntegrationPointComparison::Exact => Ok(tag_sets::ascii_eq(value, literal, c)?),
+        HtmlIntegrationPointComparison::AsciiCaseInsensitive => insensitive(value, literal, c),
     }
 }
 
 fn integration_rule(
     name: &crate::QualifiedName,
     c: &mut ParseControl,
-) -> Result<IntegrationPointRule, HeadError> {
+) -> Result<HtmlIntegrationPointRule, HeadError> {
     // Borrow the namespace, its URI and the local name before comparisons.
     c.charge(WorkCategory::RecordVisit, 3)?;
-    integration_points::element_rule(
+    bounded::html_integration_point_rule(
         name.namespace().uri(),
         name.local_name(),
         |value, literal, comparison| integration_comparison(value, literal, comparison, c),
@@ -92,7 +94,7 @@ fn integration_encoding(
         // and value. Variable UTF-16 inspections remain comparison-owned.
         c.charge(WorkCategory::RecordVisit, 6)?;
         let name = attribute.name();
-        if let Some(result) = integration_points::encoding_attribute(
+        if let Some(result) = bounded::html_integration_point_encoding_attribute(
             name.namespace().uri(),
             name.local_name(),
             attribute.value(),
@@ -102,6 +104,13 @@ fn integration_encoding(
         }
     }
     Ok(false)
+}
+
+fn mathml_text_point(name: &crate::QualifiedName, c: &mut ParseControl) -> Result<bool, HeadError> {
+    Ok(bounded::mathml_text_integration_point(|test| match test {
+        HtmlMathmlTextPointTest::Namespace(expected) => tag_sets::namespace(name, expected, c),
+        HtmlMathmlTextPointTest::Local(choices) => tag_sets::local_in(name, choices, c),
+    })?)
 }
 
 impl HeadState<'_> {
@@ -210,8 +219,7 @@ impl HeadState<'_> {
             .session
             .element_name(c, node)?
             .ok_or(KernelError::EmptyStack)?;
-        Ok(tag_sets::namespace(name, MATHML, c)?
-            && tag_sets::local_in(name, &["mi", "mo", "mn", "ms", "mtext"], c)?)
+        mathml_text_point(name, c)
     }
     fn integration_point(
         &self,
@@ -225,9 +233,9 @@ impl HeadState<'_> {
             .element_name(c, node)?
             .ok_or(KernelError::EmptyStack)?;
         match integration_rule(name, c)? {
-            IntegrationPointRule::Never => Ok(false),
-            IntegrationPointRule::Always => Ok(true),
-            IntegrationPointRule::EncodingAttribute => {
+            HtmlIntegrationPointRule::Never => Ok(false),
+            HtmlIntegrationPointRule::Always => Ok(true),
+            HtmlIntegrationPointRule::EncodingAttribute => {
                 let attrs = self
                     .before
                     .kernel
@@ -251,8 +259,7 @@ impl HeadState<'_> {
         let kind = self.kind(c)?;
         let text = matches!(payload, Payload::Text(_));
         let name = self.adjusted_current_name(c)?;
-        if tag_sets::namespace(name, MATHML, c)?
-            && tag_sets::local_in(name, &["mi", "mo", "mn", "ms", "mtext"], c)?
+        if mathml_text_point(name, c)?
             && (text
                 || (matches!(kind, Some((TagKind::Start, _)))
                     && self.token_in(&["mglyph", "malignmark"], c)?.is_none()))
@@ -276,9 +283,9 @@ impl HeadState<'_> {
     fn adjusted_integration_point(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
         let name = self.adjusted_current_name(c)?;
         match integration_rule(name, c)? {
-            IntegrationPointRule::Never => Ok(false),
-            IntegrationPointRule::Always => Ok(true),
-            IntegrationPointRule::EncodingAttribute => {
+            HtmlIntegrationPointRule::Never => Ok(false),
+            HtmlIntegrationPointRule::Always => Ok(true),
+            HtmlIntegrationPointRule::EncodingAttribute => {
                 integration_encoding(self.adjusted_current_attributes(c)?, c)
             }
         }
@@ -751,6 +758,54 @@ mod tests {
                 .unwrap(),
             cancellation,
         )
+    }
+
+    #[test]
+    fn mathml_text_group_retains_exact_header_unit_and_refusal_costs() {
+        let name = QualifiedName::new(Namespace::mathml(), Some("p".into()), "mtext");
+        // Namespace: two field visits and one comparison header, 34 pairs of
+        // UTF-16/literal bytes. Local group: one header, five choice/comparison
+        // headers and five final pairs. All categories have unit weight.
+        let mut exact = control(131, HtmlParseCancellation::new());
+        assert!(mathml_text_point(&name, &mut exact).unwrap());
+        assert_eq!(exact.usage().work(WorkCategory::RecordVisit), 14);
+        assert_eq!(exact.usage().work(WorkCategory::InspectByte), 117);
+        assert_eq!(exact.stop(), None);
+
+        let cancellation = HtmlParseCancellation::new();
+        let mut short = control(130, cancellation.clone());
+        assert!(mathml_text_point(&name, &mut short).is_err());
+        let first = short.stop();
+        assert!(matches!(
+            first,
+            Some(crate::HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            })
+        ));
+        let usage = short.usage().clone();
+        cancellation.cancel();
+        assert!(mathml_text_point(&name, &mut short).is_err());
+        assert_eq!(short.stop(), first);
+        assert_eq!(short.usage(), &usage);
+
+        let mut foreign = control(3, HtmlParseCancellation::new());
+        assert!(
+            !mathml_text_point(
+                &QualifiedName::new(Namespace::html(), None, "mtext"),
+                &mut foreign,
+            )
+            .unwrap()
+        );
+        assert_eq!(foreign.usage().work(WorkCategory::RecordVisit), 3);
+        assert_eq!(foreign.usage().work(WorkCategory::InspectByte), 0);
+
+        let cancellation = HtmlParseCancellation::new();
+        let mut cancelled = control(131, cancellation.clone());
+        cancellation.cancel();
+        assert!(mathml_text_point(&name, &mut cancelled).is_err());
+        assert_eq!(cancelled.stop(), Some(crate::HtmlParseStop::Cancelled));
+        assert_eq!(cancelled.usage().work(WorkCategory::RecordVisit), 0);
     }
 
     #[test]

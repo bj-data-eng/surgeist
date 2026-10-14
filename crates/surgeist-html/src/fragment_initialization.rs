@@ -34,17 +34,19 @@ pub enum HtmlFragmentInsertionMode {
     BeforeHead,
 }
 
-pub(crate) const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
+const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
 
 /// The finite comparisons needed by fragment initialization. The consumer
 /// admits and executes a comparison before the policy can inspect its result.
-pub(crate) enum FragmentNameTest<'a> {
+pub enum HtmlFragmentNameTest<'a> {
+    /// Compare the supplied name's namespace with the HTML namespace.
     HtmlNamespace,
+    /// Compare its local name with this ordered group of exact ASCII names.
     Local(&'a [&'static str]),
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub(crate) enum FixedInsertionScope {
+enum FixedInsertionScope {
     Fragment,
     StackReset,
 }
@@ -52,7 +54,7 @@ pub(crate) enum FixedInsertionScope {
 /// One fixed mapping, with the fragment-only last-node decisions separated
 /// from reset's state-sensitive template/head/html and non-last td/th rules.
 /// The optional scope also preserves each algorithm's comparison order.
-pub(crate) fn fixed_insertion_mode<E>(
+fn fixed_insertion_mode<E>(
     scope: FixedInsertionScope,
     mut compare: impl FnMut(&'static str) -> Result<bool, E>,
 ) -> Result<Option<HtmlFragmentInsertionMode>, E> {
@@ -100,21 +102,21 @@ fn html_tokenizer_state<E>(
 
 /// The supplied scripting mode has already been resolved by the caller. This
 /// local decision neither reads captured facts nor promises execution support.
-pub(crate) fn initial_modes<E>(
+pub fn fragment_initial_modes<E>(
     effective: HtmlParserScriptingMode,
-    mut compare: impl FnMut(FragmentNameTest<'_>) -> Result<bool, E>,
+    mut compare: impl FnMut(HtmlFragmentNameTest<'_>) -> Result<bool, E>,
 ) -> Result<(HtmlFragmentTokenizerState, HtmlFragmentInsertionMode), E> {
-    if !compare(FragmentNameTest::HtmlNamespace)? {
+    if !compare(HtmlFragmentNameTest::HtmlNamespace)? {
         return Ok((
             HtmlFragmentTokenizerState::Data,
             HtmlFragmentInsertionMode::InBody,
         ));
     }
     let tokenizer = html_tokenizer_state(effective, |choices| {
-        compare(FragmentNameTest::Local(choices))
+        compare(HtmlFragmentNameTest::Local(choices))
     })?;
     let insertion = fixed_insertion_mode(FixedInsertionScope::Fragment, |local| {
-        compare(FragmentNameTest::Local(&[local]))
+        compare(HtmlFragmentNameTest::Local(&[local]))
     })?
     .unwrap_or(HtmlFragmentInsertionMode::InBody);
     Ok((tokenizer, insertion))
@@ -136,7 +138,9 @@ fn html_namespace(name: &QualifiedName) -> bool {
         .is_some_and(|uri| exact(uri, HTML_NAMESPACE))
 }
 
-pub(crate) fn tokenizer_state_for_context(
+/// Selects only the tokenizer state from an exact name and already-resolved mode.
+/// No capture facts or execution capability are read or inferred.
+pub fn fragment_tokenizer_state(
     name: &QualifiedName,
     effective: HtmlParserScriptingMode,
 ) -> HtmlFragmentTokenizerState {
@@ -149,7 +153,9 @@ pub(crate) fn tokenizer_state_for_context(
     .unwrap()
 }
 
-pub(crate) fn insertion_mode_for_context(name: &QualifiedName) -> HtmlFragmentInsertionMode {
+/// Selects only the fragment's initial insertion mode from its exact context name.
+/// Scripting status and tokenizer state do not influence this operation.
+pub fn fragment_insertion_mode(name: &QualifiedName) -> HtmlFragmentInsertionMode {
     if !html_namespace(name) {
         return HtmlFragmentInsertionMode::InBody;
     }
@@ -158,6 +164,14 @@ pub(crate) fn insertion_mode_for_context(name: &QualifiedName) -> HtmlFragmentIn
     })
     .unwrap()
     .unwrap_or(HtmlFragmentInsertionMode::InBody)
+}
+
+/// Selects the fixed rows of a parser stack reset in their specified order.
+/// The caller retains state-sensitive template, cell, head and HTML decisions.
+pub fn stack_reset_insertion_mode<E>(
+    compare: impl FnMut(&'static str) -> Result<bool, E>,
+) -> Result<Option<HtmlFragmentInsertionMode>, E> {
+    fixed_insertion_mode(FixedInsertionScope::StackReset, compare)
 }
 
 #[cfg(test)]
@@ -180,11 +194,11 @@ mod tests {
             } else {
                 HtmlFragmentTokenizerState::Rawtext
             };
-            assert_eq!(tokenizer_state_for_context(&name, effective), expected);
-            let modes = initial_modes(effective, |test| {
+            assert_eq!(fragment_tokenizer_state(&name, effective), expected);
+            let modes = fragment_initial_modes(effective, |test| {
                 Ok::<_, Infallible>(match test {
-                    FragmentNameTest::HtmlNamespace => html_namespace(&name),
-                    FragmentNameTest::Local(choices) => {
+                    HtmlFragmentNameTest::HtmlNamespace => html_namespace(&name),
+                    HtmlFragmentNameTest::Local(choices) => {
                         choices.iter().any(|local| exact(name.local_name(), local))
                     }
                 })

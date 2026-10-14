@@ -535,16 +535,26 @@ prevalidation may turn an unreached unavailable fact into an earlier failure.
 HTML owns only the local decision inputs and outputs:
 `HtmlParserScriptingMode`, `HtmlFragmentTokenizerState`,
 `HtmlFragmentInsertionMode`. The shared private policy selected by #1177 lives
-in HTML's `fragment_initialization.rs`. Extraction exposes only the consumed
+in HTML's private `fragment_initialization.rs`. The bounded front door exposes
 `bounded::fragment_initial_modes<E>(effective: HtmlParserScriptingMode,
 compare: impl FnMut(HtmlFragmentNameTest<'_>) -> Result<bool, E>) ->
 Result<(HtmlFragmentTokenizerState, HtmlFragmentInsertionMode), E>` wrapper.
 `HtmlFragmentNameTest<'a>` has `HtmlNamespace` and `Local(&'a [&'static str])`
-variants, corresponding directly to the private `FragmentNameTest` operands.
+variants; the namespace and ordered local-name group are separate observations.
 Parser's callback delegates its existing charged namespace/local comparisons;
 semantics' capture convenience methods use exact UTF-16 comparisons. Callback
 refusal returns the original `E` immediately, before another comparison or a
 successful pair. The policy allocates no storage and owns no controller.
+
+The ordinary HTML front door also exposes
+`fragment_tokenizer_state(&QualifiedName, HtmlParserScriptingMode) ->
+HtmlFragmentTokenizerState` and
+`fragment_insertion_mode(&QualifiedName) -> HtmlFragmentInsertionMode`.
+`HtmlFragmentContext::initial_tokenizer_state` resolves the actual scripting
+mode before calling the former. `initial_insertion_mode` calls the latter
+without reading scripting; it cannot invent a mode and discard half of a
+combined result. Both ordinary helpers share the same underlying policy and
+retain their existing exact UTF-16 comparison order.
 
 The effective scripting mode is already resolved. The function never reads
 captured scripting status or claims execution support. Parser maps the returned
@@ -569,7 +579,7 @@ classification includes MathML text and HTML integration points. The
 annotation-xml encoding comparison and prefix policy are defined once by the
 #1175 correction; consumer adapters preserve their existing admission before
 each comparison. Captured identity and host validation remain in semantics.
-The extraction exposes `bounded::HtmlIntegrationPointComparison::{Exact,
+The bounded front door exposes `HtmlIntegrationPointComparison::{Exact,
 AsciiCaseInsensitive}` and `bounded::HtmlIntegrationPointRule::{Never, Always,
 EncodingAttribute}`, matching the private `integration_points.rs` policy.
 `bounded::html_integration_point_rule` takes optional namespace URI, local name
@@ -583,6 +593,19 @@ MIME value and stops further attribute reads. Semantics' ordinary borrowed
 adapter and parser's charged field/iteration adapter use those same operations.
 Only these consumed operations/types cross the package boundary; the private
 module itself remains private.
+
+MathML text integration points use the ordinary
+`is_mathml_text_integration_point(&QualifiedName) -> bool` front door and
+`bounded::mathml_text_integration_point<E>(compare:
+impl FnMut(HtmlMathmlTextPointTest<'_>) -> Result<bool, E>) -> Result<bool, E>`.
+`HtmlMathmlTextPointTest` emits `Namespace(&'static str)` for the exact MathML
+URI and, only after success, one `Local(&[&'static str])` group containing
+`mi`, `mo`, `mn`, `ms`, `mtext` in that order. Capture uses the ordinary exact
+name adapter. Parser's actual-node and adjusted-current-node adapters delegate
+the two groups to their existing namespace/local-group comparisons, retaining
+group-header, per-choice and unit-read admission. Callback refusal propagates
+without another observation. Foreign-dispatch token-kind, `mglyph`/`malignmark`
+exceptions and the separate annotation-xml/SVG branch remain parser-owned.
 
 ### Local rules and semantic execution
 

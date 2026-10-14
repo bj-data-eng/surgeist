@@ -83,14 +83,14 @@ fn initial_modes(
         return Err(SessionError::ContextUnavailable.into());
     };
     let name = element.name();
-    use crate::fragment_initialization::{self, FragmentNameTest};
-    let (lexical, insertion) = fragment_initialization::initial_modes(
+    use crate::bounded::HtmlFragmentNameTest;
+    let (lexical, insertion) = crate::bounded::fragment_initial_modes(
         request.effective_scripting_mode(),
         |test| match test {
-            FragmentNameTest::HtmlNamespace => {
-                tag_sets::namespace(name, fragment_initialization::HTML_NAMESPACE, c)
+            HtmlFragmentNameTest::HtmlNamespace => {
+                tag_sets::namespace(name, "http://www.w3.org/1999/xhtml", c)
             }
-            FragmentNameTest::Local(choices) => tag_sets::local_in(name, choices, c),
+            HtmlFragmentNameTest::Local(choices) => tag_sets::local_in(name, choices, c),
         },
     )?;
     let template = insertion == crate::HtmlFragmentInsertionMode::InTemplate;

@@ -3,6 +3,14 @@
 //! Actions describe their work before reading their operands. This module owns
 //! value invariants; callers retain cancellation, work and allocation accounting.
 
+pub use crate::fragment_initialization::{
+    HtmlFragmentNameTest, fragment_initial_modes, stack_reset_insertion_mode,
+};
+pub use crate::integration_points::{
+    HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
+    html_integration_point_encoding_attribute, html_integration_point_rule,
+    mathml_text_integration_point,
+};
 pub use crate::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
