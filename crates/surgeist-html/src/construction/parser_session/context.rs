@@ -3,27 +3,51 @@
 
 use super::*;
 
-/// Compact references are qualified against this session's retained capture.
-/// A captured index never indexes the native records or escapes as a native ID.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Owned positions join parser metadata; captured identities retain their owner.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum DocumentRef {
     Owned(usize),
-    Captured(usize),
+    Captured(crate::HtmlCaptureDocumentId),
 }
 impl DocumentRef {
-    pub(super) fn owned(self) -> Result<usize, SessionError> {
+    pub(super) fn owned(&self) -> Result<usize, SessionError> {
         match self {
-            Self::Owned(index) => Ok(index),
+            Self::Owned(index) => Ok(*index),
             Self::Captured(_) => Err(SessionError::CapturedDocument),
         }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) enum RegistryRef {
     Null,
-    Captured(usize),
+    Captured(crate::HtmlCaptureRegistryId),
     Unavailable,
+}
+
+impl DocumentRef {
+    pub(super) fn admit_clone(&self, c: &mut ParseControl) -> Result<(), SessionError> {
+        if matches!(self, Self::Captured(_)) {
+            c.charge(WorkCategory::ProviderCall, 1)?;
+        }
+        Ok(())
+    }
+    pub(super) fn try_clone(&self, c: &mut ParseControl) -> Result<Self, SessionError> {
+        self.admit_clone(c)?;
+        c.admit_atomic_layout(mem::size_of::<Self>())?;
+        c.charge(WorkCategory::CopyByte, mem::size_of::<Self>() as u64)?;
+        Ok(self.clone())
+    }
+}
+impl RegistryRef {
+    fn try_clone(&self, c: &mut ParseControl) -> Result<Self, SessionError> {
+        if matches!(self, Self::Captured(_)) {
+            c.charge(WorkCategory::ProviderCall, 1)?;
+        }
+        c.admit_atomic_layout(mem::size_of::<Self>())?;
+        c.charge(WorkCategory::CopyByte, mem::size_of::<Self>() as u64)?;
+        Ok(self.clone())
+    }
 }
 
 /// No-definition DOM creation facts. The saved is slot has its own backing;
@@ -82,7 +106,7 @@ pub(crate) struct FragmentBootstrap {
 /// Completed cache association data, not a runnable task or a fake DOM node.
 pub(super) enum ContextEffect {
     TemplateCache {
-        document: usize,
+        document: crate::HtmlCaptureDocumentId,
         inert: Option<usize>,
     },
     AttachShadow {
@@ -101,9 +125,9 @@ impl SessionStorage {
     pub(super) fn captured_contents_document(
         &mut self,
         c: &mut ParseControl,
-        document: usize,
+        document: &crate::HtmlCaptureDocumentId,
     ) -> Result<DocumentRef, SessionError> {
-        self.validate_document_ref(c, DocumentRef::Captured(document))?;
+        self.validate_captured_document(c, document)?;
         let fragment = self
             .fragment
             .as_ref()
@@ -114,7 +138,7 @@ impl SessionStorage {
                 document: owner,
                 inert,
             } = effect
-                && *owner == document
+                && owner == document
             {
                 c.charge(
                     WorkCategory::CopyByte,
@@ -128,14 +152,16 @@ impl SessionStorage {
         c.charge(WorkCategory::RecordVisit, 3)?;
         let capture = fragment.context.capture();
         let node = capture
-            .document_at(document)
+            .node(document.subject())
             .map_err(|_| SessionError::ContextUnavailable)?;
         let crate::HtmlCapturedNodeKind::Document(facts) = node.kind() else {
             unreachable!("qualified captured document")
         };
         match facts.template_role() {
             crate::HtmlTemplateDocumentRole::InertTemplate => {
-                return Ok(DocumentRef::Captured(document));
+                c.charge(WorkCategory::ProviderCall, 1)?;
+                payload_write::<DocumentRef>(c, 1)?;
+                return Ok(DocumentRef::Captured(document.clone()));
             }
             crate::HtmlTemplateDocumentRole::Unavailable => {
                 return Err(SessionError::ContextFactUnavailable(
@@ -145,20 +171,27 @@ impl SessionStorage {
             crate::HtmlTemplateDocumentRole::Ordinary => {}
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
-        match capture
-            .template_cache_index(document)
+        if capture
+            .template_document_cache_clones_identity(document)
             .map_err(|_| SessionError::ContextUnavailable)?
         {
-            crate::capture::CapturedTemplateCacheKey::Document(index) => {
-                self.validate_document_ref(c, DocumentRef::Captured(index))?;
+            c.charge(WorkCategory::ProviderCall, 1)?;
+        }
+        payload_write::<crate::HtmlCapturedTemplateCache>(c, 1)?;
+        match capture
+            .template_document_cache(document)
+            .map_err(|_| SessionError::ContextUnavailable)?
+        {
+            crate::HtmlCapturedTemplateCache::Document(index) => {
+                self.validate_captured_document(c, &index)?;
                 return Ok(DocumentRef::Captured(index));
             }
-            crate::capture::CapturedTemplateCacheKey::Unavailable => {
+            crate::HtmlCapturedTemplateCache::Unavailable => {
                 return Err(SessionError::ContextFactUnavailable(
                     crate::HtmlCaptureFact::TemplateDocumentCache,
                 ));
             }
-            crate::capture::CapturedTemplateCacheKey::Absent => {}
+            crate::HtmlCapturedTemplateCache::Absent => {}
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
         let class = facts.document_class();
@@ -169,6 +202,9 @@ impl SessionStorage {
         }
         // Retain the actual initialized effect slot before any new Document.
         // A later stop owns this unbound slot and refuses publication.
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        payload_write::<crate::HtmlCaptureDocumentId>(c, 1)?;
+        let document = document.clone();
         let effects = &mut self.fragment.as_mut().expect("qualified context").effects;
         let effect = effects.len();
         effects.try_push(
@@ -221,26 +257,32 @@ impl SessionStorage {
         *inert = Some(node.index);
         Ok(DocumentRef::Owned(node.index))
     }
+    fn validate_captured_document(
+        &self,
+        c: &mut ParseControl,
+        document: &crate::HtmlCaptureDocumentId,
+    ) -> Result<(), SessionError> {
+        c.require_identity(&self.control)?;
+        c.charge(WorkCategory::RecordVisit, 2)?;
+        self.fragment
+            .as_ref()
+            .ok_or(SessionError::ContextUnavailable)?
+            .context
+            .capture()
+            .node(document.subject())
+            .map_err(|_| SessionError::ContextUnavailable)?;
+        Ok(())
+    }
     pub(super) fn validate_document_ref(
         &self,
         c: &mut ParseControl,
-        document: DocumentRef,
+        document: &DocumentRef,
     ) -> Result<(), SessionError> {
         match document {
             DocumentRef::Owned(index) => {
-                self.document_slot(c, index)?;
+                self.document_slot(c, *index)?;
             }
-            DocumentRef::Captured(index) => {
-                c.require_identity(&self.control)?;
-                c.charge(WorkCategory::RecordVisit, 2)?;
-                self.fragment
-                    .as_ref()
-                    .ok_or(SessionError::ContextUnavailable)?
-                    .context
-                    .capture()
-                    .document_at(index)
-                    .map_err(|_| SessionError::ContextUnavailable)?;
-            }
+            DocumentRef::Captured(id) => self.validate_captured_document(c, id)?,
         }
         Ok(())
     }
@@ -273,13 +315,13 @@ impl ParserArenaSession {
         }
         let context = request.context();
         c.charge(WorkCategory::RecordVisit, 4)?;
-        let target = context
+        context
             .capture()
-            .document_index(context.target_document())
+            .node(context.target_document().subject())
             .map_err(|_| SessionError::ContextUnavailable)?;
         context
             .capture()
-            .document_index(context.context_document())
+            .node(context.context_document().subject())
             .map_err(|_| SessionError::ContextUnavailable)?;
         let mode = request.effective_scripting_mode();
         if !matches!(
@@ -327,13 +369,16 @@ impl ParserArenaSession {
         let document = self.root(c)?;
         self.insert(c, &document, &root, None, None)?;
         let storage = self.active_mut()?;
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        payload_write::<DocumentRef>(c, 1)?;
+        let target = DocumentRef::Captured(request.context().target_document().clone());
         let output = storage.allocate_in_document_owned(
             c,
             HtmlNodeKind::Fragment,
             false,
             0,
             0,
-            Some(DocumentRef::Captured(target)),
+            Some(target),
         )?;
         payload_write::<Option<usize>>(c, 1)?;
         storage.fragment.as_mut().expect("retained context").output = Some(output.index);
@@ -488,24 +533,9 @@ impl ParserArenaSession {
             DocumentRef::Owned(index) => {
                 Ok(ParserDocumentReference::Owned(storage.node(c, index)?))
             }
-            DocumentRef::Captured(index) => {
-                let fragment = storage
-                    .fragment
-                    .as_ref()
-                    .ok_or(SessionError::ContextUnavailable)?;
-                c.charge(WorkCategory::ProviderCall, 2)?;
+            DocumentRef::Captured(id) => {
                 payload_write::<ParserDocumentReference>(c, 1)?;
-                let node = fragment
-                    .context
-                    .capture()
-                    .document_at(index)
-                    .map_err(|_| SessionError::ContextUnavailable)?;
-                let document = fragment
-                    .context
-                    .capture()
-                    .document_id(&node.id())
-                    .map_err(|_| SessionError::ContextUnavailable)?;
-                Ok(ParserDocumentReference::Captured(document))
+                Ok(ParserDocumentReference::Captured(id))
             }
         }
     }
@@ -602,11 +632,13 @@ impl SessionStorage {
                     .as_ref()
                     .ok_or(SessionError::ContextUnavailable)?
                     .context;
-                let index = context
+                context
                     .capture()
-                    .registry_index(id)
+                    .registry_scope(id)
                     .map_err(|_| SessionError::ContextUnavailable)?;
-                Ok(RegistryRef::Captured(index))
+                c.charge(WorkCategory::ProviderCall, 1)?;
+                payload_write::<RegistryRef>(c, 1)?;
+                Ok(RegistryRef::Captured(id.clone()))
             }
         }
     }
@@ -625,8 +657,7 @@ impl SessionStorage {
             } = payload
                 && *bound == node
             {
-                c.charge(WorkCategory::CopyByte, mem::size_of::<RegistryRef>() as u64)?;
-                return Ok(*registry);
+                return registry.try_clone(c);
             }
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -675,7 +706,7 @@ impl SessionStorage {
     pub(super) fn require_no_definition(
         &self,
         c: &mut ParseControl,
-        registry: RegistryRef,
+        registry: &RegistryRef,
         name: &DocumentString,
         is_value: Option<&DocumentString>,
         html: bool,
@@ -692,16 +723,12 @@ impl SessionStorage {
         let potential_definition = html && (is_value.is_some() || charged_custom_name(name, c)?);
         if potential_definition && let RegistryRef::Captured(index) = registry {
             let context = &self.fragment.as_ref().expect("qualified fragment").context;
-            c.charge(WorkCategory::ProviderCall, 1)?;
-            let id = context
-                .capture()
-                .registry_at(index)
-                .map_err(|_| SessionError::ContextUnavailable)?;
+            let id = index;
             c.charge(WorkCategory::RecordVisit, 1)?;
             if matches!(
                 context
                     .capture()
-                    .definitions(&id)
+                    .definitions(id)
                     .map_err(|_| SessionError::ContextUnavailable)?,
                 crate::HtmlCapturedDefinitions::Unavailable
             ) {
@@ -709,7 +736,9 @@ impl SessionStorage {
                     crate::HtmlCaptureFact::Definitions,
                 ));
             }
-            let lookup = crate::HtmlCapturedRegistry::Registry(id);
+            c.charge(WorkCategory::ProviderCall, 1)?;
+            payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
+            let lookup = crate::HtmlCapturedRegistry::Registry(id.clone());
             let mut cursor = context
                 .capture()
                 .definition_lookup_cursor(&lookup, name, is_value)
@@ -758,7 +787,7 @@ impl SessionStorage {
         let registry = self.lookup_registry_ref(c, parent)?;
         let potential_definition = self.require_no_definition(
             c,
-            registry,
+            &registry,
             name,
             is_value.map(|text| text.value.text()),
             html,
@@ -796,7 +825,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        document: DocumentRef,
+        document: &DocumentRef,
         detached: usize,
     ) -> Result<(), SessionError> {
         if self.fragment.is_none() {
@@ -836,7 +865,7 @@ impl SessionStorage {
             return Ok(());
         }
         let context = &self.fragment.as_ref().expect("actual context").context;
-        let global = match previous {
+        let global = match &previous {
             RegistryRef::Null => true,
             RegistryRef::Unavailable => {
                 return Err(SessionError::ContextFactUnavailable(
@@ -844,15 +873,11 @@ impl SessionStorage {
                 ));
             }
             RegistryRef::Captured(index) => {
-                c.charge(WorkCategory::ProviderCall, 1)?;
-                let id = context
-                    .capture()
-                    .registry_at(index)
-                    .map_err(|_| SessionError::ContextUnavailable)?;
+                let id = index;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 match context
                     .capture()
-                    .registry_scope(&id)
+                    .registry_scope(id)
                     .map_err(|_| SessionError::ContextUnavailable)?
                 {
                     crate::HtmlRegistryScope::Global => true,
@@ -891,9 +916,9 @@ impl SessionStorage {
                     let context = &self.fragment.as_ref().expect("actual context").context;
                     let document = context
                         .capture()
-                        .document_at(index)
+                        .node(index.subject())
                         .map_err(|_| SessionError::ContextUnavailable)?;
-                    self.borrowed_captured_registry(c, document)
+                    self.borrowed_captured_registry(c, document)?
                 }
             },
         };
@@ -933,17 +958,8 @@ impl ParserArenaSession {
             RegistryRef::Null => Ok(crate::HtmlCapturedRegistry::Null),
             RegistryRef::Unavailable => Ok(crate::HtmlCapturedRegistry::Unavailable),
             RegistryRef::Captured(index) => {
-                c.charge(WorkCategory::ProviderCall, 1)?;
                 payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
-                let context = &storage
-                    .fragment
-                    .as_ref()
-                    .ok_or(SessionError::ContextUnavailable)?
-                    .context;
-                let id = context
-                    .capture()
-                    .registry_at(index)
-                    .map_err(|_| SessionError::ContextUnavailable)?;
+                let id = index;
                 Ok(crate::HtmlCapturedRegistry::Registry(id))
             }
         }
@@ -1155,7 +1171,7 @@ impl ParserArenaSession {
                     let registry = storage.lookup_registry_ref(c, host)?;
                     if storage.definition_disables_shadow(
                         c,
-                        registry,
+                        &registry,
                         element.name().local_name(),
                         InternalIs::Known(saved_is),
                         custom,
@@ -1225,10 +1241,10 @@ impl ParserArenaSession {
                     Some(false) => {}
                 }
                 if custom || !matches!(element.is_value(), crate::HtmlCapturedIsValue::Absent) {
-                    let registry = storage.borrowed_captured_registry(c, captured);
+                    let registry = storage.borrowed_captured_registry(c, captured)?;
                     if storage.definition_disables_shadow(
                         c,
-                        registry,
+                        &registry,
                         element.name().local_name(),
                         match element.is_value() {
                             crate::HtmlCapturedIsValue::Absent => InternalIs::Known(None),
@@ -1244,12 +1260,7 @@ impl ParserArenaSession {
                 }
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 let document = captured.node_document();
-                let document = DocumentRef::Captured(
-                    context
-                        .capture()
-                        .document_index(&document)
-                        .map_err(|_| SessionError::ContextUnavailable)?,
-                );
+                let document = DocumentRef::Captured(document);
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 (ShadowHostKey::Captured(host.clone()), document)
             }
@@ -1257,7 +1268,7 @@ impl ParserArenaSession {
         let registry = if keep_null {
             RegistryRef::Null
         } else {
-            storage.document_registry(c, document)?
+            storage.document_registry(c, &document)?
         };
         if matches!(registry, RegistryRef::Unavailable) {
             return Err(SessionError::ContextFactUnavailable(
@@ -1404,21 +1415,24 @@ impl ParserArenaSession {
 impl SessionStorage {
     fn borrowed_captured_registry(
         &self,
-        _c: &mut ParseControl,
+        c: &mut ParseControl,
         node: crate::HtmlCapturedNode<'_>,
-    ) -> RegistryRef {
-        // The caller already qualified this node through this retained capture.
-        // No Arc-backed registry handle is cloned by the fixed borrowed read.
-        match node.lookup_registry_index() {
-            Some(Some(index)) => RegistryRef::Captured(index),
-            Some(None) => RegistryRef::Null,
-            None => RegistryRef::Unavailable,
+    ) -> Result<RegistryRef, SessionError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if node.lookup_registry_clones_identity() {
+            c.charge(WorkCategory::ProviderCall, 1)?;
         }
+        payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
+        Ok(match node.lookup_registry() {
+            crate::HtmlCapturedRegistry::Registry(id) => RegistryRef::Captured(id),
+            crate::HtmlCapturedRegistry::Null => RegistryRef::Null,
+            crate::HtmlCapturedRegistry::Unavailable => RegistryRef::Unavailable,
+        })
     }
     fn document_registry(
         &self,
         c: &mut ParseControl,
-        document: DocumentRef,
+        document: &DocumentRef,
     ) -> Result<RegistryRef, SessionError> {
         self.validate_document_ref(c, document)?;
         match document {
@@ -1432,16 +1446,16 @@ impl SessionStorage {
                     .context;
                 let document = context
                     .capture()
-                    .document_at(index)
+                    .node(index.subject())
                     .map_err(|_| SessionError::ContextUnavailable)?;
-                Ok(self.borrowed_captured_registry(c, document))
+                self.borrowed_captured_registry(c, document)
             }
         }
     }
     fn definition_disables_shadow(
         &self,
         c: &mut ParseControl,
-        registry: RegistryRef,
+        registry: &RegistryRef,
         local: &DocumentString,
         is_value: InternalIs<'_>,
         custom: bool,
@@ -1473,16 +1487,12 @@ impl SessionStorage {
             .as_ref()
             .ok_or(SessionError::ContextUnavailable)?
             .context;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        let id = context
-            .capture()
-            .registry_at(index)
-            .map_err(|_| SessionError::ContextUnavailable)?;
+        let id = index;
         c.charge(WorkCategory::RecordVisit, 1)?;
         if matches!(
             context
                 .capture()
-                .definitions(&id)
+                .definitions(id)
                 .map_err(|_| SessionError::ContextUnavailable)?,
             crate::HtmlCapturedDefinitions::Unavailable
         ) {
@@ -1490,7 +1500,9 @@ impl SessionStorage {
                 crate::HtmlCaptureFact::Definitions,
             ));
         }
-        let registry = crate::HtmlCapturedRegistry::Registry(id);
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
+        let registry = crate::HtmlCapturedRegistry::Registry(id.clone());
         let mut cursor = context
             .capture()
             .definition_lookup_cursor(&registry, local, is_value)
@@ -1580,19 +1592,8 @@ impl SessionStorage {
             RegistryRef::Null => crate::HtmlCapturedRegistry::Null,
             RegistryRef::Unavailable => crate::HtmlCapturedRegistry::Unavailable,
             RegistryRef::Captured(index) => {
-                c.charge(WorkCategory::ProviderCall, 1)?;
                 payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
-                let context = &self
-                    .fragment
-                    .as_ref()
-                    .ok_or(SessionError::ContextUnavailable)?
-                    .context;
-                crate::HtmlCapturedRegistry::Registry(
-                    context
-                        .capture()
-                        .registry_at(index)
-                        .map_err(|_| SessionError::ContextUnavailable)?,
-                )
+                crate::HtmlCapturedRegistry::Registry(index)
             }
         })
     }
@@ -1668,19 +1669,15 @@ impl SessionStorage {
     ) -> Result<RegistryRef, SessionError> {
         Ok(match registry {
             RegistryRef::Captured(index) => {
-                c.charge(WorkCategory::ProviderCall, 1)?;
                 let context = &self.fragment.as_ref().expect("actual context").context;
-                let id = context
-                    .capture()
-                    .registry_at(index)
-                    .map_err(|_| SessionError::ContextUnavailable)?;
+                let id = &index;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 match context
                     .capture()
-                    .registry_scope(&id)
+                    .registry_scope(id)
                     .map_err(|_| SessionError::ContextUnavailable)?
                 {
-                    crate::HtmlRegistryScope::Global => registry,
+                    crate::HtmlRegistryScope::Global => RegistryRef::Captured(index),
                     crate::HtmlRegistryScope::Scoped => RegistryRef::Null,
                     crate::HtmlRegistryScope::Unavailable => {
                         return Err(SessionError::ContextFactUnavailable(
@@ -1723,7 +1720,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         source: usize,
         copy: usize,
-        document: DocumentRef,
+        document: &DocumentRef,
     ) -> Result<Option<(usize, usize)>, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         let Some(shadow) = self
@@ -1756,23 +1753,18 @@ impl SessionStorage {
         let original = shadow_contents;
         let state = self.shadow_state(c, original)?;
         let previous = self.lookup_registry_ref(c, original)?;
-        let registry = match previous {
+        let registry = match &previous {
             RegistryRef::Captured(index) => {
                 let fragment = self
                     .fragment
                     .as_ref()
                     .ok_or(SessionError::ContextUnavailable)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
-                let id = fragment
-                    .context
-                    .capture()
-                    .registry_at(index)
-                    .map_err(|_| SessionError::ContextUnavailable)?;
+                let id = index;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 match fragment
                     .context
                     .capture()
-                    .registry_scope(&id)
+                    .registry_scope(id)
                     .map_err(|_| SessionError::ContextUnavailable)?
                 {
                     crate::HtmlRegistryScope::Global => {
@@ -1815,6 +1807,7 @@ impl SessionStorage {
             creation: None,
         });
         payload_write::<Option<usize>>(c, 2)?;
+        let document = document.try_clone(c)?;
         let root = self.allocate_shadow_contents(c, properties, document)?;
         let RetainedPayload::Shadow { root: bound, .. } = &mut self.payloads.values[fact] else {
             unreachable!()
@@ -1897,20 +1890,7 @@ impl FrozenStorage {
         Ok(match registry {
             RegistryRef::Null => crate::HtmlCapturedRegistry::Null,
             RegistryRef::Unavailable => crate::HtmlCapturedRegistry::Unavailable,
-            RegistryRef::Captured(index) => {
-                let context = &self
-                    .fragment
-                    .as_ref()
-                    .ok_or(SessionError::ContextUnavailable)?
-                    .context;
-                c.charge(WorkCategory::ProviderCall, 1)?;
-                crate::HtmlCapturedRegistry::Registry(
-                    context
-                        .capture()
-                        .registry_at(index)
-                        .map_err(|_| SessionError::ContextUnavailable)?,
-                )
-            }
+            RegistryRef::Captured(index) => crate::HtmlCapturedRegistry::Registry(index),
         })
     }
 }
@@ -1931,7 +1911,8 @@ impl FrozenStorage {
             } = payload
                 && *bound == index
             {
-                return self.context_registry(c, *registry);
+                let registry = registry.try_clone(c)?;
+                return self.context_registry(c, registry);
             }
         }
         Err(SessionError::ContextFactUnavailable(
@@ -2083,19 +2064,8 @@ impl FrozenArena {
                         ParserDocumentReference::Owned(storage.context_node(c, *index)?)
                     }
                     DocumentRef::Captured(index) => {
-                        let context = &storage
-                            .fragment
-                            .as_ref()
-                            .ok_or(SessionError::ContextUnavailable)?
-                            .context;
                         c.charge(WorkCategory::ProviderCall, 1)?;
-                        ParserDocumentReference::Captured(
-                            context
-                                .capture()
-                                .document_at(*index)
-                                .map_err(|_| SessionError::ContextUnavailable)?
-                                .node_document(),
-                        )
+                        ParserDocumentReference::Captured(index.clone())
                     }
                 });
             }
@@ -2139,12 +2109,7 @@ impl FrozenArena {
             }
             c.charge(WorkCategory::ProviderCall, 1)?;
             payload_write::<TemplateCacheState<HtmlNodeId>>(c, 1)?;
-            let document = fragment
-                .context
-                .capture()
-                .document_at(*document)
-                .map_err(|_| SessionError::ContextUnavailable)?
-                .node_document();
+            let document = document.clone();
             return Ok(Some(TemplateCacheState {
                 document,
                 inert: storage.context_node(c, *inert)?,
@@ -2241,14 +2206,11 @@ pub enum FrozenFragmentEffect<'a> {
     },
 }
 pub struct FrozenCapturedRegistry<'a> {
-    capture: &'a crate::HtmlCapture,
-    index: usize,
+    id: &'a crate::HtmlCaptureRegistryId,
 }
 impl FrozenCapturedRegistry<'_> {
     pub fn is_registry(&self, id: &crate::HtmlCaptureRegistryId) -> bool {
-        self.capture
-            .registry_index(id)
-            .is_ok_and(|index| index == self.index)
+        self.id == id
     }
 }
 pub enum FrozenFragmentRegistry<'a> {
@@ -2294,7 +2256,7 @@ impl<'a> FrozenFragmentEffects<'a> {
                     .fragment
                     .context
                     .capture()
-                    .document_at(*document)
+                    .node(document.subject())
                     .map_err(|_| SessionError::ContextUnavailable)?,
                 inert: self.node(*inert)?,
             },
@@ -2343,10 +2305,7 @@ impl<'a> FrozenFragmentEffects<'a> {
                 RegistryRef::Null => FrozenFragmentRegistry::Null,
                 RegistryRef::Unavailable => FrozenFragmentRegistry::Unavailable,
                 RegistryRef::Captured(index) => {
-                    FrozenFragmentRegistry::Captured(FrozenCapturedRegistry {
-                        capture: self.fragment.context.capture(),
-                        index: *index,
-                    })
+                    FrozenFragmentRegistry::Captured(FrozenCapturedRegistry { id: index })
                 }
             },
         }))
@@ -2405,7 +2364,7 @@ impl FrozenArena {
                     view.fragment
                         .context
                         .capture()
-                        .document_at(*document)
+                        .node(document.subject())
                         .map_err(|_| SessionError::ContextUnavailable)?;
                     if !matches!(
                         view.arena
@@ -2459,14 +2418,11 @@ impl FrozenArena {
             c.charge(WorkCategory::RecordVisit, 1)?;
             view.node(*node)?;
             if let RegistryRef::Captured(index) = registry {
-                // This validation creates one actual fixed capture handle
-                // before commit; the immutable lender itself creates none.
-                payload_write::<crate::HtmlCaptureRegistryId>(c, 1)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                // Validate the stored identity without cloning it or requiring scope truth.
                 view.fragment
                     .context
                     .capture()
-                    .registry_at(*index)
+                    .registry_scope(index)
                     .map_err(|_| SessionError::ContextUnavailable)?;
             }
         }

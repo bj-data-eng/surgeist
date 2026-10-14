@@ -18,7 +18,9 @@ use std::{
     sync::Arc,
 };
 
+mod construction;
 mod preflight;
+pub use construction::*;
 
 macro_rules! identity {
     ($name:ident, $doc:literal) => {
@@ -222,12 +224,7 @@ pub enum HtmlCapturedTemplateCache {
     Document(HtmlCaptureDocumentId),
     Unavailable,
 }
-#[derive(Clone, Copy)]
-pub(crate) enum CapturedTemplateCacheKey {
-    Absent,
-    Document(usize),
-    Unavailable,
-}
+
 /// Ordinary parent, separate from template and shadow host associations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCapturedParent {
@@ -1523,14 +1520,25 @@ impl HtmlCaptureBuilder {
         child: usize,
         parent: usize,
     ) -> Result<Vec<(usize, usize)>, HtmlCaptureError> {
+        self.edge_depths_controlled(child, parent, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    fn edge_depths_controlled<E>(
+        &self,
+        child: usize,
+        parent: usize,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<Vec<(usize, usize)>, preflight::Failure<E>> {
+        preflight::work(admit, 8)?;
         if child == parent {
-            return Err(HtmlCaptureError::Cycle);
+            return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
         }
         if !self.data.records[child].dependents.is_empty() {
             let mut ancestor = Some(parent);
             while let Some(i) = ancestor {
+                preflight::work(admit, 3)?;
                 if i == child {
-                    return Err(HtmlCaptureError::Cycle);
+                    return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
                 }
                 ancestor = self.data.records[i].incoming();
             }
@@ -1538,13 +1546,22 @@ impl HtmlCaptureBuilder {
         let first = add(self.data.records[parent].depth, 1)?;
         self.depth(first)?;
         let mut updates = Vec::new();
-        reserve(&mut updates, 1)?;
+        preflight::reserve(&mut updates, 1, admit)?;
         updates.push((child, first));
         let mut cursor = 0;
         while cursor < updates.len() {
+            preflight::work(admit, 4)?;
             let (i, depth) = updates[cursor];
             self.depth(depth)?;
-            reserve(&mut updates, self.data.records[i].dependents.len())?;
+            preflight::reserve(&mut updates, self.data.records[i].dependents.len(), admit)?;
+            preflight::work(
+                admit,
+                self.data.records[i]
+                    .dependents
+                    .len()
+                    .checked_mul(2)
+                    .ok_or(HtmlCaptureError::RepresentationExhausted)?,
+            )?;
             for &dependent in &self.data.records[i].dependents {
                 updates.push((dependent, add(depth, 1)?));
             }
@@ -1579,54 +1596,89 @@ impl HtmlCaptureBuilder {
         self.apply_depths(updates);
         Ok(())
     }
-    // Computes forest depths iteratively, including proposed ordinary associations.
-    fn all_depths(&self, edges: &[(usize, usize)]) -> Result<Vec<usize>, HtmlCaptureError> {
-        let mut scratch = preflight::DepthScratch::new();
-        preflight::depths(self, edges, &mut scratch, &mut preflight::ordinary)
-            .map_err(preflight::ordinary_error)?;
-        Ok(scratch.into_depths())
-    }
     /// Establishes all ordered children atomically, also resolving unknown parents.
     pub fn establish_children(
         &mut self,
         parent: &HtmlCaptureBuilderSubject,
         children: &[HtmlCaptureBuilderSubject],
     ) -> Result<(), HtmlCaptureError> {
+        self.establish_children_controlled(parent, children, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    fn establish_children_controlled<E>(
+        &mut self,
+        parent: &HtmlCaptureBuilderSubject,
+        children: &[HtmlCaptureBuilderSubject],
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
+        preflight::work(admit, 8)?;
         let parent = self.index(parent)?;
         if !self.data.records[parent].is_container() {
-            return Err(HtmlCaptureError::CannotHaveChildren(
-                self.data.records[parent].kind.subject_kind(),
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::CannotHaveChildren(self.data.records[parent].kind.subject_kind()),
             ));
         }
         if self.data.records[parent].children.is_some() {
-            return Err(HtmlCaptureError::ChildrenAlreadyEstablished);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::ChildrenAlreadyEstablished,
+            ));
         }
         self.admit(0, children.len(), 0, 0, 0, 0)?;
         let mut indices = Vec::new();
-        reserve(&mut indices, children.len())?;
+        preflight::reserve(&mut indices, children.len(), admit)?;
         let mut edges = Vec::new();
-        reserve(&mut edges, children.len())?;
+        preflight::reserve(&mut edges, children.len(), admit)?;
         let mut seen = HashSet::new();
+        admit(preflight::Action::Reserve {
+            entries: children.len(),
+            record_bytes: std::mem::size_of::<usize>(),
+        })
+        .map_err(preflight::Failure::Admission)?;
         seen.try_reserve(children.len())
-            .map_err(|_| HtmlCaptureError::RepresentationExhausted)?;
+            .map_err(|_| preflight::Failure::AllocationFailed)?;
+        preflight::work(admit, 0)?;
+        preflight::work(
+            admit,
+            children
+                .len()
+                .checked_mul(add(children.len(), 6)?)
+                .ok_or(HtmlCaptureError::RepresentationExhausted)?,
+        )?;
         for child in children {
+            preflight::work(admit, 6)?;
             let child = self.index(child)?;
             if !seen.insert(child) {
-                return Err(HtmlCaptureError::DuplicateChild);
+                return Err(preflight::Failure::Capture(
+                    HtmlCaptureError::DuplicateChild,
+                ));
             }
             self.ordinary_edge(child, parent)?;
             match self.data.records[child].parent {
                 Parent::Unavailable => edges.push((child, parent)),
                 Parent::Index(p) if p == parent => {}
-                _ => return Err(HtmlCaptureError::ParentChildConflict),
+                _ => {
+                    return Err(preflight::Failure::Capture(
+                        HtmlCaptureError::ParentChildConflict,
+                    ));
+                }
             }
             indices.push(child);
         }
+        preflight::work(
+            admit,
+            self.data.records[parent]
+                .dependents
+                .len()
+                .checked_mul(add(children.len(), 1)?)
+                .ok_or(HtmlCaptureError::RepresentationExhausted)?,
+        )?;
         if self.data.records[parent].dependents.iter().any(|i| {
             matches!(self.data.records[*i].parent, Parent::Index(p) if p == parent)
                 && !seen.contains(i)
         }) {
-            return Err(HtmlCaptureError::ParentChildConflict);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::ParentChildConflict,
+            ));
         }
         let relationships = add(
             indices.len(),
@@ -1636,7 +1688,10 @@ impl HtmlCaptureBuilder {
                 .ok_or(HtmlCaptureError::RepresentationExhausted)?,
         )?;
         let usage = self.admit(0, relationships, 0, 0, 0, 0)?;
-        let depths = self.all_depths(&edges)?;
+        let mut scratch = preflight::DepthScratch::new();
+        preflight::depths(self, &edges, &mut scratch, admit)?;
+        let depths = scratch.into_depths();
+        preflight::work(admit, add(self.data.records.len(), edges.len())?)?;
         reserve(&mut self.data.records[parent].dependents, edges.len())?;
         for (child, _) in edges {
             self.data.records[child].parent = Parent::Index(parent);
@@ -1689,6 +1744,16 @@ impl HtmlCaptureBuilder {
         template: &HtmlCaptureBuilderSubject,
         fragment: &HtmlCaptureBuilderSubject,
     ) -> Result<(), HtmlCaptureError> {
+        self.establish_template_contents_controlled(template, fragment, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    fn establish_template_contents_controlled<E>(
+        &mut self,
+        template: &HtmlCaptureBuilderSubject,
+        fragment: &HtmlCaptureBuilderSubject,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
+        preflight::work(admit, 8)?;
         let t = self.index(template)?;
         let f = self.index(fragment)?;
         self.require(t, HtmlCaptureSubjectKind::Element)?;
@@ -1696,23 +1761,32 @@ impl HtmlCaptureBuilder {
         let HtmlCapturedNodeKind::Element(e) = &self.data.records[t].kind else {
             unreachable!()
         };
+        preflight::work(admit, name_units(&e.name)?)?;
         if !html(&e.name, "template") {
-            return Err(HtmlCaptureError::NotHtmlTemplate);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::NotHtmlTemplate,
+            ));
         }
         if e.template != TemplateAssociation::Unavailable {
-            return Err(HtmlCaptureError::AssociationAlreadyEstablished);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::AssociationAlreadyEstablished,
+            ));
         }
         let HtmlCapturedNodeKind::Fragment(fragment) = &self.data.records[f].kind else {
             unreachable!()
         };
         if fragment.host != Association::Unavailable {
-            return Err(HtmlCaptureError::FragmentAlreadyHosted);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::FragmentAlreadyHosted,
+            ));
         }
         if matches!(fragment.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) {
-            return Err(HtmlCaptureError::InvalidTemplateContentsReference);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::InvalidTemplateContentsReference,
+            ));
         }
         let usage = self.admit(0, 3, 0, 0, 0, 0)?;
-        let updates = self.edge_depths(f, t)?;
+        let updates = self.edge_depths_controlled(f, t, admit)?;
         reserve(&mut self.data.records[t].dependents, 1)?;
         let HtmlCapturedNodeKind::Element(e) = &mut self.data.records[t].kind else {
             unreachable!()
@@ -1850,7 +1924,11 @@ impl HtmlCaptureBuilder {
         let mut scratch = preflight::DepthScratch::new();
         self.preflight_finish(&mut scratch, &mut preflight::ordinary)
             .map_err(preflight::ordinary_error)?;
-        Ok(HtmlCapture(Arc::new(self.data)))
+        Ok(self.publish())
+    }
+
+    fn publish(self) -> HtmlCapture {
+        HtmlCapture(Arc::new(self.data))
     }
 
     /// Validates borrowed data before the caller moves it into the immutable wrapper.
@@ -1913,26 +1991,8 @@ impl<'a> HtmlCapturedNode<'a> {
             None => HtmlCapturedChildren::Unavailable,
         }
     }
-    /// Source-defined registry lookup: plain fragments and other nodes return null.
-    pub(crate) fn lookup_registry_index(self) -> Option<Option<usize>> {
-        let registry = match self.kind() {
-            HtmlCapturedNodeKind::Document(document) => document.registry,
-            HtmlCapturedNodeKind::Element(element) => element.registry,
-            HtmlCapturedNodeKind::Fragment(fragment)
-                if matches!(fragment.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) =>
-            {
-                fragment.registry
-            }
-            _ => Registry::Null,
-        };
-        match registry {
-            Registry::Null => Some(None),
-            Registry::Index(index) => Some(Some(index)),
-            Registry::Unavailable => None,
-        }
-    }
-    pub fn lookup_registry(self) -> HtmlCapturedRegistry {
-        let registry = match self.kind() {
+    fn local_registry(self) -> Registry {
+        match self.kind() {
             HtmlCapturedNodeKind::Document(d) => d.registry,
             HtmlCapturedNodeKind::Element(e) => e.registry,
             HtmlCapturedNodeKind::Fragment(f)
@@ -1941,8 +2001,16 @@ impl<'a> HtmlCapturedNode<'a> {
                 f.registry
             }
             _ => Registry::Null,
-        };
-        registry_fact(self.data, registry)
+        }
+    }
+    /// Whether the immutable lookup will clone one capture identity.
+    /// Observe this header before admitting the conditional ID transfer.
+    pub fn lookup_registry_clones_identity(self) -> bool {
+        matches!(self.local_registry(), Registry::Index(_))
+    }
+    /// Source-defined registry lookup: plain fragments and other nodes return null.
+    pub fn lookup_registry(self) -> HtmlCapturedRegistry {
+        registry_fact(self.data, self.local_registry())
     }
     pub fn host(self) -> Option<HtmlCapturedHost> {
         let HtmlCapturedNodeKind::Fragment(f) = self.kind() else {
@@ -2037,82 +2105,41 @@ impl HtmlCapture {
         }
         Ok(self.0.registries[registry.index].scope)
     }
-    // Compact internal keys are issued only after actual capture qualification.
-    // The consuming session retains this exact capture for their entire lifetime;
-    // these indices never stand in for native node or externally visible IDs.
-    pub(crate) fn registry_index(
-        &self,
-        id: &HtmlCaptureRegistryId,
-    ) -> Result<usize, HtmlCaptureError> {
-        if id.capture != self.0.identity {
-            return Err(HtmlCaptureError::ForeignCapture);
-        }
-        Ok(id.index)
-    }
-    pub(crate) fn registry_at(
-        &self,
-        index: usize,
-    ) -> Result<HtmlCaptureRegistryId, HtmlCaptureError> {
-        if index >= self.0.registries.len() {
-            return Err(HtmlCaptureError::ForeignCapture);
-        }
-        Ok(HtmlCaptureRegistryId {
-            capture: self.0.identity.clone(),
-            index,
-        })
-    }
-    pub(crate) fn document_index(
+    fn template_cache_association(
         &self,
         document: &HtmlCaptureDocumentId,
-    ) -> Result<usize, HtmlCaptureError> {
-        self.require(document.subject(), HtmlCaptureSubjectKind::Document)?;
-        Ok(document.0.index)
-    }
-    pub(crate) fn document_at(
-        &self,
-        index: usize,
-    ) -> Result<HtmlCapturedNode<'_>, HtmlCaptureError> {
-        let actual = self
-            .0
-            .records
-            .get(index)
-            .ok_or(HtmlCaptureError::ForeignCapture)?;
-        if actual.kind.subject_kind() != HtmlCaptureSubjectKind::Document {
+    ) -> Result<Association, HtmlCaptureError> {
+        let node = self.node(document.subject())?;
+        let HtmlCapturedNodeKind::Document(facts) = node.kind() else {
             return Err(HtmlCaptureError::WrongKind {
                 expected: HtmlCaptureSubjectKind::Document,
-                actual: actual.kind.subject_kind(),
+                actual: node.kind().subject_kind(),
             });
-        }
-        Ok(HtmlCapturedNode {
-            data: &self.0,
-            index,
-        })
+        };
+        Ok(facts.template_cache)
+    }
+    /// Whether this checked document's cache read will clone one capture identity.
+    /// Absent and unavailable caches both require no ID transfer.
+    pub fn template_document_cache_clones_identity(
+        &self,
+        document: &HtmlCaptureDocumentId,
+    ) -> Result<bool, HtmlCaptureError> {
+        Ok(matches!(
+            self.template_cache_association(document)?,
+            Association::Index(_)
+        ))
     }
     /// Reads one checked document's cache, preserving unavailable and absent facts.
-    /// A present cache returns its actual capture-qualified document identity.
     pub fn template_document_cache(
         &self,
         document: &HtmlCaptureDocumentId,
     ) -> Result<HtmlCapturedTemplateCache, HtmlCaptureError> {
-        let node = self.node(document.subject())?;
-        node.template_document_cache()
-            .ok_or(HtmlCaptureError::WrongKind {
-                expected: HtmlCaptureSubjectKind::Document,
-                actual: node.kind().subject_kind(),
-            })
-    }
-    pub(crate) fn template_cache_index(
-        &self,
-        index: usize,
-    ) -> Result<CapturedTemplateCacheKey, HtmlCaptureError> {
-        let node = self.document_at(index)?;
-        let HtmlCapturedNodeKind::Document(document) = node.kind() else {
-            unreachable!("qualified document")
-        };
-        Ok(match document.template_cache {
-            Association::Absent => CapturedTemplateCacheKey::Absent,
-            Association::Index(index) => CapturedTemplateCacheKey::Document(index),
-            Association::Unavailable => CapturedTemplateCacheKey::Unavailable,
+        Ok(match self.template_cache_association(document)? {
+            Association::Absent => HtmlCapturedTemplateCache::Absent,
+            Association::Unavailable => HtmlCapturedTemplateCache::Unavailable,
+            Association::Index(index) => HtmlCapturedTemplateCache::Document(
+                HtmlCaptureDocumentId(subject_id(&self.0, index)),
+            ),
         })
     }
     pub fn usage(&self) -> HtmlCaptureUsage {

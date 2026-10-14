@@ -709,7 +709,13 @@ Replace `template_cache_index` and `CapturedTemplateCacheKey` with
 Result<HtmlCapturedTemplateCache, HtmlCaptureError>`, preserving
 `Absent`, `Unavailable`, and `Document(HtmlCaptureDocumentId)` distinctly.
 Replace `HtmlCapturedNode::lookup_registry_index` with its existing typed
-`lookup_registry` accessor. Promote `shadow_presence` as
+`lookup_registry` accessor. The immutable observations
+`HtmlCapturedNode::lookup_registry_clones_identity` and
+`HtmlCapture::template_document_cache_clones_identity` describe whether their
+corresponding getter transfers one cloned identity. Parser admits the header
+observation, then any actual identity clone and compiled result layout before
+calling the getter; absent and unavailable facts require no clone.
+Promote `shadow_presence` as
 `HtmlCapture::shadow_presence`, retaining `Result<Option<bool>, HtmlCaptureError>`:
 unknown must remain distinct from an absent shadow root.
 
@@ -1200,7 +1206,7 @@ HtmlConstructionCaptureAdapter::fragment(
 ) -> Result<HtmlConstructionCaptureImport, HtmlConstructionCaptureFailure>;
 ```
 
-These are proposed signatures, not executable examples of an existing package.
+These consuming methods are implemented by the capture owner.
 The supplied builder determines capture identity and `HtmlHostFactsRevision`.
 `HtmlConstructionCaptureFacts::new` takes that expected host revision and a
 finite vector of private-field `HtmlConstructionCaptureNodeFacts`. A node-fact
@@ -1235,6 +1241,11 @@ association, while unrelated owner ancestry, ordinary children and other
 associations remain unavailable unless included by the selected closure.
 Input facts cannot erase or replace ordinary topology,
 names, attributes, text or associations from the result.
+An absent local shadow association remains `Unavailable`, including when ordinary
+children were completely traversed: construction topology does not attest absence
+of an external or imperative shadow root. Actual local roots and properties are
+always imported. A qualified producer may establish absence explicitly through
+the existing builder and imported mapping; no additional absence fact is inferred.
 
 Semantics extends its checked capture surface for these relation kinds:
 
@@ -1321,14 +1332,17 @@ returns the checked handle for a source ID; `into_parts` returns those owners
 without allocation. The caller may establish additional actual host facts
 through the existing capture builder methods. Alternatively, consuming
 `import.finish()` returns `HtmlConstructionCapturedResult { capture, source,
-mapping }`, converting mapping values to immutable capture subjects through
-`HtmlCapture::subject_id`. Finalization uses a consuming
+mapping }`. The mapping retains its actual checked builder handles;
+`mapping.subject` obtains immutable subjects through `HtmlCapture::subject_id`,
+which checks the published originating identity. No duplicate map allocation or
+conversion cost is introduced for the identical retained identity/index pair.
+Finalization uses a consuming
 `HtmlConstructionCaptureImport::finish(self) ->
 Result<HtmlConstructionCapturedResult, HtmlConstructionCaptureFinishFailure>`;
 its failure retains the complete current import, including any facts the caller
-established after traversal. The capture owner factors its existing `all_depths`
-validation into a borrowed preflight, so validation/allocation/cancellation
-refusal cannot destroy that builder. After preflight and mapping allocation,
+established after traversal. The capture owner shares its existing full-forest depth
+validation through a borrowed preflight, so validation/allocation/cancellation
+refusal cannot destroy that builder. After all genuinely fallible preflight,
 the exact builder data moves into its shared capture wrapper and publication
 performs no later fallible operation. The existing standard-library Arc setup
 limitation remains explicit. `mapping.subject(id, &capture)` checks capture
@@ -1345,8 +1359,8 @@ restores that original logical builder state and returns
 `HtmlConstructionCaptureFailure { reason, builder, source, facts, usage }` through
 read-only accessors/`into_parts`. Any retained spare capacity remains with that
 same builder. Thus failure returns the original usable builder and exact source,
-not an immutable partial capture or a partial mapping. Mapping conversion and
-capture finalization allocate/validate before publication; a refusal preserves
+not an immutable partial capture or a partial mapping. Capture finalization
+allocates/validates before publication; a refusal preserves
 the same import owner for cleanup or an explicitly fresh retry.
 
 `HtmlConstructionCaptureError` is non-exhaustive and distinguishes

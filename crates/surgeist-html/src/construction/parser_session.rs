@@ -544,8 +544,8 @@ enum InsertionCause {
     NonParser,
 }
 /// Source processing model facts retained in the actual arena owner.
-/// Document indices are private and resolved only through qualified handles.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Owned document positions stay local; captured documents retain checked IDs.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ScriptMetadata {
     parser_document: Option<DocumentRef>,
     preparation_document: Option<DocumentRef>,
@@ -557,6 +557,20 @@ pub(crate) struct ScriptMetadata {
     pub(crate) delaying_load: bool,
     pub(crate) result: ScriptResult,
     pub(crate) steps_when_result_ready: Option<ScriptReadySteps>,
+}
+impl ScriptMetadata {
+    fn admit_clone(&self, c: &mut ParseControl) -> Result<(), SessionError> {
+        for document in [
+            self.parser_document.as_ref(),
+            self.preparation_document.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            document.admit_clone(c)?;
+        }
+        Ok(())
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptType {
@@ -4715,9 +4729,9 @@ impl SessionStorage {
         if metadata.already_started {
             return Ok(DisabledScriptPreparation::AlreadyStarted);
         }
-        let saved_document = metadata.parser_document;
+        let saved_document = metadata.parser_document.take();
         metadata.parser_document = None;
-        set_script_metadata(self, control, slot, metadata)?;
+        set_script_metadata(self, control, slot, &metadata)?;
         if saved_document.is_some() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             let HtmlNodeKind::Element(element) = &self
@@ -4730,7 +4744,7 @@ impl SessionStorage {
             };
             if script_attribute(control, element, "async")?.is_none() {
                 metadata.force_async = true;
-                set_script_metadata(self, control, slot, metadata)?;
+                set_script_metadata(self, control, slot, &metadata)?;
             }
         }
         let mut empty = true;
@@ -4815,16 +4829,16 @@ impl SessionStorage {
             return Ok(DisabledScriptPreparation::UnrecognizedType);
         };
         metadata.script_type = Some(kind);
-        set_script_metadata(self, control, slot, metadata)?;
+        set_script_metadata(self, control, slot, &metadata)?;
         if saved_document.is_some() {
             metadata.parser_document = saved_document;
             metadata.force_async = false;
-            set_script_metadata(self, control, slot, metadata)?;
+            set_script_metadata(self, control, slot, &metadata)?;
         }
         metadata.already_started = true;
-        set_script_metadata(self, control, slot, metadata)?;
+        set_script_metadata(self, control, slot, &metadata)?;
         metadata.preparation_document = Some(self.node_document_ref(control, index)?);
-        set_script_metadata(self, control, slot, metadata)?;
+        set_script_metadata(self, control, slot, &metadata)?;
         if metadata.parser_document.is_some()
             && metadata.parser_document != metadata.preparation_document
         {
@@ -5373,7 +5387,7 @@ impl ParserArenaSession {
         let index = storage.index(control, node)?;
         let (slot, mut metadata) = script_metadata(&storage.payloads, control, index)?;
         metadata.already_started = true;
-        set_script_metadata(storage, control, slot, metadata)
+        set_script_metadata(storage, control, slot, &metadata)
     }
     /// Exact preparation prefix through HTML's scripting-disabled step18.
     /// No loader, compilation, result or execution callback is invoked.
@@ -9105,7 +9119,8 @@ fn script_metadata(
                 WorkCategory::CopyByte,
                 mem::size_of::<ScriptMetadata>() as u64,
             )?;
-            return Ok((position, *metadata));
+            metadata.admit_clone(control)?;
+            return Ok((position, metadata.clone()));
         }
     }
     Err(SessionError::ScriptMetadataUnavailable)
@@ -9114,7 +9129,7 @@ fn set_script_metadata(
     storage: &mut SessionStorage,
     control: &mut ParseControl,
     slot: usize,
-    value: ScriptMetadata,
+    value: &ScriptMetadata,
 ) -> Result<(), SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
     payload_write::<ScriptMetadata>(control, 1)?;
@@ -9126,7 +9141,8 @@ fn set_script_metadata(
     else {
         return Err(SessionError::ScriptMetadataUnavailable);
     };
-    *metadata = value;
+    value.admit_clone(control)?;
+    *metadata = value.clone();
     Ok(())
 }
 fn script_attribute<'a>(
@@ -16922,7 +16938,7 @@ mod tests {
                     .iter()
                     .find_map(|value| {
                         if let RetainedPayload::Script { node, metadata } = value {
-                            Some((*node, *metadata))
+                            Some((*node, metadata.clone()))
                         } else {
                             None
                         }
@@ -17032,7 +17048,7 @@ mod tests {
             .values
             .iter()
             .find_map(|entry| match entry {
-                RetainedPayload::Script { metadata, .. } => Some(*metadata),
+                RetainedPayload::Script { metadata, .. } => Some(metadata.clone()),
                 _ => None,
             })
             .unwrap();
@@ -17230,7 +17246,7 @@ mod tests {
             .iter()
             .find_map(|entry| {
                 if let RetainedPayload::Script { metadata, .. } = entry {
-                    Some(*metadata)
+                    Some(metadata.clone())
                 } else {
                     None
                 }
@@ -17562,7 +17578,7 @@ mod tests {
                 .iter()
                 .find_map(|entry| {
                     if let RetainedPayload::Script { metadata, .. } = entry {
-                        Some(*metadata)
+                        Some(metadata.clone())
                     } else {
                         None
                     }
@@ -18083,7 +18099,7 @@ mod tests {
             .iter()
             .find_map(|entry| {
                 if let RetainedPayload::Script { metadata, .. } = entry {
-                    Some(*metadata)
+                    Some(metadata.clone())
                 } else {
                     None
                 }

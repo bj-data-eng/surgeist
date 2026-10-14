@@ -59,24 +59,20 @@ impl SessionStorage {
         node: usize,
     ) -> Result<crate::HtmlImageSupport, SessionError> {
         let document = self.node_document_ref(c, node)?;
-        self.validate_document_ref(c, document)?;
+        self.validate_document_ref(c, &document)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         if let Some(fragment) = &self.fragment {
-            let index = match document {
-                DocumentRef::Captured(index) => index,
-                DocumentRef::Owned(_) => fragment
-                    .context
-                    .capture()
-                    .document_index(fragment.context.target_document())
-                    .map_err(|_| SessionError::ContextUnavailable)?,
-                // Owned temporary/inert documents derive only the operation's
-                // explicitly attested policy, retaining distinct identities.
+            let id = match &document {
+                DocumentRef::Captured(id) => id,
+                // Temporary/inert owned documents use only the explicitly
+                // attested policy, retaining their distinct document identity.
+                DocumentRef::Owned(_) => fragment.context.target_document(),
             };
             c.charge(WorkCategory::RecordVisit, 2)?;
             let captured = fragment
                 .context
                 .capture()
-                .document_at(index)
+                .node(id.subject())
                 .map_err(|_| SessionError::ContextUnavailable)?;
             let crate::HtmlCapturedNodeKind::Document(facts) = captured.kind() else {
                 return Err(SessionError::NotDocument);
@@ -677,11 +673,11 @@ mod tests {
                 source(session.active().unwrap(), c, node.index),
                 Some(vec![88])
             );
-            let target_index = capture.document_index(&target).unwrap();
+            let target_id = target.clone();
             let result = session.active_mut().unwrap().clone_node(
                 c,
                 node.index,
-                DocumentRef::Captured(target_index),
+                DocumentRef::Captured(target_id.clone()),
             );
             match support {
                 HtmlImageSupport::Disabled => {
@@ -692,7 +688,7 @@ mod tests {
                             .unwrap()
                             .node_document_ref(c, cloned)
                             .unwrap(),
-                        DocumentRef::Captured(target_index)
+                        DocumentRef::Captured(target_id)
                     );
                     assert_eq!(source(session.active().unwrap(), c, cloned), Some(vec![88]));
                 }

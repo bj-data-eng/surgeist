@@ -242,7 +242,8 @@ impl SessionStorage {
                     .expect("retained child ordinal")
                     .position();
                 let document = self.node_document_ref(c, child)?;
-                let copy = self.clone_node(c, child, document)?;
+                let child_document = document.try_clone(c)?;
+                let copy = self.clone_node(c, child, child_document)?;
                 self.write_current_effect(
                     c,
                     Some(EffectFrame::CloneOptionChildren {

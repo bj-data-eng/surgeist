@@ -695,7 +695,7 @@ impl SessionStorage {
             } else {
                 None
             };
-            self.require_no_definition(c, registry, element.name().local_name(), saved, html)?;
+            self.require_no_definition(c, &registry, element.name().local_name(), saved, html)?;
             let saved_is = if let Some(slot) = original.saved_is {
                 let (value, copied) = self.copy_registered_field(c, slot)?;
                 drop(value);
@@ -960,7 +960,7 @@ impl SessionStorage {
             )? {
                 let (_, mut metadata) = script_metadata(&self.payloads, c, node)?;
                 metadata.force_async = false;
-                set_script_metadata(self, c, slot, metadata)?;
+                set_script_metadata(self, c, slot, &metadata)?;
             }
         }
         Ok(())
@@ -977,7 +977,7 @@ impl SessionStorage {
             let (_, original) = script_metadata(&self.payloads, c, source)?;
             let (_, mut state) = script_metadata(&self.payloads, c, copy)?;
             state.already_started = original.already_started;
-            set_script_metadata(self, c, slot, state)?;
+            set_script_metadata(self, c, slot, &state)?;
         }
         if let Some(slot) = bindings.textarea {
             let (_, original) = self

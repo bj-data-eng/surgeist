@@ -13,7 +13,7 @@ pub(super) enum IntrinsicTask {
 
 /// Finite records reference actual admitted work-list slots in the registry.
 /// No frame aliases native backing or owns an independent tree/controller.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) enum EffectFrame {
     Details {
         node: usize,
@@ -195,6 +195,14 @@ impl ConstructionEffects {
     }
 }
 
+impl EffectFrame {
+    fn admit_clone(&self, c: &mut ParseControl) -> Result<(), SessionError> {
+        if let Self::AdoptSubtree { document, .. } | Self::CloneChildren { document, .. } = self {
+            document.admit_clone(c)?;
+        }
+        Ok(())
+    }
+}
 impl SessionStorage {
     pub(super) fn fragment_insertion_parent(
         &self,
@@ -226,8 +234,10 @@ impl SessionStorage {
                 .into());
         }
         self.effects.transfer = Some(frame);
-        if let Some(parent) = self.effects.current {
+        if let Some(parent) = self.effects.current.as_ref() {
             payload_write::<Option<EffectFrame>>(c, 1)?;
+            parent.admit_clone(c)?;
+            let parent = parent.clone();
             self.effects
                 .frames
                 .try_push_recover(c, parent)
@@ -270,7 +280,13 @@ impl SessionStorage {
                 if self.effects.current.is_some() {
                     c.admit_atomic_layout(mem::size_of::<EffectFrame>())?;
                     c.charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)?;
-                    let frame = self.effects.current.expect("admitted present frame");
+                    let frame = self
+                        .effects
+                        .current
+                        .as_ref()
+                        .expect("admitted present frame");
+                    frame.admit_clone(c)?;
+                    let frame = frame.clone();
                     self.step_effect(c, frame)?;
                     continue;
                 }
@@ -335,15 +351,17 @@ impl SessionStorage {
                 let Some(node) = next else {
                     return self.write_current_effect(c, None);
                 };
-                self.set_node_document(c, node, document)?;
-                self.adopt_registry(c, node, document, root)?;
+                let binding = document.try_clone(c)?;
+                self.set_node_document(c, node, binding)?;
+                self.adopt_registry(c, node, &document, root)?;
                 let next = self.next_view_node(c, root, node, None)?;
+                let retained_document = document.try_clone(c)?;
                 self.write_current_effect(
                     c,
                     Some(EffectFrame::AdoptSubtree {
                         root,
                         next,
-                        document,
+                        document: retained_document,
                     }),
                 )?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
@@ -361,12 +379,13 @@ impl SessionStorage {
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
                     self.shadow_state(c, contents)?;
+                    let shadow_document = document.try_clone(c)?;
                     self.start_effect(
                         c,
                         EffectFrame::AdoptSubtree {
                             root: contents,
                             next: Some(contents),
-                            document,
+                            document: shadow_document,
                         },
                     )?;
                 }
@@ -379,7 +398,7 @@ impl SessionStorage {
                     .is_some()
                 {
                     let (_, template) = self.template_slot(c, node)?;
-                    let target = self.appropriate_contents_document(c, document)?;
+                    let target = self.appropriate_contents_document(c, &document)?;
                     if self.node_document_ref(c, template.contents)? != target {
                         self.start_effect(
                             c,
@@ -441,7 +460,7 @@ impl SessionStorage {
                         .child_count()
                 {
                     self.write_current_effect(c, None)?;
-                    if let Some((source, copy)) = self.clone_shadow(c, source, copy, document)? {
+                    if let Some((source, copy)) = self.clone_shadow(c, source, copy, &document)? {
                         self.start_effect(
                             c,
                             EffectFrame::CloneChildren {
@@ -462,14 +481,16 @@ impl SessionStorage {
                     .child_at(cursor)
                     .expect("retained child ordinal")
                     .position();
-                let copied = self.clone_node(c, child, document)?;
+                let child_document = document.try_clone(c)?;
+                let copied = self.clone_node(c, child, child_document)?;
+                let retained_document = document.try_clone(c)?;
                 self.write_current_effect(
                     c,
                     Some(EffectFrame::CloneChildren {
                         source,
                         copy,
                         cursor: cursor + 1,
-                        document,
+                        document: retained_document,
                     }),
                 )?;
                 // The source shallow clone is appended before its subtree,

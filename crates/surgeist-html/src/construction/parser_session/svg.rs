@@ -144,7 +144,7 @@ impl SessionStorage {
         // Known internal ordinary/inert documents only. The actual ordinary root
         // determines connectivity; a template's host relation is never followed.
         let document = self.node_document_ref(c, node)?;
-        self.validate_document_ref(c, document)?;
+        self.validate_document_ref(c, &document)?;
         // Closed fresh construction has no loader, executor, host event target,
         // listener/observer or retained SVG notification producer. No Tiny load
         // event or failed-load claim is fabricated, and no intrinsic FIFO is drained.

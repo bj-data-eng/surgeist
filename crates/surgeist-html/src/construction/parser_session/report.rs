@@ -32,7 +32,7 @@ impl<'a> PreparedReportStorage<'a> {
             }
             match payload {
                 RetainedPayload::BaseDocument { node, facts, first } => {
-                    checked_document(storage, DocumentRef::Owned(*node), c)?;
+                    checked_document(storage, &DocumentRef::Owned(*node), c)?;
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     if base_facts.is_none_or(|original| !facts.same_owner(original)) {
                         return Err(SessionError::WrongToken);
@@ -47,7 +47,7 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::WrongToken);
                     }
                     if let Some(frozen) = frozen {
-                        checked_document(storage, DocumentRef::Owned(frozen.document), c)?;
+                        checked_document(storage, &DocumentRef::Owned(frozen.document), c)?;
                         if frozen.response == base::Response::Pending {
                             return Err(SessionError::WrongToken);
                         }
@@ -69,7 +69,7 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::WrongToken);
                     }
                     if let Some(document) = parser_document {
-                        checked_document(storage, *document, c)?;
+                        checked_document(storage, document, c)?;
                     }
                 }
                 RetainedPayload::Details { node, .. } => {
@@ -159,12 +159,15 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                 }
                 RetainedPayload::NodeDocument { document, .. } => {
-                    checked_document(storage, *document, c)?
+                    checked_document(storage, document, c)?
                 }
                 RetainedPayload::Script { metadata, .. } => {
-                    for document in [metadata.parser_document, metadata.preparation_document]
-                        .into_iter()
-                        .flatten()
+                    for document in [
+                        metadata.parser_document.as_ref(),
+                        metadata.preparation_document.as_ref(),
+                    ]
+                    .into_iter()
+                    .flatten()
                     {
                         checked_document(storage, document, c)?;
                     }
@@ -209,14 +212,14 @@ impl<'a> PreparedReportStorage<'a> {
 }
 fn checked_document(
     storage: &FrozenStorage,
-    document: DocumentRef,
+    document: &DocumentRef,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
     c.charge(WorkCategory::RecordVisit, 1)?;
     match document {
         DocumentRef::Owned(index) => {
             if !matches!(
-                arena(storage).node_at(index).map(|record| record.kind()),
+                arena(storage).node_at(*index).map(|record| record.kind()),
                 Some(HtmlNodeKind::Document(_))
             ) {
                 return Err(SessionError::NodeDocumentUnavailable);
@@ -229,7 +232,7 @@ fn checked_document(
                 .ok_or(SessionError::ContextUnavailable)?
                 .context
                 .capture()
-                .document_at(index)
+                .node(index.subject())
                 .map_err(|_| SessionError::NodeDocumentUnavailable)?;
         }
     }
@@ -437,7 +440,7 @@ impl<'a> MetadataRef<'a> {
         match self.payload {
             RetainedPayload::Link {
                 parser_document, ..
-            } => Some(parser_document.map(|d| self.document_ref(d))),
+            } => Some(parser_document.as_ref().map(|d| self.document_ref(d))),
             _ => None,
         }
     }
@@ -465,12 +468,12 @@ impl<'a> MetadataRef<'a> {
             RetainedPayload::NodeDocument {
                 node: Some(owner),
                 document,
-            } if owner == node => Some(*document),
+            } if owner == node => Some(document),
             _ => None,
         })?;
         Some(crate::HtmlLinkHistory::new(
             self.link_flags()?,
-            *parser_document == Some(current),
+            parser_document.as_ref() == Some(current),
         ))
     }
     pub fn node(&self) -> HtmlNode<'a> {
@@ -494,9 +497,9 @@ impl<'a> MetadataRef<'a> {
             .expect("qualified metadata node")
             .as_node()
     }
-    fn document_ref(&self, document: DocumentRef) -> MetadataDocument<'a> {
+    fn document_ref(&self, document: &DocumentRef) -> MetadataDocument<'a> {
         match document {
-            DocumentRef::Owned(index) => MetadataDocument::Owned(self.native(index)),
+            DocumentRef::Owned(index) => MetadataDocument::Owned(self.native(*index)),
             DocumentRef::Captured(index) => MetadataDocument::Captured(
                 self.storage
                     .fragment
@@ -504,14 +507,14 @@ impl<'a> MetadataRef<'a> {
                     .expect("qualified captured document")
                     .context
                     .capture()
-                    .document_at(index)
+                    .node(index.subject())
                     .expect("qualified captured document"),
             ),
         }
     }
     pub fn node_document(&self) -> Option<MetadataDocument<'a>> {
         match self.payload {
-            RetainedPayload::NodeDocument { document, .. } => Some(self.document_ref(*document)),
+            RetainedPayload::NodeDocument { document, .. } => Some(self.document_ref(document)),
             _ => None,
         }
     }
@@ -520,8 +523,14 @@ impl<'a> MetadataRef<'a> {
     ) -> Option<(Option<MetadataDocument<'a>>, Option<MetadataDocument<'a>>)> {
         match self.payload {
             RetainedPayload::Script { metadata, .. } => Some((
-                metadata.parser_document.map(|d| self.document_ref(d)),
-                metadata.preparation_document.map(|d| self.document_ref(d)),
+                metadata
+                    .parser_document
+                    .as_ref()
+                    .map(|d| self.document_ref(d)),
+                metadata
+                    .preparation_document
+                    .as_ref()
+                    .map(|d| self.document_ref(d)),
             )),
             _ => None,
         }

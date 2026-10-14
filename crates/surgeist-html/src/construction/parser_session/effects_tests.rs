@@ -1327,13 +1327,15 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
         measured.charge(WorkCategory::RecordVisit, 2).unwrap();
         if storage.effects.form.is_some() {
             storage.step_form_effects(&mut measured).unwrap();
-        } else if let Some(frame) = storage.effects.current {
+        } else if let Some(frame) = storage.effects.current.as_ref() {
             measured
                 .admit_atomic_layout(mem::size_of::<EffectFrame>())
                 .unwrap();
             measured
                 .charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)
                 .unwrap();
+            frame.admit_clone(&mut measured).unwrap();
+            let frame = frame.clone();
             storage.step_effect(&mut measured, frame).unwrap();
         } else {
             payload_write::<Option<EffectFrame>>(&mut measured, 1).unwrap();
@@ -1450,4 +1452,141 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
         saw_insert,
         "real retained fragment insertion prefix exercised"
     );
+}
+
+fn captured_effect_owner() -> (
+    ParseControl,
+    ParserArenaSession,
+    crate::HtmlCaptureDocumentId,
+) {
+    let mut builder = crate::HtmlCaptureBuilder::new(
+        crate::HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 10, 10),
+        crate::HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            crate::HtmlDocumentMode::NoQuirks,
+            crate::HtmlScriptingStatus::Disabled,
+            crate::HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let element = builder
+        .add_element(
+            &document,
+            crate::QualifiedName::new(crate::Namespace::html(), None, "div"),
+            crate::OrderedAttributes::default(),
+            crate::HtmlCapturedIsValue::Absent,
+            crate::HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder.establish_root(&element).unwrap();
+    let capture = builder.finish().unwrap();
+    let context =
+        crate::HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap())
+            .unwrap();
+    let document = context.target_document().clone();
+    let request =
+        crate::HtmlFragmentParseRequest::new(crate::HtmlSource::utf8(""), context, limits())
+            .unwrap();
+    let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+    c.admit_source(request.source()).unwrap();
+    let mut session = ParserArenaSession::new(
+        &mut c,
+        RootKind::Document(crate::HtmlDocumentMode::NoQuirks),
+    )
+    .unwrap();
+    session.initialize_standalone_document(&mut c).unwrap();
+    session.initialize_fragment(&mut c, &request).unwrap();
+    (c, session, document)
+}
+
+#[test]
+fn captured_current_frame_survives_stops_before_and_after_identity_clone_admission() {
+    for after_provider in [false, true] {
+        let (mut c, mut owner, document) = captured_effect_owner();
+        let storage = owner.active_mut().unwrap();
+        storage
+            .start_effect(
+                &mut c,
+                EffectFrame::AdoptSubtree {
+                    root: 0,
+                    next: None,
+                    document: DocumentRef::Captured(document.clone()),
+                },
+            )
+            .unwrap();
+        // Two header visits and the complete frame layout precede the clone.
+        // The next cut admits the clone but refuses its publication receiver.
+        let credit = 2 + mem::size_of::<EffectFrame>() as u64 + u64::from(after_provider);
+        let remaining =
+            limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
+        c.charge(WorkCategory::StateStep, remaining - credit)
+            .unwrap();
+        let error = storage.drain_construction_effects(&mut c).unwrap_err();
+        let first = c.stop().unwrap();
+        assert_eq!(error, SessionError::Stop(first));
+        assert!(matches!(storage.effects.current.as_ref(),
+            Some(EffectFrame::AdoptSubtree { next: None, document: DocumentRef::Captured(id), .. }) if id == &document));
+        assert!(storage.effects.transfer.is_none());
+        owner.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(first));
+    }
+    let (mut c, mut owner, document) = captured_effect_owner();
+    let storage = owner.active_mut().unwrap();
+    storage
+        .start_effect(
+            &mut c,
+            EffectFrame::AdoptSubtree {
+                root: 0,
+                next: None,
+                document: DocumentRef::Captured(document),
+            },
+        )
+        .unwrap();
+    storage.drain_construction_effects(&mut c).unwrap();
+    assert!(storage.effects.current.is_none());
+    owner.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn captured_parent_and_child_transfer_remain_owned_when_parent_clone_or_push_stops() {
+    for after_provider in [false, true] {
+        let (mut c, mut owner, document) = captured_effect_owner();
+        let storage = owner.active_mut().unwrap();
+        storage
+            .start_effect(
+                &mut c,
+                EffectFrame::AdoptSubtree {
+                    root: 0,
+                    next: None,
+                    document: DocumentRef::Captured(document.clone()),
+                },
+            )
+            .unwrap();
+        // Child transfer and parent receiver layouts are admitted before the
+        // conditional parent identity transfer and work-list reservation.
+        let credit =
+            2 * (mem::size_of::<Option<EffectFrame>>() as u64 + 1) + u64::from(after_provider);
+        let remaining =
+            limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
+        c.charge(WorkCategory::StateStep, remaining - credit)
+            .unwrap();
+        let error = storage
+            .start_effect(&mut c, EffectFrame::AppendClone { parent: 0, copy: 0 })
+            .unwrap_err();
+        let first = c.stop().unwrap();
+        assert_eq!(error, SessionError::Stop(first));
+        assert!(matches!(storage.effects.current.as_ref(),
+            Some(EffectFrame::AdoptSubtree { document: DocumentRef::Captured(id), .. }) if id == &document));
+        assert!(matches!(
+            storage.effects.transfer,
+            Some(EffectFrame::AppendClone { parent: 0, copy: 0 })
+        ));
+        assert_eq!(storage.effects.frames.len(), 0);
+        owner.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(first));
+    }
 }

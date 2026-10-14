@@ -61,7 +61,7 @@ impl SessionStorage {
                     if node >= self.construction.storage().len() {
                         return Err(SessionError::NodeDocumentUnavailable);
                     }
-                    self.validate_document_ref(c, *document)?;
+                    self.validate_document_ref(c, document)?;
                     if matches!(
                         self.construction
                             .node_at(node)
@@ -289,9 +289,8 @@ impl SessionStorage {
             } = payload
                 && *bound == node
             {
-                self.validate_document_ref(c, *document)?;
-                c.charge(WorkCategory::CopyByte, mem::size_of::<DocumentRef>() as u64)?;
-                return Ok(*document);
+                self.validate_document_ref(c, document)?;
+                return document.try_clone(c);
             }
         }
         Err(SessionError::NodeDocumentUnavailable)
@@ -302,7 +301,7 @@ impl SessionStorage {
         node: usize,
         document: DocumentRef,
     ) -> Result<(), SessionError> {
-        self.validate_document_ref(c, document)?;
+        self.validate_document_ref(c, &document)?;
         for slot in 0..self.payloads.values.len() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if matches!(self.payloads.values[slot],RetainedPayload::NodeDocument{node:Some(bound),..} if bound==node)
@@ -368,7 +367,7 @@ impl SessionStorage {
     pub(super) fn appropriate_contents_document(
         &mut self,
         c: &mut ParseControl,
-        document: DocumentRef,
+        document: &DocumentRef,
     ) -> Result<DocumentRef, SessionError> {
         if let DocumentRef::Captured(index) = document {
             return self.captured_contents_document(c, index);
@@ -472,7 +471,7 @@ impl SessionStorage {
                 registry: None,
             }));
         };
-        self.validate_document_ref(c, document)?;
+        self.validate_document_ref(c, &document)?;
         let inert_missing = if let DocumentRef::Owned(owned) = document {
             let slot = self.document_slot(c, owned)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -506,7 +505,7 @@ impl SessionStorage {
             facts,
         )?;
         let contents_document = if template {
-            Some(self.appropriate_contents_document(c, document)?)
+            Some(self.appropriate_contents_document(c, &document)?)
         } else {
             None
         };

@@ -1590,6 +1590,8 @@ pub surgeist_html::HtmlCaptureError::WrongKind::actual: surgeist_html::HtmlCaptu
 pub surgeist_html::HtmlCaptureError::WrongKind::expected: surgeist_html::HtmlCaptureSubjectKind
 impl core::convert::From<surgeist_html::HtmlCaptureError> for surgeist_html::HtmlBaseFactsError
 pub fn surgeist_html::HtmlBaseFactsError::from(error: surgeist_html::HtmlCaptureError) -> Self
+impl core::convert::From<surgeist_html::HtmlCaptureError> for surgeist_html::HtmlConstructionCaptureError
+pub fn surgeist_html::HtmlConstructionCaptureError::from(error: surgeist_html::HtmlCaptureError) -> Self
 impl core::convert::From<surgeist_html::HtmlCaptureError> for surgeist_html::HtmlParseRequestError
 pub fn surgeist_html::HtmlParseRequestError::from(error: surgeist_html::HtmlCaptureError) -> Self
 impl core::error::Error for surgeist_html::HtmlCaptureError
@@ -1719,6 +1721,28 @@ pub enum surgeist_html::HtmlCommandState
 pub surgeist_html::HtmlCommandState::Custom
 pub surgeist_html::HtmlCommandState::Standard(surgeist_html::HtmlStandardCommand)
 pub surgeist_html::HtmlCommandState::Unknown
+pub enum surgeist_html::HtmlConstructionCaptureDocument
+pub surgeist_html::HtmlConstructionCaptureDocument::Existing(surgeist_html::HtmlCaptureBuilderSubject)
+pub surgeist_html::HtmlConstructionCaptureDocument::ResultDocument
+#[non_exhaustive] pub enum surgeist_html::HtmlConstructionCaptureError
+pub surgeist_html::HtmlConstructionCaptureError::AllocationFailed
+pub surgeist_html::HtmlConstructionCaptureError::Cancelled
+pub surgeist_html::HtmlConstructionCaptureError::Capture(surgeist_html::HtmlCaptureError)
+pub surgeist_html::HtmlConstructionCaptureError::DuplicateNodeFacts
+pub surgeist_html::HtmlConstructionCaptureError::ForeignBuilder
+pub surgeist_html::HtmlConstructionCaptureError::ForeignResult
+pub surgeist_html::HtmlConstructionCaptureError::HostRevisionMismatch
+pub surgeist_html::HtmlConstructionCaptureError::LimitExceeded
+pub surgeist_html::HtmlConstructionCaptureError::MissingNodeDocument
+pub surgeist_html::HtmlConstructionCaptureError::MissingShadowFacts
+pub surgeist_html::HtmlConstructionCaptureError::OutsideImportedClosure
+pub surgeist_html::HtmlConstructionCaptureError::RepresentationExhausted
+pub surgeist_html::HtmlConstructionCaptureError::WrongFactRole
+impl core::convert::From<surgeist_html::HtmlCaptureError> for surgeist_html::HtmlConstructionCaptureError
+pub fn surgeist_html::HtmlConstructionCaptureError::from(error: surgeist_html::HtmlCaptureError) -> Self
+impl core::error::Error for surgeist_html::HtmlConstructionCaptureError
+impl core::fmt::Display for surgeist_html::HtmlConstructionCaptureError
+pub fn surgeist_html::HtmlConstructionCaptureError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_html::HtmlConstructionError
 pub surgeist_html::HtmlConstructionError::AllocationFailed
 pub surgeist_html::HtmlConstructionError::AssociationAlreadyOwned
@@ -5458,6 +5482,7 @@ pub fn surgeist_html::HtmlCapture::shadow_attachment_status(&self, element: &sur
 pub fn surgeist_html::HtmlCapture::shadow_presence(&self, element: &surgeist_html::HtmlCaptureElementId) -> core::result::Result<core::option::Option<bool>, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::subject_id(&self, handle: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<surgeist_html::HtmlCaptureSubjectId, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::template_document_cache(&self, document: &surgeist_html::HtmlCaptureDocumentId) -> core::result::Result<surgeist_html::HtmlCapturedTemplateCache, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCapture::template_document_cache_clones_identity(&self, document: &surgeist_html::HtmlCaptureDocumentId) -> core::result::Result<bool, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::usage(&self) -> surgeist_html::HtmlCaptureUsage
 pub struct surgeist_html::HtmlCaptureBuilder
 impl surgeist_html::HtmlCaptureBuilder
@@ -5584,6 +5609,7 @@ pub fn surgeist_html::HtmlCapturedNode<'a>::host(self) -> core::option::Option<s
 pub fn surgeist_html::HtmlCapturedNode<'a>::id(self) -> surgeist_html::HtmlCaptureSubjectId
 pub fn surgeist_html::HtmlCapturedNode<'a>::kind(self) -> &'a surgeist_html::HtmlCapturedNodeKind
 pub fn surgeist_html::HtmlCapturedNode<'a>::lookup_registry(self) -> surgeist_html::HtmlCapturedRegistry
+pub fn surgeist_html::HtmlCapturedNode<'a>::lookup_registry_clones_identity(self) -> bool
 pub fn surgeist_html::HtmlCapturedNode<'a>::node_document(self) -> surgeist_html::HtmlCaptureDocumentId
 pub fn surgeist_html::HtmlCapturedNode<'a>::parent(self) -> surgeist_html::HtmlCapturedParent
 pub fn surgeist_html::HtmlCapturedNode<'a>::shadow_root(self) -> core::option::Option<surgeist_html::HtmlCapturedShadowRoot>
@@ -5630,6 +5656,85 @@ pub fn surgeist_html::HtmlComputedWritingSuggestions::recognition(&self) -> surg
 pub fn surgeist_html::HtmlComputedWritingSuggestions::selecting_attribute(&self) -> core::option::Option<&surgeist_html::Attribute>
 pub fn surgeist_html::HtmlComputedWritingSuggestions::selecting_subject(&self) -> &surgeist_html::HtmlCaptureSubjectId
 pub fn surgeist_html::HtmlComputedWritingSuggestions::state(&self) -> surgeist_html::HtmlWritingSuggestions
+pub struct surgeist_html::HtmlConstructionCaptureAdapter
+impl surgeist_html::HtmlConstructionCaptureAdapter
+pub fn surgeist_html::HtmlConstructionCaptureAdapter::document(builder: surgeist_html::HtmlCaptureBuilder, source: surgeist_html::HtmlDocument, facts: surgeist_html::HtmlConstructionCaptureFacts, limits: surgeist_html::HtmlConstructionCaptureLimits, cancellation: surgeist_html::HtmlSemanticCancellation) -> core::result::Result<surgeist_html::HtmlConstructionCaptureImport, surgeist_html::HtmlConstructionCaptureFailure>
+pub fn surgeist_html::HtmlConstructionCaptureAdapter::fragment(builder: surgeist_html::HtmlCaptureBuilder, source: surgeist_html::HtmlFragment, facts: surgeist_html::HtmlConstructionCaptureFacts, limits: surgeist_html::HtmlConstructionCaptureLimits, cancellation: surgeist_html::HtmlSemanticCancellation) -> core::result::Result<surgeist_html::HtmlConstructionCaptureImport, surgeist_html::HtmlConstructionCaptureFailure>
+pub struct surgeist_html::HtmlConstructionCaptureDocumentFacts
+impl surgeist_html::HtmlConstructionCaptureDocumentFacts
+pub fn surgeist_html::HtmlConstructionCaptureDocumentFacts::new(scripting: surgeist_html::HtmlScriptingStatus, registry: surgeist_html::HtmlCaptureRegistryInput) -> Self
+pub fn surgeist_html::HtmlConstructionCaptureDocumentFacts::registry(&self) -> &surgeist_html::HtmlCaptureRegistryInput
+pub fn surgeist_html::HtmlConstructionCaptureDocumentFacts::scripting(&self) -> surgeist_html::HtmlScriptingStatus
+pub struct surgeist_html::HtmlConstructionCaptureElementFacts
+impl surgeist_html::HtmlConstructionCaptureElementFacts
+pub fn surgeist_html::HtmlConstructionCaptureElementFacts::is_value(&self) -> &surgeist_html::HtmlCapturedIsValue
+pub fn surgeist_html::HtmlConstructionCaptureElementFacts::new(is_value: surgeist_html::HtmlCapturedIsValue, registry: surgeist_html::HtmlCaptureRegistryInput) -> Self
+pub fn surgeist_html::HtmlConstructionCaptureElementFacts::registry(&self) -> &surgeist_html::HtmlCaptureRegistryInput
+pub struct surgeist_html::HtmlConstructionCaptureFacts
+impl surgeist_html::HtmlConstructionCaptureFacts
+pub fn surgeist_html::HtmlConstructionCaptureFacts::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlConstructionCaptureFacts::new(revision: surgeist_html::HtmlHostFactsRevision, nodes: alloc::vec::Vec<surgeist_html::HtmlConstructionCaptureNodeFacts>) -> Self
+pub fn surgeist_html::HtmlConstructionCaptureFacts::nodes(&self) -> &[surgeist_html::HtmlConstructionCaptureNodeFacts]
+pub struct surgeist_html::HtmlConstructionCaptureFailure
+impl surgeist_html::HtmlConstructionCaptureFailure
+pub fn surgeist_html::HtmlConstructionCaptureFailure::builder(&self) -> &surgeist_html::HtmlCaptureBuilder
+pub fn surgeist_html::HtmlConstructionCaptureFailure::facts(&self) -> &surgeist_html::HtmlConstructionCaptureFacts
+pub fn surgeist_html::HtmlConstructionCaptureFailure::into_parts(self) -> (surgeist_html::HtmlConstructionCaptureError, surgeist_html::HtmlCaptureBuilder, surgeist_html::bounded::HtmlConstructionResult, surgeist_html::HtmlConstructionCaptureFacts, surgeist_html::HtmlConstructionCaptureUsage)
+pub fn surgeist_html::HtmlConstructionCaptureFailure::reason(&self) -> &surgeist_html::HtmlConstructionCaptureError
+pub fn surgeist_html::HtmlConstructionCaptureFailure::source(&self) -> &surgeist_html::bounded::HtmlConstructionResult
+pub fn surgeist_html::HtmlConstructionCaptureFailure::usage(&self) -> surgeist_html::HtmlConstructionCaptureUsage
+pub struct surgeist_html::HtmlConstructionCaptureFinishFailure
+impl surgeist_html::HtmlConstructionCaptureFinishFailure
+pub fn surgeist_html::HtmlConstructionCaptureFinishFailure::import(&self) -> &surgeist_html::HtmlConstructionCaptureImport
+pub fn surgeist_html::HtmlConstructionCaptureFinishFailure::into_parts(self) -> (surgeist_html::HtmlConstructionCaptureError, surgeist_html::HtmlConstructionCaptureImport)
+pub fn surgeist_html::HtmlConstructionCaptureFinishFailure::reason(&self) -> &surgeist_html::HtmlConstructionCaptureError
+pub struct surgeist_html::HtmlConstructionCaptureImport
+impl surgeist_html::HtmlConstructionCaptureImport
+pub fn surgeist_html::HtmlConstructionCaptureImport::builder(&self) -> &surgeist_html::HtmlCaptureBuilder
+pub fn surgeist_html::HtmlConstructionCaptureImport::builder_mut(&mut self) -> &mut surgeist_html::HtmlCaptureBuilder
+pub fn surgeist_html::HtmlConstructionCaptureImport::finish(self) -> core::result::Result<surgeist_html::HtmlConstructionCapturedResult, surgeist_html::HtmlConstructionCaptureFinishFailure>
+pub fn surgeist_html::HtmlConstructionCaptureImport::into_parts(self) -> (surgeist_html::HtmlCaptureBuilder, surgeist_html::bounded::HtmlConstructionResult, surgeist_html::HtmlConstructionCaptureMap, surgeist_html::HtmlConstructionCaptureUsage)
+pub fn surgeist_html::HtmlConstructionCaptureImport::mapping(&self) -> &surgeist_html::HtmlConstructionCaptureMap
+pub fn surgeist_html::HtmlConstructionCaptureImport::source(&self) -> &surgeist_html::bounded::HtmlConstructionResult
+pub fn surgeist_html::HtmlConstructionCaptureImport::usage(&self) -> surgeist_html::HtmlConstructionCaptureUsage
+pub struct surgeist_html::HtmlConstructionCaptureLimits
+impl surgeist_html::HtmlConstructionCaptureLimits
+pub fn surgeist_html::HtmlConstructionCaptureLimits::mapping_entries(self) -> usize
+pub fn surgeist_html::HtmlConstructionCaptureLimits::new(mapping_entries: usize, scratch_entries: usize, work: usize) -> Self
+pub fn surgeist_html::HtmlConstructionCaptureLimits::scratch_entries(self) -> usize
+pub fn surgeist_html::HtmlConstructionCaptureLimits::work(self) -> usize
+pub struct surgeist_html::HtmlConstructionCaptureMap
+impl surgeist_html::HtmlConstructionCaptureMap
+pub fn surgeist_html::HtmlConstructionCaptureMap::builder_subject(&self, node: &surgeist_html::HtmlNodeId) -> core::result::Result<&surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlConstructionCaptureError>
+pub fn surgeist_html::HtmlConstructionCaptureMap::host_revision(&self) -> &surgeist_html::HtmlHostFactsRevision
+pub fn surgeist_html::HtmlConstructionCaptureMap::root(&self) -> &surgeist_html::HtmlNodeId
+pub fn surgeist_html::HtmlConstructionCaptureMap::subject(&self, node: &surgeist_html::HtmlNodeId, capture: &surgeist_html::HtmlCapture) -> core::result::Result<surgeist_html::HtmlCaptureSubjectId, surgeist_html::HtmlConstructionCaptureError>
+pub struct surgeist_html::HtmlConstructionCaptureNodeFacts
+impl surgeist_html::HtmlConstructionCaptureNodeFacts
+pub fn surgeist_html::HtmlConstructionCaptureNodeFacts::document(&self) -> &surgeist_html::HtmlConstructionCaptureDocument
+pub fn surgeist_html::HtmlConstructionCaptureNodeFacts::document_facts(&self) -> core::option::Option<&surgeist_html::HtmlConstructionCaptureDocumentFacts>
+pub fn surgeist_html::HtmlConstructionCaptureNodeFacts::element_facts(&self) -> core::option::Option<&surgeist_html::HtmlConstructionCaptureElementFacts>
+pub fn surgeist_html::HtmlConstructionCaptureNodeFacts::new(node: surgeist_html::HtmlNodeId, document: surgeist_html::HtmlConstructionCaptureDocument, document_facts: core::option::Option<surgeist_html::HtmlConstructionCaptureDocumentFacts>, element_facts: core::option::Option<surgeist_html::HtmlConstructionCaptureElementFacts>, shadow_facts: core::option::Option<surgeist_html::HtmlConstructionCaptureShadowFacts>) -> Self
+pub fn surgeist_html::HtmlConstructionCaptureNodeFacts::node(&self) -> &surgeist_html::HtmlNodeId
+pub fn surgeist_html::HtmlConstructionCaptureNodeFacts::shadow_facts(&self) -> core::option::Option<&surgeist_html::HtmlConstructionCaptureShadowFacts>
+pub struct surgeist_html::HtmlConstructionCaptureShadowFacts
+impl surgeist_html::HtmlConstructionCaptureShadowFacts
+pub fn surgeist_html::HtmlConstructionCaptureShadowFacts::available_to_internals(&self) -> bool
+pub fn surgeist_html::HtmlConstructionCaptureShadowFacts::declarative(&self) -> bool
+pub fn surgeist_html::HtmlConstructionCaptureShadowFacts::keep_registry_null(&self) -> bool
+pub fn surgeist_html::HtmlConstructionCaptureShadowFacts::new(registry: surgeist_html::HtmlCaptureRegistryInput, declarative: bool, available_to_internals: bool, keep_registry_null: bool) -> Self
+pub fn surgeist_html::HtmlConstructionCaptureShadowFacts::registry(&self) -> &surgeist_html::HtmlCaptureRegistryInput
+pub struct surgeist_html::HtmlConstructionCaptureUsage
+impl surgeist_html::HtmlConstructionCaptureUsage
+pub fn surgeist_html::HtmlConstructionCaptureUsage::mapping_entries(self) -> usize
+pub fn surgeist_html::HtmlConstructionCaptureUsage::scratch_entries(self) -> usize
+pub fn surgeist_html::HtmlConstructionCaptureUsage::work(self) -> usize
+pub struct surgeist_html::HtmlConstructionCapturedResult
+impl surgeist_html::HtmlConstructionCapturedResult
+pub fn surgeist_html::HtmlConstructionCapturedResult::capture(&self) -> &surgeist_html::HtmlCapture
+pub fn surgeist_html::HtmlConstructionCapturedResult::into_parts(self) -> (surgeist_html::HtmlCapture, surgeist_html::bounded::HtmlConstructionResult, surgeist_html::HtmlConstructionCaptureMap)
+pub fn surgeist_html::HtmlConstructionCapturedResult::mapping(&self) -> &surgeist_html::HtmlConstructionCaptureMap
+pub fn surgeist_html::HtmlConstructionCapturedResult::source(&self) -> &surgeist_html::bounded::HtmlConstructionResult
 pub struct surgeist_html::HtmlConstructionLimits
 impl surgeist_html::HtmlConstructionLimits
 pub fn surgeist_html::HtmlConstructionLimits::attributes(self) -> usize

@@ -1747,3 +1747,132 @@ fn template_cache_rejects_known_class_conflict_but_preserves_unused_unavailable_
     };
     assert_eq!(facts.document_class(), HtmlDocumentClass::Unavailable);
 }
+
+#[test]
+fn immutable_registry_clone_planning_distinguishes_present_null_and_unknown() {
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let registry = builder.add_registry(None).unwrap();
+    let registered = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Registry(registry.clone()),
+        )
+        .unwrap();
+    let null = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let unknown = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Unavailable,
+        )
+        .unwrap();
+    let plain = builder.add_fragment(&registered).unwrap();
+    let capture = builder.finish().unwrap();
+    let registered_id = capture.subject_id(&registered).unwrap();
+    let node = capture.node(&registered_id).unwrap();
+    assert!(node.lookup_registry_clones_identity());
+    assert_eq!(
+        node.lookup_registry(),
+        HtmlCapturedRegistry::Registry(capture.registry_id(&registry).unwrap())
+    );
+    assert!(node.lookup_registry_clones_identity());
+    for subject in [&null, &plain] {
+        let id = capture.subject_id(subject).unwrap();
+        let node = capture.node(&id).unwrap();
+        assert!(!node.lookup_registry_clones_identity());
+        assert_eq!(node.lookup_registry(), HtmlCapturedRegistry::Null);
+    }
+    let id = capture.subject_id(&unknown).unwrap();
+    let node = capture.node(&id).unwrap();
+    assert!(!node.lookup_registry_clones_identity());
+    assert_eq!(node.lookup_registry(), HtmlCapturedRegistry::Unavailable);
+}
+
+#[test]
+fn cache_clone_planning_preserves_absence_unknown_and_capture_qualification() {
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let owner = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let inert = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let absent = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let unknown = document(&mut builder, HtmlScriptingStatus::Disabled);
+    builder
+        .establish_document_template_facts(
+            &inert,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::InertTemplate,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &owner,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(inert.clone()),
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &absent,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    let capture = builder.finish().unwrap();
+    let id = |handle| {
+        capture
+            .document_id(&capture.subject_id(handle).unwrap())
+            .unwrap()
+    };
+    let owner = id(&owner);
+    assert!(
+        capture
+            .template_document_cache_clones_identity(&owner)
+            .unwrap()
+    );
+    assert_eq!(
+        capture.template_document_cache(&owner).unwrap(),
+        HtmlCapturedTemplateCache::Document(id(&inert))
+    );
+    assert!(
+        capture
+            .template_document_cache_clones_identity(&owner)
+            .unwrap()
+    );
+    let absent = id(&absent);
+    assert!(
+        !capture
+            .template_document_cache_clones_identity(&absent)
+            .unwrap()
+    );
+    assert_eq!(
+        capture.template_document_cache(&absent).unwrap(),
+        HtmlCapturedTemplateCache::Absent
+    );
+    let unknown = id(&unknown);
+    assert!(
+        !capture
+            .template_document_cache_clones_identity(&unknown)
+            .unwrap()
+    );
+    assert_eq!(
+        capture.template_document_cache(&unknown).unwrap(),
+        HtmlCapturedTemplateCache::Unavailable
+    );
+    let mut foreign = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let handle = document(&mut foreign, HtmlScriptingStatus::Disabled);
+    let foreign = foreign.finish().unwrap();
+    let other_id = foreign
+        .document_id(&foreign.subject_id(&handle).unwrap())
+        .unwrap();
+    assert_eq!(
+        capture.template_document_cache_clones_identity(&other_id),
+        Err(HtmlCaptureError::ForeignCapture)
+    );
+    assert_eq!(
+        capture.template_document_cache(&other_id),
+        Err(HtmlCaptureError::ForeignCapture)
+    );
+}

@@ -18,6 +18,12 @@ pub(super) enum Failure<E> {
     AllocationFailed,
 }
 
+impl<E> From<HtmlCaptureError> for Failure<E> {
+    fn from(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
+
 pub(super) fn ordinary(action: Action) -> Result<(), Infallible> {
     // Ordinary assembly has no work or scratch controller. Consume the actual
     // observation without introducing a second accounting policy.
@@ -63,14 +69,14 @@ impl DepthScratch {
     }
 }
 
-fn work<E>(
+pub(super) fn work<E>(
     admit: &mut impl FnMut(Action) -> Result<(), E>,
     units: usize,
 ) -> Result<(), Failure<E>> {
     admit(Action::Work(units)).map_err(Failure::Admission)
 }
 
-fn reserve<T, E>(
+pub(super) fn reserve<T, E>(
     values: &mut Vec<T>,
     entries: usize,
     admit: &mut impl FnMut(Action) -> Result<(), E>,
@@ -80,9 +86,11 @@ fn reserve<T, E>(
         record_bytes: std::mem::size_of::<T>(),
     })
     .map_err(Failure::Admission)?;
+    work(admit, values.len())?;
     values
         .try_reserve(entries)
-        .map_err(|_| Failure::AllocationFailed)
+        .map_err(|_| Failure::AllocationFailed)?;
+    work(admit, 0)
 }
 
 /// Reference validation is independent of owning reciprocity and forest depth.
