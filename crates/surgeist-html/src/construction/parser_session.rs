@@ -43,6 +43,7 @@ use input_image::append_native_input_value;
 mod completion;
 pub(crate) mod context;
 mod details;
+mod effects;
 #[cfg(test)]
 mod link_history;
 #[cfg(test)]
@@ -69,10 +70,11 @@ mod select;
 mod svg;
 mod template;
 pub use completion::{ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState};
+use effects::ConstructionEffects;
 pub(crate) use foreign::ForeignNamespace;
 #[cfg(test)]
 pub(crate) use native_view::NativeView;
-use select::{ConstructionEffects, SelectMetadata};
+use select::SelectMetadata;
 pub use svg::SvgScriptOrigin;
 pub(crate) use svg::SvgScriptState;
 pub(crate) use template::{CreationContext, CreationLocation};
@@ -4122,7 +4124,7 @@ impl SessionStorage {
                 {
                     self.start_effect(
                         control,
-                        select::EffectFrame::AdoptSubtree {
+                        effects::EffectFrame::AdoptSubtree {
                             root: effects.root,
                             next: Some(effects.root),
                             document,
@@ -4167,7 +4169,7 @@ impl SessionStorage {
                     {
                         self.start_effect(
                             control,
-                            select::EffectFrame::ScriptPreparation {
+                            effects::EffectFrame::ScriptPreparation {
                                 node: parent,
                                 detached: Some(effects.root),
                             },
@@ -4182,8 +4184,8 @@ impl SessionStorage {
                     // collection runs after the source-prior parent script hook.
                     self.start_effect(
                         control,
-                        select::EffectFrame::InsertionPostConnection {
-                            roots: select::PostConnectionRoots::Single(effects.root),
+                        effects::EffectFrame::InsertionPostConnection {
+                            roots: effects::PostConnectionRoots::Single(effects.root),
                             cause: effects.cause,
                         },
                     )?;
@@ -4194,7 +4196,7 @@ impl SessionStorage {
                 {
                     self.start_effect(
                         control,
-                        select::EffectFrame::ScriptPreparation {
+                        effects::EffectFrame::ScriptPreparation {
                             node: parent,
                             detached: removal.then_some(effects.root),
                         },
@@ -18264,7 +18266,7 @@ mod tests {
             - start;
         session.release(&mut measured).unwrap();
         storage_zero(&measured);
-        let tail = 2 + mem::size_of::<Option<select::EffectFrame>>() as u64 + 1 + 1;
+        let tail = 2 + mem::size_of::<Option<effects::EffectFrame>>() as u64 + 1 + 1;
         for short in [false, true] {
             let mut c = control();
             let (mut session, group, button, target) = listed_move_fixture(&mut c);
@@ -19045,7 +19047,7 @@ mod tests {
         storage_zero(&measured);
         // Empty receive tail: runner reads2, actual fixed Option receiver
         // copy/layout + write1, empty OwnedVec pop visit1 (no Some move).
-        let tail = 2 + mem::size_of::<Option<select::EffectFrame>>() as u64 + 1 + 1;
+        let tail = 2 + mem::size_of::<Option<effects::EffectFrame>>() as u64 + 1 + 1;
         for remaining in [work, work - tail - 1] {
             let mut c = control();
             let (mut session, image, _, target) = image_move_fixture(&mut c);

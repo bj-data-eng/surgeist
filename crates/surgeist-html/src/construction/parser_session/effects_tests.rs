@@ -1,3 +1,4 @@
+use super::super::select::*;
 use super::super::tests::{fresh_script_owner, limits, storage_zero};
 use super::provenance::ConstructionCauseRef;
 use super::*;

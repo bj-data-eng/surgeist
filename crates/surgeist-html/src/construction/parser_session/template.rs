@@ -709,7 +709,7 @@ impl ParserArenaSession {
             payload_write::<Option<usize>>(c, 1)?;
             next = storage.next_sibling(c, current)?;
         }
-        storage.start_effect(c, select::EffectFrame::PatchRemoval { list, cursor: 0 })?;
+        storage.start_effect(c, effects::EffectFrame::PatchRemoval { list, cursor: 0 })?;
         storage.drain_construction_effects(c)?;
         Ok(true)
     }

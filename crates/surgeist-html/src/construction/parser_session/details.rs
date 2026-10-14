@@ -128,7 +128,7 @@ impl SessionStorage {
         }
         self.start_effect(
             c,
-            select::EffectFrame::Details {
+            effects::EffectFrame::Details {
                 node,
                 close,
                 root,
@@ -172,7 +172,7 @@ impl SessionStorage {
         let next = self.next_view_node(c, root, other, None)?;
         self.write_current_effect(
             c,
-            Some(select::EffectFrame::Details {
+            Some(effects::EffectFrame::Details {
                 node,
                 close,
                 root,

@@ -170,7 +170,7 @@ impl SessionStorage {
             let document = self.node_document_ref(c, copy.contents)?;
             self.start_effect(
                 c,
-                select::EffectFrame::CloneChildren {
+                effects::EffectFrame::CloneChildren {
                     source: source.contents,
                     copy: copy.contents,
                     cursor: 0,
