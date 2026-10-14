@@ -139,7 +139,8 @@ reference to identity; storage and the published result own its lifetime.
 It provides read-only `node`, `kind`, `parent`, `children`, `template_contents`,
 `shadow_root` and `usage` views. Its operation enum provides exactly these
 generic transitions: append/insert a node, detach/reparent an ordinary node,
-replace content, replace validated attributes, attach template contents, attach
+replace content, replace validated attributes, edit an element's attributes
+through the complete controlled group below, attach template contents, attach
 or detach a shadow fragment, and select the output document/fragment root.
 Parser-specific select, form, radio, input, nonce, script and template-patching
 decisions remain parser operations that compose these generic transitions.
@@ -176,7 +177,9 @@ restrictions, cycles and reciprocal parent/child links. Ordinary template conten
 and local shadow attachment are owning associations. A declarative template's
 contents reference to a shadow fragment is non-owning and independently checked;
 it is not an ordinary child or a second owner. A transition either commits a coherent
-generic state or leaves the prior logical state unchanged. Any reserved capacity
+generic state or leaves the prior logical state unchanged. Each committed
+attribute slot is such a transition; a complete incremental attribute group does
+not roll back its already committed prefix on a later stop. Any reserved capacity
 remains observable to the caller's actual allocation owner on failure. Temporary
 parser algorithm state belongs in its session, not in a published invalid HTML
 record. HTML never applies parser placement, recovery or language conformance
@@ -229,6 +232,146 @@ association state would need a second representation, copy and identity map.
 An unchecked parts constructor was rejected because a public immutable result
 would cease to certify its own invariants. Controlled shared storage keeps
 generic invariants with their owner while parser effects remain in parser.
+
+#### Complete controlled attribute edits
+
+`bounded::HtmlConstructionAttributeEdit` owns the same construction storage and
+one checked element throughout an attribute edit group. It consumes that storage
+through a fallible boundary returning the complete unconsumed owner and operands
+on refusal. Its read-only storage view supports parser metadata/effect reads;
+neither another attribute editor nor a generic mutation or publication can
+obtain the storage while the group is active. It exposes no mutable record,
+`OrderedAttributes`, `Arc` or `Vec`. This retained exclusive owner, rather than
+a weak name reference alone, qualifies the unchanged target and planned prefix.
+HTML owns expanded-name validity; parser owns HTML-language selection, recovery,
+source/provenance validation, evidence, effects and its existing controller and
+allocation tickets.
+
+The group has these concrete paths:
+
+| Path | Owner-controlled transition |
+| --- | --- |
+| Named merge | Plan source-order null-namespace names against the installed attributes and earlier lexical names, retain exact name admissions, materialize the selected source operands, reserve the actual installed backing once, then append the actual reversed stage one last slot at a time. |
+| Checked append | Admit one actual attribute against the current installed prefix before reserving and committing its slot. Initial ordered construction and generated single-attribute insertion cannot rely on a tokenizer duplicate flag. |
+| Checked replacement | Validate the actual incoming expanded name against every other installed slot before replacing the selected slot. A value-only path retains the existing name under the owner; a no-scan same-name replacement must qualify the actual existing namespace/local-name backing, not accept a caller equality assertion. |
+| Adjacent swap and final pop | Swap exactly two initialized adjacent slots, or return the actual last initialized attribute. These transitions preserve uniqueness without another name scan and retain the original incremental removal order. |
+
+Named-merge setup retains the explicit candidate count. Planning accepts exactly
+the next source index; completing planning requires every candidate and its
+decision, and completing the group requires every selected append. The owner
+rejects skipped, repeated or excess candidates and premature completion. Parser
+supplies the actual lexical count through its existing charged header read.
+Named merge retains its exclusive group through all selected appends and their
+read-only-tree ID effects. A checked initial/single append ends its group after
+that slot, returning storage before any initial effect that needs another
+checked edit. The parser's original stage and reservation progress persist
+between these groups; ending a group does not copy or rebuild the collection.
+
+Checked initial/generated installation validates the final effective expanded
+name against the actual current prefix after all preceding semantic effects and
+name adjustments. Each exact namespace/local-name comparison is separately
+admitted, and exclusive ownership continues from that check through the slot
+commit. A duplicate produces the typed refusal without appending, consuming its
+incoming slot or running that attribute's effects; the generic owner does not
+repair or choose a lexical recovery. The normal parser retains its source-defined
+duplicate recovery before installation. Native, foreign/adjusted and generated
+producers must each either supply actual HTML-owned evidence for those exact
+operands and current prefix or execute these checks. A tokenizer assertion or an
+earlier check before a name-changing effect is insufficient. Checking successive
+prefixes may require quadratic name-pair work; document and measure the bound
+from the real input size and exact-name comparison actions. Do not claim linear
+work, hide a batch scan or raise a blanket limit to accommodate the change.
+
+Named merge replaces the existing parser `missing: OwnedVec<bool>` allocation
+with one HTML-owned plan allocation of private decision/name records. It is the
+same role in the algorithm, not an additional plan bank or second attribute
+representation. The parser retains the non-cloneable ticket for that actual
+allocation; HTML exposes issued snapshots/actions for its real element layout,
+capacity, initialized entries and retirement. No caller can insert a decision,
+assert validity, alter a record or supply a separately invented proof. The group
+stores no parser resource totals or second execution ledger.
+
+Before input transfer, parser retains its existing target html/body tests,
+source/controller/alias checks, start-tag and lowercase-name tests, text
+ownership, source ranges and lexical evidence validation. The HTML planner then
+performs the original semantic comparisons once: for each candidate in source
+order, inspect installed attributes until the first null-namespace/local-name
+match, then inspect earlier lexical names in source order until the first match.
+The earlier-lexical loop still runs when an installed match was found. Exact
+UTF-16 comparison and short-circuit order remain the original order. Prefixes
+and values do not determine duplicate identity. The owner derives each keep
+decision; parser may observe it for staging but cannot use that boolean to
+authorize a later append.
+
+A candidate comparison cursor borrows its actual immutable `DocumentString`
+only until that candidate's comparisons finish; it does not retain a reference
+into `Tag` across `input.take()`. Its plan record retains an HTML-issued
+`Weak<Vec<u16>>` for the actual local-name backing. Earlier lexical operands
+supplied for a comparison are qualified against their recorded backing before
+the exact comparison. The weak reference prevents header-address reuse while
+the witness exists; a bare pointer, hash or length does not provide that proof.
+No string backing, strong name clone, new identity allocation or parser-owned
+validity certificate is introduced. The complete group retains all candidate
+admissions and source/selected-prefix progress privately; witnesses cannot be
+extracted, mixed with another group, replayed or applied to another target.
+
+Every planning refusal, including plan allocation and witness admission, leaves
+the caller's `Option<Tag>` occupied with its original exact values, backings,
+source associations and accounting owners. The final borrowed-input write
+admission remains before the original `input.take()`. Thereafter parser performs
+its existing reverse materialization, string registration, ignored-attribute
+evidence and source-location binding. `FrozenUtf16` already contains a
+`DocumentString`; registration retains that same backing. Before each selected
+append, HTML qualifies the actual staged attribute against the next retained
+name admission, its null namespace, this target and the group's current selected
+prefix. Equal text in a different backing is a refusal. This identity check
+reuses the completed name comparisons; named merge must not rescan the target
+or lexical names after materialization.
+
+Each inspection, exact comparison, plan write, weak-reference provider/header
+operation, actual reservation, identity qualification and initialized slot move
+has a bounded description admitted by the original controller before execution.
+Reserve reports actual before/after capacity and leaves the actual enlarged
+owner recoverable after a post-provider stop. A slot action reaches a guarded
+`try_ready(&mut Option<_>)` transition only after its validation, write admission
+and post-provider observations complete. Pending, failed, consumed, foreign or
+out-of-order requests return a typed refusal; every occupied owner/input slot
+remains occupied, including an incoming replacement `Option<Attribute>` or the
+real last staged attribute. Only the private ready owner exposes infallible
+commit. That owner retains or exclusively borrows the actual incoming slot and
+group through commit, so a caller cannot substitute an attribute after its name
+was qualified. Commit moves one actual slot and its prepaid fixed progress update with
+no intervening fallible work. A dropped/unaccepted observation cannot become
+ready. Retry of an unperformed action is distinct from replay after commit.
+
+After each committed append, parser performs its original location/redirect
+progress and required form or initial-attribute effects before the next append.
+Every committed prefix is a valid ordered collection. Adjacent removal swaps
+likewise retain the actual initialized partial order. Stopping or aborting a
+group recovers the same storage, capacity, installed prefix and unconsumed stage;
+it does not promise whole-group rollback or a successful partial document.
+Outstanding name witnesses and the actual plan allocation remain owned until
+completion or explicit retirement through abort. Retirement drops witnesses,
+reports the actual released plan allocation and lets the existing parser ticket
+owner release its actual entries/capacity without useful-work polling, another
+allocation or an invented refund. Refused retirement keeps that owner for retry.
+
+The accepted refinement in [#1174](https://github.com/bj-data-eng/surgeist/issues/1174)
+and [#1179](https://github.com/bj-data-eng/surgeist/issues/1179) preserves semantic
+comparison order, source progress, borrowed `Tag` refusal and sticky first-stop
+ownership, while charging actual added witness/layout work. Plan records are
+larger than booleans and live through append/abort; provider/header checks,
+progress writes and actual capacity/high-water observations must be counted.
+Numeric work totals and the limit outcome at an old cap can therefore differ.
+Opaque Arc-header bytes remain outside known payload-byte accounting; operations
+on those headers still incur their real admitted work. Checked initial/single
+append and genuinely name-changing replacement require their own actual
+invariant comparisons; these are distinct from named merge's one-pass reuse
+and are separately accepted by the initial/generated-installation clarification
+in those issues. They must never be presented as fixed witness overhead. No hidden duplicate
+scan, uncharged state or fabricated capacity satisfies this contract. This
+clarification selects the boundary; implementation and independent acceptance
+review must still establish it.
 
 #### Construction operation payloads and failures
 
@@ -340,6 +483,8 @@ error enum: `UnknownNode`, `WrongNodeKind`, `RootMove`, `AssociationMove`,
 `WrongSibling`, `Cycle`, `AssociationAlreadyOwned`, `InvalidTemplateAssociation`,
 `InvalidShadowAssociation`, `InvalidContentsReference`, `ParentChildConflict`, `InvalidOutputRoot`,
 `OperationConsumed`, `OperationNotReady`, `ForeignAllocation`, `CapacityMismatch`,
+`DuplicateAttribute { first: usize, duplicate: usize }`, `AttributeNameMismatch`,
+`AttributeOrderMismatch`,
 `SharedAllocationAliased`, and `ReleaseUnderflow`. Existing
 `ForeignBuilder`, native-parent/association errors, `LimitExceeded`,
 `RepresentationExhausted` and `AllocationFailed` remain distinct. Parser maps
@@ -410,8 +555,10 @@ retain their existing implementation. This is a specialized adaptation of
 
 HTML issues `HtmlConstructionAllocationId` with private fields identifying one
 storage identity, role and generation. Roles are `Identity`, `Records`,
-`Children(HtmlBuilderNode)`, `ArenaWrapper`, `AttributeVector` and
-`AttributeWrapper`. Equality is identity equality; IDs have no public numeric or
+`Children(HtmlBuilderNode)`, `ArenaWrapper`, `AttributeVector`,
+`AttributeWrapper` and `AttributePlan`. The last role identifies the complete
+attribute group's actual decision/name-plan allocation. Equality is identity
+equality; IDs have no public numeric or
 pointer conversion, constructor or arithmetic. Reallocation advances the
 generation with checked arithmetic. Attribute storage issues descriptors through
 the same narrow contract for its own vector/shared-wrapper ownership.
@@ -669,7 +816,8 @@ on refusal, or an error value containing the complete unconsumed owner/input.
 Borrowing action failure leaves ownership in its enclosing operation. There is
 no infallible consuming `commit` or `finish` on a pending/failed owner, and no
 ready-proof constructor outside the owner. This applies to initialization,
-attribute validation, tree mutation/publication, interpretation, lease recovery
+attribute validation, complete attribute edits and slot commits, tree
+mutation/publication, interpretation, lease recovery
 and semantic import/finalization; it does not add a generic public typestate
 framework.
 
@@ -1220,6 +1368,26 @@ reached versus unreached unavailable facts, bounded definition lookup, fragment
 initialization and integration-point parity, and sticky first failure through
 cleanup. Existing numerical/color and semantic qualification witnesses remain
 with their owners.
+
+Attribute-edit evidence additionally covers a real source merge with installed
+and earlier lexical collisions, namespace-distinct names and first-value/source
+order retention; an independently owned duplicate token exercises the path a
+normal tokenizer deduplicates. Refusals at each borrowed preflight and new plan,
+witness, provider and ready boundary retain the exact caller input. One-short
+capacity/work cases use the actual new plan-cell and slot layouts, separately
+accounting for old work and added witness work and their changed live peaks.
+Foreign target/group use, witness replay, wrong namespace, out-of-order slots,
+equal text in different backing and expired/reallocated names cannot authorize
+an append. Target mutation and publication are excluded for the entire active
+group. Tests retain the actual prefix/stage/redirect after cancellation, observe
+actual reserve capacity, drain ID/initial effects before the next append, and
+retire all witness/plan/string/attribute tickets to zero. Existing wide-merge
+and duplicate-only poll-span witnesses remain applicable. Checked initial and
+single append, replacement, adjacent swap and pop need separate valid, duplicate,
+refusal and partial-prefix evidence appropriate to their actual transitions.
+Exercise final adjusted/foreign and generated names after preceding effects,
+native uniqueness, normal parsed duplicate recovery, no effects for a refused
+slot, and the measured current-prefix comparison/poll bound.
 
 The final integration review checks the complete production graph, public API
 inventory, actual `use` paths and absence of private reach-through, unchecked
