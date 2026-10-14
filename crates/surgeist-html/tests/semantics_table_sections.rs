@@ -1,19 +1,17 @@
+#[path = "common/builder.rs"]
+mod shared_builder;
+use shared_builder::builder;
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
+#[path = "common/session.rs"]
+mod shared_session;
+use shared_session::session;
+#[path = "common/scalar_limits.rs"]
+mod shared_scalar_limits;
+use shared_scalar_limits::scalar_limits as capped;
 use surgeist_html::*;
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -56,26 +54,9 @@ fn children(
 ) {
     b.establish_children(p, cs).unwrap();
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(20000000, 100, 1000, 1000000, 1000000, 100000)
-}
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    raw: usize,
-    cancel: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(raw), l, cancel).unwrap()
 }
 
 fn request(id: &HtmlCaptureSubjectId, q: HtmlSemanticQuery) -> HtmlSemanticRequest {
@@ -115,28 +96,6 @@ fn simple(local: &str) -> (HtmlCapture, HtmlCaptureSubjectId, HtmlCaptureSubject
     let id = c.subject_id(&table).unwrap();
     let expected = c.subject_id(&section).unwrap();
     (c, id, expected)
-}
-fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            20000000
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        0,
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        0,
-    )
 }
 
 #[test]

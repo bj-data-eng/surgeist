@@ -1,3 +1,6 @@
+#[path = "common/session.rs"]
+mod shared_session;
+use shared_session::session;
 use surgeist_html::*;
 
 fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -82,15 +85,7 @@ fn context(f: &Fixture, state: Option<HtmlFormAssociationState>) -> HtmlSemantic
 fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(10000000, 100, 1000, 0, 1000000, 10000)
 }
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    raw: usize,
-    cancel: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(raw), l, cancel).unwrap()
-}
+
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), HtmlSemanticQuery::ControlAutocomplete)
 }

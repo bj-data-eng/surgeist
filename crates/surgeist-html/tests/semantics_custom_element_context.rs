@@ -1,3 +1,6 @@
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
 use surgeist_html::*;
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
@@ -38,15 +41,7 @@ fn element(
     )
     .unwrap()
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits(work: usize, bytes: usize) -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(work, 100, 100, 100, bytes, 100)
 }

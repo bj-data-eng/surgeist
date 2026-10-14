@@ -1,21 +1,14 @@
+#[path = "common/builder.rs"]
+mod shared_builder;
+use shared_builder::builder;
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
 use surgeist_html::*;
 
 // Literal expectations are selected from HTML877d §5.2, not from a second
 // crawler or from implementation-derived resource totals.
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
+
 fn attrs(a: &[(&str, &str)]) -> OrderedAttributes {
     OrderedAttributes::new(
         a.iter()
@@ -41,15 +34,7 @@ fn el(
 fn cs(b: &mut HtmlCaptureBuilder, p: &HtmlCaptureBuilderSubject, c: &[HtmlCaptureBuilderSubject]) {
     b.establish_children(p, c).unwrap();
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(20_000_000, 100, 10000, 0, 10_000_000, 100000)
 }

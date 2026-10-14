@@ -1,3 +1,6 @@
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
 use surgeist_html::*;
 
 fn fixture(ns: Namespace, value: Option<DocumentString>) -> (HtmlCapture, HtmlCaptureSubjectId) {
@@ -32,15 +35,7 @@ fn fixture(ns: Namespace, value: Option<DocumentString>) -> (HtmlCapture, HtmlCa
     let id = c.subject_id(&e).unwrap();
     (c, id)
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits(work: usize, output: usize) -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(work, output, 10, 0, 100000, 10)
 }

@@ -1,19 +1,11 @@
+#[path = "common/builder.rs"]
+mod shared_builder;
+use shared_builder::builder;
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
 use surgeist_html::*;
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -44,15 +36,7 @@ fn children(
 ) {
     b.establish_children(p, cs).unwrap();
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(20000000, 100, 0, 0, 1000000, 0)
 }

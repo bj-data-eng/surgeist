@@ -1,3 +1,9 @@
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
+#[path = "common/session.rs"]
+mod shared_session;
+use shared_session::session;
 use surgeist_html::*;
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
@@ -64,27 +70,11 @@ fn fixture(
     let id = c.subject_id(&e).unwrap();
     (c, id)
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits(work: usize) -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(work, 100, 0, 0, 1000000, 10000)
 }
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    raw: usize,
-    cancel: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(raw), l, cancel).unwrap()
-}
+
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), HtmlSemanticQuery::AdvisoryInformation)
 }

@@ -1,19 +1,15 @@
+#[path = "common/builder.rs"]
+mod shared_builder;
+use shared_builder::builder;
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
+#[path = "common/session.rs"]
+mod shared_session;
+use shared_session::session;
 use surgeist_html::*;
 // Literal expectations come from HTML 877d #pragma-directives, not HTTP headers.
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
+
 fn attrs(fields: &[(&str, &str)]) -> OrderedAttributes {
     OrderedAttributes::new(
         fields
@@ -51,30 +47,14 @@ fn children(
 ) {
     b.establish_children(p, cs).unwrap();
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(20000000, 100, 1000, 10000, 1000000, 100000)
 }
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), HtmlSemanticQuery::MetaPragmaContent)
 }
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    raw: usize,
-    cancel: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(raw), l, cancel).unwrap()
-}
+
 fn report(c: &HtmlCapture, id: &HtmlCaptureSubjectId, raw: usize) -> HtmlSemanticReport {
     session(
         c,

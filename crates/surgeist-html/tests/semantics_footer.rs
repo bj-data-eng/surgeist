@@ -1,19 +1,14 @@
+#[path = "common/builder.rs"]
+mod shared_builder;
+use shared_builder::builder;
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
+#[path = "common/scalar_limits.rs"]
+mod shared_scalar_limits;
+use shared_scalar_limits::scalar_limits as resource_limits;
 use surgeist_html::*;
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn expanded(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -42,15 +37,7 @@ fn children(
 ) {
     b.establish_children(parent, list).unwrap();
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(20000000, 100, 0, 0, 1000000, 0)
 }
@@ -594,29 +581,6 @@ fn huge_unconsulted_attributes_and_text_succeed_at_zero_raw_scratch_and_nested_c
     assert_eq!(r.usage().scratch_records(), 0);
     assert_eq!(r.usage().peak_scratch_records(), 0);
     assert_eq!(r.usage().nested_output_records(), 0);
-}
-
-fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            20000000
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        0,
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        0,
-    )
 }
 
 #[test]

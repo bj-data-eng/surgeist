@@ -1,3 +1,6 @@
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
 use surgeist_html::*;
 
 fn name(ns: Namespace, local: &str) -> QualifiedName {
@@ -40,15 +43,7 @@ fn element(
     )
     .unwrap()
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn session<'a>(c: &'a HtmlCapture, cx: &'a HtmlSemanticContext) -> HtmlSemanticSession<'a> {
     HtmlSemanticSession::new(
         c,
@@ -1984,6 +1979,74 @@ fn aggregate_rejects_foreign_inert_and_control_inputs_and_wrong_flat_revision() 
     ] {
         assert_eq!(
             HtmlSemanticContext::new(&c, c.host_facts_revision().clone(), input, 0).unwrap_err(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn context_admission_preserves_host_supplement_and_classification_error_order() {
+    let (b, _) = builder();
+    let capture = b.finish().unwrap();
+    let (mut b, document) = builder();
+    let custom = element(&mut b, &document, "x-control", &[]);
+    let foreign = b.finish().unwrap();
+    let classification =
+        HtmlCustomControlClassification::new(foreign.subject_id(&custom).unwrap(), true);
+    let flat_revision = HtmlFlatTreeRevision::new(HtmlFlatTreeProducerId::fresh(), 2, 3);
+    let participation_revision = participation_revision();
+    let classifications = || HtmlSemanticContextInput::new(vec![classification.clone()]);
+    let participation = || {
+        classifications().with_list_participation(
+            participation_revision.clone(),
+            Some(
+                HtmlListParticipation::new(&foreign, participation_revision.clone(), vec![], 0)
+                    .unwrap(),
+            ),
+        )
+    };
+    let controls = || participation().with_controls(empty_control_facts(&foreign));
+    let inert = || {
+        controls().with_inert(
+            flat_revision.clone(),
+            Some(empty_inert_facts(&foreign, flat_revision.clone())),
+        )
+    };
+
+    // Every earlier invalid input dominates the still-invalid later inputs.
+    assert_eq!(
+        HtmlSemanticContext::new(&capture, HtmlHostFactsRevision::fresh(), inert(), 0).unwrap_err(),
+        HtmlSemanticContextError::HostRevisionMismatch
+    );
+    for (input, cap, expected) in [
+        (inert(), 0, HtmlSemanticContextError::InertCaptureMismatch),
+        (
+            controls(),
+            0,
+            HtmlSemanticContextError::ControlsCaptureMismatch,
+        ),
+        (
+            participation(),
+            0,
+            HtmlSemanticContextError::ParticipationCaptureMismatch,
+        ),
+        (
+            classifications(),
+            0,
+            HtmlSemanticContextError::ClassificationLimit {
+                limit: 0,
+                retained_capacity: 1,
+            },
+        ),
+        (
+            classifications(),
+            1,
+            HtmlSemanticContextError::Capture(HtmlCaptureError::ForeignCapture),
+        ),
+    ] {
+        assert_eq!(
+            HtmlSemanticContext::new(&capture, capture.host_facts_revision().clone(), input, cap,)
+                .unwrap_err(),
             expected
         );
     }

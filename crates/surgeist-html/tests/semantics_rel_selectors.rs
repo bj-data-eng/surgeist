@@ -1,3 +1,6 @@
+#[path = "common/context.rs"]
+mod shared_context;
+use shared_context::context;
 use surgeist_html::*;
 
 fn limits() -> HtmlRelFactsLimits {
@@ -55,15 +58,7 @@ fn children(
 ) {
     b.establish_children(p, cs).unwrap();
 }
-fn context(c: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        c,
-        c.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
+
 fn session<'a>(
     c: &'a HtmlCapture,
     cx: &'a HtmlSemanticContext,
