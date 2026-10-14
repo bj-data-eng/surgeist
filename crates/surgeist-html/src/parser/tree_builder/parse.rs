@@ -8,10 +8,10 @@ use super::{
             StoppedFragmentConstruction,
         },
     },
-    end::{DetachedStandaloneFailure, FailedStandaloneDocument, FrozenStandaloneParts},
     head::{HeadBoundary, HeadStep},
     report::ImmutableParseReport,
     seal::{OrdinaryInitializationOwner, OwnedOrdinaryFailure, SealedOrdinaryConstruction},
+    terminal::{DetachedStandaloneFailure, FailedStandaloneDocument, FrozenStandaloneParts},
 };
 use crate::construction::parser_session::{SessionError, evidence::DiagnosticEvidenceView};
 use crate::parser::control::{ParseStop, ParseUsage, StandaloneUnsupported};
@@ -480,7 +480,7 @@ pub(crate) fn document(
                 .expect("retained freeze")
                 .control
                 .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            let failure = super::end::FrozenStandaloneParts::detach_failure(&mut parts)
+            let failure = super::terminal::FrozenStandaloneParts::detach_failure(&mut parts)
                 .expect("closed frozen cleanup");
             let failure = OwnedOrdinaryFailure::take(&mut request, &mut Some(failure))
                 .expect("actual original request");

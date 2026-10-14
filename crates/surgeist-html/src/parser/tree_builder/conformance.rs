@@ -1913,7 +1913,7 @@ fn check(
 /// Feeding tests consume the same admitted native projection/comparison owner;
 /// their literal expectations do not come from a complete-source parse.
 pub(super) fn assert_completed_literal(
-    completed: &mut super::end::CompletedStandaloneDocument<'_>,
+    completed: &mut super::terminal::CompletedStandaloneDocument<'_>,
     dump: &str,
     mode: HtmlDocumentMode,
 ) {
@@ -2406,7 +2406,7 @@ mod tests {
     }
     fn completed<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
-    ) -> super::super::end::CompletedStandaloneDocument<'a> {
+    ) -> super::super::terminal::CompletedStandaloneDocument<'a> {
         let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
             request,
         ));
@@ -4218,7 +4218,7 @@ mod whole_source_comparisons {
     /// The returned scalar pairs are test-owned observations, like phase snapshots;
     /// traversal handles/scratch and every lender lookup use the original control.
     fn destination_positions(
-        completed: &mut super::super::end::CompletedStandaloneDocument<'_>,
+        completed: &mut super::super::terminal::CompletedStandaloneDocument<'_>,
     ) -> Vec<(bool, usize, usize)> {
         let mut ids = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
         let mut pending = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
@@ -5198,9 +5198,9 @@ mod comment_diagnostic_corpus {
     };
     use crate::parser::tree_builder::{
         StandaloneDocumentDriver,
-        end::CompletedStandaloneDocument,
         head::HeadStep,
         prologue::{PrologueCondition, PrologueMode},
+        terminal::CompletedStandaloneDocument,
     };
     use crate::{HtmlDocumentParseRequest, HtmlSource};
 

@@ -14027,8 +14027,8 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
         + size_of::<ParserArenaSession>()
         + size_of::<ParseEvidence>()
         + size_of::<ParseControl>()
-        + size_of::<end::CompletedStandaloneDocument<'_>>()
-        + size_of::<end::FrozenStandaloneParts>();
+        + size_of::<terminal::CompletedStandaloneDocument<'_>>()
+        + size_of::<terminal::FrozenStandaloneParts>();
     let exact_growth_record = size_of::<Event>()
         + size_of::<DiagnosticRecord>()
         + size_of::<DiagnosticLocation>()

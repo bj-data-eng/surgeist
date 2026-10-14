@@ -3,7 +3,7 @@
 //! parse success. Public promotion must consume the real complete associations
 //! proof supplied by the sole evidence owner.
 
-use super::{StandaloneError, end::FrozenStandaloneParts};
+use super::{StandaloneError, terminal::FrozenStandaloneParts};
 use crate::{HtmlDocumentParseRequest, request::DocumentRequestParts};
 
 #[derive(Clone, Copy)]
@@ -216,10 +216,10 @@ pub(super) fn terminal_transfer_layout() -> (usize, usize) {
     use std::mem::size_of;
     (
         size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-            + size_of::<Option<super::end::FailedStandaloneDocument>>()
-            + size_of::<super::end::DetachedStandaloneFailure>()
+            + size_of::<Option<super::terminal::FailedStandaloneDocument>>()
+            + size_of::<super::terminal::DetachedStandaloneFailure>()
             + size_of::<Option<HtmlDocumentParseRequest>>()
-            + size_of::<Option<super::end::DetachedStandaloneFailure>>()
+            + size_of::<Option<super::terminal::DetachedStandaloneFailure>>()
             + size_of::<DocumentRequestParts>()
             + size_of::<OwnedOrdinaryFailure>(),
         4 + 5 + 4 + 2,
@@ -299,7 +299,7 @@ impl SealedOrdinaryConstruction {
 /// is deliberately no tree/effect/native lender on this stopped result.
 pub(crate) struct OwnedOrdinaryFailure {
     request: DocumentRequestParts,
-    failure: super::end::DetachedStandaloneFailure,
+    failure: super::terminal::DetachedStandaloneFailure,
 }
 impl OwnedOrdinaryFailure {
     pub(super) fn original_request(&self) -> &DocumentRequestParts {
@@ -307,7 +307,7 @@ impl OwnedOrdinaryFailure {
     }
     pub(crate) fn take(
         request: &mut Option<HtmlDocumentParseRequest>,
-        failure: &mut Option<super::end::DetachedStandaloneFailure>,
+        failure: &mut Option<super::terminal::DetachedStandaloneFailure>,
     ) -> Result<Self, StandaloneError> {
         let original = request.as_ref().ok_or(StandaloneError::Consumed)?;
         let failed = failure.as_ref().ok_or(StandaloneError::Consumed)?;
@@ -1063,7 +1063,9 @@ mod tests {
         );
     }
 
-    fn stopped(request: &HtmlDocumentParseRequest) -> super::super::end::DetachedStandaloneFailure {
+    fn stopped(
+        request: &HtmlDocumentParseRequest,
+    ) -> super::super::terminal::DetachedStandaloneFailure {
         let mut driver = Some(super::super::entry::initialized_driver(request));
         for _ in 0..256 {
             if driver
@@ -1093,9 +1095,10 @@ mod tests {
         assert!(driver.as_mut().unwrap().step().is_err());
         let mut failed = Some(StandaloneDocumentDriver::take_failed(&mut driver).unwrap());
         assert!(driver.is_none());
-        let detached = super::super::end::FailedStandaloneDocument::detach(&mut failed).unwrap();
+        let detached =
+            super::super::terminal::FailedStandaloneDocument::detach(&mut failed).unwrap();
         assert!(failed.is_none());
-        assert!(super::super::end::FailedStandaloneDocument::detach(&mut failed).is_err());
+        assert!(super::super::terminal::FailedStandaloneDocument::detach(&mut failed).is_err());
         detached
     }
     #[test]

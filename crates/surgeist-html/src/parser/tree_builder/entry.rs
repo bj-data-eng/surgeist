@@ -172,7 +172,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                         crate::construction::parser_session::evidence::FailureDiagnosticEvidence,
                     >,
                 >()
-                + size_of::<super::end::FailedStandaloneDocument>()
+                + size_of::<super::terminal::FailedStandaloneDocument>()
                 + super::seal::terminal_transfer_layout().0
                 + size_of::<Option<StandaloneDocumentDriver>>()
                 + size_of::<Self>(),

@@ -56,6 +56,7 @@ pub(crate) mod seal;
 mod tables;
 mod tag_sets;
 mod template;
+mod terminal;
 #[cfg(test)]
 pub(crate) mod tests;
 
