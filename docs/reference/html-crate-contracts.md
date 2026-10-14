@@ -254,7 +254,7 @@ The group has these concrete paths:
 | Path | Owner-controlled transition |
 | --- | --- |
 | Named merge | Plan source-order null-namespace names against the installed attributes and earlier lexical names, retain exact name admissions, materialize the selected source operands, reserve the actual installed backing once, then append the actual reversed stage one last slot at a time. |
-| Checked append | Admit one actual attribute against the current installed prefix before reserving and committing its slot. Initial ordered construction and generated single-attribute insertion cannot rely on a tokenizer duplicate flag. |
+| Checked append | Admit one actual attribute against the current installed prefix before committing its slot. Capacity-only reservation may precede this check at the original driver checkpoint. Initial ordered construction and generated single-attribute insertion cannot rely on a tokenizer duplicate flag. |
 | Checked replacement | Validate the actual incoming expanded name against every other installed slot before replacing the selected slot. A value-only path retains the existing name under the owner; a no-scan same-name replacement must qualify the actual existing namespace/local-name backing, not accept a caller equality assertion. |
 | Adjacent swap and final pop | Swap exactly two initialized adjacent slots, or return the actual last initialized attribute. These transitions preserve uniqueness without another name scan and retain the original incremental removal order. |
 
@@ -268,6 +268,14 @@ read-only-tree ID effects. A checked initial/single append ends its group after
 that slot, returning storage before any initial effect that needs another
 checked edit. The parser's original stage and reservation progress persist
 between these groups; ending a group does not copy or rebuild the collection.
+
+Initial ordered construction reserves the entire requested installed capacity
+once before transfer and per-slot effects, preserving its original allocation
+failure checkpoint. A capacity-only reservation changes no initialized slot or
+name decision. Each later checked append validates the actual current prefix
+and final effective name before committing that slot; available capacity is not
+validity evidence. Named merge retains its different original order: complete
+name planning and source materialization precede its installed-capacity reserve.
 
 Checked initial/generated installation validates the final effective expanded
 name against the actual current prefix after all preceding semantic effects and
