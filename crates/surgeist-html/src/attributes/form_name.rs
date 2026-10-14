@@ -47,7 +47,7 @@ impl HtmlValueInterpreter {
     /// advance. Eight per namespace position cover both guards; fixed 128 covers
     /// state/metadata fields, length tests and shared-handle retentions. Local
     /// form-name grammar tests only empty, without scanning/copying the value.
-    pub(crate) fn form_name_report_work_bound(
+    pub fn form_name_report_work_bound(
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> Option<usize> {

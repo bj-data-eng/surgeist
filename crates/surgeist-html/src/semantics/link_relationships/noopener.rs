@@ -210,15 +210,25 @@ struct ScratchControl<'s, 'a> {
     session: &'s mut HtmlSemanticSession<'a>,
     capacity: usize,
 }
-impl RelMeter for ScratchControl<'_, '_> {
+impl HtmlRelMeter for ScratchControl<'_, '_> {
     type Error = HtmlSemanticFailure;
     fn work(&mut self, n: usize) -> Result<(), Self::Error> {
         self.session.charge(n)
     }
-    fn reserve<T>(&mut self, v: &mut Vec<T>) -> Result<(), Self::Error> {
-        let before = v.capacity();
-        let result = self.session.reserve_scratch(v, 1);
-        self.capacity += v.capacity() - before;
+    fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
+        let before = guard.capacity();
+        let result = self.session.reserve_record_capacity(
+            guard.len(),
+            guard.capacity(),
+            guard.record_size(),
+            1,
+            HtmlSemanticResource::ScratchRecords,
+            || {
+                guard.try_reserve().map_err(|_| ())?;
+                Ok(guard.capacity())
+            },
+        );
+        self.capacity += guard.capacity() - before;
         result
     }
 }
@@ -293,20 +303,19 @@ impl<'a> HtmlSemanticSession<'a> {
             session: self,
             capacity: 0,
         };
-        let local = rel::interpret(
-            RelInputs {
-                role: Some(role),
-                rel,
-                rev,
-                href: None,
-                imagesrcset: None,
-                itemprop: None,
-                title: None,
-                type_hint: None,
-                as_destination: None,
-            },
-            &mut meter,
-        )?;
+        let mut owner = Some(HtmlRelInterpretation::new(
+            RelInputs::new(Some(role)).with_rel(rel).with_rev(rev),
+        ));
+        owner
+            .as_mut()
+            .expect("retained owner")
+            .interpret(&mut meter)
+            .map_err(|error| meter.session.rel_action_failure(error))?;
+        let local = HtmlRelInterpretation::try_finish(&mut owner).map_err(|_| {
+            meter
+                .session
+                .stop(HtmlSemanticFailureKind::RepresentationExhausted)
+        })?;
         let mut no_opener = false;
         let mut opener = false;
         let mut unknown = false;
@@ -357,7 +366,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 .stop(HtmlSemanticFailureKind::RepresentationExhausted)
         })?;
         meter.work(envelope)?;
-        if !opener && !unknown && rel::ascii_keyword(input.target.code_units(), "_blank") {
+        if !opener && !unknown && rel::rel_ascii_keyword(input.target.code_units(), "_blank") {
             return Ok(HtmlSemanticValue::Known(true));
         }
         let mut blob = None;

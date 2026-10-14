@@ -475,7 +475,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
             self.poll()?;
             let local_state = processing
-                .intrinsic
+                .intrinsic()
                 .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
             let state = match local_state {
                 HtmlWritingSuggestionsState::Keyword(state) => state,
@@ -498,7 +498,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 data: self.assistance_record(HtmlComputedWritingSuggestionsData {
                     selecting_subject: current,
                     selecting_attribute: raw.cloned(),
-                    recognition: processing.recognition,
+                    recognition: processing.recognition(),
                     local_state,
                     state,
                 })?,

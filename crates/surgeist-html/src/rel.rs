@@ -1,10 +1,12 @@
 //! HTML877d link-type interpretation. Resource execution belongs to consumers.
 
 use crate::tokens::{SpaceTokenCursor, SpaceTokenStep};
+pub(crate) mod controlled;
 use crate::{
     Attribute, DocumentString, HtmlLinkDestination, HtmlValueAdmissionError, HtmlValueInterpreter,
     KnownHtmlElement, OrderedAttributes, QualifiedName,
 };
+use controlled::RelInputs;
 
 /// HTML877d's historical flag, owned by the actual constructed link record.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -64,10 +66,10 @@ pub enum HtmlRelRole {
     Form,
 }
 impl HtmlRelRole {
-    pub(crate) fn from_element(element: &QualifiedName) -> Option<Self> {
+    pub fn from_element(element: &QualifiedName) -> Option<Self> {
         Self::from_known(KnownHtmlElement::from_name(element)?)
     }
-    pub(crate) fn from_known(element: KnownHtmlElement) -> Option<Self> {
+    pub fn from_known(element: KnownHtmlElement) -> Option<Self> {
         match element {
             KnownHtmlElement::Link => Some(Self::Link),
             KnownHtmlElement::A => Some(Self::Anchor),
@@ -273,16 +275,19 @@ pub enum HtmlRelTokenApplicability {
 /// One original authored occurrence; duplicate and spelling findings coexist.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlRelOccurrence {
-    pub(crate) source: HtmlRelOccurrenceSource,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-    pub(crate) keyword: Option<HtmlRelKeyword>,
-    pub(crate) spelling: HtmlRelSpelling,
-    pub(crate) duplicate_of: Option<usize>,
-    pub(crate) effect: Option<HtmlRelEffect>,
-    pub(crate) registry_resolved: bool,
+    source: HtmlRelOccurrenceSource,
+    start: usize,
+    end: usize,
+    keyword: Option<HtmlRelKeyword>,
+    spelling: HtmlRelSpelling,
+    duplicate_of: Option<usize>,
+    effect: Option<HtmlRelEffect>,
+    registry_resolved: bool,
 }
 impl HtmlRelOccurrence {
+    pub fn registry_resolved(&self) -> bool {
+        self.registry_resolved
+    }
     pub fn source(&self) -> HtmlRelOccurrenceSource {
         self.source
     }
@@ -363,28 +368,28 @@ pub enum HtmlRelBodyAllowance {
     ContainsNonBodyOkKeyword,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct RelData {
-    pub(crate) role: Option<HtmlRelRole>,
-    pub(crate) rel: Option<DocumentString>,
-    pub(crate) rev: Option<DocumentString>,
-    pub(crate) occurrences: Vec<HtmlRelOccurrence>,
-    pub(crate) presence_author: HtmlRelPresenceAuthor,
-    pub(crate) links: HtmlRelLinks,
-    pub(crate) alternate: HtmlRelAlternate,
-    pub(crate) title_author: HtmlRelTitleAuthor,
-    pub(crate) body: HtmlRelBodyAllowance,
-    pub(crate) href_present: bool,
-    pub(crate) imagesrcset_present: bool,
-    pub(crate) address_author: HtmlRelAddressAuthor,
-    pub(crate) href_author: HtmlRelHrefAuthor,
-    pub(crate) as_destination: Option<HtmlLinkDestination>,
-    pub(crate) image_source_preload: bool,
+struct RelData {
+    role: Option<HtmlRelRole>,
+    rel: Option<DocumentString>,
+    rev: Option<DocumentString>,
+    occurrences: Vec<HtmlRelOccurrence>,
+    presence_author: HtmlRelPresenceAuthor,
+    links: HtmlRelLinks,
+    alternate: HtmlRelAlternate,
+    title_author: HtmlRelTitleAuthor,
+    body: HtmlRelBodyAllowance,
+    href_present: bool,
+    imagesrcset_present: bool,
+    address_author: HtmlRelAddressAuthor,
+    href_author: HtmlRelHrefAuthor,
+    as_destination: Option<HtmlLinkDestination>,
+    image_source_preload: bool,
 }
 /// Local interpretation alone does not certify external grammar, registry or execution.
 /// Its single owning record keeps semantic enum payloads bounded without boxing.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlRelReport {
-    pub(crate) data: Vec<RelData>,
+    data: Vec<RelData>,
 }
 impl HtmlRelReport {
     pub fn role(&self) -> Option<HtmlRelRole> {
@@ -451,21 +456,14 @@ impl HtmlRelReport {
     }
 }
 
-pub(crate) trait RelMeter {
+trait RelMeter {
     type Error;
     fn work(&mut self, n: usize) -> Result<(), Self::Error>;
-    fn reserve<T>(&mut self, values: &mut Vec<T>) -> Result<(), Self::Error>;
-}
-struct OrdinaryRelMeter;
-impl RelMeter for OrdinaryRelMeter {
-    type Error = std::convert::Infallible;
-    fn work(&mut self, _: usize) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn reserve<T>(&mut self, values: &mut Vec<T>) -> Result<(), Self::Error> {
-        values.reserve_exact(1);
-        Ok(())
-    }
+    fn reserve_occurrences(
+        &mut self,
+        values: &mut Vec<HtmlRelOccurrence>,
+    ) -> Result<(), Self::Error>;
+    fn reserve_data(&mut self, values: &mut Vec<RelData>) -> Result<(), Self::Error>;
 }
 pub(crate) fn fold(unit: u16) -> u16 {
     if (65..=90).contains(&unit) {
@@ -514,7 +512,7 @@ fn equal_at<C: RelMeter>(a: &[u16], b: &[u16], m: &mut C) -> Result<bool, C::Err
     }
     Ok(true)
 }
-pub(crate) fn classify<C: RelMeter>(
+fn classify<C: RelMeter>(
     units: &[u16],
     m: &mut C,
 ) -> Result<(Option<HtmlRelKeyword>, HtmlRelSpelling), C::Error> {
@@ -541,23 +539,13 @@ pub(crate) fn classify<C: RelMeter>(
         },
     ))
 }
-pub(crate) struct RelInputs<'a> {
-    pub(crate) role: Option<HtmlRelRole>,
-    pub(crate) rel: Option<&'a DocumentString>,
-    pub(crate) rev: Option<&'a DocumentString>,
-    pub(crate) href: Option<&'a DocumentString>,
-    pub(crate) imagesrcset: Option<&'a DocumentString>,
-    pub(crate) itemprop: Option<&'a DocumentString>,
-    pub(crate) title: Option<&'a DocumentString>,
-    pub(crate) type_hint: Option<&'a DocumentString>,
-    pub(crate) as_destination: Option<HtmlLinkDestination>,
-}
-pub(crate) fn interpret<C: RelMeter>(
-    input: RelInputs<'_>,
+fn interpret<C: RelMeter>(
+    input: &RelInputs<'_>,
+    occurrences: &mut Vec<HtmlRelOccurrence>,
+    data: &mut Vec<RelData>,
     m: &mut C,
-) -> Result<HtmlRelReport, C::Error> {
+) -> Result<(), C::Error> {
     m.work(1)?;
-    let mut occurrences: Vec<HtmlRelOccurrence> = Vec::new();
     if input.role.is_some()
         && let Some(raw) = input.rel
     {
@@ -589,7 +577,7 @@ pub(crate) fn interpret<C: RelMeter>(
                             break;
                         }
                     }
-                    m.reserve(&mut occurrences)?;
+                    m.reserve_occurrences(occurrences)?;
                     m.work(1)?;
                     occurrences.push(HtmlRelOccurrence {
                         source: HtmlRelOccurrenceSource::Rel,
@@ -614,7 +602,7 @@ pub(crate) fn interpret<C: RelMeter>(
             raw.code_units() == [109, 97, 100, 101]
         }
     {
-        m.reserve(&mut occurrences)?;
+        m.reserve_occurrences(occurrences)?;
         m.work(1)?;
         occurrences.push(HtmlRelOccurrence {
             source: HtmlRelOccurrenceSource::Rev,
@@ -627,8 +615,7 @@ pub(crate) fn interpret<C: RelMeter>(
             effect: Some(HtmlRelEffect::Hyperlink),
         });
     }
-    let (links, alternate, presence_author, title_author, body) =
-        summarize(&input, &mut occurrences, m)?;
+    let (links, alternate, presence_author, title_author, body) = summarize(input, occurrences, m)?;
     let address_author = if input.role != Some(HtmlRelRole::Link) {
         HtmlRelAddressAuthor::NotRequired
     } else if input.href.is_some() || input.imagesrcset.is_some() {
@@ -650,15 +637,14 @@ pub(crate) fn interpret<C: RelMeter>(
     } else {
         HtmlRelHrefAuthor::NotRequired
     };
-    let image_source_preload = image_source_preload(&input, &occurrences, m)?;
-    let mut data = Vec::new();
-    m.reserve(&mut data)?;
+    let image_source_preload = image_source_preload(input, occurrences, m)?;
+    m.reserve_data(data)?;
     m.work(3)?;
     data.push(RelData {
         role: input.role,
         rel: input.rel.cloned(),
         rev: input.rev.cloned(),
-        occurrences,
+        occurrences: std::mem::take(occurrences),
         presence_author,
         links,
         alternate,
@@ -671,23 +657,9 @@ pub(crate) fn interpret<C: RelMeter>(
         as_destination: input.as_destination,
         image_source_preload,
     });
-    Ok(HtmlRelReport { data })
+    Ok(())
 }
-/// Reuses the native aggregate algorithm after capture-qualified canonical effects.
-/// Original raw spelling, occurrence boundaries and author observations are retained.
-pub(crate) fn resolve_occurrence(
-    report: &mut HtmlRelReport,
-    index: usize,
-    keyword: Option<HtmlRelKeyword>,
-    effect: Option<HtmlRelEffect>,
-    resolved: bool,
-) {
-    let token = &mut report.data[0].occurrences[index];
-    token.keyword = keyword;
-    token.effect = effect;
-    token.registry_resolved = resolved;
-}
-pub(crate) fn refresh<C: RelMeter>(
+fn refresh<C: RelMeter>(
     report: &mut HtmlRelReport,
     input: &RelInputs<'_>,
     m: &mut C,
@@ -881,9 +853,13 @@ impl HtmlValueInterpreter {
         }
         input.role = HtmlRelRole::from_element(element);
         input.as_destination = self.link_as(element, as_attribute)?.intrinsic().copied();
-        match interpret(input, &mut OrdinaryRelMeter) {
-            Ok(value) => Ok(value),
-            Err(never) => match never {},
-        }
+        let mut owner = Some(controlled::HtmlRelInterpretation::new(input));
+        owner
+            .as_mut()
+            .expect("retained owner")
+            .interpret(&mut controlled::OrdinaryRelMeter)
+            .expect("ordinary rel interpretation");
+        Ok(controlled::HtmlRelInterpretation::try_finish(&mut owner)
+            .expect("completed ordinary rel"))
     }
 }

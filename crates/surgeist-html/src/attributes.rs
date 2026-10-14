@@ -604,12 +604,6 @@ impl InputBooleanApplicability {
     }
 }
 
-/// Shared source applicability for the captured candidacy consumer.
-/// Content Boolean presence and author-context reports remain separate.
-pub(crate) fn input_readonly_applies(state: HtmlInputType) -> bool {
-    InputBooleanApplicability::Readonly.allows(state)
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuleMetadata {
     attribute: KnownHtmlAttribute,
@@ -1518,20 +1512,6 @@ pub(crate) fn ascii_keyword_unit(unit: u16, byte: u8) -> bool {
     u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte))
 }
 
-/// Finite work envelope for stylesheet membership and fixed context creation.
-///
-/// For n input units, the borrowed Infra splitter inspects at most n boundary
-/// units and visits at most n + 1 fields. At most n nonempty tokens reach the
-/// membership search, with two length reads each. Compared tokens are disjoint:
-/// at most n unit/keyword-byte pairs are read and ASCII-compared. These account
-/// for n + (n + 1) + n + 2n + 2n + n = 8n + 1 actions. The additional twelve
-/// cover raw presence/length/cap admission, borrowed slice access, search result,
-/// shared-handle retention, and fixed result construction. Early matches only
-/// reduce work. No token or code-unit buffer is materialized by this operation.
-pub(crate) fn stylesheet_link_context_work_bound(input_code_units: usize) -> Option<usize> {
-    input_code_units.checked_mul(8)?.checked_add(13)
-}
-
 struct EnumValueSelection<T> {
     recognition: HtmlAttributeRecognition,
     author: HtmlAttributeAuthorState,
@@ -1599,16 +1579,10 @@ fn enum_value_selection<T: Copy + 'static>(
     selection
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct WritingSuggestionsProcessing {
-    pub(crate) recognition: HtmlAttributeRecognition,
-    pub(crate) intrinsic: Option<HtmlWritingSuggestionsState>,
-}
-
 impl HtmlValueInterpreter {
     /// Content-state processing for the HTML-defined generic parent algorithm.
     /// This makes no element applicability or author-conformance assertion.
-    pub(crate) fn writingsuggestions_processing(
+    pub fn writingsuggestions_processing(
         &self,
         raw: Option<&DocumentString>,
     ) -> Result<WritingSuggestionsProcessing, HtmlValueAdmissionError> {
@@ -2217,17 +2191,74 @@ impl HtmlValueInterpreter {
     }
 }
 
+// Local processing has a deliberate bounded front door, separate from the
+// ordinary attribute value/report reexports.
+pub(crate) mod bounded_rules {
+    use super::*;
+    /// Shared source applicability for the captured candidacy consumer.
+    /// Content Boolean presence and author-context reports remain separate.
+    pub fn input_readonly_applies(state: HtmlInputType) -> bool {
+        InputBooleanApplicability::Readonly.allows(state)
+    }
+
+    /// Finite work envelope for stylesheet membership and fixed context creation.
+    ///
+    /// For n input units, the borrowed Infra splitter inspects at most n boundary
+    /// units and visits at most n + 1 fields. At most n nonempty tokens reach the
+    /// membership search, with two length reads each. Compared tokens are disjoint:
+    /// at most n unit/keyword-byte pairs are read and ASCII-compared. These account
+    /// for n + (n + 1) + n + 2n + 2n + n = 8n + 1 actions. The additional twelve
+    /// cover raw presence/length/cap admission, borrowed slice access, search result,
+    /// shared-handle retention, and fixed result construction. Early matches only
+    /// reduce work. No token or code-unit buffer is materialized by this operation.
+    pub fn stylesheet_link_context_work_bound(input_code_units: usize) -> Option<usize> {
+        input_code_units.checked_mul(8)?.checked_add(13)
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct WritingSuggestionsProcessing {
+        pub(crate) recognition: HtmlAttributeRecognition,
+        pub(crate) intrinsic: Option<HtmlWritingSuggestionsState>,
+    }
+    impl WritingSuggestionsProcessing {
+        pub const fn recognition(&self) -> HtmlAttributeRecognition {
+            self.recognition
+        }
+        pub const fn intrinsic(&self) -> Option<HtmlWritingSuggestionsState> {
+            self.intrinsic
+        }
+    }
+}
+pub(crate) use bounded_rules::WritingSuggestionsProcessing;
+#[cfg(test)]
+use bounded_rules::stylesheet_link_context_work_bound;
+
 mod scalar;
 pub use scalar::*;
 
-mod autocomplete;
-pub use autocomplete::*;
+pub(crate) mod autocomplete;
+pub use autocomplete::{
+    HtmlAutocompleteContactFieldError, HtmlAutocompleteContactHint,
+    HtmlAutocompleteContextAuthorState, HtmlAutocompleteContextViolations,
+    HtmlAutocompleteCredential, HtmlAutocompleteCredentialOutcome, HtmlAutocompleteDefault,
+    HtmlAutocompleteDefaultField, HtmlAutocompleteDefaultReason, HtmlAutocompleteDetails,
+    HtmlAutocompleteMantle, HtmlAutocompleteMode, HtmlAutocompleteProcessed,
+    HtmlAutocompleteProcessingState, HtmlAutocompleteReport, HtmlAutocompleteSection,
+    HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError, HtmlAutocompleteSyntaxState,
+    HtmlAutocompleteValue, HtmlAutofillControlGroup, HtmlAutofillField, HtmlAutofillFieldCategory,
+    HtmlAutofillFieldIdentity,
+};
 
 mod accept;
 pub use accept::*;
 
 pub(crate) mod token_declarations;
-pub use token_declarations::*;
+pub use token_declarations::{
+    HtmlAccessKeyReport, HtmlAccessKeys, HtmlBitmapIconSize, HtmlBlockingReport,
+    HtmlBlockingTokens, HtmlIconSize, HtmlIconSizeError, HtmlIconSizeKeyword, HtmlIconSizes,
+    HtmlIconSizesReport, HtmlTokenDeclarationAuthorState, HtmlTokenDeclarationError,
+    HtmlTokenDeclarationInput,
+};
 
 mod control_length;
 pub use control_length::*;
@@ -2268,17 +2299,25 @@ mod id;
 mod map_name;
 pub use form_name::*;
 
-mod navigable_target;
-pub(crate) use navigable_target::TargetRecovery;
-pub use navigable_target::*;
+pub(crate) mod navigable_target;
+pub use navigable_target::{
+    HtmlNavigableTarget, HtmlNavigableTargetAttribute, HtmlNavigableTargetError,
+    HtmlNavigableTargetKeyword, HtmlNavigableTargetName,
+};
 
 mod textarea_wrap;
 pub use textarea_wrap::*;
 
-mod microdata;
-pub use microdata::*;
-mod hash_name;
-pub use hash_name::*;
+pub(crate) mod microdata;
+pub use microdata::{
+    HtmlMicrodataToken, HtmlMicrodataTokenKind, HtmlMicrodataTokenList,
+    HtmlMicrodataTokenListError, HtmlMicrodataTokenReport,
+};
+pub(crate) mod hash_name;
+pub use hash_name::{
+    HtmlHashNameAuthorForm, HtmlHashNameProcessing, HtmlHashNameReferenceReport,
+    HtmlUsemapReference,
+};
 
 mod input_colorspace;
 pub use input_colorspace::*;
@@ -2291,8 +2330,13 @@ pub use meta_pragma::*;
 mod table_header_scope;
 pub use table_header_scope::*;
 
-mod image_values;
-pub use image_values::*;
+pub(crate) mod image_values;
+pub use image_values::{
+    HtmlEmbeddedDimensionAttributeReport, HtmlEmbeddedDimensionContext,
+    HtmlEmbeddedDimensionReport, HtmlImageAttributeAuthorState, HtmlImageAttributeConformanceError,
+    HtmlImageExternalConformance, HtmlImageSourceParent, HtmlInputImageAttributeError,
+    HtmlInputImageAttributeReport, HtmlInputImageAttributes, HtmlInputImageStringReport,
+};
 
 mod link_destination;
 pub use link_destination::*;

@@ -1,9 +1,12 @@
 //! HTML 877d #mq, link/style/source/meta surrounding rules over one capture.
 //! No stylesheet, resource selection, rel classification or theme UI is executed.
 use super::*;
+use crate::bounded::{
+    HtmlMediaActionError, HtmlMediaField, HtmlMediaFieldMatch, HtmlMediaInterpretation,
+    match_media_field,
+};
 use crate::{
-    HtmlMediaAttributeReport, HtmlMediaCursorAction, HtmlMediaElementRole,
-    HtmlMediaPlacementObservation, HtmlMediaValue, HtmlMediaValueCursor,
+    HtmlMediaAttributeReport, HtmlMediaCursorAction, HtmlMediaElementRole, HtmlMediaValue,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -166,21 +169,28 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
         Ok(a)
     }
-    fn media_value(
+    fn media_action_failure(
         &mut self,
-        raw: Option<&Attribute>,
-    ) -> Result<HtmlMediaValue, HtmlSemanticFailure> {
-        let mut cursor = HtmlMediaValueCursor::new(raw.map(|a| a.value().code_units()));
-        while cursor.next_action() != HtmlMediaCursorAction::Complete {
-            // Finish includes a fixed three-unit keyword comparison.
-            self.charge(if cursor.next_action() == HtmlMediaCursorAction::Finish {
-                4
-            } else {
-                1
-            })?;
-            cursor.advance();
+        error: HtmlMediaActionError<HtmlSemanticFailure>,
+    ) -> HtmlSemanticFailure {
+        match error {
+            HtmlMediaActionError::Admission(error) => error,
+            HtmlMediaActionError::Protocol(_) => {
+                self.stop(HtmlSemanticFailureKind::RepresentationExhausted)
+            }
         }
-        Ok(cursor.result().expect("completed admitted scan"))
+    }
+    fn media_select(
+        &mut self,
+        element: &'a HtmlCapturedElement,
+        field: HtmlMediaField,
+    ) -> Result<Option<HtmlMediaFieldMatch<'a>>, HtmlSemanticFailure> {
+        for candidate in element.attributes().iter() {
+            if let Some(matched) = match_media_field(candidate, field, |work| self.charge(work))? {
+                return Ok(Some(matched));
+            }
+        }
+        Ok(None)
     }
     fn media_external(
         &mut self,
@@ -207,21 +217,58 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         // This query's original field admission precedes role/namespace shortcuts.
         // The dispatcher defers classification only for this owning query.
-        let raw = self.media_raw(element, "media")?;
-        if !self.html_namespace(element)? {
+        let selected = self.media_select(element, HtmlMediaField::Media)?;
+        let mut local = Some(HtmlMediaInterpretation::from_matched(
+            element.name(),
+            selected,
+        ));
+        let owner = local.as_mut().expect("retained owner");
+        owner
+            .admit_media(|raw| {
+                self.charge(1)?;
+                self.interpreter
+                    .admit_attribute_raw(raw.map(Attribute::value))
+                    .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))
+            })
+            .map_err(|error| self.media_action_failure(error))?;
+        owner
+            .inspect_namespace(|work| self.charge(work))
+            .map_err(|error| self.media_action_failure(error))?;
+        if !owner.is_html_namespace().expect("admitted namespace") {
             return Ok(HtmlSemanticValue::Unsupported(
                 HtmlSemanticUnsupported::ForeignNamespace,
             ));
         }
-        let Some(role) = HtmlMediaElementRole::from_known(self.known(element)?) else {
+        owner
+            .derive_role(|work| self.charge(work))
+            .map_err(|error| self.media_action_failure(error))?;
+        let Some(role) = owner.role().expect("admitted role") else {
             return Ok(HtmlSemanticValue::Inapplicable);
         };
-        let name = if role == HtmlMediaElementRole::Meta {
-            self.media_raw(element, "name")?
-        } else {
-            None
-        };
-        let value = self.media_value(raw)?;
+        if role == HtmlMediaElementRole::Meta {
+            let selected = self.media_select(element, HtmlMediaField::Name)?;
+            owner
+                .supply_matched_name(selected)
+                .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+            owner
+                .admit_name(|name| {
+                    self.charge(1)?;
+                    self.interpreter
+                        .admit_attribute_raw(name.map(Attribute::value))
+                        .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))
+                })
+                .map_err(|error| self.media_action_failure(error))?;
+        }
+        owner
+            .begin_value()
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        while owner.value_action() != Ok(HtmlMediaCursorAction::Complete) {
+            owner
+                .advance_value(|work| self.charge(work))
+                .map_err(|error| self.media_action_failure(error))?;
+        }
+        let value = owner.value().expect("completed admitted value");
+        let raw = owner.raw();
         let external = if raw.is_some() {
             self.media_external(subject)?
         } else {
@@ -271,16 +318,15 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         let mut frames = Vec::new();
         let result = (|| {
+            let owner = local.as_mut().expect("retained owner");
             self.charge(1)?;
-            let (placement, processing) = match role {
-                HtmlMediaElementRole::Link => (
-                    HtmlMediaPlacementObservation::Unapplied,
-                    HtmlMediaProcessing::Link(HtmlLinkMediaRules { condition }),
-                ),
-                HtmlMediaElementRole::Style => (
-                    HtmlMediaPlacementObservation::Unapplied,
-                    HtmlMediaProcessing::Style(HtmlStyleMediaGate { condition }),
-                ),
+            let processing = match role {
+                HtmlMediaElementRole::Link => {
+                    HtmlMediaProcessing::Link(HtmlLinkMediaRules { condition })
+                }
+                HtmlMediaElementRole::Style => {
+                    HtmlMediaProcessing::Style(HtmlStyleMediaGate { condition })
+                }
                 HtmlMediaElementRole::Source => {
                     let type_attribute = self.media_raw(element, "type")?;
                     let context = self.source_media_context(node)?;
@@ -300,25 +346,23 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         other => HtmlSourceMediaDecision::NoMediaExclusion(other),
                     };
-                    (
-                        HtmlMediaPlacementObservation::Unapplied,
-                        HtmlMediaProcessing::Source {
-                            context,
-                            decision,
-                            type_attribute: type_attribute.cloned(),
-                            picture_requirement,
-                        },
-                    )
+                    HtmlMediaProcessing::Source {
+                        context,
+                        decision,
+                        type_attribute: type_attribute.cloned(),
+                        picture_requirement,
+                    }
                 }
                 HtmlMediaElementRole::Meta => {
-                    let theme = self.meta_author_theme_color(name.map(Attribute::value))?;
-                    let placement = if raw.is_none() {
-                        HtmlMetaMediaPlacement::NotSpecified
-                    } else if theme {
-                        HtmlMetaMediaPlacement::AllowedForThemeColor
-                    } else {
-                        HtmlMetaMediaPlacement::Forbidden
-                    };
+                    owner
+                        .begin_theme_color(|work| self.charge(work))
+                        .map_err(|error| self.media_action_failure(error))?;
+                    while owner.theme_color_complete() != Ok(true) {
+                        owner
+                            .advance_theme_color(|work| self.charge(work))
+                            .map_err(|error| self.media_action_failure(error))?;
+                    }
+                    let theme = owner.theme_color().expect("completed admitted theme name");
                     let processing = if theme {
                         let uniqueness = if let Some(raw) = raw {
                             self.theme_media_uniqueness(subject, raw.value(), &mut frames)?
@@ -332,17 +376,20 @@ impl<'a> HtmlSemanticSession<'a> {
                     } else {
                         HtmlMetaMediaProcessing::NoProcessingEffect
                     };
-                    (
-                        HtmlMediaPlacementObservation::Known(placement),
-                        HtmlMediaProcessing::Meta(processing),
-                    )
+                    HtmlMediaProcessing::Meta(processing)
                 }
             };
             let mut data = Vec::new();
-            self.reserve_nested_output(&mut data, 1)?;
-            self.charge(1)?;
+            owner
+                .assemble(|| {
+                    self.reserve_nested_output(&mut data, 1)?;
+                    self.charge(1)
+                })
+                .map_err(|error| self.media_action_failure(error))?;
+            let report = HtmlMediaInterpretation::try_finish(&mut local)
+                .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
             data.push(MediaReadbackData {
-                local: HtmlMediaAttributeReport::observed(raw, name, role, value, placement),
+                local: report,
                 grammar,
                 processing,
             });

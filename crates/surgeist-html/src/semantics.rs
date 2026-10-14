@@ -1819,17 +1819,37 @@ impl<'a> HtmlSemanticSession<'a> {
         additional: usize,
         resource: HtmlSemanticResource,
     ) -> Result<(), HtmlSemanticFailure> {
+        self.reserve_record_capacity(
+            values.len(),
+            values.capacity(),
+            std::mem::size_of::<T>(),
+            additional,
+            resource,
+            || {
+                values.try_reserve_exact(additional).map_err(|_| ())?;
+                Ok(values.capacity())
+            },
+        )
+    }
+    fn reserve_record_capacity(
+        &mut self,
+        len: usize,
+        capacity: usize,
+        record_size: usize,
+        additional: usize,
+        resource: HtmlSemanticResource,
+        reserve: impl FnOnce() -> Result<usize, ()>,
+    ) -> Result<(), HtmlSemanticFailure> {
         self.poll()?;
-        let needed = values
-            .len()
+        let needed = len
             .checked_add(additional)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
-        if needed <= values.capacity() {
-            return if additional == 0 {
-                Ok(())
-            } else {
-                self.charge(1)
-            };
+        if needed <= capacity {
+            if additional != 0 {
+                self.charge(1)?;
+                reserve().map_err(|_| self.stop(HtmlSemanticFailureKind::AllocationFailed))?;
+            }
+            return Ok(());
         }
         let (retained, limit) = match resource {
             HtmlSemanticResource::ScratchRecords => {
@@ -1841,7 +1861,7 @@ impl<'a> HtmlSemanticSession<'a> {
             ),
             _ => (self.usage.output_records, self.limits.output_records),
         };
-        let growth = needed - values.capacity();
+        let growth = needed - capacity;
         let required = retained
             .checked_add(growth)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
@@ -1853,7 +1873,7 @@ impl<'a> HtmlSemanticSession<'a> {
             }));
         }
         let requested_bytes = growth
-            .checked_mul(std::mem::size_of::<T>())
+            .checked_mul(record_size)
             .and_then(|n| n.checked_add(self.usage.allocated_bytes))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         if requested_bytes > self.limits.allocated_bytes {
@@ -1863,17 +1883,16 @@ impl<'a> HtmlSemanticSession<'a> {
                 required: requested_bytes,
             }));
         }
-        let before = values.capacity();
+        let before = capacity;
         self.charge(1)?;
-        values
-            .try_reserve_exact(needed - values.len())
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::AllocationFailed))?;
-        let actual_growth = values.capacity() - before;
+        let actual_capacity =
+            reserve().map_err(|_| self.stop(HtmlSemanticFailureKind::AllocationFailed))?;
+        let actual_growth = actual_capacity - before;
         let actual = retained
             .checked_add(actual_growth)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         let bytes = actual_growth
-            .checked_mul(std::mem::size_of::<T>())
+            .checked_mul(record_size)
             .and_then(|n| n.checked_add(self.usage.allocated_bytes))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.usage.allocated_bytes = bytes;

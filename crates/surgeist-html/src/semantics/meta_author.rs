@@ -183,7 +183,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<bool, HtmlSemanticFailure> {
         self.charge(1)?;
         let mut cursor =
-            crate::media::ThemeColorNameCursor::new(name.map(DocumentString::code_units));
+            crate::bounded::ThemeColorNameCursor::new(name.map(DocumentString::code_units));
         while !cursor.is_complete() {
             self.charge(1)?;
             cursor.advance();

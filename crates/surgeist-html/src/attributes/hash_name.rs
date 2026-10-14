@@ -68,7 +68,8 @@ impl HtmlHashNameReferenceReport {
     pub fn processing_source_clause(&self) -> &'static str {
         PROCESSING_SOURCE
     }
-    pub(crate) fn missing() -> Self {
+    /// The local observation for an absent operand, without tree evidence.
+    pub fn missing() -> Self {
         Self {
             raw: None,
             first_hash: None,
@@ -132,9 +133,9 @@ impl HtmlValueInterpreter {
     }
 }
 
-// One consumed state per action. Ready completion is separate from the last
-// unit read, so the actual semantic caller can charge BEFORE handle retention.
-pub(crate) struct HashNameScan<'raw> {
+/// One consumed state per action. Ready completion is separate from the last
+/// unit read, so the caller can admit work before exact raw-handle retention.
+pub struct HashNameScan<'raw> {
     raw: &'raw DocumentString,
     len: usize,
     phase: HashNameScanPhase,
@@ -143,7 +144,7 @@ enum HashNameScanPhase {
     Searching(usize),
     Ready(Option<usize>),
 }
-pub(crate) enum HashNameScanStep<'raw> {
+pub enum HashNameScanStep<'raw> {
     Continue(HashNameScan<'raw>),
     Complete(HtmlHashNameReferenceReport),
 }
@@ -151,9 +152,9 @@ impl<'raw> HashNameScan<'raw> {
     // Action-accounting contract, not a CPU-instruction count. Begin observes
     // length. Search charges bounds/read/compare/advance; Ready charges author
     // classification/processing classification/raw retention/report write.
-    pub(crate) const BEGIN_WORK: usize = 1;
-    pub(crate) const STEP_WORK: usize = 4;
-    pub(crate) fn new(raw: &'raw DocumentString) -> Self {
+    pub const BEGIN_WORK: usize = 1;
+    pub const STEP_WORK: usize = 4;
+    pub fn new(raw: &'raw DocumentString) -> Self {
         let len = raw.len();
         Self {
             raw,
@@ -165,7 +166,7 @@ impl<'raw> HashNameScan<'raw> {
             },
         }
     }
-    pub(crate) fn step(mut self) -> HashNameScanStep<'raw> {
+    pub fn step(mut self) -> HashNameScanStep<'raw> {
         match self.phase {
             HashNameScanPhase::Searching(offset) => {
                 // Searching guarantees offset < len. The next offset cannot

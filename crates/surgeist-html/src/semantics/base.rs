@@ -1,6 +1,6 @@
 //! HTML877d document base, base.href and target selection over one capture.
 use super::*;
-use crate::attributes::TargetRecovery;
+use crate::bounded::TargetRecovery;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlDocumentBaseUrl {

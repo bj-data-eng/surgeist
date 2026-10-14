@@ -74,7 +74,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let work = HtmlValueInterpreter::map_name_report_work_bound(element.name(), raw)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        let local = HtmlValueInterpreter::map_name_report_from_borrowed(element.name(), raw);
+        let local = self
+            .interpreter
+            .map_name(element.name(), raw)
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         self.poll()?;
         let (id, id_relation, uniqueness) = if let Some(raw) = raw {
             let id = self.attribute(element, "id")?;

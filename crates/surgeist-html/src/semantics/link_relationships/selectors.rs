@@ -1,9 +1,9 @@
 //! Ordinary-Document relationship selectors. Resource use remains external.
 use super::*;
-use crate::attributes::token_declarations::{IconSizeCursor, IconSizeShape};
 use crate::bounded::{
     HtmlSpaceTokenCursor as SpaceTokenCursor, HtmlSpaceTokenStep as SpaceTokenStep,
 };
+use crate::bounded::{IconSizeCursor, IconSizeShape};
 use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -968,10 +968,11 @@ impl<'a> HtmlSemanticSession<'a> {
                 SpaceTokenStep::Continue => {}
                 SpaceTokenStep::Done => break,
                 SpaceTokenStep::Token { start, end } => {
-                    let (mut keyword, spelling) = rel::classify(
+                    let (mut keyword, spelling) = crate::bounded::classify_rel(
                         &raw.code_units()[start..end],
                         &mut RelControl { session: self },
-                    )?;
+                    )
+                    .map_err(|error| self.rel_action_failure(error))?;
                     let mut unresolved = spelling == HtmlRelSpelling::Unknown;
                     if unresolved && let Some(facts) = self.context.rel_facts.as_ref() {
                         for record in &facts.input.occurrences {
@@ -1231,7 +1232,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                                     .zip(&sizes.value().code_units()[start..end])
                                                     {
                                                         self.charge(3)?;
-                                                        if rel::fold(*a) != rel::fold(*b) {
+                                                        if rel::fold_rel_ascii(*a)
+                                                            != rel::fold_rel_ascii(*b)
+                                                        {
                                                             equal = false;
                                                             break;
                                                         }

@@ -2,7 +2,11 @@
 use super::*;
 mod noopener;
 mod selectors;
-use crate::rel::{self, RelInputs, RelMeter};
+use crate::bounded as rel;
+use crate::bounded::{
+    HtmlRelActionError, HtmlRelInterpretation, HtmlRelMeter, HtmlRelRefinement, HtmlRelReservation,
+    RelInputs,
+};
 use crate::{
     HtmlCaptureDocumentId, HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelReport, HtmlRelRole,
     HtmlRelSpelling, HtmlSpaceToken,
@@ -582,7 +586,7 @@ impl FactsAdmission {
         }
         for (a, b) in a.code_units().iter().zip(b.code_units()) {
             self.work(3)?;
-            if rel::fold(*a) != rel::fold(*b) {
+            if rel::fold_rel_ascii(*a) != rel::fold_rel_ascii(*b) {
                 return Ok(false);
             }
         }
@@ -729,7 +733,7 @@ impl HtmlRelFacts {
                             .checked_add(1)
                             .ok_or(HtmlRelFactsError::RepresentationExhausted)?,
                     )?;
-                    if rel::ascii_keyword(d.canonical.value().code_units(), keyword.keyword()) {
+                    if rel::rel_ascii_keyword(d.canonical.value().code_units(), keyword.keyword()) {
                         return Err(HtmlRelFactsError::CanonicalMismatch);
                     }
                 }
@@ -768,7 +772,7 @@ impl HtmlRelFacts {
                         || !units
                             .iter()
                             .zip(canonical)
-                            .all(|(a, b)| rel::fold(*a) == rel::fold(*b))
+                            .all(|(a, b)| rel::fold_rel_ascii(*a) == rel::fold_rel_ascii(*b))
                     {
                         return Err(HtmlRelFactsError::CanonicalMismatch);
                     }
@@ -1005,16 +1009,37 @@ pub enum HtmlRelMissingFact {
 struct RelControl<'s, 'a> {
     session: &'s mut HtmlSemanticSession<'a>,
 }
-impl RelMeter for RelControl<'_, '_> {
+impl HtmlRelMeter for RelControl<'_, '_> {
     type Error = HtmlSemanticFailure;
     fn work(&mut self, n: usize) -> Result<(), Self::Error> {
         self.session.charge(n)
     }
-    fn reserve<T>(&mut self, v: &mut Vec<T>) -> Result<(), Self::Error> {
-        self.session.reserve_nested_output(v, 1)
+    fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
+        self.session.reserve_record_capacity(
+            guard.len(),
+            guard.capacity(),
+            guard.record_size(),
+            1,
+            HtmlSemanticResource::NestedOutputRecords,
+            || {
+                guard.try_reserve().map_err(|_| ())?;
+                Ok(guard.capacity())
+            },
+        )
     }
 }
 impl<'a> HtmlSemanticSession<'a> {
+    fn rel_action_failure(
+        &mut self,
+        error: HtmlRelActionError<HtmlSemanticFailure>,
+    ) -> HtmlSemanticFailure {
+        match error {
+            HtmlRelActionError::Admission(error) => error,
+            HtmlRelActionError::Protocol(_) => {
+                self.stop(HtmlSemanticFailureKind::RepresentationExhausted)
+            }
+        }
+    }
     fn rel_missing(
         subject: &HtmlCaptureSubjectId,
         fact: HtmlRelMissingFact,
@@ -1066,23 +1091,29 @@ impl<'a> HtmlSemanticSession<'a> {
         } else {
             None
         };
-        let inputs = RelInputs {
-            role,
-            rel: slots[0],
-            rev: slots[1],
-            href: slots[2],
-            imagesrcset: slots[3],
-            itemprop: slots[4],
-            title: slots[5],
-            type_hint: slots[6],
-            as_destination,
-        };
-        let mut local = rel::interpret(RelInputs { ..inputs }, &mut RelControl { session: self })?;
+        let inputs = RelInputs::new(role)
+            .with_rel(slots[0])
+            .with_rev(slots[1])
+            .with_href(slots[2])
+            .with_imagesrcset(slots[3])
+            .with_itemprop(slots[4])
+            .with_title(slots[5])
+            .with_type_hint(slots[6])
+            .with_as_destination(as_destination);
+        let mut local = HtmlRelInterpretation::new(inputs);
+        local
+            .interpret(&mut RelControl { session: self })
+            .map_err(|error| self.rel_action_failure(error))?;
         let role = role.expect("checked actual role");
         let facts = self.context.rel_facts.as_ref();
         let document = self.node(subject)?.node_document();
         let mut extensions = Vec::new();
-        for (i, token) in local.occurrences().iter().enumerate() {
+        for (i, token) in local
+            .occurrences()
+            .expect("interpreted occurrences")
+            .iter()
+            .enumerate()
+        {
             self.charge(1)?;
             if token.spelling() != HtmlRelSpelling::Unknown {
                 continue;
@@ -1158,7 +1189,10 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
             }
-            let units = local.occurrence_units(i).expect("actual occurrence");
+            let units = local
+                .occurrence_units(i)
+                .expect("interpreted owner")
+                .expect("actual occurrence");
             let mut colon = false;
             for unit in units {
                 self.charge(1)?;
@@ -1219,17 +1253,32 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlRelMissingFact::SupportedTokens,
             ))
         };
+        local
+            .begin_refinement()
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         for extension in &extensions {
-            self.charge(4)?;
-            rel::resolve_occurrence(
-                &mut local,
-                extension.occurrence,
-                extension.standard,
-                extension.effect.effect(),
-                extension.effect != HtmlRelExtensionEffect::Unavailable,
-            );
+            let refinement = if let Some(keyword) = extension.standard {
+                HtmlRelRefinement::Standard(keyword)
+            } else if extension.effect == HtmlRelExtensionEffect::Unavailable {
+                HtmlRelRefinement::Unavailable
+            } else if let Some(effect) = extension.effect.effect() {
+                HtmlRelRefinement::Extension(effect)
+            } else {
+                HtmlRelRefinement::NoEffect
+            };
+            local
+                .refine(
+                    extension.occurrence,
+                    refinement,
+                    &mut RelControl { session: self },
+                )
+                .map_err(|error| self.rel_action_failure(error))?;
         }
-        rel::refresh(&mut local, &inputs, &mut RelControl { session: self })?;
+        local
+            .refresh(&mut RelControl { session: self })
+            .map_err(|error| self.rel_action_failure(error))?;
+        let local = HtmlRelInterpretation::try_finish(&mut Some(local))
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         for extension in &mut extensions {
             self.charge(2)?;
             if extension.standard.is_some() {
@@ -1338,8 +1387,8 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(4)?;
             stylesheet |= occurrence.keyword() == Some(HtmlRelKeyword::Stylesheet)
                 && occurrence.effect().is_some();
-            unresolved |=
-                occurrence.spelling() == HtmlRelSpelling::Unknown && !occurrence.registry_resolved;
+            unresolved |= occurrence.spelling() == HtmlRelSpelling::Unknown
+                && !occurrence.registry_resolved();
         }
         self.charge(4)?;
         let image_source_preload_author = if role != HtmlRelRole::Link

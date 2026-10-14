@@ -611,7 +611,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 ) {
                     return Ok(HtmlSemanticValue::Known(false));
                 }
-                if crate::attributes::input_readonly_applies(state)
+                if crate::bounded::input_readonly_applies(state)
                     && self.attribute(element, "readonly")?.is_some()
                 {
                     return Ok(HtmlSemanticValue::Known(false));

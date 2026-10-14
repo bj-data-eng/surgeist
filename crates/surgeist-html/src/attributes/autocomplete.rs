@@ -29,7 +29,7 @@ const WEBAUTHN: &str = "webauthn";
 /// of setting/mode/contact, and three credential checks. The fixed remainder
 /// covers section prefixes, at most five IDL and three scope handles, their
 /// bounded prepends/reservations, default/context observations and empty input.
-pub(crate) fn autocomplete_materialization_work_bound(input_code_units: usize) -> Option<usize> {
+pub fn autocomplete_materialization_work_bound(input_code_units: usize) -> Option<usize> {
     let fields = HtmlAutofillField::ALL
         .iter()
         .try_fold(0usize, |sum, field| {
@@ -64,27 +64,27 @@ pub(crate) fn autocomplete_materialization_work_bound(input_code_units: usize) -
 /// Remaining session allowances. Fixed Arc wrappers and allocator internals are
 /// excluded; every variable Vec capacity is observed before its next write.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct AutocompleteMaterializationLimits {
+pub struct AutocompleteMaterializationLimits {
     pub(crate) allocated_bytes: usize,
     pub(crate) nested_output_records: usize,
     pub(crate) scratch_records: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct AutocompleteMaterializationUsage {
+pub struct AutocompleteMaterializationUsage {
     pub(crate) allocated_bytes: usize,
     pub(crate) nested_output_records: usize,
     pub(crate) peak_scratch_records: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct AutocompleteMaterialized {
+pub struct AutocompleteMaterialized {
     pub(crate) report: HtmlAutocompleteReport,
     pub(crate) usage: AutocompleteMaterializationUsage,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AutocompleteMaterializationError {
+pub enum AutocompleteMaterializationError {
     RawAdmission(HtmlValueAdmissionError),
     BytesLimit { limit: usize, required: usize },
     OutputLimit { limit: usize, required: usize },
@@ -94,9 +94,86 @@ pub(crate) enum AutocompleteMaterializationError {
 }
 
 #[derive(Debug)]
-pub(crate) struct AutocompleteMaterializationFailure {
+pub struct AutocompleteMaterializationFailure {
     pub(crate) kind: AutocompleteMaterializationError,
     pub(crate) usage: AutocompleteMaterializationUsage,
+}
+
+impl AutocompleteMaterializationLimits {
+    pub const fn new(
+        allocated_bytes: usize,
+        nested_output_records: usize,
+        scratch_records: usize,
+    ) -> Self {
+        Self {
+            allocated_bytes,
+            nested_output_records,
+            scratch_records,
+        }
+    }
+    pub const fn allocated_bytes(self) -> usize {
+        self.allocated_bytes
+    }
+    pub const fn nested_output_records(self) -> usize {
+        self.nested_output_records
+    }
+    pub const fn scratch_records(self) -> usize {
+        self.scratch_records
+    }
+}
+impl AutocompleteMaterializationUsage {
+    pub const fn allocated_bytes(self) -> usize {
+        self.allocated_bytes
+    }
+    pub const fn nested_output_records(self) -> usize {
+        self.nested_output_records
+    }
+    pub const fn peak_scratch_records(self) -> usize {
+        self.peak_scratch_records
+    }
+}
+impl AutocompleteMaterialized {
+    pub fn report(&self) -> &HtmlAutocompleteReport {
+        &self.report
+    }
+    pub const fn usage(&self) -> AutocompleteMaterializationUsage {
+        self.usage
+    }
+    pub fn into_parts(self) -> (HtmlAutocompleteReport, AutocompleteMaterializationUsage) {
+        (self.report, self.usage)
+    }
+}
+impl AutocompleteMaterializationFailure {
+    pub const fn kind(&self) -> AutocompleteMaterializationError {
+        self.kind
+    }
+    pub const fn usage(&self) -> AutocompleteMaterializationUsage {
+        self.usage
+    }
+    pub fn into_parts(
+        self,
+    ) -> (
+        AutocompleteMaterializationError,
+        AutocompleteMaterializationUsage,
+    ) {
+        (self.kind, self.usage)
+    }
+}
+impl fmt::Display for AutocompleteMaterializationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl Error for AutocompleteMaterializationError {}
+impl fmt::Display for AutocompleteMaterializationFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.kind, f)
+    }
+}
+impl Error for AutocompleteMaterializationFailure {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.kind)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1214,7 +1291,12 @@ impl HtmlValueInterpreter {
         }
     }
 
-    pub(crate) fn control_autocomplete_controlled(
+    /// Materializes the actual attribute's grammar and processing observations
+    /// under caller-selected remaining allowances. Admit the work bound before
+    /// calling; this atomic operation adds no controller or cancellation poll.
+    /// Both outcomes retain cumulative observed capacities, including discarded
+    /// intermediates. All operands remain borrowed on refusal.
+    pub fn control_autocomplete_controlled(
         &self,
         element: &QualifiedName,
         raw: Option<&Attribute>,

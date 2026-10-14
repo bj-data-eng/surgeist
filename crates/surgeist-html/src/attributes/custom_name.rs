@@ -33,7 +33,7 @@ impl HtmlValueInterpreter {
     /// Namespace and attribute-name visits are included in the same envelope.
     /// The fixed 256 credits cover comparison headers and fixed report/Arc-share
     /// fields (no backing payload allocation), including all early exits.
-    pub(crate) fn is_attribute_report_work_bound(
+    pub fn is_attribute_report_work_bound(
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> Option<usize> {

@@ -1,6 +1,6 @@
 //! Concrete CSS producer attestations for one exact captured HTML media field.
 use super::*;
-use crate::attributes::media::media_field;
+use crate::bounded::{HtmlMediaField, media_field_matches};
 
 #[derive(Clone, Debug)]
 pub struct HtmlMediaProducerId(Arc<()>);
@@ -124,7 +124,7 @@ impl HtmlMediaAttributeInput {
             .as_slice()
             .get(self.ordinal)
             .ok_or(HtmlMediaFactsError::InvalidInput)?;
-        if !media_field(a, &[109, 101, 100, 105, 97]) {
+        if !media_field_matches(a, HtmlMediaField::Media) {
             return Err(HtmlMediaFactsError::InvalidInput);
         }
         Ok(a.value())

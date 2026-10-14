@@ -1,5 +1,6 @@
 //! HTML 877d local media presence/content and meta placement; no CSS parser.
 use super::*;
+pub(crate) mod controlled;
 use crate::{HtmlMediaCursorAction, HtmlMediaValue, HtmlMediaValueCursor, HtmlMetaMediaPlacement};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,27 +57,6 @@ impl HtmlMediaAttributeReport {
     pub fn meta_placement(&self) -> HtmlMediaPlacementObservation {
         self.placement
     }
-    pub(crate) fn observed(
-        raw: Option<&Attribute>,
-        name: Option<&Attribute>,
-        role: HtmlMediaElementRole,
-        value: HtmlMediaValue,
-        placement: HtmlMediaPlacementObservation,
-    ) -> Self {
-        Self {
-            raw: raw.cloned(),
-            name: name.cloned(),
-            applicability: HtmlAttributeApplicability::Applicable,
-            role: Some(role),
-            value,
-            placement,
-        }
-    }
-}
-
-pub(crate) fn media_field(attribute: &Attribute, local: &[u16]) -> bool {
-    attribute.name().namespace() == &Namespace::none()
-        && attribute.name().local_name().code_units() == local
 }
 
 impl HtmlValueInterpreter {
@@ -106,54 +86,63 @@ impl HtmlValueInterpreter {
         name: Option<&Attribute>,
         name_supplied: bool,
     ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
-        self.admit_attribute_raw(name.map(Attribute::value))?;
-        let role = HtmlMediaElementRole::from_known(KnownHtmlElement::from_name(element));
-        let applicability = if element.namespace() != &Namespace::html() {
-            HtmlAttributeApplicability::ForeignElementNamespace
-        } else if raw.is_some_and(|a| !media_field(a, &[109, 101, 100, 105, 97])) {
-            HtmlAttributeApplicability::DifferentAttribute
-        } else if role.is_none() {
-            HtmlAttributeApplicability::DifferentElement
-        } else if name_supplied
-            && (role != Some(HtmlMediaElementRole::Meta)
-                || name.is_some_and(|a| !media_field(a, &[110, 97, 109, 101])))
-        {
-            HtmlAttributeApplicability::DifferentContext
-        } else {
-            HtmlAttributeApplicability::Applicable
-        };
-        let mut cursor = HtmlMediaValueCursor::new(raw.map(|a| a.value().code_units()));
-        while cursor.next_action() != HtmlMediaCursorAction::Complete {
-            cursor.advance();
+        use controlled::{HtmlMediaInterpretation, HtmlMediaInterpretationError};
+        let mut owner = Some(HtmlMediaInterpretation::ordinary(element, raw));
+        let local = owner.as_mut().expect("retained owner");
+        if name_supplied {
+            local
+                .supply_ordinary_name(name)
+                .expect("initial name supply");
         }
-        let placement = if applicability != HtmlAttributeApplicability::Applicable
-            || role != Some(HtmlMediaElementRole::Meta)
-        {
-            HtmlMediaPlacementObservation::Unapplied
-        } else if raw.is_none() {
-            HtmlMediaPlacementObservation::Known(HtmlMetaMediaPlacement::NotSpecified)
-        } else if !name_supplied {
-            HtmlMediaPlacementObservation::Unchecked
+        local
+            .admit_media(|raw| self.admit_attribute_raw(raw.map(Attribute::value)))
+            .map_err(|error| match error {
+                controlled::HtmlMediaActionError::Admission(error) => error,
+                _ => unreachable!("ordinary media phase"),
+            })?;
+        if name_supplied {
+            local
+                .admit_name(|name| self.admit_attribute_raw(name.map(Attribute::value)))
+                .map_err(|error| match error {
+                    controlled::HtmlMediaActionError::Admission(error) => error,
+                    _ => unreachable!("ordinary name phase"),
+                })?;
         } else {
-            let mut name_cursor =
-                crate::media::ThemeColorNameCursor::new(name.map(|a| a.value().code_units()));
-            while !name_cursor.is_complete() {
-                name_cursor.advance();
+            self.admit_attribute_raw(None)?;
+        }
+        local
+            .inspect_namespace(|_| Ok::<_, std::convert::Infallible>(()))
+            .expect("ordinary namespace");
+        local
+            .derive_role(|_| Ok::<_, std::convert::Infallible>(()))
+            .expect("ordinary role");
+        local.begin_value().expect("ordinary value phase");
+        while local.value_action() != Ok(HtmlMediaCursorAction::Complete) {
+            local
+                .advance_value(|_| Ok::<_, std::convert::Infallible>(()))
+                .expect("ordinary value");
+        }
+        if local.applicability() == HtmlAttributeApplicability::Applicable
+            && local.role() == Ok(Some(HtmlMediaElementRole::Meta))
+            && raw.is_some()
+            && name_supplied
+        {
+            local
+                .begin_theme_color(|_| Ok::<_, std::convert::Infallible>(()))
+                .expect("ordinary theme start");
+            while local.theme_color_complete() != Ok(true) {
+                local
+                    .advance_theme_color(|_| Ok::<_, std::convert::Infallible>(()))
+                    .expect("ordinary theme");
             }
-            HtmlMediaPlacementObservation::Known(if name_cursor.result() {
-                HtmlMetaMediaPlacement::AllowedForThemeColor
-            } else {
-                HtmlMetaMediaPlacement::Forbidden
-            })
-        };
-        Ok(HtmlMediaAttributeReport {
-            raw: raw.cloned(),
-            name: name.cloned(),
-            applicability,
-            role,
-            value: cursor.result().expect("finished local cursor"),
-            placement,
-        })
+        }
+        local
+            .assemble(|| Ok::<_, std::convert::Infallible>(()))
+            .expect("ordinary report assembly");
+        Ok(
+            HtmlMediaInterpretation::try_finish(&mut owner).unwrap_or_else(
+                |_: HtmlMediaInterpretationError| unreachable!("assembled media report"),
+            ),
+        )
     }
 }

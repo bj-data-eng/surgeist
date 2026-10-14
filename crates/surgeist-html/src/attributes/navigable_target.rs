@@ -164,12 +164,12 @@ impl HtmlNavigableTargetAttribute {
 
 /// One exact unit per action; adapters own their admission and traversal.
 #[derive(Default)]
-pub(crate) struct TargetRecovery {
+pub struct TargetRecovery {
     newline: Option<usize>,
     angle: Option<usize>,
 }
 impl TargetRecovery {
-    pub(crate) fn unit(&mut self, offset: usize, unit: u16) {
+    pub fn unit(&mut self, offset: usize, unit: u16) {
         if matches!(unit, 9 | 10 | 13) && self.newline.is_none() {
             self.newline = Some(offset);
         }
@@ -177,7 +177,7 @@ impl TargetRecovery {
             self.angle = Some(offset);
         }
     }
-    pub(crate) fn dangerous(&self) -> Option<(usize, usize)> {
+    pub fn dangerous(&self) -> Option<(usize, usize)> {
         self.newline.zip(self.angle)
     }
 }

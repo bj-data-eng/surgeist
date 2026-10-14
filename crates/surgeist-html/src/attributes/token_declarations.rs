@@ -343,14 +343,14 @@ impl HtmlIconSizesReport {
 /// Borrowed canonical sizes-token grammar. Dimension ranges retain arbitrary
 /// precision and exact authored UTF-16; callers choose materialization.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum IconSizeShape {
+pub enum IconSizeShape {
     Scalable,
     Bitmap {
         width: std::ops::Range<usize>,
         height: std::ops::Range<usize>,
     },
 }
-pub(crate) struct IconSizeCursor<'a> {
+pub struct IconSizeCursor<'a> {
     units: &'a [u16],
     stage: u8,
     index: usize,
@@ -362,8 +362,8 @@ impl<'a> IconSizeCursor<'a> {
     // Seven bounded grammar actions: phase/range selection, original-unit read,
     // ASCII classification, error selection, position update, result/transition.
     // No dimension materialization is hidden behind this borrowed operation.
-    pub(crate) const STEP_WORK: usize = 7;
-    pub(crate) fn new(units: &'a [u16]) -> Self {
+    pub const STEP_WORK: usize = 7;
+    pub fn new(units: &'a [u16]) -> Self {
         Self {
             units,
             stage: 0,
@@ -373,13 +373,13 @@ impl<'a> IconSizeCursor<'a> {
             result: None,
         }
     }
-    pub(crate) fn is_complete(&self) -> bool {
+    pub fn is_complete(&self) -> bool {
         self.result.is_some()
     }
-    pub(crate) fn result(&self) -> Option<&Result<IconSizeShape, HtmlIconSizeError>> {
+    pub fn result(&self) -> Option<&Result<IconSizeShape, HtmlIconSizeError>> {
         self.result.as_ref()
     }
-    pub(crate) fn step(&mut self) {
+    pub fn step(&mut self) {
         match self.stage {
             0 => {
                 if self.units.len() != 3 {

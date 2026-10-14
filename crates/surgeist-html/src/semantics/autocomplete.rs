@@ -3,7 +3,7 @@
 //! resolves only expectation defaults; it performs no autofill or credential effect.
 
 use super::*;
-use crate::attributes::{
+use crate::bounded::{
     AutocompleteMaterializationError, AutocompleteMaterializationLimits,
     AutocompleteMaterializationUsage, autocomplete_materialization_work_bound,
 };
@@ -116,26 +116,24 @@ impl HtmlSemanticSession<'_> {
             element.name(),
             raw,
             state,
-            AutocompleteMaterializationLimits {
-                allocated_bytes: self.remaining_allocated_bytes(),
-                nested_output_records: self
-                    .limits
+            AutocompleteMaterializationLimits::new(
+                self.remaining_allocated_bytes(),
+                self.limits
                     .nested_output_records
                     .saturating_sub(baseline.nested_output_records),
-                scratch_records: self
-                    .limits
+                self.limits
                     .scratch_records
                     .saturating_sub(baseline.scratch_records),
-            },
+            ),
         );
         let observed = match &materialized {
-            Ok(value) => value.usage,
-            Err(failure) => failure.usage,
+            Ok(value) => value.usage(),
+            Err(failure) => failure.usage(),
         };
         self.record_autocomplete_usage(observed)?;
         let intrinsic = materialized
             .map_err(|failure| {
-                let kind = match failure.kind {
+                let kind = match failure.kind() {
                     AutocompleteMaterializationError::RawAdmission(error) => {
                         HtmlSemanticFailureKind::Attribute(error)
                     }
@@ -166,7 +164,8 @@ impl HtmlSemanticSession<'_> {
                 };
                 self.stop(kind)
             })?
-            .report;
+            .into_parts()
+            .0;
         // The controlled owner checked every variable reservation. Observe its
         // capacities before polling, including discarded intermediates on error.
         self.poll()?;
@@ -257,15 +256,15 @@ impl HtmlSemanticSession<'_> {
         let bytes = self
             .usage
             .allocated_bytes
-            .checked_add(observed.allocated_bytes);
+            .checked_add(observed.allocated_bytes());
         let output = self
             .usage
             .nested_output_records
-            .checked_add(observed.nested_output_records);
+            .checked_add(observed.nested_output_records());
         let scratch = self
             .usage
             .scratch_records
-            .checked_add(observed.peak_scratch_records);
+            .checked_add(observed.peak_scratch_records());
         let (Some(bytes), Some(output), Some(scratch)) = (bytes, output, scratch) else {
             return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
         };

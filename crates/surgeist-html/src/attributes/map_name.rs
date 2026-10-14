@@ -39,7 +39,7 @@ impl HtmlValueInterpreter {
     /// position and advance). Fixed 128 covers guards, shared-handle retentions,
     /// ten report/five metadata fields and fixed state/branch writes. All loops
     /// and arithmetic are input-bounded; this is not a parser polling quantum.
-    pub(crate) fn map_name_report_work_bound(
+    pub fn map_name_report_work_bound(
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> Option<usize> {

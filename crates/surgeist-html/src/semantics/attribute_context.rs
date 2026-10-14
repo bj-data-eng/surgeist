@@ -7,7 +7,7 @@
 //! accounting. No parser instruction quantum is claimed.
 
 use super::*;
-use crate::attributes::stylesheet_link_context_work_bound;
+use crate::bounded::stylesheet_link_context_work_bound;
 use crate::{
     HtmlAttributeReport, HtmlBooleanAttribute, HtmlHyperlinkAttributeContext,
     HtmlImageControlsAttributeContext, HtmlImageMapAttributeContext, HtmlReferrerPolicy,

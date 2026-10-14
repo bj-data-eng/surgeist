@@ -116,33 +116,36 @@ pub enum HtmlMetaMediaPlacement {
     Forbidden,
 }
 
-/// One fixed-name comparison step; shared by ordinary and controlled owners.
-pub(crate) struct ThemeColorNameCursor<'a> {
-    units: Option<&'a [u16]>,
-    position: usize,
-    equal: bool,
-}
-impl<'a> ThemeColorNameCursor<'a> {
-    pub(crate) fn new(units: Option<&'a [u16]>) -> Self {
-        Self {
-            units,
-            position: 0,
-            equal: units.is_some_and(|u| u.len() == 11),
+pub(crate) mod theme {
+    use super::ascii_equal;
+    /// One fixed-name comparison step; shared by ordinary and controlled owners.
+    pub struct ThemeColorNameCursor<'a> {
+        units: Option<&'a [u16]>,
+        position: usize,
+        equal: bool,
+    }
+    impl<'a> ThemeColorNameCursor<'a> {
+        pub fn new(units: Option<&'a [u16]>) -> Self {
+            Self {
+                units,
+                position: 0,
+                equal: units.is_some_and(|u| u.len() == 11),
+            }
         }
-    }
-    pub(crate) fn is_complete(&self) -> bool {
-        !self.equal || self.position == 11
-    }
-    pub(crate) fn advance(&mut self) {
-        if !self.is_complete() {
-            self.equal = ascii_equal(
-                self.units.expect("fixed name input")[self.position],
-                b"theme-color"[self.position],
-            );
-            self.position += 1;
+        pub fn is_complete(&self) -> bool {
+            !self.equal || self.position == 11
         }
-    }
-    pub(crate) fn result(&self) -> bool {
-        self.is_complete() && self.equal
+        pub fn advance(&mut self) {
+            if !self.is_complete() {
+                self.equal = ascii_equal(
+                    self.units.expect("fixed name input")[self.position],
+                    b"theme-color"[self.position],
+                );
+                self.position += 1;
+            }
+        }
+        pub fn result(&self) -> bool {
+            self.is_complete() && self.equal
+        }
     }
 }

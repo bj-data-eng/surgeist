@@ -448,7 +448,7 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
         element: &'a HtmlCapturedElement,
     ) -> Result<HtmlDimensionApplicability, HtmlSemanticFailure> {
-        use crate::attributes::{
+        use crate::bounded::{
             EmbeddedDimensionApplicability as A, EmbeddedDimensionContext as C,
             EmbeddedDimensionEvidenceNeeded as E, EmbeddedDimensionParent as P,
             embedded_dimension_applicability,

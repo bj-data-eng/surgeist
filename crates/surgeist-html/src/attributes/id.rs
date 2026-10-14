@@ -53,10 +53,7 @@ impl HtmlValueInterpreter {
     /// Fixed 128 covers guards, exact shared-handle retentions and report fields.
     /// The caller admits original raw length and polls around this bounded work;
     /// this is not a guarantee of per-unit cancellation inside the token owner.
-    pub(crate) fn id_report_work_bound(
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
-    ) -> Option<usize> {
+    pub fn id_report_work_bound(element: &QualifiedName, raw: Option<&Attribute>) -> Option<usize> {
         let mut work = 128usize.checked_add(
             element
                 .namespace()

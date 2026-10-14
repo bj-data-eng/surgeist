@@ -56,7 +56,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let work = HtmlValueInterpreter::id_report_work_bound(element.name(), raw)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        let local = HtmlValueInterpreter::id_report_from_borrowed(element.name(), raw);
+        let local = self
+            .interpreter
+            .id_attribute(element.name(), raw)
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         self.poll()?;
         self.charge(1)?;
         let uniqueness = if let Some(raw) = raw.filter(|a| !a.value().is_empty()) {

@@ -214,7 +214,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 .and_then(|n| n.checked_add(8))
                 .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
             self.charge(work)?;
-            let value = crate::numeric::parse_nonnegative_integer_capped(size.value(), 2);
+            let value = crate::bounded::parse_nonnegative_integer_capped(size.value(), 2);
             self.poll()?;
             value.ok()
         } else {

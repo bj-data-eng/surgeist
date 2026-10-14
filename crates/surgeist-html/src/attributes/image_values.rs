@@ -263,29 +263,29 @@ const IMAGE_ELEMENTS: &[KnownHtmlElement] = &[
 /// Already established expanded-name evidence; None is known non-HTML/unknown,
 /// never a missing capture relation. This classifier owns no tree or controller.
 #[derive(Clone, Copy)]
-pub(crate) enum EmbeddedDimensionParent {
+pub enum EmbeddedDimensionParent {
     Parent(Option<KnownHtmlElement>),
     NoParent,
     Unavailable,
 }
 #[derive(Clone, Copy)]
-pub(crate) enum EmbeddedDimensionContext {
+pub enum EmbeddedDimensionContext {
     InputState(HtmlInputType),
     SourceParent(EmbeddedDimensionParent),
 }
 #[derive(Clone, Copy)]
-pub(crate) enum EmbeddedDimensionEvidenceNeeded {
+pub enum EmbeddedDimensionEvidenceNeeded {
     InputState,
     SourceParent,
 }
 #[derive(Clone, Copy)]
-pub(crate) enum EmbeddedDimensionApplicability {
+pub enum EmbeddedDimensionApplicability {
     Applicable,
     Inapplicable,
     Unavailable(EmbeddedDimensionEvidenceNeeded),
     DifferentContext,
 }
-pub(crate) fn embedded_dimension_applicability(
+pub fn embedded_dimension_applicability(
     element: Option<KnownHtmlElement>,
     context: Option<EmbeddedDimensionContext>,
 ) -> EmbeddedDimensionApplicability {

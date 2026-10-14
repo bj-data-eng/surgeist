@@ -147,7 +147,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlUsemapReferenceResult>, HtmlSemanticFailure> {
-        use crate::attributes::{HashNameScan, HashNameScanStep};
+        use crate::bounded::{HashNameScan, HashNameScanStep};
         let node = self.node(subject)?;
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
             return Ok(HtmlSemanticValue::Inapplicable);

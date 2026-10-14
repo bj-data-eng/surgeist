@@ -74,7 +74,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let bound = HtmlValueInterpreter::is_attribute_report_work_bound(element.name(), raw)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(bound)?;
-        let local = HtmlValueInterpreter::is_attribute_report_from_borrowed(element.name(), raw);
+        let local = self
+            .interpreter
+            .is_attribute(element.name(), raw)
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         self.poll()?;
         if local.applicability() != HtmlAttributeApplicability::Applicable {
             return Ok(HtmlSemanticValue::Inapplicable);

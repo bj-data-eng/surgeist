@@ -1,9 +1,7 @@
 //! Generic HTML §5.2 microdata over one qualified immutable ordinary tree.
 //! External URL/vocabulary observations are supplied facts, never URL guesses.
 use super::*;
-use crate::{
-    HtmlCaptureDocumentId, HtmlMicrodataToken, HtmlMicrodataTokenKind, HtmlMicrodataTokenReport,
-};
+use crate::{HtmlCaptureDocumentId, HtmlMicrodataTokenKind, HtmlMicrodataTokenReport};
 
 #[cfg(test)]
 mod tests {
@@ -294,7 +292,7 @@ impl<'a> HtmlSemanticSession<'a> {
         path: &[HtmlCaptureSubjectId],
     ) -> Result<HtmlMicrodataReceiverCheck, HtmlSemanticFailure> {
         self.charge(1)?;
-        let punctuation = names.tokens[token].dot_or_colon;
+        let punctuation = names.tokens()[token].contains_dot_or_colon();
         let permission = self.md_property_fact(id, token, receiver, origin)?;
         let defined = if origin.is_none() || punctuation {
             HtmlMicrodataCondition::Violated(token)
@@ -436,7 +434,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     if !contributed {
                         orphans = md_and(
                             orphans,
-                            if names.tokens.is_empty() {
+                            if names.tokens().is_empty() {
                                 HtmlMicrodataCondition::Violated(subject.clone())
                             } else if let Some(m) = &graph.missing {
                                 HtmlMicrodataCondition::Missing(m.clone())
@@ -500,12 +498,12 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlMicrodataCondition::Violated(())
             }
         };
-        let type_eligibility = eligibility(types.raw.is_some(), itemscope.is_some());
+        let type_eligibility = eligibility(types.raw().is_some(), itemscope.is_some());
         let id_eligibility = eligibility(
             itemid.is_some(),
-            itemscope.is_some() && !types.tokens.is_empty(),
+            itemscope.is_some() && !types.tokens().is_empty(),
         );
-        let ref_eligibility = eligibility(refs.raw.is_some(), itemscope.is_some());
+        let ref_eligibility = eligibility(refs.raw().is_some(), itemscope.is_some());
         let (mut type_urls, mut type_definitions, mut same_vocabulary) = (
             HtmlMicrodataCondition::Satisfied,
             HtmlMicrodataCondition::Satisfied,
@@ -513,7 +511,7 @@ impl<'a> HtmlSemanticSession<'a> {
         );
         let mut vocabulary = None;
         let mut identifier_permission = HtmlMicrodataCondition::Satisfied;
-        for i in 0..types.tokens.len() {
+        for i in 0..types.tokens().len() {
             self.charge(1)?;
             type_urls = md_and(
                 type_urls,
@@ -556,15 +554,15 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlMicrodataCondition::Satisfied
         };
         let mut references = HtmlMicrodataCondition::Satisfied;
-        if !refs.tokens.is_empty() {
+        if !refs.tokens().is_empty() {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
-                    for (i, t) in refs.tokens.iter().enumerate() {
+                    for (i, t) in refs.tokens().iter().enumerate() {
                         self.charge(1)?;
-                        let raw = refs.raw.as_ref().expect("token raw");
+                        let raw = refs.raw().expect("token raw");
                         references = md_and(
                             references,
-                            match self.md_find_id(&root, &raw.code_units()[t.start..t.end])? {
+                            match self.md_find_id(&root, &raw.code_units()[t.start()..t.end()])? {
                                 HtmlSemanticValue::Known(Some(_)) => {
                                     HtmlMicrodataCondition::Satisfied
                                 }
@@ -584,9 +582,9 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlMicrodataCondition::Satisfied,
             HtmlSemanticValue::Known(Vec::new()),
         );
-        if names.raw.is_some() && names.tokens.is_empty() {
+        if names.raw().is_some() && names.tokens().is_empty() {
             contribution = HtmlMicrodataCondition::Violated(());
-        } else if names.raw.is_some() {
+        } else if names.raw().is_some() {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
                     let graph = self.md_graph(&root)?;
@@ -602,7 +600,7 @@ impl<'a> HtmlSemanticSession<'a> {
                             received = true;
                             let re = self.md_element(receiver)?.expect("receiver item");
                             let own = self.md_tokens(re, HtmlMicrodataTokenKind::ItemType)?;
-                            let inherited = own.tokens.is_empty();
+                            let inherited = own.tokens().is_empty();
                             let context = self.md_type_context(
                                 receiver,
                                 own,
@@ -618,9 +616,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                                 ),
                                             );
                                         } else {
-                                            for (i, t) in names.tokens.iter().enumerate() {
+                                            for (i, t) in names.tokens().iter().enumerate() {
                                                 self.charge(1)?;
-                                                if t.duplicate_of.is_some() {
+                                                if t.duplicate_of().is_some() {
                                                     continue;
                                                 }
                                                 let row = self.md_receiver(
@@ -639,9 +637,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                     } else {
                                         for path in paths {
                                             let origin = path.items.last().expect("type origin");
-                                            for (i, t) in names.tokens.iter().enumerate() {
+                                            for (i, t) in names.tokens().iter().enumerate() {
                                                 self.charge(1)?;
-                                                if t.duplicate_of.is_some() {
+                                                if t.duplicate_of().is_some() {
                                                     continue;
                                                 }
                                                 let row = self.md_receiver(
@@ -1531,57 +1529,29 @@ impl<'a> HtmlSemanticSession<'a> {
                 },
             )?
             .map(Attribute::value);
-        let mut tokens = Vec::new();
-        if let Some(raw) = raw {
-            self.charge(crate::bounded::HtmlSpaceTokenCursor::BEGIN_WORK)?;
-            let mut scan = crate::bounded::HtmlSpaceTokenCursor::new(raw.code_units());
-            loop {
-                self.charge(1)?;
-                let reads_unit = scan.inspects_unit();
-                self.charge(if reads_unit {
-                    crate::bounded::HtmlSpaceTokenCursor::STEP_WORK
-                } else {
-                    2
-                })?;
-                match scan.step() {
-                    crate::bounded::HtmlSpaceTokenStep::Continue => {}
-                    crate::bounded::HtmlSpaceTokenStep::Done => break,
-                    crate::bounded::HtmlSpaceTokenStep::Token { start, end } => {
-                        let units = &raw.code_units()[start..end];
-                        let mut duplicate_of = None;
-                        for (i, t) in tokens.iter().enumerate() {
-                            let t: &HtmlMicrodataToken = t;
-                            self.charge(1)?;
-                            if self.control_equal_units(&raw.code_units()[t.start..t.end], units)? {
-                                duplicate_of = Some(i);
-                                break;
-                            }
-                        }
-                        let mut dot_or_colon = false;
-                        for u in units {
-                            self.charge(1)?;
-                            dot_or_colon |= matches!(*u, 0x2e | 0x3a);
-                        }
-                        self.reserve_nested_output(&mut tokens, 1)?;
-                        self.charge(1)?;
-                        tokens.push(HtmlMicrodataToken {
-                            start,
-                            end,
-                            duplicate_of,
-                            dot_or_colon,
-                        });
-                        #[cfg(test)]
-                        tests::cancel_after_commit(tests::CancellationStage::Token, self.usage());
-                    }
+        use crate::bounded::{HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation};
+        let mut owner = Some(HtmlMicrodataTokenInterpretation::new(kind, raw));
+        while let Some(action) = owner
+            .as_mut()
+            .expect("retained owner")
+            .next_action()
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
+        {
+            let step = action.advance(self).map_err(|error| match error {
+                HtmlMicrodataTokenActionError::Admission(error) => error,
+                HtmlMicrodataTokenActionError::Protocol(_) => {
+                    self.stop(HtmlSemanticFailureKind::RepresentationExhausted)
                 }
+            })?;
+            #[cfg(test)]
+            if step == crate::bounded::HtmlMicrodataTokenStep::TokenCommitted {
+                tests::cancel_after_commit(tests::CancellationStage::Token, self.usage());
             }
+            #[cfg(not(test))]
+            let _ = step;
         }
-        self.charge(1)?;
-        Ok(HtmlMicrodataTokenReport {
-            kind,
-            raw: raw.cloned(),
-            tokens,
-        })
+        HtmlMicrodataTokenInterpretation::try_finish(&mut owner)
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))
     }
     fn md_contains(
         &mut self,
@@ -1746,13 +1716,13 @@ impl<'a> HtmlSemanticSession<'a> {
             let mut revisit = None;
             let e = self.md_element(root)?.expect("qualified item");
             let refs = self.md_tokens(e, HtmlMicrodataTokenKind::ItemRef)?;
-            if !refs.tokens.is_empty() {
+            if !refs.tokens().is_empty() {
                 match self.ordinary_tree_root(root)? {
                     Ok(tree) => {
                         bound = tree;
-                        for t in &refs.tokens {
+                        for t in refs.tokens() {
                             let units =
-                                &refs.raw.as_ref().expect("token raw").code_units()[t.start..t.end];
+                                &refs.raw().expect("token raw").code_units()[t.start()..t.end()];
                             match self.md_find_id(&bound, units)? {
                                 HtmlSemanticValue::Known(Some(id)) => {
                                     self.md_push(&mut pending, id)?
@@ -1788,7 +1758,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 }
                 if let Some(e) = e {
                     let names = self.md_tokens(e, HtmlMicrodataTokenKind::ItemProp)?;
-                    if !names.tokens.is_empty() {
+                    if !names.tokens().is_empty() {
                         self.reserve_nested_output(&mut results, 1)?;
                         self.charge(1)?;
                         results.push(current);
@@ -1961,7 +1931,7 @@ impl<'a> HtmlSemanticSession<'a> {
             return Ok(HtmlSemanticValue::Inapplicable);
         };
         let names = self.md_tokens(e, HtmlMicrodataTokenKind::ItemProp)?;
-        if names.raw.is_none() {
+        if names.raw().is_none() {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
         let value = self.md_property_value(id, e)?;
@@ -2060,7 +2030,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         Some(self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?)
                     };
                     let types = types.as_ref().unwrap_or(&own);
-                    if !types.tokens.is_empty() {
+                    if !types.tokens().is_empty() {
                         let mut items = Vec::new();
                         for item in &path {
                             self.reserve_nested_output(&mut items, 1)?;
@@ -2147,7 +2117,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let own_types = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
         let top_level = self.md_attribute(e, "itemprop")?.is_none();
-        let types = if !own_types.tokens.is_empty() {
+        let types = if !own_types.tokens().is_empty() {
             let fresh = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
             self.md_type_context(id, fresh, None)?
         } else {
@@ -2210,5 +2180,29 @@ impl<'a> HtmlSemanticSession<'a> {
             properties,
             revisits: crawl.revisit,
         }))
+    }
+}
+
+impl crate::bounded::HtmlMicrodataTokenMeter for HtmlSemanticSession<'_> {
+    type Error = HtmlSemanticFailure;
+    fn work(&mut self, units: usize) -> Result<(), Self::Error> {
+        self.charge(units)
+    }
+    fn reserve(
+        &mut self,
+        reservation: &mut crate::bounded::HtmlMicrodataTokenReservation<'_>,
+    ) -> Result<(), Self::Error> {
+        self.reserve_record_capacity(
+            reservation.len(),
+            reservation.capacity(),
+            reservation.record_size(),
+            1,
+            HtmlSemanticResource::NestedOutputRecords,
+            || {
+                reservation.try_reserve().map_err(|_| ())?;
+                Ok(reservation.capacity())
+            },
+        )?;
+        Ok(())
     }
 }

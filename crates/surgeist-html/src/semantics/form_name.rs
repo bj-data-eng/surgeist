@@ -58,7 +58,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let work = HtmlValueInterpreter::form_name_report_work_bound(element.name(), raw)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        let local = HtmlValueInterpreter::form_name_report_from_borrowed(element.name(), raw);
+        let local = self
+            .interpreter
+            .form_name(element.name(), raw)
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         self.poll()?;
         // HTML's local nonempty requirement and collection uniqueness are
         // independent. Empty specified values compare as exact actual values;
