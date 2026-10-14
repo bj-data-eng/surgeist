@@ -13,6 +13,8 @@ pub use color_expression::{
     CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
 };
 
+#[cfg(test)]
+mod borrowed_admission_tests;
 pub(crate) mod bounded_decimal;
 pub(crate) mod bounded_expression;
 mod ordinary_expression;
