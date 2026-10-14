@@ -3799,6 +3799,7 @@ dependencies = [
  "encoding_rs",
  "serde",
  "serde_json",
+ "stats_alloc",
  "surgeist-color",
  "unicode-segmentation",
 ]
