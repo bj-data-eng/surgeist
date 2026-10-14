@@ -417,7 +417,7 @@ command operands, never mutable arena fields.
 | `CreateDocument` | `mode: HtmlDocumentMode`; creates a detached document root and returns its handle. |
 | `CreateFragment` | No payload; creates an unassociated fragment root and returns its handle. |
 | `CreateShadowContents` | `properties: HtmlShadowRootProperties`; creates a fragment explicitly marked as shadow contents, retaining its actual properties once, and returns its handle. This role is owner-controlled, not a caller-supplied validation flag. |
-| `Insert` | `node`, `parent`, `before: Option<HtmlBuilderNode>`; inserts or reparents an ordinary record, with `None` meaning append. An already-correct placement is a no-op. |
+| `Insert` | `node`, `parent`, `before: Option<HtmlBuilderNode>`; inserts or reparents an ordinary record; `None` means append. A validated `before == node` request is a structural no-op. Other same-position requests perform ordinary insertion processing; unchanged logical order does not guarantee unchanged storage or successful admission. Parser-owned hooks are independent of the structural shortcut. |
 | `Detach` | `node`; removes an ordinary edge, retaining the record and its descendants in storage. Detaching an already-detached ordinary record is a no-op. |
 | `ReplaceContent` | `node`, `content: HtmlConstructionContent`; replaces only text/comment/PI/doctype payloads or an element's qualified name. The closed content enum preserves node kind; roots, topology and associations cannot be replaced by this operation. |
 | `ReplaceAttributes` | `element`, `attributes: HtmlValidatedAttributes`; replaces one checked ordered collection without bypassing duplicate validation. |
@@ -428,6 +428,15 @@ command operands, never mutable arena fields.
 | `SetDocumentMode` | `document`, `mode: HtmlDocumentMode`; parser prologue selection changes only the actual document mode. |
 | `SetLinkFlags` | `element`, `flags: HtmlLinkFlags`; installs the local rule's actual link flags only on an HTML link element. Source-qualified history remains parser metadata. |
 | `Publish` | `root`; selects a document or fragment view and freezes the complete retained storage. |
+
+Insert validates storage-qualified handles, parent kind, movable node and
+reference-child membership before its structural shortcut. An already-last
+append or insertion immediately before the current successor retains the real
+shared child-order preparation, resource admission and bank replacement.
+Depth and edge preflight still precede scratch providers. Native and controlled
+callers use that same operation; parser form/nonce hooks remain parser-owned.
+This follows the [unchanged-order determination in #1174](https://github.com/bj-data-eng/surgeist/issues/1174).
+It does not change Detach or other explicitly specified no-op cases.
 
 Template association creation is owned by `Create`; lookup returns its issued
 contents handle. Cloning a template clones its element through `Create` and
