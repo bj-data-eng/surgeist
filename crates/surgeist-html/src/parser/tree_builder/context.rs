@@ -83,40 +83,42 @@ fn initial_modes(
         return Err(SessionError::ContextUnavailable.into());
     };
     let name = element.name();
-    if !tag_sets::namespace(name, "http://www.w3.org/1999/xhtml", c)? {
-        return Ok((State::Data, InsertionMode::InBody, false));
-    }
-    let lexical = if tag_sets::local_in(name, &["title", "textarea"], c)? {
-        State::Raw(Raw::Rcdata)
-    } else if tag_sets::local_in(name, &["style", "xmp", "iframe", "noembed", "noframes"], c)?
-        || (tag_sets::local_in(name, &["noscript"], c)?
-            && request.effective_scripting_mode() != HtmlParserScriptingMode::Disabled)
-    {
-        State::Raw(Raw::Rawtext)
-    } else if tag_sets::local_in(name, &["script"], c)? {
-        State::Raw(Raw::Script)
-    } else if tag_sets::local_in(name, &["plaintext"], c)? {
-        State::Plaintext
-    } else {
-        State::Data
+    use crate::fragment_initialization::{self, FragmentNameTest};
+    let (lexical, insertion) = fragment_initialization::initial_modes(
+        request.effective_scripting_mode(),
+        |test| match test {
+            FragmentNameTest::HtmlNamespace => {
+                tag_sets::namespace(name, fragment_initialization::HTML_NAMESPACE, c)
+            }
+            FragmentNameTest::Local(choices) => tag_sets::local_in(name, choices, c),
+        },
+    )?;
+    let template = insertion == crate::HtmlFragmentInsertionMode::InTemplate;
+    let lexical = match lexical {
+        crate::HtmlFragmentTokenizerState::Data => State::Data,
+        crate::HtmlFragmentTokenizerState::Rcdata => State::Raw(Raw::Rcdata),
+        crate::HtmlFragmentTokenizerState::Rawtext => State::Raw(Raw::Rawtext),
+        crate::HtmlFragmentTokenizerState::ScriptData => State::Raw(Raw::Script),
+        crate::HtmlFragmentTokenizerState::Plaintext => State::Plaintext,
     };
-    for (local, mode) in [
-        ("tr", InsertionMode::InRow),
-        ("tbody", InsertionMode::InTableBody),
-        ("thead", InsertionMode::InTableBody),
-        ("tfoot", InsertionMode::InTableBody),
-        ("caption", InsertionMode::InCaption),
-        ("colgroup", InsertionMode::InColumnGroup),
-        ("table", InsertionMode::InTable),
-        ("template", InsertionMode::InTemplate),
-        ("frameset", InsertionMode::InFrameset),
-        ("html", InsertionMode::BeforeHead),
-    ] {
-        if tag_sets::local_in(name, &[local], c)? {
-            return Ok((lexical, mode, local == "template"));
-        }
+    Ok((lexical, parser_insertion_mode(insertion), template))
+}
+
+/// Parser-private representation adapter; the HTML rule owner has no dependency
+/// on tree-builder state or its controller.
+pub(super) fn parser_insertion_mode(mode: crate::HtmlFragmentInsertionMode) -> InsertionMode {
+    use crate::HtmlFragmentInsertionMode as Mode;
+    match mode {
+        Mode::InBody => InsertionMode::InBody,
+        Mode::InRow => InsertionMode::InRow,
+        Mode::InTableBody => InsertionMode::InTableBody,
+        Mode::InCaption => InsertionMode::InCaption,
+        Mode::InColumnGroup => InsertionMode::InColumnGroup,
+        Mode::InTable => InsertionMode::InTable,
+        Mode::InTemplate => InsertionMode::InTemplate,
+        Mode::InFrameset => InsertionMode::InFrameset,
+        Mode::BeforeHead => InsertionMode::BeforeHead,
     }
-    Ok((lexical, InsertionMode::InBody, false))
 }
 
 impl<'source> ContextFragmentDriver<'source> {
@@ -813,6 +815,300 @@ mod tests {
         }
         panic!("finite literal did not complete");
     }
+    fn initialization_context(
+        namespace: Namespace,
+        local: impl Into<DocumentString>,
+        scripting: HtmlScriptingStatus,
+    ) -> HtmlFragmentContext {
+        let mut capture = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = capture
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                scripting,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let element = capture
+            .add_element(
+                &document,
+                QualifiedName::new(namespace, None, local),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        capture.establish_root(&element).unwrap();
+        let capture = capture.finish().unwrap();
+        HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn initialization_context_table_has_pinned_tokenizer_and_insertion_modes() {
+        use HtmlFragmentInsertionMode as I;
+        use HtmlFragmentTokenizerState as T;
+        // HTML 877d §13.4 tokenizer selection and reset's last-node rules.
+        // In particular last-node td/th/head are InBody, not InCell/InHead.
+        for (local, lexical, insertion) in [
+            ("title", T::Rcdata, I::InBody),
+            ("textarea", T::Rcdata, I::InBody),
+            ("style", T::Rawtext, I::InBody),
+            ("xmp", T::Rawtext, I::InBody),
+            ("iframe", T::Rawtext, I::InBody),
+            ("noembed", T::Rawtext, I::InBody),
+            ("noframes", T::Rawtext, I::InBody),
+            ("noscript", T::Rawtext, I::InBody),
+            ("script", T::ScriptData, I::InBody),
+            ("plaintext", T::Plaintext, I::InBody),
+            ("tr", T::Data, I::InRow),
+            ("tbody", T::Data, I::InTableBody),
+            ("thead", T::Data, I::InTableBody),
+            ("tfoot", T::Data, I::InTableBody),
+            ("caption", T::Data, I::InCaption),
+            ("colgroup", T::Data, I::InColumnGroup),
+            ("table", T::Data, I::InTable),
+            ("template", T::Data, I::InTemplate),
+            ("frameset", T::Data, I::InFrameset),
+            ("html", T::Data, I::BeforeHead),
+            ("td", T::Data, I::InBody),
+            ("th", T::Data, I::InBody),
+            ("head", T::Data, I::InBody),
+            ("body", T::Data, I::InBody),
+            ("select", T::Data, I::InBody),
+            ("TITLE", T::Data, I::InBody),
+            ("unknown", T::Data, I::InBody),
+        ] {
+            for namespace in [
+                Namespace::html(),
+                Namespace::svg(),
+                Namespace::mathml(),
+                Namespace::none(),
+                Namespace::from_uri("urn:context"),
+            ] {
+                for scripting in [HtmlScriptingStatus::Disabled, HtmlScriptingStatus::Enabled] {
+                    let html = namespace == Namespace::html();
+                    let lexical = if !html
+                        || (local == "noscript" && scripting == HtmlScriptingStatus::Disabled)
+                    {
+                        T::Data
+                    } else {
+                        lexical
+                    };
+                    let insertion = if html { insertion } else { I::InBody };
+                    let context = initialization_context(namespace.clone(), local, scripting);
+                    assert_eq!(
+                        context
+                            .initial_tokenizer_state(HtmlParserScriptingMode::Inert)
+                            .unwrap(),
+                        lexical,
+                        "{local} {namespace:?} {scripting:?}"
+                    );
+                    assert_eq!(
+                        context.initial_insertion_mode(),
+                        insertion,
+                        "{local} {namespace:?}"
+                    );
+                    let request = HtmlFragmentParseRequest::new(
+                        HtmlSource::utf8(""),
+                        context,
+                        super::super::tests::limits(100),
+                    )
+                    .unwrap();
+                    let mut c =
+                        ParseControl::new(*request.limits(), request.cancellation().clone());
+                    c.admit_source(request.source()).unwrap();
+                    let (actual_lexical, actual_insertion, template) =
+                        initial_modes(&request, &mut c).unwrap();
+                    let expected_lexical = match lexical {
+                        T::Data => State::Data,
+                        T::Rcdata => State::Raw(Raw::Rcdata),
+                        T::Rawtext => State::Raw(Raw::Rawtext),
+                        T::ScriptData => State::Raw(Raw::Script),
+                        T::Plaintext => State::Plaintext,
+                    };
+                    let expected_insertion = match insertion {
+                        I::InBody => InsertionMode::InBody,
+                        I::InRow => InsertionMode::InRow,
+                        I::InTableBody => InsertionMode::InTableBody,
+                        I::InCaption => InsertionMode::InCaption,
+                        I::InColumnGroup => InsertionMode::InColumnGroup,
+                        I::InTable => InsertionMode::InTable,
+                        I::InTemplate => InsertionMode::InTemplate,
+                        I::InFrameset => InsertionMode::InFrameset,
+                        I::BeforeHead => InsertionMode::BeforeHead,
+                    };
+                    assert_eq!(
+                        (actual_lexical, actual_insertion, template),
+                        (
+                            expected_lexical,
+                            expected_insertion,
+                            insertion == I::InTemplate
+                        ),
+                        "{local} {namespace:?} {scripting:?}"
+                    );
+                    super::super::tests::assert_released(&c);
+                }
+            }
+        }
+        let context = initialization_context(
+            Namespace::html(),
+            DocumentString::from_utf16(vec![0xd800]),
+            HtmlScriptingStatus::Disabled,
+        );
+        assert_eq!(
+            context
+                .initial_tokenizer_state(HtmlParserScriptingMode::Inert)
+                .unwrap(),
+            T::Data
+        );
+        assert_eq!(context.initial_insertion_mode(), I::InBody);
+    }
+
+    #[test]
+    fn initialization_context_rejects_missing_scripting_invalid_modes_and_foreign_targets() {
+        let missing = initialization_context(
+            Namespace::html(),
+            "noscript",
+            HtmlScriptingStatus::Unavailable,
+        );
+        assert!(matches!(
+            missing.initial_tokenizer_state(HtmlParserScriptingMode::Inert),
+            Err(HtmlCaptureError::MissingFact {
+                fact: HtmlCaptureFact::ScriptingStatus,
+                ..
+            })
+        ));
+        // The insertion-only helper does not read an unavailable scripting fact.
+        assert_eq!(
+            missing.initial_insertion_mode(),
+            HtmlFragmentInsertionMode::InBody
+        );
+        for mode in [
+            HtmlParserScriptingMode::Normal,
+            HtmlParserScriptingMode::Disabled,
+        ] {
+            assert_eq!(
+                missing.initial_tokenizer_state(mode),
+                Err(HtmlCaptureError::InvalidFragmentScriptingMode(mode))
+            );
+        }
+        let enabled =
+            initialization_context(Namespace::html(), "noscript", HtmlScriptingStatus::Enabled);
+        assert_eq!(
+            enabled.initial_tokenizer_state(HtmlParserScriptingMode::Fragment),
+            Err(HtmlCaptureError::UnsupportedExecution(
+                HtmlParserScriptingMode::Fragment
+            ))
+        );
+        let disabled =
+            initialization_context(Namespace::html(), "noscript", HtmlScriptingStatus::Disabled);
+        assert_eq!(
+            disabled
+                .initial_tokenizer_state(HtmlParserScriptingMode::Fragment)
+                .unwrap(),
+            HtmlFragmentTokenizerState::Data
+        );
+        assert!(
+            HtmlFragmentContext::element(enabled.capture(), disabled.context_element().subject())
+                .is_err()
+        );
+        assert!(
+            HtmlFragmentContext::element(enabled.capture(), enabled.context_document().subject())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn initialization_context_one_short_and_cancel_stop_without_allocating_parser_records() {
+        let request = request("", "template", HtmlScriptingStatus::Disabled);
+        let mut measured = ParseControl::new(*request.limits(), request.cancellation().clone());
+        measured.admit_source(request.source()).unwrap();
+        initial_modes(&request, &mut measured).unwrap();
+        let needed = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let limits = request
+            .limits()
+            .into_builder()
+            .work_credits(needed - 1)
+            .finish()
+            .unwrap();
+        let mut short = ParseControl::new(limits, request.cancellation().clone());
+        short.admit_source(request.source()).unwrap();
+        assert!(matches!(
+            initial_modes(&request, &mut short),
+            Err(FragmentExecutionError::Stop(_))
+        ));
+        assert_eq!(short.usage().work(WorkCategory::RecordWrite), 0);
+        super::super::tests::assert_released(&short);
+        let cancellation = request.cancellation().clone();
+        let mut cancelled = ParseControl::new(*request.limits(), cancellation.clone());
+        cancelled.admit_source(request.source()).unwrap();
+        let before = cancelled.usage().clone();
+        cancellation.cancel();
+        assert!(matches!(
+            initial_modes(&request, &mut cancelled),
+            Err(FragmentExecutionError::Stop(ParseStop::Cancelled))
+        ));
+        assert_eq!(
+            cancelled.usage().work(WorkCategory::RecordVisit),
+            before.work(WorkCategory::RecordVisit)
+        );
+        assert_eq!(
+            cancelled.usage().work(WorkCategory::InspectByte),
+            before.work(WorkCategory::InspectByte)
+        );
+        super::super::tests::assert_released(&cancelled);
+    }
+
+    #[test]
+    fn initialization_context_reset_uses_real_stack_template_modes_and_head_pointer() {
+        // A single root uses the captured context as the last node: td/th/head
+        // do not acquire the modes of a real non-last stack element.
+        for (local, expected) in [
+            ("td", InsertionMode::InBody),
+            ("th", InsertionMode::InBody),
+            ("head", InsertionMode::InBody),
+            ("html", InsertionMode::BeforeHead),
+        ] {
+            let request = request("", local, HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+            state.reset_table_mode(&mut driver.control).unwrap();
+            assert_eq!(state.mode, expected, "{local}");
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+        for (context, source, expected) in [
+            ("div", "<table><tbody><tr><td>", InsertionMode::InCell),
+            ("div", "<table><tbody><tr><th>", InsertionMode::InCell),
+            ("html", "<head>", InsertionMode::InHead),
+            ("html", "<head></head>", InsertionMode::AfterHead),
+            ("template", "<col>", InsertionMode::InColumnGroup),
+        ] {
+            let request = request(source, context, HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            for _ in 0..100 {
+                if driver.head.as_ref().unwrap().state.as_ref().unwrap().mode == expected {
+                    break;
+                }
+                assert!(!matches!(
+                    driver.step().unwrap(),
+                    HeadStep::Complete | HeadStep::NeedInput
+                ));
+            }
+            let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+            assert_eq!(state.mode, expected, "reached {source}");
+            state.reset_table_mode(&mut driver.control).unwrap();
+            assert_eq!(state.mode, expected, "reset {source}");
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+    }
+
     #[test]
     fn captured_bootstrap_cause_binds_actual_internal_root_and_f_without_lexical_range() {
         use crate::construction::parser_session::provenance::{

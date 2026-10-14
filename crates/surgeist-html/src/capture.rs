@@ -6,7 +6,8 @@
 use crate::custom_names::validate_custom_element_name;
 use crate::{
     DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlDoctype, HtmlDocumentMode,
-    HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment, HtmlShadowRootProperties, Namespace,
+    HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlHeaderDeliveredCsp,
+    HtmlNonceDocumentEnvironment, HtmlParserScriptingMode, HtmlShadowRootProperties, Namespace,
     OrderedAttributes, QualifiedName,
 };
 use std::{
@@ -2346,35 +2347,6 @@ fn definition_shadow_status(d: &HtmlCustomElementDefinition) -> HtmlShadowAttach
         HtmlShadowAttachmentStatus::Allowed
     }
 }
-/// All four pinned parser modes. Fragment admission accepts requested Inert/Fragment.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlParserScriptingMode {
-    Normal,
-    Disabled,
-    Inert,
-    Fragment,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlFragmentTokenizerState {
-    Data,
-    Rcdata,
-    Rawtext,
-    ScriptData,
-    Plaintext,
-}
-/// Initial §13.4 insertion-mode selection; no complete parser state is claimed.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlFragmentInsertionMode {
-    InBody,
-    InRow,
-    InTableBody,
-    InCaption,
-    InColumnGroup,
-    InTable,
-    InTemplate,
-    InFrameset,
-    BeforeHead,
-}
 /// A checked target of the fragment algorithm, not an imported output wrapper.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentTarget {
@@ -2544,54 +2516,15 @@ impl HtmlFragmentContext {
         requested: HtmlParserScriptingMode,
     ) -> Result<HtmlFragmentTokenizerState, HtmlCaptureError> {
         let mode = self.resolve_scripting_mode(requested)?;
-        let name = &self.element_values().name;
-        if !namespace(name.namespace(), "http://www.w3.org/1999/xhtml") {
-            return Ok(HtmlFragmentTokenizerState::Data);
-        }
-        let local = name.local_name();
-        Ok(if ["title", "textarea"].iter().any(|n| exact(local, n)) {
-            HtmlFragmentTokenizerState::Rcdata
-        } else if ["style", "xmp", "iframe", "noembed", "noframes"]
-            .iter()
-            .any(|n| exact(local, n))
-            || (exact(local, "noscript") && mode != HtmlParserScriptingMode::Disabled)
-        {
-            HtmlFragmentTokenizerState::Rawtext
-        } else if exact(local, "script") {
-            HtmlFragmentTokenizerState::ScriptData
-        } else if exact(local, "plaintext") {
-            HtmlFragmentTokenizerState::Plaintext
-        } else {
-            HtmlFragmentTokenizerState::Data
-        })
+        Ok(crate::fragment_initialization::tokenizer_state_for_context(
+            &self.element_values().name,
+            mode,
+        ))
     }
     /// Resets initial insertion mode with the single internal root replaced by context.
     /// Captured ancestor templates/tables are not put on the parser's open stack.
     pub fn initial_insertion_mode(&self) -> HtmlFragmentInsertionMode {
-        let name = &self.element_values().name;
-        if !namespace(name.namespace(), "http://www.w3.org/1999/xhtml") {
-            return HtmlFragmentInsertionMode::InBody;
-        }
-        let local = name.local_name();
-        if exact(local, "tr") {
-            HtmlFragmentInsertionMode::InRow
-        } else if ["tbody", "thead", "tfoot"].iter().any(|n| exact(local, n)) {
-            HtmlFragmentInsertionMode::InTableBody
-        } else if exact(local, "caption") {
-            HtmlFragmentInsertionMode::InCaption
-        } else if exact(local, "colgroup") {
-            HtmlFragmentInsertionMode::InColumnGroup
-        } else if exact(local, "table") {
-            HtmlFragmentInsertionMode::InTable
-        } else if exact(local, "template") {
-            HtmlFragmentInsertionMode::InTemplate
-        } else if exact(local, "frameset") {
-            HtmlFragmentInsertionMode::InFrameset
-        } else if exact(local, "html") {
-            HtmlFragmentInsertionMode::BeforeHead
-        } else {
-            HtmlFragmentInsertionMode::InBody
-        }
+        crate::fragment_initialization::insertion_mode_for_context(&self.element_values().name)
     }
 }
 /// Allocation-free ordered lookup. Every action is admitted before `step`;

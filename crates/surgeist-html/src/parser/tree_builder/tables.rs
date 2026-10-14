@@ -161,20 +161,11 @@ impl HeadState<'_> {
             {
                 return self.set_mode(InsertionMode::InCell, c);
             }
-            for (local, mode) in [
-                ("tr", InsertionMode::InRow),
-                ("tbody", InsertionMode::InTableBody),
-                ("thead", InsertionMode::InTableBody),
-                ("tfoot", InsertionMode::InTableBody),
-                ("caption", InsertionMode::InCaption),
-                ("colgroup", InsertionMode::InColumnGroup),
-                ("table", InsertionMode::InTable),
-                ("body", InsertionMode::InBody),
-                ("frameset", InsertionMode::InFrameset),
-            ] {
-                if super::tag_sets::html_named(name, local, c)? {
-                    return self.set_mode(mode, c);
-                }
+            if let Some(mode) = crate::fragment_initialization::fixed_insertion_mode(
+                crate::fragment_initialization::FixedInsertionScope::StackReset,
+                |local| super::tag_sets::html_named(name, local, c),
+            )? {
+                return self.set_mode(super::context::parser_insertion_mode(mode), c);
             }
             if index != 0 && super::tag_sets::html_named(name, "head", c)? {
                 return self.set_mode(InsertionMode::InHead, c);

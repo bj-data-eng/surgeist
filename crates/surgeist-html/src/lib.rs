@@ -15,6 +15,7 @@ mod construction;
 mod control_values;
 mod custom_names;
 mod details_rules;
+mod fragment_initialization;
 mod input;
 mod integration_points;
 mod interpretation;
@@ -43,6 +44,9 @@ pub use construction::*;
 pub use control_values::*;
 pub use custom_names::*;
 pub use details_rules::*;
+pub use fragment_initialization::{
+    HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode,
+};
 pub use input::*;
 pub use interpretation::*;
 pub use media::*;
