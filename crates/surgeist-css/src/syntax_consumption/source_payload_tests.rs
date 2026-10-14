@@ -568,6 +568,99 @@ fn supplied_unspelled_provider_operators_are_not_retokenized() {
 }
 
 #[test]
+fn owned_source_normalization_transfers_large_clean_and_masked_working_allocations() {
+    // The owned working allocation is an input resource, independent of the
+    // original snapshot and retained token spellings. Its transfer must not
+    // allocate and copy another complete working buffer.
+    for length in [4096, 131_072] {
+        for masked in [false, true] {
+            let (original, working, closing) = if masked {
+                (
+                    format!("/*{}*/f(x)g()", "x".repeat(length)),
+                    format!("{}f(x)g()", " ".repeat(length + 4)),
+                    length + 7,
+                )
+            } else {
+                let text = format!("f({})g()", "x".repeat(length));
+                (text.clone(), text, length + 2)
+            };
+            let snapshot = CssSourceSnapshot::new(&original);
+            let allocation = working.as_ptr();
+            let bytes = working.len();
+            let document = normalize(
+                SyntaxInput::Source(SourceWindow {
+                    text: Cow::Owned(working),
+                    range: 0..bytes,
+                    original: snapshot.clone(),
+                }),
+                SyntaxInputLimits {
+                    max_depth: 1,
+                    max_components: 4,
+                    max_known_spelling_bytes: bytes,
+                },
+                0,
+            )
+            .unwrap();
+            let function = document.lists[document.root]
+                .iter()
+                .copied()
+                .find(|node| document.nodes[*node].token().kind() == TokenKind::Function("f"))
+                .unwrap();
+            let children = document.nodes[function].children().unwrap();
+            eof(&document, children, &snapshot, closing);
+            eof(&document, document.root, &snapshot, bytes);
+            let retained = document.source.as_ref().unwrap();
+            assert!(retained.original.same_snapshot(&snapshot));
+            assert_eq!(retained.text.len(), bytes);
+            assert_eq!(
+                retained.text.as_ptr(),
+                allocation,
+                "normalization must move the actual {bytes}-byte working allocation"
+            );
+        }
+    }
+}
+
+#[test]
+fn recovery_normalization_transfers_working_allocation_and_keeps_explicit_closing_sites() {
+    let length = 65_536;
+    let original = format!("{{{}}}f(x)tail", "x".repeat(length));
+    let snapshot = CssSourceSnapshot::new(&original);
+    let working = original.clone();
+    let allocation = working.as_ptr();
+    let bytes = working.len();
+    let denied = 0..length + 2;
+    let mut builder = Builder::new(SyntaxInputLimits::default(), 0);
+    normalize_source(
+        &mut builder,
+        SourceWindow {
+            text: Cow::Owned(working),
+            range: 0..bytes,
+            original: snapshot.clone(),
+        },
+        std::slice::from_ref(&denied),
+    )
+    .unwrap();
+    let document = builder.document;
+    let [denied_node, function, tail] = document.lists[document.root].as_slice() else {
+        panic!("one denied boundary, one real function and its following identifier")
+    };
+    assert!(matches!(
+        document.nodes[*denied_node],
+        SyntaxNode::DeniedCurlyBlock { .. }
+    ));
+    assert_eq!(document.range(*denied_node), Some(denied));
+    assert_eq!(
+        document.nodes[*tail].token().kind(),
+        TokenKind::Ident("tail")
+    );
+    let children = document.nodes[*function].children().unwrap();
+    eof(&document, children, &snapshot, length + 5);
+    eof(&document, document.root, &snapshot, bytes);
+    assert_eq!(document.source.as_ref().unwrap().text.as_ptr(), allocation);
+}
+
+#[test]
 fn source_match_operators_are_two_delimiter_occurrences_with_real_ranges() {
     // Syntax 3 §4's vocabulary and §4.3.1's default dispatch give two delimiters.
     // Provider-combined match variants have no source-produced token identity.
