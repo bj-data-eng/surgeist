@@ -518,11 +518,8 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         if kind == Some(KnownHtmlElement::Input) {
             let raw = self.attribute(element, "type")?;
-            self.admit_intrinsic(element, raw, 22)?;
             let state = self
-                .interpreter
-                .input_type(element.name(), raw)
-                .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?
+                .admitted_input_type_report(element, raw)?
                 .intrinsic()
                 .copied()
                 .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;

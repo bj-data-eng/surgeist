@@ -43,7 +43,6 @@ pub use inert::*;
 mod control;
 pub use control::*;
 mod command_targets;
-#[cfg(test)]
 mod input_type;
 pub use command_targets::*;
 mod checkable;

@@ -96,13 +96,7 @@ impl HtmlSemanticSession<'_> {
             .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         let input_type = if kind == Some(KnownHtmlElement::Input) {
             let raw_type = self.attribute(element, "type")?;
-            // The selected input-type rule has 22 authored keyword candidates.
-            self.admit_intrinsic(element, raw_type, 22)?;
-            Some(
-                self.interpreter
-                    .input_type(element.name(), raw_type)
-                    .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?,
-            )
+            Some(self.admitted_input_type_report(element, raw_type)?)
         } else {
             None
         };

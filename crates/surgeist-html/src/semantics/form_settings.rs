@@ -226,11 +226,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<SubmitterRole, HtmlSemanticFailure> {
         let raw = self.attribute(element, "type")?;
         if kind == Some(KnownHtmlElement::Input) {
-            self.admit_intrinsic(element, raw, 22)?;
-            let report = self
-                .interpreter
-                .input_type(element.name(), raw)
-                .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
+            let report = self.admitted_input_type_report(element, raw)?;
             self.poll()?;
             let state = report
                 .intrinsic()

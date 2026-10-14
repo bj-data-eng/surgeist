@@ -1,3 +1,30 @@
+//! Finite semantic admission for HTML-owned input-type reports.
+
+use super::*;
+use crate::{HtmlAttributeReport, HtmlInputType};
+
+impl HtmlSemanticSession<'_> {
+    pub(super) fn admitted_input_type_report(
+        &mut self,
+        element: &HtmlCapturedElement,
+        raw: Option<&Attribute>,
+    ) -> Result<HtmlAttributeReport<HtmlInputType>, HtmlSemanticFailure> {
+        // INPUT_TYPE has 22 authored keyword rows. The former 23-row envelope
+        // in control/direction was conservative; use the same 22-row allowance
+        // as autocomplete, form settings and command targets. All other name
+        // and namespace allowances remain in the existing intrinsic envelope.
+        self.admit_intrinsic(element, raw, 22)?;
+        // The HTML owner supplies recognition, author state, defaults and raw
+        // provenance in one scan. HtmlInputTypeCursor supplies only a state;
+        // using it here would require a second scan to obtain the full report.
+        // Callers retain their existing raw-read order and post-operation polls
+        // so consolidation introduces no separate cancellation-order change.
+        self.interpreter
+            .input_type(element.name(), raw)
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::*;

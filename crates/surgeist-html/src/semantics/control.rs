@@ -936,10 +936,7 @@ impl<'a> HtmlSemanticSession<'a> {
         element: &'a HtmlCapturedElement,
     ) -> Result<HtmlAttributeReport<HtmlInputType>, HtmlSemanticFailure> {
         let raw = self.attribute(element, "type")?;
-        self.admit_intrinsic(element, raw, 23)?;
-        self.interpreter
-            .input_type(element.name(), raw)
-            .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))
+        self.admitted_input_type_report(element, raw)
     }
     fn control_input_type(
         &mut self,
