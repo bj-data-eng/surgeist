@@ -2211,6 +2211,339 @@ mod tests {
             .map(|i| view.unit(value, i).unwrap().unwrap())
             .collect()
     }
+
+    fn integration_request(
+        source: &str,
+        namespace: Namespace,
+        local: &str,
+        attributes: OrderedAttributes,
+    ) -> HtmlFragmentParseRequest {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 20_000_000, 1000, 100, 1000),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(namespace, None, local),
+                attributes.clone(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let HtmlCapturedNodeKind::Element(element) = context
+            .capture()
+            .node(context.context_element().subject())
+            .unwrap()
+            .kind()
+        else {
+            panic!("captured context element")
+        };
+        assert_eq!(
+            element.attributes(),
+            &attributes,
+            "exact raw records survive"
+        );
+        HtmlFragmentParseRequest::new(
+            HtmlSource::utf8(source),
+            context,
+            super::super::tests::limits(100)
+                .into_builder()
+                .work_credits(1_000_000)
+                .finish()
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn encoding_attribute(
+        namespace: Namespace,
+        prefix: Option<&str>,
+        local: &str,
+        value: &str,
+    ) -> OrderedAttributes {
+        OrderedAttributes::new([Attribute::new(
+            QualifiedName::new(namespace, prefix.map(DocumentString::from), local),
+            value,
+        )])
+        .unwrap()
+    }
+
+    fn integration_observation(
+        namespace: Namespace,
+        local: &str,
+        attributes: OrderedAttributes,
+    ) -> (bool, Option<Vec<u16>>) {
+        let request = integration_request("<x>A</x>", namespace, local, attributes);
+        let classified = request.context().is_html_integration_point();
+        let mut driver = initialized_driver(&request);
+        complete(&mut driver);
+        let namespace = {
+            let (root, mut view) = driver.completed_native_view().unwrap();
+            assert_eq!(view.child_count(&root).unwrap(), 1);
+            let child = view.child_at(&root, 0).unwrap().unwrap();
+            let NativeKind::Element(name) = view.kind(&child).unwrap() else {
+                panic!("actual parsed child")
+            };
+            assert_eq!(units(&mut view, &name.local), [120]);
+            name.namespace.as_ref().map(|value| units(&mut view, value))
+        };
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        (classified, namespace)
+    }
+
+    fn assert_encoding_prefix(prefix: Option<&str>) {
+        // HTML877d §13.2.6 and §13.4 step 19, extended to the accepted raw
+        // domain by #1175: namespace/local-name identity ignores prefix metadata.
+        // These literal expectations do not come from either classifier.
+        let actual: Vec<_> = [
+            "text/html",
+            "TeXt/HtMl",
+            "application/xhtml+xml",
+            "ApPlIcAtIoN/XhTmL+XmL",
+        ]
+        .into_iter()
+        .map(|value| {
+            integration_observation(
+                Namespace::mathml(),
+                "annotation-xml",
+                encoding_attribute(Namespace::none(), prefix, "encoding", value),
+            )
+        })
+        .collect();
+        let expected = vec![
+            (
+                true,
+                Some(
+                    "http://www.w3.org/1999/xhtml"
+                        .encode_utf16()
+                        .collect::<Vec<_>>()
+                ),
+            );
+            4
+        ];
+        assert_eq!(actual, expected, "retained prefix {prefix:?}");
+    }
+
+    #[test]
+    fn annotation_xml_absent_encoding_prefix_qualifies_both_mime_values() {
+        assert_encoding_prefix(None);
+    }
+
+    #[test]
+    fn annotation_xml_empty_encoding_prefix_qualifies_both_mime_values() {
+        assert_encoding_prefix(Some(""));
+    }
+
+    #[test]
+    fn annotation_xml_nonempty_encoding_prefix_qualifies_both_mime_values() {
+        assert_encoding_prefix(Some("p"));
+    }
+
+    #[test]
+    fn annotation_xml_exact_attribute_identity_and_unpadded_values_control_integration() {
+        for attributes in [
+            OrderedAttributes::default(),
+            encoding_attribute(Namespace::svg(), None, "encoding", "text/html"),
+            encoding_attribute(
+                Namespace::from_uri("urn:encoding"),
+                Some("p"),
+                "encoding",
+                "text/html",
+            ),
+            encoding_attribute(Namespace::none(), None, "Encoding", "text/html"),
+            encoding_attribute(Namespace::none(), None, "p:encoding", "text/html"),
+            encoding_attribute(Namespace::none(), None, ":encoding", "text/html"),
+            encoding_attribute(Namespace::none(), None, "other", "text/html"),
+            encoding_attribute(Namespace::none(), None, "encoding", " text/html"),
+            encoding_attribute(Namespace::none(), None, "encoding", "text/html "),
+            encoding_attribute(
+                Namespace::none(),
+                None,
+                "encoding",
+                "text/html;charset=utf-8",
+            ),
+            encoding_attribute(Namespace::none(), None, "encoding", "text/xml"),
+            encoding_attribute(Namespace::none(), None, "encoding", ""),
+        ] {
+            assert_eq!(
+                integration_observation(Namespace::mathml(), "annotation-xml", attributes.clone()),
+                (
+                    false,
+                    Some(
+                        "http://www.w3.org/1998/Math/MathML"
+                            .encode_utf16()
+                            .collect()
+                    )
+                ),
+                "attribute {attributes:?}",
+            );
+        }
+        for (namespace, local, child_namespace) in [
+            (Namespace::none(), "annotation-xml", None),
+            (
+                Namespace::svg(),
+                "annotation-xml",
+                Some("http://www.w3.org/2000/svg"),
+            ),
+            (
+                Namespace::html(),
+                "annotation-xml",
+                Some("http://www.w3.org/1999/xhtml"),
+            ),
+            (
+                Namespace::mathml(),
+                "Annotation-xml",
+                Some("http://www.w3.org/1998/Math/MathML"),
+            ),
+            (
+                Namespace::mathml(),
+                "other",
+                Some("http://www.w3.org/1998/Math/MathML"),
+            ),
+        ] {
+            assert_eq!(
+                integration_observation(
+                    namespace,
+                    local,
+                    encoding_attribute(Namespace::none(), None, "encoding", "text/html")
+                ),
+                (
+                    false,
+                    child_namespace.map(|value| value.encode_utf16().collect())
+                ),
+                "element {local}",
+            );
+        }
+    }
+
+    #[test]
+    fn annotation_xml_actual_nodes_override_opposite_adjusted_contexts() {
+        // §13.2.4.2 selects the captured context only while the open stack has
+        // its synthetic root alone. Later dispatch uses the actual current node.
+        for (value, source, path, child_namespace, sibling_namespace) in [
+            (
+                "text/html",
+                "<math><annotation-xml encoding='text/xml'><x>A</x></annotation-xml></math><x>B</x>",
+                &[0, 0, 0][..],
+                "http://www.w3.org/1998/Math/MathML",
+                "http://www.w3.org/1999/xhtml",
+            ),
+            (
+                "text/xml",
+                "<annotation-xml encoding='text/html'><x>A</x></annotation-xml><x>B</x>",
+                &[0, 0][..],
+                "http://www.w3.org/1999/xhtml",
+                "http://www.w3.org/1998/Math/MathML",
+            ),
+            (
+                "text/html",
+                "<math><annotation-xml p:encoding='text/html'><x>A</x></annotation-xml></math><x>B</x>",
+                &[0, 0, 0][..],
+                "http://www.w3.org/1998/Math/MathML",
+                "http://www.w3.org/1999/xhtml",
+            ),
+            (
+                "text/html",
+                "<math><annotation-xml :encoding='text/html'><x>A</x></annotation-xml></math><x>B</x>",
+                &[0, 0, 0][..],
+                "http://www.w3.org/1998/Math/MathML",
+                "http://www.w3.org/1999/xhtml",
+            ),
+        ] {
+            let request = integration_request(
+                source,
+                Namespace::mathml(),
+                "annotation-xml",
+                encoding_attribute(Namespace::none(), None, "encoding", value),
+            );
+            let mut driver = initialized_driver(&request);
+            complete(&mut driver);
+            {
+                let (root, mut view) = driver.completed_native_view().unwrap();
+                assert_eq!(view.child_count(&root).unwrap(), 2);
+                let mut child = root.clone();
+                for ordinal in path {
+                    child = view.child_at(&child, *ordinal).unwrap().unwrap();
+                }
+                for (child, namespace) in [
+                    (child, child_namespace),
+                    (view.child_at(&root, 1).unwrap().unwrap(), sibling_namespace),
+                ] {
+                    let NativeKind::Element(name) = view.kind(&child).unwrap() else {
+                        panic!("actual x")
+                    };
+                    assert_eq!(units(&mut view, &name.local), [120]);
+                    assert_eq!(
+                        units(&mut view, &name.namespace.unwrap()),
+                        namespace.encode_utf16().collect::<Vec<_>>()
+                    );
+                }
+            }
+            driver.release().unwrap();
+            super::super::tests::assert_released(&driver.control);
+        }
+    }
+
+    #[test]
+    fn annotation_xml_irrelevant_attribute_payloads_remain_lazy_under_work_limit() {
+        // Ten million units cannot be inspected within a million work credits.
+        // Wrong element/attribute roles and impossible MIME lengths must finish
+        // without scanning the value. The source remains the same small literal.
+        let large = "z".repeat(10_000_000);
+        for (namespace, local, attribute_local, classified, child_namespace) in [
+            (
+                Namespace::svg(),
+                "foreignObject",
+                "encoding",
+                true,
+                "http://www.w3.org/1999/xhtml",
+            ),
+            (
+                Namespace::mathml(),
+                "other",
+                "encoding",
+                false,
+                "http://www.w3.org/1998/Math/MathML",
+            ),
+            (
+                Namespace::mathml(),
+                "annotation-xml",
+                "other",
+                false,
+                "http://www.w3.org/1998/Math/MathML",
+            ),
+            (
+                Namespace::mathml(),
+                "annotation-xml",
+                "encoding",
+                false,
+                "http://www.w3.org/1998/Math/MathML",
+            ),
+        ] {
+            assert_eq!(
+                integration_observation(
+                    namespace,
+                    local,
+                    encoding_attribute(Namespace::none(), None, attribute_local, &large)
+                ),
+                (classified, Some(child_namespace.encode_utf16().collect())),
+                "element {local}, attribute {attribute_local}",
+            );
+        }
+    }
     #[test]
     fn captured_integration_points_use_actual_qualified_encoding_and_math_text_exceptions() {
         for (namespace, local, attrs, source, expected) in [
