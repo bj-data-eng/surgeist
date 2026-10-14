@@ -749,7 +749,7 @@ impl CssColorBankLengths {
             evaluation,
         }
     }
-    fn empty(self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn empty(self) -> Result<(), CssColorProtocolError> {
         if self.algorithm == 0 && self.arithmetic == 0 && self.evaluation == 0 {
             Ok(())
         } else {
@@ -784,47 +784,63 @@ fn source(context: &core::CheckpointContext<'_, '_>) -> CssColorSourceDescriptor
         facts: context.expected,
     }
 }
-fn numerical_error(
+/// Extract the finite numerical failure; protocol refusals remain site-less.
+pub(super) fn computation_failure(
     error: surgeist_color::ComputationError,
-    range: CssColorInputRange,
-) -> CssColorOperationError {
+) -> Result<ColorError, CssColorProtocolError> {
     match error {
-        surgeist_color::ComputationError::Numerical(error) => CssColorOperationError::Numerical {
-            error,
-            site: CssColorResolutionSite::Source(range),
-        },
-        surgeist_color::ComputationError::Interpolation(
+        surgeist_color::ComputationError::Numerical(error)
+        | surgeist_color::ComputationError::Interpolation(
             surgeist_color::InterpolationError::Numerical(error),
-        ) => CssColorOperationError::Numerical {
-            error,
-            site: CssColorResolutionSite::Source(range),
-        },
+        ) => Ok(error),
         surgeist_color::ComputationError::Protocol(error) => {
-            CssColorProtocolError::NumericalProtocol(error).into()
+            Err(CssColorProtocolError::NumericalProtocol(error))
         }
         _ => unreachable!(
             "CSS fixed transformations use checked numerical requests without interpolation policy errors"
         ),
     }
 }
-fn numerical_serialization_error(
+pub(super) fn serialization_failure(
     error: surgeist_color::SerializationError,
-    range: CssColorInputRange,
-) -> CssColorOperationError {
+) -> Result<ColorError, CssColorProtocolError> {
     match error {
-        surgeist_color::SerializationError::Numerical(error) => CssColorOperationError::Numerical {
-            error,
-            site: CssColorResolutionSite::Source(range),
-        },
+        surgeist_color::SerializationError::Numerical(error) => Ok(error),
         surgeist_color::SerializationError::Protocol(error) => {
-            CssColorProtocolError::NumericalProtocol(error).into()
+            Err(CssColorProtocolError::NumericalProtocol(error))
         }
         _ => unreachable!(
             "controlled serialization does not execute ordinary allocation or admission policy"
         ),
     }
 }
-fn numerical_description(action: surgeist_color::ActionDescription) -> CssColorActionDescription {
+fn numerical_error(
+    error: surgeist_color::ComputationError,
+    range: CssColorInputRange,
+) -> CssColorOperationError {
+    match computation_failure(error) {
+        Ok(error) => CssColorOperationError::Numerical {
+            error,
+            site: CssColorResolutionSite::Source(range),
+        },
+        Err(error) => error.into(),
+    }
+}
+fn numerical_serialization_error(
+    error: surgeist_color::SerializationError,
+    range: CssColorInputRange,
+) -> CssColorOperationError {
+    match serialization_failure(error) {
+        Ok(error) => CssColorOperationError::Numerical {
+            error,
+            site: CssColorResolutionSite::Source(range),
+        },
+        Err(error) => error.into(),
+    }
+}
+pub(super) fn numerical_description(
+    action: surgeist_color::ActionDescription,
+) -> CssColorActionDescription {
     use surgeist_color::ActionDescription as N;
     match action {
         N::Compute(k) => CssColorActionDescription::Compute(CssColorKernel::Numerical(k)),
@@ -834,6 +850,25 @@ fn numerical_description(action: surgeist_color::ActionDescription) -> CssColorA
         N::EmitByte { unit } => CssColorActionDescription::EmitUnit { unit },
         N::Ready => CssColorActionDescription::Serialized,
         N::Failed | N::Abandoned => CssColorActionDescription::Stopped,
+    }
+}
+/// Numerical actions observe no CSS input encoding, grammar bank or fact table.
+pub(super) fn numerical_layout(
+    description: CssColorActionDescription,
+    numerical: surgeist_color::ActionLayout,
+) -> CssColorActionLayout {
+    CssColorActionLayout {
+        input_unit_bytes: 0,
+        slot_read_bytes: 0,
+        slot_write_bytes: 0,
+        fact_records: [0; 3],
+        output_unit_bytes: numerical.output_bytes,
+        numerical_read_bytes: numerical.read_bytes,
+        numerical_write_bytes: numerical.write_bytes,
+        kernel: match description {
+            CssColorActionDescription::Compute(kernel) => kernel,
+            _ => CssColorKernel::Transition,
+        },
     }
 }
 
@@ -1072,11 +1107,7 @@ impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
         self.operation.action()
     }
     pub fn layout(&mut self) -> CssColorActionLayout {
-        let mut result = layout(
-            self.description(),
-            CssColorInputKind::Utf8,
-            CssColorKernel::Transition,
-        );
+        let description = self.description();
         let numerical = self
             .operation
             .numerical
@@ -1084,13 +1115,7 @@ impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
             .expect("owned serialization")
             .next_action()
             .layout();
-        result.numerical_read_bytes = numerical.read_bytes;
-        result.numerical_write_bytes = numerical.write_bytes;
-        result.output_unit_bytes = numerical.output_bytes;
-        if let CssColorActionDescription::Compute(k) = self.description() {
-            result.kernel = k;
-        }
-        result
+        numerical_layout(description, numerical)
     }
     #[expect(
         clippy::result_large_err,

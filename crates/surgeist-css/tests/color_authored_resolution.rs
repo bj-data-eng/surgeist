@@ -1331,3 +1331,857 @@ fn legitimate_contextual_unit_leaves_preserve_source_authored_reachability_and_o
         matches!(result.outcome(),CssAuthoredColorOutcome::Used(value) if value.channels()==[Some(1.0),Some(0.0),Some(0.0)])
     );
 }
+
+fn completed_with_banks<'css, 'authored: 'css, 'facts>(
+    owner: &'css mut CssColorOperationOwner,
+    root: &'authored CssColor,
+    facts: &'facts CssColorFacts<'facts>,
+) -> (
+    CssAuthoredColorCheckpoint<'css, 'authored, 'facts>,
+    [Vec<CssColorSlot<'css>>; 3],
+) {
+    let mut path = CssColorPathBuffer::new();
+    let mut banks = std::array::from_fn(|_| Vec::new());
+    let mut operation = Some(
+        CssAuthoredColorOperation::resolve_authored(
+            owner,
+            root,
+            facts,
+            facts.identity(),
+            &mut path,
+        )
+        .unwrap(),
+    );
+    while operation.as_ref().unwrap().action() != CssAuthoredColorActionDescription::Ready {
+        step(operation.as_mut().unwrap(), &mut banks).unwrap();
+    }
+    let checkpoint = CssAuthoredColorOperation::take(&mut operation).unwrap();
+    drop(operation);
+    path.cleanup().unwrap();
+    (checkpoint, banks)
+}
+fn completed<'css, 'authored: 'css, 'facts>(
+    owner: &'css mut CssColorOperationOwner,
+    root: &'authored CssColor,
+    facts: &'facts CssColorFacts<'facts>,
+) -> CssAuthoredColorCheckpoint<'css, 'authored, 'facts> {
+    let (checkpoint, banks) = completed_with_banks(owner, root, facts);
+    drop(banks);
+    checkpoint
+}
+fn native_digit(owner: &mut surgeist_color::OperationOwner) -> surgeist_color::DigitSlot<'_> {
+    let mut formatter = surgeist_color::format::FiniteFormatter::new(
+        owner,
+        1.0,
+        surgeist_color::format::RoundingMode::TowardPositiveInfinity,
+    )
+    .unwrap();
+    loop {
+        let mut action = formatter.next_action();
+        match action.description() {
+            surgeist_color::ActionDescription::Compute(_) => action.compute().unwrap(),
+            surgeist_color::ActionDescription::AppendDigit { .. } => {
+                break action.record().unwrap();
+            }
+            other => panic!("native digit fixture {other:?}"),
+        }
+    }
+}
+
+fn empty_banks() -> CssColorBankLengths {
+    CssColorBankLengths::new(0, 0, 0)
+}
+
+#[test]
+fn used_and_fallback_projection_only_consume_the_actual_matching_outcome() {
+    let facts = facts();
+    let root = color("red");
+    let mut owner = CssColorOperationOwner::new();
+    let mut slot = Some(completed(&mut owner, &root, &facts));
+    assert!(matches!(
+        CssAuthoredColorCheckpoint::fallback(&mut slot, Color::opaque_black()),
+        Err(CssColorProtocolError::WrongAction)
+    ));
+    assert!(slot.as_ref().unwrap().is_current());
+    assert!(std::ptr::eq(slot.as_ref().unwrap().authored(), &root));
+    let used = CssAuthoredColorCheckpoint::take_used(&mut slot).unwrap();
+    assert!(slot.is_none());
+    assert_eq!(used.value().srgb_bytes(), Some([255, 0, 0]));
+    assert!(used.standard_failure().is_none());
+    assert!(used.is_current());
+    assert_eq!(used.fact_identity(), facts.identity());
+    assert!(std::ptr::eq(used.authored(), &root));
+    assert!(std::ptr::eq(used.facts(), &facts));
+
+    let invalid = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
+    let mut owner2 = CssColorOperationOwner::new();
+    let mut slot = Some(completed(&mut owner2, &invalid, &facts));
+    let CssAuthoredColorOutcome::StandardFailure(cause) = slot.as_ref().unwrap().outcome() else {
+        panic!("negative calculated weight")
+    };
+    let backing = cause.path.steps().as_ptr();
+    let capacity = cause.path.capacity();
+    assert!(matches!(
+        CssAuthoredColorCheckpoint::take_used(&mut slot),
+        Err(CssColorProtocolError::WrongAction)
+    ));
+    assert!(slot.as_ref().unwrap().is_current());
+    let used = CssAuthoredColorCheckpoint::fallback(&mut slot, Color::from_srgba8([1, 2, 3, 255]))
+        .unwrap();
+    let cause = used.standard_failure().unwrap();
+    assert_eq!(cause.kind, CssColorStandardFailureKind::InvalidComponents);
+    assert_eq!(
+        cause.path.steps(),
+        [CssColorPathStep::First, CssColorPathStep::MixWeight(0)]
+    );
+    assert_eq!(cause.path.steps().as_ptr(), backing);
+    assert_eq!(cause.path.capacity(), capacity);
+    assert_eq!(used.value().srgb_bytes(), Some([1, 2, 3]));
+    assert!(matches!(
+        CssAuthoredColorCheckpoint::take_used(&mut slot),
+        Err(CssColorProtocolError::EmptySlot)
+    ));
+}
+
+#[test]
+fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_numerical_borrow() {
+    use surgeist_color::{
+        Computation, NumericalRequest, OperationOwner, SerializationRequest, Transformation,
+    };
+    let facts = facts();
+    let text = "rgb(100% 0 calc(16 + 1) / .5)";
+    let root = color(text);
+    let mut css_owner = CssColorOperationOwner::new();
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
+    let mut used = Some(CssAuthoredColorCheckpoint::take_used(&mut resolved).unwrap());
+    assert_eq!(
+        used.as_ref().unwrap().value().channels(),
+        [Some(1.0), Some(0.0), Some(17.0 / 255.0)]
+    );
+    assert_eq!(used.as_ref().unwrap().value().alpha(), Some(0.5));
+    let mut numerical_owner = OperationOwner::new();
+    for transformation in [
+        Transformation::ForceOpaqueAlpha,
+        Transformation::QuantizeSrgb,
+    ] {
+        let mut transform = Some(
+            CssAuthoredUsedColorCheckpoint::transform(
+                &mut used,
+                &mut numerical_owner,
+                transformation,
+                empty_banks(),
+            )
+            .unwrap(),
+        );
+        assert!(used.is_none());
+        assert!(matches!(
+            CssAuthoredColorTransformation::take(&mut transform),
+            Err(CssColorOperationError::Protocol(
+                CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::NotReady)
+            ))
+        ));
+        assert!(transform.is_some());
+        let action = transform.as_mut().unwrap().next_action();
+        let layout = action.layout();
+        assert_eq!(layout.numerical.input_unit_bytes, 0);
+        assert_eq!(layout.numerical.slot_read_bytes, 0);
+        assert_eq!(layout.numerical.fact_records, [0; 3]);
+        assert!(layout.root_path_read_bytes >= std::mem::size_of::<CssColorComponentPath>());
+        assert!(layout.root_path_write_bytes >= std::mem::size_of::<CssColorComponentPath>());
+        action.compute().unwrap();
+        used = Some(CssAuthoredColorTransformation::take(&mut transform).unwrap());
+        assert!(transform.is_none());
+    }
+    assert_eq!(
+        used.as_ref().unwrap().value().srgb_bytes(),
+        Some([255, 0, 17])
+    );
+    assert_eq!(used.as_ref().unwrap().value().alpha(), Some(1.0));
+    let mut serializer = Some(
+        CssAuthoredUsedColorCheckpoint::serialize(
+            &mut used,
+            &mut numerical_owner,
+            SerializationRequest::HtmlCompatible,
+            empty_banks(),
+            0,
+        )
+        .unwrap(),
+    );
+    assert!(matches!(
+        CssAuthoredColorSerialization::take(&mut serializer),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::NotReady)
+        ))
+    ));
+    let mut digits = Vec::new();
+    let mut output = Vec::new();
+    loop {
+        let pending = serializer.as_ref().unwrap().action();
+        if pending == CssColorActionDescription::Serialized {
+            break;
+        }
+        let mut action = serializer.as_mut().unwrap().next_action();
+        let layout = action.layout();
+        assert_eq!(layout.numerical.input_unit_bytes, 0);
+        match pending {
+            CssColorActionDescription::Compute(_) => action.compute().unwrap(),
+            CssColorActionDescription::ReadNumericalDigit { index } => {
+                action.read_numerical_digit(index, &digits[index]).unwrap()
+            }
+            CssColorActionDescription::AppendNumericalDigit { index } => {
+                assert_eq!(index, digits.len());
+                digits.push(action.numerical_record().unwrap());
+                action.numerical_written(index, &digits[index]).unwrap();
+            }
+            CssColorActionDescription::UpdateNumericalDigit { index } => {
+                digits[index] = action.numerical_record().unwrap();
+                action.numerical_written(index, &digits[index]).unwrap();
+            }
+            CssColorActionDescription::EmitUnit { unit } => {
+                assert_eq!(layout.numerical.output_unit_bytes, 1);
+                output.push(unit);
+                action.emitted(unit).unwrap();
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    let receipt = CssAuthoredColorSerialization::take(&mut serializer).unwrap();
+    assert_eq!(output, b"#ff0011");
+    assert_eq!(receipt.length(), 7);
+    assert_eq!(receipt.value().srgb_bytes(), Some([255, 0, 17]));
+    assert!(receipt.is_current());
+    assert!(receipt.standard_failure().is_none());
+    assert!(std::ptr::eq(receipt.authored(), &root));
+    assert!(std::ptr::eq(receipt.facts(), &facts));
+    assert_eq!(receipt.fact_identity(), facts.identity());
+    drop(digits);
+    drop(serializer);
+    let mut next = Some(
+        Computation::new(
+            &mut numerical_owner,
+            NumericalRequest::WithAlpha {
+                value: receipt.value(),
+                alpha: None,
+            },
+        )
+        .unwrap(),
+    );
+    next.as_mut().unwrap().next_action().compute().unwrap();
+    assert_eq!(Computation::take(&mut next).unwrap().alpha(), None);
+    assert_eq!(receipt.length(), output.len());
+    // Literal expected output above is the oracle; source parity is additional.
+    let source = parse_used_color(
+        CssColorInput::Utf8(text.as_bytes()),
+        CssColorGrammarRequest::WholeColor,
+        &facts,
+        facts.identity(),
+        CssColorOrdinaryLimits {
+            input_units: 1000,
+            algorithm_records: 100_000,
+            arithmetic_records: 10_000,
+            evaluation_records: 10_000,
+            actions: 30_000_000,
+        },
+    )
+    .unwrap();
+    let CssColorOrdinaryOutcome::Used(value) = source.outcome() else {
+        panic!("source valid")
+    };
+    let expected = value
+        .transformed(Transformation::ForceOpaqueAlpha)
+        .unwrap()
+        .transformed(Transformation::QuantizeSrgb)
+        .unwrap();
+    assert!(expected.identical(receipt.value()));
+}
+
+#[test]
+fn numerical_initialization_refusals_preserve_the_original_checkpoint_and_phase() {
+    use surgeist_color::{OperationOwner, SerializationRequest, Transformation};
+    let facts = facts();
+    let root = color("rgb(calc(1 + 2) 0 0)");
+    let mut css_owner = CssColorOperationOwner::new();
+    let (checkpoint, mut banks) = completed_with_banks(&mut css_owner, &root, &facts);
+    let mut resolved = Some(checkpoint);
+    let mut used = Some(CssAuthoredColorCheckpoint::take_used(&mut resolved).unwrap());
+    let original = used.as_ref().unwrap().value();
+    let mut numerical_owner = OperationOwner::new();
+    for index in 0..3 {
+        assert!(!banks[index].is_empty());
+        let lengths = CssColorBankLengths::new(banks[0].len(), banks[1].len(), banks[2].len());
+        assert!(matches!(
+            CssAuthoredUsedColorCheckpoint::transform(
+                &mut used,
+                &mut numerical_owner,
+                Transformation::ForceOpaqueAlpha,
+                lengths
+            ),
+            Err(CssColorOperationError::Protocol(
+                CssColorProtocolError::StorageNotEmpty
+            ))
+        ));
+        assert!(used.as_ref().unwrap().is_current());
+        assert!(used.as_ref().unwrap().value().identical(original));
+        assert!(matches!(
+            CssAuthoredUsedColorCheckpoint::serialize(
+                &mut used,
+                &mut numerical_owner,
+                SerializationRequest::Css,
+                lengths,
+                0
+            ),
+            Err(CssColorOperationError::Protocol(
+                CssColorProtocolError::StorageNotEmpty
+            ))
+        ));
+        assert!(used.as_ref().unwrap().is_current());
+        drop(std::mem::take(&mut banks[index]));
+    }
+    drop(banks);
+    let mut occupied_owner = OperationOwner::new();
+    let occupied_digits = vec![native_digit(&mut occupied_owner)];
+    assert!(matches!(
+        CssAuthoredUsedColorCheckpoint::serialize(
+            &mut used,
+            &mut numerical_owner,
+            SerializationRequest::Css,
+            empty_banks(),
+            occupied_digits.len()
+        ),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::NumericalProtocol(
+                surgeist_color::ProtocolError::StorageNotEmpty
+            )
+        ))
+    ));
+    drop(occupied_digits);
+    assert!(used.as_ref().unwrap().is_current());
+    assert!(std::ptr::eq(used.as_ref().unwrap().authored(), &root));
+    assert!(std::ptr::eq(used.as_ref().unwrap().facts(), &facts));
+    let init = CssAuthoredColorTransformation::initialization_layout();
+    assert_eq!(
+        init.register_bytes,
+        CssAuthoredColorTransformation::register_bytes()
+    );
+    assert_eq!(
+        init.checkpoint_bytes,
+        CssAuthoredUsedColorCheckpoint::register_bytes()
+    );
+    assert_eq!(
+        init.css_owner_bytes,
+        std::mem::size_of::<CssColorOperationOwner>()
+    );
+    assert_eq!(init.numerical_owner_bytes, OperationOwner::layout_bytes());
+    assert_eq!(
+        init.bank_length_bytes,
+        std::mem::size_of::<CssColorBankLengths>()
+    );
+    assert_eq!(init.numerical_digit_length_bytes, 0);
+    let serialization_init = CssAuthoredColorSerialization::initialization_layout();
+    assert_eq!(
+        serialization_init.numerical_digit_length_bytes,
+        std::mem::size_of::<usize>()
+    );
+    assert_eq!(
+        serialization_init.register_bytes,
+        CssAuthoredColorSerialization::register_bytes()
+    );
+    let mut transform = Some(
+        CssAuthoredUsedColorCheckpoint::transform(
+            &mut used,
+            &mut numerical_owner,
+            Transformation::QuantizeSrgb,
+            empty_banks(),
+        )
+        .unwrap(),
+    );
+    let pending = transform.as_ref().unwrap().action();
+    {
+        let _guard = transform.as_mut().unwrap().next_action();
+    }
+    assert_eq!(transform.as_ref().unwrap().action(), pending);
+    transform.as_mut().unwrap().abandon();
+    assert!(CssAuthoredColorTransformation::take(&mut transform).is_err());
+    let recovered = CssAuthoredColorTransformation::recover(&mut transform).unwrap();
+    assert!(recovered.value().identical(original));
+    assert!(recovered.is_current());
+    assert!(transform.is_none());
+}
+
+#[test]
+fn numerical_failure_transfers_one_root_site_and_recovers_the_distinct_original_fallback_cause() {
+    use surgeist_color::{ColorError, OperationOwner, Transformation};
+    let facts = facts();
+    let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
+    let mut css_owner = CssColorOperationOwner::new();
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
+    let CssAuthoredColorOutcome::StandardFailure(cause) = resolved.as_ref().unwrap().outcome()
+    else {
+        panic!("negative mix weight")
+    };
+    let cause_ptr = cause.path.steps().as_ptr();
+    let origin_source_ptr = match cause.origin.as_ref().unwrap() {
+        CssValueOrigin::Parsed(origin) => origin.source().as_str().as_ptr(),
+        _ => panic!("parsed"),
+    };
+    let fallback = Color::try_new(
+        ColorSpace::Lab,
+        [Some(50.0), Some(0.0), Some(0.0)],
+        Some(0.5),
+    )
+    .unwrap();
+    let mut used = Some(CssAuthoredColorCheckpoint::fallback(&mut resolved, fallback).unwrap());
+    let mut numerical_owner = OperationOwner::new();
+    let mut transform = Some(
+        CssAuthoredUsedColorCheckpoint::transform(
+            &mut used,
+            &mut numerical_owner,
+            Transformation::QuantizeSrgb,
+            empty_banks(),
+        )
+        .unwrap(),
+    );
+    let error = transform
+        .as_mut()
+        .unwrap()
+        .next_action()
+        .compute()
+        .unwrap_err();
+    let CssColorOperationError::Numerical {
+        error,
+        site: CssColorResolutionSite::Authored { path, origin },
+    } = error
+    else {
+        panic!("authored numerical site")
+    };
+    assert_eq!(error, ColorError::RequiresSrgb);
+    assert!(path.steps().is_empty());
+    assert_eq!(path.capacity(), 0);
+    assert!(origin.is_none());
+    assert_eq!(
+        transform.as_ref().unwrap().action(),
+        CssColorActionDescription::Stopped
+    );
+    assert_eq!(
+        transform.as_mut().unwrap().next_action().compute(),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::Terminal
+        ))
+    );
+    assert!(matches!(
+        CssAuthoredColorTransformation::take(&mut transform),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::Terminal
+        ))
+    ));
+    assert!(transform.is_some());
+    transform.as_mut().unwrap().abandon();
+    let recovered = CssAuthoredColorTransformation::recover(&mut transform).unwrap();
+    assert!(recovered.value().identical(fallback));
+    assert!(std::ptr::eq(recovered.authored(), &root));
+    assert!(std::ptr::eq(recovered.facts(), &facts));
+    let cause = recovered.standard_failure().unwrap();
+    assert_eq!(
+        cause.path.steps(),
+        [CssColorPathStep::First, CssColorPathStep::MixWeight(0)]
+    );
+    assert_eq!(cause.path.steps().as_ptr(), cause_ptr);
+    let CssValueOrigin::Parsed(origin) = cause.origin.as_ref().unwrap() else {
+        panic!("parsed")
+    };
+    assert_eq!(origin.source().as_str().as_ptr(), origin_source_ptr);
+    assert_eq!(origin.span().start().byte_offset().value(), 33);
+    assert!(recovered.is_current());
+}
+
+#[test]
+fn serialization_failure_transfers_one_root_site_and_keeps_the_original_cause_for_recovery() {
+    use surgeist_color::{ColorError, OperationOwner, SerializationRequest};
+    let facts = facts();
+    let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
+    let mut css_owner = CssColorOperationOwner::new();
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
+    let original = Color::try_new(
+        ColorSpace::Hsl,
+        [Some(0.0), Some(1e308), Some(1e308)],
+        Some(1.0),
+    )
+    .unwrap();
+    let mut used = Some(CssAuthoredColorCheckpoint::fallback(&mut resolved, original).unwrap());
+    let cause_ptr = used
+        .as_ref()
+        .unwrap()
+        .standard_failure()
+        .unwrap()
+        .path
+        .steps()
+        .as_ptr();
+    let mut numerical_owner = OperationOwner::new();
+    let mut serializer = Some(
+        CssAuthoredUsedColorCheckpoint::serialize(
+            &mut used,
+            &mut numerical_owner,
+            SerializationRequest::Css,
+            empty_banks(),
+            0,
+        )
+        .unwrap(),
+    );
+    let error = serializer
+        .as_mut()
+        .unwrap()
+        .next_action()
+        .compute()
+        .unwrap_err();
+    let CssColorOperationError::Numerical {
+        error,
+        site: CssColorResolutionSite::Authored { path, origin },
+    } = error
+    else {
+        panic!("root site")
+    };
+    assert_eq!(error, ColorError::Unrepresentable);
+    assert!(path.steps().is_empty());
+    assert_eq!(path.capacity(), 0);
+    assert!(origin.is_none());
+    assert_eq!(
+        serializer.as_ref().unwrap().action(),
+        CssColorActionDescription::Stopped
+    );
+    assert!(matches!(
+        CssAuthoredColorSerialization::take(&mut serializer),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::Terminal
+        ))
+    ));
+    assert_eq!(
+        serializer.as_mut().unwrap().next_action().compute(),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::Terminal
+        ))
+    );
+    let recovered = CssAuthoredColorSerialization::recover(&mut serializer).unwrap();
+    assert!(recovered.value().identical(original));
+    assert_eq!(
+        recovered.standard_failure().unwrap().path.steps().as_ptr(),
+        cause_ptr
+    );
+    assert!(std::ptr::eq(recovered.authored(), &root));
+    assert!(std::ptr::eq(recovered.facts(), &facts));
+}
+
+#[test]
+fn computed_but_untaken_authored_transform_recovers_original_color_and_same_fallback_allocation() {
+    use surgeist_color::{OperationOwner, Transformation};
+    let facts = facts();
+    let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
+    let mut css_owner = CssColorOperationOwner::new();
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
+    let original = Color::try_new(
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb),
+        [Some(0.5), Some(0.0), Some(1.0)],
+        Some(0.5),
+    )
+    .unwrap();
+    let mut used = Some(CssAuthoredColorCheckpoint::fallback(&mut resolved, original).unwrap());
+    let backing = used
+        .as_ref()
+        .unwrap()
+        .standard_failure()
+        .unwrap()
+        .path
+        .steps()
+        .as_ptr();
+    let mut numerical_owner = OperationOwner::new();
+    let mut transform = Some(
+        CssAuthoredUsedColorCheckpoint::transform(
+            &mut used,
+            &mut numerical_owner,
+            Transformation::QuantizeSrgb,
+            empty_banks(),
+        )
+        .unwrap(),
+    );
+    transform.as_mut().unwrap().next_action().compute().unwrap();
+    assert_eq!(
+        transform.as_ref().unwrap().action(),
+        CssColorActionDescription::UsedReady
+    );
+    transform.as_mut().unwrap().abandon();
+    let recovered = CssAuthoredColorTransformation::recover(&mut transform).unwrap();
+    assert!(recovered.value().identical(original));
+    assert_eq!(recovered.value().srgb_bytes(), None);
+    assert_eq!(recovered.value().alpha(), Some(0.5));
+    assert_eq!(
+        recovered.standard_failure().unwrap().path.steps().as_ptr(),
+        backing
+    );
+    assert!(recovered.is_current());
+    drop(transform);
+    let mut used = Some(recovered);
+    let mut committed = Some(
+        CssAuthoredUsedColorCheckpoint::transform(
+            &mut used,
+            &mut numerical_owner,
+            Transformation::QuantizeSrgb,
+            empty_banks(),
+        )
+        .unwrap(),
+    );
+    committed.as_mut().unwrap().next_action().compute().unwrap();
+    let committed = CssAuthoredColorTransformation::take(&mut committed).unwrap();
+    assert_eq!(committed.value().srgb_bytes(), Some([128, 0, 255]));
+    // QuantizeSrgb quantizes RGB channels and preserves resolved alpha.
+    assert_eq!(committed.value().alpha(), Some(0.5));
+    assert_eq!(
+        committed.standard_failure().unwrap().path.steps().as_ptr(),
+        backing
+    );
+    assert!(std::ptr::eq(committed.authored(), &root));
+    assert!(std::ptr::eq(committed.facts(), &facts));
+}
+
+#[test]
+fn authored_serialization_qualifies_real_digits_and_output_and_preserves_cause_in_receipt() {
+    use surgeist_color::{Computation, NumericalRequest, OperationOwner, SerializationRequest};
+    let facts = facts();
+    let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
+    let mut css_owner = CssColorOperationOwner::new();
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
+    let mut used = Some(
+        CssAuthoredColorCheckpoint::fallback(&mut resolved, Color::from_srgba8([3, 0, 0, 255]))
+            .unwrap(),
+    );
+    let cause_ptr = used
+        .as_ref()
+        .unwrap()
+        .standard_failure()
+        .unwrap()
+        .path
+        .steps()
+        .as_ptr();
+    let mut foreign_owner = OperationOwner::new();
+    let foreign = native_digit(&mut foreign_owner);
+    let mut numerical_owner = OperationOwner::new();
+    let mut serializer = Some(
+        CssAuthoredUsedColorCheckpoint::serialize(
+            &mut used,
+            &mut numerical_owner,
+            SerializationRequest::Css,
+            empty_banks(),
+            0,
+        )
+        .unwrap(),
+    );
+    let mut digits = Vec::new();
+    let mut output = Vec::new();
+    let mut rejected_read = false;
+    let mut rejected_write = false;
+    let mut rejected_output = false;
+    loop {
+        let pending = serializer.as_ref().unwrap().action();
+        if pending == CssColorActionDescription::Serialized {
+            break;
+        }
+        let mut action = serializer.as_mut().unwrap().next_action();
+        let layout = action.layout();
+        assert_eq!(layout.numerical.input_unit_bytes, 0);
+        assert_eq!(layout.numerical.fact_records, [0; 3]);
+        match pending {
+            CssColorActionDescription::Compute(_) => {
+                assert!(matches!(
+                    action.numerical_record(),
+                    Err(CssColorOperationError::Protocol(
+                        CssColorProtocolError::NumericalProtocol(
+                            surgeist_color::ProtocolError::WrongAction
+                        )
+                    ))
+                ));
+                action.compute().unwrap();
+            }
+            CssColorActionDescription::ReadNumericalDigit { index } => {
+                assert!(
+                    layout.numerical.numerical_read_bytes
+                        >= std::mem::size_of::<surgeist_color::DigitSlot<'_>>()
+                            + OperationOwner::layout_bytes()
+                );
+                if !rejected_read {
+                    assert_eq!(
+                        action.read_numerical_digit(index, &foreign),
+                        Err(CssColorOperationError::Protocol(
+                            CssColorProtocolError::NumericalProtocol(
+                                surgeist_color::ProtocolError::ForeignSlot
+                            )
+                        ))
+                    );
+                    assert_eq!(serializer.as_ref().unwrap().action(), pending);
+                    serializer
+                        .as_mut()
+                        .unwrap()
+                        .next_action()
+                        .read_numerical_digit(index, &digits[index])
+                        .unwrap();
+                    rejected_read = true;
+                } else {
+                    action.read_numerical_digit(index, &digits[index]).unwrap();
+                }
+            }
+            CssColorActionDescription::AppendNumericalDigit { index } => {
+                assert_eq!(index, digits.len());
+                let record = action.numerical_record().unwrap();
+                if !rejected_write {
+                    assert_eq!(
+                        action.numerical_written(index + 1, &record),
+                        Err(CssColorOperationError::Protocol(
+                            CssColorProtocolError::NumericalProtocol(
+                                surgeist_color::ProtocolError::WrongIndex
+                            )
+                        ))
+                    );
+                    assert_eq!(serializer.as_ref().unwrap().action(), pending);
+                    digits.push(record);
+                    serializer
+                        .as_mut()
+                        .unwrap()
+                        .next_action()
+                        .numerical_written(index, &digits[index])
+                        .unwrap();
+                    rejected_write = true;
+                } else {
+                    digits.push(record);
+                    action.numerical_written(index, &digits[index]).unwrap();
+                }
+            }
+            CssColorActionDescription::UpdateNumericalDigit { index } => {
+                digits[index] = action.numerical_record().unwrap();
+                action.numerical_written(index, &digits[index]).unwrap();
+            }
+            CssColorActionDescription::EmitUnit { unit } => {
+                if !rejected_output {
+                    assert_eq!(
+                        action.emitted(unit.wrapping_add(1)),
+                        Err(CssColorOperationError::Protocol(
+                            CssColorProtocolError::NumericalProtocol(
+                                surgeist_color::ProtocolError::WrongReply
+                            )
+                        ))
+                    );
+                    assert_eq!(serializer.as_ref().unwrap().action(), pending);
+                    serializer
+                        .as_mut()
+                        .unwrap()
+                        .next_action()
+                        .emitted(unit)
+                        .unwrap();
+                    rejected_output = true;
+                } else {
+                    action.emitted(unit).unwrap();
+                }
+                output.push(unit);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    assert!(rejected_read && rejected_write && rejected_output);
+    let receipt = CssAuthoredColorSerialization::take(&mut serializer).unwrap();
+    assert_eq!(output, b"rgb(3, 0, 0)");
+    assert_eq!(receipt.length(), b"rgb(3, 0, 0)".len());
+    assert_eq!(
+        receipt.standard_failure().unwrap().path.steps().as_ptr(),
+        cause_ptr
+    );
+    assert_eq!(
+        receipt.standard_failure().unwrap().path.steps(),
+        [CssColorPathStep::First, CssColorPathStep::MixWeight(0)]
+    );
+    assert!(std::ptr::eq(receipt.authored(), &root));
+    assert!(std::ptr::eq(receipt.facts(), &facts));
+    assert!(matches!(
+        CssAuthoredColorSerialization::take(&mut serializer),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::EmptySlot
+        ))
+    ));
+    drop(digits);
+    drop(serializer);
+    let mut next = Some(
+        Computation::new(
+            &mut numerical_owner,
+            NumericalRequest::WithAlpha {
+                value: receipt.value(),
+                alpha: None,
+            },
+        )
+        .unwrap(),
+    );
+    next.as_mut().unwrap().next_action().compute().unwrap();
+    assert_eq!(Computation::take(&mut next).unwrap().alpha(), None);
+    assert!(receipt.is_current());
+}
+
+#[test]
+fn abandoning_an_unacknowledged_numerical_record_recovers_original_without_publishing_partial_output()
+ {
+    use surgeist_color::{OperationOwner, SerializationRequest};
+    let facts = facts();
+    let root = color("rgb(3 0 0)");
+    let mut css_owner = CssColorOperationOwner::new();
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
+    let mut used = Some(CssAuthoredColorCheckpoint::take_used(&mut resolved).unwrap());
+    let original = used.as_ref().unwrap().value();
+    let mut numerical_owner = OperationOwner::new();
+    let mut serializer = Some(
+        CssAuthoredUsedColorCheckpoint::serialize(
+            &mut used,
+            &mut numerical_owner,
+            SerializationRequest::Css,
+            empty_banks(),
+            0,
+        )
+        .unwrap(),
+    );
+    let mut partial = Vec::new();
+    loop {
+        let pending = serializer.as_ref().unwrap().action();
+        if matches!(
+            pending,
+            CssColorActionDescription::AppendNumericalDigit { .. }
+        ) {
+            {
+                let mut action = serializer.as_mut().unwrap().next_action();
+                let _record = action.numerical_record().unwrap();
+            }
+            assert_eq!(serializer.as_ref().unwrap().action(), pending);
+            break;
+        }
+        let action = serializer.as_mut().unwrap().next_action();
+        match pending {
+            CssColorActionDescription::Compute(_) => action.compute().unwrap(),
+            CssColorActionDescription::EmitUnit { unit } => {
+                action.emitted(unit).unwrap();
+                partial.push(unit);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    assert!(!partial.is_empty());
+    serializer.as_mut().unwrap().abandon();
+    assert_eq!(
+        serializer.as_ref().unwrap().action(),
+        CssColorActionDescription::Stopped
+    );
+    assert!(matches!(
+        CssAuthoredColorSerialization::take(&mut serializer),
+        Err(CssColorOperationError::Protocol(
+            CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::Terminated)
+        ))
+    ));
+    let recovered = CssAuthoredColorSerialization::recover(&mut serializer).unwrap();
+    assert!(recovered.value().identical(original));
+    assert!(std::ptr::eq(recovered.authored(), &root));
+    assert!(std::ptr::eq(recovered.facts(), &facts));
+    assert!(recovered.standard_failure().is_none());
+    partial.clear();
+    assert!(partial.is_empty());
+    assert!(serializer.is_none());
+}

@@ -885,14 +885,14 @@ serialization follows the same borrowed-slot preflight rule as Color: only a
 completed success removes Some; not-ready, numerical failure, protocol error
 and abandonment preserve the entire original wrapper. A completed standard
 failure from a source/authored operation is also a valid completed outcome and
-can be removed. `CssColorOperation::take` therefore changes from the current
-consuming signature to `take(&mut Option<Self>)`; the authored equivalent uses
-the same form. After successful transformation take, the returned checkpoint
-has only `'css, 'facts`, so it keeps no numerical-owner borrow. Successful
-serialization take returns a CSS receipt with only those same lifetimes.
+can be removed. Source and authored operation take methods use the borrowed
+`&mut Option<Self>` form. Successful transformation take and serialization take
+return a source checkpoint/receipt retaining `'css, 'facts`, or an authored
+checkpoint/receipt additionally retaining the independent original root's
+`'authored` lifetime. Neither return retains the numerical-owner borrow.
 Wrapper `recover(&mut slot)` removes any Some wrapper, explicitly recovers and
 drops its nested numerical operation, and returns its original committed Color
-with unchanged source/fact context and the wrapper's already committed CSS
+with unchanged source/authored root and facts at the wrapper's already committed CSS
 phase. Only EmptySlot refuses recovery. A computed-but-not-taken value is not
 committed; recovery returns the previous checkpoint. This permits cleanup and
 retains provenance without restarting a stopped controller.
@@ -932,9 +932,66 @@ bank instead of coupling two mutable phase protocols through shared records.
 The same external-anchor rule applies to the controlled authored feeder and
 its authored-qualified checkpoint wrappers, with authored path/origin context
 instead of CssContext's source descriptor. It does not acquire a fake source
-descriptor to reuse the source wrapper. Ordinary source/authored helpers own
-their two anchors and banks locally; the HTML parser does not invoke those
-helpers. Its existing source adapter starts `CssColorOperation::parse_used`
+descriptor to reuse the source wrapper.
+
+The implemented authored transitions preserve the resolution checkpoint and
+its `CssAuthoredColorOutcome`. Both projections use a borrowed Option slot:
+`CssAuthoredColorCheckpoint::take_used(&mut slot)` accepts only Used, while
+`CssAuthoredColorCheckpoint::fallback(&mut slot, checked_color)` accepts only
+StandardFailure. They return `CssAuthoredUsedColorCheckpoint`, move the actual
+root/facts and optional original failure exactly once, and perform no phase
+advance. A wrong outcome, empty slot or foreign phase leaves the original slot
+and cause unchanged. Its `standard_failure()` lends the owning original cause;
+it never clones the path or substitutes it for a later error site.
+
+`CssAuthoredUsedColorCheckpoint::{transform, serialize}` use the same borrowed
+slot, separate numerical owner, `CssColorBankLengths`, transformation/request
+and (for serialize) actual numerical-digit length as the source APIs above.
+Their shared preflight checks emptiness and current CSS phase, and computes the
+next phase before constructing the native Color continuation. Only after Color
+initialization succeeds does the infallible CSS commit remove the original
+slot and move its context. The concrete wrappers are
+`CssAuthoredColorTransformation` and `CssAuthoredColorSerialization`; both expose
+`take(&mut slot)`, `recover(&mut slot)`, finite native-backed action guards and
+actual static register/action layouts. Successful transformation take commits
+the computed Color and returns an authored Used checkpoint. Serialization take
+returns `CssAuthoredColorSerializationReceipt` retaining the actual root, facts,
+serialization input Color, original fallback cause and emitted length. Neither successful
+return retains the numerical-owner borrow. Live `DigitSlot` records still do.
+Recovery removes any Some wrapper and returns the original committed Color and
+its unchanged cause/root/facts at the already committed CSS phase; computation
+or partial output alone never commits a replacement checkpoint.
+
+Later transformation/serialization errors concern the whole checked root. That
+root has no aggregate `CssValueOrigin`, so their Numerical site is the truthful
+`Authored { path: [], origin: None }`, qualified by the wrapper's actual retained
+root. The wrapper prepares one empty owning path header before numerical work,
+under its real initialization layout; creating the header allocates nothing.
+It retains that prepared header independently of any original fallback cause.
+A numerical failure moves it once into the returned owned error, then stops
+useful work. Repeated compute/take returns a typed terminal/not-ready protocol
+refusal while preserving the wrapper and original checkpoint for recovery; it
+does not mint another owning site, clone a cause or allocate after failure.
+Protocol refusals remain site-less and do not transfer the prepared header.
+The original StandardFailure path/origin remains independently owned by the
+Used context through transform, serialize, successful receipt and recovery.
+
+The authored numerical guards lend actual Color `ComputationAction` or
+`StreamAction` guards and use the same numerical action/error mapping. Their
+layouts contain zero source-input, CSS-bank and fact-array work, actual native
+digit/output payload extents, and the admitted prepared-root-header/error-result
+work. The numerical owner and actual caller-owned digit/output capacities remain
+separately admitted. Dropping an uncompleted native numerical guard performs no
+useful work; a caller stopping after refusal explicitly abandons and recovers,
+then retires its partial output and actual digits. This is the native numerical
+phase protocol, distinct from the authored feeder's pending-guard abandonment.
+
+Ordinary source/authored resolution owns its actual CSS anchor, banks and
+(for authored resolution) path buffer locally. Color's ordinary serialization
+owns its numerical anchor and digit bank locally. Controlled authored numerical
+wrappers retain real CSS context and require the separate external numerical
+owner and caller-owned digit bank described above. The HTML parser does not
+invoke these ordinary helpers. Its existing source adapter starts `CssColorOperation::parse_used`
 and services that operation with the original ParseControl. The controlled
 authored operation is available for real authored callers; current input-color
 construction does not need it.

@@ -108,11 +108,11 @@ pub enum CssAuthoredColorOutcome {
 }
 /// A completed controlled result retains the actual CSS anchor and phase.
 pub struct CssAuthoredColorCheckpoint<'css, 'authored, 'facts> {
-    owner: &'css CssColorOperationOwner,
-    phase: usize,
-    root: &'authored CssColor,
-    facts: &'facts CssColorFacts<'facts>,
-    outcome: CssAuthoredColorOutcome,
+    pub(super) owner: &'css CssColorOperationOwner,
+    pub(super) phase: usize,
+    pub(super) root: &'authored CssColor,
+    pub(super) facts: &'facts CssColorFacts<'facts>,
+    pub(super) outcome: CssAuthoredColorOutcome,
 }
 impl<'authored, 'facts> CssAuthoredColorCheckpoint<'_, 'authored, 'facts> {
     pub const fn authored(&self) -> &'authored CssColor {
