@@ -43,6 +43,12 @@ HTML owns its direct integration with CSS color operations. Implementation
 changes for safe Rust, source mapping and work limits do not define a separate
 HTML dialect.
 
+The selected extraction contracts separate [HTML values, parsing and qualified
+semantics](reference/html-crate-contracts.md) and define a [dependency-free
+numerical Color library consumed by CSS](reference/color-crate-contracts.md).
+These references specify the planned ownership and checked interfaces;
+manifests and source establish which boundaries are implemented.
+
 `surgeist-dom`, the planned sole owner of live document identity, mutation and
 snapshots, will depend directly on HTML. DOM owns importing HTML construction
 values and adapting captured DOM facts to HTML-owned interpretation. Native authoring
