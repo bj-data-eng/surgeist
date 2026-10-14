@@ -235,10 +235,6 @@ fn consume_values<'i, 't>(
         let origin = parsed_origin(source, &start, &end);
         let error_at_token =
             |kind| CssComponentValueError::new(kind, CssValueOrigin::Parsed(origin.clone()));
-        let spelling = Lexeme {
-            text: input.slice(start.position()..end.position()).into(),
-            origin: CssValueOrigin::Parsed(origin.clone()),
-        };
         let block_kind = match &token {
             Token::Function(_) | Token::ParenthesisBlock => Some(CssBlockKind::Parenthesis),
             Token::SquareBracketBlock => Some(CssBlockKind::SquareBracket),
@@ -246,6 +242,10 @@ fn consume_values<'i, 't>(
             _ => None,
         };
         if let Some(kind) = block_kind {
+            let spelling = Lexeme {
+                text: input.slice(start.position()..end.position()).into(),
+                origin: CssValueOrigin::Parsed(origin.clone()),
+            };
             admit_component(count, limits, &origin)
                 .map_err(|error| input.new_custom_error(error))?;
             if depth >= limits.max_depth {
@@ -423,10 +423,6 @@ fn consume_range(
         let origin = range_origin(source, offset..end);
         let error_at_token =
             |kind| CssComponentValueError::new(kind, CssValueOrigin::Parsed(origin.clone()));
-        let spelling = Lexeme {
-            text: source.as_str()[offset..end].into(),
-            origin: CssValueOrigin::Parsed(origin.clone()),
-        };
         let kind = match token {
             Token::Function(_) | Token::ParenthesisBlock => Some(CssBlockKind::Parenthesis),
             Token::SquareBracketBlock => Some(CssBlockKind::SquareBracket),
@@ -434,6 +430,10 @@ fn consume_range(
             _ => None,
         };
         if let Some(kind) = kind {
+            let spelling = Lexeme {
+                text: source.as_str()[offset..end].into(),
+                origin: CssValueOrigin::Parsed(origin.clone()),
+            };
             admit_component(count, limits, &origin)?;
             if frames.len() >= (limits.max_depth - base_depth) as usize {
                 return Err(error_at_token(CssComponentValueErrorKind::NestingLimit));
