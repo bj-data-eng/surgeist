@@ -1151,6 +1151,7 @@ pub surgeist_html::HtmlCaptureError::ForeignCapture
 pub surgeist_html::HtmlCaptureError::FragmentAlreadyHosted
 pub surgeist_html::HtmlCaptureError::InvalidDefinitionName
 pub surgeist_html::HtmlCaptureError::InvalidFragmentScriptingMode(surgeist_html::HtmlParserScriptingMode)
+pub surgeist_html::HtmlCaptureError::InvalidTemplateContentsReference
 pub surgeist_html::HtmlCaptureError::InvalidTemplateDocumentCache
 pub surgeist_html::HtmlCaptureError::LimitExceeded
 pub surgeist_html::HtmlCaptureError::LimitExceeded::limit: usize
@@ -1168,6 +1169,7 @@ pub surgeist_html::HtmlCaptureError::ParentAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::ParentChildConflict
 pub surgeist_html::HtmlCaptureError::RegistryScopeAlreadyEstablished
 pub surgeist_html::HtmlCaptureError::RepresentationExhausted
+pub surgeist_html::HtmlCaptureError::ShadowRootCannotBeUnhosted
 pub surgeist_html::HtmlCaptureError::UnavailableDefinitions(surgeist_html::HtmlCaptureRegistryId)
 pub surgeist_html::HtmlCaptureError::UnhostedFragment
 pub surgeist_html::HtmlCaptureError::UnknownDefinition
@@ -4015,6 +4017,9 @@ pub surgeist_html::HtmlTargetOrigin::ExplicitOverride
 pub surgeist_html::HtmlTargetOrigin::NoFormOwner
 pub surgeist_html::HtmlTargetOrigin::NoTarget
 pub surgeist_html::HtmlTargetOrigin::OwnAttribute
+pub enum surgeist_html::HtmlTemplateContentsKind
+pub surgeist_html::HtmlTemplateContentsKind::Owned
+pub surgeist_html::HtmlTemplateContentsKind::ShadowReference
 pub enum surgeist_html::HtmlTemplateDocumentRole
 pub surgeist_html::HtmlTemplateDocumentRole::InertTemplate
 pub surgeist_html::HtmlTemplateDocumentRole::Ordinary
@@ -5007,6 +5012,7 @@ pub fn surgeist_html::HtmlCaptureBuilder::add_element(&mut self, document: &surg
 pub fn surgeist_html::HtmlCaptureBuilder::add_fragment(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_processing_instruction(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, target: surgeist_html::DocumentString, data: surgeist_html::DocumentString) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_registry(&mut self, definitions: core::option::Option<alloc::vec::Vec<surgeist_html::HtmlCustomElementDefinition>>) -> core::result::Result<surgeist_html::HtmlCaptureBuilderRegistry, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::add_shadow_fragment(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, properties: surgeist_html::HtmlCapturedShadowProperties, registry: surgeist_html::HtmlCaptureRegistryInput) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_shadow_root(&mut self, host: &surgeist_html::HtmlCaptureBuilderSubject, properties: surgeist_html::HtmlCapturedShadowProperties, registry: surgeist_html::HtmlCaptureRegistryInput) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::add_text(&mut self, document: &surgeist_html::HtmlCaptureBuilderSubject, text: surgeist_html::DocumentString) -> core::result::Result<surgeist_html::HtmlCaptureBuilderSubject, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::definition_handle(&self, registry: &surgeist_html::HtmlCaptureBuilderRegistry, index: usize) -> core::result::Result<surgeist_html::HtmlCaptureBuilderDefinition, surgeist_html::HtmlCaptureError>
@@ -5023,6 +5029,7 @@ pub fn surgeist_html::HtmlCaptureBuilder::establish_parser_creation_image_suppor
 pub fn surgeist_html::HtmlCaptureBuilder::establish_registry_scope(&mut self, registry: &surgeist_html::HtmlCaptureBuilderRegistry, scope: surgeist_html::HtmlRegistryScope) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_root(&mut self, child: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_template_contents(&mut self, template: &surgeist_html::HtmlCaptureBuilderSubject, fragment: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCaptureBuilder::establish_template_shadow_reference(&mut self, template: &surgeist_html::HtmlCaptureBuilderSubject, contents: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::establish_unhosted(&mut self, fragment: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::finish(self) -> core::result::Result<surgeist_html::HtmlCapture, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCaptureBuilder::new(limits: surgeist_html::HtmlCaptureLimits, host_revision: surgeist_html::HtmlHostFactsRevision) -> Self
@@ -5124,6 +5131,7 @@ pub fn surgeist_html::HtmlCapturedNode<'a>::node_document(self) -> surgeist_html
 pub fn surgeist_html::HtmlCapturedNode<'a>::parent(self) -> surgeist_html::HtmlCapturedParent
 pub fn surgeist_html::HtmlCapturedNode<'a>::shadow_root(self) -> core::option::Option<surgeist_html::HtmlCapturedShadowRoot>
 pub fn surgeist_html::HtmlCapturedNode<'a>::template_contents(self) -> core::option::Option<surgeist_html::HtmlCapturedTemplateContents>
+pub fn surgeist_html::HtmlCapturedNode<'a>::template_contents_kind(self) -> core::option::Option<surgeist_html::HtmlTemplateContentsKind>
 pub fn surgeist_html::HtmlCapturedNode<'a>::template_document_cache(self) -> core::option::Option<surgeist_html::HtmlCapturedTemplateCache>
 pub struct surgeist_html::HtmlCapturedProcessingInstruction
 impl surgeist_html::HtmlCapturedProcessingInstruction

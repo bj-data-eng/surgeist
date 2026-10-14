@@ -455,6 +455,15 @@ pub enum HtmlFragmentOwner {
     ShadowHost(HtmlNodeId),
 }
 
+/// Whether template contents are owned or reference a separate shadow subtree.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlTemplateContentsKind {
+    /// The template owns its separate ordinary contents fragment.
+    Owned,
+    /// The template refers to shadow contents without becoming their owner.
+    ShadowReference,
+}
+
 #[derive(Debug)]
 struct Record {
     kind: HtmlNodeKind,

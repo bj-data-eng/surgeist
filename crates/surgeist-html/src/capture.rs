@@ -18,6 +18,8 @@ use std::{
     sync::Arc,
 };
 
+mod preflight;
+
 macro_rules! identity {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
@@ -488,6 +490,10 @@ pub enum HtmlCaptureError {
     DocumentFactsAlreadyEstablished,
     RegistryScopeAlreadyEstablished,
     InvalidTemplateDocumentCache,
+    /// The target kind is invalid for the selected owning or non-owning contents relation.
+    InvalidTemplateContentsReference,
+    /// A shadow root with an unknown external host cannot establish host absence.
+    ShadowRootCannotBeUnhosted,
     CustomElementContextAlreadyEstablished,
     CustomElementDefinitionRequired,
     CustomElementDefinitionNameMismatch,
@@ -528,6 +534,14 @@ enum Parent {
 enum Association {
     Absent,
     Index(usize),
+    Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateAssociation {
+    Absent,
+    Owned(usize),
+    ShadowReference(usize),
     Unavailable,
 }
 
@@ -581,7 +595,7 @@ pub struct HtmlCapturedElement {
     attributes: OrderedAttributes,
     is_value: HtmlCapturedIsValue,
     registry: Registry,
-    template: Association,
+    template: TemplateAssociation,
     shadow: Association,
     custom_context: Option<CustomElementContext>,
     nonce: HtmlCapturedNonce,
@@ -1173,9 +1187,9 @@ impl HtmlCaptureBuilder {
             0,
         )?;
         let template = if html(&name, "template") {
-            Association::Unavailable
+            TemplateAssociation::Unavailable
         } else {
-            Association::Absent
+            TemplateAssociation::Absent
         };
         self.push(
             HtmlCapturedNodeKind::Element(HtmlCapturedElement {
@@ -1567,51 +1581,10 @@ impl HtmlCaptureBuilder {
     }
     // Computes forest depths iteratively, including proposed ordinary associations.
     fn all_depths(&self, edges: &[(usize, usize)]) -> Result<Vec<usize>, HtmlCaptureError> {
-        let n = self.data.records.len();
-        let mut incoming = Vec::new();
-        reserve(&mut incoming, n)?;
-        incoming.extend(self.data.records.iter().map(Record::incoming));
-        for &(child, parent) in edges {
-            incoming[child] = Some(parent);
-        }
-        let mut state = Vec::new();
-        reserve(&mut state, n)?;
-        state.resize(n, 0u8);
-        let mut depths = Vec::new();
-        reserve(&mut depths, n)?;
-        depths.resize(n, 0);
-        let mut path = Vec::new();
-        reserve(&mut path, n)?;
-        for start in 0..n {
-            if state[start] != 0 {
-                continue;
-            }
-            let mut cursor = Some(start);
-            let mut depth = 0;
-            while let Some(i) = cursor {
-                match state[i] {
-                    1 => return Err(HtmlCaptureError::Cycle),
-                    2 => {
-                        depth = add(depths[i], 1)?;
-                        break;
-                    }
-                    _ => {
-                        state[i] = 1;
-                        path.push(i);
-                        cursor = incoming[i];
-                    }
-                }
-            }
-            while let Some(i) = path.pop() {
-                self.depth(depth)?;
-                depths[i] = depth;
-                state[i] = 2;
-                if !path.is_empty() {
-                    depth = add(depth, 1)?;
-                }
-            }
-        }
-        Ok(depths)
+        let mut scratch = preflight::DepthScratch::new();
+        preflight::depths(self, edges, &mut scratch, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)?;
+        Ok(scratch.into_depths())
     }
     /// Establishes all ordered children atomically, also resolving unknown parents.
     pub fn establish_children(
@@ -1689,6 +1662,9 @@ impl HtmlCaptureBuilder {
         if f.host != Association::Unavailable {
             return Err(HtmlCaptureError::FragmentAlreadyHosted);
         }
+        if matches!(f.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) {
+            return Err(HtmlCaptureError::ShadowRootCannotBeUnhosted);
+        }
         f.host = Association::Absent;
         Ok(())
     }
@@ -1723,7 +1699,7 @@ impl HtmlCaptureBuilder {
         if !html(&e.name, "template") {
             return Err(HtmlCaptureError::NotHtmlTemplate);
         }
-        if e.template != Association::Unavailable {
+        if e.template != TemplateAssociation::Unavailable {
             return Err(HtmlCaptureError::AssociationAlreadyEstablished);
         }
         let HtmlCapturedNodeKind::Fragment(fragment) = &self.data.records[f].kind else {
@@ -1732,13 +1708,16 @@ impl HtmlCaptureBuilder {
         if fragment.host != Association::Unavailable {
             return Err(HtmlCaptureError::FragmentAlreadyHosted);
         }
+        if matches!(fragment.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) {
+            return Err(HtmlCaptureError::InvalidTemplateContentsReference);
+        }
         let usage = self.admit(0, 3, 0, 0, 0, 0)?;
         let updates = self.edge_depths(f, t)?;
         reserve(&mut self.data.records[t].dependents, 1)?;
         let HtmlCapturedNodeKind::Element(e) = &mut self.data.records[t].kind else {
             unreachable!()
         };
-        e.template = Association::Index(f);
+        e.template = TemplateAssociation::Owned(f);
         let HtmlCapturedNodeKind::Fragment(frag) = &mut self.data.records[f].kind else {
             unreachable!()
         };
@@ -1747,6 +1726,69 @@ impl HtmlCaptureBuilder {
         self.data.usage = usage;
         self.apply_depths(updates);
         Ok(())
+    }
+    /// Records a non-owning template reference to existing shadow contents.
+    /// The target's host, ordinary parent, depth and owning dependents are unchanged.
+    pub fn establish_template_shadow_reference(
+        &mut self,
+        template: &HtmlCaptureBuilderSubject,
+        contents: &HtmlCaptureBuilderSubject,
+    ) -> Result<(), HtmlCaptureError> {
+        let t = self.index(template)?;
+        let f = self.index(contents)?;
+        self.require(t, HtmlCaptureSubjectKind::Element)?;
+        self.require(f, HtmlCaptureSubjectKind::Fragment)?;
+        let HtmlCapturedNodeKind::Element(element) = &self.data.records[t].kind else {
+            unreachable!()
+        };
+        if !html(&element.name, "template") {
+            return Err(HtmlCaptureError::NotHtmlTemplate);
+        }
+        if element.template != TemplateAssociation::Unavailable {
+            return Err(HtmlCaptureError::AssociationAlreadyEstablished);
+        }
+        let HtmlCapturedNodeKind::Fragment(fragment) = &self.data.records[f].kind else {
+            unreachable!()
+        };
+        if !matches!(fragment.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) {
+            return Err(HtmlCaptureError::InvalidTemplateContentsReference);
+        }
+        let usage = self.admit(0, 1, 0, 0, 0, 0)?;
+        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[t].kind else {
+            unreachable!()
+        };
+        element.template = TemplateAssociation::ShadowReference(f);
+        self.data.usage = usage;
+        Ok(())
+    }
+    /// Adds shadow contents with an unavailable external host, without attaching a host.
+    pub fn add_shadow_fragment(
+        &mut self,
+        document: &HtmlCaptureBuilderSubject,
+        properties: HtmlCapturedShadowProperties,
+        registry: HtmlCaptureRegistryInput,
+    ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
+        let document = self.index(document)?;
+        self.require(document, HtmlCaptureSubjectKind::Document)?;
+        let registry = self.registry(registry)?;
+        let usage = self.admit(
+            1,
+            1 + usize::from(matches!(registry, Registry::Index(_))),
+            0,
+            0,
+            0,
+            0,
+        )?;
+        self.push(
+            HtmlCapturedNodeKind::Fragment(HtmlCapturedFragment {
+                kind: HtmlCapturedFragmentKind::ShadowRoot(properties),
+                host: Association::Unavailable,
+                registry,
+            }),
+            document,
+            Parent::Root,
+            usage,
+        )
     }
     /// Captures an existing shadow root and all its explicit source metadata.
     /// This records producer facts; it does not attach anything to a live host.
@@ -1805,8 +1847,21 @@ impl HtmlCaptureBuilder {
     }
     /// Publishes validated immutable records; unavailable facts remain unavailable.
     pub fn finish(self) -> Result<HtmlCapture, HtmlCaptureError> {
-        self.all_depths(&[])?;
+        let mut scratch = preflight::DepthScratch::new();
+        self.preflight_finish(&mut scratch, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)?;
         Ok(HtmlCapture(Arc::new(self.data)))
+    }
+
+    /// Validates borrowed data before the caller moves it into the immutable wrapper.
+    /// Admission failure retains this exact builder and the caller's actual scratch.
+    fn preflight_finish<E>(
+        &self,
+        scratch: &mut preflight::DepthScratch,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
+        preflight::references(self, admit)?;
+        preflight::depths(self, &[], scratch, admit)
     }
 }
 
@@ -1919,11 +1974,27 @@ impl<'a> HtmlCapturedNode<'a> {
             return None;
         };
         match e.template {
-            Association::Absent => None,
-            Association::Index(i) => Some(HtmlCapturedTemplateContents::Present(
-                HtmlCaptureFragmentId(subject_id(self.data, i)),
-            )),
-            Association::Unavailable => Some(HtmlCapturedTemplateContents::Unavailable),
+            TemplateAssociation::Absent => None,
+            TemplateAssociation::Owned(i) | TemplateAssociation::ShadowReference(i) => {
+                Some(HtmlCapturedTemplateContents::Present(
+                    HtmlCaptureFragmentId(subject_id(self.data, i)),
+                ))
+            }
+            TemplateAssociation::Unavailable => Some(HtmlCapturedTemplateContents::Unavailable),
+        }
+    }
+    /// The established contents' owning or non-owning relationship kind.
+    /// Non-template elements and unavailable contents return None.
+    pub fn template_contents_kind(self) -> Option<crate::HtmlTemplateContentsKind> {
+        let HtmlCapturedNodeKind::Element(element) = self.kind() else {
+            return None;
+        };
+        match element.template {
+            TemplateAssociation::Owned(_) => Some(crate::HtmlTemplateContentsKind::Owned),
+            TemplateAssociation::ShadowReference(_) => {
+                Some(crate::HtmlTemplateContentsKind::ShadowReference)
+            }
+            TemplateAssociation::Absent | TemplateAssociation::Unavailable => None,
         }
     }
 }
