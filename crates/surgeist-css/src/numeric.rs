@@ -835,9 +835,29 @@ enum NodeKind {
         strategy: Option<CssRoundingStrategy>,
     },
 }
+impl NodeKind {
+    // This is syntactic admission, not numerical resolvability: ordinary
+    // dimensions may still need external unit facts. Only these symbolic leaves
+    // require a container, calc-size or relative-color expression environment.
+    fn admits_pure_context(&self) -> bool {
+        match self {
+            Self::Value(_) | Self::Constant(_) => true,
+            Self::Size | Self::Variable(_) | Self::ProfileChannel(_) | Self::TreeCounting(_) => {
+                false
+            }
+            Self::Sum(values) => values.iter().all(|(_, value)| value.admits_pure_context),
+            Self::Product(values) => values.iter().all(|(_, value)| value.admits_pure_context),
+            Self::Group(value) => value.admits_pure_context,
+            Self::Function { args, .. } => {
+                args.iter().flatten().all(|value| value.admits_pure_context)
+            }
+        }
+    }
+}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CssCalculationExpression {
     kind: NodeKind,
+    admits_pure_context: bool,
     ty: CssNumericType,
     origin: CssValueOrigin,
     components: Option<CssComponentValues>,
@@ -845,6 +865,12 @@ pub(crate) struct CssCalculationExpression {
     closing: Option<CssValueOrigin>,
 }
 impl CssCalculationExpression {
+    /// Cached bottom-up admission of the complete typed tree. Checking reuse at
+    /// another owning boundary never scans syntax or reparses retained text.
+    pub(crate) const fn admits_pure_context(&self) -> bool {
+        self.admits_pure_context
+    }
+
     /// Compares checked numeric structure while excluding diagnostic source
     /// coordinates and the redundant raw root graph. This is deliberately
     /// separate from the provenance-sensitive raw calculation `PartialEq`.
@@ -2000,6 +2026,7 @@ fn parse_node<'a>(
         _ => (Vec::new(), None),
     };
     Ok(CssCalculationExpression {
+        admits_pure_context: kind.admits_pure_context(),
         kind,
         ty,
         origin: c.origin().clone(),

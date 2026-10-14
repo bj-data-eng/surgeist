@@ -879,6 +879,13 @@ impl CssHslColor {
                 .max(color_component_depth(&lightness))
                 .max(alpha.as_ref().map_or(0, color_component_depth)),
         )?;
+        check_color_context(
+            color_hue_admits_pure_context(&hue)
+                && [&saturation, &lightness]
+                    .into_iter()
+                    .chain(alpha.iter())
+                    .all(color_component_admits_pure_context),
+        )?;
         Ok(Self {
             syntax,
             hue,
@@ -951,6 +958,13 @@ impl CssHwbColor {
                 .max(color_component_depth(&blackness))
                 .max(alpha.as_ref().map_or(0, color_component_depth)),
         )?;
+        check_color_context(
+            color_hue_admits_pure_context(&hue)
+                && [&whiteness, &blackness]
+                    .into_iter()
+                    .chain(alpha.iter())
+                    .all(color_component_admits_pure_context),
+        )?;
         Ok(Self {
             hue,
             whiteness,
@@ -1018,6 +1032,12 @@ impl CssLabColor {
                 .max(color_component_depth(&b))
                 .max(alpha.as_ref().map_or(0, color_component_depth)),
         )?;
+        check_color_context(
+            [&lightness, &a, &b]
+                .into_iter()
+                .chain(alpha.iter())
+                .all(color_component_admits_pure_context),
+        )?;
         Ok(Self {
             lightness,
             a,
@@ -1084,6 +1104,13 @@ impl CssLchColor {
                 .max(color_component_depth(&chroma))
                 .max(color_hue_depth(&hue))
                 .max(alpha.as_ref().map_or(0, color_component_depth)),
+        )?;
+        check_color_context(
+            color_hue_admits_pure_context(&hue)
+                && [&lightness, &chroma]
+                    .into_iter()
+                    .chain(alpha.iter())
+                    .all(color_component_admits_pure_context),
         )?;
         Ok(Self {
             lightness,
@@ -1183,8 +1210,38 @@ fn check_color_depth(child_depth: u32) -> Result<(), CssColorConstructionError> 
 }
 fn check_components_depth<'a>(
     values: impl Iterator<Item = &'a CssColorComponent>,
-) -> Result<(), CssColorConstructionError> {
-    check_color_depth(values.map(color_component_depth).max().unwrap_or(0))
+) -> Result<u32, CssColorConstructionError> {
+    let (child_depth, pure) = values.fold((0, true), |(depth, pure), value| {
+        (
+            depth.max(color_component_depth(value)),
+            pure && color_component_admits_pure_context(value),
+        )
+    });
+    let depth = composed_color_depth(child_depth)?;
+    check_color_context(pure)?;
+    Ok(depth)
+}
+fn check_color_context(admits_pure_context: bool) -> Result<(), CssColorConstructionError> {
+    if admits_pure_context {
+        Ok(())
+    } else {
+        Err(CssColorConstructionError::InvalidExpressionEnvironment)
+    }
+}
+fn color_component_admits_pure_context(value: &CssColorComponent) -> bool {
+    match value {
+        CssColorComponent::NumberCalculation(value) => value.expression.admits_pure_context(),
+        CssColorComponent::HintedNumberCalculation(value) => value.expression.admits_pure_context(),
+        CssColorComponent::PercentageCalculation(value) => value.expression.admits_pure_context(),
+        _ => true,
+    }
+}
+fn color_hue_admits_pure_context(value: &CssColorHue) -> bool {
+    match value {
+        CssColorHue::NumberCalculation(value) => value.expression.admits_pure_context(),
+        CssColorHue::AngleCalculation(value) => value.expression.admits_pure_context(),
+        _ => true,
+    }
 }
 fn composed_color_depth(child_depth: u32) -> Result<u32, CssColorConstructionError> {
     let depth = child_depth
@@ -1212,14 +1269,7 @@ impl CssCustomColor {
         if channels.is_empty() {
             return Err(CssColorConstructionError::EmptyComponents);
         }
-        let nesting_depth = composed_color_depth(
-            channels
-                .iter()
-                .chain(alpha.iter())
-                .map(color_component_depth)
-                .max()
-                .unwrap_or(0),
-        )?;
+        let nesting_depth = check_components_depth(channels.iter().chain(alpha.iter()))?;
         Ok(Self {
             profile,
             channels,

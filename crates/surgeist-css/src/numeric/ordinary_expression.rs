@@ -298,6 +298,7 @@ fn project(
         };
         values.push(Some(Projected {
             value: Some(CssCalculationExpression {
+                admits_pure_context: kind.admits_pure_context(),
                 kind,
                 ty: node.numeric_type(),
                 origin,
