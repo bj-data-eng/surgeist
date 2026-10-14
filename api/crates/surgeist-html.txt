@@ -2482,10 +2482,22 @@ pub surgeist_html::HtmlInputNumericConstraintsOutcome::InapplicableInputState(su
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::Unapplied
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::Unapplied::attribute: surgeist_html::KnownHtmlAttribute
 pub surgeist_html::HtmlInputNumericConstraintsOutcome::Unapplied::reason: surgeist_html::HtmlAttributeApplicability
+pub enum surgeist_html::HtmlInputNumericContent
+pub surgeist_html::HtmlInputNumericContent::Absent
+pub surgeist_html::HtmlInputNumericContent::Failed
+pub surgeist_html::HtmlInputNumericContent::Value(surgeist_html::HtmlFloatingPointNumber)
 pub enum surgeist_html::HtmlInputNumericLimitAuthorState
 pub surgeist_html::HtmlInputNumericLimitAuthorState::Conforming
 pub surgeist_html::HtmlInputNumericLimitAuthorState::MinimumExceedsMaximum
 pub surgeist_html::HtmlInputNumericLimitAuthorState::NotRequired
+pub enum surgeist_html::HtmlInputNumericStep
+pub surgeist_html::HtmlInputNumericStep::Absent
+pub surgeist_html::HtmlInputNumericStep::Any
+pub surgeist_html::HtmlInputNumericStep::Failed
+pub surgeist_html::HtmlInputNumericStep::Value(surgeist_html::HtmlFloatingPointNumber)
+impl surgeist_html::HtmlInputNumericStep
+pub const surgeist_html::HtmlInputNumericStep::ANY_KEYWORD: &'static str
+pub fn surgeist_html::HtmlInputNumericStep::any_keyword_unit_matches(index: usize, unit: u16) -> bool
 pub enum surgeist_html::HtmlInputNumericStepBaseOrigin
 pub surgeist_html::HtmlInputNumericStepBaseOrigin::MinimumContent
 pub surgeist_html::HtmlInputNumericStepBaseOrigin::StateDefault
@@ -5354,6 +5366,7 @@ impl surgeist_html::HtmlBaseDocumentFacts
 pub fn surgeist_html::HtmlBaseDocumentFacts::about_base_url(&self) -> &surgeist_html::HtmlAboutBaseUrl
 pub fn surgeist_html::HtmlBaseDocumentFacts::document_url(&self) -> core::option::Option<&surgeist_html::HtmlBaseUrlRecord>
 pub fn surgeist_html::HtmlBaseDocumentFacts::encoding(&self) -> core::option::Option<&surgeist_html::HtmlBaseEncoding>
+pub fn surgeist_html::HtmlBaseDocumentFacts::fallback(&self) -> core::result::Result<&surgeist_html::HtmlBaseUrlRecord, surgeist_html::HtmlBaseMissing>
 pub fn surgeist_html::HtmlBaseDocumentFacts::iframe_srcdoc(&self) -> bool
 pub fn surgeist_html::HtmlBaseDocumentFacts::new(revision: surgeist_html::HtmlBaseFactsRevision, url: core::option::Option<surgeist_html::HtmlBaseUrlRecord>, about: surgeist_html::HtmlAboutBaseUrl, iframe_srcdoc: bool, encoding: core::option::Option<surgeist_html::HtmlBaseEncoding>) -> core::result::Result<Self, surgeist_html::HtmlBaseFactsError>
 pub fn surgeist_html::HtmlBaseDocumentFacts::revision(&self) -> &surgeist_html::HtmlBaseFactsRevision
@@ -5385,7 +5398,10 @@ pub fn surgeist_html::HtmlBaseHref::raw(&self) -> &surgeist_html::DocumentString
 pub fn surgeist_html::HtmlBaseHref::value(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlBaseParseObservation
 impl surgeist_html::HtmlBaseParseObservation
+pub fn surgeist_html::HtmlBaseParseObservation::inputs_match(&self, fallback: &surgeist_html::HtmlBaseUrlRecord, encoding: &surgeist_html::HtmlBaseEncoding, revision: &surgeist_html::HtmlBaseFactsRevision) -> bool
 pub fn surgeist_html::HtmlBaseParseObservation::new(raw: surgeist_html::DocumentString, fallback: surgeist_html::HtmlBaseUrlRecord, encoding: surgeist_html::HtmlBaseEncoding, revision: surgeist_html::HtmlBaseFactsRevision, outcome: surgeist_html::HtmlBaseParseOutcome) -> core::result::Result<Self, surgeist_html::HtmlBaseFactsError>
+pub fn surgeist_html::HtmlBaseParseObservation::outcome(&self) -> &surgeist_html::HtmlBaseParseOutcome
+pub fn surgeist_html::HtmlBaseParseObservation::raw(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlBaseProducerId(_)
 impl surgeist_html::HtmlBaseProducerId
 pub fn surgeist_html::HtmlBaseProducerId::fresh() -> Self
@@ -7205,6 +7221,8 @@ impl surgeist_html::HtmlParseBaseFacts
 pub fn surgeist_html::HtmlParseBaseFacts::document(&self) -> &surgeist_html::HtmlBaseDocumentFacts
 pub fn surgeist_html::HtmlParseBaseFacts::formation_usage(&self) -> surgeist_html::HtmlBaseFactsUsage
 pub fn surgeist_html::HtmlParseBaseFacts::new(document: surgeist_html::HtmlBaseDocumentFacts, observations: alloc::vec::Vec<surgeist_html::HtmlBaseParseObservation>, limits: surgeist_html::HtmlBaseFactsLimits) -> core::result::Result<Self, surgeist_html::HtmlBaseFactsError>
+pub fn surgeist_html::HtmlParseBaseFacts::observations(&self) -> &[surgeist_html::HtmlBaseParseObservation]
+pub fn surgeist_html::HtmlParseBaseFacts::same_owner(&self, other: &Self) -> bool
 pub struct surgeist_html::HtmlParseCancellation(_)
 impl surgeist_html::HtmlParseCancellation
 pub fn surgeist_html::HtmlParseCancellation::cancel(&self)
@@ -8667,3 +8685,5 @@ pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedN
 pub fn surgeist_html::is_mathml_text_integration_point(name: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
 pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedName, content: core::option::Option<&surgeist_html::DocumentString>, connection: surgeist_html::HtmlNonceConnection, policy: surgeist_html::HtmlHeaderDeliveredCsp) -> surgeist_html::HtmlNonceInsertionEffect
+pub fn surgeist_html::select_frozen_base<'a>(fallback: &'a surgeist_html::HtmlBaseUrlRecord, outcome: &'a surgeist_html::HtmlBaseParseOutcome) -> core::result::Result<(&'a surgeist_html::HtmlBaseUrlRecord, bool), surgeist_html::HtmlBaseMissing>
+pub fn surgeist_html::select_input_numeric_constraints(min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent, step: surgeist_html::HtmlInputNumericStep, value: surgeist_html::HtmlInputNumericContent, state: surgeist_html::HtmlInputType) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>

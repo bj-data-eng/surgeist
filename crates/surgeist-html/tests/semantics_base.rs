@@ -1,5 +1,165 @@
 use surgeist_html::*;
 
+#[test]
+fn base_observation_access_preserves_exact_inputs_and_owner_qualification() {
+    let producer = HtmlBaseProducerId::fresh();
+    let revision = revision(&producer, 1);
+    let fallback = url(&revision, "https://example.test/");
+    let encoding = HtmlBaseEncoding::fresh();
+    let raw = DocumentString::from_utf16([0xd800, 0, 0xdc00]);
+    let observation = HtmlBaseParseObservation::new(
+        raw.clone(),
+        fallback.clone(),
+        encoding.clone(),
+        revision.clone(),
+        HtmlBaseParseOutcome::Failure,
+    )
+    .unwrap();
+    let document = HtmlBaseDocumentFacts::new(
+        revision.clone(),
+        Some(fallback.clone()),
+        HtmlAboutBaseUrl::KnownNull,
+        false,
+        Some(encoding.clone()),
+    )
+    .unwrap();
+    let make_limits = || HtmlBaseFactsLimits::new(8, 1024, 1024);
+    let separate = HtmlParseBaseFacts::new(document.clone(), vec![], make_limits()).unwrap();
+    let facts = HtmlParseBaseFacts::new(document, vec![observation], make_limits()).unwrap();
+    let clone = facts.clone();
+    assert!(facts.same_owner(&clone));
+    assert!(!facts.same_owner(&separate));
+    let observation = &facts.observations()[0];
+    assert_eq!(observation.raw().code_units(), [0xd800, 0, 0xdc00]);
+    assert!(observation.inputs_match(&fallback, &encoding, &revision));
+    let equal_text = url(&revision, "https://example.test/");
+    assert!(!observation.inputs_match(&equal_text, &encoding, &revision));
+    assert!(!observation.inputs_match(&fallback, &HtmlBaseEncoding::fresh(), &revision));
+    assert!(matches!(
+        observation.outcome(),
+        HtmlBaseParseOutcome::Failure
+    ));
+    assert!(std::ptr::eq(
+        facts.document().fallback().unwrap(),
+        facts.document().document_url().unwrap()
+    ));
+}
+
+#[test]
+fn frozen_base_selection_keeps_scheme_csp_order_and_borrowed_record() {
+    let revision = revision(&HtmlBaseProducerId::fresh(), 1);
+    let fallback = url(&revision, "https://example.test/fallback/");
+    for (scheme, allowed, response, missing) in [
+        (
+            HtmlBaseUrlScheme::Data,
+            HtmlBaseAllowed::Unavailable,
+            false,
+            false,
+        ),
+        (
+            HtmlBaseUrlScheme::Javascript,
+            HtmlBaseAllowed::Unavailable,
+            false,
+            false,
+        ),
+        (
+            HtmlBaseUrlScheme::Other,
+            HtmlBaseAllowed::Blocked,
+            false,
+            false,
+        ),
+        (
+            HtmlBaseUrlScheme::Other,
+            HtmlBaseAllowed::Allowed,
+            true,
+            false,
+        ),
+        (
+            HtmlBaseUrlScheme::Other,
+            HtmlBaseAllowed::Unavailable,
+            false,
+            true,
+        ),
+    ] {
+        let serialization = match scheme {
+            HtmlBaseUrlScheme::Data => "data:text/plain,x",
+            HtmlBaseUrlScheme::Javascript => "javascript:void(0)",
+            HtmlBaseUrlScheme::Other => "https://example.test/parsed/",
+        };
+        let record =
+            HtmlBaseUrlRecord::observed(revision.clone(), serialization.into(), scheme, false)
+                .unwrap();
+        let outcome = HtmlBaseParseOutcome::Parsed {
+            record,
+            base_allowed: allowed,
+        };
+        let selected = select_frozen_base(&fallback, &outcome);
+        if missing {
+            assert_eq!(selected.unwrap_err(), HtmlBaseMissing::Csp);
+        } else {
+            let (selected, actual_response) = selected.unwrap();
+            assert_eq!(actual_response, response);
+            let expected = if response {
+                let HtmlBaseParseOutcome::Parsed { record, .. } = &outcome else {
+                    unreachable!()
+                };
+                record
+            } else {
+                &fallback
+            };
+            assert!(std::ptr::eq(selected, expected));
+        }
+    }
+    let failed = HtmlBaseParseOutcome::Failure;
+    let (selected, response) = select_frozen_base(&fallback, &failed).unwrap();
+    assert!(std::ptr::eq(selected, &fallback));
+    assert!(!response);
+}
+
+#[test]
+fn document_fallback_selects_srcdoc_and_about_blank_facts_lazily() {
+    let revision = revision(&HtmlBaseProducerId::fresh(), 1);
+    let about = url(&revision, "https://example.test/about/");
+    let srcdoc = HtmlBaseDocumentFacts::new(
+        revision.clone(),
+        None,
+        HtmlAboutBaseUrl::KnownRecord(about.clone()),
+        true,
+        None,
+    )
+    .unwrap();
+    assert_eq!(srcdoc.fallback().unwrap(), &about);
+    let ordinary = url(&revision, "https://example.test/ordinary/");
+    let document = HtmlBaseDocumentFacts::new(
+        revision.clone(),
+        Some(ordinary.clone()),
+        HtmlAboutBaseUrl::Unavailable,
+        false,
+        None,
+    )
+    .unwrap();
+    assert_eq!(document.fallback().unwrap(), &ordinary);
+    let blank = HtmlBaseUrlRecord::observed(
+        revision.clone(),
+        "about:blank".into(),
+        HtmlBaseUrlScheme::Other,
+        true,
+    )
+    .unwrap();
+    let document = HtmlBaseDocumentFacts::new(
+        revision,
+        Some(blank),
+        HtmlAboutBaseUrl::Unavailable,
+        false,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        document.fallback().unwrap_err(),
+        HtmlBaseMissing::AboutBaseUrl
+    );
+}
+
 fn attr(name: &str, value: impl Into<DocumentString>) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
 }

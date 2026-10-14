@@ -194,7 +194,9 @@ impl HtmlBaseDocumentFacts {
     pub fn encoding(&self) -> Option<&HtmlBaseEncoding> {
         self.encoding.as_ref()
     }
-    pub(crate) fn fallback(&self) -> Result<&HtmlBaseUrlRecord, HtmlBaseMissing> {
+    /// Selects the existing document fallback from qualified URL/about facts.
+    /// This borrows a declared record and performs no URL parsing.
+    pub fn fallback(&self) -> Result<&HtmlBaseUrlRecord, HtmlBaseMissing> {
         if self.srcdoc {
             return match &self.about {
                 HtmlAboutBaseUrl::KnownRecord(url) => Ok(url),
@@ -256,10 +258,13 @@ impl HtmlBaseParseObservation {
             outcome,
         })
     }
-    pub(crate) fn raw(&self) -> &DocumentString {
+    /// Borrows the exact original observed input, without normalization.
+    pub fn raw(&self) -> &DocumentString {
         &self.raw
     }
-    pub(crate) fn inputs_match(
+    /// Compares the URL-record and encoding identities and producer revision.
+    /// It does not compare URL serialization or qualify the raw input.
+    pub fn inputs_match(
         &self,
         fallback: &HtmlBaseUrlRecord,
         encoding: &HtmlBaseEncoding,
@@ -267,7 +272,8 @@ impl HtmlBaseParseObservation {
     ) -> bool {
         &self.fallback == fallback && &self.encoding == encoding && &self.revision == revision
     }
-    pub(crate) fn outcome(&self) -> &HtmlBaseParseOutcome {
+    /// Borrows the declared parse/CSP observation.
+    pub fn outcome(&self) -> &HtmlBaseParseOutcome {
         &self.outcome
     }
 }
@@ -457,10 +463,13 @@ impl HtmlParseBaseFacts {
     pub fn formation_usage(&self) -> HtmlBaseFactsUsage {
         self.0.usage
     }
-    pub(crate) fn observations(&self) -> &[HtmlBaseParseObservation] {
+    /// Borrows the retained observations in their original order.
+    pub fn observations(&self) -> &[HtmlBaseParseObservation] {
         &self.0.observations
     }
-    pub(crate) fn same_owner(&self, other: &Self) -> bool {
+    /// Whether these values share the exact immutable parse-facts backing.
+    /// Equal revisions or observation values alone do not imply the same owner.
+    pub fn same_owner(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 }
@@ -625,7 +634,11 @@ impl HtmlCapturedBaseFacts {
     }
 }
 
-pub(crate) fn frozen_choice<'a>(
+/// Selects the historical frozen base from a qualified external outcome.
+/// The boolean requests the existing base-response steps. The returned record
+/// borrows the supplied fallback or outcome; this does not qualify provenance
+/// or install parser state.
+pub fn select_frozen_base<'a>(
     fallback: &'a HtmlBaseUrlRecord,
     outcome: &'a HtmlBaseParseOutcome,
 ) -> Result<(&'a HtmlBaseUrlRecord, bool), HtmlBaseMissing> {

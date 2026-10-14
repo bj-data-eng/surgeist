@@ -74,8 +74,6 @@ pub enum HtmlInputNumericAttributeValue {
     Temporal(HtmlInputTemporalCoordinate),
 }
 
-pub(crate) const INPUT_STEP_ANY: &str = "any";
-
 fn recovered_value<A, R>(report: &HtmlValueReport<A, R>) -> Option<&R> {
     match report.recovery() {
         HtmlValueRecoveryState::Value(value) => Some(value),
@@ -459,7 +457,7 @@ impl HtmlValueInterpreter {
             return Ok(result);
         }
         if role == KnownHtmlAttribute::Step
-            && raw.is_some_and(|raw| ascii_keyword(raw.value(), INPUT_STEP_ANY))
+            && raw.is_some_and(|raw| ascii_keyword(raw.value(), HtmlInputNumericStep::ANY_KEYWORD))
         {
             result.any_keyword = true;
             result.author = HtmlInputNumericAuthorState::Conforming;
@@ -540,13 +538,16 @@ impl HtmlValueInterpreter {
         } else if !computed_state(state) {
             HtmlInputNumericConstraintsOutcome::InapplicableInputState(state)
         } else {
-            HtmlInputNumericConstraintsOutcome::Computed(select_input_numeric_constraints(
-                minimum.numeric_content(),
-                maximum.numeric_content(),
-                step.numeric_step(),
-                value.numeric_content(),
-                state,
-            ))
+            HtmlInputNumericConstraintsOutcome::Computed(
+                select_input_numeric_constraints(
+                    minimum.numeric_content(),
+                    maximum.numeric_content(),
+                    step.numeric_step(),
+                    value.numeric_content(),
+                    state,
+                )
+                .expect("computed_state qualified Number or Range"),
+            )
         };
         Ok(HtmlInputNumericConstraintsReport {
             minimum,
@@ -565,83 +566,106 @@ fn number(value: f64) -> HtmlFloatingPointNumber {
 /// Already-converted content facts. Ordinary reports and controlled Range
 /// construction share this fixed selection owner; no raw value is copied.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum InputNumericContent {
+pub enum HtmlInputNumericContent {
     Absent,
     Failed,
     Value(HtmlFloatingPointNumber),
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum InputNumericStep {
+pub enum HtmlInputNumericStep {
     Absent,
     Failed,
     Any,
     Value(HtmlFloatingPointNumber),
 }
+impl HtmlInputNumericStep {
+    /// The single authoritative spelling of the unrestricted step keyword.
+    pub const ANY_KEYWORD: &'static str = "any";
+
+    /// Tests one keyword position using ASCII case-insensitive comparison.
+    /// Callers must check whole-value length and admit each reached unit first.
+    /// An index outside the keyword never matches.
+    pub fn any_keyword_unit_matches(index: usize, unit: u16) -> bool {
+        Self::ANY_KEYWORD
+            .as_bytes()
+            .get(index)
+            .is_some_and(|&byte| ascii_keyword_unit(unit, byte))
+    }
+}
 impl HtmlInputNumericAttributeReport {
-    fn numeric_content(&self) -> InputNumericContent {
+    fn numeric_content(&self) -> HtmlInputNumericContent {
         if self.raw().is_none() {
-            InputNumericContent::Absent
+            HtmlInputNumericContent::Absent
         } else if let Some(value) = self.floating_point() {
-            InputNumericContent::Value(value)
+            HtmlInputNumericContent::Value(value)
         } else {
-            InputNumericContent::Failed
+            HtmlInputNumericContent::Failed
         }
     }
-    fn numeric_step(&self) -> InputNumericStep {
+    fn numeric_step(&self) -> HtmlInputNumericStep {
         if self.any_keyword {
-            InputNumericStep::Any
+            HtmlInputNumericStep::Any
         } else {
             match self.numeric_content() {
-                InputNumericContent::Absent => InputNumericStep::Absent,
-                InputNumericContent::Failed => InputNumericStep::Failed,
-                InputNumericContent::Value(value) => InputNumericStep::Value(value),
+                HtmlInputNumericContent::Absent => HtmlInputNumericStep::Absent,
+                HtmlInputNumericContent::Failed => HtmlInputNumericStep::Failed,
+                HtmlInputNumericContent::Value(value) => HtmlInputNumericStep::Value(value),
             }
         }
     }
 }
 fn bound(
-    side: InputNumericContent,
+    side: HtmlInputNumericContent,
     default: Option<HtmlFloatingPointNumber>,
 ) -> (Option<HtmlFloatingPointNumber>, HtmlInputNumericBoundOrigin) {
     match side {
-        InputNumericContent::Value(value) => (Some(value), HtmlInputNumericBoundOrigin::Recovered),
-        InputNumericContent::Absent => (default, HtmlInputNumericBoundOrigin::MissingFallback),
-        InputNumericContent::Failed => (default, HtmlInputNumericBoundOrigin::ParseFailureFallback),
+        HtmlInputNumericContent::Value(value) => {
+            (Some(value), HtmlInputNumericBoundOrigin::Recovered)
+        }
+        HtmlInputNumericContent::Absent => (default, HtmlInputNumericBoundOrigin::MissingFallback),
+        HtmlInputNumericContent::Failed => {
+            (default, HtmlInputNumericBoundOrigin::ParseFailureFallback)
+        }
     }
 }
-pub(crate) fn select_input_numeric_constraints(
-    min: InputNumericContent,
-    max: InputNumericContent,
-    step: InputNumericStep,
-    value: InputNumericContent,
+/// Selects Number/Range limits from already-converted exact content facts.
+/// No source is scanned, copied or reparsed. Other input states return None.
+pub fn select_input_numeric_constraints(
+    min: HtmlInputNumericContent,
+    max: HtmlInputNumericContent,
+    step: HtmlInputNumericStep,
+    value: HtmlInputNumericContent,
     state: HtmlInputType,
-) -> HtmlInputNumericConstraints {
+) -> Option<HtmlInputNumericConstraints> {
+    if !computed_state(state) {
+        return None;
+    }
     let range = state == HtmlInputType::Range;
     let (minimum, minimum_origin) = bound(min, range.then(|| number(0.0)));
     let (maximum, maximum_origin) = bound(max, range.then(|| number(100.0)));
     let (allowed_step, step_origin) = match step {
-        InputNumericStep::Any => (None, HtmlInputNumericStepOrigin::Any),
-        InputNumericStep::Absent => (
+        HtmlInputNumericStep::Any => (None, HtmlInputNumericStepOrigin::Any),
+        HtmlInputNumericStep::Absent => (
             Some(number(1.0)),
             HtmlInputNumericStepOrigin::MissingDefault,
         ),
-        InputNumericStep::Failed => (
+        HtmlInputNumericStep::Failed => (
             Some(number(1.0)),
             HtmlInputNumericStepOrigin::ParseFailureDefault,
         ),
-        InputNumericStep::Value(value) if value.value() > 0.0 => {
+        HtmlInputNumericStep::Value(value) if value.value() > 0.0 => {
             (Some(value), HtmlInputNumericStepOrigin::Recovered)
         }
-        InputNumericStep::Value(_) => (
+        HtmlInputNumericStep::Value(_) => (
             Some(number(1.0)),
             HtmlInputNumericStepOrigin::NonPositiveDefault,
         ),
     };
     let (step_base, step_base_origin) = match (min, value) {
-        (InputNumericContent::Value(value), _) => {
+        (HtmlInputNumericContent::Value(value), _) => {
             (value, HtmlInputNumericStepBaseOrigin::MinimumContent)
         }
-        (_, InputNumericContent::Value(value)) => {
+        (_, HtmlInputNumericContent::Value(value)) => {
             (value, HtmlInputNumericStepBaseOrigin::ValueContent)
         }
         _ => (number(0.0), HtmlInputNumericStepBaseOrigin::Zero),
@@ -653,7 +677,7 @@ pub(crate) fn select_input_numeric_constraints(
         (Some(_), Some(_)) => HtmlInputNumericLimitAuthorState::Conforming,
         _ => HtmlInputNumericLimitAuthorState::NotRequired,
     };
-    HtmlInputNumericConstraints {
+    Some(HtmlInputNumericConstraints {
         minimum,
         maximum,
         minimum_origin,
@@ -663,7 +687,7 @@ pub(crate) fn select_input_numeric_constraints(
         step_base,
         step_base_origin,
         limit_author,
-    }
+    })
 }
 
 fn bound_origin(side: &HtmlInputNumericAttributeReport) -> HtmlInputNumericBoundOrigin {
@@ -783,7 +807,7 @@ impl HtmlInputStep {
     }
     pub fn as_document_string(&self) -> DocumentString {
         self.number.map_or_else(
-            || DocumentString::from("any"),
+            || DocumentString::from(HtmlInputNumericStep::ANY_KEYWORD),
             |number| number.as_document_string(),
         )
     }

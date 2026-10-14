@@ -5,8 +5,6 @@
 pub(crate) mod best;
 pub(crate) mod ingress;
 pub(crate) mod lattice;
-pub(crate) use best::BestFiniteNumberCursor;
-pub(crate) use ingress::FiniteDecimalIngressCursor;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RangeScratchRole {
@@ -1061,6 +1059,7 @@ impl std::error::Error for RangeNumericError {}
 mod tests {
     use super::super::{FloatingPointGrammarCursor, FloatingPointParseMode};
     use super::*;
+    use super::{best::BestFiniteNumberCursor, ingress::FiniteDecimalIngressCursor};
 
     type Serialized = (String, Option<(u64, usize, i32)>);
 

@@ -12,6 +12,86 @@ use surgeist_html::{
     KnownHtmlAttribute as A, KnownHtmlElement as E, Namespace, QualifiedName,
 };
 
+#[test]
+fn converted_numeric_selection_preserves_defaults_recovery_and_state_domain() {
+    use surgeist_html::{
+        HtmlInputNumericContent as Content, HtmlInputNumericStep as Step,
+        select_input_numeric_constraints as select,
+    };
+    let value = |n| HtmlFloatingPointNumber::try_from(n).unwrap();
+    let number = select(
+        Content::Absent,
+        Content::Absent,
+        Step::Absent,
+        Content::Absent,
+        State::Number,
+    )
+    .unwrap();
+    assert_eq!(number.minimum(), None);
+    assert_eq!(number.maximum(), None);
+    assert_eq!(number.allowed_step().unwrap().value(), 1.0);
+    assert_eq!(number.step_base().value(), 0.0);
+    assert_eq!(number.step_origin(), StepOrigin::MissingDefault);
+
+    let range = select(
+        Content::Failed,
+        Content::Absent,
+        Step::Value(value(-2.0)),
+        Content::Value(value(7.0)),
+        State::Range,
+    )
+    .unwrap();
+    assert_eq!(range.minimum().unwrap().value(), 0.0);
+    assert_eq!(range.maximum().unwrap().value(), 100.0);
+    assert_eq!(range.minimum_origin(), BoundOrigin::ParseFailureFallback);
+    assert_eq!(range.allowed_step().unwrap().value(), 1.0);
+    assert_eq!(range.step_origin(), StepOrigin::NonPositiveDefault);
+    assert_eq!(range.step_base().value(), 7.0);
+    assert_eq!(range.step_base_origin(), BaseOrigin::ValueContent);
+
+    let reversed = select(
+        Content::Value(value(10.0)),
+        Content::Value(value(-5.0)),
+        Step::Any,
+        Content::Value(value(99.0)),
+        State::Range,
+    )
+    .unwrap();
+    assert_eq!(reversed.minimum().unwrap().value(), 10.0);
+    assert_eq!(reversed.maximum().unwrap().value(), -5.0);
+    assert_eq!(reversed.allowed_step(), None);
+    assert_eq!(reversed.step_origin(), StepOrigin::Any);
+    assert_eq!(reversed.step_base().value(), 10.0);
+    assert_eq!(reversed.limit_author(), LimitAuthor::MinimumExceedsMaximum);
+    for state in [State::Text, State::Date, State::Checkbox, State::Image] {
+        assert!(
+            select(
+                Content::Absent,
+                Content::Absent,
+                Step::Absent,
+                Content::Absent,
+                state
+            )
+            .is_none()
+        );
+    }
+}
+
+#[test]
+fn step_any_observes_only_the_selected_ascii_keyword_position() {
+    use surgeist_html::HtmlInputNumericStep as Step;
+    assert_eq!(Step::ANY_KEYWORD, "any");
+    for (index, lower, upper) in [(0, 97, 65), (1, 110, 78), (2, 121, 89)] {
+        assert!(Step::any_keyword_unit_matches(index, lower));
+        assert!(Step::any_keyword_unit_matches(index, upper));
+        for invalid in [0, 32, 0xd800, 0x212a] {
+            assert!(!Step::any_keyword_unit_matches(index, invalid));
+        }
+    }
+    assert!(!Step::any_keyword_unit_matches(3, 32));
+    assert!(!Step::any_keyword_unit_matches(usize::MAX, 121));
+}
+
 fn raw(role: A, value: &str) -> Attribute {
     Attribute::new(role.qualified_name(), value)
 }

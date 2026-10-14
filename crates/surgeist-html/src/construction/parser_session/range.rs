@@ -1,14 +1,12 @@
 //! Controlled Range arithmetic and generated replacement in the existing owner.
 use super::*;
-use crate::attributes::{InputNumericContent, InputNumericStep};
-use crate::numeric::{
-    FloatingPointGrammarCursor, FloatingPointParseMode,
-    range::lattice::{RangeLatticeCursor, RangeMidpointCursor},
-    range::{
-        BestFiniteNumberCursor, FiniteDecimalIngressCursor, RangeBufferHeader, RangeNumericError,
-        RangeNumericHeaders, RangeNumericReply, RangeNumericRequest, RangeScratchRole,
-    },
+use crate::bounded::{
+    BestFiniteNumberCursor, FiniteDecimalIngressCursor, FloatingPointGrammarCursor,
+    FloatingPointParseMode, RangeBufferHeader, RangeLatticeCursor, RangeMidpointCursor,
+    RangeNumericError, RangeNumericHeaders, RangeNumericReply, RangeNumericRequest,
+    RangeScratchRole,
 };
+use crate::{HtmlInputNumericContent, HtmlInputNumericStep};
 use provenance::{RangeBranch, RangeComputation, RangeOperand, RangeOriginal};
 
 // Closed fixture scheduling at actual committed ingress replies only.
@@ -198,22 +196,19 @@ impl RangeStaging {
             WorkCategory::CopyByte,
             mem::size_of::<RangeNumericHeaders>() as u64,
         )?;
-        Ok(RangeNumericHeaders {
-            buffers: std::array::from_fn(|i| RangeBufferHeader {
-                len: self.buffers[i].len(),
-                capacity: self.buffers[i].capacity(),
+        fn actual_header(len: usize, capacity: usize) -> RangeBufferHeader {
+            RangeBufferHeader::new(len, capacity)
+                .expect("actual non-ZST Vec length/capacity obey allocation invariants")
+        }
+        Ok(RangeNumericHeaders::new(
+            std::array::from_fn(|i| {
+                actual_header(self.buffers[i].len(), self.buffers[i].capacity())
             }),
-            output: self.output.as_ref().map_or(
-                RangeBufferHeader {
-                    len: 0,
-                    capacity: 0,
-                },
-                |o| RangeBufferHeader {
-                    len: o.len(),
-                    capacity: o.capacity(),
-                },
+            self.output.as_ref().map_or_else(
+                || actual_header(0, 0),
+                |output| actual_header(output.len(), output.capacity()),
             ),
-        })
+        ))
     }
     fn scratch_empty(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         for role in RangeScratchRole::ALL {
@@ -291,14 +286,14 @@ impl SessionStorage {
                     let mut read = [None; 3];
                     for (out, cell) in read.iter_mut().zip(cells) {
                         if let Some(cell) = cell {
-                            let buffer = &stage.buffers[cell.role.index()];
+                            let buffer = &stage.buffers[cell.role().index()];
                             buffer.require_disposal_owner(c)?;
                             c.charge(WorkCategory::RecordVisit, 1)?;
                             c.charge(WorkCategory::InspectByte, 1)?;
                             *out = Some(
                                 *buffer
                                     .as_slice()
-                                    .get(cell.index)
+                                    .get(cell.index())
                                     .ok_or_else(|| integrity(c))?,
                             );
                         }
@@ -359,8 +354,8 @@ impl SessionStorage {
                         return Err(integrity(c));
                     }
                     payload_write::<u8>(c, 1)?;
-                    *stage.buffers[cell.role.index()]
-                        .get_mut(cell.index, c)?
+                    *stage.buffers[cell.role().index()]
+                        .get_mut(cell.index(), c)?
                         .ok_or_else(|| integrity(c))? = value;
                     RangeNumericReply::Ack
                 }
@@ -473,14 +468,11 @@ impl SessionStorage {
                                 request,
                                 RangeNumericRequest::ReadCells {
                                     cells: [
-                                        Some(crate::numeric::range::RangeCell {
-                                            role: RangeScratchRole::Coefficient,
-                                            index: 0,
-                                        }),
+                                        Some(cell),
                                         None,
                                         None
                                     ]
-                                }
+                                } if cell.role() == RangeScratchRole::Coefficient && cell.index() == 0
                             );
                             let cancel = if folded_one_cell {
                                 match observer.point {
@@ -597,22 +589,22 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         name: &str,
-    ) -> Result<(InputNumericContent, RangeOperand), SessionError> {
+    ) -> Result<(HtmlInputNumericContent, RangeOperand), SessionError> {
         let Some(slot) = self.range_attribute_slot(c, node, name)? else {
-            return Ok((InputNumericContent::Absent, RangeOperand::Absent));
+            return Ok((HtmlInputNumericContent::Absent, RangeOperand::Absent));
         };
         let edge = self.range_payload_edge(c, slot)?;
         let (_, value) = self.range_parse(c, slot, FloatingPointParseMode::Recovery)?;
         match value {
             Some(bits) => Ok((
-                InputNumericContent::Value(
+                HtmlInputNumericContent::Value(
                     crate::HtmlFloatingPointNumber::try_from(f64::from_bits(bits))
                         .map_err(|_| integrity(c))?,
                 ),
                 RangeOperand::Finite(edge),
             )),
             None => Ok((
-                InputNumericContent::Failed,
+                HtmlInputNumericContent::Failed,
                 RangeOperand::ConversionFailed(edge),
             )),
         }
@@ -689,13 +681,14 @@ impl SessionStorage {
             RangeOperand::NotConsulted,
         ];
         payload_write::<crate::HtmlInputNumericConstraints>(c, 1)?;
-        let bounds = crate::attributes::select_input_numeric_constraints(
+        let bounds = crate::select_input_numeric_constraints(
             min,
             max,
-            InputNumericStep::Absent,
-            InputNumericContent::Absent,
+            HtmlInputNumericStep::Absent,
+            HtmlInputNumericContent::Absent,
             crate::HtmlInputType::Range,
-        );
+        )
+        .expect("literal Range is a numeric constraint state");
         let minimum = bounds.minimum().ok_or_else(|| integrity(c))?.value();
         let maximum = bounds.maximum().ok_or_else(|| integrity(c))?.value();
         let mut replaced = false;
@@ -790,14 +783,17 @@ impl SessionStorage {
             let edge = self.range_payload_edge(c, step_slot)?;
             let any = {
                 let raw = admitted_input_string(&self.payloads, c, step_slot)?;
-                let expected = crate::attributes::INPUT_STEP_ANY.as_bytes();
+                let keyword_len = HtmlInputNumericStep::ANY_KEYWORD.len();
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                let mut any = raw.len() == expected.len();
+                let mut any = raw.len() == keyword_len;
                 if any {
-                    for (index, byte) in expected.iter().copied().enumerate() {
+                    for index in 0..keyword_len {
                         c.charge(WorkCategory::InspectByte, 2)?;
                         c.charge(WorkCategory::StateStep, 1)?;
-                        if !crate::attributes::ascii_keyword_unit(raw.code_units()[index], byte) {
+                        if !HtmlInputNumericStep::any_keyword_unit_matches(
+                            index,
+                            raw.code_units()[index],
+                        ) {
                             any = false;
                             break;
                         }
@@ -807,42 +803,43 @@ impl SessionStorage {
             };
             if any {
                 operands[2] = RangeOperand::Any(edge);
-                InputNumericStep::Any
+                HtmlInputNumericStep::Any
             } else {
                 let (_, result) =
                     self.range_parse(c, step_slot, FloatingPointParseMode::Recovery)?;
                 match result {
                     Some(bits) => {
                         operands[2] = RangeOperand::Finite(edge);
-                        InputNumericStep::Value(
+                        HtmlInputNumericStep::Value(
                             crate::HtmlFloatingPointNumber::try_from(f64::from_bits(bits))
                                 .map_err(|_| integrity(c))?,
                         )
                     }
                     None => {
                         operands[2] = RangeOperand::ConversionFailed(edge);
-                        InputNumericStep::Failed
+                        HtmlInputNumericStep::Failed
                     }
                 }
             }
         } else {
             operands[2] = RangeOperand::Absent;
-            InputNumericStep::Absent
+            HtmlInputNumericStep::Absent
         };
-        let (content, content_operand) = if matches!(min, InputNumericContent::Value(_)) {
-            (InputNumericContent::Absent, RangeOperand::NotConsulted)
+        let (content, content_operand) = if matches!(min, HtmlInputNumericContent::Value(_)) {
+            (HtmlInputNumericContent::Absent, RangeOperand::NotConsulted)
         } else {
             self.range_content(c, node, "value")?
         };
         operands[3] = content_operand;
         payload_write::<crate::HtmlInputNumericConstraints>(c, 1)?;
-        let constraints = crate::attributes::select_input_numeric_constraints(
+        let constraints = crate::select_input_numeric_constraints(
             min,
             max,
             step,
             content,
             crate::HtmlInputType::Range,
-        );
+        )
+        .expect("literal Range is a numeric constraint state");
         if let (Some(bits), Some(step)) = (value, constraints.allowed_step()) {
             payload_write::<RangeLatticeCursor>(c, 1)?;
             let cursor = RangeLatticeCursor::new(

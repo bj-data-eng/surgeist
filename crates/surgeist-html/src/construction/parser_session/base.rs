@@ -253,7 +253,7 @@ impl SessionStorage {
         let outcome = selected.ok_or_else(|| {
             SessionError::Stop(c.stop_base_facts(HtmlBaseMissing::ParseObservation))
         })?;
-        let (value, respond) = crate::base::frozen_choice(fallback, outcome)
+        let (value, respond) = crate::select_frozen_base(fallback, outcome)
             .map_err(|missing| SessionError::Stop(c.stop_base_facts(missing)))?;
         c.charge(WorkCategory::ProviderCall, 2)?;
         payload_write::<Option<FrozenBase>>(c, 1)?;

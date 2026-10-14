@@ -824,6 +824,29 @@ fixed admission order. `HtmlInputImageCoordinate::initial` supplies the selected
 fresh Image-state zero coordinates; it accepts no arbitrary host activation
 coordinates.
 
+`HtmlInputNumericContent`, `HtmlInputNumericStep` and
+`select_input_numeric_constraints` expose the one selector over already-converted
+finite content, without reparsing raw attributes. It returns `None` for states
+other than Number or Range. Missing, failed, unrestricted and recovered step
+facts remain distinct. `HtmlInputNumericStep::ANY_KEYWORD` owns the sole `any`
+spelling; `any_keyword_unit_matches` tests one reached position with the existing
+ASCII kernel, not whole-value validity. The parser checks actual field length
+and admits each reached unit before calling it. Range consumers construct actual
+headers and inspect issued cells through the existing bounded public accessors;
+no mutable field promotion or replacement numerical algorithm is needed.
+
+The semantics-owned base model exposes borrowed document `fallback`, retained
+parse `observations`, their exact `raw` and `outcome`, environment
+`inputs_match`, and parse-fact `same_owner`. Matching uses URL-record/encoding
+identity and producer revision without scanning serialization. Same owner means
+the exact immutable facts backing, not equal contents or revisions.
+`select_frozen_base` owns the existing historical frozen-slot decision and
+returns the actual borrowed fallback/parsed record plus whether base-response
+steps are required. It does not qualify observation provenance or mutate parser
+state. Data/JavaScript and blocked outcomes select fallback before requiring
+unavailable CSP truth. Current semantic href lookup remains its separate
+outcome-consuming operation; it is not routed through frozen-slot policy.
+
 Local rules consume explicit values rather than locating them in a tree. HTML
 therefore retains input flag transitions/sanitization, numeric and temporal
 grammar, token classification, nonce effects, details-name decisions, PI
