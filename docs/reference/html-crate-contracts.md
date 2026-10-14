@@ -205,8 +205,10 @@ fragment.
 Result identity is allocated once with storage creation and survives publication,
 cloning, associated fragment views and parser report assembly. It is never
 replaced by source identity, capture identity or a canonical live DOM ID.
-Parser metadata records store the same result-qualified `HtmlNodeId`; private
-construction handles cannot be confused with immutable IDs. Add
+Published metadata and readback use the same result-qualified `HtmlNodeId`;
+private construction handles cannot be confused with immutable IDs. Parser-private
+metadata may retain dense bank ordinals qualified through the actual shared
+storage views. Those ordinals cannot construct identities or authorize mutation. Add
 `HtmlConstructionStorage::result_id(&HtmlBuilderNode)` for checked final-ID
 qualification; it does not publish a node view or a partial result. All existing
 `HtmlDocument`/`HtmlFragment` read APIs retain their behavior. In particular,
@@ -632,8 +634,9 @@ their retained parser payload tickets are reclaimed, preserving alias checks.
 These snapshots/actions replace private `VectorCapacity<Record>` accesses in
 session reserve/release, private `SharedAllocation<Arena>` in freeze/recovery and
 private identity sharing. Read-only storage/result node access replaces
-`arena.records` reaches in metadata/history and alias preflight; parser retains
-issued `HtmlNodeId` values in metadata rather than constructing IDs from indices.
+`arena.records` reaches in metadata/history and alias preflight. Private dense
+joins remain local; exposed result identities come from the checked storage or
+result view, never from constructing an ID from an ordinal.
 
 ### Captures, fragment context and lazy facts
 
@@ -1125,9 +1128,12 @@ documents or synthesize a live Document for a fragment.
 Document facts supply `HtmlScriptingStatus` and `HtmlCaptureRegistryInput`,
 including their explicit `Unavailable` states. Element facts supply
 `HtmlCapturedIsValue` and `HtmlCaptureRegistryInput`, also explicitly unavailable
-when unobserved. Each shadow association requires the three additional observed
-booleans in `HtmlCapturedShadowProperties`: declarative, available-to-internals
-and keep-registry-null. Its ordinary five shadow properties come from the actual
+when unobserved. Each imported shadow root requires its own explicit
+`HtmlCaptureRegistryInput`, including `Unavailable` when unobserved, and the three
+additional observed booleans in `HtmlCapturedShadowProperties`: declarative,
+available-to-internals and keep-registry-null. A host registry or
+keep-registry-null value cannot attest that root's registry. Its ordinary five
+shadow properties come from the actual
 construction result and cannot be overwritten by fact input. Absent additional
 shadow facts are a typed missing-fact failure, not three invented false values.
 An ordinary fragment's absent host is structural evidence only when the selected
@@ -1150,7 +1156,8 @@ Semantics extends its checked capture surface for these relation kinds:
   `HtmlCapturedShadowProperties`, and retains `HtmlCapturedHost::Unavailable`.
   It creates no local host or owning edge. The adapter takes the five properties
   from the source fragment's `shadow_properties()` and requires the same three
-  additional producer booleans as for a locally hosted shadow root; absence is
+  additional producer booleans and explicit root-registry input as for a locally
+  hosted shadow root; absence is
   `HtmlConstructionCaptureError::MissingShadowFacts`. It never supplies false
   defaults. The existing absent-host establishment operation rejects this
   shadow kind; unavailable external host is not known absence.
