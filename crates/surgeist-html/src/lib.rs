@@ -44,7 +44,7 @@ pub use capture::*;
 pub use color::*;
 pub use construction::*;
 pub use control_values::*;
-pub use custom_names::*;
+pub use custom_names::{HtmlCustomElementName, HtmlCustomElementNameError};
 pub use details_rules::*;
 pub use fragment_initialization::{
     HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode,
@@ -54,8 +54,17 @@ pub use input::*;
 pub use integration_points::{is_html_integration_point, is_mathml_text_integration_point};
 pub use interpretation::*;
 pub use media::*;
-pub use nonce::*;
-pub use numeric::*;
+pub use nonce::{
+    HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,
+    HtmlNonceAttributeEffect, HtmlNonceConnection, HtmlNonceDocumentEnvironment,
+    HtmlNonceInsertionEffect, HtmlNonceMissing, nonce_attribute_change, nonce_insertion_effect,
+};
+pub use numeric::{
+    HtmlDecimalDigitsError, HtmlDimension, HtmlDimensionList, HtmlFloatingPointList,
+    HtmlFloatingPointNumber, HtmlInteger, HtmlNegativeIntegerError, HtmlNonFiniteNumberError,
+    HtmlNonNegativeDecimal, HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlNumericRangeError,
+    HtmlRationalError, HtmlSignedDecimal,
+};
 pub use rel::*;
 pub use request::*;
 pub use script_type::HtmlScriptKind;
@@ -63,7 +72,11 @@ pub use semantics::*;
 pub use settings::*;
 pub use source::*;
 pub use temporal::*;
-pub use tokens::*;
+pub use tokens::{
+    HtmlCommaSeparatedTokens, HtmlCommaToken, HtmlDuplicateTokenError, HtmlOrderedTokenSet,
+    HtmlSpaceSeparatedTokens, HtmlSpaceToken, HtmlTokenComparison, HtmlTokenError,
+    HtmlUnorderedTokenSet,
+};
 pub use values::*;
 pub use vocabulary::*;
 

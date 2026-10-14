@@ -1,7 +1,9 @@
 //! Ordinary-Document relationship selectors. Resource use remains external.
 use super::*;
 use crate::attributes::token_declarations::{IconSizeCursor, IconSizeShape};
-use crate::tokens::{SpaceTokenCursor, SpaceTokenStep};
+use crate::bounded::{
+    HtmlSpaceTokenCursor as SpaceTokenCursor, HtmlSpaceTokenStep as SpaceTokenStep,
+};
 use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1046,7 +1046,13 @@ impl<'a> HtmlSemanticSession<'a> {
             integer,
             self.limits.integer_digits,
             self.image_remaining_bytes(),
-        );
+        )
+        .map_err(|failure| {
+            // A sticky semantic stop abandons this unpublished numerator; its
+            // allocation was already charged by its original materializer.
+            let (failure, _numerator) = failure.into_parts();
+            failure
+        });
         let css_pixels = self.image_numeric_result(result)?;
         Ok(HtmlImageDimensionAxisResult::Known(
             HtmlImageDimensionValue { css_pixels, origin },

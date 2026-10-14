@@ -5,7 +5,7 @@
 //! occurs here. Mantissa congruences are evaluated in each representability
 //! band; the only multiplication is bounded u64 x u64 -> u128.
 
-use super::{RangeNumericError, RangeNumericReply, RangeNumericRequest};
+use super::{RangeNumericError, RangeNumericLayout, RangeNumericReply, RangeNumericRequest};
 
 const FRACTION: u64 = (1_u64 << 52) - 1;
 const HIDDEN: u64 = 1_u64 << 52;
@@ -53,7 +53,7 @@ impl Dyadic {
 /// and one nearest/even binary64 rounding. Each reply reads only two fixed
 /// mantissas at one binary position; the receiver never owns a bigint.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RangeMidpointCursor {
+pub struct RangeMidpointCursor {
     first: Dyadic,
     second: Dyadic,
     subtract: bool,
@@ -67,7 +67,7 @@ pub(crate) struct RangeMidpointCursor {
     result: Option<u64>,
 }
 impl RangeMidpointCursor {
-    pub(crate) fn new(minimum: u64, maximum: u64) -> Result<Self, RangeNumericError> {
+    pub fn new(minimum: u64, maximum: u64) -> Result<Self, RangeNumericError> {
         let a = f64::from_bits(minimum);
         let b = f64::from_bits(maximum);
         if !a.is_finite() || !b.is_finite() {
@@ -92,15 +92,15 @@ impl RangeMidpointCursor {
             result: None,
         })
     }
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub fn request(&self) -> Option<RangeNumericRequest> {
         self.result
             .is_none()
             .then_some(RangeNumericRequest::ScalarStep)
     }
-    pub(crate) fn result(&self) -> Option<u64> {
+    pub fn result(&self) -> Option<u64> {
         self.result
     }
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         if self.result.is_some() || !matches!(reply, RangeNumericReply::Ack) {
             return Err(RangeNumericError::Integrity);
         }
@@ -247,7 +247,7 @@ enum Phase {
 /// Fixed scalar machine. The caller admits the actual Copy receiver and fixed
 /// transition before each Ack; no request can read a source/scratch cell.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RangeLatticeCursor {
+pub struct RangeLatticeCursor {
     current: u64,
     minimum: u64,
     maximum: Option<u64>,
@@ -277,7 +277,7 @@ pub(crate) struct RangeLatticeCursor {
     result: Option<Option<u64>>,
 }
 impl RangeLatticeCursor {
-    pub(crate) fn new(
+    pub fn new(
         current: u64,
         minimum: u64,
         maximum: Option<u64>,
@@ -333,15 +333,15 @@ impl RangeLatticeCursor {
         })
     }
 
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub fn request(&self) -> Option<RangeNumericRequest> {
         (self.phase != Phase::Done).then_some(RangeNumericRequest::ScalarStep)
     }
 
-    pub(crate) fn result(&self) -> Option<Option<u64>> {
+    pub fn result(&self) -> Option<Option<u64>> {
         self.result
     }
 
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         if self.phase == Phase::Done || !matches!(reply, RangeNumericReply::Ack) {
             return Err(RangeNumericError::Integrity);
         }
@@ -617,6 +617,22 @@ impl RangeLatticeCursor {
             .is_none_or(|previous| value < f64::from_bits(previous))
         {
             self.above = Some(bits);
+        }
+    }
+}
+
+impl RangeMidpointCursor {
+    pub const fn layout() -> RangeNumericLayout {
+        RangeNumericLayout {
+            registers: size_of::<Self>(),
+        }
+    }
+}
+
+impl RangeLatticeCursor {
+    pub const fn layout() -> RangeNumericLayout {
+        RangeNumericLayout {
+            registers: size_of::<Self>(),
         }
     }
 }

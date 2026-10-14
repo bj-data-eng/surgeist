@@ -71,7 +71,7 @@ pub enum HtmlNonceAttributeEffect<'a> {
 
 // Length rejection precedes inspection. Even arbitrary unmatched inputs cannot
 // cause more than these fixed literal lengths to be read by one decision.
-pub(crate) const NONCE_INSPECTION_BOUND: usize = 3 * 40 + 5;
+pub const NONCE_INSPECTION_BOUND: usize = 3 * 40 + 5;
 fn exact(value: &DocumentString, literal: &[u8]) -> bool {
     value.len() == literal.len()
         && value
@@ -80,7 +80,7 @@ fn exact(value: &DocumentString, literal: &[u8]) -> bool {
             .zip(literal)
             .all(|(&a, &b)| a == u16::from(b))
 }
-pub(crate) fn nonce_element(name: &QualifiedName) -> bool {
+pub fn nonce_element(name: &QualifiedName) -> bool {
     name.namespace().uri().is_some_and(|uri| {
         [
             b"http://www.w3.org/1999/xhtml".as_slice(),

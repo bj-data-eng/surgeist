@@ -1,7 +1,7 @@
 //! HTML 877d #pragma-directives: non-executing static content observations.
 //! No insertion history, encoding, URL resolution, stylesheet mutation, CSP or navigation.
 use super::*;
-use crate::tokens::ascii_whitespace;
+use crate::bounded::is_ascii_whitespace as ascii_whitespace;
 use crate::{HtmlAttributeReport, HtmlMetaPragmaState, HtmlNonNegativeInteger};
 
 /// An exact range in retained content, produced at checked source cursor boundaries.

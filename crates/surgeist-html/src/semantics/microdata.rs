@@ -1533,20 +1533,20 @@ impl<'a> HtmlSemanticSession<'a> {
             .map(Attribute::value);
         let mut tokens = Vec::new();
         if let Some(raw) = raw {
-            self.charge(crate::tokens::SpaceTokenCursor::BEGIN_WORK)?;
-            let mut scan = crate::tokens::SpaceTokenCursor::new(raw.code_units());
+            self.charge(crate::bounded::HtmlSpaceTokenCursor::BEGIN_WORK)?;
+            let mut scan = crate::bounded::HtmlSpaceTokenCursor::new(raw.code_units());
             loop {
                 self.charge(1)?;
                 let reads_unit = scan.inspects_unit();
                 self.charge(if reads_unit {
-                    crate::tokens::SpaceTokenCursor::STEP_WORK
+                    crate::bounded::HtmlSpaceTokenCursor::STEP_WORK
                 } else {
                     2
                 })?;
                 match scan.step() {
-                    crate::tokens::SpaceTokenStep::Continue => {}
-                    crate::tokens::SpaceTokenStep::Done => break,
-                    crate::tokens::SpaceTokenStep::Token { start, end } => {
+                    crate::bounded::HtmlSpaceTokenStep::Continue => {}
+                    crate::bounded::HtmlSpaceTokenStep::Done => break,
+                    crate::bounded::HtmlSpaceTokenStep::Token { start, end } => {
                         let units = &raw.code_units()[start..end];
                         let mut duplicate_of = None;
                         for (i, t) in tokens.iter().enumerate() {

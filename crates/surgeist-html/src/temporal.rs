@@ -6,6 +6,8 @@
 //! substituting permissive parsing for author conformance. No host clock or time
 //! zone is consulted.
 
+pub(crate) mod interpretation;
+
 mod input_coordinate;
 
 pub use input_coordinate::{
@@ -1635,7 +1637,11 @@ pub(crate) fn recognize_time_alternative(
             BorrowedTemporalPlan::Year(year)
         }
         TemporalAlternative::Duration => {
-            let plan = BorrowedDurationPlan { input, phase };
+            let plan = BorrowedDurationPlan {
+                input,
+                phase,
+                iso: phase == TemporalPhase::Author && input.first() == Some(&0x50),
+            };
             let mut duration = plan.cursor();
             while duration.next_component()?.is_some() {}
             cursor.position = input.len();
@@ -1650,6 +1656,9 @@ pub(crate) fn recognize_time_alternative(
 pub(crate) struct BorrowedDurationPlan<'a> {
     input: &'a [u16],
     phase: TemporalPhase,
+    // Retain the recognition discriminator so restarting materialization needs
+    // only fixed registers, without observing an input unit a second time.
+    iso: bool,
 }
 impl<'a> BorrowedDurationPlan<'a> {
     pub(crate) fn cursor(self) -> BorrowedDurationCursor<'a> {
@@ -1711,7 +1720,7 @@ impl<'a> BorrowedDurationCursor<'a> {
                 position: 0,
             },
             phase: plan.phase,
-            iso: plan.phase == TemporalPhase::Author && plan.input.first() == Some(&0x50),
+            iso: plan.iso,
             months: false,
             in_time: false,
             previous_rank: 0,

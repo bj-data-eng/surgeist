@@ -9,7 +9,7 @@ pub(crate) use best::BestFiniteNumberCursor;
 pub(crate) use ingress::FiniteDecimalIngressCursor;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RangeScratchRole {
+pub enum RangeScratchRole {
     Coefficient,
     Lower,
     Upper,
@@ -20,7 +20,7 @@ pub(crate) enum RangeScratchRole {
     Trial,
 }
 impl RangeScratchRole {
-    pub(crate) const ALL: [Self; 8] = [
+    pub const ALL: [Self; 8] = [
         Self::Coefficient,
         Self::Lower,
         Self::Upper,
@@ -30,7 +30,7 @@ impl RangeScratchRole {
         Self::Remainder,
         Self::Trial,
     ];
-    pub(crate) const fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         match self {
             Self::Coefficient => 0,
             Self::Lower => 1,
@@ -44,12 +44,12 @@ impl RangeScratchRole {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct RangeCell {
+pub struct RangeCell {
     pub(crate) role: RangeScratchRole,
     pub(crate) index: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RangeNumericRequest {
+pub enum RangeNumericRequest {
     SourceUnit {
         index: usize,
     },
@@ -80,7 +80,7 @@ pub(crate) enum RangeNumericRequest {
     },
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RangeNumericReply {
+pub enum RangeNumericReply {
     Unit(u16),
     Cells([Option<u8>; 3]),
     Reserved {
@@ -94,26 +94,26 @@ pub(crate) enum RangeNumericReply {
     },
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RangeNumericError {
+pub enum RangeNumericError {
     Integrity,
     Representation,
     Overflow,
     InvalidSyntax,
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RangeBufferHeader {
+pub struct RangeBufferHeader {
     pub(crate) len: usize,
     pub(crate) capacity: usize,
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RangeNumericHeaders {
+pub struct RangeNumericHeaders {
     pub(crate) buffers: [RangeBufferHeader; 8],
     pub(crate) output: RangeBufferHeader,
 }
 
 /// Only the enclosing authoritative grammar owner can issue these headers.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RangeDecimalParts {
+pub struct RangeDecimalParts {
     pub(super) negative: bool,
     pub(super) integer_start: usize,
     pub(super) integer_end: usize,
@@ -203,7 +203,8 @@ impl Io {
             ) if actual_len == self.len(role)
                 && required_len >= actual_len
                 && required_len <= self.width
-                && actual_capacity >= required_len =>
+                && actual_capacity >= required_len
+                && actual_capacity <= isize::MAX as usize =>
             {
                 self.headers.buffers[role.index()].capacity = actual_capacity;
             }
@@ -229,7 +230,8 @@ impl Io {
             ) if actual_len == self.headers.output.len
                 && required_len >= actual_len
                 && required_len <= 25
-                && actual_capacity >= required_len =>
+                && actual_capacity >= required_len
+                && actual_capacity <= isize::MAX as usize =>
             {
                 self.headers.output.capacity = actual_capacity;
             }
@@ -961,6 +963,99 @@ const POW10: [u64; 19] = [
     100000000000000000,
     1000000000000000000,
 ];
+
+impl RangeCell {
+    pub const fn new(role: RangeScratchRole, index: usize) -> Self {
+        Self { role, index }
+    }
+    pub const fn role(self) -> RangeScratchRole {
+        self.role
+    }
+    pub const fn index(self) -> usize {
+        self.index
+    }
+}
+impl RangeBufferHeader {
+    /// Describe actual caller-owned backing. A live length cannot exceed it.
+    pub fn new(len: usize, capacity: usize) -> Result<Self, RangeNumericError> {
+        if len > capacity || capacity > isize::MAX as usize {
+            return Err(RangeNumericError::Integrity);
+        }
+        Ok(Self { len, capacity })
+    }
+    pub const fn len(self) -> usize {
+        self.len
+    }
+    pub const fn is_empty(self) -> bool {
+        self.len == 0
+    }
+    pub const fn capacity(self) -> usize {
+        self.capacity
+    }
+}
+impl RangeNumericHeaders {
+    pub const fn new(buffers: [RangeBufferHeader; 8], output: RangeBufferHeader) -> Self {
+        Self { buffers, output }
+    }
+    pub const fn buffer(&self, role: RangeScratchRole) -> RangeBufferHeader {
+        self.buffers[role.index()]
+    }
+    pub const fn output(&self) -> RangeBufferHeader {
+        self.output
+    }
+}
+/// Fixed layouts before construction; variable scratch and output belong to
+/// the caller. Requested lengths and actual capacities travel in the protocol.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RangeNumericLayout {
+    registers: usize,
+}
+impl RangeNumericLayout {
+    pub const fn register_bytes(self) -> usize {
+        self.registers
+    }
+    pub const fn request_bytes(self) -> usize {
+        size_of::<RangeNumericRequest>()
+    }
+    pub const fn reply_bytes(self) -> usize {
+        size_of::<RangeNumericReply>()
+    }
+    pub const fn headers_bytes(self) -> usize {
+        size_of::<RangeNumericHeaders>()
+    }
+    pub const fn scratch_cell_bytes(self) -> usize {
+        size_of::<u8>()
+    }
+    pub const fn output_unit_bytes(self) -> usize {
+        size_of::<u16>()
+    }
+}
+impl RangeNumericRequest {
+    /// Operand payload bytes inspected by the described action, excluding the
+    /// fixed request/reply/register layouts and caller's allocation metadata.
+    pub fn read_bytes(self) -> usize {
+        match self {
+            Self::SourceUnit { .. } => size_of::<u16>(),
+            Self::ReadCells { cells } => cells.into_iter().flatten().count(),
+            _ => 0,
+        }
+    }
+    /// Initialized payload written after admission; reservations describe their
+    /// requested logical length separately and report actual capacity in reply.
+    pub const fn write_bytes(self) -> usize {
+        match self {
+            Self::AppendCell { .. } | Self::WriteCell { .. } => size_of::<u8>(),
+            Self::EmitUnit { .. } => size_of::<u16>(),
+            _ => 0,
+        }
+    }
+}
+impl std::fmt::Display for RangeNumericError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl std::error::Error for RangeNumericError {}
 
 #[cfg(test)]
 mod tests {

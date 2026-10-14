@@ -256,7 +256,7 @@ impl SmallDecimalCursor {
 /// key/extent; one active small-ratio, dyadic build, product or comparison receiver.
 /// No source borrow, collection, or storage ticket.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FiniteDecimalIngressCursor {
+pub struct FiniteDecimalIngressCursor {
     io: Io,
     parts: RangeDecimalParts,
     total: usize,
@@ -281,7 +281,7 @@ pub(crate) struct FiniteDecimalIngressCursor {
     result: Option<Result<u64, RangeNumericError>>,
 }
 impl FiniteDecimalIngressCursor {
-    pub(crate) fn new(
+    pub fn new(
         parts: RangeDecimalParts,
         source_len: usize,
         headers: RangeNumericHeaders,
@@ -333,13 +333,13 @@ impl FiniteDecimalIngressCursor {
             result: None,
         })
     }
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub fn request(&self) -> Option<RangeNumericRequest> {
         self.io.request
     }
-    pub(crate) fn headers(&self) -> RangeNumericHeaders {
+    pub fn headers(&self) -> RangeNumericHeaders {
         self.io.headers
     }
-    pub(crate) fn result(&self) -> Option<Result<u64, RangeNumericError>> {
+    pub fn result(&self) -> Option<Result<u64, RangeNumericError>> {
         self.result
     }
     #[cfg(test)]
@@ -377,7 +377,7 @@ impl FiniteDecimalIngressCursor {
             ActiveHelper::Compare(..) => 3,
         }
     }
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         let mut next = *self;
         next.validate_active()?;
         next.io.accept(reply)?;
@@ -684,6 +684,14 @@ impl FiniteDecimalIngressCursor {
             S::Done => return Err(RangeNumericError::Integrity),
         }
         Ok(())
+    }
+}
+
+impl FiniteDecimalIngressCursor {
+    pub const fn layout() -> RangeNumericLayout {
+        RangeNumericLayout {
+            registers: size_of::<Self>(),
+        }
     }
 }
 

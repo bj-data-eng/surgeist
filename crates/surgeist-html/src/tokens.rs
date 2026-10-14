@@ -356,7 +356,7 @@ fn unique_tokens(
     })
 }
 
-pub(crate) fn ascii_whitespace(unit: u16) -> bool {
+pub fn ascii_whitespace(unit: u16) -> bool {
     matches!(unit, 0x09 | 0x0A | 0x0C | 0x0D | 0x20)
 }
 
@@ -388,27 +388,27 @@ pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item =
 
 /// One bounded shared Infra action; admission belongs to the consuming caller.
 #[derive(Clone)]
-pub(crate) struct SpaceTokenCursor<'a> {
+pub struct SpaceTokenCursor<'a> {
     units: &'a [u16],
     position: usize,
     start: Option<usize>,
     ready: Option<(usize, usize)>,
     done: bool,
 }
-pub(crate) enum SpaceTokenStep {
+pub enum SpaceTokenStep {
     Continue,
     Token { start: usize, end: usize },
     Done,
 }
 impl<'a> SpaceTokenCursor<'a> {
-    pub(crate) const BEGIN_WORK: usize = 1;
+    pub const BEGIN_WORK: usize = 1;
     // Header selection/read/classification/progress or fixed token emission.
-    pub(crate) const STEP_WORK: usize = 4;
+    pub const STEP_WORK: usize = 4;
     /// Header-only classification, before any source-unit operation.
-    pub(crate) fn inspects_unit(&self) -> bool {
+    pub fn inspects_unit(&self) -> bool {
         self.ready.is_none() && !self.done && self.position < self.units.len()
     }
-    pub(crate) fn new(units: &'a [u16]) -> Self {
+    pub fn new(units: &'a [u16]) -> Self {
         Self {
             units,
             position: 0,
@@ -417,7 +417,7 @@ impl<'a> SpaceTokenCursor<'a> {
             done: false,
         }
     }
-    pub(crate) fn step(&mut self) -> SpaceTokenStep {
+    pub fn step(&mut self) -> SpaceTokenStep {
         if let Some((start, end)) = self.ready.take() {
             return SpaceTokenStep::Token { start, end };
         }

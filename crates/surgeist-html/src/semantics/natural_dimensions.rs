@@ -6,9 +6,7 @@
 //! the adapter's responsibility; exact rationals are the supported API domain.
 
 use super::*;
-use crate::numeric::natural_ratio::{
-    NaturalComparison, NaturalDifference, NaturalDigits, NaturalProduct,
-};
+use crate::bounded::{NaturalComparison, NaturalDifference, NaturalDigits, NaturalProduct};
 use crate::{HtmlNonNegativeInteger, HtmlNonNegativeRational};
 use std::cmp::Ordering as CmpOrdering;
 
@@ -725,31 +723,33 @@ impl<'a> HtmlSemanticSession<'a> {
             Ok(())
         }
     }
-    fn natural_product(
+    fn natural_product<'input, 'scratch>(
         &mut self,
-        left: NaturalDigits<'_>,
-        right: NaturalDigits<'_>,
-        out: &mut Vec<u8>,
-    ) -> Result<(), HtmlSemanticFailure> {
-        let mut cursor = NaturalProduct::new(left, right);
-        let capacity = cursor
-            .capacity()
+        left: NaturalDigits<'input>,
+        right: NaturalDigits<'input>,
+        out: &'scratch mut Vec<u8>,
+    ) -> Result<NaturalDigits<'scratch>, HtmlSemanticFailure> {
+        let capacity = NaturalProduct::required_capacity(left, right)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.reserve_scratch(out, capacity)?;
+        let mut cursor = NaturalProduct::new(left, right, out)
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
         loop {
-            if self.natural_product_step(&mut cursor, out)? {
+            if self.natural_product_step(&mut cursor)? {
                 break;
             }
         }
-        self.dimension_digits(out.len())
+        self.dimension_digits(cursor.scratch().len())?;
+        let mut completed = Some(cursor);
+        NaturalProduct::take(&mut completed)
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
     }
     fn natural_product_step(
         &mut self,
-        cursor: &mut NaturalProduct<'_>,
-        out: &mut Vec<u8>,
+        cursor: &mut NaturalProduct<'_, '_>,
     ) -> Result<bool, HtmlSemanticFailure> {
         self.charge(8)?;
-        Ok(cursor.step(out))
+        Ok(cursor.step())
     }
     fn natural_compare(
         &mut self,
@@ -772,11 +772,10 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     fn natural_difference_step(
         &mut self,
-        cursor: &mut NaturalDifference<'_>,
-        out: &mut Vec<u8>,
+        cursor: &mut NaturalDifference<'_, '_>,
     ) -> Result<bool, HtmlSemanticFailure> {
         self.charge(8)?;
-        Ok(cursor.step(out))
+        Ok(cursor.step())
     }
     fn natural_ratio_check(
         &mut self,
@@ -795,31 +794,45 @@ impl<'a> HtmlSemanticSession<'a> {
             Vec::new(),
         );
         let result = (|| {
-            use NaturalDigits::{Integer as I, Little as L};
-            self.natural_product(I(nw.numerator()), I(nh.denominator()), &mut n)?;
-            self.natural_product(I(nw.denominator()), I(nh.numerator()), &mut d)?;
-            self.natural_product(I(w), L(&d), &mut wd)?;
-            self.natural_product(I(h), L(&n), &mut hn)?;
-            self.natural_product(L(&wd), L(&[2]), &mut a)?;
-            self.natural_product(L(&hn), L(&[2]), &mut b)?;
-            let ordering = self.natural_compare(L(&a), L(&b))?;
-            let (large, small) = if ordering == CmpOrdering::Less {
-                (&b, &a)
-            } else {
-                (&a, &b)
-            };
-            self.reserve_scratch(&mut delta, large.len())?;
-            let mut cursor = NaturalDifference::new(L(large), L(small));
+            let n_digits = self.natural_product(
+                NaturalDigits::integer(nw.numerator()),
+                NaturalDigits::integer(nh.denominator()),
+                &mut n,
+            )?;
+            let d_digits = self.natural_product(
+                NaturalDigits::integer(nw.denominator()),
+                NaturalDigits::integer(nh.numerator()),
+                &mut d,
+            )?;
+            let wd_digits = self.natural_product(NaturalDigits::integer(w), d_digits, &mut wd)?;
+            let hn_digits = self.natural_product(NaturalDigits::integer(h), n_digits, &mut hn)?;
+            // This fixed checked operand is not a scan over caller scratch.
+            let two = NaturalDigits::try_little(&[2]).expect("fixed canonical digit");
+            let a_digits = self.natural_product(wd_digits, two, &mut a)?;
+            let b_digits = self.natural_product(hn_digits, two, &mut b)?;
+            let mut comparison = NaturalComparison::new(a_digits, b_digits);
             loop {
-                if self.natural_difference_step(&mut cursor, &mut delta)? {
+                if self.natural_comparison_step(&mut comparison)?.is_some() {
                     break;
                 }
             }
-            self.dimension_digits(delta.len())?;
-            if self.natural_compare(L(&delta), L(&d))? != CmpOrdering::Greater {
+            self.reserve_scratch(&mut delta, comparison.difference_capacity())?;
+            let mut compared = Some(comparison);
+            let mut cursor = NaturalComparison::take_difference(&mut compared, &mut delta)
+                .map_err(|_| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
+            loop {
+                if self.natural_difference_step(&mut cursor)? {
+                    break;
+                }
+            }
+            self.dimension_digits(cursor.scratch().len())?;
+            let mut completed = Some(cursor);
+            let delta_digits = NaturalDifference::take(&mut completed)
+                .map_err(|_| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
+            if self.natural_compare(delta_digits, d_digits)? != CmpOrdering::Greater {
                 return Ok(HtmlDimensionPair::Conforming(HtmlDimensionTolerance::Width));
             }
-            if self.natural_compare(L(&delta), L(&n))? != CmpOrdering::Greater {
+            if self.natural_compare(delta_digits, n_digits)? != CmpOrdering::Greater {
                 return Ok(HtmlDimensionPair::Conforming(
                     HtmlDimensionTolerance::Height,
                 ));
@@ -887,40 +900,44 @@ mod tests {
             let mut out = Vec::new();
             let err = match phase {
                 0 => {
-                    let mut cursor = NaturalProduct::new(
-                        NaturalDigits::Little(&[9, 9]),
-                        NaturalDigits::Little(&[9, 9]),
-                    );
-                    s.reserve_scratch(&mut out, cursor.capacity().unwrap())
-                        .unwrap();
+                    let left = NaturalDigits::try_little(&[9, 9]).unwrap();
+                    let right = NaturalDigits::try_little(&[9, 9]).unwrap();
+                    s.reserve_scratch(
+                        &mut out,
+                        NaturalProduct::required_capacity(left, right).unwrap(),
+                    )
+                    .unwrap();
+                    let mut cursor = NaturalProduct::new(left, right, &mut out).unwrap();
                     for _ in 0..5 {
-                        assert!(!s.natural_product_step(&mut cursor, &mut out).unwrap());
+                        assert!(!s.natural_product_step(&mut cursor).unwrap());
                     }
-                    let before = out.clone();
+                    let before = cursor.scratch().to_vec();
                     token.cancel();
-                    let e = s.natural_product_step(&mut cursor, &mut out).unwrap_err();
-                    assert_eq!(out, before);
+                    let e = s.natural_product_step(&mut cursor).unwrap_err();
+                    assert_eq!(cursor.scratch(), before);
                     e
                 }
                 1 => {
-                    let mut cursor = NaturalDifference::new(
-                        NaturalDigits::Little(&[0, 0, 0, 1]),
-                        NaturalDigits::Little(&[1]),
+                    let mut comparison = NaturalComparison::new(
+                        NaturalDigits::try_little(&[0, 0, 0, 1]).unwrap(),
+                        NaturalDigits::try_little(&[1]).unwrap(),
                     );
+                    while comparison.step().is_none() {}
                     s.reserve_scratch(&mut out, 4).unwrap();
-                    assert!(!s.natural_difference_step(&mut cursor, &mut out).unwrap());
-                    let before = out.clone();
+                    let mut compared = Some(comparison);
+                    let mut cursor =
+                        NaturalComparison::take_difference(&mut compared, &mut out).unwrap();
+                    assert!(!s.natural_difference_step(&mut cursor).unwrap());
+                    let before = cursor.scratch().to_vec();
                     token.cancel();
-                    let e = s
-                        .natural_difference_step(&mut cursor, &mut out)
-                        .unwrap_err();
-                    assert_eq!(out, before);
+                    let e = s.natural_difference_step(&mut cursor).unwrap_err();
+                    assert_eq!(cursor.scratch(), before);
                     e
                 }
                 _ => {
                     let mut cursor = NaturalComparison::new(
-                        NaturalDigits::Little(&[1, 2]),
-                        NaturalDigits::Little(&[2, 2]),
+                        NaturalDigits::try_little(&[1, 2]).unwrap(),
+                        NaturalDigits::try_little(&[2, 2]).unwrap(),
                     );
                     assert_eq!(s.natural_comparison_step(&mut cursor).unwrap(), None);
                     token.cancel();

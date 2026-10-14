@@ -378,7 +378,7 @@ impl HtmlValueInterpreter {
     }
 
     /// Checks the common finite raw-input capacity before owner-specific work.
-    pub(crate) fn admit_attribute_raw(
+    pub fn admit_attribute_raw(
         &self,
         raw: Option<&DocumentString>,
     ) -> Result<(), HtmlValueAdmissionError> {

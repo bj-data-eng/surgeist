@@ -80,7 +80,7 @@ impl Error for HtmlCustomElementNameError {}
 /// DOM's ASCII-alpha local-name branch, so scanning forbidden units is equivalent
 /// to its code-point exclusions and preserves isolated surrogates. No storage is
 /// allocated; each name has one unit scan and fixed reserved-name comparisons.
-pub(crate) fn validate_custom_element_name(
+pub fn validate_custom_element_name(
     name: &DocumentString,
 ) -> Result<(), HtmlCustomElementNameError> {
     match validate_custom_element_name_with(name, |_| Ok::<(), std::convert::Infallible>(())) {
@@ -92,13 +92,13 @@ pub(crate) fn validate_custom_element_name(
 /// Actual borrowed scanner actions. A consuming controlled operation admits
 /// each action before the indicated dereference; native validation remains
 /// explicitly unbudgeted and uses the same grammar.
-pub(crate) enum CustomNameScanAction {
+pub enum CustomNameScanAction {
     Header,
     Unit,
     ReservedHeader,
     ReservedPair,
 }
-pub(crate) fn validate_custom_element_name_with<E>(
+pub fn validate_custom_element_name_with<E>(
     name: &DocumentString,
     mut admit: impl FnMut(CustomNameScanAction) -> Result<(), E>,
 ) -> Result<Result<(), HtmlCustomElementNameError>, E> {

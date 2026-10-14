@@ -6,8 +6,8 @@ impl HtmlSemanticSession<'_> {
         subject: &HtmlCaptureSubjectId,
         element: &HtmlCapturedElement,
     ) -> Result<HtmlSemanticValue<DocumentString>, HtmlSemanticFailure> {
-        self.charge(crate::nonce::NONCE_INSPECTION_BOUND)?;
-        if !crate::nonce::nonce_element(element.name()) {
+        self.charge(crate::bounded::HTML_NONCE_INSPECTION_BOUND)?;
+        if !crate::bounded::is_nonce_element(element.name()) {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
         self.charge(1)?;

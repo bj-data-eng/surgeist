@@ -2,8 +2,13 @@
 //! This immutable captured operation does not execute content patching.
 use super::*;
 use crate::HtmlCapturedProcessingInstruction;
-use crate::pi_pseudo_attributes::{Action, Cursor, Field, Name, Reply};
-use crate::template_markers::{self, First, Siblings, Target};
+use crate::bounded::{
+    HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
+    HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
+    HtmlPiPseudoAttributeReply as Reply, HtmlTemplateMarkerFirst as First,
+    HtmlTemplateMarkerSiblings as Siblings, HtmlTemplateMarkerTarget as Target,
+    template_marker_first,
+};
 use std::ops::Range;
 
 /// A sufficient same-tree name witness; Match does not promise first selection.
@@ -397,10 +402,10 @@ impl<'a> HtmlSemanticSession<'a> {
                 };
                 cursor.reply(reply).map_err(|error| {
                     self.stop(match error {
-                        crate::pi_pseudo_attributes::Error::Integrity => {
+                        crate::bounded::HtmlPiPseudoAttributeError::Integrity => {
                             HtmlSemanticFailureKind::IntrinsicUnavailable
                         }
-                        crate::pi_pseudo_attributes::Error::Representation => {
+                        crate::bounded::HtmlPiPseudoAttributeError::Representation => {
                             HtmlSemanticFailureKind::RepresentationExhausted
                         }
                     })
@@ -452,7 +457,7 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(std::mem::size_of::<Siblings>().max(1))?;
             let closes = siblings
                 .inspect(target)
-                .map_err(|()| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+                .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
             #[cfg(test)]
             self.template_cancel(CancellationPoint::SiblingStep);
             if closes {
@@ -524,7 +529,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 if let HtmlCapturedNodeKind::ProcessingInstruction(pi) = node.kind() {
                     let matches = self.template_pi_name_matches(pi, raw.value())?;
                     let target = self.template_target(pi)?;
-                    let first = template_markers::first(target, matches);
+                    let first = template_marker_first(target, matches);
                     if first != First::Continue {
                         if selection.is_none() {
                             selection = Some(if first == First::Marker {

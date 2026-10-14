@@ -3,6 +3,23 @@
 
 pub mod surgeist_html
 pub mod surgeist_html::bounded
+pub enum surgeist_html::bounded::FloatingPointAllocationError
+pub surgeist_html::bounded::FloatingPointAllocationError::ActualCapacityLimitExceeded
+pub surgeist_html::bounded::FloatingPointAllocationError::ActualCapacityLimitExceeded::capacity_bytes: usize
+pub surgeist_html::bounded::FloatingPointAllocationError::ActualCapacityLimitExceeded::limit: usize
+pub surgeist_html::bounded::FloatingPointAllocationError::ActualCapacityLimitExceeded::requested: usize
+pub surgeist_html::bounded::FloatingPointAllocationError::AllocationFailed
+pub surgeist_html::bounded::FloatingPointAllocationError::AllocationFailed::requested: usize
+pub surgeist_html::bounded::FloatingPointAllocationError::RepresentationExhausted
+pub surgeist_html::bounded::FloatingPointAllocationError::RequestedCapacityLimitExceeded
+pub surgeist_html::bounded::FloatingPointAllocationError::RequestedCapacityLimitExceeded::limit: usize
+pub surgeist_html::bounded::FloatingPointAllocationError::RequestedCapacityLimitExceeded::required: usize
+impl core::error::Error for surgeist_html::bounded::FloatingPointAllocationError
+impl core::fmt::Display for surgeist_html::bounded::FloatingPointAllocationError
+pub fn surgeist_html::bounded::FloatingPointAllocationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::FloatingPointParseMode
+pub surgeist_html::bounded::FloatingPointParseMode::Author
+pub surgeist_html::bounded::FloatingPointParseMode::Recovery
 #[non_exhaustive] pub enum surgeist_html::bounded::HtmlAttributeValidationError
 pub surgeist_html::bounded::HtmlAttributeValidationError::Consumed
 pub surgeist_html::bounded::HtmlAttributeValidationError::Duplicate
@@ -12,6 +29,11 @@ pub surgeist_html::bounded::HtmlAttributeValidationError::NotReady
 impl core::error::Error for surgeist_html::bounded::HtmlAttributeValidationError
 impl core::fmt::Display for surgeist_html::bounded::HtmlAttributeValidationError
 pub fn surgeist_html::bounded::HtmlAttributeValidationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlCustomNameScanAction
+pub surgeist_html::bounded::HtmlCustomNameScanAction::Header
+pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedHeader
+pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedPair
+pub surgeist_html::bounded::HtmlCustomNameScanAction::Unit
 pub enum surgeist_html::bounded::HtmlFragmentNameTest<'a>
 pub surgeist_html::bounded::HtmlFragmentNameTest::HtmlNamespace
 pub surgeist_html::bounded::HtmlFragmentNameTest::Local(&'a [&'static str])
@@ -25,6 +47,209 @@ pub surgeist_html::bounded::HtmlIntegrationPointRule::Never
 pub enum surgeist_html::bounded::HtmlMathmlTextPointTest<'a>
 pub surgeist_html::bounded::HtmlMathmlTextPointTest::Local(&'a [&'static str])
 pub surgeist_html::bounded::HtmlMathmlTextPointTest::Namespace(&'static str)
+pub enum surgeist_html::bounded::HtmlPiPseudoAttributeAction
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Begin(surgeist_html::bounded::HtmlPiPseudoAttributeField)
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Commit
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Discard
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Emit
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Emit::end: usize
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Emit::field: surgeist_html::bounded::HtmlPiPseudoAttributeField
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Emit::len: usize
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Emit::reference: bool
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Emit::start: usize
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Emit::units: [u16; 2]
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::NameLength(usize)
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::NameUnit(surgeist_html::bounded::HtmlPiPseudoAttributeName, usize)
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Pop
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Read(usize)
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Ready(bool)
+pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Step
+pub enum surgeist_html::bounded::HtmlPiPseudoAttributeError
+pub surgeist_html::bounded::HtmlPiPseudoAttributeError::Integrity
+pub surgeist_html::bounded::HtmlPiPseudoAttributeError::Representation
+impl core::error::Error for surgeist_html::bounded::HtmlPiPseudoAttributeError
+impl core::fmt::Display for surgeist_html::bounded::HtmlPiPseudoAttributeError
+pub fn surgeist_html::bounded::HtmlPiPseudoAttributeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlPiPseudoAttributeField
+pub surgeist_html::bounded::HtmlPiPseudoAttributeField::Name
+pub surgeist_html::bounded::HtmlPiPseudoAttributeField::Value
+pub enum surgeist_html::bounded::HtmlPiPseudoAttributeName
+pub surgeist_html::bounded::HtmlPiPseudoAttributeName::Current
+pub surgeist_html::bounded::HtmlPiPseudoAttributeName::Pair(usize)
+pub enum surgeist_html::bounded::HtmlPiPseudoAttributeReply
+pub surgeist_html::bounded::HtmlPiPseudoAttributeReply::Ack
+pub surgeist_html::bounded::HtmlPiPseudoAttributeReply::Length(usize)
+pub surgeist_html::bounded::HtmlPiPseudoAttributeReply::Unit(core::option::Option<u16>)
+pub enum surgeist_html::bounded::HtmlSpaceTokenStep
+pub surgeist_html::bounded::HtmlSpaceTokenStep::Continue
+pub surgeist_html::bounded::HtmlSpaceTokenStep::Done
+pub surgeist_html::bounded::HtmlSpaceTokenStep::Token
+pub surgeist_html::bounded::HtmlSpaceTokenStep::Token::end: usize
+pub surgeist_html::bounded::HtmlSpaceTokenStep::Token::start: usize
+pub enum surgeist_html::bounded::HtmlTemplateMarkerFirst
+pub surgeist_html::bounded::HtmlTemplateMarkerFirst::Continue
+pub surgeist_html::bounded::HtmlTemplateMarkerFirst::Marker
+pub surgeist_html::bounded::HtmlTemplateMarkerFirst::Start
+pub enum surgeist_html::bounded::HtmlTemplateMarkerTarget
+pub surgeist_html::bounded::HtmlTemplateMarkerTarget::End
+pub surgeist_html::bounded::HtmlTemplateMarkerTarget::Marker
+pub surgeist_html::bounded::HtmlTemplateMarkerTarget::Other
+pub surgeist_html::bounded::HtmlTemplateMarkerTarget::Start
+pub enum surgeist_html::bounded::HtmlTimeElementInterpretationActionKind
+pub surgeist_html::bounded::HtmlTimeElementInterpretationActionKind::Assembly
+pub surgeist_html::bounded::HtmlTimeElementInterpretationActionKind::Materialization
+pub surgeist_html::bounded::HtmlTimeElementInterpretationActionKind::Poll
+pub surgeist_html::bounded::HtmlTimeElementInterpretationActionKind::Recognition
+pub surgeist_html::bounded::HtmlTimeElementInterpretationActionKind::ReportAssembly
+#[non_exhaustive] pub enum surgeist_html::bounded::HtmlTimeElementInterpretationError
+pub surgeist_html::bounded::HtmlTimeElementInterpretationError::Consumed
+pub surgeist_html::bounded::HtmlTimeElementInterpretationError::InvalidRecognizedPlan
+pub surgeist_html::bounded::HtmlTimeElementInterpretationError::NotReady
+pub surgeist_html::bounded::HtmlTimeElementInterpretationError::Processing(surgeist_html::bounded::NumericMaterializationError)
+pub surgeist_html::bounded::HtmlTimeElementInterpretationError::RepresentationExhausted
+impl core::error::Error for surgeist_html::bounded::HtmlTimeElementInterpretationError
+impl core::fmt::Display for surgeist_html::bounded::HtmlTimeElementInterpretationError
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::IntegerRecoveryError
+pub surgeist_html::bounded::IntegerRecoveryError::Allocation(surgeist_html::bounded::IntegerUnitStepError)
+pub surgeist_html::bounded::IntegerRecoveryError::Syntax(surgeist_html::bounded::NumericParseError)
+impl core::error::Error for surgeist_html::bounded::IntegerRecoveryError
+impl core::fmt::Display for surgeist_html::bounded::IntegerRecoveryError
+pub fn surgeist_html::bounded::IntegerRecoveryError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::IntegerUnitStep
+pub surgeist_html::bounded::IntegerUnitStep::Decrement
+pub surgeist_html::bounded::IntegerUnitStep::Increment
+pub enum surgeist_html::bounded::IntegerUnitStepError
+pub surgeist_html::bounded::IntegerUnitStepError::ActualCapacityLimitExceeded
+pub surgeist_html::bounded::IntegerUnitStepError::ActualCapacityLimitExceeded::capacity_bytes: usize
+pub surgeist_html::bounded::IntegerUnitStepError::ActualCapacityLimitExceeded::limit: usize
+pub surgeist_html::bounded::IntegerUnitStepError::ActualCapacityLimitExceeded::requested: usize
+pub surgeist_html::bounded::IntegerUnitStepError::AllocationFailed
+pub surgeist_html::bounded::IntegerUnitStepError::AllocationFailed::requested: usize
+pub surgeist_html::bounded::IntegerUnitStepError::DigitLimitExceeded
+pub surgeist_html::bounded::IntegerUnitStepError::DigitLimitExceeded::limit: usize
+pub surgeist_html::bounded::IntegerUnitStepError::DigitLimitExceeded::required: usize
+pub surgeist_html::bounded::IntegerUnitStepError::RepresentationExhausted
+pub surgeist_html::bounded::IntegerUnitStepError::RequestedCapacityLimitExceeded
+pub surgeist_html::bounded::IntegerUnitStepError::RequestedCapacityLimitExceeded::limit: usize
+pub surgeist_html::bounded::IntegerUnitStepError::RequestedCapacityLimitExceeded::required: usize
+impl core::error::Error for surgeist_html::bounded::IntegerUnitStepError
+impl core::fmt::Display for surgeist_html::bounded::IntegerUnitStepError
+pub fn surgeist_html::bounded::IntegerUnitStepError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::NaturalArithmeticError
+pub surgeist_html::bounded::NaturalArithmeticError::EmptySlot
+pub surgeist_html::bounded::NaturalArithmeticError::InvalidDigit
+pub surgeist_html::bounded::NaturalArithmeticError::InvalidDigit::index: usize
+pub surgeist_html::bounded::NaturalArithmeticError::InvalidDigit::value: u8
+pub surgeist_html::bounded::NaturalArithmeticError::NonCanonical
+pub surgeist_html::bounded::NaturalArithmeticError::NotReady
+pub surgeist_html::bounded::NaturalArithmeticError::RepresentationExhausted
+pub surgeist_html::bounded::NaturalArithmeticError::ScratchCapacity
+pub surgeist_html::bounded::NaturalArithmeticError::ScratchCapacity::capacity: usize
+pub surgeist_html::bounded::NaturalArithmeticError::ScratchCapacity::required: usize
+pub surgeist_html::bounded::NaturalArithmeticError::ScratchNotEmpty
+impl core::error::Error for surgeist_html::bounded::NaturalArithmeticError
+impl core::fmt::Display for surgeist_html::bounded::NaturalArithmeticError
+pub fn surgeist_html::bounded::NaturalArithmeticError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::NumericMaterializationError
+pub surgeist_html::bounded::NumericMaterializationError::Boundary(surgeist_html::bounded::IntegerUnitStepError)
+pub surgeist_html::bounded::NumericMaterializationError::Digits(surgeist_html::HtmlDecimalDigitsError)
+impl core::error::Error for surgeist_html::bounded::NumericMaterializationError
+impl core::fmt::Display for surgeist_html::bounded::NumericMaterializationError
+pub fn surgeist_html::bounded::NumericMaterializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::NumericParseError
+pub surgeist_html::bounded::NumericParseError::FloatingPointOverflow
+pub surgeist_html::bounded::NumericParseError::InvalidSyntax
+pub surgeist_html::bounded::NumericParseError::Negative
+pub surgeist_html::bounded::NumericParseError::ZeroDimension
+impl core::error::Error for surgeist_html::bounded::NumericParseError
+impl core::fmt::Display for surgeist_html::bounded::NumericParseError
+pub fn surgeist_html::bounded::NumericParseError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::RangeNumericError
+pub surgeist_html::bounded::RangeNumericError::Integrity
+pub surgeist_html::bounded::RangeNumericError::InvalidSyntax
+pub surgeist_html::bounded::RangeNumericError::Overflow
+pub surgeist_html::bounded::RangeNumericError::Representation
+impl core::error::Error for surgeist_html::bounded::RangeNumericError
+impl core::fmt::Display for surgeist_html::bounded::RangeNumericError
+pub fn surgeist_html::bounded::RangeNumericError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::RangeNumericReply
+pub surgeist_html::bounded::RangeNumericReply::Ack
+pub surgeist_html::bounded::RangeNumericReply::Cells([core::option::Option<u8>; 3])
+pub surgeist_html::bounded::RangeNumericReply::OutputReserved
+pub surgeist_html::bounded::RangeNumericReply::OutputReserved::actual_capacity: usize
+pub surgeist_html::bounded::RangeNumericReply::OutputReserved::actual_len: usize
+pub surgeist_html::bounded::RangeNumericReply::Reserved
+pub surgeist_html::bounded::RangeNumericReply::Reserved::actual_capacity: usize
+pub surgeist_html::bounded::RangeNumericReply::Reserved::actual_len: usize
+pub surgeist_html::bounded::RangeNumericReply::Unit(u16)
+pub enum surgeist_html::bounded::RangeNumericRequest
+pub surgeist_html::bounded::RangeNumericRequest::AppendCell
+pub surgeist_html::bounded::RangeNumericRequest::AppendCell::role: surgeist_html::bounded::RangeScratchRole
+pub surgeist_html::bounded::RangeNumericRequest::AppendCell::value: u8
+pub surgeist_html::bounded::RangeNumericRequest::EmitUnit
+pub surgeist_html::bounded::RangeNumericRequest::EmitUnit::unit: u16
+pub surgeist_html::bounded::RangeNumericRequest::PopCell
+pub surgeist_html::bounded::RangeNumericRequest::PopCell::role: surgeist_html::bounded::RangeScratchRole
+pub surgeist_html::bounded::RangeNumericRequest::ReadCells
+pub surgeist_html::bounded::RangeNumericRequest::ReadCells::cells: [core::option::Option<surgeist_html::bounded::RangeCell>; 3]
+pub surgeist_html::bounded::RangeNumericRequest::Reserve
+pub surgeist_html::bounded::RangeNumericRequest::Reserve::required_len: usize
+pub surgeist_html::bounded::RangeNumericRequest::Reserve::role: surgeist_html::bounded::RangeScratchRole
+pub surgeist_html::bounded::RangeNumericRequest::ReserveOutput
+pub surgeist_html::bounded::RangeNumericRequest::ReserveOutput::required_len: usize
+pub surgeist_html::bounded::RangeNumericRequest::ScalarStep
+pub surgeist_html::bounded::RangeNumericRequest::SourceUnit
+pub surgeist_html::bounded::RangeNumericRequest::SourceUnit::index: usize
+pub surgeist_html::bounded::RangeNumericRequest::WriteCell
+pub surgeist_html::bounded::RangeNumericRequest::WriteCell::cell: surgeist_html::bounded::RangeCell
+pub surgeist_html::bounded::RangeNumericRequest::WriteCell::value: u8
+impl surgeist_html::bounded::RangeNumericRequest
+pub fn surgeist_html::bounded::RangeNumericRequest::read_bytes(self) -> usize
+pub const fn surgeist_html::bounded::RangeNumericRequest::write_bytes(self) -> usize
+pub enum surgeist_html::bounded::RangeScratchRole
+pub surgeist_html::bounded::RangeScratchRole::Coefficient
+pub surgeist_html::bounded::RangeScratchRole::Left
+pub surgeist_html::bounded::RangeScratchRole::Lower
+pub surgeist_html::bounded::RangeScratchRole::Quotient
+pub surgeist_html::bounded::RangeScratchRole::Remainder
+pub surgeist_html::bounded::RangeScratchRole::Right
+pub surgeist_html::bounded::RangeScratchRole::Trial
+pub surgeist_html::bounded::RangeScratchRole::Upper
+impl surgeist_html::bounded::RangeScratchRole
+pub const surgeist_html::bounded::RangeScratchRole::ALL: [Self; 8]
+pub const fn surgeist_html::bounded::RangeScratchRole::index(self) -> usize
+pub struct surgeist_html::bounded::BestFiniteNumberCursor
+impl surgeist_html::bounded::BestFiniteNumberCursor
+pub fn surgeist_html::bounded::BestFiniteNumberCursor::headers(&self) -> surgeist_html::bounded::RangeNumericHeaders
+pub fn surgeist_html::bounded::BestFiniteNumberCursor::new(value: f64, headers: surgeist_html::bounded::RangeNumericHeaders) -> core::result::Result<Self, surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::BestFiniteNumberCursor::reply(&mut self, reply: surgeist_html::bounded::RangeNumericReply) -> core::result::Result<(), surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::BestFiniteNumberCursor::request(&self) -> core::option::Option<surgeist_html::bounded::RangeNumericRequest>
+pub fn surgeist_html::bounded::BestFiniteNumberCursor::result(&self) -> core::option::Option<usize>
+impl surgeist_html::bounded::BestFiniteNumberCursor
+pub const fn surgeist_html::bounded::BestFiniteNumberCursor::layout() -> surgeist_html::bounded::RangeNumericLayout
+pub struct surgeist_html::bounded::FiniteDecimalIngressCursor
+impl surgeist_html::bounded::FiniteDecimalIngressCursor
+pub fn surgeist_html::bounded::FiniteDecimalIngressCursor::headers(&self) -> surgeist_html::bounded::RangeNumericHeaders
+pub fn surgeist_html::bounded::FiniteDecimalIngressCursor::new(parts: surgeist_html::bounded::RangeDecimalParts, source_len: usize, headers: surgeist_html::bounded::RangeNumericHeaders) -> core::result::Result<Self, surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::FiniteDecimalIngressCursor::reply(&mut self, reply: surgeist_html::bounded::RangeNumericReply) -> core::result::Result<(), surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::FiniteDecimalIngressCursor::request(&self) -> core::option::Option<surgeist_html::bounded::RangeNumericRequest>
+pub fn surgeist_html::bounded::FiniteDecimalIngressCursor::result(&self) -> core::option::Option<core::result::Result<u64, surgeist_html::bounded::RangeNumericError>>
+impl surgeist_html::bounded::FiniteDecimalIngressCursor
+pub const fn surgeist_html::bounded::FiniteDecimalIngressCursor::layout() -> surgeist_html::bounded::RangeNumericLayout
+pub struct surgeist_html::bounded::FloatingPointGrammarCursor<'a>
+impl<'a> surgeist_html::bounded::FloatingPointGrammarCursor<'a>
+pub fn surgeist_html::bounded::FloatingPointGrammarCursor<'a>::advance(&mut self)
+pub fn surgeist_html::bounded::FloatingPointGrammarCursor<'a>::inspects_unit(&self) -> bool
+pub fn surgeist_html::bounded::FloatingPointGrammarCursor<'a>::is_finished(&self) -> bool
+pub fn surgeist_html::bounded::FloatingPointGrammarCursor<'a>::is_valid(&self) -> bool
+pub fn surgeist_html::bounded::FloatingPointGrammarCursor<'a>::new(units: &'a [u16], mode: surgeist_html::bounded::FloatingPointParseMode) -> Self
+pub fn surgeist_html::bounded::FloatingPointGrammarCursor<'a>::range_decimal_parts(&self) -> core::result::Result<surgeist_html::bounded::RangeDecimalParts, surgeist_html::bounded::NumericParseError>
+pub struct surgeist_html::bounded::FloatingPointParseResult
+impl surgeist_html::bounded::FloatingPointParseResult
+pub const fn surgeist_html::bounded::FloatingPointParseResult::capacity_bytes(&self) -> usize
+pub fn surgeist_html::bounded::FloatingPointParseResult::into_parts(self) -> (core::result::Result<surgeist_html::HtmlFloatingPointNumber, surgeist_html::bounded::NumericParseError>, usize)
+pub fn surgeist_html::bounded::FloatingPointParseResult::value(&self) -> &core::result::Result<surgeist_html::HtmlFloatingPointNumber, surgeist_html::bounded::NumericParseError>
 pub struct surgeist_html::bounded::HtmlAttributeStorage
 impl surgeist_html::bounded::HtmlAttributeStorage
 pub fn surgeist_html::bounded::HtmlAttributeStorage::from_shared_attributes(attributes: alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>) -> Self
@@ -44,14 +269,173 @@ pub struct surgeist_html::bounded::HtmlAttributeValidationLayout
 impl surgeist_html::bounded::HtmlAttributeValidationLayout
 pub fn surgeist_html::bounded::HtmlAttributeValidationLayout::inspected_bytes(self) -> u64
 pub fn surgeist_html::bounded::HtmlAttributeValidationLayout::record_visits(self) -> u64
+pub struct surgeist_html::bounded::HtmlPiPseudoAttributeCursor
+impl surgeist_html::bounded::HtmlPiPseudoAttributeCursor
+pub fn surgeist_html::bounded::HtmlPiPseudoAttributeCursor::action(&self) -> core::option::Option<surgeist_html::bounded::HtmlPiPseudoAttributeAction>
+pub fn surgeist_html::bounded::HtmlPiPseudoAttributeCursor::new(len: usize) -> Self
+pub fn surgeist_html::bounded::HtmlPiPseudoAttributeCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlPiPseudoAttributeReply) -> core::result::Result<(), surgeist_html::bounded::HtmlPiPseudoAttributeError>
+pub struct surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
+impl<'a> surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
+pub const surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::BEGIN_WORK: usize
+pub const surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::STEP_WORK: usize
+pub fn surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::inspects_unit(&self) -> bool
+pub fn surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::new(units: &'a [u16]) -> Self
+pub fn surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::step(&mut self) -> surgeist_html::bounded::HtmlSpaceTokenStep
+pub struct surgeist_html::bounded::HtmlTemplateMarkerNestingOverflow
+impl core::error::Error for surgeist_html::bounded::HtmlTemplateMarkerNestingOverflow
+impl core::fmt::Display for surgeist_html::bounded::HtmlTemplateMarkerNestingOverflow
+pub fn surgeist_html::bounded::HtmlTemplateMarkerNestingOverflow::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::bounded::HtmlTemplateMarkerSiblings
+impl surgeist_html::bounded::HtmlTemplateMarkerSiblings
+pub fn surgeist_html::bounded::HtmlTemplateMarkerSiblings::inspect(&mut self, target: surgeist_html::bounded::HtmlTemplateMarkerTarget) -> core::result::Result<bool, surgeist_html::bounded::HtmlTemplateMarkerNestingOverflow>
+pub struct surgeist_html::bounded::HtmlTimeElementInterpretation<'raw>
+impl<'raw> surgeist_html::bounded::HtmlTimeElementInterpretation<'raw>
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretation<'raw>::abort(self) -> &'raw surgeist_html::DocumentString
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretation<'raw>::new(raw: &'raw surgeist_html::DocumentString, interpreter: surgeist_html::HtmlValueInterpreter) -> core::result::Result<Self, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretation<'raw>::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlTimeElementInterpretationAction<'_, 'raw>>, surgeist_html::bounded::HtmlTimeElementInterpretationError>
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretation<'raw>::raw(&self) -> &'raw surgeist_html::DocumentString
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretation<'raw>::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeElementValue, surgeist_html::HtmlMachineReadableTime>, surgeist_html::bounded::HtmlTimeElementInterpretationError>
+pub struct surgeist_html::bounded::HtmlTimeElementInterpretationAction<'step, 'raw>
+impl surgeist_html::bounded::HtmlTimeElementInterpretationAction<'_, '_>
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationAction<'_, '_>::advance(self, max_integer_digits: usize, max_allocation_bytes: usize) -> surgeist_html::bounded::HtmlTimeElementInterpretationStep
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationAction<'_, '_>::layout(&self) -> surgeist_html::bounded::HtmlTimeElementInterpretationLayout
+pub struct surgeist_html::bounded::HtmlTimeElementInterpretationLayout
+impl surgeist_html::bounded::HtmlTimeElementInterpretationLayout
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationLayout::can_allocate(self) -> bool
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationLayout::kind(self) -> surgeist_html::bounded::HtmlTimeElementInterpretationActionKind
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationLayout::work(self) -> usize
+pub struct surgeist_html::bounded::HtmlTimeElementInterpretationStep
+impl surgeist_html::bounded::HtmlTimeElementInterpretationStep
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationStep::capacity_bytes(self) -> usize
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationStep::outcome(self) -> core::result::Result<(), surgeist_html::bounded::HtmlTimeElementInterpretationError>
+pub fn surgeist_html::bounded::HtmlTimeElementInterpretationStep::poll_after(self) -> bool
 pub struct surgeist_html::bounded::HtmlValidatedAttributes
 impl surgeist_html::bounded::HtmlValidatedAttributes
 pub fn surgeist_html::bounded::HtmlValidatedAttributes::into_attributes(self) -> surgeist_html::OrderedAttributes
+pub struct surgeist_html::bounded::IntegerPrefixScanner
+impl surgeist_html::bounded::IntegerPrefixScanner
+pub fn surgeist_html::bounded::IntegerPrefixScanner::feed(&mut self, unit: u16) -> bool
+pub fn surgeist_html::bounded::IntegerPrefixScanner::finish(self) -> core::result::Result<surgeist_html::bounded::ScannedIntegerPrefix, surgeist_html::bounded::NumericParseError>
+pub fn surgeist_html::bounded::IntegerPrefixScanner::new(recover: bool) -> Self
+pub struct surgeist_html::bounded::IntegerUnitStepResult
+impl surgeist_html::bounded::IntegerUnitStepResult
+pub const fn surgeist_html::bounded::IntegerUnitStepResult::capacity_bytes(&self) -> usize
+pub fn surgeist_html::bounded::IntegerUnitStepResult::into_parts(self) -> (surgeist_html::HtmlInteger, usize)
+pub fn surgeist_html::bounded::IntegerUnitStepResult::value(&self) -> &surgeist_html::HtmlInteger
+pub struct surgeist_html::bounded::NaturalComparison<'a>
+impl<'a> surgeist_html::bounded::NaturalComparison<'a>
+pub fn surgeist_html::bounded::NaturalComparison<'a>::difference_capacity(&self) -> usize
+pub fn surgeist_html::bounded::NaturalComparison<'a>::new(left: surgeist_html::bounded::NaturalDigits<'a>, right: surgeist_html::bounded::NaturalDigits<'a>) -> Self
+pub fn surgeist_html::bounded::NaturalComparison<'a>::result(&self) -> core::option::Option<core::cmp::Ordering>
+pub fn surgeist_html::bounded::NaturalComparison<'a>::step(&mut self) -> core::option::Option<core::cmp::Ordering>
+pub fn surgeist_html::bounded::NaturalComparison<'a>::take_difference<'scratch>(slot: &mut core::option::Option<Self>, output: &'scratch mut alloc::vec::Vec<u8>) -> core::result::Result<surgeist_html::bounded::NaturalDifference<'a, 'scratch>, surgeist_html::bounded::NaturalArithmeticError>
+pub struct surgeist_html::bounded::NaturalDifference<'input, 'scratch>
+impl<'scratch> surgeist_html::bounded::NaturalDifference<'_, 'scratch>
+pub fn surgeist_html::bounded::NaturalDifference<'_, 'scratch>::is_finished(&self) -> bool
+pub fn surgeist_html::bounded::NaturalDifference<'_, 'scratch>::scratch(&self) -> &[u8]
+pub fn surgeist_html::bounded::NaturalDifference<'_, 'scratch>::step(&mut self) -> bool
+pub fn surgeist_html::bounded::NaturalDifference<'_, 'scratch>::take(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::NaturalDigits<'scratch>, surgeist_html::bounded::NaturalArithmeticError>
+pub struct surgeist_html::bounded::NaturalDigits<'a>
+impl<'a> surgeist_html::bounded::NaturalDigits<'a>
+pub fn surgeist_html::bounded::NaturalDigits<'a>::integer(value: &'a surgeist_html::HtmlNonNegativeInteger) -> Self
+pub const fn surgeist_html::bounded::NaturalDigits<'a>::is_empty(self) -> bool
+pub fn surgeist_html::bounded::NaturalDigits<'a>::len(self) -> usize
+pub fn surgeist_html::bounded::NaturalDigits<'a>::try_little(value: &'a [u8]) -> core::result::Result<Self, surgeist_html::bounded::NaturalArithmeticError>
+pub fn surgeist_html::bounded::NaturalDigits<'a>::validation_work_bound(length: usize) -> core::option::Option<usize>
+pub struct surgeist_html::bounded::NaturalProduct<'input, 'scratch>
+impl<'input, 'scratch> surgeist_html::bounded::NaturalProduct<'input, 'scratch>
+pub fn surgeist_html::bounded::NaturalProduct<'input, 'scratch>::is_finished(&self) -> bool
+pub fn surgeist_html::bounded::NaturalProduct<'input, 'scratch>::new(left: surgeist_html::bounded::NaturalDigits<'input>, right: surgeist_html::bounded::NaturalDigits<'input>, output: &'scratch mut alloc::vec::Vec<u8>) -> core::result::Result<Self, surgeist_html::bounded::NaturalArithmeticError>
+pub fn surgeist_html::bounded::NaturalProduct<'input, 'scratch>::required_capacity(left: surgeist_html::bounded::NaturalDigits<'_>, right: surgeist_html::bounded::NaturalDigits<'_>) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::NaturalProduct<'input, 'scratch>::scratch(&self) -> &[u8]
+pub fn surgeist_html::bounded::NaturalProduct<'input, 'scratch>::step(&mut self) -> bool
+pub fn surgeist_html::bounded::NaturalProduct<'input, 'scratch>::take(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::NaturalDigits<'scratch>, surgeist_html::bounded::NaturalArithmeticError>
+pub struct surgeist_html::bounded::NumericMaterializationFailure
+impl surgeist_html::bounded::NumericMaterializationFailure
+pub const fn surgeist_html::bounded::NumericMaterializationFailure::capacity_bytes(&self) -> usize
+pub const fn surgeist_html::bounded::NumericMaterializationFailure::kind(&self) -> surgeist_html::bounded::NumericMaterializationError
+impl core::error::Error for surgeist_html::bounded::NumericMaterializationFailure
+impl core::fmt::Display for surgeist_html::bounded::NumericMaterializationFailure
+pub fn surgeist_html::bounded::NumericMaterializationFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::bounded::NumericMaterialized<T>
+impl<T> surgeist_html::bounded::NumericMaterialized<T>
+pub const fn surgeist_html::bounded::NumericMaterialized<T>::capacity_bytes(&self) -> usize
+pub fn surgeist_html::bounded::NumericMaterialized<T>::into_parts(self) -> (T, usize)
+pub fn surgeist_html::bounded::NumericMaterialized<T>::value(&self) -> &T
+pub struct surgeist_html::bounded::RangeBufferHeader
+impl surgeist_html::bounded::RangeBufferHeader
+pub const fn surgeist_html::bounded::RangeBufferHeader::capacity(self) -> usize
+pub const fn surgeist_html::bounded::RangeBufferHeader::is_empty(self) -> bool
+pub const fn surgeist_html::bounded::RangeBufferHeader::len(self) -> usize
+pub fn surgeist_html::bounded::RangeBufferHeader::new(len: usize, capacity: usize) -> core::result::Result<Self, surgeist_html::bounded::RangeNumericError>
+pub struct surgeist_html::bounded::RangeCell
+impl surgeist_html::bounded::RangeCell
+pub const fn surgeist_html::bounded::RangeCell::index(self) -> usize
+pub const fn surgeist_html::bounded::RangeCell::new(role: surgeist_html::bounded::RangeScratchRole, index: usize) -> Self
+pub const fn surgeist_html::bounded::RangeCell::role(self) -> surgeist_html::bounded::RangeScratchRole
+pub struct surgeist_html::bounded::RangeDecimalParts
+pub struct surgeist_html::bounded::RangeLatticeCursor
+impl surgeist_html::bounded::RangeLatticeCursor
+pub const fn surgeist_html::bounded::RangeLatticeCursor::layout() -> surgeist_html::bounded::RangeNumericLayout
+impl surgeist_html::bounded::RangeLatticeCursor
+pub fn surgeist_html::bounded::RangeLatticeCursor::new(current: u64, minimum: u64, maximum: core::option::Option<u64>, base: u64, step: u64) -> core::result::Result<Self, surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::RangeLatticeCursor::reply(&mut self, reply: surgeist_html::bounded::RangeNumericReply) -> core::result::Result<(), surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::RangeLatticeCursor::request(&self) -> core::option::Option<surgeist_html::bounded::RangeNumericRequest>
+pub fn surgeist_html::bounded::RangeLatticeCursor::result(&self) -> core::option::Option<core::option::Option<u64>>
+pub struct surgeist_html::bounded::RangeMidpointCursor
+impl surgeist_html::bounded::RangeMidpointCursor
+pub const fn surgeist_html::bounded::RangeMidpointCursor::layout() -> surgeist_html::bounded::RangeNumericLayout
+impl surgeist_html::bounded::RangeMidpointCursor
+pub fn surgeist_html::bounded::RangeMidpointCursor::new(minimum: u64, maximum: u64) -> core::result::Result<Self, surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::RangeMidpointCursor::reply(&mut self, reply: surgeist_html::bounded::RangeNumericReply) -> core::result::Result<(), surgeist_html::bounded::RangeNumericError>
+pub fn surgeist_html::bounded::RangeMidpointCursor::request(&self) -> core::option::Option<surgeist_html::bounded::RangeNumericRequest>
+pub fn surgeist_html::bounded::RangeMidpointCursor::result(&self) -> core::option::Option<u64>
+pub struct surgeist_html::bounded::RangeNumericHeaders
+impl surgeist_html::bounded::RangeNumericHeaders
+pub const fn surgeist_html::bounded::RangeNumericHeaders::buffer(&self, role: surgeist_html::bounded::RangeScratchRole) -> surgeist_html::bounded::RangeBufferHeader
+pub const fn surgeist_html::bounded::RangeNumericHeaders::new(buffers: [surgeist_html::bounded::RangeBufferHeader; 8], output: surgeist_html::bounded::RangeBufferHeader) -> Self
+pub const fn surgeist_html::bounded::RangeNumericHeaders::output(&self) -> surgeist_html::bounded::RangeBufferHeader
+pub struct surgeist_html::bounded::RangeNumericLayout
+impl surgeist_html::bounded::RangeNumericLayout
+pub const fn surgeist_html::bounded::RangeNumericLayout::headers_bytes(self) -> usize
+pub const fn surgeist_html::bounded::RangeNumericLayout::output_unit_bytes(self) -> usize
+pub const fn surgeist_html::bounded::RangeNumericLayout::register_bytes(self) -> usize
+pub const fn surgeist_html::bounded::RangeNumericLayout::reply_bytes(self) -> usize
+pub const fn surgeist_html::bounded::RangeNumericLayout::request_bytes(self) -> usize
+pub const fn surgeist_html::bounded::RangeNumericLayout::scratch_cell_bytes(self) -> usize
+pub struct surgeist_html::bounded::RationalIntegerMaterializationFailure
+impl surgeist_html::bounded::RationalIntegerMaterializationFailure
+pub fn surgeist_html::bounded::RationalIntegerMaterializationFailure::capacity_bytes(&self) -> usize
+pub fn surgeist_html::bounded::RationalIntegerMaterializationFailure::failure(&self) -> &surgeist_html::bounded::NumericMaterializationFailure
+pub fn surgeist_html::bounded::RationalIntegerMaterializationFailure::into_parts(self) -> (surgeist_html::bounded::NumericMaterializationFailure, surgeist_html::HtmlNonNegativeInteger)
+pub fn surgeist_html::bounded::RationalIntegerMaterializationFailure::kind(&self) -> surgeist_html::bounded::NumericMaterializationError
+pub fn surgeist_html::bounded::RationalIntegerMaterializationFailure::numerator(&self) -> &surgeist_html::HtmlNonNegativeInteger
+impl core::error::Error for surgeist_html::bounded::RationalIntegerMaterializationFailure
+pub fn surgeist_html::bounded::RationalIntegerMaterializationFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::bounded::RationalIntegerMaterializationFailure
+pub fn surgeist_html::bounded::RationalIntegerMaterializationFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::bounded::ScannedIntegerPrefix
+impl surgeist_html::bounded::ScannedIntegerPrefix
+pub const fn surgeist_html::bounded::ScannedIntegerPrefix::end(&self) -> usize
+pub const fn surgeist_html::bounded::ScannedIntegerPrefix::is_negative(&self) -> bool
+pub const fn surgeist_html::bounded::ScannedIntegerPrefix::start(&self) -> usize
+pub fn surgeist_html::bounded::ScannedIntegerPrefix::try_nonnegative_digits(self, units: &[u16]) -> core::result::Result<&[u16], surgeist_html::bounded::NumericParseError>
+pub const surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND: usize
 pub fn surgeist_html::bounded::fragment_initial_modes<E>(effective: surgeist_html::HtmlParserScriptingMode, compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlFragmentNameTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<(surgeist_html::HtmlFragmentTokenizerState, surgeist_html::HtmlFragmentInsertionMode), E>
 pub fn surgeist_html::bounded::html_integration_point_encoding_attribute<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, value: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<bool>, E>
 pub fn surgeist_html::bounded::html_integration_point_rule<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::HtmlIntegrationPointRule, E>
+pub fn surgeist_html::bounded::integer_long_work_bound(input_units: usize) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::is_ascii_whitespace(unit: u16) -> bool
+pub fn surgeist_html::bounded::is_nonce_element(name: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::bounded::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
+pub fn surgeist_html::bounded::parse_integer_long(input: &surgeist_html::DocumentString) -> core::result::Result<core::option::Option<i32>, surgeist_html::bounded::NumericParseError>
+pub fn surgeist_html::bounded::parse_nonnegative_integer_capped(input: &surgeist_html::DocumentString, cap: usize) -> core::result::Result<usize, surgeist_html::bounded::NumericParseError>
 pub fn surgeist_html::bounded::stack_reset_insertion_mode<E>(compare: impl core::ops::function::FnMut(&'static str) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlFragmentInsertionMode>, E>
+pub fn surgeist_html::bounded::template_marker_first(target: surgeist_html::bounded::HtmlTemplateMarkerTarget, name_matches: bool) -> surgeist_html::bounded::HtmlTemplateMarkerFirst
+pub fn surgeist_html::bounded::try_floating_point_number(input: &surgeist_html::DocumentString, mode: surgeist_html::bounded::FloatingPointParseMode, max_capacity_bytes: usize) -> core::result::Result<surgeist_html::bounded::FloatingPointParseResult, surgeist_html::bounded::FloatingPointAllocationError>
+pub fn surgeist_html::bounded::try_parse_integer(input: &surgeist_html::DocumentString, max_result_digits: usize, max_capacity_bytes: usize) -> core::result::Result<surgeist_html::bounded::IntegerUnitStepResult, surgeist_html::bounded::IntegerRecoveryError>
+pub fn surgeist_html::bounded::validate_custom_element_name(name: &surgeist_html::DocumentString) -> core::result::Result<(), surgeist_html::HtmlCustomElementNameError>
+pub fn surgeist_html::bounded::validate_custom_element_name_with<E>(name: &surgeist_html::DocumentString, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlCustomNameScanAction) -> core::result::Result<(), E>) -> core::result::Result<core::result::Result<(), surgeist_html::HtmlCustomElementNameError>, E>
 pub enum surgeist_html::HtmlAboutBaseUrl
 pub surgeist_html::HtmlAboutBaseUrl::KnownNull
 pub surgeist_html::HtmlAboutBaseUrl::KnownRecord(surgeist_html::HtmlBaseUrlRecord)
@@ -5410,8 +5794,13 @@ pub fn surgeist_html::HtmlInteger::is_negative(&self) -> bool
 pub fn surgeist_html::HtmlInteger::magnitude(&self) -> &surgeist_html::HtmlNonNegativeInteger
 pub fn surgeist_html::HtmlInteger::to_i128(&self) -> core::result::Result<i128, surgeist_html::HtmlNumericRangeError>
 pub fn surgeist_html::HtmlInteger::to_i64(&self) -> core::result::Result<i64, surgeist_html::HtmlNumericRangeError>
+pub fn surgeist_html::HtmlInteger::try_from_usize(value: usize, max_result_digits: usize, max_capacity_bytes: usize) -> core::result::Result<surgeist_html::bounded::IntegerUnitStepResult, surgeist_html::bounded::IntegerUnitStepError>
+pub fn surgeist_html::HtmlInteger::try_unit_step(&self, step: surgeist_html::bounded::IntegerUnitStep, max_result_digits: usize, max_capacity_bytes: usize) -> core::result::Result<surgeist_html::bounded::IntegerUnitStepResult, surgeist_html::bounded::IntegerUnitStepError>
 impl surgeist_html::HtmlInteger
 pub fn surgeist_html::HtmlInteger::into_tabindex_attribute(self) -> surgeist_html::Attribute
+impl surgeist_html::HtmlInteger
+pub fn surgeist_html::HtmlInteger::materialized_unit_step_work_bound(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlInteger::try_materialized_unit_step(&self, step: surgeist_html::bounded::IntegerUnitStep, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
 impl core::convert::From<i128> for surgeist_html::HtmlInteger
 pub fn surgeist_html::HtmlInteger::from(value: i128) -> Self
 impl core::convert::From<surgeist_html::HtmlInteger> for surgeist_html::HtmlSignedDecimal
@@ -5893,6 +6282,15 @@ impl core::fmt::Display for surgeist_html::HtmlNonFiniteNumberError
 pub fn surgeist_html::HtmlNonFiniteNumberError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlNonNegativeDecimal
 impl surgeist_html::HtmlNonNegativeDecimal
+pub fn surgeist_html::HtmlNonNegativeDecimal::added_to_work_bound(&self, other: &Self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeDecimal::copy_work_bound(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeDecimal::from_borrowed_digits_work_bound(integer: usize, fraction: usize) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeDecimal::multiplied_by_work_bound(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeDecimal::try_added_to(&self, other: &Self, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeDecimal::try_copy(&self, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeDecimal::try_from_borrowed_digits(integer: &[u16], fraction: &[u16], max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeDecimal::try_multiplied_by(&self, multiplier: u32, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+impl surgeist_html::HtmlNonNegativeDecimal
 pub fn surgeist_html::HtmlNonNegativeDecimal::as_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlNonNegativeDecimal::fractional_digits(&self) -> core::option::Option<&str>
 pub fn surgeist_html::HtmlNonNegativeDecimal::integer_part(&self) -> &surgeist_html::HtmlNonNegativeInteger
@@ -5901,6 +6299,21 @@ pub fn surgeist_html::HtmlNonNegativeDecimal::with_fraction_digits(integer: surg
 impl core::convert::From<surgeist_html::HtmlNonNegativeInteger> for surgeist_html::HtmlNonNegativeDecimal
 pub fn surgeist_html::HtmlNonNegativeDecimal::from(integer: surgeist_html::HtmlNonNegativeInteger) -> Self
 pub struct surgeist_html::HtmlNonNegativeInteger
+impl surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeInteger::added_to_work_bound(&self, other: &Self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeInteger::copy_work_bound(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeInteger::decremented_work_bound(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeInteger::from_borrowed_digits_work_bound(length: usize) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeInteger::from_u32_work_bound() -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeInteger::multiplied_by_work_bound(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeInteger::quotient_remainder_work_bound(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeInteger::try_added_to(&self, other: &Self, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeInteger::try_copy(&self, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeInteger::try_decremented(&self, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<core::option::Option<Self>>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeInteger::try_from_borrowed_digits(input: &[u16], max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeInteger::try_from_u32(value: u32, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeInteger::try_multiplied_by(&self, multiplier: u32, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeInteger::try_quotient_remainder(&self, divisor: core::num::nonzero::NonZeroU32, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<(Self, u32)>, surgeist_html::bounded::NumericMaterializationFailure>
 impl surgeist_html::HtmlNonNegativeInteger
 pub fn surgeist_html::HtmlNonNegativeInteger::as_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlNonNegativeInteger::decimal_digits(&self) -> &str
@@ -5932,9 +6345,15 @@ pub type surgeist_html::HtmlNonNegativeInteger::Error = surgeist_html::HtmlNegat
 pub fn surgeist_html::HtmlNonNegativeInteger::try_from(value: surgeist_html::HtmlInteger) -> core::result::Result<Self, Self::Error>
 pub struct surgeist_html::HtmlNonNegativeRational
 impl surgeist_html::HtmlNonNegativeRational
+pub fn surgeist_html::HtmlNonNegativeRational::copy_work_bound(&self) -> core::option::Option<usize>
 pub fn surgeist_html::HtmlNonNegativeRational::denominator(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeRational::integer_work_bound() -> core::option::Option<usize>
 pub fn surgeist_html::HtmlNonNegativeRational::new(numerator: surgeist_html::HtmlNonNegativeInteger, denominator: surgeist_html::HtmlNonNegativeInteger) -> core::result::Result<Self, surgeist_html::HtmlRationalError>
 pub fn surgeist_html::HtmlNonNegativeRational::numerator(&self) -> &surgeist_html::HtmlNonNegativeInteger
+pub fn surgeist_html::HtmlNonNegativeRational::retained_bytes(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlNonNegativeRational::same_representation(&self, other: &Self) -> bool
+pub fn surgeist_html::HtmlNonNegativeRational::try_copy(&self, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::NumericMaterializationFailure>
+pub fn surgeist_html::HtmlNonNegativeRational::try_from_integer(numerator: surgeist_html::HtmlNonNegativeInteger, max_digits: usize, max_bytes: usize) -> core::result::Result<surgeist_html::bounded::NumericMaterialized<Self>, surgeist_html::bounded::RationalIntegerMaterializationFailure>
 pub struct surgeist_html::HtmlNonPositiveInputStepError
 impl core::error::Error for surgeist_html::HtmlNonPositiveInputStepError
 impl core::fmt::Display for surgeist_html::HtmlNonPositiveInputStepError
@@ -7217,6 +7636,33 @@ pub fn surgeist_html::HtmlValueInterpreter::blocking_for_script(&self, element: 
 pub fn surgeist_html::HtmlValueInterpreter::icon_sizes(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlIconSizesReport, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::icon_sizes_for_link(&self, element: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> core::result::Result<surgeist_html::HtmlIconSizesReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
+pub fn surgeist_html::HtmlValueInterpreter::admit_attribute_raw(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<(), surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::comma_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlCommaSeparatedTokens, surgeist_html::HtmlCommaSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDate, surgeist_html::HtmlDate>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::date_or_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDateOrTime, surgeist_html::HtmlDateOrTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::date_with_optional_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDateWithOptionalTime, surgeist_html::HtmlDateOrTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::dimension(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimension, surgeist_html::HtmlDimension>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::dimension_list(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimensionList, surgeist_html::HtmlDimensionList>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::duration(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDuration, surgeist_html::HtmlParsedDuration>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::floating_point_list(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointList, surgeist_html::HtmlFloatingPointList>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::floating_point_number(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::global_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlGlobalDateTime, surgeist_html::HtmlParsedGlobalDateTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::integer(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlInteger, surgeist_html::HtmlInteger>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::legacy_color(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLegacyColor, surgeist_html::HtmlLegacyColor>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime, surgeist_html::HtmlParsedLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::max_input_code_units(self) -> usize
+pub fn surgeist_html::HtmlValueInterpreter::month(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlMonth, surgeist_html::HtmlMonth>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::new(max_input_code_units: usize) -> Self
+pub fn surgeist_html::HtmlValueInterpreter::nonnegative_integer(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::nonzero_dimension(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimension, surgeist_html::HtmlDimension>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::normalized_local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime, surgeist_html::HtmlParsedLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::space_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlSpaceSeparatedTokens, surgeist_html::HtmlSpaceSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTime, surgeist_html::HtmlParsedTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::time_element_value(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeElementValue, surgeist_html::HtmlMachineReadableTime>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::time_zone_offset(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeZoneOffset, surgeist_html::HtmlTimeZoneOffset>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::week(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlWeek, surgeist_html::HtmlWeek>, surgeist_html::HtmlValueAdmissionError>
+pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlYearlessDate, surgeist_html::HtmlYearlessDate>, surgeist_html::HtmlValueAdmissionError>
+impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::area_coordinates(&self, element: &surgeist_html::QualifiedName, shape: core::option::Option<&surgeist_html::Attribute>, coords: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAreaCoordinatesReport, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::autocapitalize(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlAutocapitalizeState>, surgeist_html::HtmlValueAdmissionError>
@@ -7250,32 +7696,6 @@ pub fn surgeist_html::HtmlValueInterpreter::textarea_cols(&self, element: &surge
 pub fn surgeist_html::HtmlValueInterpreter::textarea_rows(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlNumericAttributeReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::closedby(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlClosedByState>, surgeist_html::HtmlValueAdmissionError>
-impl surgeist_html::HtmlValueInterpreter
-pub fn surgeist_html::HtmlValueInterpreter::comma_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlCommaSeparatedTokens, surgeist_html::HtmlCommaSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDate, surgeist_html::HtmlDate>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::date_or_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDateOrTime, surgeist_html::HtmlDateOrTime>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::date_with_optional_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDateWithOptionalTime, surgeist_html::HtmlDateOrTime>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::dimension(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimension, surgeist_html::HtmlDimension>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::dimension_list(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimensionList, surgeist_html::HtmlDimensionList>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::duration(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDuration, surgeist_html::HtmlParsedDuration>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::floating_point_list(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointList, surgeist_html::HtmlFloatingPointList>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::floating_point_number(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::global_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlGlobalDateTime, surgeist_html::HtmlParsedGlobalDateTime>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::integer(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlInteger, surgeist_html::HtmlInteger>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::legacy_color(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLegacyColor, surgeist_html::HtmlLegacyColor>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime, surgeist_html::HtmlParsedLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::max_input_code_units(self) -> usize
-pub fn surgeist_html::HtmlValueInterpreter::month(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlMonth, surgeist_html::HtmlMonth>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::new(max_input_code_units: usize) -> Self
-pub fn surgeist_html::HtmlValueInterpreter::nonnegative_integer(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlNonNegativeInteger, surgeist_html::HtmlNonNegativeInteger>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::nonzero_dimension(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlDimension, surgeist_html::HtmlDimension>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::normalized_local_date_time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlLocalDateTime, surgeist_html::HtmlParsedLocalDateTime>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::space_separated_tokens(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlSpaceSeparatedTokens, surgeist_html::HtmlSpaceSeparatedTokens>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::time(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTime, surgeist_html::HtmlParsedTime>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::time_element_value(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeElementValue, surgeist_html::HtmlMachineReadableTime>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::time_zone_offset(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlTimeZoneOffset, surgeist_html::HtmlTimeZoneOffset>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::week(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlWeek, surgeist_html::HtmlWeek>, surgeist_html::HtmlValueAdmissionError>
-pub fn surgeist_html::HtmlValueInterpreter::yearless_date(&self, raw: core::option::Option<&surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlValueReport<surgeist_html::HtmlYearlessDate, surgeist_html::HtmlYearlessDate>, surgeist_html::HtmlValueAdmissionError>
 impl surgeist_html::HtmlValueInterpreter
 pub fn surgeist_html::HtmlValueInterpreter::command(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlCommandReadback>, surgeist_html::HtmlValueAdmissionError>
 pub fn surgeist_html::HtmlValueInterpreter::popovertargetaction(&self, element: &surgeist_html::QualifiedName, raw: core::option::Option<&surgeist_html::Attribute>) -> core::result::Result<surgeist_html::HtmlAttributeReport<surgeist_html::HtmlPopoverTargetAction>, surgeist_html::HtmlValueAdmissionError>

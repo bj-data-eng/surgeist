@@ -2,18 +2,26 @@
 //! XML-stylesheet 20101028 §3 and XML 1.0 Fifth Edition productions 2–5/66.
 //! The cursor owns no source, allocation, controller or retained field.
 
+/// The caller-owned field affected by a cursor action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Field {
+pub enum Field {
     Name,
     Value,
 }
+/// A name in the caller's current field or committed pair bank.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Name {
+pub enum Name {
     Current,
     Pair(usize),
 }
+/// The next concrete read, field-bank mutation, or grammar transition.
+///
+/// The caller admits the action before performing it. `Read` addresses the
+/// original UTF-16 input; name reads address fields previously emitted by this
+/// cursor. `Commit`, `Discard`, and `Pop` update that same caller-owned bank.
+/// `Ready(false)` follows cleanup of all committed pairs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Action {
+pub enum Action {
     Read(usize),
     Step,
     Begin(Field),
@@ -32,17 +40,30 @@ pub(crate) enum Action {
     Pop,
     Ready(bool),
 }
+/// The actual read result, or acknowledgement after performing a pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Reply {
+pub enum Reply {
     Unit(Option<u16>),
     Length(usize),
     Ack,
 }
+/// A refused protocol transition; the cursor retains its previous state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Error {
+pub enum Error {
+    /// A reply does not match the pending action or original input extent.
     Integrity,
+    /// A cursor offset, field length, or pair count cannot be represented.
     Representation,
 }
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Integrity => "HTML PI pseudo-attribute reply does not match its pending action",
+            Self::Representation => "HTML PI pseudo-attribute cursor extent cannot be represented",
+        })
+    }
+}
+impl std::error::Error for Error {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Phase {
     Leading,
@@ -59,8 +80,9 @@ enum Phase {
     RefNamed,
     Separated,
 }
+/// Allocation-free grammar state; source and emitted fields stay with the caller.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Cursor {
+pub struct Cursor {
     action: Option<Action>,
     phase: Phase,
     len: usize,
@@ -82,7 +104,8 @@ pub(crate) struct Cursor {
     named_len: usize,
 }
 impl Cursor {
-    pub(crate) fn new(len: usize) -> Self {
+    /// Starts a whole-string scan over the actual input's UTF-16 length.
+    pub fn new(len: usize) -> Self {
         Self {
             action: Some(Action::Read(0)),
             phase: Phase::Leading,
@@ -105,10 +128,12 @@ impl Cursor {
             named_len: 0,
         }
     }
-    pub(crate) fn action(&self) -> Option<Action> {
+    /// Observes the pending action without advancing it; `None` is terminal.
+    pub fn action(&self) -> Option<Action> {
         self.action
     }
-    pub(crate) fn reply(&mut self, reply: Reply) -> Result<(), Error> {
+    /// Applies an actual action result, preserving the cursor on any error.
+    pub fn reply(&mut self, reply: Reply) -> Result<(), Error> {
         let mut next = *self;
         next.advance(reply)?;
         *self = next;

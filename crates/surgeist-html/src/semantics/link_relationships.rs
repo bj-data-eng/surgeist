@@ -659,16 +659,16 @@ impl FactsAdmission {
         if !self.exact(actual, raw)? {
             return Err(HtmlRelFactsError::RawMismatch);
         }
-        self.work(crate::tokens::SpaceTokenCursor::BEGIN_WORK)?;
-        let mut cursor = crate::tokens::SpaceTokenCursor::new(raw.code_units());
+        self.work(crate::bounded::HtmlSpaceTokenCursor::BEGIN_WORK)?;
+        let mut cursor = crate::bounded::HtmlSpaceTokenCursor::new(raw.code_units());
         loop {
-            self.work(crate::tokens::SpaceTokenCursor::STEP_WORK)?;
+            self.work(crate::bounded::HtmlSpaceTokenCursor::STEP_WORK)?;
             match cursor.step() {
-                crate::tokens::SpaceTokenStep::Continue => {}
-                crate::tokens::SpaceTokenStep::Done => {
+                crate::bounded::HtmlSpaceTokenStep::Continue => {}
+                crate::bounded::HtmlSpaceTokenStep::Done => {
                     return Err(HtmlRelFactsError::InvalidOccurrence);
                 }
-                crate::tokens::SpaceTokenStep::Token { start: s, end: e }
+                crate::bounded::HtmlSpaceTokenStep::Token { start: s, end: e }
                     if s == start && e == end =>
                 {
                     return Ok(());

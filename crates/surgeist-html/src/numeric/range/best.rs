@@ -30,7 +30,7 @@ enum ActiveHelper {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct BestFiniteNumberCursor {
+pub struct BestFiniteNumberCursor {
     io: Io,
     bits: u64,
     negative: bool,
@@ -62,7 +62,7 @@ pub(crate) struct BestFiniteNumberCursor {
     phase: Phase,
 }
 impl BestFiniteNumberCursor {
-    pub(crate) fn new(value: f64, headers: RangeNumericHeaders) -> Result<Self, RangeNumericError> {
+    pub fn new(value: f64, headers: RangeNumericHeaders) -> Result<Self, RangeNumericError> {
         let raw = value.to_bits();
         let bits = raw & !(1u64 << 63);
         let (mantissa, exponent) = finite_dyadic(bits)?;
@@ -101,13 +101,13 @@ impl BestFiniteNumberCursor {
             phase: Phase::Start,
         })
     }
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub fn request(&self) -> Option<RangeNumericRequest> {
         self.io.request
     }
-    pub(crate) fn headers(&self) -> RangeNumericHeaders {
+    pub fn headers(&self) -> RangeNumericHeaders {
         self.io.headers
     }
-    pub(crate) fn result(&self) -> Option<usize> {
+    pub fn result(&self) -> Option<usize> {
         matches!(self.phase, Phase::Done).then_some(self.output_len)
     }
     #[cfg(test)]
@@ -141,7 +141,7 @@ impl BestFiniteNumberCursor {
             ActiveHelper::Compare(..) => 3,
         }
     }
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         let mut next = *self;
         next.validate_active()?;
         next.io.accept(reply)?;
@@ -557,6 +557,14 @@ pub(super) fn prefer_candidate(
         Ordering::Less => !candidate_is_high,
         Ordering::Greater => candidate_is_high,
         Ordering::Equal => candidate.is_multiple_of(2) && !old.is_multiple_of(2),
+    }
+}
+
+impl BestFiniteNumberCursor {
+    pub const fn layout() -> RangeNumericLayout {
+        RangeNumericLayout {
+            registers: size_of::<Self>(),
+        }
     }
 }
 

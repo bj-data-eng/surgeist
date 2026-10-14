@@ -3,6 +3,13 @@
 //! Actions describe their work before reading their operands. This module owns
 //! value invariants; callers retain cancellation, work and allocation accounting.
 
+mod local;
+mod numeric;
+mod time_element;
+pub use local::*;
+pub use numeric::*;
+pub use time_element::*;
+
 pub use crate::fragment_initialization::{
     HtmlFragmentNameTest, fragment_initial_modes, stack_reset_insertion_mode,
 };

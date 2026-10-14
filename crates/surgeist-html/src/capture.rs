@@ -3,7 +3,7 @@
 //! Fragment queries follow HTML 877d6146487f §13.4 and §13.2.4–6. Captured
 //! availability describes producer evidence; it never advertises host execution.
 
-use crate::custom_names::validate_custom_element_name;
+use crate::bounded::validate_custom_element_name;
 use crate::{
     DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlDoctype, HtmlDocumentMode,
     HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlHeaderDeliveredCsp,
@@ -1105,7 +1105,7 @@ impl HtmlCaptureBuilder {
         let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
             unreachable!()
         };
-        if !crate::nonce::nonce_element(element.name()) {
+        if !crate::bounded::is_nonce_element(element.name()) {
             return Err(HtmlCaptureError::NonceInapplicable);
         }
         if !matches!(element.nonce, HtmlCapturedNonce::Unavailable) {
