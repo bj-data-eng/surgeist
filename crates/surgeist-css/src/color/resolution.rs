@@ -50,21 +50,30 @@ impl From<CssColorProtocolError> for Error {
         Self::Protocol(error)
     }
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Stage {
-    Begin,
-    Origin,
-    Wrapper,
-    Channels,
-    Alpha,
-    Finish,
-    Profile,
-    CustomAlpha,
-    CustomInputs,
-    MixBuild,
-    MixWeights,
-    MixColors,
-    MixChild,
+// Each variant owns exactly the continuation for that family and phase.
+// Suspension stores this same state in a caller-owned algorithm slot.
+#[derive(Clone, Copy, Debug)]
+enum FrameState {
+    CoordinateBegin,
+    CoordinateOrigin,
+    Channels(Coordinates),
+    Alpha(Coordinates),
+    Finish(Coordinates),
+    ProfileBegin,
+    ProfileOrigin,
+    Profile(Option<CssUsedColor>),
+    CustomAlpha(Custom),
+    CustomInputs(Custom),
+    WrapperBegin,
+    WrapperScheme,
+    WrapperSelected(usize),
+    WrapperChild,
+    WrapperFinish(CssUsedColor),
+    MixBegin,
+    MixBuild(MixWeights),
+    MixWeights(MixWeights),
+    MixColors(MixColors),
+    MixChild { colors: MixColors, weight: f64 },
 }
 #[derive(Clone, Copy, Debug)]
 struct Coordinates {
@@ -74,16 +83,34 @@ struct Coordinates {
     ordinal: usize,
     alpha: Option<Component>,
 }
+impl Coordinates {
+    fn new(origin: Option<CssUsedColor>) -> Self {
+        Self {
+            origin,
+            binding: None,
+            components: [Component::MISSING; 4],
+            ordinal: 0,
+            alpha: None,
+        }
+    }
+    fn identical(self, other: Self) -> bool {
+        same_color(self.origin, other.origin)
+            && match (self.binding, other.binding) {
+                (Some(a), Some(b)) => a.identical(b),
+                (None, None) => true,
+                _ => false,
+            }
+            && self.components.map(|v| (v.domain, v.value.to_bits()))
+                == other.components.map(|v| (v.domain, v.value.to_bits()))
+            && self.ordinal == other.ordinal
+            && same_component(self.alpha, other.alpha)
+    }
+}
 #[derive(Clone, Copy, Debug)]
 struct Custom {
     origin: Option<CssUsedColor>,
-    selection: Option<ProfileSelection>,
+    selection: ProfileSelection,
     alpha: Option<Component>,
-}
-#[derive(Clone, Copy, Debug)]
-struct Wrapper {
-    origin: Option<CssUsedColor>,
-    ordinal: usize,
 }
 #[derive(Clone, Copy, Debug)]
 struct MixWeights {
@@ -92,29 +119,64 @@ struct MixWeights {
     summary: WeightSummary,
 }
 #[derive(Clone, Copy, Debug)]
+enum MixCurrent {
+    Next,
+    Member { member: MixRecord, weight: f64 },
+    Returned { value: CssUsedColor, weight: f64 },
+}
+#[derive(Clone, Copy, Debug)]
 struct MixColors {
     head: Option<usize>,
     next: Option<usize>,
     weights: Weights,
     fold: MixFold,
-    mixed_weight: f64,
-    member: Option<MixRecord>,
-    origin: Option<CssUsedColor>,
+    current: MixCurrent,
 }
-#[derive(Clone, Copy, Debug)]
-enum Continuation {
-    Coordinates(Coordinates),
-    Custom(Custom),
-    Wrapper(Wrapper),
-    MixWeights(MixWeights),
-    MixColors(MixColors),
+impl MixColors {
+    fn identical(self, other: Self) -> bool {
+        self.head == other.head
+            && self.next == other.next
+            && (
+                self.weights.omitted.to_bits(),
+                self.weights.scale.to_bits(),
+                self.weights.alpha_multiplier.to_bits(),
+            ) == (
+                other.weights.omitted.to_bits(),
+                other.weights.scale.to_bits(),
+                other.weights.alpha_multiplier.to_bits(),
+            )
+            && self.fold.identical(other.fold)
+            && match (self.current, other.current) {
+                (MixCurrent::Next, MixCurrent::Next) => true,
+                (
+                    MixCurrent::Member {
+                        member: a,
+                        weight: aw,
+                    },
+                    MixCurrent::Member {
+                        member: b,
+                        weight: bw,
+                    },
+                ) => a == b && aw.to_bits() == bw.to_bits(),
+                (
+                    MixCurrent::Returned {
+                        value: a,
+                        weight: aw,
+                    },
+                    MixCurrent::Returned {
+                        value: b,
+                        weight: bw,
+                    },
+                ) => a.identical(b) && aw.to_bits() == bw.to_bits(),
+                _ => false,
+            }
+    }
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Frame {
     parent: Option<usize>,
     recipe: FunctionRecipe,
-    stage: Stage,
-    continuation: Continuation,
+    state: FrameState,
 }
 fn same_color(a: Option<CssUsedColor>, b: Option<CssUsedColor>) -> bool {
     match (a, b) {
@@ -132,194 +194,92 @@ fn same_component(a: Option<Component>, b: Option<Component>) -> bool {
 }
 impl Frame {
     fn new(parent: Option<usize>, recipe: FunctionRecipe) -> Self {
-        let continuation = match recipe.function {
-            F::LightDark | F::Contrast => Continuation::Wrapper(Wrapper {
-                origin: None,
-                ordinal: 0,
-            }),
-            F::Mix => Continuation::MixWeights(MixWeights {
-                head: None,
-                next: None,
-                summary: WeightSummary::default(),
-            }),
+        let state = match recipe.function {
+            F::LightDark | F::Contrast => FrameState::WrapperBegin,
+            F::Mix => FrameState::MixBegin,
             _ if matches!(recipe.space, Some(ProfileSpace::Custom { .. })) => {
-                Continuation::Custom(Custom {
-                    origin: None,
-                    selection: None,
-                    alpha: None,
-                })
+                FrameState::ProfileBegin
             }
-            _ => Continuation::Coordinates(Coordinates {
-                origin: None,
-                binding: None,
-                components: [Component::MISSING; 4],
-                ordinal: 0,
-                alpha: None,
-            }),
+            _ => FrameState::CoordinateBegin,
         };
         Self {
             parent,
             recipe,
-            stage: Stage::Begin,
-            continuation,
+            state,
         }
-    }
-    fn origin(self) -> Option<CssUsedColor> {
-        match self.continuation {
-            Continuation::Coordinates(v) => v.origin,
-            Continuation::Custom(v) => v.origin,
-            Continuation::Wrapper(v) => v.origin,
-            Continuation::MixColors(v) => v.origin,
-            Continuation::MixWeights(_) => None,
-        }
-    }
-    fn set_origin(&mut self, value: Option<CssUsedColor>) -> Result<(), CssColorProtocolError> {
-        match &mut self.continuation {
-            Continuation::Coordinates(v) => v.origin = value,
-            Continuation::Custom(v) => v.origin = value,
-            Continuation::Wrapper(v) => v.origin = value,
-            Continuation::MixColors(v) => v.origin = value,
-            Continuation::MixWeights(_) => return Err(CssColorProtocolError::WrongSlot),
-        }
-        Ok(())
     }
     fn binding(self) -> Option<Binding> {
-        if let Continuation::Coordinates(v) = self.continuation {
-            v.binding
-        } else {
-            None
-        }
-    }
-    fn coordinates(&self) -> Result<&Coordinates, CssColorProtocolError> {
-        if let Continuation::Coordinates(v) = &self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn coordinates_mut(&mut self) -> Result<&mut Coordinates, CssColorProtocolError> {
-        if let Continuation::Coordinates(v) = &mut self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn custom(&self) -> Result<&Custom, CssColorProtocolError> {
-        if let Continuation::Custom(v) = &self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn custom_mut(&mut self) -> Result<&mut Custom, CssColorProtocolError> {
-        if let Continuation::Custom(v) = &mut self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn wrapper(&self) -> Result<&Wrapper, CssColorProtocolError> {
-        if let Continuation::Wrapper(v) = &self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn wrapper_mut(&mut self) -> Result<&mut Wrapper, CssColorProtocolError> {
-        if let Continuation::Wrapper(v) = &mut self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn mix_weights(&self) -> Result<&MixWeights, CssColorProtocolError> {
-        if let Continuation::MixWeights(v) = &self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn mix_weights_mut(&mut self) -> Result<&mut MixWeights, CssColorProtocolError> {
-        if let Continuation::MixWeights(v) = &mut self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn mix_colors(&self) -> Result<&MixColors, CssColorProtocolError> {
-        if let Continuation::MixColors(v) = &self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn mix_colors_mut(&mut self) -> Result<&mut MixColors, CssColorProtocolError> {
-        if let Continuation::MixColors(v) = &mut self.continuation {
-            Ok(v)
-        } else {
-            Err(CssColorProtocolError::WrongSlot)
-        }
-    }
-    fn next(self) -> Option<usize> {
-        match self.continuation {
-            Continuation::MixWeights(v) => v.next,
-            Continuation::MixColors(v) => v.next,
+        match self.state {
+            FrameState::Channels(v) | FrameState::Alpha(v) | FrameState::Finish(v) => v.binding,
             _ => None,
         }
     }
+    fn custom(&self) -> Result<&Custom, CssColorProtocolError> {
+        match &self.state {
+            FrameState::CustomAlpha(v) | FrameState::CustomInputs(v) => Ok(v),
+            _ => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
+    fn mix_weights(&self) -> Result<&MixWeights, CssColorProtocolError> {
+        match &self.state {
+            FrameState::MixBuild(v) | FrameState::MixWeights(v) => Ok(v),
+            _ => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
+    fn mix_weights_mut(&mut self) -> Result<&mut MixWeights, CssColorProtocolError> {
+        match &mut self.state {
+            FrameState::MixBuild(v) | FrameState::MixWeights(v) => Ok(v),
+            _ => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
     fn set_next(&mut self, next: Option<usize>) -> Result<(), CssColorProtocolError> {
-        match &mut self.continuation {
-            Continuation::MixWeights(v) => v.next = next,
-            Continuation::MixColors(v) => v.next = next,
+        match &mut self.state {
+            FrameState::MixBuild(v) | FrameState::MixWeights(v) => v.next = next,
+            FrameState::MixColors(v) => v.next = next,
             _ => return Err(CssColorProtocolError::WrongSlot),
         }
         Ok(())
     }
     fn identical(self, other: Self) -> bool {
-        if self.parent != other.parent || self.recipe != other.recipe || self.stage != other.stage {
+        if self.parent != other.parent || self.recipe != other.recipe {
             return false;
         }
-        match (self.continuation, other.continuation) {
-            (Continuation::Coordinates(a), Continuation::Coordinates(b)) => {
-                same_color(a.origin, b.origin)
-                    && match (a.binding, b.binding) {
-                        (Some(a), Some(b)) => a.identical(b),
-                        (None, None) => true,
-                        _ => false,
-                    }
-                    && a.components.map(|v| (v.domain, v.value.to_bits()))
-                        == b.components.map(|v| (v.domain, v.value.to_bits()))
-                    && a.ordinal == b.ordinal
-                    && same_component(a.alpha, b.alpha)
-            }
-            (Continuation::Custom(a), Continuation::Custom(b)) => {
+        match (self.state, other.state) {
+            (FrameState::CoordinateBegin, FrameState::CoordinateBegin)
+            | (FrameState::CoordinateOrigin, FrameState::CoordinateOrigin)
+            | (FrameState::ProfileBegin, FrameState::ProfileBegin)
+            | (FrameState::ProfileOrigin, FrameState::ProfileOrigin)
+            | (FrameState::WrapperBegin, FrameState::WrapperBegin)
+            | (FrameState::WrapperScheme, FrameState::WrapperScheme)
+            | (FrameState::WrapperChild, FrameState::WrapperChild)
+            | (FrameState::MixBegin, FrameState::MixBegin) => true,
+            (FrameState::Channels(a), FrameState::Channels(b))
+            | (FrameState::Alpha(a), FrameState::Alpha(b))
+            | (FrameState::Finish(a), FrameState::Finish(b)) => a.identical(b),
+            (FrameState::Profile(a), FrameState::Profile(b)) => same_color(a, b),
+            (FrameState::CustomAlpha(a), FrameState::CustomAlpha(b))
+            | (FrameState::CustomInputs(a), FrameState::CustomInputs(b)) => {
                 same_color(a.origin, b.origin)
                     && a.selection == b.selection
                     && same_component(a.alpha, b.alpha)
             }
-            (Continuation::Wrapper(a), Continuation::Wrapper(b)) => {
-                same_color(a.origin, b.origin) && a.ordinal == b.ordinal
-            }
-            (Continuation::MixWeights(a), Continuation::MixWeights(b)) => {
+            (FrameState::WrapperSelected(a), FrameState::WrapperSelected(b)) => a == b,
+            (FrameState::WrapperFinish(a), FrameState::WrapperFinish(b)) => a.identical(b),
+            (FrameState::MixBuild(a), FrameState::MixBuild(b))
+            | (FrameState::MixWeights(a), FrameState::MixWeights(b)) => {
                 a.head == b.head && a.next == b.next && a.summary.identical(b.summary)
             }
-            (Continuation::MixColors(a), Continuation::MixColors(b)) => {
-                a.head == b.head
-                    && a.next == b.next
-                    && (
-                        a.weights.omitted.to_bits(),
-                        a.weights.scale.to_bits(),
-                        a.weights.alpha_multiplier.to_bits(),
-                    ) == (
-                        b.weights.omitted.to_bits(),
-                        b.weights.scale.to_bits(),
-                        b.weights.alpha_multiplier.to_bits(),
-                    )
-                    && a.fold.identical(b.fold)
-                    && a.mixed_weight.to_bits() == b.mixed_weight.to_bits()
-                    && a.member == b.member
-                    && same_color(a.origin, b.origin)
-            }
+            (FrameState::MixColors(a), FrameState::MixColors(b)) => a.identical(b),
+            (
+                FrameState::MixChild {
+                    colors: a,
+                    weight: aw,
+                },
+                FrameState::MixChild {
+                    colors: b,
+                    weight: bw,
+                },
+            ) => a.identical(b) && aw.to_bits() == bw.to_bits(),
             _ => false,
         }
     }
@@ -466,7 +426,12 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     fn return_color(&mut self, value: CssUsedColor) {
         self.state = State::Return(value);
     }
-    fn descend(&mut self, child: usize, after: Stage, algorithm_end: usize) -> Result<(), Error> {
+    fn descend(
+        &mut self,
+        child: usize,
+        after: FrameState,
+        algorithm_end: usize,
+    ) -> Result<(), Error> {
         if child < self.grammar.table.start || child >= self.grammar.table.end {
             return Err(CssColorProtocolError::WrongIndex.into());
         }
@@ -474,7 +439,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             .checked_add(1)
             .ok_or(CssColorProtocolError::Overflow)?;
         let mut frame = self.fixed_frame()?;
-        frame.stage = after;
+        frame.state = after;
         self.state = State::PendingFrame {
             frame,
             child,
@@ -543,25 +508,16 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             return Err(CssColorProtocolError::WrongSlot.into());
         };
         let mut frame = frame;
-        match frame.stage {
-            Stage::Origin => {
-                frame.set_origin(Some(value))?;
-                frame.stage = if matches!(frame.recipe.space, Some(ProfileSpace::Custom { .. })) {
-                    Stage::Profile
-                } else {
-                    Stage::Channels
-                };
-            }
-            Stage::Wrapper => {
-                frame.set_origin(Some(value))?;
-                frame.stage = Stage::Finish;
-            }
-            Stage::MixChild => {
-                frame.set_origin(Some(value))?;
-                frame.stage = Stage::MixColors;
+        frame.state = match frame.state {
+            FrameState::CoordinateOrigin => FrameState::Channels(Coordinates::new(Some(value))),
+            FrameState::ProfileOrigin => FrameState::Profile(Some(value)),
+            FrameState::WrapperChild => FrameState::WrapperFinish(value),
+            FrameState::MixChild { mut colors, weight } => {
+                colors.current = MixCurrent::Returned { value, weight };
+                FrameState::MixColors(colors)
             }
             _ => return Err(CssColorProtocolError::WrongSlot.into()),
-        }
+        };
         self.parent = frame.parent;
         self.frame = Some(frame);
         self.state = State::Dispatch;
@@ -785,11 +741,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         if !matches!(self.state, State::ProfileNameToken(expected) if expected == index) {
             return Err(CssColorProtocolError::WrongAction.into());
         }
-        let selection = self
-            .fixed_frame()?
-            .custom()?
-            .selection
-            .ok_or(CssColorProtocolError::WrongSlot)?;
+        let selection = self.fixed_frame()?.custom()?.selection;
         self.state = State::ProfileName(
             ProfileComponentLookup::start(
                 &self.grammar.table.lexical,
@@ -846,7 +798,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             .frame
             .as_mut()
             .ok_or(CssColorProtocolError::WrongAction)?;
-        frame.wrapper_mut()?.ordinal = selected;
+        if !matches!(frame.state, FrameState::WrapperScheme) {
+            return Err(CssColorProtocolError::WrongSlot.into());
+        }
+        frame.state = FrameState::WrapperSelected(selected);
         self.state = State::Dispatch;
         Ok(())
     }
@@ -883,28 +838,28 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             .as_mut()
             .ok_or(CssColorProtocolError::WrongAction)?;
 
-        match frame.stage {
-            Stage::MixWeights => {
+        match &mut frame.state {
+            FrameState::MixWeights(weights) => {
                 if let Some(weight) = task.member.weight {
                     self.component(weight, evaluation_end)?;
                 } else {
-                    frame
-                        .mix_weights_mut()?
+                    weights
                         .summary
                         .observe(None)
                         .map_err(Error::Interpolation)?;
-                    frame.set_next(task.next)?;
+                    weights.next = task.next;
                     self.state = State::Dispatch;
                 }
             }
-            Stage::MixColors => {
-                frame.set_next(task.next)?;
-                frame.mix_colors_mut()?.member = Some(task.member);
-                frame.mix_colors_mut()?.mixed_weight = frame
-                    .mix_colors()?
-                    .weights
-                    .weight(task.percentage)
-                    .map_err(Error::Interpolation)?;
+            FrameState::MixColors(colors) => {
+                colors.next = task.next;
+                colors.current = MixCurrent::Member {
+                    member: task.member,
+                    weight: colors
+                        .weights
+                        .weight(task.percentage)
+                        .map_err(Error::Interpolation)?,
+                };
                 self.state = State::Dispatch;
             }
             _ => return Err(CssColorProtocolError::WrongSlot.into()),
@@ -936,33 +891,24 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         use super::CssColorKernel as K;
         match &self.state {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor.kernel(),
-            State::Dispatch => match self.frame {
-                Some(frame)
-                    if frame.stage == Stage::Channels
-                        && frame.binding().is_none()
-                        && frame.origin().is_some() =>
-                {
+            State::Dispatch => match self.frame.map(|frame| (frame.recipe.function, frame.state)) {
+                Some((_, FrameState::Channels(v))) if v.binding.is_none() && v.origin.is_some() => {
                     K::ColorConversion
                 }
-                Some(frame)
-                    if frame.stage == Stage::Finish && frame.recipe.function == F::Contrast =>
+                Some((F::Contrast, FrameState::WrapperFinish(_))) => K::Contrast,
+                Some((_, FrameState::Finish(_) | FrameState::WrapperFinish(_))) => K::Channel,
+                Some((_, FrameState::MixColors(v)))
+                    if matches!(v.current, MixCurrent::Returned { .. }) =>
                 {
-                    K::Contrast
-                }
-                Some(frame) if frame.stage == Stage::Finish => K::Channel,
-                Some(frame) if frame.stage == Stage::MixColors && frame.origin().is_some() => {
-                    if matches!(frame.continuation,Continuation::MixColors(v) if v.fold.has_value())
-                    {
+                    if v.fold.has_value() {
                         K::Interpolation
                     } else {
                         K::ColorConversion
                     }
                 }
-                Some(frame)
-                    if frame.stage == Stage::MixWeights && frame.next().is_none()
-                        || frame.stage == Stage::MixColors
-                            && frame.next().is_none()
-                            && matches!(frame.continuation,Continuation::MixColors(v) if v.member.is_none()) =>
+                Some((_, FrameState::MixWeights(v))) if v.next.is_none() => K::Weight,
+                Some((_, FrameState::MixColors(v)))
+                    if v.next.is_none() && matches!(v.current, MixCurrent::Next) =>
                 {
                     K::Weight
                 }
@@ -1057,41 +1003,34 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     return Ok(());
                 }
                 let mut frame = self.fixed_frame()?;
-                match frame.stage {
-                    Stage::Channels => {
-                        if frame.coordinates()?.ordinal >= 4 {
+                match &mut frame.state {
+                    FrameState::Channels(coordinates) => {
+                        if coordinates.ordinal >= 4 {
                             return Err(CssColorProtocolError::WrongIndex.into());
                         }
-                        let coordinates = frame.coordinates_mut()?;
                         coordinates.components[coordinates.ordinal] = value;
                         coordinates.ordinal += 1;
                     }
-                    Stage::Alpha | Stage::CustomAlpha => {
-                        match &mut frame.continuation {
-                            Continuation::Coordinates(v) => v.alpha = Some(value),
-                            Continuation::Custom(v) => v.alpha = Some(value),
-                            _ => return Err(CssColorProtocolError::WrongSlot.into()),
-                        };
-                        frame.stage = if frame.stage == Stage::CustomAlpha {
-                            Stage::CustomInputs
-                        } else {
-                            Stage::Finish
-                        };
+                    FrameState::Alpha(coordinates) => {
+                        coordinates.alpha = Some(value);
+                        frame.state = FrameState::Finish(*coordinates);
                     }
-                    Stage::MixWeights => {
+                    FrameState::CustomAlpha(custom) => {
+                        custom.alpha = Some(value);
+                        frame.state = FrameState::CustomInputs(*custom);
+                    }
+                    FrameState::MixWeights(weights) => {
                         if value.domain != Domain::Percentage {
                             return Err(Error::Channel(channels::Error::Grammar));
                         }
-                        frame
-                            .mix_weights_mut()?
+                        weights
                             .summary
                             .observe(Some(value.value))
                             .map_err(Error::Interpolation)?;
-                        let index = frame.next().ok_or(CssColorProtocolError::WrongSlot)?;
-                        // The next task read supplies the original fixed next link.
+                        let index = weights.next.ok_or(CssColorProtocolError::WrongSlot)?;
+                        // A second fixed read joins the percentage to its actual task.
                         self.frame = Some(frame);
                         self.state = State::TaskRead(index);
-                        // A second fixed read joins the updated percentage to its actual task.
                         self.pending_percentage = Some(value.value);
                         return Ok(());
                     }
@@ -1119,8 +1058,14 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                         .frame
                         .as_mut()
                         .ok_or(CssColorProtocolError::WrongAction)?;
-                    frame.custom_mut()?.selection = Some(selection);
-                    frame.stage = Stage::CustomAlpha;
+                    let FrameState::Profile(origin) = frame.state else {
+                        return Err(CssColorProtocolError::WrongSlot.into());
+                    };
+                    frame.state = FrameState::CustomAlpha(Custom {
+                        origin,
+                        selection,
+                        alpha: None,
+                    });
                     self.state = State::Dispatch;
                 } else {
                     cursor.step(cursor.action()).map_err(Error::Profile)?;
@@ -1132,10 +1077,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     cursor.result().map_err(Error::ProfileComponent)?;
                     return match super::profile_conversion::reverse_custom_channels(
                         self.facts,
-                        self.fixed_frame()?
-                            .custom()?
-                            .selection
-                            .ok_or(CssColorProtocolError::WrongSlot)?,
+                        self.fixed_frame()?.custom()?.selection,
                     ) {
                         Err(super::profile_conversion::Error::Unsupported) => {
                             Err(Error::ReverseProfileUnsupported)
@@ -1207,99 +1149,90 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             _ => return Err(CssColorProtocolError::WrongAction.into()),
         }
         let mut frame = self.fixed_frame()?;
-        match frame.stage {
-            Stage::Begin => {
-                match frame.recipe.function {
-                    F::LightDark => {
-                        frame.stage = Stage::Wrapper;
-                        frame.wrapper_mut()?.ordinal = 2;
-                        self.frame = Some(frame);
-                        self.state = State::Scheme;
-                        return Ok(());
-                    }
-                    F::Contrast => {
-                        return self.descend(
-                            frame.recipe.children[0].ok_or(CssColorProtocolError::WrongSlot)?,
-                            Stage::Wrapper,
-                            algorithm_end,
-                        );
-                    }
-                    F::Mix => {
-                        if let Some(Interpolation::Custom { token, .. }) =
-                            frame.recipe.interpolation
-                        {
-                            self.state = State::ProfileToken {
-                                index: token,
-                                custom_mix: true,
-                            };
-                            return Ok(());
-                        }
-                        frame.stage = Stage::MixBuild;
-                        self.frame = Some(frame);
-                        self.state = State::MixRead(
-                            frame.recipe.mix.ok_or(CssColorProtocolError::WrongSlot)?,
-                        );
-                        return Ok(());
-                    }
-                    _ => {
-                        if let Some(origin) = frame.recipe.origin {
-                            return self.descend(origin, Stage::Origin, algorithm_end);
-                        }
-                    }
+        match frame.state {
+            FrameState::CoordinateBegin => {
+                if let Some(origin) = frame.recipe.origin {
+                    return self.descend(origin, FrameState::CoordinateOrigin, algorithm_end);
                 }
-                frame.stage = if matches!(frame.recipe.space, Some(ProfileSpace::Custom { .. })) {
-                    Stage::Profile
-                } else {
-                    Stage::Channels
-                };
+                frame.state = FrameState::Channels(Coordinates::new(None));
             }
-            Stage::Wrapper if frame.recipe.function == F::LightDark && frame.origin().is_none() => {
+            FrameState::ProfileBegin => {
+                if let Some(origin) = frame.recipe.origin {
+                    return self.descend(origin, FrameState::ProfileOrigin, algorithm_end);
+                }
+                frame.state = FrameState::Profile(None);
+            }
+            FrameState::WrapperBegin => match frame.recipe.function {
+                F::LightDark => {
+                    frame.state = FrameState::WrapperScheme;
+                    self.frame = Some(frame);
+                    self.state = State::Scheme;
+                    return Ok(());
+                }
+                F::Contrast => {
+                    return self.descend(
+                        frame.recipe.children[0].ok_or(CssColorProtocolError::WrongSlot)?,
+                        FrameState::WrapperChild,
+                        algorithm_end,
+                    );
+                }
+                _ => return Err(CssColorProtocolError::WrongSlot.into()),
+            },
+            FrameState::WrapperSelected(ordinal) => {
                 return self.descend(
                     frame
                         .recipe
                         .children
-                        .get(frame.wrapper()?.ordinal)
+                        .get(ordinal)
                         .copied()
                         .flatten()
                         .ok_or(CssColorProtocolError::WrongSlot)?,
-                    Stage::Wrapper,
+                    FrameState::WrapperChild,
                     algorithm_end,
                 );
             }
-            Stage::Channels => {
-                if frame.binding().is_none()
-                    && let Some(origin) = frame.origin()
+            FrameState::WrapperFinish(origin) => {
+                let value = if frame.recipe.function == F::Contrast {
+                    origin.contrast().map_err(Error::Numerical)?
+                } else {
+                    origin
+                };
+                self.return_color(value);
+                return Ok(());
+            }
+            FrameState::Channels(mut coordinates) => {
+                if coordinates.binding.is_none()
+                    && let Some(origin) = coordinates.origin
                 {
-                    let environment = environment(frame.recipe)?;
-                    frame.coordinates_mut()?.binding =
-                        Some(Binding::new(environment, origin).map_err(Error::Channel)?);
+                    coordinates.binding = Some(
+                        Binding::new(environment(frame.recipe)?, origin).map_err(Error::Channel)?,
+                    );
+                    frame.state = FrameState::Channels(coordinates);
                     self.frame = Some(frame);
                     return Ok(());
                 }
-                if frame.coordinates()?.ordinal < frame.recipe.count {
-                    let index = frame.recipe.component_index(frame.coordinates()?.ordinal)?;
+                if coordinates.ordinal < frame.recipe.count {
+                    let index = frame.recipe.component_index(coordinates.ordinal)?;
                     self.frame = Some(frame);
                     return self.component(index, evaluation_end);
                 }
-                frame.stage = Stage::Alpha;
+                frame.state = FrameState::Alpha(coordinates);
             }
-            Stage::Alpha => {
+            FrameState::Alpha(coordinates) => {
                 if let Some(alpha) = frame.recipe.alpha {
                     self.frame = Some(frame);
                     return self.component(alpha, evaluation_end);
-                } else {
-                    frame.stage = Stage::Finish;
                 }
+                frame.state = FrameState::Finish(coordinates);
             }
-            Stage::CustomAlpha => {
+            FrameState::CustomAlpha(custom) => {
                 if let Some(alpha) = frame.recipe.alpha {
                     self.frame = Some(frame);
                     return self.component(alpha, evaluation_end);
-                } else {
-                    frame.stage = Stage::CustomInputs;
                 }
+                frame.state = FrameState::CustomInputs(custom);
             }
-            Stage::Profile => {
+            FrameState::Profile(_) => {
                 let Some(ProfileSpace::Custom { token, .. }) = frame.recipe.space else {
                     return Err(CssColorProtocolError::WrongSlot.into());
                 };
@@ -1309,20 +1242,17 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 };
                 return Ok(());
             }
-            Stage::CustomInputs => {
-                let alpha = if frame.custom()?.alpha.is_some() {
-                    channels::alpha(frame.custom()?.alpha, false).map_err(Error::Channel)?
+            FrameState::CustomInputs(custom) => {
+                let alpha = if custom.alpha.is_some() {
+                    channels::alpha(custom.alpha, false).map_err(Error::Channel)?
                 } else {
-                    frame.origin().map_or(Some(1.0), |origin| origin.alpha())
+                    custom.origin.map_or(Some(1.0), |origin| origin.alpha())
                 };
                 self.state = State::CustomBuilder(
                     ProfileInputBuilder::start(
                         &self.grammar.table.lexical,
                         self.facts,
-                        frame
-                            .custom()?
-                            .selection
-                            .ok_or(CssColorProtocolError::WrongSlot)?,
+                        custom.selection,
                         frame.recipe.count,
                         algorithm_end,
                         alpha,
@@ -1331,23 +1261,17 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 );
                 return Ok(());
             }
-            Stage::Finish => {
+            FrameState::Finish(coordinates) => {
                 let value = match frame.recipe.function {
-                    F::LightDark => frame.origin().ok_or(CssColorProtocolError::WrongSlot)?,
-                    F::Contrast => frame
-                        .origin()
-                        .ok_or(CssColorProtocolError::WrongSlot)?
-                        .contrast()
-                        .map_err(Error::Numerical)?,
                     F::Alpha => super::relative::alpha_only(
-                        frame.origin().ok_or(CssColorProtocolError::WrongSlot)?,
-                        frame.coordinates()?.alpha,
+                        coordinates.origin.ok_or(CssColorProtocolError::WrongSlot)?,
+                        coordinates.alpha,
                     )
                     .map_err(Error::Channel)?,
                     F::DeviceCmyk => {
                         let computed = ComputedCmyk::new(
-                            frame.coordinates()?.components,
-                            frame.coordinates()?.alpha,
+                            coordinates.components,
+                            coordinates.alpha,
                             frame.recipe.syntax,
                         )
                         .map_err(Error::Channel)?;
@@ -1364,17 +1288,17 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                             _ => None,
                         };
                         let components = [
-                            frame.coordinates()?.components[0],
-                            frame.coordinates()?.components[1],
-                            frame.coordinates()?.components[2],
+                            coordinates.components[0],
+                            coordinates.components[1],
+                            coordinates.components[2],
                         ];
-                        if let Some(origin) = frame.origin() {
+                        if let Some(origin) = coordinates.origin {
                             super::relative::coordinates(
                                 function,
                                 predefined,
                                 origin,
                                 components,
-                                frame.coordinates()?.alpha,
+                                coordinates.alpha,
                             )
                             .map_err(Error::Channel)?
                         } else {
@@ -1383,7 +1307,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                                 predefined,
                                 frame.recipe.syntax,
                                 components,
-                                frame.coordinates()?.alpha,
+                                coordinates.alpha,
                             )
                             .map_err(Error::Channel)?
                         }
@@ -1392,63 +1316,78 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 self.return_color(value);
                 return Ok(());
             }
-            Stage::MixBuild => {
-                frame.stage = Stage::MixWeights;
-                frame.mix_weights_mut()?.next = frame.mix_weights()?.head;
+            FrameState::MixBegin => {
+                if let Some(Interpolation::Custom { token, .. }) = frame.recipe.interpolation {
+                    self.state = State::ProfileToken {
+                        index: token,
+                        custom_mix: true,
+                    };
+                    return Ok(());
+                }
+                frame.state = FrameState::MixBuild(MixWeights {
+                    head: None,
+                    next: None,
+                    summary: WeightSummary::default(),
+                });
+                self.frame = Some(frame);
+                self.state =
+                    State::MixRead(frame.recipe.mix.ok_or(CssColorProtocolError::WrongSlot)?);
+                return Ok(());
             }
-            Stage::MixWeights => {
-                if let Some(index) = frame.next() {
+            FrameState::MixBuild(mut weights) => {
+                weights.next = weights.head;
+                frame.state = FrameState::MixWeights(weights);
+            }
+            FrameState::MixWeights(weights) => {
+                if let Some(index) = weights.next {
                     self.state = State::TaskRead(index);
                     return Ok(());
                 }
-                let weights = frame
-                    .mix_weights()?
-                    .summary
-                    .finish()
-                    .map_err(Error::Interpolation)?;
+                let resolved = weights.summary.finish().map_err(Error::Interpolation)?;
                 let method = match frame.recipe.interpolation {
                     Some(Interpolation::Standard(method)) => method,
                     None => crate::CssColorInterpolationMethod::try_new(Space::Oklab, None)
                         .map_err(|_| CssColorProtocolError::WrongSlot)?,
                     _ => return Err(CssColorProtocolError::WrongSlot.into()),
                 };
-                let head = frame.mix_weights()?.head;
-                frame.continuation = Continuation::MixColors(MixColors {
-                    head,
-                    next: head,
-                    weights,
+                frame.state = FrameState::MixColors(MixColors {
+                    head: weights.head,
+                    next: weights.head,
+                    weights: resolved,
                     fold: MixFold::new(method),
-                    mixed_weight: 0.0,
-                    member: None,
-                    origin: None,
+                    current: MixCurrent::Next,
                 });
-                frame.stage = Stage::MixColors;
             }
-            Stage::MixColors => {
-                if let Some(value) = frame.mix_colors_mut()?.origin.take() {
-                    {
-                        let colors = frame.mix_colors_mut()?;
-                        colors.fold.observe(value, colors.mixed_weight)
-                    }
-                    .map_err(Error::Interpolation)?;
-                    frame.mix_colors_mut()?.member = None;
-                } else if let Some(member) = frame.mix_colors()?.member {
-                    self.frame = Some(frame);
-                    return self.descend(member.color, Stage::MixChild, algorithm_end);
-                } else if let Some(index) = frame.next() {
-                    self.frame = Some(frame);
-                    self.state = State::TaskRead(index);
-                    return Ok(());
-                } else {
-                    let value = frame
-                        .mix_colors()?
+            FrameState::MixColors(mut colors) => match colors.current {
+                MixCurrent::Returned { value, weight } => {
+                    colors
                         .fold
-                        .finish(frame.mix_colors()?.weights)
+                        .observe(value, weight)
                         .map_err(Error::Interpolation)?;
-                    self.return_color(value);
+                    colors.current = MixCurrent::Next;
+                    frame.state = FrameState::MixColors(colors);
+                }
+                MixCurrent::Member { member, weight } => {
+                    colors.current = MixCurrent::Next;
+                    return self.descend(
+                        member.color,
+                        FrameState::MixChild { colors, weight },
+                        algorithm_end,
+                    );
+                }
+                MixCurrent::Next => {
+                    if let Some(index) = colors.next {
+                        self.state = State::TaskRead(index);
+                    } else {
+                        let value = colors
+                            .fold
+                            .finish(colors.weights)
+                            .map_err(Error::Interpolation)?;
+                        self.return_color(value);
+                    }
                     return Ok(());
                 }
-            }
+            },
             _ => return Err(CssColorProtocolError::WrongAction.into()),
         }
         self.frame = Some(frame);
@@ -1520,6 +1459,15 @@ mod tests {
     use super::super::syntax_pass::tests::fixture;
     use super::*;
     fn resolve(input: &str, facts: &CssColorFacts<'_>) -> Result<CssUsedColor, Error> {
+        resolve_suspending(input, facts, None)
+    }
+    fn resolve_suspending(
+        input: &str,
+        facts: &CssColorFacts<'_>,
+        cancel_at: Option<usize>,
+    ) -> Result<CssUsedColor, Error> {
+        let foreign = CssColorOperationOwner::new();
+        let mut suspensions = 0;
         let mut owner = CssColorOperationOwner::new();
         let mut fixture = fixture(&mut owner, input).expect("literal syntax");
         let mut values = Vec::new();
@@ -1529,7 +1477,35 @@ mod tests {
         let result = loop {
             let step = match cursor.action() {
                 Action::ReadRecipe { index } => cursor.read_recipe(index, &fixture.slots[index]),
-                Action::ReadParent { index } => cursor.read_parent(index, &fixture.slots[index]),
+                Action::ReadParent { index } => {
+                    let pending = cursor.action();
+                    let record = &fixture.slots[index];
+                    let foreign_record =
+                        CssColorSlot::new(&foreign, record.phase, index, record.data);
+                    assert_eq!(
+                        cursor.read_parent(index, &foreign_record),
+                        Err(Error::Protocol(CssColorProtocolError::ForeignSlot))
+                    );
+                    assert_eq!(cursor.action(), pending);
+                    let wrong =
+                        CssColorSlot::new(record.owner, record.phase, index, Data::NameUnit('x'));
+                    assert_eq!(
+                        cursor.read_parent(index, &wrong),
+                        Err(Error::Protocol(CssColorProtocolError::WrongSlot))
+                    );
+                    assert_eq!(cursor.action(), pending);
+                    assert_eq!(
+                        cursor.read_parent(index + 1, record),
+                        Err(Error::Protocol(CssColorProtocolError::WrongIndex))
+                    );
+                    assert_eq!(cursor.action(), pending);
+                    if cancel_at == Some(suspensions) {
+                        cursor.abandon();
+                        break Err(Error::Protocol(CssColorProtocolError::Terminal));
+                    }
+                    suspensions += 1;
+                    cursor.read_parent(index, record)
+                }
                 Action::ReadMix { index } => {
                     cursor.read_mix(index, &fixture.slots[index], fixture.slots.len())
                 }
@@ -1538,6 +1514,49 @@ mod tests {
                 }
                 Action::AppendFrame { index } | Action::AppendTask { index } => {
                     assert_eq!(index, fixture.slots.len());
+                    if matches!(cursor.action(), Action::AppendFrame { .. }) {
+                        let pending = cursor.action();
+                        let record = cursor.record(index).unwrap();
+                        assert_eq!(cursor.action(), pending); // refused append
+                        let foreign_record =
+                            CssColorSlot::new(&foreign, record.phase, index, record.data);
+                        assert_eq!(
+                            cursor.written(index, &foreign_record),
+                            Err(Error::Protocol(CssColorProtocolError::ForeignSlot))
+                        );
+                        assert_eq!(cursor.action(), pending);
+                        let wrong = CssColorSlot::new(
+                            record.owner,
+                            record.phase,
+                            index,
+                            Data::NameUnit('x'),
+                        );
+                        assert_eq!(
+                            cursor.written(index, &wrong),
+                            Err(Error::Protocol(CssColorProtocolError::WrongSlot))
+                        );
+                        assert_eq!(cursor.action(), pending);
+                        let Data::Resolution(mut changed) = record.data else {
+                            unreachable!()
+                        };
+                        changed.parent = Some(index);
+                        let changed = CssColorSlot::new(
+                            record.owner,
+                            record.phase,
+                            index,
+                            Data::Resolution(changed),
+                        );
+                        assert_eq!(
+                            cursor.written(index, &changed),
+                            Err(Error::Protocol(CssColorProtocolError::WrongSlot))
+                        );
+                        assert_eq!(cursor.action(), pending);
+                        if cancel_at == Some(suspensions) {
+                            cursor.abandon();
+                            break Err(Error::Protocol(CssColorProtocolError::Terminal));
+                        }
+                        suspensions += 1;
+                    }
                     fixture.slots.push(cursor.record(index).unwrap());
                     cursor.written(index, &fixture.slots[index])
                 }
@@ -1753,7 +1772,7 @@ mod tests {
         let facts = CssColorFacts::new(
             id,
             CssColorPropertyFacts::Unavailable,
-            CssColorSchemeFact::Unavailable,
+            CssColorSchemeFact::Light,
             &[],
             &metadata,
             &conversions,
@@ -1771,6 +1790,59 @@ mod tests {
         let actual = resolve("color(--printer .2 .3 / .5)", &facts).unwrap();
         assert_eq!(actual.channels(), expected.channels());
         assert_eq!(actual.alpha(), Some(0.5));
+        let wrapped = resolve(
+            "light-dark(color(--printer .2 .3 / .5), currentcolor)",
+            &facts,
+        )
+        .unwrap();
+        assert_eq!(wrapped.channels(), expected.channels());
+        assert_eq!(wrapped.alpha(), Some(0.5));
+        let relative =
+            "color(from light-dark(color(--printer .2 .3 / .5), currentcolor) --printer .2 .3)";
+        // The profile origin and selected wrapper each suspend before their
+        // child and resume from the qualified parent slot afterward.
+        for suspension in 0..4 {
+            assert_eq!(
+                resolve_suspending(relative, &facts, Some(suspension)),
+                Err(Error::Protocol(CssColorProtocolError::Terminal))
+            );
+        }
+        let relative = resolve_suspending(relative, &facts, Some(4)).unwrap();
+        assert_eq!(relative.channels(), expected.channels());
+        assert_eq!(relative.alpha(), Some(0.5));
+        let mixed = resolve(
+            "color-mix(in xyz-d50, color(--printer .2 .3) 50%, color(xyz-d50 .4 .5 .6) 50%)",
+            &facts,
+        )
+        .unwrap();
+        assert_eq!(mixed.channels(), expected.channels());
+        assert_eq!(mixed.alpha(), Some(1.0));
+        assert_eq!(
+            resolve(
+                "light-dark(color(--printer .2 calc(.1 + .2)), currentcolor)",
+                &facts
+            ),
+            Err(Error::Conversion(
+                super::super::profile_conversion::Error::Unavailable
+            ))
+        );
+    }
+    #[test]
+    fn nested_parent_suspensions_preserve_refusal_and_cancel_without_a_result() {
+        let facts = facts(CssColorSchemeFact::Light, CssDeviceColorFact::Absent);
+        let input = "color-mix(in srgb, rgb(from light-dark(red,currentcolor) calc(r / 2) g b) 50%, contrast-color(device-cmyk(0 0 0 1)) 50%)";
+        // Five actual child descents: two mix members, the relative origin,
+        // the selected light arm and contrast's device input. Each can stop
+        // before storing its parent and again before reading that parent back.
+        for suspension in 0..10 {
+            assert_eq!(
+                resolve_suspending(input, &facts, Some(suspension)),
+                Err(Error::Protocol(CssColorProtocolError::Terminal))
+            );
+        }
+        let recovered = resolve_suspending(input, &facts, Some(10)).unwrap();
+        assert_eq!(recovered.channels(), [Some(0.75), Some(0.5), Some(0.5)]);
+        assert_eq!(recovered.alpha(), Some(1.0));
     }
     #[test]
     fn exclusive_frame_families_resume_nested_mix_wrapper_and_coordinate_children() {
