@@ -49,7 +49,7 @@ impl SessionStorage {
         else {
             unreachable!()
         };
-        control.restore_attribute_weak(record.attributes().backing(), &mut shared);
+        control.restore_attribute_weak(record.attributes().shared_attributes(), &mut shared);
         let values = record.attributes().clone();
         let RetainedPayload::Attributes(backing) = &mut self.payloads.values[container] else {
             unreachable!()

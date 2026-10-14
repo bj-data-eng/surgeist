@@ -3,7 +3,7 @@
 //! remain separate. No string here is parsed as a MIME record or a JS/JSON program.
 
 use super::*;
-use crate::{HtmlScriptKind, OrderedAttributes, script_type::ScriptTypeCursor};
+use crate::{HtmlScriptKind, OrderedAttributes, script_type::HtmlScriptTypeCursor};
 
 /// The three HTML-defined authored type keywords. Classic is expressed by
 /// omission; data blocks retain an authored MIME string rather than a keyword.
@@ -177,7 +177,7 @@ impl HtmlValueInterpreter {
         if applicability != HtmlAttributeApplicability::Applicable {
             return Ok(report);
         }
-        let kind = ScriptTypeCursor::content(raw.map(Attribute::value)).finish_ordinary();
+        let kind = HtmlScriptTypeCursor::content(raw.map(Attribute::value)).finish_ordinary();
         report.meaning = Some(kind.map_or(
             HtmlScriptTypeMeaning::DataBlock,
             HtmlScriptTypeMeaning::Script,
@@ -215,12 +215,15 @@ impl HtmlValueInterpreter {
         let classification = if content.applicability != HtmlAttributeApplicability::Applicable {
             HtmlScriptTypeClassification::Unapplied
         } else {
-            ScriptTypeCursor::preparation(raw.map(Attribute::value), language.map(Attribute::value))
-                .finish_ordinary()
-                .map_or(
-                    HtmlScriptTypeClassification::NoScript,
-                    HtmlScriptTypeClassification::Script,
-                )
+            HtmlScriptTypeCursor::preparation(
+                raw.map(Attribute::value),
+                language.map(Attribute::value),
+            )
+            .finish_ordinary()
+            .map_or(
+                HtmlScriptTypeClassification::NoScript,
+                HtmlScriptTypeClassification::Script,
+            )
         };
         Ok(HtmlScriptTypePreparationReport {
             content,

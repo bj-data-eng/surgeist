@@ -266,7 +266,9 @@ impl OrderedAttributes {
         })
     }
 
-    pub(crate) fn backing(&self) -> &Arc<Vec<Attribute>> {
+    /// Borrows the actual immutable backing, including retained spare capacity.
+    /// This observation does not clone, validate or allocate.
+    pub fn shared_attributes(&self) -> &Arc<Vec<Attribute>> {
         &self.attributes
     }
 
@@ -276,7 +278,8 @@ impl OrderedAttributes {
         &mut self.attributes
     }
 
-    pub(crate) fn into_shared_attributes(self) -> Arc<Vec<Attribute>> {
+    /// Returns the actual backing without copying or revalidating its attributes.
+    pub fn into_shared_attributes(self) -> Arc<Vec<Attribute>> {
         self.attributes
     }
 

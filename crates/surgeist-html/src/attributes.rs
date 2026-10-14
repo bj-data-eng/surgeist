@@ -666,10 +666,14 @@ pub(crate) fn input_colorspace_default() -> HtmlInputColorSpace {
 pub(crate) fn input_colorspace_invalid_default() -> HtmlInputColorSpace {
     input_colorspace::colorspace_invalid_default()
 }
-pub(crate) fn input_type_default() -> HtmlInputType {
-    INPUT_TYPE
-        .missing
-        .expect("input type has a missing-value default")
+impl HtmlInputType {
+    /// Selects the HTML missing-value default from the authoritative type rows.
+    /// No attribute lookup, text inspection or allocation is performed.
+    pub fn missing_value_default() -> Self {
+        INPUT_TYPE
+            .missing
+            .expect("input type has a missing-value default")
+    }
 }
 
 pub(crate) fn input_type_invalid_default() -> HtmlInputType {

@@ -12,6 +12,75 @@ use surgeist_html::{
 };
 
 #[test]
+fn script_content_and_preparation_preserve_their_distinct_whitespace_rules() {
+    use surgeist_html::{HtmlScriptKind, bounded::HtmlScriptTypeCursor};
+
+    fn finish(mut cursor: HtmlScriptTypeCursor<'_>) -> Option<HtmlScriptKind> {
+        while cursor.required_work().is_some() {
+            cursor.advance();
+        }
+        let result = cursor.result().unwrap();
+        cursor.advance();
+        assert!(cursor.required_work().is_none());
+        assert_eq!(cursor.result(), Some(result));
+        result
+    }
+    let javascript = DocumentString::from(" \tTEXT/JAVASCRIPT\n ");
+    assert_eq!(
+        finish(HtmlScriptTypeCursor::content(Some(&javascript))),
+        None
+    );
+    assert_eq!(
+        finish(HtmlScriptTypeCursor::preparation(Some(&javascript), None)),
+        Some(HtmlScriptKind::Classic)
+    );
+    let module = DocumentString::from("module");
+    let padded_module = DocumentString::from(" module ");
+    assert_eq!(
+        finish(HtmlScriptTypeCursor::preparation(Some(&module), None)),
+        Some(HtmlScriptKind::Module)
+    );
+    assert_eq!(
+        finish(HtmlScriptTypeCursor::preparation(
+            Some(&padded_module),
+            None
+        )),
+        None
+    );
+    let language = DocumentString::from("javascript");
+    assert_eq!(
+        finish(HtmlScriptTypeCursor::preparation(None, Some(&language))),
+        Some(HtmlScriptKind::Classic)
+    );
+    let invalid = DocumentString::from_utf16([0xd800, 0, 0xdc00]);
+    assert_eq!(finish(HtmlScriptTypeCursor::content(Some(&invalid))), None);
+    assert_eq!(invalid.code_units(), [0xd800, 0, 0xdc00]);
+}
+
+#[test]
+fn missing_script_type_has_a_fixed_header_action_and_stable_completion() {
+    use surgeist_html::{
+        HtmlScriptKind,
+        bounded::{HtmlScriptTypeCursor, HtmlScriptTypeWork},
+    };
+
+    let mut cursor = HtmlScriptTypeCursor::content(None);
+    assert_eq!(cursor.result(), None);
+    for _ in 0..2 {
+        assert_eq!(
+            cursor.required_work(),
+            Some(HtmlScriptTypeWork::RecordVisit(2))
+        );
+        assert_eq!(cursor.result(), None);
+    }
+    cursor.advance();
+    assert_eq!(cursor.result(), Some(Some(HtmlScriptKind::Classic)));
+    assert_eq!(cursor.required_work(), None);
+    cursor.advance();
+    assert_eq!(cursor.result(), Some(Some(HtmlScriptKind::Classic)));
+}
+
+#[test]
 fn space_tokens_keep_exact_ranges_nulls_surrogates_and_non_ascii_whitespace() {
     let units = [32, 0xd800, 97, 9, 0, 32, 0xa0, 10];
     let mut cursor = HtmlSpaceTokenCursor::new(&units);

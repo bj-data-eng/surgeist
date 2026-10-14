@@ -1,6 +1,32 @@
 use surgeist_html::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
 #[test]
+fn validated_attribute_backing_keeps_identity_capacity_and_exact_units() {
+    use std::sync::Arc;
+
+    let mut raw = Vec::with_capacity(8);
+    raw.push(Attribute::new(
+        QualifiedName::new(Namespace::none(), None, "data-x"),
+        DocumentString::from_utf16([0xd800, 0, 0xdc00]),
+    ));
+    let capacity = raw.capacity();
+    let attributes = OrderedAttributes::new(raw).unwrap();
+    assert_eq!(attributes.shared_attributes().capacity(), capacity);
+    assert_eq!(Arc::strong_count(attributes.shared_attributes()), 1);
+    let alias = attributes.clone();
+    let backing = attributes.into_shared_attributes();
+    assert!(Arc::ptr_eq(&backing, alias.shared_attributes()));
+    assert_eq!(backing.capacity(), capacity);
+    assert_eq!(
+        backing[0].name().local_name().code_units(),
+        [100, 97, 116, 97, 45, 120]
+    );
+    assert_eq!(backing[0].value().code_units(), [0xd800, 0, 0xdc00]);
+    drop(alias);
+    assert_eq!(Arc::strong_count(&backing), 1);
+}
+
+#[test]
 fn supplementary_characters_round_trip_with_code_unit_lengths() {
     let value = DocumentString::from("a\u{1F642}z");
     assert_eq!(value.code_units(), &[0x0061, 0xD83D, 0xDE42, 0x007A]);

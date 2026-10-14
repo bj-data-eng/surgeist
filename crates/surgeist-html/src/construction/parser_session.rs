@@ -690,7 +690,10 @@ impl PayloadStorage {
                         else {
                             return Err(SessionError::AliasedPayload);
                         };
-                        if !Arc::ptr_eq(values.backing(), record.attributes().backing()) {
+                        if !Arc::ptr_eq(
+                            values.shared_attributes(),
+                            record.attributes().shared_attributes(),
+                        ) {
                             return Err(SessionError::AliasedPayload);
                         }
                         2
@@ -698,7 +701,7 @@ impl PayloadStorage {
                         1
                     };
                     cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
-                    if Arc::strong_count(values.backing()) != expected {
+                    if Arc::strong_count(values.shared_attributes()) != expected {
                         return Err(SessionError::AliasedPayload);
                     }
                 }
@@ -3135,7 +3138,7 @@ impl SessionStorage {
             control,
         )?;
         control.charge(WorkCategory::ProviderCall, 1)?;
-        if Arc::weak_count(element.attributes().backing()) != 1 {
+        if Arc::weak_count(element.attributes().shared_attributes()) != 1 {
             return Err(SessionError::AliasedPayload);
         }
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
@@ -3628,7 +3631,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(record) = backing.kind() else {
             unreachable!()
         };
-        control.restore_attribute_weak(record.attributes().backing(), &mut shared);
+        control.restore_attribute_weak(record.attributes().shared_attributes(), &mut shared);
         let values = record.attributes().clone();
         *storage = Some(AttributeStorage::Frozen {
             values,
@@ -8369,7 +8372,7 @@ pub(crate) fn input_tag_state(
             return input_type_state(control, value);
         }
     }
-    Ok(crate::attributes::input_type_default())
+    Ok(crate::HtmlInputType::missing_value_default())
 }
 fn input_type_state(
     control: &mut ParseControl,
@@ -9145,38 +9148,17 @@ fn script_attribute<'a>(
 }
 fn script_type_charge(
     control: &mut ParseControl,
-    work: crate::script_type::ScriptTypeWork,
+    work: crate::bounded::HtmlScriptTypeWork,
 ) -> Result<(), SessionError> {
     match work {
-        crate::script_type::ScriptTypeWork::RecordVisit(units) => {
+        crate::bounded::HtmlScriptTypeWork::RecordVisit(units) => {
             control.charge(WorkCategory::RecordVisit, units)?
         }
-        crate::script_type::ScriptTypeWork::InspectUnit(units) => {
+        crate::bounded::HtmlScriptTypeWork::InspectByte(units) => {
             control.charge(WorkCategory::InspectByte, units)?
         }
     }
     Ok(())
-}
-// Actual hidden-input comparison and classification share the one borrowed
-// literal matcher. The owning ParseControl admits every step before unit reads.
-#[cfg(test)]
-fn script_match(
-    control: &mut ParseControl,
-    prefix: &'static [u8],
-    value: &DocumentString,
-    start: usize,
-    end: usize,
-    expected: &'static [u8],
-) -> Result<bool, SessionError> {
-    let mut cursor =
-        crate::script_type::ScriptTypeMatchCursor::new(prefix, value, start, end, expected);
-    while let Some(work) = cursor.required_work() {
-        script_type_charge(control, work)?;
-        cursor.advance();
-    }
-    Ok(cursor
-        .result()
-        .expect("all admitted comparison actions completed"))
 }
 fn classify_script(
     control: &mut ParseControl,
@@ -9184,7 +9166,7 @@ fn classify_script(
 ) -> Result<Option<ScriptType>, SessionError> {
     let explicit = script_attribute(control, element, "type")?;
     let language = script_attribute(control, element, "language")?;
-    let mut cursor = crate::script_type::ScriptTypeCursor::preparation(explicit, language);
+    let mut cursor = crate::bounded::HtmlScriptTypeCursor::preparation(explicit, language);
     while let Some(work) = cursor.required_work() {
         script_type_charge(control, work)?;
         cursor.advance();
@@ -17794,36 +17776,40 @@ mod tests {
     }
 
     #[test]
-    fn shared_literal_match_keeps_repeated_hidden_comparison_credits_and_stops() {
-        let mut c = control();
-        let before = c.usage().clone();
-        for (value, expected) in [("HiDdEn", true), ("hiddEX", false), ("other", false)] {
-            let value = DocumentString::from(value);
-            assert_eq!(
-                script_match(&mut c, b"", &value, 0, value.len(), b"hidden").unwrap(),
-                expected
-            );
+    fn script_classification_cursor_admission_refuses_before_the_next_read() {
+        fn classify(
+            c: &mut ParseControl,
+            value: &DocumentString,
+        ) -> Result<Option<crate::HtmlScriptKind>, SessionError> {
+            let mut cursor = crate::bounded::HtmlScriptTypeCursor::preparation(Some(value), None);
+            while let Some(work) = cursor.required_work() {
+                script_type_charge(c, work)?;
+                cursor.advance();
+            }
+            Ok(cursor.result().expect("all admitted actions completed"))
         }
+        let value = DocumentString::from("text/javascript");
+        let mut c = control();
         assert_eq!(
-            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-            3
+            classify(&mut c, &value).unwrap(),
+            Some(crate::HtmlScriptKind::Classic)
         );
-        assert_eq!(
-            c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
-            36
-        );
-        let value = DocumentString::from("hidden");
+        assert!(c.stop().is_none());
         for available in [0, 18] {
             let mut c = control();
             c.charge(WorkCategory::StateStep, limits().work_credits() - available)
                 .unwrap();
-            assert!(script_match(&mut c, b"", &value, 0, value.len(), b"hidden").is_err());
-            assert!(c.stop().is_some());
+            assert!(classify(&mut c, &value).is_err());
+            let stopped = c.usage().clone();
+            let first = c.stop();
+            assert!(classify(&mut c, &value).is_err());
+            assert_eq!(c.stop(), first);
+            assert_eq!(c.usage(), &stopped);
         }
         let cancellation = HtmlParseCancellation::new();
         cancellation.cancel();
         let mut c = ParseControl::new(limits(), cancellation);
-        assert!(script_match(&mut c, b"", &value, 0, value.len(), b"hidden").is_err());
+        assert!(classify(&mut c, &value).is_err());
         assert_eq!(c.usage().work(WorkCategory::InspectByte), 0);
     }
 
@@ -21066,8 +21052,11 @@ mod tests {
             );
             assert_eq!(attribute.value().to_utf8().unwrap(), "v");
         }
-        assert_eq!(Arc::strong_count(element.attributes().backing()), 2);
-        assert_eq!(Arc::weak_count(element.attributes().backing()), 1);
+        assert_eq!(
+            Arc::strong_count(element.attributes().shared_attributes()),
+            2
+        );
+        assert_eq!(Arc::weak_count(element.attributes().shared_attributes()), 1);
         tokenizer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
@@ -21163,8 +21152,11 @@ mod tests {
             assert_eq!(attribute.name().local_name().to_utf8().unwrap(), name);
             assert_eq!(attribute.value().to_utf8().unwrap(), value);
         }
-        assert_eq!(Arc::strong_count(element.attributes().backing()), 2);
-        assert_eq!(Arc::weak_count(element.attributes().backing()), 1);
+        assert_eq!(
+            Arc::strong_count(element.attributes().shared_attributes()),
+            2
+        );
+        assert_eq!(Arc::weak_count(element.attributes().shared_attributes()), 1);
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedAttributes)
@@ -21529,7 +21521,7 @@ mod tests {
             .expect("retained construction position")
             .kind()
         {
-            HtmlNodeKind::Element(e) => Arc::downgrade(e.attributes().backing()),
+            HtmlNodeKind::Element(e) => Arc::downgrade(e.attributes().shared_attributes()),
             _ => panic!("root"),
         };
         assert_eq!(
@@ -21783,8 +21775,11 @@ mod tests {
                     assert_eq!(attribute.value.value.text().to_utf8().unwrap(), value);
                 }
             }
-            assert_eq!(Arc::strong_count(element.attributes().backing()), 2);
-            assert_eq!(Arc::weak_count(element.attributes().backing()), 1);
+            assert_eq!(
+                Arc::strong_count(element.attributes().shared_attributes()),
+                2
+            );
+            assert_eq!(Arc::weak_count(element.attributes().shared_attributes()), 1);
             match result {
                 Err(error) => assert!(matches!(
                     error,

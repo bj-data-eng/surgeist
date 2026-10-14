@@ -91,6 +91,12 @@ allow the parser's existing allocation ledger to qualify the actual allocation
 without a second copy or a fabricated capacity. They do not expose mutable
 access to an immutable string.
 
+`OrderedAttributes::shared_attributes(&self) -> &Arc<Vec<Attribute>>` lends the
+actual immutable backing and retained capacity without a clone or validation
+pass. Consuming `into_shared_attributes(self) -> Arc<Vec<Attribute>>` returns
+that same backing. These observations let the consuming parser qualify its
+existing allocation tickets; mutable construction backing remains private.
+
 `OrderedAttributes::from_parser_storage`, `parser_backing_mut` and
 `into_parser_storage` must not expose `ParseControl` or mutable shared storage in
 HTML. Replace them with HTML-owned `bounded::HtmlAttributeStorage` and
@@ -801,6 +807,22 @@ without another observation. Foreign-dispatch token-kind, `mglyph`/`malignmark`
 exceptions and the separate annotation-xml/SVG branch remain parser-owned.
 
 ### Local rules and semantic execution
+
+`bounded::HtmlScriptTypeCursor` owns the existing script classification actions
+for current content and preparation. It borrows original operands, including
+the virtual language prefix, and exposes `required_work`, `advance` and the
+completed optional kind. `HtmlScriptTypeWork` describes record visits and actual
+inspected bytes before each action; callers retain their controller, admission
+and cancellation. Preparation-only JavaScript whitespace handling is not
+applied to current-content classification or module/import-map keywords. The
+literal matcher remains private, and ordinary reports use this same classifier.
+
+`HtmlInputType::missing_value_default` selects the authoritative missing-value
+row without an attribute read. It is distinct from inspecting an optional
+attribute through `HtmlInputTypeCursor`, so parser callers retain their original
+fixed admission order. `HtmlInputImageCoordinate::initial` supplies the selected
+fresh Image-state zero coordinates; it accepts no arbitrary host activation
+coordinates.
 
 Local rules consume explicit values rather than locating them in a tree. HTML
 therefore retains input flag transitions/sanitization, numeric and temporal

@@ -25,3 +25,5 @@ pub use crate::tokens::{
     SpaceTokenCursor as HtmlSpaceTokenCursor, SpaceTokenStep as HtmlSpaceTokenStep,
     ascii_whitespace as is_ascii_whitespace,
 };
+
+pub use crate::script_type::{HtmlScriptTypeCursor, HtmlScriptTypeWork};

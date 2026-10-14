@@ -48,7 +48,7 @@ impl Fixture {
         let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
             unreachable!()
         };
-        v.attributes().backing()
+        v.attributes().shared_attributes()
     }
     fn slot(
         &mut self,
@@ -71,7 +71,7 @@ impl Fixture {
         let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
             unreachable!()
         };
-        c.restore_attribute_weak(v.attributes().backing(), &mut self.shared);
+        c.restore_attribute_weak(v.attributes().shared_attributes(), &mut self.shared);
         if result.is_ok() {
             self.owner.finish_attributes(c)?;
         } else {
@@ -100,7 +100,7 @@ impl Fixture {
         let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
             unreachable!()
         };
-        c.restore_attribute_weak(v.attributes().backing(), &mut self.shared);
+        c.restore_attribute_weak(v.attributes().shared_attributes(), &mut self.shared);
         if result.is_ok() {
             self.owner.finish_attributes(c)?;
         } else {

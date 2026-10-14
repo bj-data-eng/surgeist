@@ -359,6 +359,9 @@ pub surgeist_html::bounded::HtmlRelRefinement::Extension(surgeist_html::HtmlRelE
 pub surgeist_html::bounded::HtmlRelRefinement::NoEffect
 pub surgeist_html::bounded::HtmlRelRefinement::Standard(surgeist_html::HtmlRelKeyword)
 pub surgeist_html::bounded::HtmlRelRefinement::Unavailable
+pub enum surgeist_html::bounded::HtmlScriptTypeWork
+pub surgeist_html::bounded::HtmlScriptTypeWork::InspectByte(u64)
+pub surgeist_html::bounded::HtmlScriptTypeWork::RecordVisit(u64)
 pub enum surgeist_html::bounded::HtmlSpaceTokenStep
 pub surgeist_html::bounded::HtmlSpaceTokenStep::Continue
 pub surgeist_html::bounded::HtmlSpaceTokenStep::Done
@@ -875,6 +878,13 @@ pub fn surgeist_html::bounded::HtmlRelReservation<'_>::is_empty(&self) -> bool
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::len(&self) -> usize
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::record_size(&self) -> usize
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::try_reserve(&mut self) -> core::result::Result<(), surgeist_html::bounded::HtmlRelInterpretationError>
+pub struct surgeist_html::bounded::HtmlScriptTypeCursor<'a>
+impl<'a> surgeist_html::bounded::HtmlScriptTypeCursor<'a>
+pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::advance(&mut self)
+pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::content(explicit: core::option::Option<&'a surgeist_html::DocumentString>) -> Self
+pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::preparation(explicit: core::option::Option<&'a surgeist_html::DocumentString>, language: core::option::Option<&'a surgeist_html::DocumentString>) -> Self
+pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::required_work(&mut self) -> core::option::Option<surgeist_html::bounded::HtmlScriptTypeWork>
+pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::result(&self) -> core::option::Option<core::option::Option<surgeist_html::HtmlScriptKind>>
 pub struct surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 impl<'a> surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 pub const surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::BEGIN_WORK: usize
@@ -2556,6 +2566,8 @@ impl surgeist_html::HtmlInputType
 pub fn surgeist_html::HtmlInputType::is_selectable(self) -> bool
 pub fn surgeist_html::HtmlInputType::sanitization(self) -> surgeist_html::HtmlInputValueSanitization
 pub fn surgeist_html::HtmlInputType::value_mode(self) -> surgeist_html::HtmlInputValueMode
+impl surgeist_html::HtmlInputType
+pub fn surgeist_html::HtmlInputType::missing_value_default() -> Self
 pub enum surgeist_html::HtmlInputTypeEffect
 pub surgeist_html::HtmlInputTypeEffect::Sanitize(surgeist_html::HtmlInputValueSanitization)
 pub surgeist_html::HtmlInputTypeEffect::SetContentValueFromCurrent
@@ -6336,6 +6348,7 @@ pub fn surgeist_html::HtmlInputImageAttributes::new(alt: impl core::convert::Int
 pub fn surgeist_html::HtmlInputImageAttributes::src(&self) -> &surgeist_html::DocumentString
 pub struct surgeist_html::HtmlInputImageCoordinate
 impl surgeist_html::HtmlInputImageCoordinate
+pub fn surgeist_html::HtmlInputImageCoordinate::initial() -> Self
 pub fn surgeist_html::HtmlInputImageCoordinate::x(self) -> u32
 pub fn surgeist_html::HtmlInputImageCoordinate::y(self) -> u32
 pub struct surgeist_html::HtmlInputImageStringReport
@@ -8615,10 +8628,12 @@ pub struct surgeist_html::OrderedAttributes
 impl surgeist_html::OrderedAttributes
 pub fn surgeist_html::OrderedAttributes::as_slice(&self) -> &[surgeist_html::Attribute]
 pub fn surgeist_html::OrderedAttributes::get(&self, namespace: &surgeist_html::Namespace, local_name: &surgeist_html::DocumentString) -> core::option::Option<&surgeist_html::Attribute>
+pub fn surgeist_html::OrderedAttributes::into_shared_attributes(self) -> alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>
 pub fn surgeist_html::OrderedAttributes::is_empty(&self) -> bool
 pub fn surgeist_html::OrderedAttributes::iter(&self) -> core::slice::iter::Iter<'_, surgeist_html::Attribute>
 pub fn surgeist_html::OrderedAttributes::len(&self) -> usize
 pub fn surgeist_html::OrderedAttributes::new(attributes: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::Attribute>) -> core::result::Result<Self, surgeist_html::DuplicateAttributeError>
+pub fn surgeist_html::OrderedAttributes::shared_attributes(&self) -> &alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>
 pub struct surgeist_html::QualifiedName
 impl surgeist_html::QualifiedName
 pub fn surgeist_html::QualifiedName::local_name(&self) -> &surgeist_html::DocumentString

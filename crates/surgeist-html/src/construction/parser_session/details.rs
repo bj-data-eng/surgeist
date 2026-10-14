@@ -279,7 +279,7 @@ impl SessionStorage {
         else {
             unreachable!()
         };
-        c.restore_attribute_weak(element_record.attributes().backing(), &mut shared);
+        c.restore_attribute_weak(element_record.attributes().shared_attributes(), &mut shared);
         let values = element_record.attributes().clone();
         *storage = Some(AttributeStorage::Removing {
             values,

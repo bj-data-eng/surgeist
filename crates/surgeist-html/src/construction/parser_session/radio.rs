@@ -134,7 +134,7 @@ impl SessionStorage {
                         let value = self.form_attribute(c, peer, "type")?;
                         let kind = match value {
                             Some(value) => input_type_state(c, value)?,
-                            None => crate::attributes::input_type_default(),
+                            None => crate::HtmlInputType::missing_value_default(),
                         };
                         // Imported native Radio is not a canonical mutable input.
                         // Only a potentially matching peer requires unavailable state.

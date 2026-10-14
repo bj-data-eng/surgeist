@@ -107,7 +107,7 @@ pub(crate) fn prepare_public_readers(
                         values,
                         element,
                         ..
-                    }))) if ordinal < values.backing().capacity() => {
+                    }))) if ordinal < values.shared_attributes().capacity() => {
                         if let Some(owner) = element {
                             node(records, c, *owner)?;
                         }

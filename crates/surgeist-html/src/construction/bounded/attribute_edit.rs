@@ -221,7 +221,7 @@ impl HtmlConstructionAttributeEdit {
             return Err(HtmlConstructionError::OperationNotReady);
         }
         match &self.storage.arena.records[self.target].kind {
-            HtmlNodeKind::Element(v) => Ok(v.attributes.backing()),
+            HtmlNodeKind::Element(v) => Ok(v.attributes.shared_attributes()),
             _ => Err(HtmlConstructionError::WrongNodeKind),
         }
     }
@@ -431,7 +431,7 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
                     };
                     edit.capacity = HtmlConstructionAttributeCapacity {
                         initialized_len: v.attributes.len(),
-                        capacity: v.attributes.backing().capacity(),
+                        capacity: v.attributes.shared_attributes().capacity(),
                     };
                     edit.target_checked = true;
                     if matches!(
@@ -1735,7 +1735,7 @@ mod tests {
     fn named_merge_keeps_first_source_value_and_checks_priors_after_installed_match() {
         let (storage, target) = make_storage(vec![attribute("a", "old")]);
         let original_backing = Arc::as_ptr(match storage.node(&target).unwrap().kind() {
-            HtmlNodeKind::Element(v) => v.attributes().backing(),
+            HtmlNodeKind::Element(v) => v.attributes().shared_attributes(),
             _ => unreachable!(),
         });
         let names = ["a", "b", "b", "a", "c"].map(DocumentString::from);
@@ -2267,7 +2267,7 @@ mod tests {
         let (storage, target) = make_storage(vec![attribute("old", "retained")]);
         let mut storage = storage;
         let original_backing = Arc::as_ptr(match storage.node(&target).unwrap().kind() {
-            HtmlNodeKind::Element(v) => v.attributes().backing(),
+            HtmlNodeKind::Element(v) => v.attributes().shared_attributes(),
             _ => unreachable!(),
         });
         let mut previous = None;

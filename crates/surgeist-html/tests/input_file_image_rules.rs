@@ -1,6 +1,22 @@
 use surgeist_html::*;
 
 #[test]
+fn fresh_image_coordinates_are_zero_without_host_activation_facts() {
+    let coordinates = HtmlInputImageCoordinate::initial();
+    assert_eq!(coordinates.x(), 0);
+    assert_eq!(coordinates.y(), 0);
+}
+
+#[test]
+fn missing_input_type_uses_the_text_state() {
+    assert_eq!(HtmlInputType::missing_value_default(), HtmlInputType::Text);
+    let mut cursor = HtmlInputTypeCursor::new(None);
+    assert_eq!(cursor.required_work(), Some(HtmlInputRuleWork::ReadField));
+    cursor.advance();
+    assert_eq!(cursor.result(), Some(HtmlInputType::Text));
+}
+
+#[test]
 fn file_and_image_modes_preserve_distinct_resource_and_content_readback() {
     let raw = [0x0d, 0x0a, 0xd800, 88];
     let file = HtmlInputType::File;

@@ -43,9 +43,10 @@ const KEYWORDS: [(&[u8], HtmlScriptKind); 3] = [
 /// Required admission before the cursor's next actual action. Parser adapters
 /// map these concrete credits to their existing categories; no controller is held.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ScriptTypeWork {
+pub enum HtmlScriptTypeWork {
     RecordVisit(u64),
-    InspectUnit(u64),
+    /// Actual inspected bytes, including UTF-16 operands and ASCII keywords.
+    InspectByte(u64),
 }
 /// Borrowed ASCII-insensitive virtual-prefix/range matcher, also consumed by
 /// the construction owner's actual hidden-input comparison. Credits precede
@@ -79,13 +80,13 @@ impl<'a> ScriptTypeMatchCursor<'a> {
             result: None,
         }
     }
-    pub(crate) fn required_work(&self) -> Option<ScriptTypeWork> {
+    pub(crate) fn required_work(&self) -> Option<HtmlScriptTypeWork> {
         if self.result.is_some() {
             None
         } else if self.length_pending {
-            Some(ScriptTypeWork::RecordVisit(1))
+            Some(HtmlScriptTypeWork::RecordVisit(1))
         } else {
-            Some(ScriptTypeWork::InspectUnit(
+            Some(HtmlScriptTypeWork::InspectByte(
                 if self.position < self.prefix.len() {
                     2
                 } else {
@@ -154,7 +155,7 @@ enum Stage {
 /// Finite work: sixteen raw matches, at most two linear trim passes and sixteen
 /// stripped matches for explicit preparation, then three exact keyword matches.
 /// A virtual language prefix never allocates a concatenated string.
-pub(crate) struct ScriptTypeCursor<'a> {
+pub struct HtmlScriptTypeCursor<'a> {
     explicit: Option<&'a DocumentString>,
     language: Option<&'a DocumentString>,
     mode: Mode,
@@ -166,11 +167,13 @@ pub(crate) struct ScriptTypeCursor<'a> {
     matcher: Option<ScriptTypeMatchCursor<'a>>,
     result: Option<HtmlScriptKind>,
 }
-impl<'a> ScriptTypeCursor<'a> {
-    pub(crate) fn content(explicit: Option<&'a DocumentString>) -> Self {
+impl<'a> HtmlScriptTypeCursor<'a> {
+    /// Classifies the current content type without preparation-only trimming.
+    pub fn content(explicit: Option<&'a DocumentString>) -> Self {
         Self::new(explicit, None, Mode::Content)
     }
-    pub(crate) fn preparation(
+    /// Classifies explicit type or the virtual language prefix for preparation.
+    pub fn preparation(
         explicit: Option<&'a DocumentString>,
         language: Option<&'a DocumentString>,
     ) -> Self {
@@ -267,21 +270,24 @@ impl<'a> ScriptTypeCursor<'a> {
             }
         }
     }
-    pub(crate) fn required_work(&mut self) -> Option<ScriptTypeWork> {
+    /// Describes the next read; admit it before calling advance.
+    pub fn required_work(&mut self) -> Option<HtmlScriptTypeWork> {
         self.settle();
         match self.stage {
-            Stage::Initial => Some(ScriptTypeWork::RecordVisit(2)),
-            Stage::Candidate => Some(ScriptTypeWork::RecordVisit(1)),
+            Stage::Initial => Some(HtmlScriptTypeWork::RecordVisit(2)),
+            Stage::Candidate => Some(HtmlScriptTypeWork::RecordVisit(1)),
             Stage::Match => self
                 .matcher
                 .as_ref()
                 .expect("candidate installed matcher")
                 .required_work(),
-            Stage::TrimStart | Stage::TrimEnd => Some(ScriptTypeWork::InspectUnit(2)),
+            Stage::TrimStart | Stage::TrimEnd => Some(HtmlScriptTypeWork::InspectByte(2)),
             Stage::Done => None,
         }
     }
-    pub(crate) fn advance(&mut self) {
+    /// Performs one admitted action; a completed cursor remains completed.
+    pub fn advance(&mut self) {
+        self.settle();
         match self.stage {
             Stage::Initial => {
                 if self.explicit.is_some_and(DocumentString::is_empty)
@@ -333,11 +339,11 @@ impl<'a> ScriptTypeCursor<'a> {
                     self.stage = Stage::Candidate;
                 }
             }
-            Stage::Done => unreachable!("only a pending cursor action can advance"),
+            Stage::Done => {}
         }
     }
     /// Complete None is the preparation early-return branch, not missing evidence.
-    pub(crate) fn result(&self) -> Option<Option<HtmlScriptKind>> {
+    pub fn result(&self) -> Option<Option<HtmlScriptKind>> {
         (self.stage == Stage::Done).then_some(self.result)
     }
     pub(crate) fn finish_ordinary(mut self) -> Option<HtmlScriptKind> {
@@ -351,12 +357,36 @@ impl<'a> ScriptTypeCursor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn literal_matcher_admits_length_and_only_reached_utf16_comparisons() {
+        let mut records = 0;
+        let mut units = 0;
+        for (raw, expected) in [("HiDdEn", true), ("hiddEX", false), ("other", false)] {
+            let value = DocumentString::from(raw);
+            let mut cursor = ScriptTypeMatchCursor::new(b"", &value, 0, value.len(), b"hidden");
+            while let Some(work) = cursor.required_work() {
+                match work {
+                    HtmlScriptTypeWork::RecordVisit(count) => records += count,
+                    HtmlScriptTypeWork::InspectByte(count) => units += count,
+                }
+                cursor.advance();
+            }
+            assert_eq!(cursor.result(), Some(expected));
+        }
+        assert_eq!(records, 3);
+        assert_eq!(units, 36);
+    }
+
     #[test]
     fn borrowed_modes_preserve_only_the_explicit_js_whitespace_exception() {
         let js = DocumentString::from(" \tTEXT/JAVASCRIPT\r\n\x0c ");
-        assert_eq!(ScriptTypeCursor::content(Some(&js)).finish_ordinary(), None);
         assert_eq!(
-            ScriptTypeCursor::preparation(Some(&js), None).finish_ordinary(),
+            HtmlScriptTypeCursor::content(Some(&js)).finish_ordinary(),
+            None
+        );
+        assert_eq!(
+            HtmlScriptTypeCursor::preparation(Some(&js), None).finish_ordinary(),
             Some(HtmlScriptKind::Classic)
         );
         for value in [
@@ -368,7 +398,7 @@ mod tests {
         ] {
             let value = DocumentString::from(value);
             assert_eq!(
-                ScriptTypeCursor::preparation(Some(&value), None).finish_ordinary(),
+                HtmlScriptTypeCursor::preparation(Some(&value), None).finish_ordinary(),
                 None
             );
         }
@@ -378,16 +408,16 @@ mod tests {
         let js = DocumentString::from("javascript");
         let bad = DocumentString::from("unknown");
         assert_eq!(
-            ScriptTypeCursor::preparation(None, Some(&js)).finish_ordinary(),
+            HtmlScriptTypeCursor::preparation(None, Some(&js)).finish_ordinary(),
             Some(HtmlScriptKind::Classic)
         );
         assert_eq!(
-            ScriptTypeCursor::preparation(Some(&bad), Some(&js)).finish_ordinary(),
+            HtmlScriptTypeCursor::preparation(Some(&bad), Some(&js)).finish_ordinary(),
             None
         );
         let empty = DocumentString::from("");
         assert_eq!(
-            ScriptTypeCursor::preparation(Some(&empty), Some(&bad)).finish_ordinary(),
+            HtmlScriptTypeCursor::preparation(Some(&empty), Some(&bad)).finish_ordinary(),
             Some(HtmlScriptKind::Classic)
         );
     }

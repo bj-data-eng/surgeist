@@ -112,7 +112,8 @@ pub struct HtmlInputImageCoordinate {
     y: u32,
 }
 impl HtmlInputImageCoordinate {
-    pub(crate) fn initial() -> Self {
+    /// Fresh Image-state construction starts with the selected zero coordinates.
+    pub fn initial() -> Self {
         Self { x: 0, y: 0 }
     }
     pub fn x(self) -> u32 {
@@ -762,7 +763,7 @@ impl<'a> HtmlInputTypeCursor<'a> {
         self.step = match self.step {
             TypeStep::Row => {
                 if self.value.is_none() {
-                    TypeStep::Done(crate::attributes::input_type_default())
+                    TypeStep::Done(crate::HtmlInputType::missing_value_default())
                 } else if let Some((keyword, state)) =
                     crate::attributes::input_type_keyword(self.row)
                 {
