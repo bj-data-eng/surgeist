@@ -1805,6 +1805,36 @@ mod tests {
     }
 
     #[test]
+    fn computed_but_untaken_transformation_recovers_the_original_checkpoint() {
+        let facts = facts();
+        let mut owner = CssColorOperationOwner::new();
+        let (outcome, _) = parse(&mut owner, "rgb(100% 0 0 / .5)", &facts).unwrap();
+        let CssColorParseOutcome::Used(checkpoint) = outcome else {
+            panic!("valid resolved color")
+        };
+        let original = checkpoint.value();
+        let source = checkpoint.source();
+        assert_eq!(original.srgb_bytes(), None);
+        let mut slot = Some(checkpoint);
+        let mut transform = CssUsedColorCheckpoint::transform(
+            &mut slot,
+            CssUsedColorTransformation::QuantizeSrgb,
+            CssColorBankLengths::new(0, 0, 0),
+        )
+        .unwrap();
+        transform.next_action().compute().unwrap();
+        transform.abandon();
+        let recovered = transform.recover();
+        // Numerical computation alone does not publish a checkpoint. Only a
+        // successful take commits its result; abandonment preserves the input.
+        assert!(recovered.value().identical(original));
+        assert_eq!(recovered.value().srgb_bytes(), None);
+        assert_eq!(recovered.value().alpha(), Some(0.5));
+        assert_eq!(recovered.source(), source);
+        assert!(std::ptr::eq(recovered.facts(), &facts));
+    }
+
+    #[test]
     fn caller_checkpoint_slots_keep_refused_and_pending_owners_and_recover_committed_values() {
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
