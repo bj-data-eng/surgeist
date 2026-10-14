@@ -22,6 +22,7 @@ use crate::{
     construction::parser_session::{
         BodyTextKind, BodyTextRuns, ForeignNamespace, ParserNode, partition_body_text,
     },
+    integration_points::{self, Comparison, IntegrationPointRule},
     parser::{
         control::{ParseControl, StandaloneUnsupported, WorkCategory},
         tokenizer::token::{TagKind, Text},
@@ -55,6 +56,52 @@ pub(super) fn insensitive(
         }
     }
     Ok(true)
+}
+
+fn integration_comparison(
+    value: &DocumentString,
+    literal: &'static str,
+    comparison: Comparison,
+    c: &mut ParseControl,
+) -> Result<bool, HeadError> {
+    match comparison {
+        Comparison::Exact => Ok(tag_sets::ascii_eq(value, literal, c)?),
+        Comparison::AsciiCaseInsensitive => insensitive(value, literal, c),
+    }
+}
+
+fn integration_rule(
+    name: &crate::QualifiedName,
+    c: &mut ParseControl,
+) -> Result<IntegrationPointRule, HeadError> {
+    // Borrow the namespace, its URI and the local name before comparisons.
+    c.charge(WorkCategory::RecordVisit, 3)?;
+    integration_points::element_rule(
+        name.namespace().uri(),
+        name.local_name(),
+        |value, literal, comparison| integration_comparison(value, literal, comparison, c),
+    )
+}
+
+fn integration_encoding(
+    attributes: &crate::OrderedAttributes,
+    c: &mut ParseControl,
+) -> Result<bool, HeadError> {
+    for attribute in attributes.as_slice() {
+        // Visit the attribute and borrow its name, namespace, URI, local name
+        // and value. Variable UTF-16 inspections remain comparison-owned.
+        c.charge(WorkCategory::RecordVisit, 6)?;
+        let name = attribute.name();
+        if let Some(result) = integration_points::encoding_attribute(
+            name.namespace().uri(),
+            name.local_name(),
+            attribute.value(),
+            |value, literal, comparison| integration_comparison(value, literal, comparison, c),
+        )? {
+            return Ok(result);
+        }
+    }
+    Ok(false)
 }
 
 impl HeadState<'_> {
@@ -177,34 +224,19 @@ impl HeadState<'_> {
             .session
             .element_name(c, node)?
             .ok_or(KernelError::EmptyStack)?;
-        if tag_sets::namespace(name, SVG, c)? {
-            return Ok(tag_sets::local_in(
-                name,
-                &["foreignObject", "desc", "title"],
-                c,
-            )?);
-        }
-        if !tag_sets::namespace(name, MATHML, c)?
-            || !tag_sets::local_in(name, &["annotation-xml"], c)?
-        {
-            return Ok(false);
-        }
-        let attrs = self
-            .before
-            .kernel
-            .session
-            .element_attributes(c, node)?
-            .ok_or(KernelError::EmptyStack)?;
-        for attribute in attrs.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 3)?;
-            if attribute.name().namespace().uri().is_none()
-                && tag_sets::ascii_eq(attribute.name().local_name(), "encoding", c)?
-            {
-                return Ok(insensitive(attribute.value(), "text/html", c)?
-                    || insensitive(attribute.value(), "application/xhtml+xml", c)?);
+        match integration_rule(name, c)? {
+            IntegrationPointRule::Never => Ok(false),
+            IntegrationPointRule::Always => Ok(true),
+            IntegrationPointRule::EncodingAttribute => {
+                let attrs = self
+                    .before
+                    .kernel
+                    .session
+                    .element_attributes(c, node)?
+                    .ok_or(KernelError::EmptyStack)?;
+                integration_encoding(attrs, c)
             }
         }
-        Ok(false)
     }
     pub(super) fn foreign_dispatch(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -243,28 +275,13 @@ impl HeadState<'_> {
     }
     fn adjusted_integration_point(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
         let name = self.adjusted_current_name(c)?;
-        if tag_sets::namespace(name, SVG, c)? {
-            return Ok(tag_sets::local_in(
-                name,
-                &["foreignObject", "desc", "title"],
-                c,
-            )?);
-        }
-        if !tag_sets::namespace(name, MATHML, c)?
-            || !tag_sets::local_in(name, &["annotation-xml"], c)?
-        {
-            return Ok(false);
-        }
-        for attribute in self.adjusted_current_attributes(c)?.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 3)?;
-            if attribute.name().namespace().uri().is_none()
-                && tag_sets::ascii_eq(attribute.name().local_name(), "encoding", c)?
-            {
-                return Ok(insensitive(attribute.value(), "text/html", c)?
-                    || insensitive(attribute.value(), "application/xhtml+xml", c)?);
+        match integration_rule(name, c)? {
+            IntegrationPointRule::Never => Ok(false),
+            IntegrationPointRule::Always => Ok(true),
+            IntegrationPointRule::EncodingAttribute => {
+                integration_encoding(self.adjusted_current_attributes(c)?, c)
             }
         }
-        Ok(false)
     }
     pub(super) fn insert_foreign(
         &mut self,
@@ -707,5 +724,107 @@ impl HeadState<'_> {
             }
         }
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        Attribute, HtmlParseCancellation, HtmlParseResource, Namespace, OrderedAttributes,
+        QualifiedName,
+    };
+
+    fn encoding(value: &str) -> Attribute {
+        Attribute::new(
+            QualifiedName::new(Namespace::none(), Some("p".into()), "encoding"),
+            value,
+        )
+    }
+
+    fn control(work: u64, cancellation: HtmlParseCancellation) -> ParseControl {
+        ParseControl::new(
+            super::super::tests::limits(100)
+                .into_builder()
+                .work_credits(work)
+                .finish()
+                .unwrap(),
+            cancellation,
+        )
+    }
+
+    #[test]
+    fn unique_encoding_value_stops_before_unrelated_attribute_records() {
+        for (value, expected) in [("text/html", true), ("text/xml", false)] {
+            let attributes = OrderedAttributes::new(std::iter::once(encoding(value)).chain(
+                (0..1000).map(|index| {
+                    Attribute::new(
+                        QualifiedName::new(Namespace::none(), None, format!("other-{index}")),
+                        "irrelevant",
+                    )
+                }),
+            ))
+            .unwrap();
+            // Inspecting all 1,001 attribute records cannot fit this budget.
+            let mut control = control(1000, HtmlParseCancellation::new());
+            assert_eq!(
+                integration_encoding(&attributes, &mut control).unwrap(),
+                expected
+            );
+            assert_eq!(control.stop(), None);
+        }
+    }
+
+    #[test]
+    fn encoding_comparison_exact_and_one_short_preserve_first_stop_and_cancellation() {
+        let attributes = OrderedAttributes::new([encoding("ApPlIcAtIoN/XhTmL+XmL")]).unwrap();
+        let mut measured = control(1000, HtmlParseCancellation::new());
+        assert!(integration_encoding(&attributes, &mut measured).unwrap());
+        let required = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let mut exact = control(required, HtmlParseCancellation::new());
+        assert!(integration_encoding(&attributes, &mut exact).unwrap());
+        assert_eq!(exact.stop(), None);
+
+        let cancellation = HtmlParseCancellation::new();
+        let mut short = control(required - 1, cancellation.clone());
+        assert!(integration_encoding(&attributes, &mut short).is_err());
+        let first = short.stop();
+        assert!(matches!(
+            first,
+            Some(crate::HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            })
+        ));
+        let work = short
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        cancellation.cancel();
+        assert!(integration_encoding(&attributes, &mut short).is_err());
+        assert_eq!(short.stop(), first);
+        assert_eq!(
+            short
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            work
+        );
+
+        let cancellation = HtmlParseCancellation::new();
+        let mut cancelled = control(required, cancellation.clone());
+        cancellation.cancel();
+        assert!(integration_encoding(&attributes, &mut cancelled).is_err());
+        assert_eq!(cancelled.stop(), Some(crate::HtmlParseStop::Cancelled));
+        assert_eq!(
+            cancelled
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            0
+        );
     }
 }

@@ -2536,21 +2536,7 @@ impl HtmlFragmentContext {
     }
     pub fn is_html_integration_point(&self) -> bool {
         let element = self.element_values();
-        let name = &element.name;
-        if namespace(name.namespace(), "http://www.w3.org/2000/svg") {
-            return ["foreignObject", "desc", "title"]
-                .iter()
-                .any(|n| exact(name.local_name(), n));
-        }
-        namespace(name.namespace(), "http://www.w3.org/1998/Math/MathML")
-            && exact(name.local_name(), "annotation-xml")
-            && element.attributes.iter().any(|a| {
-                a.name().namespace().uri().is_none()
-                    && a.name().prefix().is_none()
-                    && exact(a.name().local_name(), "encoding")
-                    && (ascii_case_equal(a.value(), "text/html")
-                        || ascii_case_equal(a.value(), "application/xhtml+xml"))
-            })
+        crate::integration_points::is_html_integration_point(&element.name, &element.attributes)
     }
     /// Initial tokenizer choice derives from context identity and effective mode.
     pub fn initial_tokenizer_state(
@@ -2608,20 +2594,6 @@ impl HtmlFragmentContext {
         }
     }
 }
-fn ascii_case_equal(value: &DocumentString, literal: &str) -> bool {
-    value
-        .code_units()
-        .iter()
-        .map(|&u| {
-            if (0x41..=0x5a).contains(&u) {
-                u + 0x20
-            } else {
-                u
-            }
-        })
-        .eq(literal.encode_utf16())
-}
-
 /// Allocation-free ordered lookup. Every action is admitted before `step`;
 /// comparison headers cost one, each pair two, and Ready transfer one.
 pub(crate) struct DefinitionLookupCursor<'a> {

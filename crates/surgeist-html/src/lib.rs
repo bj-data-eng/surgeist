@@ -16,6 +16,7 @@ mod control_values;
 mod custom_names;
 mod details_rules;
 mod input;
+mod integration_points;
 mod interpretation;
 mod media;
 mod nonce;
