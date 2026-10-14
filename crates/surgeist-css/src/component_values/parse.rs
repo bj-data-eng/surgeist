@@ -5,6 +5,9 @@ use cssparser::{
 use super::*;
 use crate::tokenization::{numeric_prefix_length, source_token_parts};
 
+#[cfg(test)]
+mod spelling_allocation_tests;
+
 pub(super) fn parse(
     source: &str,
     limits: CssComponentValueLimits,
