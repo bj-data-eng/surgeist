@@ -565,13 +565,21 @@ retain their existing implementation. This is a specialized adaptation of
 
 HTML issues `HtmlConstructionAllocationId` with private fields identifying one
 storage identity, role and generation. Roles are `Identity`, `Records`,
-`Children`, `ArenaWrapper`, `AttributeVector`,
-`AttributeWrapper` and `AttributePlan`. The last role identifies the complete
-attribute group's actual decision/name-plan allocation. Equality is identity
+`Children`, `PendingChildOrder`, `ArenaWrapper` and `AttributePlan`.
+`PendingChildOrder` reports only its scratch slot and parent position; these
+ordinals cannot issue handles or retirement authority. The last role identifies
+the complete attribute group's actual decision/name-plan allocation. Equality is identity
 equality; IDs have no public numeric or
 pointer conversion, constructor or arithmetic. Reallocation advances the
-generation with checked arithmetic. Attribute storage issues descriptors through
-the same narrow contract for its own vector/shared-wrapper ownership.
+generation with checked arithmetic.
+
+Installed attribute vectors and their shared wrappers retain the parser's
+existing `VectorCapacity<Attribute>` and `SharedAllocation<Vec<Attribute>>`
+tickets over the actual public payload. `HtmlConstructionAttributeCapacity`
+reports their actual initialized length, capacity and public element layout;
+the editor's actions report actual reservation and uniqueness work. They do not
+need a second opaque attribute-vector/wrapper ticket or another ledger. Only
+the private name-decision plan requires the opaque `AttributePlan` role.
 
 Allocation reports never issue construction node handles. A pending creation
 can allocate its child bank before committing a record; aborting it leaves that
@@ -585,6 +593,11 @@ Each newly created bank also receives a fresh checked allocation incarnation,
 including when it reuses a position left by an aborted operation. A retained
 report from the retired bank cannot identify the replacement or authorize its
 retirement. Reallocation and actual bank replacement preserve this distinction.
+`HtmlConstructionAllocationId::same_owner_role` compares the issuing storage and
+bank role while deliberately ignoring generation. It supports observing a
+provider's updated report only after the old exact ID has been qualified against
+its live ticket. It does not certify the same allocation incarnation or permit
+stale retirement; those require exact issued-ID qualification.
 
 `HtmlConstructionAllocationSnapshot` has read-only accessors for `id`, `role`,
 `initialized_len`, `capacity`, `element_size`, `element_alignment`,
