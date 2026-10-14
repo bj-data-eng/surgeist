@@ -143,6 +143,23 @@ replace content, replace validated attributes, attach template contents, attach
 or detach a shadow fragment, and select the output document/fragment root.
 Parser-specific select, form, radio, input, nonce, script and template-patching
 decisions remain parser operations that compose these generic transitions.
+For the parser's dense retained-record joins, add checked
+`node_at(position: usize) -> Option<HtmlConstructionNode<'_>>`, a view's `handle()`,
+and `position(&HtmlBuilderNode) -> Result<usize, HtmlConstructionError>`. The view
+borrows storage; operations still accept only owner-issued handles. Positions
+are local read indices, not result identities or allocation-ID constructors.
+Out-of-range and foreign inputs cannot mint valid handles. The parser admits
+the actual fixed header/identity reads before these calls, retaining its current
+ordinal metadata banks without a second identity map or hidden arena scan.
+`node_by_result_id(&HtmlNodeId) -> Result<HtmlConstructionNode<'_>, ForeignHtmlResult>`
+resolves only an ID previously issued by this storage. It rejects foreign and
+out-of-range IDs; it neither constructs a result ID nor publishes an immutable
+result. This checked read follows existing owning-association IDs without
+exposing their private identity/index or adding another mapping bank. Borrowed
+node views provide kind, position, parent, child iteration, contents kind/target,
+`fragment_owner() -> Option<&HtmlFragmentOwner>`, shadow properties and issued
+handle access. Following one read edge does not
+clone an Arc; parser admission covers its actual described observation.
 
 Each operation consumes one exclusive storage owner. A prepared
 action exposes its actual next inspection, copy, initialized write, reservation
@@ -154,8 +171,11 @@ drives them with its existing `ParseControl` and resources. HTML has no parser
 controller, cancellation handle or second execution ledger.
 
 HTML checks foreign handles, permitted parent kinds, ordinary versus association
-edges, correct template/shadow endpoints, single associations, root restrictions,
-cycles and reciprocal parent/child links. A transition either commits a coherent
+edges, correct template/shadow endpoints, single owning associations, root
+restrictions, cycles and reciprocal parent/child links. Ordinary template contents
+and local shadow attachment are owning associations. A declarative template's
+contents reference to a shadow fragment is non-owning and independently checked;
+it is not an ordinary child or a second owner. A transition either commits a coherent
 generic state or leaves the prior logical state unchanged. Any reserved capacity
 remains observable to the caller's actual allocation owner on failure. Temporary
 parser algorithm state belongs in its session, not in a published invalid HTML
@@ -166,8 +186,9 @@ rules to native authoring.
 Result<HtmlConstructionOperation, HtmlConstructionRejection>` is the `Publish`
 command's consuming convenience entry point. It starts a publication
 operation. It checks that the selected root is the proper document/fragment
-kind, that all retained record links are reciprocal and in range, that
-association roots have the right owner, and that no pending generic operation
+kind, that all retained owning links are reciprocal and in range, that
+association roots have the right owner, that each non-owning contents reference
+targets a live result-local shadow-contents fragment, and that no pending generic operation
 exists. Its bounded actions use the original controller. The ready operation
 retains the original storage until every required check and arena-sharing
 allocation is admitted. The guarded `try_ready` transition below produces the
@@ -185,7 +206,22 @@ Parser metadata records store the same result-qualified `HtmlNodeId`; private
 construction handles cannot be confused with immutable IDs. Add
 `HtmlConstructionStorage::result_id(&HtmlBuilderNode)` for checked final-ID
 qualification; it does not publish a node view or a partial result. All existing
-`HtmlDocument`/`HtmlFragment` read APIs retain their behavior.
+`HtmlDocument`/`HtmlFragment` read APIs retain their behavior. In particular,
+`template_contents()` returns the actual shadow fragment for a declarative
+template exposed through parser metadata; it must not substitute empty ordinary
+contents. Add `HtmlTemplateContentsKind::{Owned, ShadowReference}` and
+`template_contents_kind()` beside that target view. `HtmlFragmentOwner` continues
+to describe only owning `Template` and `ShadowHost` relationships. Add
+`is_shadow_contents()` to distinguish an explicitly created shadow-role fragment,
+including the locally unowned output for a captured-host attachment. Its
+`shadow_properties() -> Option<HtmlShadowRootProperties>` reads the actual five
+properties stored once with that fragment role. The host's private shadow link
+retains its existing qualified endpoint IDs, without another properties field.
+`HtmlDeclarativeShadowRoot<'a>` becomes a read-only borrowed view over those IDs
+and the target's properties; `host()` and `contents()` retain borrowed ID
+readback, and `properties()` copies the same value without allocation. This
+pre-v1 shape change has no compatibility wrapper. Captured-host shadow properties
+therefore survive in the same HTML result even when no local host is present.
 
 The alternative of replaying parser output through native append-only builders
 was rejected because reparents, foster parenting, detached records and
@@ -227,12 +263,15 @@ command operands, never mutable arena fields.
 | `Create` | `kind: HtmlNodeKind`; creates a detached generic record and returns its `HtmlBuilderNode`. Document/fragment roots can be created only through root creation; HTML template contents are created and linked atomically with an HTML template element. |
 | `CreateDocument` | `mode: HtmlDocumentMode`; creates a detached document root and returns its handle. |
 | `CreateFragment` | No payload; creates an unassociated fragment root and returns its handle. |
+| `CreateShadowContents` | `properties: HtmlShadowRootProperties`; creates a fragment explicitly marked as shadow contents, retaining its actual properties once, and returns its handle. This role is owner-controlled, not a caller-supplied validation flag. |
 | `Insert` | `node`, `parent`, `before: Option<HtmlBuilderNode>`; inserts or reparents an ordinary record, with `None` meaning append. An already-correct placement is a no-op. |
 | `Detach` | `node`; removes an ordinary edge, retaining the record and its descendants in storage. Detaching an already-detached ordinary record is a no-op. |
 | `ReplaceContent` | `node`, `content: HtmlConstructionContent`; replaces only text/comment/PI/doctype payloads or an element's qualified name. The closed content enum preserves node kind; roots, topology and associations cannot be replaced by this operation. |
 | `ReplaceAttributes` | `element`, `attributes: HtmlValidatedAttributes`; replaces one checked ordered collection without bypassing duplicate validation. |
-| `AttachShadow` | `host`, `contents`, `properties: HtmlShadowRootProperties`; associates an unowned fragment with an element. |
+| `AttachShadow` | `host`, `contents`; associates an unowned shadow-contents fragment with an element, using that fragment's retained properties. |
+| `AttachTemplateShadow` | `template`, `host`, `contents`; atomically releases the template's old owning association, installs local host shadow ownership of the new shadow contents, and installs the template's non-owning reference, without a transient extra owned edge. |
 | `DetachShadow` | `host`; removes that association, leaving its fragment an unowned root. |
+| `SetTemplateShadowContents` | `template`, `contents`; validates an HTML template with ordinary owned contents and a live unowned shadow-contents fragment, atomically releases that owning template association and installs a typed non-owning contents reference. |
 | `SetDocumentMode` | `document`, `mode: HtmlDocumentMode`; parser prologue selection changes only the actual document mode. |
 | `SetLinkFlags` | `element`, `flags: HtmlLinkFlags`; installs the local rule's actual link flags only on an HTML link element. Source-qualified history remains parser metadata. |
 | `Publish` | `root`; selects a document or fragment view and freezes the complete retained storage. |
@@ -241,11 +280,53 @@ Template association creation is owned by `Create`; lookup returns its issued
 contents handle. Cloning a template clones its element through `Create` and
 fills that new contents fragment. Moving a whole contents association uses
 `ReassignTemplateContents { template, contents }`, which atomically detaches the
-old association and associates an unowned fragment; a fragment already owned by
-another template or shadow host is rejected. The previous contents fragment
-remains a retained unowned root. These operations cover parser adoption,
+old owning association or removes the old non-owning reference, then associates
+an unowned ordinary fragment. A shadow-role fragment or a fragment already owned
+by another template or shadow host is rejected. Replacing `Owned` leaves its
+previous fragment retained and unowned (net zero owned edges); replacing
+`ShadowReference` preserves that target's existing shadow owner and role and adds
+one template-owned edge. An identical current owned target is a no-op; an
+identical shadow-reference target is rejected as `InvalidTemplateAssociation`.
+These operations cover parser adoption,
 foster-parenting, clone and patch paths without treating association roots as
 ordinary children.
+
+The declarative-shadow exception follows pinned HTML877d in-head template
+step 7.11.6 ([retained syntax reference](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md))
+and the accepted clarification in [#1174](https://github.com/bj-data-eng/surgeist/issues/1174).
+Keep a private distinction between owned template contents and a shadow reference
+in the existing record; do not create a second mutable target or tree. For a
+local host, the referenced fragment's sole owner remains `ShadowHost`. For a
+captured host, its explicit shadow role permits a locally unowned result fragment;
+the actual capture identity, attachment effect and qualification remain parser
+evidence. HTML never imports capture IDs to certify that external attachment.
+The old ordinary contents record remains retained and unowned after the atomic
+reference transition, preserving its result identity and source associations.
+The local `AttachTemplateShadow` transition releases one template-owned edge and
+installs one host-owned edge atomically (net zero); the captured-host
+`SetTemplateShadowContents` transition releases the template edge (net minus
+one). Do not compose independently committing attach/release operations that
+introduce a transient extra-edge allowance or a new refusal point. Fixed write,
+depth and allocation descriptions reflect the actual coherent transition.
+Both declarative transitions require the template initially to have its ordinary
+owned contents with reciprocal `Template` owner. Their new target must be a
+distinct, unowned shadow-contents fragment. The local command additionally
+requires an element host with no existing shadow association. An initial
+`ShadowReference`, conflicting host association or already-owned target is
+rejected before mutation; this includes resubmitting a previously committed
+declarative command. Refusal leaves the same storage/command available for
+recovery. Pending action retry is separate from submitting a new command after
+commit. No idempotent second ownership transfer or silent host detachment occurs.
+
+`ReassignTemplateContents` installs only an owning ordinary contents association;
+it does not turn a shadow reference into ownership of its target. Publication
+checks the two relation kinds separately. Structural traversal, cycle/depth and
+descendant accounting follow ordinary children and owning associations once;
+a contents reference incurs its actual record/read/write cost without another
+owned edge or duplicate subtree charge. Native ordinary template authoring and
+fallback retain reciprocal contents ownership. Parser stacks and effects use the
+same referenced fragment and remain parser-owned. No new native declarative-shadow
+convenience or DOM implementation is implied.
 
 Add `HtmlElement::new(QualifiedName, OrderedAttributes) -> Self`, whose link
 flags are absent until the actual producing operation supplies them. Raw
@@ -257,7 +338,7 @@ permission for native syntax checks to reject recovered parser data.
 Add these typed `HtmlConstructionError` variants to the existing non-exhaustive
 error enum: `UnknownNode`, `WrongNodeKind`, `RootMove`, `AssociationMove`,
 `WrongSibling`, `Cycle`, `AssociationAlreadyOwned`, `InvalidTemplateAssociation`,
-`InvalidShadowAssociation`, `ParentChildConflict`, `InvalidOutputRoot`,
+`InvalidShadowAssociation`, `InvalidContentsReference`, `ParentChildConflict`, `InvalidOutputRoot`,
 `OperationConsumed`, `OperationNotReady`, `ForeignAllocation`, `CapacityMismatch`,
 `SharedAllocationAliased`, and `ReleaseUnderflow`. Existing
 `ForeignBuilder`, native-parent/association errors, `LimitExceeded`,
@@ -629,7 +710,9 @@ and keep-registry-null. Its ordinary five shadow properties come from the actual
 construction result and cannot be overwritten by fact input. Absent additional
 shadow facts are a typed missing-fact failure, not three invented false values.
 An ordinary fragment's absent host is structural evidence only when the selected
-source fragment itself has no owner; source association fragments retain their
+source fragment has neither an owner nor a shadow-contents role. A locally
+unowned shadow-contents fragment has an unavailable external host, rather than
+evidence of absence. Source association fragments retain their
 actual host relation. For an associated fragment view, the adapter includes its
 source owner element as a supplemental imported record and requires that
 element's document/registry facts. It establishes that one template/shadow
@@ -637,6 +720,37 @@ association, while unrelated owner ancestry, ordinary children and other
 associations remain unavailable unless included by the selected closure.
 Input facts cannot erase or replace ordinary topology,
 names, attributes, text or associations from the result.
+
+Semantics extends its checked capture surface for these relation kinds:
+
+- `HtmlCaptureBuilder::add_shadow_fragment(document, properties, registry)`
+  validates the supplied builder document and registry, creates one
+  `HtmlCapturedFragmentKind::ShadowRoot` with those explicit
+  `HtmlCapturedShadowProperties`, and retains `HtmlCapturedHost::Unavailable`.
+  It creates no local host or owning edge. The adapter takes the five properties
+  from the source fragment's `shadow_properties()` and requires the same three
+  additional producer booleans as for a locally hosted shadow root; absence is
+  `HtmlConstructionCaptureError::MissingShadowFacts`. It never supplies false
+  defaults. The existing absent-host establishment operation rejects this
+  shadow kind; unavailable external host is not known absence.
+- `HtmlCaptureBuilder::establish_template_shadow_reference(template, contents)`
+  checks capture identity, HTML-template/fragment kinds, an unset template
+  relation and a shadow-root target. It records a non-owning reference without
+  changing that target's host, parent or structural dependents. An invalid
+  target yields `HtmlCaptureError::InvalidTemplateContentsReference`; ordinary
+  foreign/kind/already-established errors retain their existing precedence.
+  `HtmlCapturedNode::template_contents_kind()` reports the shared HTML
+  `HtmlTemplateContentsKind` only for an established target. The existing
+  `template_contents()` still returns that actual target. Ordinary
+  `establish_template_contents` continues to establish reciprocal ownership and
+  does not accept a shadow-root target.
+
+Both operations use the capture owner's existing admission and immutable
+publication. They admit actual node/reference/registry storage and work before
+mutation. The non-owning reference consumes its relationship record allowance,
+but no second owned edge, depth propagation or dependent-subtree registration.
+Capture validation checks reference endpoints separately from owning reciprocity.
+No parser/capture identity enters HTML's construction representation.
 
 Before traversal, reject host-revision mismatch, foreign result IDs, duplicate
 node-fact records, wrong role/kind, and existing builder handles from another
@@ -648,13 +762,24 @@ capture builder's rules. Parser metadata may supply its actual initialized
 state as explicit producer evidence to those existing fact-establishment
 methods; importing a parsed result does not certify unrelated host facts.
 
-The adapter walks the selected root's ordinary children in order, then each
-element's separate template and shadow association subtrees. It visits each
-reachable source ID once and establishes complete ordered children for the
-selected ordinary/forward-association closure, reciprocal ordinary parents and
-association hosts through the capture owner's existing
-checked builder operations. Detached records outside the selected root and
-its association closure and required supplemental owner are excluded; requesting their mapping returns
+The adapter walks ordinary children in order and owning template/shadow
+associations for structural topology. It records non-owning contents references
+separately, retaining their source kind and target. A referenced target outside
+that structural closure is imported as a supplemental fragment and its owning
+subtree, with its actual local owning host included as a supplemental record
+when present. That does not import unrelated host ancestry, children or other
+associations. A locally unowned shadow-role target uses `add_shadow_fragment`
+with unavailable host. Every newly reached record still requires its explicit
+document and role-specific facts. A visited source-ID mapping ensures each
+record and owning subtree is imported once, including references to an already
+imported shadow root or cycles consisting only of references. References are
+established after their endpoints through the checked reference operation;
+they never manufacture reciprocal Template hosts or another structural walk.
+The selected source root retains its existing root/parent qualification. The
+adapter establishes complete ordered children only for each actually traversed
+ordinary/owning closure; supplemental owner records retain unavailable unrelated
+relations. Detached records outside this closure and its required supplemental
+records are excluded; requesting their mapping returns
 `OutsideImportedClosure`. It clones immutable name/attribute/string backing
 without UTF-8 conversion, re-normalization or serialization. A mapping entry
 retains the original `HtmlNodeId`; source identity is never equated to capture
